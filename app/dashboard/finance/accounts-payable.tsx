@@ -2,50 +2,59 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import type { ServiceType } from "../service-types";
+import type { NamedLookup } from "../lookup-types";
 import {
-  calculateOutstanding,
+  calculateBalanceDue,
+  calculateDaysOutstanding,
+  calculateStatus,
   formatDate,
   formatGHS,
-  type IncomeRegisterEntry,
-} from "./income-register-utils";
+  type AccountsPayableEntry,
+} from "./accounts-payable-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
   toDateInputValue,
 } from "./register-row-actions";
 
-type IncomeRegisterProps = {
-  initialEntries: IncomeRegisterEntry[];
-  initialServiceTypes: ServiceType[];
+type AccountsPayableProps = {
+  initialEntries: AccountsPayableEntry[];
+  initialExpenseCategories: NamedLookup[];
+  initialExpenseSubcategories: NamedLookup[];
   fetchError: string | null;
 };
 
 const emptyForm = {
-  date: "",
-  invoice_no: "",
-  customer_name: "",
-  service_category: "",
+  vendor_name: "",
+  invoice_number: "",
+  expense_category: "",
+  sub_category: "",
   description: "",
-  amount: "",
-  amount_received: "",
-  payment_status: "",
+  invoice_date: "",
   due_date: "",
+  amount: "",
+  amount_paid: "",
   notes: "",
 };
-
-const PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"];
 
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
-export default function IncomeRegister({
+const overdueClassName = "font-medium text-red-700";
+
+export default function AccountsPayable({
   initialEntries,
-  initialServiceTypes,
+  initialExpenseCategories,
+  initialExpenseSubcategories,
   fetchError,
-}: IncomeRegisterProps) {
+}: AccountsPayableProps) {
   const supabase = createClient();
   const [entries, setEntries] = useState(initialEntries);
-  const [serviceTypes, setServiceTypes] = useState(initialServiceTypes);
+  const [expenseCategories, setExpenseCategories] = useState(
+    initialExpenseCategories,
+  );
+  const [expenseSubcategories, setExpenseSubcategories] = useState(
+    initialExpenseSubcategories,
+  );
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -60,28 +69,41 @@ export default function IncomeRegister({
 
     const client = createClient();
 
-    async function loadServiceTypes() {
-      const { data, error: refreshError } = await client
-        .from("service_types")
-        .select("name")
-        .order("name", { ascending: true });
+    async function loadLookups() {
+      const [
+        { data: categories, error: categoriesError },
+        { data: subcategories, error: subcategoriesError },
+      ] = await Promise.all([
+        client
+          .from("expense_categories")
+          .select("name")
+          .order("name", { ascending: true }),
+        client
+          .from("expense_subcategories")
+          .select("name")
+          .order("name", { ascending: true }),
+      ]);
 
-      if (refreshError) {
-        setError(refreshError.message);
+      const lookupError =
+        categoriesError?.message ?? subcategoriesError?.message ?? null;
+
+      if (lookupError) {
+        setError(lookupError);
         return;
       }
 
-      setServiceTypes(data ?? []);
+      setExpenseCategories(categories ?? []);
+      setExpenseSubcategories(subcategories ?? []);
     }
 
-    loadServiceTypes();
+    loadLookups();
   }, [showForm]);
 
   async function refreshEntries() {
     const { data, error: refreshError } = await supabase
-      .from("income_register")
+      .from("accounts_payable")
       .select("*")
-      .order("date", { ascending: false });
+      .order("due_date", { ascending: true });
 
     if (refreshError) {
       setError(refreshError.message);
@@ -104,18 +126,18 @@ export default function IncomeRegister({
     setShowForm(false);
   }
 
-  function openEditForm(entry: IncomeRegisterEntry) {
+  function openEditForm(entry: AccountsPayableEntry) {
     setEditingId(entry.id);
     setForm({
-      date: toDateInputValue(entry.date),
-      invoice_no: entry.invoice_no,
-      customer_name: entry.customer_name,
-      service_category: entry.service_category,
+      vendor_name: entry.vendor_name,
+      invoice_number: entry.invoice_number,
+      expense_category: entry.expense_category,
+      sub_category: entry.sub_category,
       description: entry.description ?? "",
-      amount: String(entry.amount),
-      amount_received: String(entry.amount_received),
-      payment_status: entry.payment_status,
+      invoice_date: toDateInputValue(entry.invoice_date),
       due_date: toDateInputValue(entry.due_date),
+      amount: String(entry.amount),
+      amount_paid: String(entry.amount_paid),
       notes: entry.notes ?? "",
     });
     setShowForm(true);
@@ -130,7 +152,7 @@ export default function IncomeRegister({
     setError(null);
 
     const { error: deleteError } = await supabase
-      .from("income_register")
+      .from("accounts_payable")
       .delete()
       .eq("id", id);
 
@@ -154,29 +176,32 @@ export default function IncomeRegister({
     setError(null);
 
     const amount = Number(form.amount);
-    const amountReceived = Number(form.amount_received);
-    const outstandingBalance = calculateOutstanding(amount, amountReceived);
+    const amountPaid = Number(form.amount_paid);
+    const balanceDue = calculateBalanceDue(amount, amountPaid);
+    const daysOutstanding = calculateDaysOutstanding(form.due_date);
+    const status = calculateStatus(balanceDue, daysOutstanding);
 
     const payload = {
-      date: form.date,
-      invoice_no: form.invoice_no,
-      customer_name: form.customer_name,
-      service_category: form.service_category,
+      vendor_name: form.vendor_name,
+      invoice_number: form.invoice_number,
+      expense_category: form.expense_category,
+      sub_category: form.sub_category,
       description: form.description || null,
-      amount,
-      amount_received: amountReceived,
-      outstanding_balance: outstandingBalance,
-      payment_status: form.payment_status,
+      invoice_date: form.invoice_date,
       due_date: form.due_date,
+      amount,
+      amount_paid: amountPaid,
+      balance_due: balanceDue,
+      status,
       notes: form.notes || null,
     };
 
     const { error: saveError } = editingId
       ? await supabase
-          .from("income_register")
+          .from("accounts_payable")
           .update(payload)
           .eq("id", editingId)
-      : await supabase.from("income_register").insert(payload);
+      : await supabase.from("accounts_payable").insert(payload);
 
     if (saveError) {
       setError(saveError.message);
@@ -193,16 +218,23 @@ export default function IncomeRegister({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  const previewOutstanding = calculateOutstanding(
+  const previewBalanceDue = calculateBalanceDue(
     Number(form.amount) || 0,
-    Number(form.amount_received) || 0,
+    Number(form.amount_paid) || 0,
+  );
+  const previewDaysOutstanding = form.due_date
+    ? calculateDaysOutstanding(form.due_date)
+    : 0;
+  const previewStatus = calculateStatus(
+    previewBalanceDue,
+    previewDaysOutstanding,
   );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-600">
-          Track invoices, receipts, and outstanding balances.
+          Track vendor invoices, payments, and outstanding balances.
         </p>
         <button
           type="button"
@@ -222,65 +254,97 @@ export default function IncomeRegister({
       {showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
-            {editingId ? "Edit Income Entry" : "New Income Entry"}
+            {editingId
+              ? "Edit Accounts Payable Entry"
+              : "New Accounts Payable Entry"}
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={form.date}
-                  onChange={(e) => updateField("date", e.target.value)}
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Invoice No.
+                  Vendor Name
                 </label>
                 <input
                   type="text"
                   required
-                  value={form.invoice_no}
-                  onChange={(e) => updateField("invoice_no", e.target.value)}
+                  value={form.vendor_name}
+                  onChange={(e) => updateField("vendor_name", e.target.value)}
                   className={inputClassName}
                 />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Customer Name
+                  Invoice Number
                 </label>
                 <input
                   type="text"
                   required
-                  value={form.customer_name}
-                  onChange={(e) => updateField("customer_name", e.target.value)}
+                  value={form.invoice_number}
+                  onChange={(e) => updateField("invoice_number", e.target.value)}
                   className={inputClassName}
                 />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Service Category
+                  Expense Category
                 </label>
                 <select
                   required
-                  value={form.service_category}
+                  value={form.expense_category}
                   onChange={(e) =>
-                    updateField("service_category", e.target.value)
+                    updateField("expense_category", e.target.value)
                   }
                   className={inputClassName}
                 >
                   <option value="">Select category</option>
-                  {serviceTypes.map((category) => (
+                  {expenseCategories.map((category) => (
                     <option key={category.name} value={category.name}>
                       {category.name}
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Sub-Category
+                </label>
+                <select
+                  required
+                  value={form.sub_category}
+                  onChange={(e) => updateField("sub_category", e.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Select sub-category</option>
+                  {expenseSubcategories.map((subcategory) => (
+                    <option key={subcategory.name} value={subcategory.name}>
+                      {subcategory.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Invoice Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={form.invoice_date}
+                  onChange={(e) => updateField("invoice_date", e.target.value)}
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={form.due_date}
+                  onChange={(e) => updateField("due_date", e.target.value)}
+                  className={inputClassName}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -298,49 +362,15 @@ export default function IncomeRegister({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Amount Received
+                  Amount Paid
                 </label>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   required
-                  value={form.amount_received}
-                  onChange={(e) =>
-                    updateField("amount_received", e.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Payment Status
-                </label>
-                <select
-                  required
-                  value={form.payment_status}
-                  onChange={(e) =>
-                    updateField("payment_status", e.target.value)
-                  }
-                  className={inputClassName}
-                >
-                  <option value="">Select status</option>
-                  {PAYMENT_STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Due Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={form.due_date}
-                  onChange={(e) => updateField("due_date", e.target.value)}
+                  value={form.amount_paid}
+                  onChange={(e) => updateField("amount_paid", e.target.value)}
                   className={inputClassName}
                 />
               </div>
@@ -368,12 +398,38 @@ export default function IncomeRegister({
               </div>
             </div>
 
-            <p className="text-sm text-slate-600">
-              Outstanding Balance:{" "}
-              <span className="font-medium text-[#0f2744]">
-                {formatGHS(previewOutstanding)}
-              </span>
-            </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+              <p>
+                Balance Due:{" "}
+                <span className="font-medium text-[#0f2744]">
+                  {formatGHS(previewBalanceDue)}
+                </span>
+              </p>
+              <p>
+                Days Outstanding:{" "}
+                <span
+                  className={
+                    previewStatus === "Overdue"
+                      ? overdueClassName
+                      : "font-medium text-[#0f2744]"
+                  }
+                >
+                  {previewDaysOutstanding}
+                </span>
+              </p>
+              <p>
+                Status:{" "}
+                <span
+                  className={
+                    previewStatus === "Overdue"
+                      ? overdueClassName
+                      : "font-medium text-[#0f2744]"
+                  }
+                >
+                  {previewStatus}
+                </span>
+              </p>
+            </div>
 
             <div className="flex gap-3">
               <button
@@ -405,15 +461,17 @@ export default function IncomeRegister({
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#0f2744] text-white">
               <tr>
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Invoice No.</th>
-                <th className="px-4 py-3 font-medium">Customer Name</th>
-                <th className="px-4 py-3 font-medium">Service Category</th>
-                <th className="px-4 py-3 font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Amount Received</th>
-                <th className="px-4 py-3 font-medium">Outstanding Balance</th>
-                <th className="px-4 py-3 font-medium">Payment Status</th>
+                <th className="px-4 py-3 font-medium">Vendor Name</th>
+                <th className="px-4 py-3 font-medium">Invoice Number</th>
+                <th className="px-4 py-3 font-medium">Expense Category</th>
+                <th className="px-4 py-3 font-medium">Sub-Category</th>
+                <th className="px-4 py-3 font-medium">Invoice Date</th>
                 <th className="px-4 py-3 font-medium">Due Date</th>
+                <th className="px-4 py-3 font-medium">Amount</th>
+                <th className="px-4 py-3 font-medium">Amount Paid</th>
+                <th className="px-4 py-3 font-medium">Balance Due</th>
+                <th className="px-4 py-3 font-medium">Days Outstanding</th>
+                <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
@@ -421,32 +479,49 @@ export default function IncomeRegister({
               {entries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={12}
                     className="px-4 py-8 text-center text-slate-500"
                   >
-                    No income register entries yet.
+                    No accounts payable entries yet.
                   </td>
                 </tr>
               ) : (
                 entries.map((entry) => {
-                  const outstanding = calculateOutstanding(
+                  const balanceDue = calculateBalanceDue(
                     entry.amount,
-                    entry.amount_received,
+                    entry.amount_paid,
                   );
+                  const daysOutstanding = calculateDaysOutstanding(
+                    entry.due_date,
+                  );
+                  const status = calculateStatus(balanceDue, daysOutstanding);
+                  const isOverdue = status === "Overdue";
 
                   return (
                     <tr key={entry.id} className="text-slate-700">
-                      <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                      <td className="px-4 py-3">{entry.invoice_no}</td>
-                      <td className="px-4 py-3">{entry.customer_name}</td>
-                      <td className="px-4 py-3">{entry.service_category}</td>
+                      <td className="px-4 py-3">{entry.vendor_name}</td>
+                      <td className="px-4 py-3">{entry.invoice_number}</td>
+                      <td className="px-4 py-3">{entry.expense_category}</td>
+                      <td className="px-4 py-3">{entry.sub_category}</td>
+                      <td className="px-4 py-3">
+                        {formatDate(entry.invoice_date)}
+                      </td>
+                      <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
                       <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
                       <td className="px-4 py-3">
-                        {formatGHS(entry.amount_received)}
+                        {formatGHS(entry.amount_paid)}
                       </td>
-                      <td className="px-4 py-3">{formatGHS(outstanding)}</td>
-                      <td className="px-4 py-3">{entry.payment_status}</td>
-                      <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
+                      <td className="px-4 py-3">{formatGHS(balanceDue)}</td>
+                      <td
+                        className={`px-4 py-3 ${isOverdue ? overdueClassName : ""}`}
+                      >
+                        {daysOutstanding}
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${isOverdue ? overdueClassName : ""}`}
+                      >
+                        {status}
+                      </td>
                       <RegisterRowActions
                         onEdit={() => openEditForm(entry)}
                         onDelete={() => handleDelete(entry.id)}

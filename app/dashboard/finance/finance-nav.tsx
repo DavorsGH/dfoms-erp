@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { label: "Income Register", href: "/dashboard/finance" },
   { label: "Expense Register", href: "/dashboard/finance/expenses" },
+  { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
 ];
 
 export default function FinanceNav() {
