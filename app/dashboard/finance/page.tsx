@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import type { ServiceType } from "../service-types";
+import FinanceNav from "./finance-nav";
 import IncomeRegister from "./income-register";
 import type { IncomeRegisterEntry } from "./income-register-utils";
 
@@ -18,9 +19,11 @@ export default async function FinancePage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">
+      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
+      <FinanceNav />
+      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
         Income Register
-      </h1>
+      </h2>
       <IncomeRegister
         initialEntries={(data as IncomeRegisterEntry[] | null) ?? []}
         initialServiceTypes={(serviceTypes as ServiceType[] | null) ?? []}
