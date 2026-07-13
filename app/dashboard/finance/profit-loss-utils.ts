@@ -1,3 +1,7 @@
+import {
+  PAYROLL_EXPENSE_CATEGORY_EMPLOYER_SSNIT,
+  PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES,
+} from "../hr-payroll/payroll-lock-finance-utils";
 import { calculateMonthlyDepreciationTotals } from "./fixed-assets-utils";
 import { getCurrentFinancialYear } from "./finance-year-utils";
 
@@ -85,6 +89,18 @@ const EXPENSE_SECTIONS = [
     subtotalLabel: "Total Finance",
   },
   {
+    key: "staff-salaries",
+    title: "STAFF SALARIES",
+    category: PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES,
+    subtotalLabel: "Total Staff Salaries",
+  },
+  {
+    key: "employer-ssnit",
+    title: "EMPLOYER SSNIT CONTRIBUTION",
+    category: PAYROLL_EXPENSE_CATEGORY_EMPLOYER_SSNIT,
+    subtotalLabel: "Total Employer SSNIT Contribution",
+  },
+  {
     key: "other",
     title: "OTHER EXPENSES",
     category: "Other",
@@ -152,6 +168,19 @@ export function normalizeCategoryName(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function resolveProfitLossExpenseLineLabel(entry: ProfitLossExpenseEntry): string {
+  const subCategory = entry.sub_category?.trim() || "Uncategorized";
+
+  if (normalizeCategoryName(subCategory) === "payroll") {
+    const category = entry.expense_category?.trim();
+    if (category) {
+      return category;
+    }
+  }
+
+  return subCategory;
+}
+
 function groupIncomeByServiceCategory(
   entries: ProfitLossIncomeEntry[],
   financialYear: number,
@@ -198,10 +227,10 @@ function groupExpensesBySubCategory(
       continue;
     }
 
-    const subCategory = entry.sub_category?.trim() || "Uncategorized";
-    const totals = grouped.get(subCategory) ?? createEmptyMonthlyTotals();
+    const lineLabel = resolveProfitLossExpenseLineLabel(entry);
+    const totals = grouped.get(lineLabel) ?? createEmptyMonthlyTotals();
     addAmountToMonth(totals, monthIndex, Number(entry.amount) || 0);
-    grouped.set(subCategory, totals);
+    grouped.set(lineLabel, totals);
   }
 
   return Array.from(grouped.entries())
@@ -266,6 +295,9 @@ function buildSectionRows(
   };
 }
 
+// Accrual-basis P&L: include every expense_register row for the month,
+// regardless of payment_status. Cash outflow filtering belongs only in
+// balance-sheet-utils (Cash and Cash Equivalents), not here.
 export function buildProfitLossReport(
   incomeEntries: ProfitLossIncomeEntry[],
   expenseEntries: ProfitLossExpenseEntry[],
@@ -337,18 +369,13 @@ export function buildProfitLossReport(
   const directOperational = expenseSubtotals[0] ?? createEmptyMonthlyTotals();
   const administrative = expenseSubtotals[1] ?? createEmptyMonthlyTotals();
   const marketing = expenseSubtotals[2] ?? createEmptyMonthlyTotals();
-  const finance = expenseSubtotals[3] ?? createEmptyMonthlyTotals();
-  const other = expenseSubtotals[4] ?? createEmptyMonthlyTotals();
 
   const grossProfit = subtractMonthlyTotals(totalRevenue, directOperational);
   const operatingProfit = subtractMonthlyTotals(
     grossProfit,
     sumMonthlyTotals([administrative, marketing]),
   );
-  const netProfit = subtractMonthlyTotals(
-    operatingProfit,
-    sumMonthlyTotals([finance, other, depreciation]),
-  );
+  const netProfit = subtractMonthlyTotals(totalRevenue, totalExpenses);
   const grossProfitMargin = divideMonthlyTotals(grossProfit, totalRevenue);
   const netProfitMargin = divideMonthlyTotals(netProfit, totalRevenue);
 

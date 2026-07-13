@@ -19,6 +19,8 @@ export default async function DashboardLayout({
 
   const email = user?.email ?? "";
   let userLabel = email;
+  let userPhotoUrl: string | null = null;
+  let userFullName: string | null = null;
 
   const { data: account } = await supabase
     .from("user_accounts")
@@ -29,11 +31,13 @@ export default async function DashboardLayout({
   if (account?.employee_id && account.role) {
     const { data: employee } = await supabase
       .from("employees")
-      .select("full_name")
+      .select("full_name, photo_url")
       .eq("employee_id", account.employee_id)
       .maybeSingle();
 
     if (employee?.full_name) {
+      userFullName = employee.full_name;
+      userPhotoUrl = employee.photo_url;
       userLabel = `${employee.full_name} [${getRoleLabel(account.role)}]`;
     }
   }
@@ -42,7 +46,11 @@ export default async function DashboardLayout({
     <div className="flex min-h-screen">
       <Sidebar isSuperAdmin={await isSuperAdmin()} />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <TopBar userLabel={userLabel} />
+        <TopBar
+          userLabel={userLabel}
+          userPhotoUrl={userPhotoUrl}
+          userFullName={userFullName}
+        />
         <main className="min-w-0 flex-1 overflow-x-auto bg-slate-50 p-6">
           {children}
         </main>

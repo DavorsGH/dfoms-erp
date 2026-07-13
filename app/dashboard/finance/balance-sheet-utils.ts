@@ -3,24 +3,23 @@ import {
   getMonthEndDate,
   type CapitalContributionEntry,
 } from "./capital-contributions-utils";
-import { buildCashFlowReport } from "./cash-flow-utils";
-import type {
-  CashFlowExpenseEntry,
-  CashFlowIncomeEntry,
-  ManualFinancialEntry,
-} from "./cash-flow-utils";
-import { calculateMonthlyNetBookValueTotals } from "./fixed-assets-utils";
 import {
-  buildBalanceSheetCashFlowExpenses,
+  calculateTotalCost,
+  calculateMonthlyNetBookValueTotals,
+} from "./fixed-assets-utils";
+import {
   calculateAccruedWagesPayableByMonth,
+  isCashOutflowExpense,
   type BalanceSheetCashExpenseEntry,
+  type MonthEndCloseNetPayEntry,
   type PayrollHistoryWagesEntry,
 } from "./accrued-wages-utils";
 import {
-  FULL_YEAR_INDEX,
-  MONTH_LABELS,
+  addAmountToMonth,
   buildProfitLossReport,
   createEmptyMonthlyTotals,
+  FULL_YEAR_INDEX,
+  getEntryMonthIndex,
   sumMonthlyTotals,
   type MonthlyTotals,
   type ProfitLossAssetEntry,
@@ -32,6 +31,14 @@ import { getCurrentFinancialYear } from "./finance-year-utils";
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
 
 export const BALANCE_TOLERANCE = 0.01;
+
+export function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function roundMonthlyTotals(totals: MonthlyTotals): MonthlyTotals {
+  return totals.map((value) => roundCurrency(value));
+}
 
 export type BalanceSheetAccountsPayableEntry = {
   invoice_date: string;
@@ -63,6 +70,13 @@ export type BalanceSheetReport = {
   totalLiabilities: MonthlyTotals;
   totalEquity: MonthlyTotals;
   totalLiabilitiesAndEquity: MonthlyTotals;
+};
+
+export type BalanceSheetMonthRow = {
+  key: string;
+  label: string;
+  amount: number;
+  kind: BalanceSheetRow["kind"];
 };
 
 function normalizeDate(value: string): string {
@@ -171,36 +185,136 @@ function calculateRetainedEarningsByMonth(
   return totals;
 }
 
-function extractCashBalances(
-  incomeEntries: CashFlowIncomeEntry[],
-  expenseEntries: BalanceSheetCashExpenseEntry[],
-  payrollHistory: PayrollHistoryWagesEntry[],
-  manualEntries: ManualFinancialEntry[],
+function calculateCapitalContributionCashInflowsByMonth(
+  contributions: CapitalContributionEntry[],
   financialYear: number,
 ): MonthlyTotals {
-  const cashFlowExpenses = buildBalanceSheetCashFlowExpenses(
-    expenseEntries,
-    payrollHistory,
-  );
-  const report = buildCashFlowReport(
-    incomeEntries,
-    cashFlowExpenses,
-    manualEntries,
+  const totals = createEmptyMonthlyTotals();
+
+  for (const entry of contributions) {
+    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
+    if (monthIndex === null) {
+      continue;
+    }
+
+    addAmountToMonth(totals, monthIndex, Number(entry.amount) || 0);
+  }
+
+  return roundMonthlyTotals(totals);
+}
+
+function calculateFixedAssetPurchaseOutflowsByMonth(
+  fixedAssets: ProfitLossAssetEntry[],
+  financialYear: number,
+): MonthlyTotals {
+  const totals = createEmptyMonthlyTotals();
+
+  for (const asset of fixedAssets) {
+    const monthIndex = getEntryMonthIndex(asset.purchase_date, financialYear);
+    if (monthIndex === null) {
+      continue;
+    }
+
+    const totalCost = calculateTotalCost(
+      Number(asset.original_cost) || 0,
+      Number(asset.quantity) || 0,
+    );
+    addAmountToMonth(totals, monthIndex, totalCost);
+  }
+
+  return roundMonthlyTotals(totals);
+}
+
+function calculatePaidExpensesByMonth(
+  expenseEntries: BalanceSheetCashExpenseEntry[],
+  financialYear: number,
+): MonthlyTotals {
+  const totals = createEmptyMonthlyTotals();
+
+  for (const entry of expenseEntries) {
+    if (!isCashOutflowExpense(entry)) {
+      continue;
+    }
+
+    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
+    if (monthIndex === null) {
+      continue;
+    }
+
+    addAmountToMonth(totals, monthIndex, Number(entry.amount) || 0);
+  }
+
+  return roundMonthlyTotals(totals);
+}
+
+function calculateCashAndCashEquivalentsByMonth(
+  capitalContributions: CapitalContributionEntry[],
+  expenseEntries: BalanceSheetCashExpenseEntry[],
+  fixedAssets: ProfitLossAssetEntry[],
+  financialYear: number,
+): MonthlyTotals {
+  const totals = createEmptyMonthlyTotals();
+  const contributionInflows = calculateCapitalContributionCashInflowsByMonth(
+    capitalContributions,
     financialYear,
   );
-  const closingRow = report.rows.find((row) => row.key === "closing-cash-balance");
+  const paidExpenseOutflows = calculatePaidExpensesByMonth(
+    expenseEntries,
+    financialYear,
+  );
+  const fixedAssetPurchases = calculateFixedAssetPurchaseOutflowsByMonth(
+    fixedAssets,
+    financialYear,
+  );
 
-  return closingRow?.amounts ?? createEmptyMonthlyTotals();
+  let runningBalance = 0;
+
+  for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+    runningBalance = roundCurrency(
+      runningBalance +
+        (contributionInflows[monthIndex] ?? 0) -
+        (paidExpenseOutflows[monthIndex] ?? 0) -
+        (fixedAssetPurchases[monthIndex] ?? 0),
+    );
+    totals[monthIndex] = runningBalance;
+  }
+
+  totals[FULL_YEAR_INDEX] = totals[11];
+  return totals;
+}
+
+export function getBalanceSheetAmountForMonth(
+  row: BalanceSheetRow,
+  monthIndex: number,
+): number {
+  if (row.kind === "section") {
+    return 0;
+  }
+
+  return roundCurrency(row.amounts[monthIndex] ?? 0);
+}
+
+export function getBalanceSheetForMonth(
+  report: BalanceSheetReport,
+  monthIndex: number,
+): BalanceSheetMonthRow[] {
+  return report.rows.map((row) => ({
+    key: row.key,
+    label: row.label,
+    kind: row.kind,
+    amount: getBalanceSheetAmountForMonth(row, monthIndex),
+  }));
 }
 
 export function getBalanceCheckForPeriod(
   report: BalanceSheetReport,
   periodIndex = FULL_YEAR_INDEX,
 ) {
-  const totalAssets = report.totalAssets[periodIndex] ?? 0;
-  const totalLiabilitiesAndEquity =
-    report.totalLiabilitiesAndEquity[periodIndex] ?? 0;
-  const difference = totalAssets - totalLiabilitiesAndEquity;
+  const totalAssets = roundCurrency(report.totalAssets[periodIndex] ?? 0);
+  const totalLiabilitiesAndEquity = roundCurrency(
+    report.totalLiabilitiesAndEquity[periodIndex] ?? 0,
+  );
+  const difference = roundCurrency(totalAssets - totalLiabilitiesAndEquity);
   const isBalanced = Math.abs(difference) <= BALANCE_TOLERANCE;
 
   return {
@@ -217,64 +331,64 @@ export function buildBalanceSheetReport(
   fixedAssets: ProfitLossAssetEntry[],
   payableEntries: BalanceSheetAccountsPayableEntry[],
   capitalContributions: CapitalContributionEntry[],
-  cashFlowIncomeEntries: CashFlowIncomeEntry[],
   cashFlowExpenseEntries: BalanceSheetCashExpenseEntry[],
   payrollHistory: PayrollHistoryWagesEntry[],
-  manualEntries: ManualFinancialEntry[],
+  monthEndCloseNetPay: MonthEndCloseNetPayEntry[] = [],
   financialYear = getCurrentFinancialYear(),
 ): BalanceSheetReport {
-  const cash = extractCashBalances(
-    cashFlowIncomeEntries,
-    cashFlowExpenseEntries,
-    payrollHistory,
-    manualEntries,
-    financialYear,
-  );
-  const accountsReceivable = calculateAccountsReceivableByMonth(
-    incomeEntries,
-    financialYear,
-  );
-  const fixedAssetsNet = calculateFixedAssetsNetByMonth(
-    fixedAssets,
-    financialYear,
-  );
-  const totalAssets = sumMonthlyTotals([
-    cash,
-    accountsReceivable,
-    fixedAssetsNet,
-  ]);
-
-  const accountsPayable = calculateAccountsPayableByMonth(
-    payableEntries,
-    financialYear,
-  );
-  const accruedWagesPayable = calculateAccruedWagesPayableByMonth(
-    payrollHistory,
-    cashFlowExpenseEntries,
-    financialYear,
-  );
-  const totalLiabilities = sumMonthlyTotals([
-    accountsPayable,
-    accruedWagesPayable,
-  ]);
-
-  const shareCapital = calculateShareCapitalByMonth(
+  const cash = calculateCashAndCashEquivalentsByMonth(
     capitalContributions,
-    financialYear,
-  );
-  const retainedEarnings = calculateRetainedEarningsByMonth(
-    incomeEntries,
-    expenseEntries,
+    cashFlowExpenseEntries,
     fixedAssets,
     financialYear,
   );
-  const totalEquity = sumMonthlyTotals([shareCapital, retainedEarnings]);
-  const totalLiabilitiesAndEquity = sumMonthlyTotals([
-    accountsPayable,
-    accruedWagesPayable,
-    shareCapital,
-    retainedEarnings,
-  ]);
+  const accountsReceivable = roundMonthlyTotals(
+    calculateAccountsReceivableByMonth(incomeEntries, financialYear),
+  );
+  const fixedAssetsNet = roundMonthlyTotals(
+    calculateFixedAssetsNetByMonth(fixedAssets, financialYear),
+  );
+  const totalAssets = roundMonthlyTotals(
+    sumMonthlyTotals([cash, accountsReceivable, fixedAssetsNet]),
+  );
+
+  const accountsPayable = roundMonthlyTotals(
+    calculateAccountsPayableByMonth(payableEntries, financialYear),
+  );
+  const accruedWagesPayable = roundMonthlyTotals(
+    calculateAccruedWagesPayableByMonth(
+      payrollHistory,
+      cashFlowExpenseEntries,
+      financialYear,
+      monthEndCloseNetPay,
+    ),
+  );
+  const totalLiabilities = roundMonthlyTotals(
+    sumMonthlyTotals([accountsPayable, accruedWagesPayable]),
+  );
+
+  const shareCapital = roundMonthlyTotals(
+    calculateShareCapitalByMonth(capitalContributions, financialYear),
+  );
+  const retainedEarnings = roundMonthlyTotals(
+    calculateRetainedEarningsByMonth(
+      incomeEntries,
+      expenseEntries,
+      fixedAssets,
+      financialYear,
+    ),
+  );
+  const totalEquity = roundMonthlyTotals(
+    sumMonthlyTotals([shareCapital, retainedEarnings]),
+  );
+  const totalLiabilitiesAndEquity = roundMonthlyTotals(
+    sumMonthlyTotals([
+      accountsPayable,
+      accruedWagesPayable,
+      shareCapital,
+      retainedEarnings,
+    ]),
+  );
 
   const rows: BalanceSheetRow[] = [
     {

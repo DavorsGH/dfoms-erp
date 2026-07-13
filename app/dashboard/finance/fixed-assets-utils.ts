@@ -255,7 +255,7 @@ function listMonthEndsThrough(
   return monthEnds;
 }
 
-export function getAssetMonthlyDepreciationAmount(
+function getUncappedAssetMonthlyDepreciationAmount(
   asset: AssetDepreciationInput,
   monthEnd: string,
 ): number {
@@ -274,6 +274,81 @@ export function getAssetMonthlyDepreciationAmount(
   );
 
   return annualDepreciation / 12;
+}
+
+function calculateAccumulatedDepreciationBeforeMonthEnd(
+  asset: AssetDepreciationInput,
+  monthEnd: string,
+): number {
+  const totalCost = calculateTotalCost(
+    Number(asset.original_cost) || 0,
+    Number(asset.quantity) || 0,
+  );
+
+  if (!isAssetActiveOnOrBefore(asset.purchase_date, monthEnd)) {
+    return 0;
+  }
+
+  const purchaseMonth = parseYearMonth(asset.purchase_date);
+  const asOfMonth = parseYearMonth(monthEnd);
+
+  if (!purchaseMonth || !asOfMonth) {
+    return 0;
+  }
+
+  let accumulated = 0;
+
+  for (const priorMonthEnd of listMonthEndsThrough(
+    purchaseMonth.year,
+    purchaseMonth.month,
+    asOfMonth.year,
+    asOfMonth.month,
+  )) {
+    if (priorMonthEnd >= monthEnd) {
+      continue;
+    }
+
+    if (accumulated >= totalCost) {
+      break;
+    }
+
+    const uncappedMonthly = getUncappedAssetMonthlyDepreciationAmount(
+      asset,
+      priorMonthEnd,
+    );
+    accumulated = Math.min(accumulated + uncappedMonthly, totalCost);
+  }
+
+  return accumulated;
+}
+
+export function getAssetMonthlyDepreciationAmount(
+  asset: AssetDepreciationInput,
+  monthEnd: string,
+): number {
+  if (!isAssetActiveOnOrBefore(asset.purchase_date, monthEnd)) {
+    return 0;
+  }
+
+  const totalCost = calculateTotalCost(
+    Number(asset.original_cost) || 0,
+    Number(asset.quantity) || 0,
+  );
+  const accumulatedPrior = calculateAccumulatedDepreciationBeforeMonthEnd(
+    asset,
+    monthEnd,
+  );
+
+  if (accumulatedPrior >= totalCost) {
+    return 0;
+  }
+
+  const uncappedMonthly = getUncappedAssetMonthlyDepreciationAmount(
+    asset,
+    monthEnd,
+  );
+
+  return Math.min(uncappedMonthly, totalCost - accumulatedPrior);
 }
 
 export function calculateAssetAccumulatedDepreciationAsOf(

@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import Dashboard from "./dashboard";
 import { buildDashboardViewModel } from "./dashboard-utils";
 import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
+import { mergePayrollWagesSources } from "./finance/accrued-wages-utils";
 
 export default async function DashboardPage() {
   const cookieStore = await cookies();
@@ -27,7 +28,7 @@ export default async function DashboardPage() {
       .order("date", { ascending: true }),
     supabase
       .from("expense_register")
-      .select("date, expense_category, sub_category, amount, payment_status, description")
+      .select("date, expense_category, sub_category, amount, payment_status, description, receipt_no")
       .order("date", { ascending: true }),
     supabase
       .from("fixed_assets")
@@ -54,7 +55,7 @@ export default async function DashboardPage() {
     supabase.from("month_end_close").select("*").order("month", { ascending: false }),
     supabase
       .from("payroll_processing")
-      .select("payroll_month, gross_pay")
+      .select("payroll_month, gross_pay, net_pay")
       .order("payroll_month", { ascending: true }),
     supabase
       .from("payroll_history")
@@ -94,6 +95,7 @@ export default async function DashboardPage() {
       amount: entry.amount,
       payment_status: entry.payment_status,
       description: entry.description ?? null,
+      receipt_no: entry.receipt_no ?? null,
     })) ?? [];
 
   const dashboardData = buildDashboardViewModel({
@@ -127,7 +129,18 @@ export default async function DashboardPage() {
       (capitalContributions as CapitalContributionEntry[] | null) ?? [],
     cashFlowIncomeEntries,
     cashFlowExpenseEntries,
-    payrollHistoryWages: payrollHistoryWages ?? [],
+    payrollHistoryWages: mergePayrollWagesSources(
+      payrollHistoryWages ?? [],
+      (payrollProcessingEntries ?? []).map((entry) => ({
+        payroll_month: entry.payroll_month,
+        net_pay: Number(entry.net_pay) || 0,
+      })),
+    ),
+    monthEndCloseNetPay:
+      monthEndCloseRecords?.map((record) => ({
+        month: record.month,
+        total_net_pay: record.total_net_pay,
+      })) ?? [],
     manualEntries: manualEntries ?? [],
     monthEndCloseRecords: monthEndCloseRecords ?? [],
     payrollProcessingEntries: payrollProcessingEntries ?? [],

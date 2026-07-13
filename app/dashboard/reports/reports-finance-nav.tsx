@@ -3,36 +3,47 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navItems = [
-  { label: "Attendance", href: "/dashboard/hr-payroll/attendance" },
-  { label: "Leave", href: "/dashboard/hr-payroll/leave" },
-  { label: "Overtime", href: "/dashboard/hr-payroll/overtime" },
-  { label: "Loans", href: "/dashboard/hr-payroll/loans" },
+const financeReportItems = [
   {
-    label: "Payroll Processing",
-    href: "/dashboard/hr-payroll/payroll-processing",
+    label: "Monthly P&L",
+    href: "/dashboard/reports/finance/monthly-pl",
   },
   {
-    label: "Payroll History",
-    href: "/dashboard/hr-payroll/payroll-history",
+    label: "Monthly Balance Sheet",
+    href: "/dashboard/reports/finance/monthly-balance-sheet",
   },
   {
-    label: "Payslip",
-    href: "/dashboard/hr-payroll/payslip",
+    label: "Cash Flow",
+    href: "/dashboard/reports/finance/cash-flow",
   },
   {
-    label: "Staff ID Cards",
-    href: "/dashboard/hr-payroll/staff-id-cards",
+    label: "AR Aging",
+    href: "/dashboard/reports/finance/ar-aging",
+  },
+  {
+    label: "Statutory Liabilities",
+    href: "/dashboard/reports/finance/statutory-liabilities",
+  },
+  {
+    label: "Fixed Asset Schedule",
+    href: "/dashboard/reports/finance/fixed-asset-schedule",
+  },
+  {
+    label: "Capital Contributions",
+    href: "/dashboard/reports/finance/capital-contributions",
   },
 ] as const;
 
-export default function HrPayrollNav() {
+export default function ReportsFinanceNav() {
   const pathname = usePathname();
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Finance
+      </p>
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {navItems.map((item) => {
+        {financeReportItems.map((item) => {
           const active = pathname === item.href;
 
           return (

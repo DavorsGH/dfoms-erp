@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { uploadEmployeePhoto } from "@/utils/employee-photo";
+import EmployeePhotoAvatar from "../employee-photo-avatar";
 import {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -87,6 +89,7 @@ const emptyForm = {
   emergency_contact_phone: "",
   emergency_contact_relationship: "",
   data_notes: "",
+  photo_url: "",
 };
 
 function SectionHeading({ title }: { title: string }) {
@@ -166,6 +169,7 @@ function employeeToForm(employee: EmployeeRecord) {
     emergency_contact_relationship:
       employee.emergency_contact_relationship ?? "",
     data_notes: employee.data_notes ?? "",
+    photo_url: employee.photo_url ?? "",
   };
 }
 
@@ -211,6 +215,7 @@ function buildPayload(form: typeof emptyForm) {
     emergency_contact_phone: form.emergency_contact_phone || null,
     emergency_contact_relationship: form.emergency_contact_relationship || null,
     data_notes: form.data_notes || null,
+    photo_url: form.photo_url || null,
   };
 }
 
@@ -322,6 +327,7 @@ export default function EmployeesDirectory({
 }: EmployeesDirectoryProps) {
   const supabase = createClient();
   const formRef = useRef<HTMLElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const basicSalaryManualRef = useRef(false);
   const [employees, setEmployees] = useState(initialEmployees);
   const [lookups] = useState(initialLookups);
@@ -337,6 +343,7 @@ export default function EmployeesDirectory({
   );
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [searchName, setSearchName] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -643,6 +650,50 @@ export default function EmployeesDirectory({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  async function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file || !form.employee_id) {
+      return;
+    }
+
+    setPhotoUploading(true);
+    setError(null);
+
+    const uploadResult = await uploadEmployeePhoto(
+      supabase,
+      form.employee_id,
+      file,
+    );
+
+    if ("error" in uploadResult) {
+      setError(uploadResult.error);
+      setPhotoUploading(false);
+      return;
+    }
+
+    const photoUrl = uploadResult.publicUrl;
+    setForm((current) => ({ ...current, photo_url: photoUrl }));
+
+    if (editingEmployeeId) {
+      const { error: updateError } = await supabase
+        .from("employees")
+        .update({ photo_url: photoUrl })
+        .eq("employee_id", editingEmployeeId);
+
+      if (updateError) {
+        setError(updateError.message);
+        setPhotoUploading(false);
+        return;
+      }
+
+      await refreshEmployees();
+    }
+
+    setPhotoUploading(false);
+  }
+
   async function handleDelete(employeeId: string) {
     if (!confirmDeleteEntry()) {
       return;
@@ -833,6 +884,37 @@ export default function EmployeesDirectory({
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-4">
               <SectionHeading title="Personal Information" />
+              <div className="flex flex-wrap items-center gap-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <EmployeePhotoAvatar
+                  photoUrl={form.photo_url}
+                  fullName={form.full_name}
+                  size="xl"
+                />
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-slate-700">
+                    Passport Photo
+                  </p>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={photoUploading || !form.employee_id}
+                    className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {photoUploading ? "Uploading…" : "Upload Photo"}
+                  </button>
+                  <p className="text-xs text-slate-500">
+                    JPEG, PNG, or WebP. Saved when you upload and again on
+                    save for new employees.
+                  </p>
+                </div>
+              </div>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Field label="Employee ID">
                   <input
@@ -1281,6 +1363,7 @@ export default function EmployeesDirectory({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
+              <th className={scrollableTableThClassName}>Photo</th>
               <SortableHeader
                 label="Staff ID"
                 column="staff_id"
@@ -1358,7 +1441,7 @@ export default function EmployeesDirectory({
             {displayEmployees.length === 0 ? (
               <tr>
                 <td
-                  colSpan={11}
+                  colSpan={12}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No employees match the current filters.
@@ -1380,6 +1463,13 @@ export default function EmployeesDirectory({
                     className={`${getStripedRowClassName(index)} cursor-pointer hover:bg-slate-100`}
                     onClick={() => openEmployeeForm(employee)}
                   >
+                    <td className="px-4 py-3">
+                      <EmployeePhotoAvatar
+                        photoUrl={employee.photo_url}
+                        fullName={employee.full_name}
+                        size="sm"
+                      />
+                    </td>
                     <td className="px-4 py-3">{employee.staff_id}</td>
                     <td className="px-4 py-3">{employee.full_name}</td>
                     <td className="px-4 py-3">

@@ -5,7 +5,10 @@ import {
   type BalanceSheetIncomeEntry,
 } from "./finance/balance-sheet-utils";
 import type { BalanceSheetCashExpenseEntry } from "./finance/accrued-wages-utils";
-import type { PayrollHistoryWagesEntry } from "./finance/accrued-wages-utils";
+import type {
+  MonthEndCloseNetPayEntry,
+  PayrollHistoryWagesEntry,
+} from "./finance/accrued-wages-utils";
 import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
 import type {
   CashFlowIncomeEntry,
@@ -197,6 +200,7 @@ function buildMonthSnapshot(input: {
   cashFlowIncomeEntries: CashFlowIncomeEntry[];
   cashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
   payrollHistoryWages: PayrollHistoryWagesEntry[];
+  monthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   manualEntries: ManualFinancialEntry[];
   monthEndCloseRecords: MonthEndCloseRecord[];
   payrollProcessingEntries: DashboardPayrollProcessingEntry[];
@@ -219,10 +223,9 @@ function buildMonthSnapshot(input: {
     input.fixedAssets,
     input.payableEntries,
     input.capitalContributions,
-    input.cashFlowIncomeEntries,
     input.cashFlowExpenseEntries,
     input.payrollHistoryWages,
-    input.manualEntries,
+    input.monthEndCloseNetPay,
     input.year,
   );
   const balanceCheck = getBalanceCheckForPeriod(balanceSheetReport, monthIndex);
@@ -352,10 +355,9 @@ function buildBalanceSheetReportForYear(
   fixedAssets: ProfitLossAssetEntry[],
   payableEntries: BalanceSheetAccountsPayableEntry[],
   capitalContributions: CapitalContributionEntry[],
-  cashFlowIncomeEntries: CashFlowIncomeEntry[],
   cashFlowExpenseEntries: BalanceSheetCashExpenseEntry[],
   payrollHistory: PayrollHistoryWagesEntry[],
-  manualEntries: ManualFinancialEntry[],
+  monthEndCloseNetPay: MonthEndCloseNetPayEntry[],
   financialYear: number,
 ) {
   return buildBalanceSheetReport(
@@ -364,10 +366,9 @@ function buildBalanceSheetReportForYear(
     fixedAssets,
     payableEntries,
     capitalContributions,
-    cashFlowIncomeEntries,
     cashFlowExpenseEntries,
     payrollHistory,
-    manualEntries,
+    monthEndCloseNetPay,
     financialYear,
   );
 }
@@ -475,6 +476,7 @@ export function buildDashboardViewModel(input: {
   cashFlowIncomeEntries: CashFlowIncomeEntry[];
   cashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
   payrollHistoryWages: PayrollHistoryWagesEntry[];
+  monthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   manualEntries: ManualFinancialEntry[];
   monthEndCloseRecords: MonthEndCloseRecord[];
   payrollProcessingEntries: DashboardPayrollProcessingEntry[];
@@ -527,10 +529,9 @@ export function buildDashboardViewModel(input: {
       input.fixedAssets,
       input.payableEntries,
       input.capitalContributions,
-      input.cashFlowIncomeEntries,
       input.cashFlowExpenseEntries,
       input.payrollHistoryWages,
-      input.manualEntries,
+      input.monthEndCloseNetPay,
       point.year,
     );
     const cashAmounts = report.rows.find((row) => row.key === "cash")?.amounts;

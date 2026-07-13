@@ -13,6 +13,9 @@ export const PAYROLL_EXPENSE_AUTO_DESCRIPTION_PREFIX =
 export const PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES = "Staff Salaries";
 export const PAYROLL_EXPENSE_CATEGORY_EMPLOYER_SSNIT =
   "Employer SSNIT Contribution";
+export const PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED = "Accrued - Not Yet Paid";
+export const PAYROLL_EXPENSE_SUB_CATEGORY_PAYROLL = "Payroll";
+export const PAYROLL_EXPENSE_PAYMENT_METHOD_ACCRUAL = "Accrual";
 export const PAYROLL_PAYABLE_CATEGORY_SSNIT = "Statutory - SSNIT";
 export const PAYROLL_PAYABLE_CATEGORY_PAYE = "Statutory - PAYE";
 
@@ -118,6 +121,13 @@ export function buildPayrollPayePayableDescription(monthLabel: string): string {
   return `PAYE tax withheld for ${monthLabel}`;
 }
 
+export function buildPayrollExpenseReceiptNo(
+  receiptSuffix: string,
+  periodKey: string,
+): string {
+  return `PAYROLL-${receiptSuffix}-${periodKey}`;
+}
+
 function buildExpenseRegisterPayload(
   period: PayrollLockFinancePeriod,
   expenseCategory: string,
@@ -131,16 +141,16 @@ function buildExpenseRegisterPayload(
   return {
     date: period.periodEndDate,
     expense_category: expenseCategory,
-    sub_category: "Payroll",
+    sub_category: PAYROLL_EXPENSE_SUB_CATEGORY_PAYROLL,
     description,
     vendor,
     price: amount,
     quantity: 1,
     amount,
-    payment_method: "Accrual",
+    payment_method: PAYROLL_EXPENSE_PAYMENT_METHOD_ACCRUAL,
     approved_by: "System",
-    receipt_no: `PAYROLL-${receiptSuffix}-${periodKey}`,
-    payment_status: "Accrued - Not Yet Paid",
+    receipt_no: buildPayrollExpenseReceiptNo(receiptSuffix, periodKey),
+    payment_status: PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
     notes: null,
   };
 }
@@ -171,24 +181,96 @@ function buildAccountsPayablePayload(
   };
 }
 
-async function expenseEntryExists(
+async function upsertPayrollExpenseRegisterEntry(
   admin: SupabaseClient,
-  period: PayrollLockFinancePeriod,
-  expenseCategory: string,
-): Promise<boolean> {
-  const autoDescription = buildPayrollExpenseAutoDescription(period.monthLabel);
-  const { data, error } = await admin
+  payload: ReturnType<typeof buildExpenseRegisterPayload>,
+): Promise<"inserted" | "updated" | "unchanged"> {
+  const { data: existing, error: selectError } = await admin
     .from("expense_register")
-    .select("id")
-    .eq("expense_category", expenseCategory)
-    .ilike("description", `%${autoDescription}%`)
-    .limit(1);
+    .select("id, expense_category, payment_status, amount")
+    .eq("receipt_no", payload.receipt_no)
+    .maybeSingle();
 
-  if (error) {
-    throw new Error(error.message);
+  if (selectError) {
+    throw new Error(selectError.message);
   }
 
-  return (data?.length ?? 0) > 0;
+  if (existing) {
+    const needsUpdate =
+      existing.expense_category !== payload.expense_category ||
+      existing.payment_status !== payload.payment_status ||
+      Number(existing.amount) !== Number(payload.amount);
+
+    if (!needsUpdate) {
+      return "unchanged";
+    }
+
+    const { error: updateError } = await admin
+      .from("expense_register")
+      .update({
+        date: payload.date,
+        expense_category: payload.expense_category,
+        sub_category: payload.sub_category,
+        description: payload.description,
+        vendor: payload.vendor,
+        price: payload.price,
+        quantity: payload.quantity,
+        amount: payload.amount,
+        payment_method: payload.payment_method,
+        payment_status: payload.payment_status,
+      })
+      .eq("id", existing.id);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    return "updated";
+  }
+
+  const { error: insertError } = await admin.from("expense_register").insert(payload);
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return "inserted";
+}
+
+export async function repairPayrollAutoPostedExpenseRegisterEntry(
+  admin: SupabaseClient,
+  receiptNo: string,
+  expenseCategory: string,
+): Promise<"updated" | "not_found"> {
+  const { data: existing, error: selectError } = await admin
+    .from("expense_register")
+    .select("id")
+    .eq("receipt_no", receiptNo)
+    .maybeSingle();
+
+  if (selectError) {
+    throw new Error(selectError.message);
+  }
+
+  if (!existing) {
+    return "not_found";
+  }
+
+  const { error: updateError } = await admin
+    .from("expense_register")
+    .update({
+      expense_category: expenseCategory,
+      payment_status: PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
+      payment_method: PAYROLL_EXPENSE_PAYMENT_METHOD_ACCRUAL,
+      sub_category: PAYROLL_EXPENSE_SUB_CATEGORY_PAYROLL,
+    })
+    .eq("id", existing.id);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  return "updated";
 }
 
 async function payableEntryExists(
@@ -214,47 +296,56 @@ export async function postPayrollLockFinanceEntries(
   admin: SupabaseClient,
   period: PayrollLockFinancePeriod,
   rows: PayrollLockFinanceSourceRow[],
-): Promise<{ insertedExpenses: number; insertedPayables: number }> {
+): Promise<{ insertedExpenses: number; insertedPayables: number; updatedExpenses: number }> {
   const totals = calculatePayrollLockFinanceTotals(rows);
-  const expenseRows = [];
+  let insertedExpenses = 0;
+  let updatedExpenses = 0;
   const payableRows = [];
 
-  if (
-    totals.totalGrossPay > 0 &&
-    !(await expenseEntryExists(
+  const staffSalariesPayload =
+    totals.totalGrossPay > 0
+      ? buildExpenseRegisterPayload(
+          period,
+          PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES,
+          totals.totalGrossPay,
+          "Payroll",
+          "SAL",
+        )
+      : null;
+
+  if (staffSalariesPayload) {
+    const result = await upsertPayrollExpenseRegisterEntry(
       admin,
-      period,
-      PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES,
-    ))
-  ) {
-    expenseRows.push(
-      buildExpenseRegisterPayload(
-        period,
-        PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES,
-        totals.totalGrossPay,
-        "Payroll",
-        "SAL",
-      ),
+      staffSalariesPayload,
     );
+    if (result === "inserted") {
+      insertedExpenses += 1;
+    } else if (result === "updated") {
+      updatedExpenses += 1;
+    }
   }
 
-  if (
-    totals.totalEmployerSsnitContribution > 0 &&
-    !(await expenseEntryExists(
+  const employerSsnitPayload =
+    totals.totalEmployerSsnitContribution > 0
+      ? buildExpenseRegisterPayload(
+          period,
+          PAYROLL_EXPENSE_CATEGORY_EMPLOYER_SSNIT,
+          totals.totalEmployerSsnitContribution,
+          "SSNIT",
+          "ESSNIT",
+        )
+      : null;
+
+  if (employerSsnitPayload) {
+    const result = await upsertPayrollExpenseRegisterEntry(
       admin,
-      period,
-      PAYROLL_EXPENSE_CATEGORY_EMPLOYER_SSNIT,
-    ))
-  ) {
-    expenseRows.push(
-      buildExpenseRegisterPayload(
-        period,
-        PAYROLL_EXPENSE_CATEGORY_EMPLOYER_SSNIT,
-        totals.totalEmployerSsnitContribution,
-        "SSNIT",
-        "ESSNIT",
-      ),
+      employerSsnitPayload,
     );
+    if (result === "inserted") {
+      insertedExpenses += 1;
+    } else if (result === "updated") {
+      updatedExpenses += 1;
+    }
   }
 
   const ssnitDescription = buildPayrollSsnitPayableDescription(period.monthLabel);
@@ -295,13 +386,6 @@ export async function postPayrollLockFinanceEntries(
     );
   }
 
-  if (expenseRows.length > 0) {
-    const { error } = await admin.from("expense_register").insert(expenseRows);
-    if (error) {
-      throw new Error(error.message);
-    }
-  }
-
   if (payableRows.length > 0) {
     const { error } = await admin.from("accounts_payable").insert(payableRows);
     if (error) {
@@ -310,7 +394,8 @@ export async function postPayrollLockFinanceEntries(
   }
 
   return {
-    insertedExpenses: expenseRows.length,
+    insertedExpenses,
+    updatedExpenses,
     insertedPayables: payableRows.length,
   };
 }

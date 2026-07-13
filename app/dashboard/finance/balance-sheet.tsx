@@ -16,12 +16,9 @@ import {
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type {
   BalanceSheetCashExpenseEntry,
+  MonthEndCloseNetPayEntry,
   PayrollHistoryWagesEntry,
 } from "./accrued-wages-utils";
-import type {
-  CashFlowIncomeEntry,
-  ManualFinancialEntry,
-} from "./cash-flow-utils";
 import type {
   ProfitLossAssetEntry,
   ProfitLossExpenseEntry,
@@ -39,10 +36,9 @@ type BalanceSheetProps = {
   initialFixedAssets: ProfitLossAssetEntry[];
   initialPayableEntries: BalanceSheetAccountsPayableEntry[];
   initialCapitalContributions: CapitalContributionEntry[];
-  initialCashFlowIncomeEntries: CashFlowIncomeEntry[];
   initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
   initialPayrollHistory: PayrollHistoryWagesEntry[];
-  initialManualEntries: ManualFinancialEntry[];
+  initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   availableYears: number[];
   fetchError: string | null;
 };
@@ -122,10 +118,9 @@ export default function BalanceSheet({
   initialFixedAssets,
   initialPayableEntries,
   initialCapitalContributions,
-  initialCashFlowIncomeEntries,
   initialCashFlowExpenseEntries,
   initialPayrollHistory,
-  initialManualEntries,
+  initialMonthEndCloseNetPay,
   availableYears,
   fetchError,
 }: BalanceSheetProps) {
@@ -141,10 +136,9 @@ export default function BalanceSheet({
         initialFixedAssets,
         initialPayableEntries,
         initialCapitalContributions,
-        initialCashFlowIncomeEntries,
         initialCashFlowExpenseEntries,
         initialPayrollHistory,
-        initialManualEntries,
+        initialMonthEndCloseNetPay,
         selectedYear,
       ),
     [
@@ -153,10 +147,9 @@ export default function BalanceSheet({
       initialFixedAssets,
       initialPayableEntries,
       initialCapitalContributions,
-      initialCashFlowIncomeEntries,
       initialCashFlowExpenseEntries,
       initialPayrollHistory,
-      initialManualEntries,
+      initialMonthEndCloseNetPay,
       selectedYear,
     ],
   );

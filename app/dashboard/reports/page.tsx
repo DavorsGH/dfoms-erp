@@ -1,5 +1,5 @@
-import ComingSoon from "../coming-soon";
+import { redirect } from "next/navigation";
 
 export default function ReportsPage() {
-  return <ComingSoon title="Reports" />;
+  redirect("/dashboard/reports/finance/monthly-pl");
 }
