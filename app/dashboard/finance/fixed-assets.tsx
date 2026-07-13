@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { NamedLookup } from "../lookup-types";
 import {
+  calculateYearsElapsed,
   formatDate,
   formatGHS,
   formatPercent,
   generateNextAssetId,
   getAssetCalculations,
+  isReducingBalanceMethod,
   type FixedAssetEntry,
 } from "./fixed-assets-utils";
 import RegisterRowActions, {
@@ -193,6 +195,7 @@ export default function FixedAssets({
       quantity,
       usefulLifeYears,
       form.purchase_date,
+      form.depreciation_method,
     );
 
     const payload = {
@@ -238,12 +241,13 @@ export default function FixedAssets({
     form.quantity.trim() === "" ? 1 : Number(form.quantity) || 1;
   const previewUsefulLife = Number(form.useful_life_years) || 0;
   const previewCalculations =
-    form.purchase_date && previewUsefulLife > 0
+    form.purchase_date && previewUsefulLife > 0 && form.depreciation_method
       ? getAssetCalculations(
           Number(form.original_cost) || 0,
           previewQuantity,
           previewUsefulLife,
           form.purchase_date,
+          form.depreciation_method,
         )
       : null;
 
@@ -419,6 +423,18 @@ export default function FixedAssets({
             {previewCalculations && (
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
                 <p>
+                  Calculation:{" "}
+                  <span className="font-medium text-[#0f2744]">
+                    {isReducingBalanceMethod(form.depreciation_method)
+                      ? "Reducing Balance"
+                      : "Straight-Line"}
+                  </span>
+                  <span className="text-slate-500">
+                    {" "}
+                    ({calculateYearsElapsed(form.purchase_date)} yrs elapsed)
+                  </span>
+                </p>
+                <p>
                   Total Cost:{" "}
                   <span className="font-medium text-[#0f2744]">
                     {formatGHS(previewCalculations.totalCost)}
@@ -520,6 +536,7 @@ export default function FixedAssets({
                     asset.quantity,
                     asset.useful_life_years,
                     asset.purchase_date,
+                    asset.depreciation_method,
                   );
 
                   return (
