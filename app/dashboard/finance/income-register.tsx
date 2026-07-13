@@ -409,62 +409,62 @@ export default function IncomeRegister({
       <ScrollableTable>
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
+            <tr>
+              <th className={scrollableTableThClassName}>Date</th>
+              <th className={scrollableTableThClassName}>Invoice No.</th>
+              <th className={scrollableTableThClassName}>Customer Name</th>
+              <th className={scrollableTableThClassName}>Service Category</th>
+              <th className={scrollableTableThClassName}>Amount</th>
+              <th className={scrollableTableThClassName}>Amount Received</th>
+              <th className={scrollableTableThClassName}>Outstanding Balance</th>
+              <th className={scrollableTableThClassName}>Payment Status</th>
+              <th className={scrollableTableThClassName}>Due Date</th>
+              <th className={scrollableTableThClassName}>Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {entries.length === 0 ? (
               <tr>
-                <th className={scrollableTableThClassName}>Date</th>
-                <th className={scrollableTableThClassName}>Invoice No.</th>
-                <th className={scrollableTableThClassName}>Customer Name</th>
-                <th className={scrollableTableThClassName}>Service Category</th>
-                <th className={scrollableTableThClassName}>Amount</th>
-                <th className={scrollableTableThClassName}>Amount Received</th>
-                <th className={scrollableTableThClassName}>Outstanding Balance</th>
-                <th className={scrollableTableThClassName}>Payment Status</th>
-                <th className={scrollableTableThClassName}>Due Date</th>
-                <th className={scrollableTableThClassName}>Actions</th>
+                <td
+                  colSpan={10}
+                  className="px-4 py-8 text-center text-slate-500"
+                >
+                  No income register entries yet.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {entries.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={10}
-                    className="px-4 py-8 text-center text-slate-500"
-                  >
-                    No income register entries yet.
-                  </td>
-                </tr>
-              ) : (
-                entries.map((entry, index) => {
-                  const outstanding = calculateOutstanding(
-                    entry.amount,
-                    entry.amount_received,
-                  );
+            ) : (
+              entries.map((entry, index) => {
+                const outstanding = calculateOutstanding(
+                  entry.amount,
+                  entry.amount_received,
+                );
 
-                  return (
-                    <tr
-                      key={entry.id}
-                      className={getStripedRowClassName(index)}
-                    >
-                      <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                      <td className="px-4 py-3">{entry.invoice_no}</td>
-                      <td className="px-4 py-3">{entry.customer_name}</td>
-                      <td className="px-4 py-3">{entry.service_category}</td>
-                      <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
-                      <td className="px-4 py-3">
-                        {formatGHS(entry.amount_received)}
-                      </td>
-                      <td className="px-4 py-3">{formatGHS(outstanding)}</td>
-                      <td className="px-4 py-3">{entry.payment_status}</td>
-                      <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
-                      <RegisterRowActions
-                        onEdit={() => openEditForm(entry)}
-                        onDelete={() => handleDelete(entry.id)}
-                        deleting={deletingId === entry.id}
-                      />
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
+                return (
+                  <tr
+                    key={entry.id}
+                    className={getStripedRowClassName(index)}
+                  >
+                    <td className="px-4 py-3">{formatDate(entry.date)}</td>
+                    <td className="px-4 py-3">{entry.invoice_no}</td>
+                    <td className="px-4 py-3">{entry.customer_name}</td>
+                    <td className="px-4 py-3">{entry.service_category}</td>
+                    <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
+                    <td className="px-4 py-3">
+                      {formatGHS(entry.amount_received)}
+                    </td>
+                    <td className="px-4 py-3">{formatGHS(outstanding)}</td>
+                    <td className="px-4 py-3">{entry.payment_status}</td>
+                    <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
+                    <RegisterRowActions
+                      onEdit={() => openEditForm(entry)}
+                      onDelete={() => handleDelete(entry.id)}
+                      deleting={deletingId === entry.id}
+                    />
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
         </table>
       </ScrollableTable>
     </div>
