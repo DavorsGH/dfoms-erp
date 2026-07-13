@@ -1,5 +1,5 @@
-import ComingSoon from "../coming-soon";
+import { redirect } from "next/navigation";
 
 export default function HrPayrollPage() {
-  return <ComingSoon title="HR & Payroll" />;
+  redirect("/dashboard/hr-payroll/attendance");
 }

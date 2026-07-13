@@ -4,33 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { label: "Service Categories", href: "/dashboard/administration" },
+  { label: "Attendance", href: "/dashboard/hr-payroll/attendance" },
+  { label: "Leave", href: "/dashboard/hr-payroll/leave" },
+  { label: "Overtime", href: "/dashboard/hr-payroll/overtime" },
+  { label: "Loans", href: "/dashboard/hr-payroll/loans" },
   {
-    label: "Expense Categories",
-    href: "/dashboard/administration/expense-categories",
-  },
-  {
-    label: "Expense Sub-Categories",
-    href: "/dashboard/administration/expense-subcategories",
-  },
-  { label: "Payment Methods", href: "/dashboard/administration/payment-methods" },
-  {
-    label: "Asset Categories",
-    href: "/dashboard/administration/asset-categories",
-  },
-  {
-    label: "Depreciation Methods",
-    href: "/dashboard/administration/depreciation-methods",
-  },
-  { label: "Approvers", href: "/dashboard/administration/approvers" },
-  { label: "Salary Rates", href: "/dashboard/administration/salary-rates" },
-  {
-    label: "Contract/Project Assignments",
-    href: "/dashboard/administration/projects",
+    label: "Payroll Processing",
+    href: "/dashboard/hr-payroll/payroll-processing",
   },
 ] as const;
 
-export default function AdministrationNav() {
+export default function HrPayrollNav() {
   const pathname = usePathname();
 
   return (
@@ -43,6 +27,7 @@ export default function AdministrationNav() {
             <Link
               key={item.href}
               href={item.href}
+              scroll
               className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                 active
                   ? "bg-[#0f2744] text-white"

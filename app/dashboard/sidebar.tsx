@@ -8,6 +8,7 @@ const baseNavItems = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Finance", href: "/dashboard/finance" },
   { label: "HR & Payroll", href: "/dashboard/hr-payroll" },
+  { label: "Employees", href: "/dashboard/employees" },
   { label: "Operations", href: "/dashboard/operations" },
   { label: "Reports", href: "/dashboard/reports" },
 ] as const;
