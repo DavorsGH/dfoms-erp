@@ -8,6 +8,7 @@ const navItems = [
   { label: "Expense Register", href: "/dashboard/finance/expenses" },
   { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
   { label: "Fixed Assets", href: "/dashboard/finance/fixed-assets" },
+  { label: "Profit & Loss", href: "/dashboard/finance/profit-loss" },
 ];
 
 export default function FinanceNav() {
