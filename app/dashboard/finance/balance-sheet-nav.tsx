@@ -4,19 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { label: "Income Register", href: "/dashboard/finance" },
-  { label: "Expense Register", href: "/dashboard/finance/expenses" },
-  { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
-  { label: "Fixed Assets", href: "/dashboard/finance/fixed-assets" },
-  { label: "Profit & Loss", href: "/dashboard/finance/profit-loss" },
-  { label: "Cash Flow", href: "/dashboard/finance/cash-flow" },
   {
     label: "Balance Sheet",
     href: "/dashboard/finance/balance-sheet",
   },
-];
+  {
+    label: "Capital Contributions",
+    href: "/dashboard/finance/balance-sheet/capital-contributions",
+  },
+] as const;
 
-export default function FinanceNav() {
+export default function BalanceSheetNav() {
   const pathname = usePathname();
 
   return (
@@ -25,14 +23,14 @@ export default function FinanceNav() {
         {navItems.map((item) => {
           const active =
             item.href === "/dashboard/finance/balance-sheet"
-              ? pathname === item.href ||
-                pathname.startsWith("/dashboard/finance/balance-sheet/")
-              : pathname === item.href;
+              ? pathname === item.href
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
               key={item.href}
               href={item.href}
+              scroll
               className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                 active
                   ? "bg-[#0f2744] text-white"

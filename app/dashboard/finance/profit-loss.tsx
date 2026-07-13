@@ -1,9 +1,17 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { getDefaultSelectedYear } from "./finance-year-utils";
+import FinancialYearSelector from "./financial-year-selector";
 import { formatGHS } from "./income-register-utils";
 import { formatPercent } from "./fixed-assets-utils";
 import {
   FULL_YEAR_INDEX,
   MONTH_LABELS,
-  type ProfitLossReport,
+  buildProfitLossReport,
+  type ProfitLossAssetEntry,
+  type ProfitLossExpenseEntry,
+  type ProfitLossIncomeEntry,
   type ProfitLossRow,
 } from "./profit-loss-utils";
 import ScrollableTable, {
@@ -13,14 +21,18 @@ import ScrollableTable, {
 } from "../scrollable-table";
 
 type ProfitLossProps = {
-  report: ProfitLossReport;
+  initialIncomeEntries: ProfitLossIncomeEntry[];
+  initialExpenseEntries: ProfitLossExpenseEntry[];
+  initialFixedAssets: ProfitLossAssetEntry[];
+  availableYears: number[];
   fetchError: string | null;
 };
 
 const fullYearHeaderClassName =
   "sticky top-0 z-10 bg-slate-200 px-4 py-3 font-semibold text-[#0f2744]";
 
-const fullYearCellClassName = "bg-slate-100 px-4 py-3 font-semibold text-[#0f2744]";
+const fullYearCellClassName =
+  "bg-slate-100 px-4 py-3 font-semibold text-[#0f2744]";
 
 function formatAmount(row: ProfitLossRow, amount: number): string {
   if (row.kind === "percent") {
@@ -42,13 +54,46 @@ function getRowClassName(row: ProfitLossRow, index: number): string {
   return index % 2 === 1 ? "bg-slate-50 text-slate-700" : "text-slate-700";
 }
 
-export default function ProfitLoss({ report, fetchError }: ProfitLossProps) {
+export default function ProfitLoss({
+  initialIncomeEntries,
+  initialExpenseEntries,
+  initialFixedAssets,
+  availableYears,
+  fetchError,
+}: ProfitLossProps) {
+  const [selectedYear, setSelectedYear] = useState(() =>
+    getDefaultSelectedYear(availableYears),
+  );
+
+  const report = useMemo(
+    () =>
+      buildProfitLossReport(
+        initialIncomeEntries,
+        initialExpenseEntries,
+        initialFixedAssets,
+        selectedYear,
+      ),
+    [
+      initialIncomeEntries,
+      initialExpenseEntries,
+      initialFixedAssets,
+      selectedYear,
+    ],
+  );
+
   return (
     <div className="min-w-0 space-y-6">
-      <p className="text-sm text-slate-600">
-        Monthly profit and loss for financial year {report.financialYear},
-        calculated live from income, expenses, and fixed asset depreciation.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <p className="text-sm text-slate-600">
+          Monthly profit and loss for financial year {report.financialYear},
+          calculated live from income, expenses, and fixed asset depreciation.
+        </p>
+        <FinancialYearSelector
+          years={availableYears}
+          selectedYear={selectedYear}
+          onChange={setSelectedYear}
+        />
+      </div>
 
       {fetchError && (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

@@ -1,6 +1,5 @@
-import { getAssetCalculations } from "./fixed-assets-utils";
-
-export const FINANCIAL_YEAR = new Date().getFullYear();
+import { calculateMonthlyDepreciationTotals } from "./fixed-assets-utils";
+import { getCurrentFinancialYear } from "./finance-year-utils";
 
 export const MONTH_LABELS = [
   "Jan",
@@ -98,9 +97,27 @@ export function createEmptyMonthlyTotals(): MonthlyTotals {
 }
 
 export function getEntryMonthIndex(
-  date: string,
-  financialYear = FINANCIAL_YEAR,
+  date: string | null | undefined,
+  financialYear = getCurrentFinancialYear(),
 ): number | null {
+  if (!date) {
+    return null;
+  }
+
+  const datePart = date.slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
+
+  if (match) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+
+    if (year !== financialYear || month < 1 || month > 12) {
+      return null;
+    }
+
+    return month - 1;
+  }
+
   const parsed = new Date(date);
 
   if (Number.isNaN(parsed.getTime()) || parsed.getFullYear() !== financialYear) {
@@ -201,31 +218,7 @@ function calculateDepreciationTotals(
   assets: ProfitLossAssetEntry[],
   financialYear: number,
 ): MonthlyTotals {
-  const referenceDate = new Date(financialYear, 11, 31);
-  let annualTotal = 0;
-
-  for (const asset of assets) {
-    const { annualDepreciation } = getAssetCalculations(
-      asset.original_cost,
-      asset.quantity,
-      asset.useful_life_years,
-      asset.purchase_date,
-      asset.depreciation_method,
-      referenceDate,
-    );
-
-    annualTotal += annualDepreciation;
-  }
-
-  const monthlyAmount = annualTotal / 12;
-  const totals = createEmptyMonthlyTotals();
-
-  for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
-    totals[monthIndex] = monthlyAmount;
-  }
-
-  totals[FULL_YEAR_INDEX] = annualTotal;
-  return totals;
+  return calculateMonthlyDepreciationTotals(assets, financialYear);
 }
 
 function divideMonthlyTotals(
@@ -277,7 +270,7 @@ export function buildProfitLossReport(
   incomeEntries: ProfitLossIncomeEntry[],
   expenseEntries: ProfitLossExpenseEntry[],
   fixedAssets: ProfitLossAssetEntry[],
-  financialYear = FINANCIAL_YEAR,
+  financialYear = getCurrentFinancialYear(),
 ): ProfitLossReport {
   const rows: ProfitLossRow[] = [];
 

@@ -1,57 +1,56 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { isSuperAdmin } from "@/utils/dashboard-auth";
 import { buildAvailableYears } from "../finance-year-utils";
 import FinanceNav from "../finance-nav";
-import ProfitLoss from "../profit-loss";
+import CashFlow from "../cash-flow";
 
-export default async function ProfitLossPage() {
+export default async function CashFlowPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
   const [
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
-    { data: fixedAssets, error: fixedAssetsError },
+    { data: manualEntries, error: manualError },
   ] = await Promise.all([
     supabase
       .from("income_register")
-      .select("date, service_category, amount")
+      .select("date, amount_received")
       .order("date", { ascending: true }),
     supabase
       .from("expense_register")
-      .select("date, expense_category, sub_category, amount")
+      .select("date, sub_category, amount, payment_status")
       .order("date", { ascending: true }),
     supabase
-      .from("fixed_assets")
-      .select(
-        "original_cost, quantity, useful_life_years, purchase_date, depreciation_method",
-      )
-      .order("asset_id", { ascending: true }),
+      .from("manual_financial_entries")
+      .select("*")
+      .order("period_month", { ascending: true }),
   ]);
 
   const fetchError =
     incomeError?.message ??
     expenseError?.message ??
-    fixedAssetsError?.message ??
+    manualError?.message ??
     null;
 
   const availableYears = buildAvailableYears(
     (incomeEntries ?? []).map((entry) => entry.date),
     (expenseEntries ?? []).map((entry) => entry.date),
+    (manualEntries ?? []).map((entry) => entry.period_month),
   );
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
       <FinanceNav />
-      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
-        Profit &amp; Loss
-      </h2>
-      <ProfitLoss
+      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Cash Flow</h2>
+      <CashFlow
         initialIncomeEntries={incomeEntries ?? []}
         initialExpenseEntries={expenseEntries ?? []}
-        initialFixedAssets={fixedAssets ?? []}
+        initialManualEntries={manualEntries ?? []}
         availableYears={availableYears}
+        canEditManualEntries={await isSuperAdmin()}
         fetchError={fetchError}
       />
     </div>
