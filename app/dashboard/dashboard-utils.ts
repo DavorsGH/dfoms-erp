@@ -68,11 +68,44 @@ export type DashboardSummaryCards = {
   totalRevenue: number;
   totalExpenses: number;
   netProfit: number;
+  netProfitYtd: number;
+  ytdThroughLabel: string;
   cashPosition: number;
   balanceCheck: {
     isBalanced: boolean;
     difference: number;
   };
+};
+
+export type DashboardMonthOption = {
+  key: string;
+  year: number;
+  month: number;
+  label: string;
+};
+
+export type DashboardMonthSnapshot = {
+  summary: DashboardSummaryCards;
+  payroll: Omit<DashboardPayrollPanel, "payrollTrend">;
+};
+
+export type DashboardPayrollPanel = {
+  periodLabel: string;
+  lockStatus: string;
+  totalPayrollCost: number;
+  pendingPayrollLiabilities: number;
+  liabilityReferenceLabel: string | null;
+  payrollNotProcessed: boolean;
+  payrollTrend: DashboardPayrollTrendPoint[];
+};
+
+export type DashboardViewModel = {
+  defaultMonthKey: string;
+  monthOptions: DashboardMonthOption[];
+  monthSnapshots: Record<string, DashboardMonthSnapshot>;
+  profitTrend: DashboardProfitTrendPoint[];
+  cashTrend: DashboardCashTrendPoint[];
+  payrollTrend: DashboardPayrollTrendPoint[];
 };
 
 export type DashboardProfitTrendPoint = {
@@ -92,25 +125,164 @@ export type DashboardPayrollTrendPoint = {
   payrollCost: number;
 };
 
-export type DashboardPayrollPanel = {
-  periodLabel: string;
-  lockStatus: string;
-  totalPayrollCost: number;
-  pendingPayrollLiabilities: number;
-  liabilityReferenceLabel: string | null;
-  payrollNotProcessed: boolean;
-  payrollTrend: DashboardPayrollTrendPoint[];
-};
+function createMonthKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
 
-export type DashboardViewModel = {
-  summary: DashboardSummaryCards;
-  profitTrend: DashboardProfitTrendPoint[];
-  cashTrend: DashboardCashTrendPoint[];
-  payroll: DashboardPayrollPanel;
-};
+export function getAvailableDashboardMonths(
+  incomeEntries: Array<{ date: string }>,
+  expenseEntries: Array<{ date: string }>,
+  referenceDate = new Date(),
+): DashboardMonthOption[] {
+  const { year: currentYear } = getCurrentCalendarMonth(referenceDate);
+  const monthKeys = new Set<string>();
 
-function roundCurrency(value: number): number {
-  return Math.round(value * 100) / 100;
+  for (let month = 1; month <= 12; month += 1) {
+    monthKeys.add(createMonthKey(currentYear, month));
+  }
+
+  for (const entry of [...incomeEntries, ...expenseEntries]) {
+    const date = entry.date.slice(0, 10);
+    const year = Number(date.slice(0, 4));
+    const month = Number(date.slice(5, 7));
+
+    if (year > 0 && month >= 1 && month <= 12) {
+      monthKeys.add(createMonthKey(year, month));
+    }
+  }
+
+  return [...monthKeys]
+    .sort()
+    .map((key) => {
+      const [year, month] = key.split("-").map(Number);
+      return {
+        key,
+        year,
+        month,
+        label: formatPeriodLabel(year, month),
+      };
+    });
+}
+
+function sumNetProfitYtd(
+  report: ReturnType<typeof buildProfitLossReport>,
+  throughMonthIndex: number,
+): number {
+  let total = 0;
+
+  for (let monthIndex = 0; monthIndex <= throughMonthIndex; monthIndex += 1) {
+    total += getProfitLossRowAmount(report, "net-profit", monthIndex);
+  }
+
+  return roundCurrency(total);
+}
+
+function buildYtdThroughLabel(year: number, throughMonth: number): string {
+  if (throughMonth <= 1) {
+    return formatPeriodLabel(year, 1);
+  }
+
+  return `Jan – ${formatPeriodLabel(year, throughMonth)}`;
+}
+
+function buildMonthSnapshot(input: {
+  incomeEntries: DashboardIncomeEntry[];
+  profitLossIncomeEntries: ProfitLossIncomeEntry[];
+  balanceSheetIncomeEntries: BalanceSheetIncomeEntry[];
+  expenseEntries: DashboardExpenseEntry[];
+  profitLossExpenseEntries: ProfitLossExpenseEntry[];
+  fixedAssets: ProfitLossAssetEntry[];
+  payableEntries: BalanceSheetAccountsPayableEntry[];
+  capitalContributions: CapitalContributionEntry[];
+  cashFlowIncomeEntries: CashFlowIncomeEntry[];
+  cashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
+  payrollHistoryWages: PayrollHistoryWagesEntry[];
+  manualEntries: ManualFinancialEntry[];
+  monthEndCloseRecords: MonthEndCloseRecord[];
+  payrollProcessingEntries: DashboardPayrollProcessingEntry[];
+  payrollHistoryEntries: DashboardPayrollHistoryEntry[];
+  payrollPayables: DashboardPayrollPayableEntry[];
+  year: number;
+  month: number;
+}): DashboardMonthSnapshot {
+  const monthIndex = input.month - 1;
+  const periodLabel = formatPeriodLabel(input.year, input.month);
+  const profitLossReport = buildProfitLossReport(
+    input.profitLossIncomeEntries,
+    input.profitLossExpenseEntries,
+    input.fixedAssets,
+    input.year,
+  );
+  const balanceSheetReport = buildBalanceSheetReportForYear(
+    input.balanceSheetIncomeEntries,
+    input.profitLossExpenseEntries,
+    input.fixedAssets,
+    input.payableEntries,
+    input.capitalContributions,
+    input.cashFlowIncomeEntries,
+    input.cashFlowExpenseEntries,
+    input.payrollHistoryWages,
+    input.manualEntries,
+    input.year,
+  );
+  const balanceCheck = getBalanceCheckForPeriod(balanceSheetReport, monthIndex);
+  const cashRow = balanceSheetReport.rows.find((row) => row.key === "cash");
+  const closeRecord = getCurrentMonthCloseRecord(
+    input.monthEndCloseRecords,
+    input.year,
+    input.month,
+  );
+  const payrollMonth = getPeriodStartDate(input.year, input.month);
+  const hasPayrollActivity = monthHasPayrollActivity(
+    payrollMonth,
+    input.payrollProcessingEntries,
+    input.payrollHistoryEntries,
+  );
+  const payrollNotProcessed =
+    !isMonthClosed(closeRecord) && !hasPayrollActivity;
+
+  return {
+    summary: {
+      periodLabel,
+      totalRevenue: sumRegisterAmountForMonth(
+        input.incomeEntries,
+        input.year,
+        input.month,
+      ),
+      totalExpenses: sumRegisterAmountForMonth(
+        input.expenseEntries,
+        input.year,
+        input.month,
+      ),
+      netProfit: getProfitLossRowAmount(
+        profitLossReport,
+        "net-profit",
+        monthIndex,
+      ),
+      netProfitYtd: sumNetProfitYtd(profitLossReport, monthIndex),
+      ytdThroughLabel: buildYtdThroughLabel(input.year, input.month),
+      cashPosition: cashRow?.amounts[monthIndex] ?? 0,
+      balanceCheck: {
+        isBalanced: balanceCheck.isBalanced,
+        difference: balanceCheck.difference,
+      },
+    },
+    payroll: {
+      periodLabel,
+      lockStatus: getPeriodDisplayStatus(closeRecord, hasPayrollActivity),
+      totalPayrollCost: sumPayrollGrossForMonth(
+        payrollMonth,
+        input.payrollProcessingEntries,
+        input.payrollHistoryEntries,
+        closeRecord,
+      ),
+      pendingPayrollLiabilities: isMonthClosed(closeRecord)
+        ? sumPendingPayrollLiabilities(input.payrollPayables, payrollMonth)
+        : 0,
+      liabilityReferenceLabel: isMonthClosed(closeRecord) ? periodLabel : null,
+      payrollNotProcessed,
+    },
+  };
 }
 
 export function getCurrentCalendarMonth(referenceDate = new Date()): {
@@ -223,16 +395,6 @@ function sumPayrollGrossForMonth(
   );
 }
 
-function findMostRecentClosedPayrollMonth(
-  monthEndCloseRecords: MonthEndCloseRecord[],
-): MonthEndCloseRecord | null {
-  return (
-    monthEndCloseRecords
-      .filter((record) => isMonthClosed(record))
-      .sort((left, right) => right.month.localeCompare(left.month))[0] ?? null
-  );
-}
-
 function sumPendingPayrollLiabilities(
   payables: DashboardPayrollPayableEntry[],
   payrollMonth: string,
@@ -321,69 +483,33 @@ export function buildDashboardViewModel(input: {
   referenceDate?: Date;
 }): DashboardViewModel {
   const referenceDate = input.referenceDate ?? new Date();
-  const { year, month } = getCurrentCalendarMonth(referenceDate);
-  const currentMonthIndex = month - 1;
-  const periodLabel = formatPeriodLabel(year, month);
+  const { year: currentYear, month: currentMonth } =
+    getCurrentCalendarMonth(referenceDate);
+  const defaultMonthKey = createMonthKey(currentYear, currentMonth);
+  const monthOptions = getAvailableDashboardMonths(
+    input.incomeEntries,
+    input.expenseEntries,
+    referenceDate,
+  );
   const trendMonths = getLastSixCalendarMonths(referenceDate);
-  const profitLossReport = buildProfitLossReport(
-    input.profitLossIncomeEntries,
-    input.profitLossExpenseEntries,
-    input.fixedAssets,
-    year,
-  );
-  const balanceSheetReport = buildBalanceSheetReportForYear(
-    input.balanceSheetIncomeEntries,
-    input.profitLossExpenseEntries,
-    input.fixedAssets,
-    input.payableEntries,
-    input.capitalContributions,
-    input.cashFlowIncomeEntries,
-    input.cashFlowExpenseEntries,
-    input.payrollHistoryWages,
-    input.manualEntries,
-    year,
-  );
-  const balanceCheck = getBalanceCheckForPeriod(
-    balanceSheetReport,
-    currentMonthIndex,
-  );
-  const cashRow = balanceSheetReport.rows.find((row) => row.key === "cash");
+  const monthSnapshots: Record<string, DashboardMonthSnapshot> = {};
 
-  const currentCloseRecord = getCurrentMonthCloseRecord(
-    input.monthEndCloseRecords,
-    year,
-    month,
-  );
-  const currentPayrollMonth = getPeriodStartDate(year, month);
-  const hasCurrentPayrollActivity = monthHasPayrollActivity(
-    currentPayrollMonth,
-    input.payrollProcessingEntries,
-    input.payrollHistoryEntries,
-  );
-  const payrollNotProcessed =
-    !isMonthClosed(currentCloseRecord) && !hasCurrentPayrollActivity;
-
-  const latestClosedPayroll = findMostRecentClosedPayrollMonth(
-    input.monthEndCloseRecords,
-  );
-  const liabilityReferenceLabel = latestClosedPayroll
-    ? formatPeriodLabel(
-        Number(latestClosedPayroll.month.slice(0, 4)),
-        Number(latestClosedPayroll.month.slice(5, 7)),
-      )
-    : null;
+  for (const option of monthOptions) {
+    monthSnapshots[option.key] = buildMonthSnapshot({
+      ...input,
+      year: option.year,
+      month: option.month,
+    });
+  }
 
   const profitTrend = trendMonths.map((point) => {
     const monthIndex = point.month - 1;
-    const report =
-      point.year === year
-        ? profitLossReport
-        : buildProfitLossReport(
-            input.profitLossIncomeEntries,
-            input.profitLossExpenseEntries,
-            input.fixedAssets,
-            point.year,
-          );
+    const report = buildProfitLossReport(
+      input.profitLossIncomeEntries,
+      input.profitLossExpenseEntries,
+      input.fixedAssets,
+      point.year,
+    );
 
     return {
       label: point.shortLabel,
@@ -395,21 +521,18 @@ export function buildDashboardViewModel(input: {
 
   const cashTrend = trendMonths.map((point) => {
     const monthIndex = point.month - 1;
-    const report =
-      point.year === year
-        ? balanceSheetReport
-        : buildBalanceSheetReportForYear(
-            input.balanceSheetIncomeEntries,
-            input.profitLossExpenseEntries,
-            input.fixedAssets,
-            input.payableEntries,
-            input.capitalContributions,
-            input.cashFlowIncomeEntries,
-            input.cashFlowExpenseEntries,
-            input.payrollHistoryWages,
-            input.manualEntries,
-            point.year,
-          );
+    const report = buildBalanceSheetReportForYear(
+      input.balanceSheetIncomeEntries,
+      input.profitLossExpenseEntries,
+      input.fixedAssets,
+      input.payableEntries,
+      input.capitalContributions,
+      input.cashFlowIncomeEntries,
+      input.cashFlowExpenseEntries,
+      input.payrollHistoryWages,
+      input.manualEntries,
+      point.year,
+    );
     const cashAmounts = report.rows.find((row) => row.key === "cash")?.amounts;
 
     return {
@@ -438,48 +561,15 @@ export function buildDashboardViewModel(input: {
   });
 
   return {
-    summary: {
-      periodLabel,
-      totalRevenue: sumRegisterAmountForMonth(input.incomeEntries, year, month),
-      totalExpenses: sumRegisterAmountForMonth(
-        input.expenseEntries,
-        year,
-        month,
-      ),
-      netProfit: getProfitLossRowAmount(
-        profitLossReport,
-        "net-profit",
-        currentMonthIndex,
-      ),
-      cashPosition: cashRow?.amounts[currentMonthIndex] ?? 0,
-      balanceCheck: {
-        isBalanced: balanceCheck.isBalanced,
-        difference: balanceCheck.difference,
-      },
-    },
+    defaultMonthKey,
+    monthOptions,
+    monthSnapshots,
     profitTrend,
     cashTrend,
-    payroll: {
-      periodLabel,
-      lockStatus: getPeriodDisplayStatus(
-        currentCloseRecord,
-        hasCurrentPayrollActivity,
-      ),
-      totalPayrollCost: sumPayrollGrossForMonth(
-        currentPayrollMonth,
-        input.payrollProcessingEntries,
-        input.payrollHistoryEntries,
-        currentCloseRecord,
-      ),
-      pendingPayrollLiabilities: latestClosedPayroll
-        ? sumPendingPayrollLiabilities(
-            input.payrollPayables,
-            latestClosedPayroll.month,
-          )
-        : 0,
-      liabilityReferenceLabel,
-      payrollNotProcessed,
-      payrollTrend,
-    },
+    payrollTrend,
   };
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
 }

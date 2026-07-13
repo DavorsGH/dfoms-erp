@@ -22,6 +22,7 @@ type ProjectsProps = {
 const emptyForm = {
   project_code: "",
   project_name: "",
+  required_staff: "",
 };
 
 export default function Projects({
@@ -44,7 +45,7 @@ export default function Projects({
   async function refreshProjects() {
     const { data, error: refreshError } = await supabase
       .from("projects")
-      .select("project_code, project_name")
+      .select("project_code, project_name, required_staff")
       .order("project_name", { ascending: true });
 
     if (refreshError) {
@@ -73,6 +74,8 @@ export default function Projects({
     setForm({
       project_code: project.project_code,
       project_name: project.project_name,
+      required_staff:
+        project.required_staff == null ? "" : String(project.required_staff),
     });
     setShowForm(true);
   }
@@ -113,15 +116,31 @@ export default function Projects({
     setLoading(true);
     setError(null);
 
+    const requiredStaffValue = form.required_staff.trim();
+    const requiredStaff =
+      requiredStaffValue === ""
+        ? null
+        : Number.parseInt(requiredStaffValue, 10);
+
+    if (requiredStaffValue !== "" && Number.isNaN(requiredStaff)) {
+      setError("Required staff must be a whole number.");
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       project_code: form.project_code.trim(),
       project_name: form.project_name.trim(),
+      required_staff: requiredStaff,
     };
 
     const { error: saveError } = editingCode
       ? await supabase
           .from("projects")
-          .update({ project_name: payload.project_name })
+          .update({
+            project_name: payload.project_name,
+            required_staff: payload.required_staff,
+          })
           .eq("project_code", editingCode)
       : await supabase.from("projects").insert(payload);
 
@@ -189,6 +208,18 @@ export default function Projects({
                   className={inputClassName}
                 />
               </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Required Staff
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.required_staff}
+                  onChange={(e) => updateField("required_staff", e.target.value)}
+                  className={inputClassName}
+                />
+              </div>
             </div>
             <div className="flex gap-3">
               <button
@@ -221,6 +252,7 @@ export default function Projects({
             <tr>
               <th className={scrollableTableThClassName}>Project Code</th>
               <th className={scrollableTableThClassName}>Project Name</th>
+              <th className={scrollableTableThClassName}>Required Staff</th>
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
           </thead>
@@ -228,7 +260,7 @@ export default function Projects({
             {projects.length === 0 ? (
               <tr>
                 <td
-                  colSpan={3}
+                  colSpan={4}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No projects configured yet.
@@ -239,6 +271,7 @@ export default function Projects({
                 <tr key={project.project_code} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{project.project_code}</td>
                   <td className="px-4 py-3">{project.project_name}</td>
+                  <td className="px-4 py-3">{project.required_staff ?? "—"}</td>
                   <RegisterRowActions
                     onEdit={() => openEditForm(project)}
                     onDelete={() => handleDelete(project.project_code)}

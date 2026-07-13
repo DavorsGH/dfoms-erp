@@ -28,6 +28,10 @@ const navItems = [
     label: "Contract/Project Assignments",
     href: "/dashboard/administration/projects",
   },
+  {
+    label: "Roster Settings",
+    href: "/dashboard/administration/roster-settings",
+  },
 ] as const;
 
 export default function AdministrationNav() {

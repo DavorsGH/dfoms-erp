@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Bar,
@@ -13,6 +14,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { inputClassName } from "./employees/employee-record-utils";
 import { formatGHS } from "./finance/income-register-utils";
 import type { DashboardViewModel } from "./dashboard-utils";
 
@@ -23,21 +25,25 @@ type DashboardProps = {
 
 function SummaryCard({
   title,
+  subtitle,
   value,
   href,
   tone = "default",
 }: {
   title: string;
+  subtitle?: string;
   value: string;
   href: string;
-  tone?: "default" | "success" | "danger";
+  tone?: "default" | "success" | "danger" | "ytd";
 }) {
   const toneClasses =
     tone === "success"
       ? "border-emerald-200 bg-emerald-50"
       : tone === "danger"
         ? "border-red-200 bg-red-50"
-        : "border-slate-200 bg-white";
+        : tone === "ytd"
+          ? "border-[#0f2744]/20 bg-slate-100 ring-1 ring-[#0f2744]/10"
+          : "border-slate-200 bg-white";
 
   return (
     <Link
@@ -45,6 +51,9 @@ function SummaryCard({
       className={`rounded-lg border p-5 shadow-sm transition-colors hover:border-[#0f2744] hover:shadow-md ${toneClasses}`}
     >
       <p className="text-sm font-medium text-slate-600">{title}</p>
+      {subtitle ? (
+        <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+      ) : null}
       <p className="mt-2 text-2xl font-semibold text-[#0f2744]">{value}</p>
     </Link>
   );
@@ -70,16 +79,48 @@ function formatChartCurrency(value: number): string {
 }
 
 export default function Dashboard({ data, fetchError }: DashboardProps) {
-  const { summary, profitTrend, cashTrend, payroll } = data;
+  const [selectedMonthKey, setSelectedMonthKey] = useState(data.defaultMonthKey);
+
+  const selectedSnapshot = useMemo(() => {
+    return (
+      data.monthSnapshots[selectedMonthKey] ??
+      data.monthSnapshots[data.defaultMonthKey]
+    );
+  }, [data.defaultMonthKey, data.monthSnapshots, selectedMonthKey]);
+
+  const { summary, payroll } = selectedSnapshot;
+  const { profitTrend, cashTrend, payrollTrend } = data;
 
   return (
     <div className="min-w-0 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-[#0f2744]">Dashboard</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          At-a-glance summary for {summary.periodLabel}, calculated live from
-          your registers.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#0f2744]">Dashboard</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            At-a-glance summary for {summary.periodLabel}, calculated live from
+            your registers.
+          </p>
+        </div>
+        <div className="min-w-[220px]">
+          <label
+            htmlFor="dashboard-month"
+            className="mb-1 block text-sm font-medium text-slate-700"
+          >
+            Summary Month
+          </label>
+          <select
+            id="dashboard-month"
+            value={selectedMonthKey}
+            onChange={(event) => setSelectedMonthKey(event.target.value)}
+            className={inputClassName}
+          >
+            {data.monthOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {fetchError ? (
@@ -88,7 +129,14 @@ export default function Dashboard({ data, fetchError }: DashboardProps) {
         </p>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <SummaryCard
+          title="Net Profit (YTD)"
+          subtitle={summary.ytdThroughLabel}
+          value={formatGHS(summary.netProfitYtd)}
+          href="/dashboard/finance/profit-loss"
+          tone="ytd"
+        />
         <SummaryCard
           title={`Total Revenue (${summary.periodLabel})`}
           value={formatGHS(summary.totalRevenue)}
@@ -100,17 +148,20 @@ export default function Dashboard({ data, fetchError }: DashboardProps) {
           href="/dashboard/finance/expenses"
         />
         <SummaryCard
-          title={`Net Profit (${summary.periodLabel})`}
+          title="Net Profit (Month)"
+          subtitle={summary.periodLabel}
           value={formatGHS(summary.netProfit)}
           href="/dashboard/finance/profit-loss"
         />
         <SummaryCard
           title="Cash Position"
+          subtitle={summary.periodLabel}
           value={formatGHS(summary.cashPosition)}
           href="/dashboard/finance/balance-sheet"
         />
         <SummaryCard
           title="Balance Sheet Check"
+          subtitle={summary.periodLabel}
           value={
             summary.balanceCheck.isBalanced
               ? "Balanced"
@@ -165,7 +216,7 @@ export default function Dashboard({ data, fetchError }: DashboardProps) {
               Payroll Status
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Current month payroll activity and statutory liabilities.
+              Payroll activity and statutory liabilities for {payroll.periodLabel}.
             </p>
           </div>
           <Link
@@ -230,7 +281,7 @@ export default function Dashboard({ data, fetchError }: DashboardProps) {
             Total Payroll Cost Trend (Last 6 Months)
           </h3>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={payroll.payrollTrend}>
+            <LineChart data={payrollTrend}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" />
               <YAxis tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />

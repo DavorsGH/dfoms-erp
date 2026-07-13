@@ -1,5 +1,5 @@
-import ComingSoon from "../coming-soon";
+import { redirect } from "next/navigation";
 
 export default function OperationsPage() {
-  return <ComingSoon title="Operations" />;
+  redirect("/dashboard/operations/duty-roster");
 }

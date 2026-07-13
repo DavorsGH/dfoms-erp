@@ -37,19 +37,19 @@ export default function Sidebar({ isSuperAdmin }: SidebarProps) {
 
   return (
     <aside className="flex min-h-screen w-56 shrink-0 flex-col bg-[#0f2744] text-white">
-      <div className="flex items-center gap-4 border-b border-white/10 px-5 py-6">
+      <div className="flex items-center gap-4 border-b border-white/10 px-5 py-8">
         <Image
           src="/logo.jpg"
           alt="DFOMS ERP logo"
-          width={56}
-          height={56}
-          className="h-14 w-14 shrink-0 rounded-sm object-cover"
+          width={80}
+          height={80}
+          className="h-20 w-20 shrink-0 rounded-sm object-cover"
         />
         <div className="min-w-0">
-          <p className="text-base font-semibold leading-snug text-emerald-400">
+          <p className="text-lg font-semibold leading-tight text-emerald-400">
             Davors Facilities
           </p>
-          <p className="text-sm font-medium leading-snug text-white/90">
+          <p className="mt-0.5 whitespace-nowrap text-sm font-medium leading-tight text-white/90">
             ERP System
           </p>
         </div>
