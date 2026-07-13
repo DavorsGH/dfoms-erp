@@ -25,15 +25,22 @@ export default function Sidebar() {
 
   return (
     <aside className="flex min-h-screen w-56 shrink-0 flex-col bg-[#0f2744] text-white">
-      <div className="flex items-center gap-3 border-b border-white/10 px-5 py-5">
+      <div className="flex items-center gap-4 border-b border-white/10 px-5 py-6">
         <Image
           src="/logo.jpg"
           alt="DFOMS ERP logo"
-          width={40}
-          height={40}
-          className="h-10 w-auto"
+          width={56}
+          height={56}
+          className="h-14 w-14 shrink-0 rounded-sm object-cover"
         />
-        <p className="text-lg font-semibold tracking-tight">DFOMS ERP</p>
+        <div className="min-w-0">
+          <p className="text-base font-semibold leading-snug text-emerald-400">
+            Davors Facilities
+          </p>
+          <p className="text-sm font-medium leading-snug text-white/90">
+            ERP System
+          </p>
+        </div>
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 px-3 py-4">

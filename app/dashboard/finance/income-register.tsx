@@ -11,8 +11,14 @@ import {
 } from "./income-register-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
+  getStripedRowClassName,
   toDateInputValue,
 } from "./register-row-actions";
+import ScrollableTable, {
+  scrollableTableClassName,
+  scrollableTableHeadClassName,
+  scrollableTableThClassName,
+} from "../scrollable-table";
 
 type IncomeRegisterProps = {
   initialEntries: IncomeRegisterEntry[];
@@ -199,7 +205,7 @@ export default function IncomeRegister({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-600">
           Track invoices, receipts, and outstanding balances.
@@ -400,21 +406,20 @@ export default function IncomeRegister({
         </section>
       )}
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-[#0f2744] text-white">
+      <ScrollableTable>
+        <table className={scrollableTableClassName}>
+          <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Invoice No.</th>
-                <th className="px-4 py-3 font-medium">Customer Name</th>
-                <th className="px-4 py-3 font-medium">Service Category</th>
-                <th className="px-4 py-3 font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Amount Received</th>
-                <th className="px-4 py-3 font-medium">Outstanding Balance</th>
-                <th className="px-4 py-3 font-medium">Payment Status</th>
-                <th className="px-4 py-3 font-medium">Due Date</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+                <th className={scrollableTableThClassName}>Date</th>
+                <th className={scrollableTableThClassName}>Invoice No.</th>
+                <th className={scrollableTableThClassName}>Customer Name</th>
+                <th className={scrollableTableThClassName}>Service Category</th>
+                <th className={scrollableTableThClassName}>Amount</th>
+                <th className={scrollableTableThClassName}>Amount Received</th>
+                <th className={scrollableTableThClassName}>Outstanding Balance</th>
+                <th className={scrollableTableThClassName}>Payment Status</th>
+                <th className={scrollableTableThClassName}>Due Date</th>
+                <th className={scrollableTableThClassName}>Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -428,14 +433,17 @@ export default function IncomeRegister({
                   </td>
                 </tr>
               ) : (
-                entries.map((entry) => {
+                entries.map((entry, index) => {
                   const outstanding = calculateOutstanding(
                     entry.amount,
                     entry.amount_received,
                   );
 
                   return (
-                    <tr key={entry.id} className="text-slate-700">
+                    <tr
+                      key={entry.id}
+                      className={getStripedRowClassName(index)}
+                    >
                       <td className="px-4 py-3">{formatDate(entry.date)}</td>
                       <td className="px-4 py-3">{entry.invoice_no}</td>
                       <td className="px-4 py-3">{entry.customer_name}</td>
@@ -457,9 +465,8 @@ export default function IncomeRegister({
                 })
               )}
             </tbody>
-          </table>
-        </div>
-      </section>
+        </table>
+      </ScrollableTable>
     </div>
   );
 }

@@ -14,6 +14,10 @@ export function toDateInputValue(value: string): string {
   return value.slice(0, 10);
 }
 
+export function getStripedRowClassName(index: number): string {
+  return index % 2 === 1 ? "bg-slate-50 text-slate-700" : "text-slate-700";
+}
+
 export function confirmDeleteEntry(): boolean {
   return window.confirm("Are you sure you want to delete this entry?");
 }

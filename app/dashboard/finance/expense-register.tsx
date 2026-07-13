@@ -12,8 +12,14 @@ import {
 } from "./expense-register-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
+  getStripedRowClassName,
   toDateInputValue,
 } from "./register-row-actions";
+import ScrollableTable, {
+  scrollableTableClassName,
+  scrollableTableHeadClassName,
+  scrollableTableThClassName,
+} from "../scrollable-table";
 
 type ExpenseRegisterProps = {
   initialEntries: ExpenseRegisterEntry[];
@@ -248,7 +254,7 @@ export default function ExpenseRegister({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-600">
           Track expenses, receipts, and payment status.
@@ -489,20 +495,19 @@ export default function ExpenseRegister({
         </section>
       )}
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-[#0f2744] text-white">
+      <ScrollableTable>
+        <table className={scrollableTableClassName}>
+          <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Expense Category</th>
-                <th className="px-4 py-3 font-medium">Sub-Category</th>
-                <th className="px-4 py-3 font-medium">Description</th>
-                <th className="px-4 py-3 font-medium">Vendor</th>
-                <th className="px-4 py-3 font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Payment Method</th>
-                <th className="px-4 py-3 font-medium">Payment Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+                <th className={scrollableTableThClassName}>Date</th>
+                <th className={scrollableTableThClassName}>Expense Category</th>
+                <th className={scrollableTableThClassName}>Sub-Category</th>
+                <th className={scrollableTableThClassName}>Description</th>
+                <th className={scrollableTableThClassName}>Vendor</th>
+                <th className={scrollableTableThClassName}>Amount</th>
+                <th className={scrollableTableThClassName}>Payment Method</th>
+                <th className={scrollableTableThClassName}>Payment Status</th>
+                <th className={scrollableTableThClassName}>Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -516,8 +521,11 @@ export default function ExpenseRegister({
                   </td>
                 </tr>
               ) : (
-                entries.map((entry) => (
-                  <tr key={entry.id} className="text-slate-700">
+                entries.map((entry, index) => (
+                  <tr
+                    key={entry.id}
+                    className={getStripedRowClassName(index)}
+                  >
                     <td className="px-4 py-3">{formatDate(entry.date)}</td>
                     <td className="px-4 py-3">{entry.expense_category}</td>
                     <td className="px-4 py-3">{entry.sub_category}</td>
@@ -535,9 +543,8 @@ export default function ExpenseRegister({
                 ))
               )}
             </tbody>
-          </table>
-        </div>
-      </section>
+        </table>
+      </ScrollableTable>
     </div>
   );
 }

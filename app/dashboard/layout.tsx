@@ -42,7 +42,9 @@ export default async function DashboardLayout({
       <Sidebar />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <TopBar userLabel={userLabel} />
-        <main className="flex-1 bg-slate-50 p-6">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-auto bg-slate-50 p-6">
+          {children}
+        </main>
       </div>
     </div>
   );

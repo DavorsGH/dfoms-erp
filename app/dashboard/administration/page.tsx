@@ -3,7 +3,9 @@ import { createClient } from "@/utils/supabase/server";
 import { mapApproverRows } from "../approver-utils";
 import type { Approver, Employee, NamedLookup } from "../lookup-types";
 import type { ServiceType } from "../service-types";
+import AssetCategories from "./asset-categories";
 import Approvers from "./approvers";
+import DepreciationMethods from "./depreciation-methods";
 import ExpenseCategories from "./expense-categories";
 import ExpenseSubcategories from "./expense-subcategories";
 import PaymentMethods from "./payment-methods";
@@ -18,6 +20,8 @@ export default async function AdministrationPage() {
     { data: expenseCategories, error: expenseCategoriesError },
     { data: expenseSubcategories, error: expenseSubcategoriesError },
     { data: paymentMethods, error: paymentMethodsError },
+    { data: assetCategories, error: assetCategoriesError },
+    { data: depreciationMethods, error: depreciationMethodsError },
     { data: approvers, error: approversError },
     { data: employees, error: employeesError },
   ] = await Promise.all([
@@ -31,6 +35,11 @@ export default async function AdministrationPage() {
       .select("name")
       .order("name", { ascending: true }),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
+    supabase.from("asset_categories").select("name").order("name", { ascending: true }),
+    supabase
+      .from("depreciation_methods")
+      .select("name")
+      .order("name", { ascending: true }),
     supabase
       .from("approvers")
       .select("employee_id, employees(full_name)")
@@ -66,6 +75,14 @@ export default async function AdministrationPage() {
         <PaymentMethods
           initialMethods={(paymentMethods as NamedLookup[] | null) ?? []}
           fetchError={paymentMethodsError?.message ?? null}
+        />
+        <AssetCategories
+          initialCategories={(assetCategories as NamedLookup[] | null) ?? []}
+          fetchError={assetCategoriesError?.message ?? null}
+        />
+        <DepreciationMethods
+          initialMethods={(depreciationMethods as NamedLookup[] | null) ?? []}
+          fetchError={depreciationMethodsError?.message ?? null}
         />
         <Approvers
           initialApprovers={mappedApprovers as Approver[]}

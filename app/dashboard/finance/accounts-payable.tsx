@@ -13,8 +13,14 @@ import {
 } from "./accounts-payable-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
+  getStripedRowClassName,
   toDateInputValue,
 } from "./register-row-actions";
+import ScrollableTable, {
+  scrollableTableClassName,
+  scrollableTableHeadClassName,
+  scrollableTableThClassName,
+} from "../scrollable-table";
 
 type AccountsPayableProps = {
   initialEntries: AccountsPayableEntry[];
@@ -231,7 +237,7 @@ export default function AccountsPayable({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-600">
           Track vendor invoices, payments, and outstanding balances.
@@ -456,23 +462,22 @@ export default function AccountsPayable({
         </section>
       )}
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-[#0f2744] text-white">
+      <ScrollableTable>
+        <table className={scrollableTableClassName}>
+          <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className="px-4 py-3 font-medium">Vendor Name</th>
-                <th className="px-4 py-3 font-medium">Invoice Number</th>
-                <th className="px-4 py-3 font-medium">Expense Category</th>
-                <th className="px-4 py-3 font-medium">Sub-Category</th>
-                <th className="px-4 py-3 font-medium">Invoice Date</th>
-                <th className="px-4 py-3 font-medium">Due Date</th>
-                <th className="px-4 py-3 font-medium">Amount</th>
-                <th className="px-4 py-3 font-medium">Amount Paid</th>
-                <th className="px-4 py-3 font-medium">Balance Due</th>
-                <th className="px-4 py-3 font-medium">Days Outstanding</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+                <th className={scrollableTableThClassName}>Vendor Name</th>
+                <th className={scrollableTableThClassName}>Invoice Number</th>
+                <th className={scrollableTableThClassName}>Expense Category</th>
+                <th className={scrollableTableThClassName}>Sub-Category</th>
+                <th className={scrollableTableThClassName}>Invoice Date</th>
+                <th className={scrollableTableThClassName}>Due Date</th>
+                <th className={scrollableTableThClassName}>Amount</th>
+                <th className={scrollableTableThClassName}>Amount Paid</th>
+                <th className={scrollableTableThClassName}>Balance Due</th>
+                <th className={scrollableTableThClassName}>Days Outstanding</th>
+                <th className={scrollableTableThClassName}>Status</th>
+                <th className={scrollableTableThClassName}>Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -486,7 +491,7 @@ export default function AccountsPayable({
                   </td>
                 </tr>
               ) : (
-                entries.map((entry) => {
+                entries.map((entry, index) => {
                   const balanceDue = calculateBalanceDue(
                     entry.amount,
                     entry.amount_paid,
@@ -498,7 +503,10 @@ export default function AccountsPayable({
                   const isOverdue = status === "Overdue";
 
                   return (
-                    <tr key={entry.id} className="text-slate-700">
+                    <tr
+                      key={entry.id}
+                      className={getStripedRowClassName(index)}
+                    >
                       <td className="px-4 py-3">{entry.vendor_name}</td>
                       <td className="px-4 py-3">{entry.invoice_number}</td>
                       <td className="px-4 py-3">{entry.expense_category}</td>
@@ -532,9 +540,8 @@ export default function AccountsPayable({
                 })
               )}
             </tbody>
-          </table>
-        </div>
-      </section>
+        </table>
+      </ScrollableTable>
     </div>
   );
 }
