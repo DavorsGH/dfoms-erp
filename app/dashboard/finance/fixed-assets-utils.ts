@@ -207,6 +207,151 @@ export function getFinancialYearMonthEnd(
   return `${financialYear}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
+export function getMonthEndForDate(referenceDate = new Date()): string {
+  return getFinancialYearMonthEnd(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+  );
+}
+
+function parseYearMonth(value: string): { year: number; month: number } | null {
+  const datePart = normalizeAssetDate(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+
+  if (month < 1 || month > 12) {
+    return null;
+  }
+
+  return { year, month };
+}
+
+function listMonthEndsThrough(
+  fromYear: number,
+  fromMonth: number,
+  toYear: number,
+  toMonth: number,
+): string[] {
+  const monthEnds: string[] = [];
+  let year = fromYear;
+  let month = fromMonth;
+
+  while (year < toYear || (year === toYear && month <= toMonth)) {
+    monthEnds.push(getFinancialYearMonthEnd(year, month - 1));
+    month += 1;
+
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+
+  return monthEnds;
+}
+
+export function getAssetMonthlyDepreciationAmount(
+  asset: AssetDepreciationInput,
+  monthEnd: string,
+): number {
+  if (!isAssetActiveOnOrBefore(asset.purchase_date, monthEnd)) {
+    return 0;
+  }
+
+  const referenceDate = new Date(`${monthEnd}T12:00:00`);
+  const { annualDepreciation } = getAssetCalculations(
+    asset.original_cost,
+    asset.quantity,
+    asset.useful_life_years,
+    asset.purchase_date,
+    asset.depreciation_method,
+    referenceDate,
+  );
+
+  return annualDepreciation / 12;
+}
+
+export function calculateAssetAccumulatedDepreciationAsOf(
+  asset: AssetDepreciationInput,
+  asOfMonthEnd: string,
+): number {
+  const totalCost = calculateTotalCost(
+    Number(asset.original_cost) || 0,
+    Number(asset.quantity) || 0,
+  );
+
+  if (!isAssetActiveOnOrBefore(asset.purchase_date, asOfMonthEnd)) {
+    return 0;
+  }
+
+  const purchaseMonth = parseYearMonth(asset.purchase_date);
+  const asOfMonth = parseYearMonth(asOfMonthEnd);
+
+  if (!purchaseMonth || !asOfMonth) {
+    return 0;
+  }
+
+  let accumulated = 0;
+
+  for (const monthEnd of listMonthEndsThrough(
+    purchaseMonth.year,
+    purchaseMonth.month,
+    asOfMonth.year,
+    asOfMonth.month,
+  )) {
+    accumulated = Math.min(
+      accumulated + getAssetMonthlyDepreciationAmount(asset, monthEnd),
+      totalCost,
+    );
+  }
+
+  return accumulated;
+}
+
+export function calculateAssetNetBookValueAsOf(
+  asset: AssetDepreciationInput,
+  asOfMonthEnd: string,
+): number {
+  if (!isAssetActiveOnOrBefore(asset.purchase_date, asOfMonthEnd)) {
+    return 0;
+  }
+
+  const totalCost = calculateTotalCost(
+    Number(asset.original_cost) || 0,
+    Number(asset.quantity) || 0,
+  );
+  const accumulated = calculateAssetAccumulatedDepreciationAsOf(
+    asset,
+    asOfMonthEnd,
+  );
+
+  return Math.max(totalCost - accumulated, 0);
+}
+
+export function calculateMonthlyNetBookValueTotals(
+  assets: AssetDepreciationInput[],
+  financialYear: number,
+): number[] {
+  const totals = Array.from({ length: 13 }, () => 0);
+
+  for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+    const monthEnd = getFinancialYearMonthEnd(financialYear, monthIndex);
+
+    totals[monthIndex] = assets.reduce(
+      (sum, asset) => sum + calculateAssetNetBookValueAsOf(asset, monthEnd),
+      0,
+    );
+  }
+
+  totals[12] = totals[11];
+  return totals;
+}
+
 export type AssetDepreciationInput = {
   original_cost: number;
   quantity: number;
@@ -223,23 +368,9 @@ export function calculateMonthlyDepreciationTotals(
 
   for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
     const monthEnd = getFinancialYearMonthEnd(financialYear, monthIndex);
-    const referenceDate = new Date(`${monthEnd}T12:00:00`);
 
     for (const asset of assets) {
-      if (!isAssetActiveOnOrBefore(asset.purchase_date, monthEnd)) {
-        continue;
-      }
-
-      const { annualDepreciation } = getAssetCalculations(
-        asset.original_cost,
-        asset.quantity,
-        asset.useful_life_years,
-        asset.purchase_date,
-        asset.depreciation_method,
-        referenceDate,
-      );
-
-      totals[monthIndex] += annualDepreciation / 12;
+      totals[monthIndex] += getAssetMonthlyDepreciationAmount(asset, monthEnd);
     }
 
     totals[12] += totals[monthIndex];

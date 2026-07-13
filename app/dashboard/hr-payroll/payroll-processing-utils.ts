@@ -53,6 +53,8 @@ export type PayrollEmployeeSource = {
   full_name: string;
   employment_type: string | null;
   employment_status: string | null;
+  date_hired: string | null;
+  appointment_end_date: string | null;
   basic_salary: number | null;
   housing_allowance: number | null;
   transport_allowance: number | null;
@@ -387,6 +389,7 @@ export function calculatePayrollRow(
 
   const asOf = getPeriodEndDate(period.year, period.month);
   const employmentType = employee.employment_type?.trim() ?? "";
+  const proratedBasicPay = periodPayBasic;
 
   let employeeSsnit = 0;
   let employerSsnit = 0;
@@ -396,7 +399,8 @@ export function calculatePayrollRow(
   if (employmentType === "Casual") {
     const casualConfig = pickLatestByEffectiveDate(taxConfigs.casualRows, asOf);
     payeTax = roundMoney(
-      basicSalary * normalizeRate(Number(casualConfig?.flat_rate) || 0),
+      proratedBasicPay *
+        normalizeRate(Number(casualConfig?.flat_rate) || 0),
     );
   } else if (
     employmentType === "Full-Time" ||
@@ -404,8 +408,8 @@ export function calculatePayrollRow(
   ) {
     const ssnitConfig = pickLatestByEffectiveDate(taxConfigs.ssnitRows, asOf);
     const insurableBase = Math.min(
-      basicSalary,
-      Number(ssnitConfig?.insurable_earnings_ceiling) || basicSalary,
+      proratedBasicPay,
+      Number(ssnitConfig?.insurable_earnings_ceiling) || proratedBasicPay,
     );
 
     employeeSsnit = roundMoney(
@@ -459,6 +463,94 @@ export function calculatePayrollRow(
     paye_tax: payeTax,
     total_deductions: totalDeductions,
     net_pay: netPay,
+  };
+}
+
+export function processingRowToHistoryPayload(
+  row: PayrollProcessingRow,
+  payrollMonth: string,
+  locked: boolean,
+  lockedAt: string | null,
+): Record<string, unknown> {
+  const year = Number.parseInt(payrollMonth.slice(0, 4), 10);
+  const month = Number.parseInt(payrollMonth.slice(5, 7), 10);
+  const quarter = `Q${Math.ceil(month / 3)} ${year}`;
+
+  return {
+    payroll_month: payrollMonth,
+    year,
+    quarter,
+    employee_id: row.employee_id,
+    department: row.department,
+    project_contract: row.project_contract,
+    basic_salary: row.basic_salary,
+    housing_allowance: row.housing_allowance,
+    transport_allowance: row.transport_allowance,
+    other_allowances: row.other_allowances,
+    overtime_amount: row.overtime_amount,
+    bonuses: row.bonuses,
+    arrears: row.arrears,
+    gross_pay: row.gross_pay,
+    employee_ssnit: row.employee_ssnit,
+    employer_ssnit: row.employer_ssnit,
+    tier2: row.tier2,
+    paye_tax: row.paye_tax,
+    loan_repayment: row.loan_repayment,
+    salary_advance: row.salary_advance,
+    welfare_deduction: row.welfare_deduction,
+    other_deductions: row.other_deductions,
+    absence_deduction: row.absence_deduction,
+    total_deductions: row.total_deductions,
+    net_pay: row.net_pay,
+    locked,
+    locked_at: lockedAt,
+  };
+}
+
+/** Includes days_to_pay/daily_rate — use after running payroll-history-lock-columns.sql */
+export function processingRowToHistoryPayloadWithProcessingFields(
+  row: PayrollProcessingRow,
+  payrollMonth: string,
+  locked: boolean,
+  lockedAt: string | null,
+): Record<string, unknown> {
+  return {
+    ...processingRowToHistoryPayload(row, payrollMonth, locked, lockedAt),
+    days_to_pay: row.days_to_pay,
+    daily_rate: row.daily_rate,
+  };
+}
+
+export function historyRowToProcessingPayload(
+  row: PayrollHistoryRow,
+): Omit<PayrollProcessingRow, "id"> {
+  return {
+    payroll_month: row.payroll_month,
+    status: "Open",
+    employee_id: row.employee_id,
+    basic_salary: row.basic_salary,
+    housing_allowance: row.housing_allowance,
+    transport_allowance: row.transport_allowance,
+    other_allowances: row.other_allowances,
+    department: row.department,
+    project_contract: row.project_contract,
+    daily_rate: row.daily_rate,
+    days_to_pay: row.days_to_pay,
+    absence_deduction: row.absence_deduction,
+    overtime_amount: row.overtime_amount,
+    loan_repayment: row.loan_repayment,
+    bonuses: row.bonuses,
+    arrears: row.arrears,
+    salary_advance: row.salary_advance,
+    welfare_deduction: row.welfare_deduction,
+    other_deductions: row.other_deductions,
+    gross_pay: row.gross_pay,
+    employee_ssnit: row.employee_ssnit,
+    employer_ssnit: row.employer_ssnit,
+    tier2: row.tier2,
+    paye_tax: row.paye_tax,
+    total_deductions: row.total_deductions,
+    net_pay: row.net_pay,
   };
 }
 

@@ -16,6 +16,7 @@ export default async function BalanceSheetPage() {
     { data: payableEntries, error: payableError },
     { data: capitalContributions, error: capitalContributionsError },
     { data: manualEntries, error: manualError },
+    { data: payrollHistory, error: payrollHistoryError },
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -23,7 +24,7 @@ export default async function BalanceSheetPage() {
       .order("date", { ascending: true }),
     supabase
       .from("expense_register")
-      .select("date, expense_category, sub_category, amount, payment_status")
+      .select("date, expense_category, sub_category, amount, payment_status, description")
       .order("date", { ascending: true }),
     supabase
       .from("fixed_assets")
@@ -43,6 +44,10 @@ export default async function BalanceSheetPage() {
       .from("manual_financial_entries")
       .select("*")
       .order("period_month", { ascending: true }),
+    supabase
+      .from("payroll_history")
+      .select("payroll_month, net_pay")
+      .order("payroll_month", { ascending: true }),
   ]);
 
   const fetchError =
@@ -52,6 +57,7 @@ export default async function BalanceSheetPage() {
     payableError?.message ??
     capitalContributionsError?.message ??
     manualError?.message ??
+    payrollHistoryError?.message ??
     null;
 
   const cashFlowIncomeEntries =
@@ -63,9 +69,11 @@ export default async function BalanceSheetPage() {
   const cashFlowExpenseEntries =
     expenseEntries?.map((entry) => ({
       date: entry.date,
+      expense_category: entry.expense_category,
       sub_category: entry.sub_category,
       amount: entry.amount,
       payment_status: entry.payment_status,
+      description: entry.description ?? null,
     })) ?? [];
 
   const availableYears = buildAvailableYears(
@@ -75,6 +83,7 @@ export default async function BalanceSheetPage() {
       ...(capitalContributions ?? []).map((entry) => entry.date),
       ...(manualEntries ?? []).map((entry) => entry.period_month),
       ...(payableEntries ?? []).map((entry) => entry.invoice_date),
+      ...(payrollHistory ?? []).map((entry) => entry.payroll_month),
     ],
   );
 
@@ -90,6 +99,7 @@ export default async function BalanceSheetPage() {
         }
         initialCashFlowIncomeEntries={cashFlowIncomeEntries}
         initialCashFlowExpenseEntries={cashFlowExpenseEntries}
+        initialPayrollHistory={payrollHistory ?? []}
         initialManualEntries={manualEntries ?? []}
         availableYears={availableYears}
         fetchError={fetchError}

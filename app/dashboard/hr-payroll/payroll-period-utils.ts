@@ -42,6 +42,16 @@ export function getPeriodEndDate(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
+export function isPayrollMonthEnded(
+  year: number,
+  month: number,
+  referenceDate: Date = new Date(),
+): boolean {
+  const periodEndDate = getPeriodEndDate(year, month);
+  const today = referenceDate.toISOString().slice(0, 10);
+  return today >= periodEndDate;
+}
+
 export function getPeriodStartDate(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}-01`;
 }
@@ -178,22 +188,43 @@ export function getPeriodSelectorLabel(
   return baseLabel;
 }
 
+export function getHistoryPeriodDisplayStatus(
+  closeRecord: MonthEndCloseRecord | null | undefined,
+): string {
+  if (closeRecord?.lock_status === PAYROLL_STATUS_PARTIALLY_LOCKED) {
+    const note = closeRecord.notes?.trim();
+    return note
+      ? `${PAYROLL_STATUS_PARTIALLY_LOCKED} — ${note}`
+      : PAYROLL_STATUS_PARTIALLY_LOCKED;
+  }
+
+  if (closeRecord?.lock_status === PAYROLL_STATUS_LOCKED) {
+    return PAYROLL_STATUS_LOCKED;
+  }
+
+  if (closeRecord?.lock_status === PAYROLL_STATUS_OPEN) {
+    return PAYROLL_STATUS_OPEN;
+  }
+
+  return PAYROLL_STATUS_NOT_STARTED;
+}
+
 export function isFullMonthPayrollLock(
   rows: { employee_id: string; days_to_pay: number | null }[],
-  activeEmployeeIds: Set<string>,
+  periodEmployeeIds: Set<string>,
   totalWorkingDays: number,
 ): boolean {
-  if (activeEmployeeIds.size === 0) {
+  if (periodEmployeeIds.size === 0) {
     return true;
   }
 
-  const activeRows = rows.filter((row) => activeEmployeeIds.has(row.employee_id));
+  const periodRows = rows.filter((row) => periodEmployeeIds.has(row.employee_id));
 
-  if (activeRows.length !== activeEmployeeIds.size) {
+  if (periodRows.length !== periodEmployeeIds.size) {
     return false;
   }
 
-  return activeRows.every((row) => {
+  return periodRows.every((row) => {
     const daysToPay = Number(row.days_to_pay);
     return (
       Number.isFinite(daysToPay) &&

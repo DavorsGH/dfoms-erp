@@ -21,6 +21,7 @@ import {
   DEFAULT_ATTENDANCE_STATUS,
   type AttendanceRegisterEntry,
 } from "./attendance-register-utils";
+import AttendanceBulkImport from "./attendance-bulk-import";
 import {
   calculateHoursFromClock,
   formatDate,
@@ -60,6 +61,7 @@ export default function AttendanceRegister({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
 
   const employeeNameByStaffId = useMemo(() => {
@@ -90,6 +92,7 @@ export default function AttendanceRegister({
   }
 
   function openAddForm() {
+    setShowBulkImport(false);
     setEditingId(null);
     setForm({ ...emptyForm, attendance_status: DEFAULT_ATTENDANCE_STATUS });
     setShowForm(true);
@@ -99,6 +102,17 @@ export default function AttendanceRegister({
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(false);
+  }
+
+  function openBulkImport() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setShowBulkImport(true);
+  }
+
+  function closeBulkImport() {
+    setShowBulkImport(false);
   }
 
   function openEditForm(entry: AttendanceRegisterEntry) {
@@ -208,17 +222,26 @@ export default function AttendanceRegister({
 
   return (
     <div className="min-w-0 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
           Record daily attendance, clock times, and status by staff member.
         </p>
-        <button
-          type="button"
-          onClick={() => (showForm ? closeForm() : openAddForm())}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          {showForm ? "Cancel" : "Add Entry"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => (showBulkImport ? closeBulkImport() : openBulkImport())}
+            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+          >
+            {showBulkImport ? "Cancel Import" : "Bulk Import"}
+          </button>
+          <button
+            type="button"
+            onClick={() => (showForm ? closeForm() : openAddForm())}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+          >
+            {showForm ? "Cancel" : "Add Entry"}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -226,6 +249,15 @@ export default function AttendanceRegister({
           {error}
         </p>
       )}
+
+      {showBulkImport ? (
+        <AttendanceBulkImport
+          employees={employees}
+          existingEntries={entries}
+          onClose={closeBulkImport}
+          onImported={refreshEntries}
+        />
+      ) : null}
 
       {showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

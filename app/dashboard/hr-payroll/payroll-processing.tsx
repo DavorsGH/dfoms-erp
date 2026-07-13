@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { formatGHS, inputClassName, compareStaffIds } from "../employees/employee-record-utils";
+import { filterEmployeesForPayrollPeriod } from "./employee-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -13,10 +14,12 @@ import {
   findMonthEndCloseForKey,
   formatPeriodLabel,
   getPeriodDisplayStatus,
+  getPeriodEndDate,
   getPeriodSelectorLabel,
   isFullMonthPayrollLock,
   isMonthClosed,
   isPartiallyLockedMonth,
+  isPayrollMonthEnded,
   normalizePayrollMonthValue,
   parsePeriodKey,
   payrollMonthToPeriodKey,
@@ -131,6 +134,10 @@ export default function PayrollProcessing({
   );
   const [loading, setLoading] = useState(false);
   const [locking, setLocking] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [hasStaleHistory, setHasStaleHistory] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
 
   const employeeMap = useMemo(
@@ -138,18 +145,75 @@ export default function PayrollProcessing({
     [employees],
   );
 
-  const activeEmployees = useMemo(
-    () =>
-      employees.filter((employee) => employee.employment_status === "Active"),
-    [employees],
-  );
+  const periodEmployees = useMemo(() => {
+    if (!currentPeriod) {
+      return [];
+    }
 
-  const activeEmployeeIds = useMemo(
-    () => new Set(activeEmployees.map((employee) => employee.employee_id)),
-    [activeEmployees],
+    return filterEmployeesForPayrollPeriod(
+      employees,
+      currentPeriod.year,
+      currentPeriod.month,
+    );
+  }, [employees, currentPeriod]);
+
+  const periodEmployeeIds = useMemo(
+    () => new Set(periodEmployees.map((employee) => employee.employee_id)),
+    [periodEmployees],
   );
 
   const isPeriodClosed = isMonthClosed(monthEndClose);
+  const isPartiallyLocked = isPartiallyLockedMonth(monthEndClose);
+  const isFullyLocked = monthEndClose?.lock_status === PAYROLL_STATUS_LOCKED;
+
+  const isPayrollMonthEndedForPeriod = useMemo(() => {
+    if (!currentPeriod) {
+      return false;
+    }
+
+    return isPayrollMonthEnded(currentPeriod.year, currentPeriod.month);
+  }, [currentPeriod]);
+
+  const isFullMonthLockAvailable = useMemo(() => {
+    if (!currentPeriod || rows.length === 0) {
+      return false;
+    }
+
+    return isFullMonthPayrollLock(
+      rows,
+      periodEmployeeIds,
+      currentPeriod.totalWorkingDays,
+    );
+  }, [currentPeriod, periodEmployeeIds, rows]);
+
+  const canFullLock =
+    isFullMonthLockAvailable &&
+    isPayrollMonthEndedForPeriod &&
+    !isPeriodClosed &&
+    rows.length > 0;
+
+  const fullLockDisabledReason = useMemo(() => {
+    if (isPeriodClosed || rows.length === 0 || !currentPeriod) {
+      return undefined;
+    }
+
+    if (!isFullMonthLockAvailable) {
+      return "Not available — some employees have partial Days to Pay. Use Partial Lock Period instead.";
+    }
+
+    if (!isPayrollMonthEndedForPeriod) {
+      const endDate = getPeriodEndDate(currentPeriod.year, currentPeriod.month);
+      return `Permanent lock is only available on or after ${formatPeriodLabel(currentPeriod.year, currentPeriod.month)} ends (${endDate}). Use Partial Lock Period until then.`;
+    }
+
+    return undefined;
+  }, [
+    currentPeriod,
+    isFullMonthLockAvailable,
+    isPayrollMonthEndedForPeriod,
+    isPeriodClosed,
+    rows.length,
+  ]);
 
   function getRowSources(
     employee: PayrollEmployeeSource,
@@ -301,14 +365,19 @@ export default function PayrollProcessing({
       ).map((row) => row.employee_id),
     );
 
-    const activeEmployeeIds = new Set(
-      activeEmployees.map((employee) => employee.employee_id),
+    const employeesForPeriod = filterEmployeesForPayrollPeriod(
+      employees,
+      period.year,
+      period.month,
+    );
+    const periodEmployeeIds = new Set(
+      employeesForPeriod.map((employee) => employee.employee_id),
     );
     const staleRowIds = (
       (existingRows as Pick<PayrollProcessingRow, "id" | "employee_id">[] | null) ??
       []
     )
-      .filter((row) => !activeEmployeeIds.has(row.employee_id))
+      .filter((row) => !periodEmployeeIds.has(row.employee_id))
       .map((row) => row.id);
 
     if (staleRowIds.length > 0) {
@@ -322,7 +391,7 @@ export default function PayrollProcessing({
       }
     }
 
-    const rowsToInsert = activeEmployees
+    const rowsToInsert = employeesForPeriod
       .filter((employee) => !existingEmployeeIds.has(employee.employee_id))
       .map((employee) => {
         const absenceCount = countAbsencesForStaff(
@@ -396,6 +465,21 @@ export default function PayrollProcessing({
 
       const closeRecord = await fetchMonthEndClose(period.payrollMonth);
       setMonthEndClose(closeRecord);
+
+      if (!isMonthClosed(closeRecord)) {
+        const { count, error: staleHistoryError } = await supabase
+          .from("payroll_history")
+          .select("id", { count: "exact", head: true })
+          .eq("payroll_month", period.payrollMonth);
+
+        if (staleHistoryError) {
+          throw new Error(staleHistoryError.message);
+        }
+
+        setHasStaleHistory((count ?? 0) > 0);
+      } else {
+        setHasStaleHistory(false);
+      }
 
       if (isMonthClosed(closeRecord)) {
         const { data, error: historyError } = await supabase
@@ -534,59 +618,34 @@ export default function PayrollProcessing({
       return;
     }
 
-    const lockedAt = new Date().toISOString();
-    const totalNetPay = rowsToLock.reduce(
-      (sum, row) => sum + (Number(row.net_pay) || 0),
-      0,
-    );
-
-    const historyRows = rowsToLock.map((row) => {
-      const { id: _processingId, ...rest } = row;
-      return {
-        ...rest,
-        locked: true,
-        locked_at: lockedAt,
-      };
+    const response = await fetch("/api/hr-payroll/lock-period", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payrollMonth: currentPeriod.payrollMonth,
+        periodYear: currentPeriod.year,
+        periodMonth: currentPeriod.month,
+        lockStatus,
+        notes,
+        rows: rowsToLock,
+      }),
     });
 
-    if (historyRows.length > 0) {
-      const { error: historyError } = await supabase
-        .from("payroll_history")
-        .insert(historyRows);
-
-      if (historyError) {
-        throw new Error(historyError.message);
-      }
-    }
-
-    const { error: deleteError } = await supabase
-      .from("payroll_processing")
-      .delete()
-      .eq("payroll_month", currentPeriod.payrollMonth);
-
-    if (deleteError) {
-      throw new Error(deleteError.message);
-    }
-
-    const monthEndPayload = {
-      month: currentPeriod.payrollMonth,
-      employees_recorded: historyRows.length,
-      total_net_pay: Math.round(totalNetPay * 100) / 100,
-      lock_status: lockStatus,
-      notes,
+    const payload = (await response.json()) as {
+      error?: string;
+      closeRecord?: MonthEndCloseRecord;
+      payrollLocked?: boolean;
     };
 
-    const { data: closeRecord, error: closeError } = await supabase
-      .from("month_end_close")
-      .upsert(monthEndPayload, { onConflict: "month" })
-      .select("*")
-      .single();
-
-    if (closeError) {
-      throw new Error(closeError.message);
+    if (!response.ok && !(payload.payrollLocked && payload.closeRecord)) {
+      throw new Error(payload.error ?? "Failed to lock payroll period.");
     }
 
-    const lockedRecord = closeRecord as MonthEndCloseRecord;
+    if (!payload.closeRecord) {
+      throw new Error("Lock completed without a month-end close record.");
+    }
+
+    const lockedRecord = payload.closeRecord;
     setMonthEndClose(lockedRecord);
     setMonthEndCloseRows((current) => {
       const normalizedMonth = normalizePayrollMonthValue(lockedRecord.month);
@@ -602,10 +661,14 @@ export default function PayrollProcessing({
         : [...current, currentPeriod.payrollMonth],
     );
     await loadWorkspace(selectedPeriodKey);
+
+    if (!response.ok && payload.error) {
+      throw new Error(payload.error);
+    }
   }
 
-  async function handleLockPeriod() {
-    if (!currentPeriod || !isSuperAdmin || isPeriodClosed) {
+  async function handleReopenPeriod() {
+    if (!currentPeriod || !isSuperAdmin || !isPartiallyLocked) {
       return;
     }
 
@@ -613,7 +676,232 @@ export default function PayrollProcessing({
 
     if (
       !window.confirm(
-        `This will lock ${label} payroll permanently. Continue?`,
+        `Reopen ${label} for editing? This will remove it from Finance reports until re-locked.`,
+      )
+    ) {
+      return;
+    }
+
+    setReopening(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/hr-payroll/reopen-period", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payrollMonth: currentPeriod.payrollMonth,
+          periodYear: currentPeriod.year,
+          periodMonth: currentPeriod.month,
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        error?: string;
+        closeRecord?: MonthEndCloseRecord;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to reopen payroll period.");
+      }
+
+      if (!payload.closeRecord) {
+        throw new Error("Reopen completed without a month-end close record.");
+      }
+
+      const reopenedRecord = payload.closeRecord;
+      setMonthEndClose(reopenedRecord);
+      setMonthEndCloseRows((current) => {
+        const normalizedMonth = normalizePayrollMonthValue(reopenedRecord.month);
+        const withoutCurrent = current.filter(
+          (record) =>
+            normalizePayrollMonthValue(record.month) !== normalizedMonth,
+        );
+        return [...withoutCurrent, reopenedRecord];
+      });
+      await loadWorkspace(selectedPeriodKey);
+    } catch (reopenError) {
+      setError(
+        reopenError instanceof Error
+          ? reopenError.message
+          : "Failed to reopen payroll period.",
+      );
+    } finally {
+      setReopening(false);
+    }
+  }
+
+  async function handleRepairPeriod() {
+    if (!currentPeriod || !isSuperAdmin) {
+      return;
+    }
+
+    if (isFullyLocked) {
+      setError("This month is permanently locked and cannot be cleared.");
+      return;
+    }
+
+    const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
+
+    const confirmed = isPartiallyLocked
+      ? window.confirm(
+          `This month is partially locked. Clear payroll history for ${label}? This removes history records and should only be used to fix inconsistent data.`,
+        )
+      : window.confirm(
+          `Clear stale payroll history for ${label}? This removes leftover locked history rows while keeping the period Open.`,
+        );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setRepairing(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/hr-payroll/repair-period", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payrollMonth: currentPeriod.payrollMonth,
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        error?: string;
+        deletedHistoryRows?: number;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to repair payroll period.");
+      }
+
+      setHasStaleHistory(false);
+      await loadWorkspace(selectedPeriodKey);
+    } catch (repairError) {
+      setError(
+        repairError instanceof Error
+          ? repairError.message
+          : "Failed to repair payroll period.",
+      );
+    } finally {
+      setRepairing(false);
+    }
+  }
+
+  async function handleReleasePeriod() {
+    if (!currentPeriod || !isSuperAdmin || !isFullyLocked) {
+      return;
+    }
+
+    const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
+
+    if (
+      !window.confirm(
+        `Release ${label} back to Open? This removes permanent lock protection, deletes Finance auto-posts for this month, and restores payroll rows for editing.`,
+      )
+    ) {
+      return;
+    }
+
+    setReleasing(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/hr-payroll/release-period", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payrollMonth: currentPeriod.payrollMonth,
+          periodYear: currentPeriod.year,
+          periodMonth: currentPeriod.month,
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        error?: string;
+        closeRecord?: MonthEndCloseRecord;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to release payroll period.");
+      }
+
+      if (!payload.closeRecord) {
+        throw new Error("Release completed without a month-end close record.");
+      }
+
+      const releasedRecord = payload.closeRecord;
+      setMonthEndClose(releasedRecord);
+      setMonthEndCloseRows((current) => {
+        const normalizedMonth = normalizePayrollMonthValue(releasedRecord.month);
+        const withoutCurrent = current.filter(
+          (record) =>
+            normalizePayrollMonthValue(record.month) !== normalizedMonth,
+        );
+        return [...withoutCurrent, releasedRecord];
+      });
+      await loadWorkspace(selectedPeriodKey);
+    } catch (releaseError) {
+      setError(
+        releaseError instanceof Error
+          ? releaseError.message
+          : "Failed to release payroll period.",
+      );
+    } finally {
+      setReleasing(false);
+    }
+  }
+
+  async function prepareRowsToLock(): Promise<PayrollProcessingRow[]> {
+    if (!currentPeriod) {
+      return [];
+    }
+
+    const { data: processingRows, error: fetchErrorMessage } = await supabase
+      .from("payroll_processing")
+      .select("*")
+      .eq("payroll_month", currentPeriod.payrollMonth);
+
+    if (fetchErrorMessage) {
+      throw new Error(fetchErrorMessage.message);
+    }
+
+    return ((processingRows as PayrollProcessingRow[] | null) ?? []).map((row) => {
+      const employee = employeeMap.get(row.employee_id);
+      if (!employee) {
+        return row;
+      }
+
+      const calculated = calculatePayrollRow(
+        employee,
+        currentPeriod,
+        taxConfigs,
+        getRowSources(employee, currentPeriod),
+        buildManualInputsFromRow(row, currentPeriod.totalWorkingDays),
+      );
+
+      return {
+        ...row,
+        ...buildProcessingPayload(
+          currentPeriod.payrollMonth,
+          employee,
+          calculated,
+        ),
+      };
+    });
+  }
+
+  async function handleLockPeriod() {
+    if (!currentPeriod || !isSuperAdmin || isPeriodClosed || !canFullLock) {
+      return;
+    }
+
+    const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
+
+    if (
+      !window.confirm(
+        `Lock ${label} permanently? This cannot be reopened through the UI after the month ends.`,
       )
     ) {
       return;
@@ -623,53 +911,8 @@ export default function PayrollProcessing({
     setError(null);
 
     try {
-      const { data: processingRows, error: fetchErrorMessage } = await supabase
-        .from("payroll_processing")
-        .select("*")
-        .eq("payroll_month", currentPeriod.payrollMonth);
-
-      if (fetchErrorMessage) {
-        throw new Error(fetchErrorMessage.message);
-      }
-
-      const rowsToLock = ((processingRows as PayrollProcessingRow[] | null) ?? [])
-        .map((row) => {
-          const employee = employeeMap.get(row.employee_id);
-          if (!employee) {
-            return row;
-          }
-
-          const calculated = calculatePayrollRow(
-            employee,
-            currentPeriod,
-            taxConfigs,
-            getRowSources(employee, currentPeriod),
-            buildManualInputsFromRow(row, currentPeriod.totalWorkingDays),
-          );
-
-          return {
-            ...row,
-            ...buildProcessingPayload(
-              currentPeriod.payrollMonth,
-              employee,
-              calculated,
-            ),
-          };
-        });
-
-      const isFullMonth = isFullMonthPayrollLock(
-        rowsToLock,
-        activeEmployeeIds,
-        currentPeriod.totalWorkingDays,
-      );
-
-      if (isFullMonth) {
-        await executeLockPeriod(rowsToLock, PAYROLL_STATUS_LOCKED, null);
-      } else {
-        setPendingLockRows(rowsToLock);
-        setPartialLockNote("");
-        setPartialLockDialogOpen(true);
-      }
+      const rowsToLock = await prepareRowsToLock();
+      await executeLockPeriod(rowsToLock, PAYROLL_STATUS_LOCKED, null);
     } catch (lockError) {
       setError(
         lockError instanceof Error
@@ -678,6 +921,27 @@ export default function PayrollProcessing({
       );
     } finally {
       setLocking(false);
+    }
+  }
+
+  async function handlePartialLockPeriod() {
+    if (!currentPeriod || !isSuperAdmin || isPeriodClosed) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const rowsToLock = await prepareRowsToLock();
+      setPendingLockRows(rowsToLock);
+      setPartialLockNote("");
+      setPartialLockDialogOpen(true);
+    } catch (lockError) {
+      setError(
+        lockError instanceof Error
+          ? lockError.message
+          : "Failed to prepare partial lock.",
+      );
     }
   }
 
@@ -729,7 +993,7 @@ export default function PayrollProcessing({
               value={selectedPeriodKey}
               onChange={(event) => setSelectedPeriodKey(event.target.value)}
               className={inputClassName}
-              disabled={loading || locking}
+              disabled={loading || locking || reopening || releasing || repairing}
             >
               {periodOptions.map((option) => (
                 <option key={option.key} value={option.key}>
@@ -751,7 +1015,7 @@ export default function PayrollProcessing({
                 );
               }}
               className={inputClassName}
-              disabled={loading || locking}
+              disabled={loading || locking || reopening || releasing || repairing}
             >
               {MONTH_OPTIONS.map((month) => (
                 <option key={month.value} value={month.value}>
@@ -773,7 +1037,7 @@ export default function PayrollProcessing({
                 );
               }}
               className={inputClassName}
-              disabled={loading || locking}
+              disabled={loading || locking || reopening || releasing || repairing}
             >
               {YEAR_OPTIONS.map((year) => (
                 <option key={year} value={year}>
@@ -784,16 +1048,57 @@ export default function PayrollProcessing({
           </div>
         </div>
 
-        {isSuperAdmin && !isPeriodClosed ? (
-          <button
-            type="button"
-            onClick={handleLockPeriod}
-            disabled={locking || loading || rows.length === 0}
-            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {locking ? "Locking…" : "Lock Period"}
-          </button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          {isSuperAdmin && isPartiallyLocked ? (
+            <button
+              type="button"
+              onClick={handleReopenPeriod}
+              disabled={reopening || loading || locking || releasing}
+              className="rounded-md border border-amber-500 bg-amber-400 px-4 py-2 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {reopening ? "Reopening…" : "Reopen Period"}
+            </button>
+          ) : null}
+          {isSuperAdmin && isFullyLocked ? (
+            <button
+              type="button"
+              onClick={handleReleasePeriod}
+              disabled={releasing || loading || locking || reopening}
+              className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-900 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {releasing ? "Releasing…" : "Release to Open"}
+            </button>
+          ) : null}
+          {isSuperAdmin && !isPeriodClosed ? (
+            <>
+              <span title={fullLockDisabledReason}>
+                <button
+                  type="button"
+                  onClick={handleLockPeriod}
+                  disabled={
+                    locking ||
+                    loading ||
+                    reopening ||
+                    releasing ||
+                    rows.length === 0 ||
+                    !canFullLock
+                  }
+                  className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {locking ? "Locking…" : "Lock Period"}
+                </button>
+              </span>
+              <button
+                type="button"
+                onClick={handlePartialLockPeriod}
+                disabled={locking || loading || reopening || releasing || rows.length === 0}
+                className="rounded-md border border-amber-500 bg-amber-400 px-4 py-2 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Partial Lock Period
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
 
       {currentPeriod ? (
@@ -808,15 +1113,46 @@ export default function PayrollProcessing({
         </p>
       ) : null}
 
+      {currentPeriod && !isPeriodClosed && hasStaleHistory ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <p>
+            Stale payroll history exists for this Open period. Clear it before
+            locking, or Payroll History may show the wrong status.
+          </p>
+          {isSuperAdmin ? (
+            <button
+              type="button"
+              onClick={handleRepairPeriod}
+              disabled={repairing || loading || locking || reopening || releasing}
+              className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-900 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {repairing ? "Clearing…" : "Clear Stale History"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {currentPeriod && !isPeriodClosed && !isPayrollMonthEndedForPeriod ? (
+        <p className="rounded-md border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
+          This payroll month has not ended yet. Permanent lock will be available
+          on or after{" "}
+          {getPeriodEndDate(currentPeriod.year, currentPeriod.month)}. Use{" "}
+          <span className="font-medium">Partial Lock Period</span> for mid-month
+          payments.
+        </p>
+      ) : null}
+
       {isPeriodClosed ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {isPartiallyLockedMonth(monthEndClose)
+          {isPartiallyLocked
             ? `This period is partially locked — view only.${
                 monthEndClose?.notes?.trim()
                   ? ` Note: ${monthEndClose.notes.trim()}`
                   : ""
-              }`
-            : "This period is locked — view only."}
+              } Use Reopen Period to edit again.`
+            : isFullyLocked
+              ? "This period is permanently locked — view only. Use Release to Open if this was locked by mistake before month-end."
+              : "This period is locked — view only."}
         </p>
       ) : null}
 
@@ -824,11 +1160,11 @@ export default function PayrollProcessing({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
           <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-[#0f2744]">
-              Partial payment lock
+              Partial Lock Period
             </h3>
             <p className="mt-2 text-sm text-slate-600">
-              This month is being locked as a partial payment. Add a note (e.g.
-              &quot;Half month pay - 15 of 27 days&quot;).
+              Add a note for this partial lock, e.g. &quot;Half month pay - 15
+              of 27 days&quot;.
             </p>
             <textarea
               value={partialLockNote}
@@ -855,7 +1191,7 @@ export default function PayrollProcessing({
                 disabled={locking || !partialLockNote.trim()}
                 className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {locking ? "Locking…" : "Lock as Partial"}
+                {locking ? "Locking…" : "Partial Lock Period"}
               </button>
             </div>
           </div>

@@ -12,6 +12,14 @@ const navItems = [
     label: "Payroll Processing",
     href: "/dashboard/hr-payroll/payroll-processing",
   },
+  {
+    label: "Payroll History",
+    href: "/dashboard/hr-payroll/payroll-history",
+  },
+  {
+    label: "Payslip",
+    href: "/dashboard/hr-payroll/payslip",
+  },
 ] as const;
 
 export default function HrPayrollNav() {

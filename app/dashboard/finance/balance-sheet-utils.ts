@@ -9,10 +9,13 @@ import type {
   CashFlowIncomeEntry,
   ManualFinancialEntry,
 } from "./cash-flow-utils";
+import { calculateMonthlyNetBookValueTotals } from "./fixed-assets-utils";
 import {
-  getAssetCalculations,
-  isAssetActiveOnOrBefore,
-} from "./fixed-assets-utils";
+  buildBalanceSheetCashFlowExpenses,
+  calculateAccruedWagesPayableByMonth,
+  type BalanceSheetCashExpenseEntry,
+  type PayrollHistoryWagesEntry,
+} from "./accrued-wages-utils";
 import {
   FULL_YEAR_INDEX,
   MONTH_LABELS,
@@ -135,32 +138,7 @@ function calculateFixedAssetsNetByMonth(
   fixedAssets: ProfitLossAssetEntry[],
   financialYear: number,
 ): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-
-  for (let month = 1; month <= 12; month += 1) {
-    const monthEnd = getMonthEndDate(financialYear, month);
-    const referenceDate = new Date(`${monthEnd}T12:00:00`);
-
-    totals[month - 1] = fixedAssets.reduce((sum, asset) => {
-      if (!isAssetActiveOnOrBefore(asset.purchase_date, monthEnd)) {
-        return sum;
-      }
-
-      const { netBookValue } = getAssetCalculations(
-        asset.original_cost,
-        asset.quantity,
-        asset.useful_life_years,
-        asset.purchase_date,
-        asset.depreciation_method,
-        referenceDate,
-      );
-
-      return sum + netBookValue;
-    }, 0);
-  }
-
-  totals[FULL_YEAR_INDEX] = totals[11];
-  return totals;
+  return calculateMonthlyNetBookValueTotals(fixedAssets, financialYear);
 }
 
 function calculateRetainedEarningsByMonth(
@@ -195,13 +173,18 @@ function calculateRetainedEarningsByMonth(
 
 function extractCashBalances(
   incomeEntries: CashFlowIncomeEntry[],
-  expenseEntries: CashFlowExpenseEntry[],
+  expenseEntries: BalanceSheetCashExpenseEntry[],
+  payrollHistory: PayrollHistoryWagesEntry[],
   manualEntries: ManualFinancialEntry[],
   financialYear: number,
 ): MonthlyTotals {
+  const cashFlowExpenses = buildBalanceSheetCashFlowExpenses(
+    expenseEntries,
+    payrollHistory,
+  );
   const report = buildCashFlowReport(
     incomeEntries,
-    expenseEntries,
+    cashFlowExpenses,
     manualEntries,
     financialYear,
   );
@@ -235,13 +218,15 @@ export function buildBalanceSheetReport(
   payableEntries: BalanceSheetAccountsPayableEntry[],
   capitalContributions: CapitalContributionEntry[],
   cashFlowIncomeEntries: CashFlowIncomeEntry[],
-  cashFlowExpenseEntries: CashFlowExpenseEntry[],
+  cashFlowExpenseEntries: BalanceSheetCashExpenseEntry[],
+  payrollHistory: PayrollHistoryWagesEntry[],
   manualEntries: ManualFinancialEntry[],
   financialYear = getCurrentFinancialYear(),
 ): BalanceSheetReport {
   const cash = extractCashBalances(
     cashFlowIncomeEntries,
     cashFlowExpenseEntries,
+    payrollHistory,
     manualEntries,
     financialYear,
   );
@@ -263,7 +248,15 @@ export function buildBalanceSheetReport(
     payableEntries,
     financialYear,
   );
-  const totalLiabilities = [...accountsPayable];
+  const accruedWagesPayable = calculateAccruedWagesPayableByMonth(
+    payrollHistory,
+    cashFlowExpenseEntries,
+    financialYear,
+  );
+  const totalLiabilities = sumMonthlyTotals([
+    accountsPayable,
+    accruedWagesPayable,
+  ]);
 
   const shareCapital = calculateShareCapitalByMonth(
     capitalContributions,
@@ -278,6 +271,7 @@ export function buildBalanceSheetReport(
   const totalEquity = sumMonthlyTotals([shareCapital, retainedEarnings]);
   const totalLiabilitiesAndEquity = sumMonthlyTotals([
     accountsPayable,
+    accruedWagesPayable,
     shareCapital,
     retainedEarnings,
   ]);
@@ -329,6 +323,13 @@ export function buildBalanceSheetReport(
       key: "accounts-payable",
       label: "Accounts Payable",
       amounts: accountsPayable,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "accrued-wages-payable",
+      label: "Accrued Wages Payable",
+      amounts: accruedWagesPayable,
       kind: "data",
       side: "liabilities",
     },

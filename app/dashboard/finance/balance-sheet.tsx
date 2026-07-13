@@ -15,7 +15,10 @@ import {
 } from "./balance-sheet-utils";
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type {
-  CashFlowExpenseEntry,
+  BalanceSheetCashExpenseEntry,
+  PayrollHistoryWagesEntry,
+} from "./accrued-wages-utils";
+import type {
   CashFlowIncomeEntry,
   ManualFinancialEntry,
 } from "./cash-flow-utils";
@@ -37,7 +40,8 @@ type BalanceSheetProps = {
   initialPayableEntries: BalanceSheetAccountsPayableEntry[];
   initialCapitalContributions: CapitalContributionEntry[];
   initialCashFlowIncomeEntries: CashFlowIncomeEntry[];
-  initialCashFlowExpenseEntries: CashFlowExpenseEntry[];
+  initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
+  initialPayrollHistory: PayrollHistoryWagesEntry[];
   initialManualEntries: ManualFinancialEntry[];
   availableYears: number[];
   fetchError: string | null;
@@ -120,6 +124,7 @@ export default function BalanceSheet({
   initialCapitalContributions,
   initialCashFlowIncomeEntries,
   initialCashFlowExpenseEntries,
+  initialPayrollHistory,
   initialManualEntries,
   availableYears,
   fetchError,
@@ -138,6 +143,7 @@ export default function BalanceSheet({
         initialCapitalContributions,
         initialCashFlowIncomeEntries,
         initialCashFlowExpenseEntries,
+        initialPayrollHistory,
         initialManualEntries,
         selectedYear,
       ),
@@ -149,6 +155,7 @@ export default function BalanceSheet({
       initialCapitalContributions,
       initialCashFlowIncomeEntries,
       initialCashFlowExpenseEntries,
+      initialPayrollHistory,
       initialManualEntries,
       selectedYear,
     ],
@@ -164,8 +171,8 @@ export default function BalanceSheet({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <p className="text-sm text-slate-600">
           Monthly balance sheet for financial year {report.financialYear},
-          calculated live from cash, receivables, fixed assets, payables, and
-          equity.
+          calculated live from cash, receivables, fixed assets, payables,
+          accrued wages, and equity.
         </p>
         <FinancialYearSelector
           years={availableYears}

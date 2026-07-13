@@ -8,6 +8,10 @@ const navItems = [
   { label: "Expense Register", href: "/dashboard/finance/expenses" },
   { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
   { label: "Fixed Assets", href: "/dashboard/finance/fixed-assets" },
+  {
+    label: "Manual Financial Entries",
+    href: "/dashboard/finance/manual-financial-entries",
+  },
   { label: "Profit & Loss", href: "/dashboard/finance/profit-loss" },
   { label: "Cash Flow", href: "/dashboard/finance/cash-flow" },
   {

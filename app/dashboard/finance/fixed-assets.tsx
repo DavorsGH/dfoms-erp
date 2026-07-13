@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { NamedLookup } from "../lookup-types";
 import {
+  calculateAssetAccumulatedDepreciationAsOf,
+  calculateAssetNetBookValueAsOf,
   calculateYearsElapsed,
   formatDate,
   formatGHS,
   formatPercent,
   generateNextAssetId,
   getAssetCalculations,
+  getMonthEndForDate,
   isReducingBalanceMethod,
   type FixedAssetEntry,
 } from "./fixed-assets-utils";
@@ -177,6 +180,47 @@ export default function FixedAssets({
     setDeletingId(null);
   }
 
+  function getLiveAssetValues(
+    originalCost: number,
+    quantity: number,
+    usefulLifeYears: number,
+    purchaseDate: string,
+    depreciationMethod: string,
+    asOfMonthEnd = getMonthEndForDate(),
+  ) {
+    const assetInput = {
+      original_cost: originalCost,
+      quantity,
+      useful_life_years: usefulLifeYears,
+      purchase_date: purchaseDate,
+      depreciation_method: depreciationMethod,
+    };
+    const referenceDate = new Date(`${asOfMonthEnd}T12:00:00`);
+    const { totalCost, annualDepreciation } = getAssetCalculations(
+      originalCost,
+      quantity,
+      usefulLifeYears,
+      purchaseDate,
+      depreciationMethod,
+      referenceDate,
+    );
+    const accumulatedDepreciation = calculateAssetAccumulatedDepreciationAsOf(
+      assetInput,
+      asOfMonthEnd,
+    );
+    const netBookValue = calculateAssetNetBookValueAsOf(
+      assetInput,
+      asOfMonthEnd,
+    );
+
+    return {
+      totalCost,
+      annualDepreciation,
+      accumulatedDepreciation,
+      netBookValue,
+    };
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -190,7 +234,7 @@ export default function FixedAssets({
       annualDepreciation,
       accumulatedDepreciation,
       netBookValue,
-    } = getAssetCalculations(
+    } = getLiveAssetValues(
       originalCost,
       quantity,
       usefulLifeYears,
@@ -242,7 +286,7 @@ export default function FixedAssets({
   const previewUsefulLife = Number(form.useful_life_years) || 0;
   const previewCalculations =
     form.purchase_date && previewUsefulLife > 0 && form.depreciation_method
-      ? getAssetCalculations(
+      ? getLiveAssetValues(
           Number(form.original_cost) || 0,
           previewQuantity,
           previewUsefulLife,
@@ -531,7 +575,7 @@ export default function FixedAssets({
                     annualDepreciation,
                     accumulatedDepreciation,
                     netBookValue,
-                  } = getAssetCalculations(
+                  } = getLiveAssetValues(
                     asset.original_cost,
                     asset.quantity,
                     asset.useful_life_years,

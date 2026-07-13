@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { isSuperAdmin } from "@/utils/dashboard-auth";
 import { buildAvailableYears } from "../finance-year-utils";
 import FinanceNav from "../finance-nav";
 import CashFlow from "../cash-flow";
@@ -50,7 +49,6 @@ export default async function CashFlowPage() {
         initialExpenseEntries={expenseEntries ?? []}
         initialManualEntries={manualEntries ?? []}
         availableYears={availableYears}
-        canEditManualEntries={await isSuperAdmin()}
         fetchError={fetchError}
       />
     </div>

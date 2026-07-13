@@ -27,6 +27,17 @@ export type CashFlowExpenseEntry = {
 export type ManualFinancialEntry = {
   id?: string;
   period_month: string;
+  cash_on_hand?: number;
+  bank_balance?: number;
+  prepayments_wht_receivable?: number;
+  inventory_consumables?: number;
+  accrued_expenses?: number;
+  withholding_tax_payable?: number;
+  vat_payable?: number;
+  bank_loans?: number;
+  other_long_term_liabilities?: number;
+  retained_earnings_prior_years?: number;
+  share_capital?: number;
   purchase_of_fixed_assets: number;
   loan_proceeds: number;
   loan_repayments: number;
