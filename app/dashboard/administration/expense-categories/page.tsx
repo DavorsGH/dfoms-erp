@@ -1,24 +1,24 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import type { ServiceType } from "../service-types";
-import ServiceCategories from "./service-categories";
+import type { NamedLookup } from "../../lookup-types";
+import ExpenseCategories from "../expense-categories";
 
-export default async function ServiceCategoriesPage() {
+export default async function ExpenseCategoriesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
   const { data, error } = await supabase
-    .from("service_types")
+    .from("expense_categories")
     .select("name")
     .order("name", { ascending: true });
 
   return (
     <>
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
-        Service Categories
+        Expense Categories
       </h2>
-      <ServiceCategories
-        initialCategories={(data as ServiceType[] | null) ?? []}
+      <ExpenseCategories
+        initialCategories={(data as NamedLookup[] | null) ?? []}
         fetchError={error?.message ?? null}
       />
     </>

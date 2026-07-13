@@ -4,14 +4,22 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navItems = [
+const baseNavItems = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Finance", href: "/dashboard/finance" },
   { label: "HR & Payroll", href: "/dashboard/hr-payroll" },
   { label: "Operations", href: "/dashboard/operations" },
   { label: "Reports", href: "/dashboard/reports" },
+] as const;
+
+const superAdminNavItems = [
   { label: "Administration", href: "/dashboard/administration" },
-];
+  { label: "User Accounts", href: "/dashboard/user-accounts" },
+] as const;
+
+type SidebarProps = {
+  isSuperAdmin: boolean;
+};
 
 function isActive(pathname: string, href: string) {
   if (href === "/dashboard") {
@@ -20,8 +28,11 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href);
 }
 
-export default function Sidebar() {
+export default function Sidebar({ isSuperAdmin }: SidebarProps) {
   const pathname = usePathname();
+  const navItems = isSuperAdmin
+    ? [...baseNavItems, ...superAdminNavItems]
+    : baseNavItems;
 
   return (
     <aside className="flex min-h-screen w-56 shrink-0 flex-col bg-[#0f2744] text-white">

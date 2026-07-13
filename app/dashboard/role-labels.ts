@@ -4,6 +4,7 @@ const ROLE_LABELS: Record<string, string> = {
   hr: "HR",
   operations_manager: "Operations",
   supervisor: "Supervisor",
+  employee: "Employee",
 };
 
 export function getRoleLabel(role: string): string {

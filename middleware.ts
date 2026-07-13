@@ -16,6 +16,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (user && pathname !== "/login") {
+    const { data: account } = await supabase
+      .from("user_accounts")
+      .select("is_active")
+      .eq("auth_uid", user.id)
+      .maybeSingle();
+
+    if (account?.is_active === false) {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+  }
+
   if (user && (pathname === "/" || pathname === "/login")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { isSuperAdmin } from "@/utils/dashboard-auth";
 import { getRoleLabel } from "./role-labels";
 import Sidebar from "./sidebar";
 import TopBar from "./top-bar";
@@ -39,7 +40,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <Sidebar isSuperAdmin={await isSuperAdmin()} />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <TopBar userLabel={userLabel} />
         <main className="min-w-0 flex-1 overflow-x-auto bg-slate-50 p-6">
