@@ -38,7 +38,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
         <div className="mb-4 flex justify-center">
           <Image
-            src="/apple-touch-icon.png"
+            src="/icons/apple-touch-icon-180x180.png"
             alt="Davors Facilities"
             width={80}
             height={80}
