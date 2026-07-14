@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -33,10 +34,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col items-center justify-center bg-zinc-50 px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0F2744] px-4">
       <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
+        <div className="mb-4 flex justify-center">
+          <Image
+            src="/apple-touch-icon.png"
+            alt="Davors Facilities"
+            width={80}
+            height={80}
+            className="h-20 w-20"
+            priority
+          />
+        </div>
         <h1 className="mb-6 text-center text-2xl font-semibold text-zinc-900">
-          DFOMS ERP
+          Davors Facilities ERP
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">

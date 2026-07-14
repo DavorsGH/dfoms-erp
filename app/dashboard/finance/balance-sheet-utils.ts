@@ -27,6 +27,17 @@ import {
   type ProfitLossIncomeEntry,
 } from "./profit-loss-utils";
 import { getCurrentFinancialYear } from "./finance-year-utils";
+import { isActiveIncomeForReporting } from "./income-register-utils";
+import {
+  calculateInventoryByMonth,
+  calculateInventoryOpeningEquityByMonth,
+  calculateRawMaterialPurchaseCashOutflowsByMonth,
+  type InventoryBalanceConfig,
+  type RawMaterialPurchaseCashEntry,
+} from "../inventory/inventory-balance-sheet-utils";
+import type { ProductionBatchCostSummary } from "../reports/inventory-reports-utils";
+import type { FinishedProductRecord } from "../inventory/finished-products-utils";
+import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
 
@@ -53,6 +64,8 @@ export type BalanceSheetIncomeEntry = {
   amount_received: number;
   outstanding_balance: number | null;
   service_category: string;
+  entry_type?: "service" | "product_sale" | null;
+  sale_status?: "active" | "voided" | null;
 };
 
 export type BalanceSheetRow = {
@@ -61,6 +74,17 @@ export type BalanceSheetRow = {
   amounts: MonthlyTotals;
   kind: "section" | "data" | "subtotal" | "total";
   side?: "assets" | "liabilities" | "equity" | "combined";
+};
+
+export type InventoryBalanceSheetInput = {
+  config: InventoryBalanceConfig | null;
+  rawMaterials: Array<
+    Pick<RawMaterialRecord, "current_stock" | "average_cost_per_unit">
+  >;
+  finishedProducts: Array<Pick<FinishedProductRecord, "id" | "current_stock">>;
+  batchSummaries: ProductionBatchCostSummary[];
+  cashPurchases: RawMaterialPurchaseCashEntry[];
+  referenceDate?: Date;
 };
 
 export type BalanceSheetReport = {
@@ -112,6 +136,10 @@ function calculateAccountsReceivableByMonth(
     const monthEnd = getMonthEndDate(financialYear, month);
 
     totals[month - 1] = incomeEntries.reduce((sum, entry) => {
+      if (!isActiveIncomeForReporting(entry)) {
+        return sum;
+      }
+
       const entryDate = normalizeDate(entry.date);
       if (!entryDate || entryDate > monthEnd) {
         return sum;
@@ -251,6 +279,8 @@ function calculateCashAndCashEquivalentsByMonth(
   capitalContributions: CapitalContributionEntry[],
   expenseEntries: BalanceSheetCashExpenseEntry[],
   fixedAssets: ProfitLossAssetEntry[],
+  rawMaterialCashPurchases: RawMaterialPurchaseCashEntry[],
+  inventoryConfig: InventoryBalanceConfig | null,
   financialYear: number,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
@@ -266,6 +296,11 @@ function calculateCashAndCashEquivalentsByMonth(
     fixedAssets,
     financialYear,
   );
+  const rawMaterialPurchases = calculateRawMaterialPurchaseCashOutflowsByMonth(
+    rawMaterialCashPurchases,
+    inventoryConfig,
+    financialYear,
+  );
 
   let runningBalance = 0;
 
@@ -274,7 +309,8 @@ function calculateCashAndCashEquivalentsByMonth(
       runningBalance +
         (contributionInflows[monthIndex] ?? 0) -
         (paidExpenseOutflows[monthIndex] ?? 0) -
-        (fixedAssetPurchases[monthIndex] ?? 0),
+        (fixedAssetPurchases[monthIndex] ?? 0) -
+        (rawMaterialPurchases[monthIndex] ?? 0),
     );
     totals[monthIndex] = runningBalance;
   }
@@ -335,11 +371,20 @@ export function buildBalanceSheetReport(
   payrollHistory: PayrollHistoryWagesEntry[],
   monthEndCloseNetPay: MonthEndCloseNetPayEntry[] = [],
   financialYear = getCurrentFinancialYear(),
+  inventoryInput: InventoryBalanceSheetInput = {
+    config: null,
+    rawMaterials: [],
+    finishedProducts: [],
+    batchSummaries: [],
+    cashPurchases: [],
+  },
 ): BalanceSheetReport {
   const cash = calculateCashAndCashEquivalentsByMonth(
     capitalContributions,
     cashFlowExpenseEntries,
     fixedAssets,
+    inventoryInput.cashPurchases,
+    inventoryInput.config,
     financialYear,
   );
   const accountsReceivable = roundMonthlyTotals(
@@ -348,8 +393,18 @@ export function buildBalanceSheetReport(
   const fixedAssetsNet = roundMonthlyTotals(
     calculateFixedAssetsNetByMonth(fixedAssets, financialYear),
   );
+  const inventory = roundMonthlyTotals(
+    calculateInventoryByMonth(
+      inventoryInput.rawMaterials,
+      inventoryInput.finishedProducts,
+      inventoryInput.batchSummaries,
+      inventoryInput.config,
+      financialYear,
+      inventoryInput.referenceDate,
+    ),
+  );
   const totalAssets = roundMonthlyTotals(
-    sumMonthlyTotals([cash, accountsReceivable, fixedAssetsNet]),
+    sumMonthlyTotals([cash, accountsReceivable, fixedAssetsNet, inventory]),
   );
 
   const accountsPayable = roundMonthlyTotals(
@@ -378,8 +433,11 @@ export function buildBalanceSheetReport(
       financialYear,
     ),
   );
+  const inventoryOpeningEquity = roundMonthlyTotals(
+    calculateInventoryOpeningEquityByMonth(inventoryInput.config, financialYear),
+  );
   const totalEquity = roundMonthlyTotals(
-    sumMonthlyTotals([shareCapital, retainedEarnings]),
+    sumMonthlyTotals([shareCapital, retainedEarnings, inventoryOpeningEquity]),
   );
   const totalLiabilitiesAndEquity = roundMonthlyTotals(
     sumMonthlyTotals([
@@ -387,6 +445,7 @@ export function buildBalanceSheetReport(
       accruedWagesPayable,
       shareCapital,
       retainedEarnings,
+      inventoryOpeningEquity,
     ]),
   );
 
@@ -416,6 +475,13 @@ export function buildBalanceSheetReport(
       key: "fixed-assets-net",
       label: "Fixed Assets (Net)",
       amounts: fixedAssetsNet,
+      kind: "data",
+      side: "assets",
+    },
+    {
+      key: "inventory",
+      label: "Inventory",
+      amounts: inventory,
       kind: "data",
       side: "assets",
     },
@@ -472,6 +538,13 @@ export function buildBalanceSheetReport(
       key: "retained-earnings",
       label: "Retained Earnings",
       amounts: retainedEarnings,
+      kind: "data",
+      side: "equity",
+    },
+    {
+      key: "inventory-opening-equity",
+      label: "Inventory Opening Balance",
+      amounts: inventoryOpeningEquity,
       kind: "data",
       side: "equity",
     },

@@ -3,6 +3,8 @@ type EmployeeRowActionsProps = {
   onEdit: () => void;
   onDelete: () => void;
   deleting?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 };
 
 const buttonClassName =
@@ -13,6 +15,8 @@ export default function EmployeeRowActions({
   onEdit,
   onDelete,
   deleting = false,
+  canEdit = true,
+  canDelete = true,
 }: EmployeeRowActionsProps) {
   return (
     <td
@@ -27,21 +31,25 @@ export default function EmployeeRowActions({
         >
           View
         </button>
-        <button
-          type="button"
-          onClick={onEdit}
-          className={`${buttonClassName} border-slate-200 text-slate-700 hover:bg-slate-50`}
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleting}
-          className={`${buttonClassName} border-red-200 text-red-700 hover:bg-red-50`}
-        >
-          {deleting ? "Deleting…" : "Delete"}
-        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className={`${buttonClassName} border-slate-200 text-slate-700 hover:bg-slate-50`}
+          >
+            Edit
+          </button>
+        ) : null}
+        {canDelete ? (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className={`${buttonClassName} border-red-200 text-red-700 hover:bg-red-50`}
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        ) : null}
       </div>
     </td>
   );

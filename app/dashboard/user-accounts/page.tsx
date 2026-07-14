@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isSuperAdmin } from "@/utils/dashboard-auth";
-import { mapUserAccountRows } from "../user-account-utils";
+import {
+  mapUserAccountRows,
+  USER_ACCOUNT_SELECT,
+} from "../user-account-utils";
 import type { Employee } from "../lookup-types";
 import UserAccounts from "../administration/user-accounts";
 
@@ -19,15 +22,25 @@ export default async function UserAccountsPage() {
   const [
     { data: accounts, error: accountsError },
     { data: employees, error: employeesError },
+    { data: clients, error: clientsError },
+    { data: sites, error: sitesError },
   ] = await Promise.all([
     admin
       .from("user_accounts")
-      .select("auth_uid, employee_id, email, role, is_active, employees(full_name)")
+      .select(USER_ACCOUNT_SELECT)
       .order("email", { ascending: true }),
     supabase
       .from("employees")
       .select("employee_id, full_name")
       .order("full_name", { ascending: true }),
+    supabase
+      .from("clients")
+      .select("client_id, client_name")
+      .order("client_name", { ascending: true }),
+    supabase
+      .from("sites")
+      .select("site_code, site_name")
+      .order("site_name", { ascending: true }),
   ]);
 
   return (
@@ -38,7 +51,15 @@ export default async function UserAccountsPage() {
       <UserAccounts
         initialAccounts={mapUserAccountRows(accounts ?? [])}
         initialEmployees={(employees as Employee[] | null) ?? []}
-        fetchError={accountsError?.message ?? employeesError?.message ?? null}
+        initialClients={clients ?? []}
+        initialSites={sites ?? []}
+        fetchError={
+          accountsError?.message ??
+          employeesError?.message ??
+          clientsError?.message ??
+          sitesError?.message ??
+          null
+        }
       />
     </div>
   );

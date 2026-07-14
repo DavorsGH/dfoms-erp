@@ -3,16 +3,28 @@ import { buildPeriodMonth, getPeriodMonthParts } from "./cash-flow-utils";
 
 export { formatGHS, buildPeriodMonth, getPeriodMonthParts };
 
+export type ManualEntryFormFieldKey =
+  | "cash_on_hand"
+  | "bank_balance"
+  | "prepayments_wht_receivable"
+  | "inventory_consumables"
+  | "accrued_expenses"
+  | "withholding_tax_payable"
+  | "vat_payable"
+  | "bank_loans"
+  | "other_long_term_liabilities"
+  | "retained_earnings_prior_years"
+  | "purchase_of_fixed_assets"
+  | "loan_proceeds"
+  | "loan_repayments"
+  | "opening_cash_balance"
+  | "other_cash_inflows";
+
 export type ManualFinancialEntryRecord = {
   id: string;
   period_month: string;
   share_capital?: number;
 } & Partial<Record<ManualEntryFormFieldKey, number>>;
-
-export type ManualEntryFormFieldKey = Exclude<
-  keyof ManualFinancialEntryRecord,
-  "id" | "period_month" | "share_capital"
->;
 
 export type ManualEntryFieldSection = {
   title: string;

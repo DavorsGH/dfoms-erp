@@ -13,11 +13,21 @@ import {
 import type {
   BalanceSheetAccountsPayableEntry,
   BalanceSheetIncomeEntry,
+  InventoryBalanceSheetInput,
 } from "./balance-sheet-utils";
 import type {
   ProfitLossAssetEntry,
   ProfitLossExpenseEntry,
 } from "./profit-loss-utils";
+import {
+  FINISHED_PRODUCT_SELECT,
+  normalizeFinishedProduct,
+} from "../inventory/finished-products-utils";
+import type { InventoryBalanceConfig } from "../inventory/inventory-balance-sheet-utils";
+import {
+  RAW_MATERIAL_SELECT,
+  normalizeRawMaterial,
+} from "../inventory/raw-materials-utils";
 
 export type BalanceSheetPageData = {
   initialIncomeEntries: BalanceSheetIncomeEntry[];
@@ -30,9 +40,60 @@ export type BalanceSheetPageData = {
   initialPayrollHistory: Array<{ payroll_month: string; net_pay: number }>;
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   initialManualEntries: ManualFinancialEntry[];
+  initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   availableYears: number[];
   fetchError: string | null;
 };
+
+export async function fetchInventoryBalanceSheetInput(
+  supabase: SupabaseClient,
+): Promise<InventoryBalanceSheetInput> {
+  const [
+    { data: configRows },
+    { data: rawMaterials },
+    { data: finishedProducts },
+    { data: batchSummaries },
+    { data: cashPurchases },
+  ] = await Promise.all([
+    supabase
+      .from("inventory_balance_config")
+      .select("go_live_date, opening_inventory_value, created_at")
+      .eq("id", 1)
+      .maybeSingle(),
+    supabase
+      .from("raw_materials")
+      .select(RAW_MATERIAL_SELECT)
+      .order("material_name", { ascending: true }),
+    supabase
+      .from("finished_products")
+      .select(FINISHED_PRODUCT_SELECT)
+      .order("product_name", { ascending: true }),
+    supabase
+      .from("production_batches")
+      .select("finished_product_id, total_batch_cost, quantity_produced"),
+    supabase
+      .from("raw_material_purchases")
+      .select("purchase_date, total_cost, payment_method, created_at"),
+  ]);
+
+  const config = configRows
+    ? ({
+        go_live_date: configRows.go_live_date,
+        opening_inventory_value: Number(configRows.opening_inventory_value) || 0,
+        created_at: configRows.created_at,
+      } satisfies InventoryBalanceConfig)
+    : null;
+
+  return {
+    config,
+    rawMaterials: (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)),
+    finishedProducts: (finishedProducts ?? []).map((row) =>
+      normalizeFinishedProduct(row),
+    ),
+    batchSummaries: batchSummaries ?? [],
+    cashPurchases: cashPurchases ?? [],
+  };
+}
 
 export async function fetchBalanceSheetPageData(
   supabase: SupabaseClient,
@@ -47,11 +108,12 @@ export async function fetchBalanceSheetPageData(
     { data: payrollHistory, error: payrollHistoryError },
     { data: payrollProcessing, error: payrollProcessingError },
     { data: monthEndCloseRecords, error: monthEndCloseError },
+    inventoryBalanceSheet,
   ] = await Promise.all([
     supabase
       .from("income_register")
       .select(
-        "date, amount, amount_received, outstanding_balance, service_category",
+        "date, amount, amount_received, outstanding_balance, service_category, entry_type, sale_status",
       )
       .order("date", { ascending: true }),
     supabase
@@ -90,6 +152,7 @@ export async function fetchBalanceSheetPageData(
       .from("month_end_close")
       .select("month, total_net_pay")
       .order("month", { ascending: true }),
+    fetchInventoryBalanceSheetInput(supabase),
   ]);
 
   const cashFlowIncomeEntries =
@@ -125,6 +188,7 @@ export async function fetchBalanceSheetPageData(
     initialMonthEndCloseNetPay:
       (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? [],
     initialManualEntries: manualEntries ?? [],
+    initialInventoryBalanceSheet: inventoryBalanceSheet,
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),

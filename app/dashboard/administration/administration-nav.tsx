@@ -32,6 +32,10 @@ const navItems = [
     label: "Roster Settings",
     href: "/dashboard/administration/roster-settings",
   },
+  {
+    label: "Leave Settings",
+    href: "/dashboard/administration/leave-settings",
+  },
 ] as const;
 
 export default function AdministrationNav() {

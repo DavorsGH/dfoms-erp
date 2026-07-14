@@ -1,0 +1,801 @@
+{
+  "generatedAt": "2026-07-14T12:39:47.947Z",
+  "rpcNames": [
+    "admin_delete_payroll_history_for_month",
+    "create_product_sale",
+    "create_production_batch",
+    "delete_finished_product_cascade",
+    "delete_raw_material_cascade",
+    "delete_raw_material_purchase",
+    "preview_finished_product_delete",
+    "preview_raw_material_delete",
+    "update_raw_material_purchase",
+    "void_product_sale"
+  ],
+  "tables": [
+    "accounts_payable",
+    "approvers",
+    "asset_categories",
+    "attendance_register",
+    "capital_contributions",
+    "casual_tax_rate_config",
+    "clients",
+    "complaint_register",
+    "corrective_actions",
+    "departments",
+    "depreciation_methods",
+    "employees",
+    "expense_categories",
+    "expense_register",
+    "expense_subcategories",
+    "failed_inspections",
+    "finished_products",
+    "fixed_assets",
+    "incident_register",
+    "income_register",
+    "inspection_summary",
+    "internal_consumption",
+    "inventory_balance_config",
+    "leave_management",
+    "loan_register",
+    "manual_financial_entries",
+    "month_end_close",
+    "operations_config",
+    "overtime_register",
+    "paye_tax_bands",
+    "payment_methods",
+    "payroll_history",
+    "payroll_processing",
+    "positions",
+    "production_batches",
+    "projects",
+    "raw_material_purchases",
+    "raw_materials",
+    "roster_config",
+    "roster_history",
+    "salary_rate_config",
+    "service_types",
+    "sites",
+    "ssnit_rate_config",
+    "user_accounts",
+    "work_orders"
+  ],
+  "openApiTables": [
+    "accounts_payable",
+    "action_status_options",
+    "approvers",
+    "asset_categories",
+    "asset_register",
+    "attendance_register",
+    "capital_contributions",
+    "casual_tax_rate_config",
+    "clients",
+    "complaint_priority_options",
+    "complaint_register",
+    "consumables",
+    "contract_status_options",
+    "corrective_actions",
+    "departments",
+    "depreciation_methods",
+    "disciplinary_records",
+    "duty_roster",
+    "employee_employment_history",
+    "employees",
+    "equipment_register",
+    "equipment_status_options",
+    "exit_management",
+    "expense_categories",
+    "expense_register",
+    "expense_subcategories",
+    "failed_inspections",
+    "finished_products",
+    "fixed_assets",
+    "incident_register",
+    "incident_type_options",
+    "income_register",
+    "inspection_result_options",
+    "inspection_summary",
+    "internal_consumption",
+    "inventory_balance_config",
+    "leave_management",
+    "loan_register",
+    "manual_financial_entries",
+    "month_end_close",
+    "month_end_close_backup_20260713c",
+    "operations_config",
+    "overtime_register",
+    "pay_rate_structure",
+    "paye_bands",
+    "paye_config",
+    "paye_tax_bands",
+    "payment_methods",
+    "payroll_history",
+    "payroll_history_backup_20260713c",
+    "payroll_link",
+    "payroll_processing",
+    "positions",
+    "production_batch_materials",
+    "production_batches",
+    "projects",
+    "raw_material_purchases",
+    "raw_materials",
+    "recruitment_tracker",
+    "risk_level_options",
+    "roster_config",
+    "roster_history",
+    "salary_rate_config",
+    "service_types",
+    "severity_options",
+    "sites",
+    "ssnit_config",
+    "ssnit_rate_config",
+    "ssnit_rates",
+    "stock_movements",
+    "todos",
+    "user_accounts",
+    "work_orders"
+  ],
+  "rpcResults": [
+    {
+      "name": "admin_delete_payroll_history_for_month",
+      "status": "EXISTS_VALIDATION",
+      "detail": "invalid input syntax for type date: \"2099-01\""
+    },
+    {
+      "name": "create_product_sale",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.create_product_sale(p_amount_received, p_client_id, p_customer_name, p_notes, p_payment_method, p_product_id, p_quantity, p_sale_date, p_unit_price) in the schema cache"
+    },
+    {
+      "name": "create_production_batch",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.create_production_batch(p_finished_product_id, p_materials, p_notes, p_production_date, p_quantity_produced) in the schema cache"
+    },
+    {
+      "name": "delete_finished_product_cascade",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.delete_finished_product_cascade(p_product_id) in the schema cache"
+    },
+    {
+      "name": "delete_raw_material_cascade",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.delete_raw_material_cascade(p_material_id) in the schema cache"
+    },
+    {
+      "name": "delete_raw_material_purchase",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.delete_raw_material_purchase(p_purchase_id) in the schema cache"
+    },
+    {
+      "name": "preview_finished_product_delete",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.preview_finished_product_delete(p_product_id) in the schema cache"
+    },
+    {
+      "name": "preview_raw_material_delete",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.preview_raw_material_delete(p_material_id) in the schema cache"
+    },
+    {
+      "name": "update_raw_material_purchase",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.update_raw_material_purchase(p_cost_per_unit, p_notes, p_payment_method, p_purchase_date, p_purchase_id, p_quantity, p_supplier) in the schema cache"
+    },
+    {
+      "name": "void_product_sale",
+      "status": "MISSING_FUNCTION",
+      "detail": "Could not find the function public.void_product_sale(p_sale_id) in the schema cache"
+    }
+  ],
+  "selectResults": [
+    {
+      "table": "income_register",
+      "label": "SERVICE_INCOME_REGISTER_SELECT",
+      "select": "*, client:clients!client_id(client_id, client_name)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "income_register",
+      "label": "PRODUCT_SALES_SELECT",
+      "select": "*, client:clients!client_id(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "income_register",
+      "label": "PRODUCT_SALES_REPORT_SELECT",
+      "select": "id, date, invoice_no, client_id, customer_name, amount, sale_quantity, unit_price, product_id, cogs_expense_id, sale_status, client:clients!client_id(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure), cogs:expense_register!cogs_expense_id(amount)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "projects",
+      "label": "PROJECT_SELECT",
+      "select": "id, project_code, project_name, required_staff, sites:sites!project_id(site_code, site_name, client_id, required_staff, project_id)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "projects",
+      "label": "projects.site_id legacy",
+      "select": "project_code, project_name, required_staff, site_id, site:sites!site_id(site_code, site_name, client_id)",
+      "status": "OTHER_ERROR",
+      "detail": "Could not find a relationship between 'projects' and 'sites' in the schema cache"
+    },
+    {
+      "table": "roster_config",
+      "label": "ROSTER_CONFIG_SELECT",
+      "select": "id, client_id, cycle_start_date, cycle_length_days, morning_time, afternoon_time, supervisor_time",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "internal_consumption",
+      "label": "INTERNAL_CONSUMPTION_SELECT",
+      "select": "id, product_id, quantity, consumption_date, reason, recorded_by, notes, created_at, site_id, product:finished_products!product_id(product_code, product_name, unit_of_measure), site:sites!site_id(site_code, site_name, client_id, project_id, client:clients!client_id(client_id, client_name))",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "production_batches",
+      "label": "PRODUCTION_BATCH_SELECT",
+      "select": "id, batch_number, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, created_at, product:finished_products!finished_product_id(product_code, product_name, unit_of_measure)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "production_batches",
+      "label": "PRODUCTION_BATCH_DETAIL_SELECT",
+      "select": "id, batch_number, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, created_at, product:finished_products!finished_product_id(product_code, product_name, unit_of_measure), materials:production_batch_materials(id, batch_id, material_id, quantity_used, cost_at_time, material:raw_materials!material_id(material_code, material_name, unit_of_measure))",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "raw_materials",
+      "label": "RAW_MATERIAL_SELECT",
+      "select": "id, material_code, material_name, unit_of_measure, current_stock, average_cost_per_unit, reorder_level, created_at, updated_at",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "raw_material_purchases",
+      "label": "RAW_MATERIAL_PURCHASE_SELECT",
+      "select": "id, material_id, purchase_date, quantity, cost_per_unit, total_cost, supplier, payment_method, notes, created_at, material:raw_materials!material_id(material_code, material_name, unit_of_measure)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "finished_products",
+      "label": "FINISHED_PRODUCT_SELECT",
+      "select": "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, created_at, updated_at",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "sites",
+      "label": "SITE_SELECT",
+      "select": "*, client:clients!client_id(client_id, client_name), project:projects!project_id(id, project_code, project_name)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "sites",
+      "label": "SITE_ASSIGNMENT_SELECT",
+      "select": "site_code, site_name, client_id, building, floor_zone, area_room, cleaning_frequency, risk_level, required_staff, project_id, assigned_supervisor, notes, client:clients!client_id(client_id, client_name), project:projects!project_id(id, project_code, project_name)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "employees",
+      "label": "EMPLOYEE_SELECT",
+      "select": "*, department_ref:departments!department(dept_code, department_name), project_ref:projects!contract_project(project_code, project_name)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "employees",
+      "label": "HR_EMPLOYEE_SELECT",
+      "select": "employee_id, staff_id, full_name, employment_type, contract_project, employment_status, date_hired, appointment_end_date",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "employees",
+      "label": "STAFF_ID_CARD_EMPLOYEE_SELECT",
+      "select": "employee_id, staff_id, full_name, photo_url, department, position, employment_status, department_ref:departments!department(dept_code, department_name)",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "payroll_history",
+      "label": "payroll_history.locked",
+      "select": "id, locked",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "month_end_close",
+      "label": "month_end_close.partial_lock_status",
+      "select": "month, partial_lock_status",
+      "status": "MISSING_COLUMN",
+      "detail": "column month_end_close.partial_lock_status does not exist"
+    },
+    {
+      "table": "raw_materials",
+      "label": "raw_materials.is_archived",
+      "select": "id, is_archived",
+      "status": "MISSING_COLUMN",
+      "detail": "column raw_materials.is_archived does not exist"
+    },
+    {
+      "table": "finished_products",
+      "label": "finished_products.is_archived",
+      "select": "id, is_archived",
+      "status": "MISSING_COLUMN",
+      "detail": "column finished_products.is_archived does not exist"
+    },
+    {
+      "table": "raw_material_purchases",
+      "label": "raw_material_purchases.accounts_payable_id",
+      "select": "id, accounts_payable_id",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "internal_consumption",
+      "label": "internal_consumption.expense_register_id",
+      "select": "id, expense_register_id",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "internal_consumption",
+      "label": "internal_consumption.site_id",
+      "select": "id, site_id",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "sites",
+      "label": "sites.project_id",
+      "select": "id, project_id, client_id",
+      "status": "MISSING_COLUMN",
+      "detail": "column sites.id does not exist"
+    }
+  ],
+  "tableResults": [
+    {
+      "table": "accounts_payable",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "approvers",
+      "status": "MISSING_COLUMN",
+      "detail": "column approvers.id does not exist"
+    },
+    {
+      "table": "asset_categories",
+      "status": "MISSING_COLUMN",
+      "detail": "column asset_categories.id does not exist"
+    },
+    {
+      "table": "attendance_register",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "capital_contributions",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "casual_tax_rate_config",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "clients",
+      "status": "MISSING_COLUMN",
+      "detail": "column clients.id does not exist"
+    },
+    {
+      "table": "complaint_register",
+      "status": "MISSING_COLUMN",
+      "detail": "column complaint_register.id does not exist"
+    },
+    {
+      "table": "corrective_actions",
+      "status": "MISSING_COLUMN",
+      "detail": "column corrective_actions.id does not exist"
+    },
+    {
+      "table": "departments",
+      "status": "MISSING_COLUMN",
+      "detail": "column departments.id does not exist"
+    },
+    {
+      "table": "depreciation_methods",
+      "status": "MISSING_COLUMN",
+      "detail": "column depreciation_methods.id does not exist"
+    },
+    {
+      "table": "employees",
+      "status": "MISSING_COLUMN",
+      "detail": "column employees.id does not exist"
+    },
+    {
+      "table": "expense_categories",
+      "status": "MISSING_COLUMN",
+      "detail": "column expense_categories.id does not exist"
+    },
+    {
+      "table": "expense_register",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "expense_subcategories",
+      "status": "MISSING_COLUMN",
+      "detail": "column expense_subcategories.id does not exist"
+    },
+    {
+      "table": "failed_inspections",
+      "status": "MISSING_COLUMN",
+      "detail": "column failed_inspections.id does not exist"
+    },
+    {
+      "table": "finished_products",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "fixed_assets",
+      "status": "MISSING_COLUMN",
+      "detail": "column fixed_assets.id does not exist"
+    },
+    {
+      "table": "incident_register",
+      "status": "MISSING_COLUMN",
+      "detail": "column incident_register.id does not exist"
+    },
+    {
+      "table": "income_register",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "inspection_summary",
+      "status": "MISSING_COLUMN",
+      "detail": "column inspection_summary.id does not exist"
+    },
+    {
+      "table": "internal_consumption",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "inventory_balance_config",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "leave_management",
+      "status": "MISSING_COLUMN",
+      "detail": "column leave_management.id does not exist"
+    },
+    {
+      "table": "loan_register",
+      "status": "MISSING_COLUMN",
+      "detail": "column loan_register.id does not exist"
+    },
+    {
+      "table": "manual_financial_entries",
+      "status": "MISSING_COLUMN",
+      "detail": "column manual_financial_entries.id does not exist"
+    },
+    {
+      "table": "month_end_close",
+      "status": "MISSING_COLUMN",
+      "detail": "column month_end_close.id does not exist"
+    },
+    {
+      "table": "operations_config",
+      "status": "MISSING_COLUMN",
+      "detail": "column operations_config.id does not exist"
+    },
+    {
+      "table": "overtime_register",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "paye_tax_bands",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "payment_methods",
+      "status": "MISSING_COLUMN",
+      "detail": "column payment_methods.id does not exist"
+    },
+    {
+      "table": "payroll_history",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "payroll_processing",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "positions",
+      "status": "MISSING_COLUMN",
+      "detail": "column positions.id does not exist"
+    },
+    {
+      "table": "production_batches",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "projects",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "raw_material_purchases",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "raw_materials",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "roster_config",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "roster_history",
+      "status": "MISSING_COLUMN",
+      "detail": "column roster_history.id does not exist"
+    },
+    {
+      "table": "salary_rate_config",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "service_types",
+      "status": "MISSING_COLUMN",
+      "detail": "column service_types.id does not exist"
+    },
+    {
+      "table": "sites",
+      "status": "MISSING_COLUMN",
+      "detail": "column sites.id does not exist"
+    },
+    {
+      "table": "ssnit_rate_config",
+      "status": "OK",
+      "detail": null
+    },
+    {
+      "table": "user_accounts",
+      "status": "MISSING_COLUMN",
+      "detail": "column user_accounts.id does not exist"
+    },
+    {
+      "table": "work_orders",
+      "status": "MISSING_COLUMN",
+      "detail": "column work_orders.id does not exist"
+    }
+  ],
+  "mismatches": [
+    {
+      "kind": "RPC",
+      "name": "create_product_sale",
+      "detail": "Could not find the function public.create_product_sale(p_amount_received, p_client_id, p_customer_name, p_notes, p_payment_method, p_product_id, p_quantity, p_sale_date, p_unit_price) in the schema cache"
+    },
+    {
+      "kind": "RPC",
+      "name": "create_production_batch",
+      "detail": "Could not find the function public.create_production_batch(p_finished_product_id, p_materials, p_notes, p_production_date, p_quantity_produced) in the schema cache"
+    },
+    {
+      "kind": "RPC",
+      "name": "delete_finished_product_cascade",
+      "detail": "Could not find the function public.delete_finished_product_cascade(p_product_id) in the schema cache"
+    },
+    {
+      "kind": "RPC",
+      "name": "delete_raw_material_cascade",
+      "detail": "Could not find the function public.delete_raw_material_cascade(p_material_id) in the schema cache"
+    },
+    {
+      "kind": "RPC",
+      "name": "delete_raw_material_purchase",
+      "detail": "Could not find the function public.delete_raw_material_purchase(p_purchase_id) in the schema cache"
+    },
+    {
+      "kind": "RPC",
+      "name": "preview_finished_product_delete",
+      "detail": "Could not find the function public.preview_finished_product_delete(p_product_id) in the schema cache"
+    },
+    {
+      "kind": "RPC",
+      "name": "preview_raw_material_delete",
+      "detail": "Could not find the function public.preview_raw_material_delete(p_material_id) in the schema cache"
+    },
+    {
+      "kind": "RPC",
+      "name": "update_raw_material_purchase",
+      "detail": "Could not find the function public.update_raw_material_purchase(p_cost_per_unit, p_notes, p_payment_method, p_purchase_date, p_purchase_id, p_quantity, p_supplier) in the schema cache"
+    },
+    {
+      "kind": "RPC",
+      "name": "void_product_sale",
+      "detail": "Could not find the function public.void_product_sale(p_sale_id) in the schema cache"
+    },
+    {
+      "kind": "OTHER_ERROR",
+      "name": "projects :: projects.site_id legacy",
+      "detail": "Could not find a relationship between 'projects' and 'sites' in the schema cache"
+    },
+    {
+      "kind": "MISSING_COLUMN",
+      "name": "month_end_close :: month_end_close.partial_lock_status",
+      "detail": "column month_end_close.partial_lock_status does not exist"
+    },
+    {
+      "kind": "MISSING_COLUMN",
+      "name": "raw_materials :: raw_materials.is_archived",
+      "detail": "column raw_materials.is_archived does not exist"
+    },
+    {
+      "kind": "MISSING_COLUMN",
+      "name": "finished_products :: finished_products.is_archived",
+      "detail": "column finished_products.is_archived does not exist"
+    },
+    {
+      "kind": "MISSING_COLUMN",
+      "name": "sites :: sites.project_id",
+      "detail": "column sites.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "approvers",
+      "detail": "column approvers.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "asset_categories",
+      "detail": "column asset_categories.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "clients",
+      "detail": "column clients.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "complaint_register",
+      "detail": "column complaint_register.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "corrective_actions",
+      "detail": "column corrective_actions.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "departments",
+      "detail": "column departments.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "depreciation_methods",
+      "detail": "column depreciation_methods.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "employees",
+      "detail": "column employees.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "expense_categories",
+      "detail": "column expense_categories.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "expense_subcategories",
+      "detail": "column expense_subcategories.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "failed_inspections",
+      "detail": "column failed_inspections.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "fixed_assets",
+      "detail": "column fixed_assets.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "incident_register",
+      "detail": "column incident_register.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "inspection_summary",
+      "detail": "column inspection_summary.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "leave_management",
+      "detail": "column leave_management.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "loan_register",
+      "detail": "column loan_register.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "manual_financial_entries",
+      "detail": "column manual_financial_entries.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "month_end_close",
+      "detail": "column month_end_close.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "operations_config",
+      "detail": "column operations_config.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "payment_methods",
+      "detail": "column payment_methods.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "positions",
+      "detail": "column positions.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "roster_history",
+      "detail": "column roster_history.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "service_types",
+      "detail": "column service_types.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "sites",
+      "detail": "column sites.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "user_accounts",
+      "detail": "column user_accounts.id does not exist"
+    },
+    {
+      "kind": "TABLE",
+      "name": "work_orders",
+      "detail": "column work_orders.id does not exist"
+    }
+  ]
+}

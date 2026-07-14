@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { getStripedRowClassName } from "../finance/register-row-actions";
-import { buildBalanceSheetReport, getBalanceCheckForPeriod, getBalanceSheetForMonth } from "../finance/balance-sheet-utils";
+import { buildBalanceSheetReport, getBalanceCheckForPeriod, getBalanceSheetForMonth, type InventoryBalanceSheetInput } from "../finance/balance-sheet-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
 import { getContributorName } from "../finance/capital-contributions-utils";
 import { buildCashFlowReport, filterManualEntriesForYear } from "../finance/cash-flow-utils";
@@ -291,6 +291,7 @@ export function MonthlyBalanceSheetReport({
   initialCashFlowExpenseEntries,
   initialPayrollHistory,
   initialMonthEndCloseNetPay,
+  initialInventoryBalanceSheet,
   availableYears,
   fetchError,
 }: {
@@ -302,6 +303,7 @@ export function MonthlyBalanceSheetReport({
   initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
   initialPayrollHistory: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
+  initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   availableYears: number[];
   fetchError: string | null;
 }) {
@@ -320,6 +322,7 @@ export function MonthlyBalanceSheetReport({
         initialPayrollHistory,
         initialMonthEndCloseNetPay,
         year,
+        initialInventoryBalanceSheet,
       ),
     [
       initialIncomeEntries,
@@ -330,6 +333,7 @@ export function MonthlyBalanceSheetReport({
       initialCashFlowExpenseEntries,
       initialPayrollHistory,
       initialMonthEndCloseNetPay,
+      initialInventoryBalanceSheet,
       year,
     ],
   );

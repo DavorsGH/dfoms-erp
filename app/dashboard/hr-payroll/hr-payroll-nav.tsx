@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { label: "Attendance", href: "/dashboard/hr-payroll/attendance" },
   { label: "Leave", href: "/dashboard/hr-payroll/leave" },
+  { label: "Leave Balances", href: "/dashboard/hr-payroll/leave-balances" },
   { label: "Overtime", href: "/dashboard/hr-payroll/overtime" },
   { label: "Loans", href: "/dashboard/hr-payroll/loans" },
   {

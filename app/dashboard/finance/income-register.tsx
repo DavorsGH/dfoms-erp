@@ -2,11 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import type { ClientEntry } from "../operations/clients-utils";
 import type { ServiceType } from "../service-types";
 import {
   calculateOutstanding,
   formatDate,
   formatGHS,
+  getIncomeCustomerDisplayName,
+  SERVICE_INCOME_REGISTER_SELECT,
+  normalizeIncomeRegisterEntry,
   type IncomeRegisterEntry,
 } from "./income-register-utils";
 import RegisterRowActions, {
@@ -23,12 +27,14 @@ import ScrollableTable, {
 type IncomeRegisterProps = {
   initialEntries: IncomeRegisterEntry[];
   initialServiceTypes: ServiceType[];
+  initialClients: ClientEntry[];
   fetchError: string | null;
 };
 
 const emptyForm = {
   date: "",
   invoice_no: "",
+  client_id: "",
   customer_name: "",
   service_category: "",
   description: "",
@@ -47,10 +53,13 @@ const inputClassName =
 export default function IncomeRegister({
   initialEntries,
   initialServiceTypes,
+  initialClients,
   fetchError,
 }: IncomeRegisterProps) {
   const supabase = createClient();
-  const [entries, setEntries] = useState(initialEntries);
+  const [entries, setEntries] = useState(
+    initialEntries.map(normalizeIncomeRegisterEntry),
+  );
   const [serviceTypes, setServiceTypes] = useState(initialServiceTypes);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -86,7 +95,8 @@ export default function IncomeRegister({
   async function refreshEntries() {
     const { data, error: refreshError } = await supabase
       .from("income_register")
-      .select("*")
+      .select(SERVICE_INCOME_REGISTER_SELECT)
+      .or("entry_type.eq.service,entry_type.is.null")
       .order("date", { ascending: false });
 
     if (refreshError) {
@@ -94,7 +104,11 @@ export default function IncomeRegister({
       return;
     }
 
-    setEntries(data ?? []);
+    setEntries(
+      ((data as IncomeRegisterEntry[] | null) ?? []).map((entry) =>
+        normalizeIncomeRegisterEntry(entry),
+      ),
+    );
     setError(null);
   }
 
@@ -115,8 +129,9 @@ export default function IncomeRegister({
     setForm({
       date: toDateInputValue(entry.date),
       invoice_no: entry.invoice_no,
-      customer_name: entry.customer_name,
-      service_category: entry.service_category,
+      client_id: entry.client_id ?? "",
+      customer_name: entry.customer_name ?? "",
+      service_category: entry.service_category ?? "",
       description: entry.description ?? "",
       amount: String(entry.amount),
       amount_received: String(entry.amount_received),
@@ -162,11 +177,21 @@ export default function IncomeRegister({
     const amount = Number(form.amount);
     const amountReceived = Number(form.amount_received);
     const outstandingBalance = calculateOutstanding(amount, amountReceived);
+    const clientId = form.client_id.trim() || null;
+    const otherPayerName = form.customer_name.trim() || null;
+
+    if (!clientId && !otherPayerName) {
+      setError("Select a contract client or enter an other payer name.");
+      setLoading(false);
+      return;
+    }
 
     const payload = {
       date: form.date,
       invoice_no: form.invoice_no,
-      customer_name: form.customer_name,
+      client_id: clientId,
+      customer_name: clientId ? null : otherPayerName,
+      entry_type: "service" as const,
       service_category: form.service_category,
       description: form.description || null,
       amount,
@@ -178,10 +203,7 @@ export default function IncomeRegister({
     };
 
     const { error: saveError } = editingId
-      ? await supabase
-          .from("income_register")
-          .update(payload)
-          .eq("id", editingId)
+      ? await supabase.from("income_register").update(payload).eq("id", editingId)
       : await supabase.from("income_register").insert(payload);
 
     if (saveError) {
@@ -258,14 +280,32 @@ export default function IncomeRegister({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Customer Name
+                  Contract Client
+                </label>
+                <select
+                  value={form.client_id}
+                  onChange={(e) => updateField("client_id", e.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Select contract client</option>
+                  {initialClients.map((client) => (
+                    <option key={client.client_id} value={client.client_id}>
+                      {client.client_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Other Payer Name
                 </label>
                 <input
                   type="text"
-                  required
                   value={form.customer_name}
                   onChange={(e) => updateField("customer_name", e.target.value)}
-                  className={inputClassName}
+                  placeholder="Optional — for one-off payers not in clients list"
+                  disabled={Boolean(form.client_id)}
+                  className={`${inputClassName}${form.client_id ? " bg-slate-50 text-slate-600" : ""}`}
                 />
               </div>
               <div>
@@ -312,9 +352,7 @@ export default function IncomeRegister({
                   step="0.01"
                   required
                   value={form.amount_received}
-                  onChange={(e) =>
-                    updateField("amount_received", e.target.value)
-                  }
+                  onChange={(e) => updateField("amount_received", e.target.value)}
                   className={inputClassName}
                 />
               </div>
@@ -325,9 +363,7 @@ export default function IncomeRegister({
                 <select
                   required
                   value={form.payment_status}
-                  onChange={(e) =>
-                    updateField("payment_status", e.target.value)
-                  }
+                  onChange={(e) => updateField("payment_status", e.target.value)}
                   className={inputClassName}
                 >
                   <option value="">Select status</option>
@@ -446,8 +482,10 @@ export default function IncomeRegister({
                   >
                     <td className="px-4 py-3">{formatDate(entry.date)}</td>
                     <td className="px-4 py-3">{entry.invoice_no}</td>
-                    <td className="px-4 py-3">{entry.customer_name}</td>
-                    <td className="px-4 py-3">{entry.service_category}</td>
+                    <td className="px-4 py-3">
+                      {getIncomeCustomerDisplayName(entry, initialClients)}
+                    </td>
+                    <td className="px-4 py-3">{entry.service_category ?? "—"}</td>
                     <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
                     <td className="px-4 py-3">
                       {formatGHS(entry.amount_received)}

@@ -8,7 +8,7 @@ import {
   buildDutyRosterViewModel,
   type DutyRosterEmployee,
   type DutyRosterProject,
-  type RosterConfigRecord,
+  type DutyRosterSite,
   type RosterHistoryRecord,
 } from "../operations/duty-roster-utils";
 import type { FailedInspectionEntry } from "../operations/failed-inspections-utils";
@@ -32,10 +32,15 @@ import {
   getPeriodStartDate,
 } from "../hr-payroll/payroll-period-utils";
 import type { SiteEntry } from "../operations/sites-utils";
+import { getSiteClientName } from "../operations/sites-utils";
 import {
   getWorkOrderSiteName,
   type WorkOrderEntry,
 } from "../operations/work-orders-utils";
+import {
+  getRosterConfigForClient,
+  type RosterConfigRecord,
+} from "../operations/roster-config-utils";
 import { formatReportPeriodLabel } from "./finance-reports-utils";
 
 export type TrendDirection = "up" | "down" | "flat" | "none";
@@ -43,6 +48,7 @@ export type TrendDirection = "up" | "down" | "flat" | "none";
 export type QualityKpiSiteRow = {
   siteId: string;
   siteName: string;
+  clientName: string;
   inspectionCount: number;
   averageScorePct: number | null;
   passCount: number;
@@ -69,6 +75,7 @@ export type QualityKpiReport = {
 export type SitePerformanceRow = {
   siteId: string;
   siteName: string;
+  clientName: string;
   averageInspectionScorePct: number | null;
   openFailedInspections: number;
   complaintsReceived: number;
@@ -153,15 +160,43 @@ function priorMonth(year: number, month: number): { year: number; month: number 
   return { year, month: month - 1 };
 }
 
+function buildSiteClientNameMap(sites: SiteEntry[]): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const site of sites) {
+    map.set(site.site_code, getSiteClientName(site));
+  }
+
+  return map;
+}
+
+function filterSiteIdsByClient(
+  sites: SiteEntry[],
+  clientId?: string | null,
+): Set<string> | null {
+  if (!clientId) {
+    return null;
+  }
+
+  return new Set(
+    sites.filter((site) => site.client_id === clientId).map((site) => site.site_code),
+  );
+}
+
 function buildQualityKpiRowsForMonth(
   inspections: InspectionSummaryEntry[],
+  sites: SiteEntry[],
   year: number,
   month: number,
+  clientId?: string | null,
 ): Map<string, QualityKpiSiteRow> {
+  const siteClientNames = buildSiteClientNameMap(sites);
+  const allowedSiteIds = filterSiteIdsByClient(sites, clientId);
   const grouped = new Map<
     string,
     {
       siteName: string;
+      clientName: string;
       scores: number[];
       passCount: number;
       failCount: number;
@@ -174,9 +209,15 @@ function buildQualityKpiRowsForMonth(
     }
 
     const siteId = entry.site_id ?? "unknown";
+    if (allowedSiteIds && !allowedSiteIds.has(siteId)) {
+      continue;
+    }
+
     const siteName = getInspectionSiteName(entry);
+    const clientName = siteClientNames.get(siteId) ?? "—";
     const bucket = grouped.get(siteId) ?? {
       siteName,
+      clientName,
       scores: [],
       passCount: 0,
       failCount: 0,
@@ -209,6 +250,7 @@ function buildQualityKpiRowsForMonth(
     rows.set(siteId, {
       siteId,
       siteName: bucket.siteName,
+      clientName: bucket.clientName,
       inspectionCount: count,
       averageScorePct: average(bucket.scores),
       passCount: bucket.passCount,
@@ -224,15 +266,25 @@ function buildQualityKpiRowsForMonth(
 
 export function buildQualityKpiSummaryReport(
   inspections: InspectionSummaryEntry[],
+  sites: SiteEntry[],
   year: number,
   month: number,
+  clientId?: string | null,
 ): QualityKpiReport {
-  const currentRows = buildQualityKpiRowsForMonth(inspections, year, month);
+  const currentRows = buildQualityKpiRowsForMonth(
+    inspections,
+    sites,
+    year,
+    month,
+    clientId,
+  );
   const prior = priorMonth(year, month);
   const priorRows = buildQualityKpiRowsForMonth(
     inspections,
+    sites,
     prior.year,
     prior.month,
+    clientId,
   );
 
   const rows = [...currentRows.values()]
@@ -244,17 +296,40 @@ export function buildQualityKpiSummaryReport(
         scoreTrend: compareTrend(row.averageScorePct, priorAverage),
       };
     })
-    .sort((left, right) => left.siteName.localeCompare(right.siteName));
+    .sort((left, right) => {
+      const clientCompare = left.clientName.localeCompare(right.clientName);
+      if (clientCompare !== 0) {
+        return clientCompare;
+      }
 
-  const currentScores = inspections
-    .filter((entry) => isDateInMonth(entry.inspection_date, year, month))
+      return left.siteName.localeCompare(right.siteName);
+    });
+
+  const filteredInspections = inspections.filter((entry) => {
+    if (!isDateInMonth(entry.inspection_date, year, month)) {
+      return false;
+    }
+
+    const siteId = entry.site_id ?? "unknown";
+    const allowedSiteIds = filterSiteIdsByClient(sites, clientId);
+    return !allowedSiteIds || allowedSiteIds.has(siteId);
+  });
+
+  const priorFilteredInspections = inspections.filter((entry) => {
+    if (!isDateInMonth(entry.inspection_date, prior.year, prior.month)) {
+      return false;
+    }
+
+    const siteId = entry.site_id ?? "unknown";
+    const allowedSiteIds = filterSiteIdsByClient(sites, clientId);
+    return !allowedSiteIds || allowedSiteIds.has(siteId);
+  });
+
+  const currentScores = filteredInspections
     .map((entry) => Number(entry.inspection_score_pct) || 0)
     .filter((value) => value > 0);
 
-  const priorScores = inspections
-    .filter((entry) =>
-      isDateInMonth(entry.inspection_date, prior.year, prior.month),
-    )
+  const priorScores = priorFilteredInspections
     .map((entry) => Number(entry.inspection_score_pct) || 0)
     .filter((value) => value > 0);
 
@@ -288,10 +363,17 @@ export function buildSitePerformanceReport(
   sites: SiteEntry[],
   year: number,
   month: number,
+  clientId?: string | null,
 ): SitePerformanceRow[] {
+  const allowedSiteIds = filterSiteIdsByClient(sites, clientId);
   const siteNames = new Map<string, string>();
+  const siteClientNames = buildSiteClientNameMap(sites);
 
   for (const site of sites) {
+    if (allowedSiteIds && !allowedSiteIds.has(site.site_code)) {
+      continue;
+    }
+
     siteNames.set(site.site_code, site.site_name);
   }
 
@@ -306,6 +388,10 @@ export function buildSitePerformanceReport(
     }
 
     const siteId = entry.site_id ?? "unknown";
+    if (allowedSiteIds && !allowedSiteIds.has(siteId)) {
+      continue;
+    }
+
     if (entry.site?.site_name) {
       siteNames.set(siteId, entry.site.site_name);
     }
@@ -323,6 +409,10 @@ export function buildSitePerformanceReport(
     }
 
     const siteId = entry.site_id ?? "unknown";
+    if (allowedSiteIds && !allowedSiteIds.has(siteId)) {
+      continue;
+    }
+
     if (entry.site?.site_name) {
       siteNames.set(siteId, entry.site.site_name);
     }
@@ -336,6 +426,10 @@ export function buildSitePerformanceReport(
     }
 
     const siteId = entry.site_id ?? "unknown";
+    if (allowedSiteIds && !allowedSiteIds.has(siteId)) {
+      continue;
+    }
+
     if (entry.site?.site_name) {
       siteNames.set(siteId, entry.site.site_name);
     }
@@ -349,6 +443,10 @@ export function buildSitePerformanceReport(
     }
 
     const siteId = entry.site_id ?? "unknown";
+    if (allowedSiteIds && !allowedSiteIds.has(siteId)) {
+      continue;
+    }
+
     if (entry.site?.site_name) {
       siteNames.set(siteId, entry.site.site_name);
     }
@@ -379,6 +477,7 @@ export function buildSitePerformanceReport(
       return {
         siteId,
         siteName: siteNames.get(siteId) ?? siteId,
+        clientName: siteClientNames.get(siteId) ?? "—",
         averageInspectionScorePct,
         openFailedInspections,
         complaintsReceived,
@@ -387,6 +486,11 @@ export function buildSitePerformanceReport(
       };
     })
     .sort((left, right) => {
+      const clientCompare = left.clientName.localeCompare(right.clientName);
+      if (clientCompare !== 0) {
+        return clientCompare;
+      }
+
       if (right.issueScore !== left.issueScore) {
         return right.issueScore - left.issueScore;
       }
@@ -499,9 +603,10 @@ export function buildClientServiceReport(input: {
   incidents: IncidentRegisterEntry[];
   complaints: ComplaintRegisterEntry[];
   correctiveActions: CorrectiveActionEntry[];
-  rosterConfig: RosterConfigRecord | null;
+  rosterConfigs: RosterConfigRecord[];
   rosterEmployees: DutyRosterEmployee[];
   rosterProjects: DutyRosterProject[];
+  rosterSites: DutyRosterSite[];
   rosterHistory: RosterHistoryRecord[];
   year: number;
   month: number;
@@ -518,8 +623,10 @@ export function buildClientServiceReport(input: {
 
   const qualityRows = buildQualityKpiSummaryReport(
     monthInspections,
+    input.sites,
     input.year,
     input.month,
+    clientId,
   ).rows.filter((row) => clientSiteIds.has(row.siteId));
 
   const completedWorkOrders = input.workOrders.filter(
@@ -546,28 +653,25 @@ export function buildClientServiceReport(input: {
     workOrdersBySite.set(siteId, bucket);
   }
 
+  const clientConfig = getRosterConfigForClient(
+    input.rosterConfigs,
+    clientId,
+  );
+
   const rosterViewModel =
-    input.rosterConfig &&
+    clientConfig &&
     buildDutyRosterViewModel({
-      config: input.rosterConfig,
+      clientId,
+      clientName: input.client.client_name,
+      config: clientConfig,
       employees: input.rosterEmployees,
       projects: input.rosterProjects,
+      sites: input.rosterSites,
       history: input.rosterHistory,
       referenceDate: new Date(input.year, input.month, 0),
     });
 
-  const clientSiteNameKeys = clientSites.map((site) =>
-    site.site_name.trim().toLowerCase(),
-  );
-  const staffingRows = (rosterViewModel?.rows ?? []).filter((row) => {
-    const facility = row.facilityName.trim().toLowerCase();
-    return clientSiteNameKeys.some(
-      (siteName) =>
-        facility === siteName ||
-        facility.includes(siteName) ||
-        siteName.includes(facility),
-    );
-  });
+  const staffingRows = rosterViewModel?.rows ?? [];
 
   const monthIncidents = input.incidents.filter(
     (entry) =>

@@ -26,6 +26,7 @@ import {
 import {
   getSiteBuildingZone,
   getSiteClientName,
+  normalizeSiteEntry,
   SITE_SELECT,
   type SiteEntry,
 } from "./sites-utils";
@@ -36,11 +37,6 @@ type SitesProps = {
   initialEmployees: HrEmployee[];
   fetchError: string | null;
 };
-
-function normalizeSiteEntry(raw: SiteEntry): SiteEntry {
-  const client = Array.isArray(raw.client) ? raw.client[0] ?? null : raw.client;
-  return { ...raw, client };
-}
 
 const emptyForm = {
   site_code: "",

@@ -4,6 +4,10 @@ import {
 } from "../hr-payroll/payroll-lock-finance-utils";
 import { calculateMonthlyDepreciationTotals } from "./fixed-assets-utils";
 import { getCurrentFinancialYear } from "./finance-year-utils";
+import {
+  isActiveIncomeForReporting,
+  resolveProfitLossRevenueCategory,
+} from "./income-register-utils";
 
 export const MONTH_LABELS = [
   "Jan",
@@ -24,8 +28,10 @@ export const FULL_YEAR_INDEX = 12;
 
 export type ProfitLossIncomeEntry = {
   date: string;
-  service_category: string;
+  service_category: string | null;
   amount: number;
+  entry_type?: "service" | "product_sale" | null;
+  sale_status?: "active" | "voided" | null;
 };
 
 export type ProfitLossExpenseEntry = {
@@ -64,6 +70,12 @@ export type ProfitLossReport = {
 };
 
 const EXPENSE_SECTIONS = [
+  {
+    key: "cost-of-goods-sold",
+    title: "COST OF GOODS SOLD",
+    category: "Cost of Goods Sold",
+    subtotalLabel: "Total Cost of Goods Sold",
+  },
   {
     key: "direct-operational",
     title: "DIRECT OPERATIONAL EXPENSES",
@@ -188,12 +200,16 @@ function groupIncomeByServiceCategory(
   const grouped = new Map<string, MonthlyTotals>();
 
   for (const entry of entries) {
+    if (!isActiveIncomeForReporting(entry)) {
+      continue;
+    }
+
     const monthIndex = getEntryMonthIndex(entry.date, financialYear);
     if (monthIndex === null) {
       continue;
     }
 
-    const category = entry.service_category?.trim() || "Uncategorized";
+    const category = resolveProfitLossRevenueCategory(entry);
     const totals = grouped.get(category) ?? createEmptyMonthlyTotals();
     addAmountToMonth(totals, monthIndex, Number(entry.amount) || 0);
     grouped.set(category, totals);
@@ -366,11 +382,15 @@ export function buildProfitLossReport(
     kind: "total",
   });
 
-  const directOperational = expenseSubtotals[0] ?? createEmptyMonthlyTotals();
-  const administrative = expenseSubtotals[1] ?? createEmptyMonthlyTotals();
-  const marketing = expenseSubtotals[2] ?? createEmptyMonthlyTotals();
+  const directOperational = expenseSubtotals[1] ?? createEmptyMonthlyTotals();
+  const administrative = expenseSubtotals[2] ?? createEmptyMonthlyTotals();
+  const marketing = expenseSubtotals[3] ?? createEmptyMonthlyTotals();
 
-  const grossProfit = subtractMonthlyTotals(totalRevenue, directOperational);
+  const costOfGoodsSold = expenseSubtotals[0] ?? createEmptyMonthlyTotals();
+  const grossProfit = subtractMonthlyTotals(
+    totalRevenue,
+    sumMonthlyTotals([costOfGoodsSold, directOperational]),
+  );
   const operatingProfit = subtractMonthlyTotals(
     grossProfit,
     sumMonthlyTotals([administrative, marketing]),

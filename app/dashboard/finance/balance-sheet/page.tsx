@@ -17,6 +17,7 @@ export default async function BalanceSheetPage() {
     initialCashFlowExpenseEntries,
     initialPayrollHistory,
     initialMonthEndCloseNetPay,
+    initialInventoryBalanceSheet,
     availableYears,
     fetchError,
   } = data;
@@ -32,6 +33,7 @@ export default async function BalanceSheetPage() {
         initialCashFlowExpenseEntries={initialCashFlowExpenseEntries}
         initialPayrollHistory={initialPayrollHistory}
         initialMonthEndCloseNetPay={initialMonthEndCloseNetPay}
+        initialInventoryBalanceSheet={initialInventoryBalanceSheet}
         availableYears={availableYears}
         fetchError={fetchError}
       />

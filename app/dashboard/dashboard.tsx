@@ -17,10 +17,12 @@ import {
 import { inputClassName } from "./employees/employee-record-utils";
 import { formatGHS } from "./finance/income-register-utils";
 import type { DashboardViewModel } from "./dashboard-utils";
+import type { DashboardVisibility } from "@/utils/rbac-access";
 
 type DashboardProps = {
   data: DashboardViewModel;
   fetchError: string | null;
+  visibility: DashboardVisibility;
 };
 
 function SummaryCard({
@@ -78,7 +80,7 @@ function formatChartCurrency(value: number): string {
   return formatGHS(value);
 }
 
-export default function Dashboard({ data, fetchError }: DashboardProps) {
+export default function Dashboard({ data, fetchError, visibility }: DashboardProps) {
   const [selectedMonthKey, setSelectedMonthKey] = useState(data.defaultMonthKey);
 
   const selectedSnapshot = useMemo(() => {
@@ -129,6 +131,19 @@ export default function Dashboard({ data, fetchError }: DashboardProps) {
         </p>
       ) : null}
 
+      {visibility.showInventoryAlerts && data.lowStockRawMaterialCount > 0 ? (
+        <Link
+          href="/dashboard/reports/inventory/stock-on-hand?lowStock=1"
+          className="block rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 transition-colors hover:border-amber-400 hover:bg-amber-100"
+        >
+          <span className="font-semibold">Low stock alert:</span>{" "}
+          {data.lowStockRawMaterialCount} raw material
+          {data.lowStockRawMaterialCount === 1 ? " is" : "s are"} at or below
+          reorder level. View low-stock items in Stock on Hand report.
+        </Link>
+      ) : null}
+
+      {visibility.showFinancialSummary ? (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <SummaryCard
           title="Net Profit (YTD)"
@@ -171,7 +186,9 @@ export default function Dashboard({ data, fetchError }: DashboardProps) {
           tone={summary.balanceCheck.isBalanced ? "success" : "danger"}
         />
       </div>
+      ) : null}
 
+      {visibility.showFinancialCharts ? (
       <div className="grid gap-6 xl:grid-cols-2">
         <ChartCard title="Revenue, Expenses & Net Profit (Last 6 Months)">
           <ResponsiveContainer width="100%" height="100%">
@@ -208,7 +225,9 @@ export default function Dashboard({ data, fetchError }: DashboardProps) {
           </ResponsiveContainer>
         </ChartCard>
       </div>
+      ) : null}
 
+      {visibility.showPayrollPanel ? (
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -298,6 +317,7 @@ export default function Dashboard({ data, fetchError }: DashboardProps) {
           </ResponsiveContainer>
         </div>
       </section>
+      ) : null}
     </div>
   );
 }

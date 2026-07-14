@@ -47,6 +47,7 @@ type PayslipProps = {
   initialPayrollMonths: string[];
   positions: PositionLookup[];
   fetchError: string | null;
+  scopedEmployeeId?: string | null;
 };
 
 type PayslipLineItem = {
@@ -194,13 +195,16 @@ export default function Payslip({
   initialPayrollMonths,
   positions,
   fetchError,
+  scopedEmployeeId = null,
 }: PayslipProps) {
   const supabase = useMemo(() => createClient(), []);
 
   const [selectedMonth, setSelectedMonth] = useState(
     initialPayrollMonths[0] ?? "",
   );
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(
+    scopedEmployeeId ?? "",
+  );
   const [paidEmployees, setPaidEmployees] = useState<PayslipEmployeeOption[]>(
     [],
   );
@@ -233,13 +237,17 @@ export default function Payslip({
         return;
       }
 
-      const employeeIds = [
+      let employeeIds = [
         ...new Set(
           ((historyRows as { employee_id: string }[] | null) ?? []).map(
             (row) => row.employee_id,
           ),
         ),
       ];
+
+      if (scopedEmployeeId) {
+        employeeIds = employeeIds.filter((id) => id === scopedEmployeeId);
+      }
 
       if (employeeIds.length === 0) {
         setPaidEmployees([]);
@@ -266,7 +274,7 @@ export default function Payslip({
       );
       setLoadingEmployees(false);
     },
-    [supabase],
+    [supabase, scopedEmployeeId],
   );
 
   const loadPayslip = useCallback(
@@ -325,10 +333,20 @@ export default function Payslip({
   }, [selectedMonth, loadPaidEmployees]);
 
   useEffect(() => {
-    setSelectedEmployeeId("");
+    if (scopedEmployeeId) {
+      setSelectedEmployeeId(scopedEmployeeId);
+    } else {
+      setSelectedEmployeeId("");
+    }
     setPayrollRow(null);
     setEmployeeDetails(null);
-  }, [selectedMonth]);
+  }, [selectedMonth, scopedEmployeeId]);
+
+  useEffect(() => {
+    if (scopedEmployeeId && paidEmployees.length > 0) {
+      setSelectedEmployeeId(scopedEmployeeId);
+    }
+  }, [scopedEmployeeId, paidEmployees]);
 
   useEffect(() => {
     if (!selectedMonth || !selectedEmployeeId) {
@@ -517,34 +535,36 @@ export default function Payslip({
             </select>
           </div>
 
-          <div className="min-w-[280px] flex-1">
-            <label
-              htmlFor="payslip-employee"
-              className="mb-1 block text-sm font-medium text-slate-700"
-            >
-              Employee
-            </label>
-            <select
-              id="payslip-employee"
-              value={selectedEmployeeId}
-              onChange={(event) => setSelectedEmployeeId(event.target.value)}
-              disabled={loadingEmployees || paidEmployees.length === 0}
-              className={inputClassName}
-            >
-              <option value="">
-                {loadingEmployees
-                  ? "Loading employees…"
-                  : paidEmployees.length === 0
-                    ? "No employees paid this month"
-                    : "Select employee"}
-              </option>
-              {paidEmployees.map((employee) => (
-                <option key={employee.employee_id} value={employee.employee_id}>
-                  {employee.staff_id} — {employee.full_name}
+          {!scopedEmployeeId ? (
+            <div className="min-w-[280px] flex-1">
+              <label
+                htmlFor="payslip-employee"
+                className="mb-1 block text-sm font-medium text-slate-700"
+              >
+                Employee
+              </label>
+              <select
+                id="payslip-employee"
+                value={selectedEmployeeId}
+                onChange={(event) => setSelectedEmployeeId(event.target.value)}
+                disabled={loadingEmployees || paidEmployees.length === 0}
+                className={inputClassName}
+              >
+                <option value="">
+                  {loadingEmployees
+                    ? "Loading employees…"
+                    : paidEmployees.length === 0
+                      ? "No employees paid this month"
+                      : "Select employee"}
                 </option>
-              ))}
-            </select>
-          </div>
+                {paidEmployees.map((employee) => (
+                  <option key={employee.employee_id} value={employee.employee_id}>
+                    {employee.staff_id} — {employee.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           <button
             type="button"
@@ -579,7 +599,9 @@ export default function Payslip({
 
       {!selectedEmployeeId ? (
         <div className="no-print rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-          Select a payroll month and employee to generate a payslip.
+          {scopedEmployeeId
+            ? "Select a payroll month to view your payslip."
+            : "Select a payroll month and employee to generate a payslip."}
         </div>
       ) : loadingPayslip ? (
         <div className="no-print rounded-md border border-slate-200 bg-slate-50 px-4 py-4">

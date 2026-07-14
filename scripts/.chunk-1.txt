@@ -1,0 +1,145 @@
+T,
+  p_total_cost NUMERIC(18, 4)
+)
+RETURNS UUID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_payable_id UUID;
+  v_invoice_no TEXT;
+BEGIN
+  v_invoice_no := 'RMP-' || LEFT(p_purchase_id::TEXT, 8);
+
+  INSERT INTO accounts_payable (
+    vendor_name,
+    invoice_number,
+    expense_category,
+    sub_category,
+    description,
+    invoice_date,
+    due_date,
+    amount,
+    amount_paid,
+    balance_due,
+    status,
+    notes
+  )
+  VALUES (
+    COALESCE(NULLIF(TRIM(p_supplier), ''), 'Raw Material Supplier'),
+    v_invoice_no,
+    'Direct Operational',
+    'Raw Materials',
+    'Raw material purchase posted to inventory',
+    p_purchase_date,
+    p_purchase_date + INTERVAL '30 days',
+    p_total_cost,
+    0,
+    p_total_cost,
+    'Outstanding',
+    'Linked to raw_material_purchases ' || p_purchase_id::TEXT
+  )
+  RETURNING id INTO v_payable_id;
+
+  UPDATE raw_material_purchases
+  SET accounts_payable_id = v_payable_id
+  WHERE id = p_purchase_id;
+
+  RETURN v_payable_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION sync_raw_material_purchase_payable(
+  p_purchase_id UUID,
+  p_material_id UUID,
+  p_purchase_date DATE,
+  p_supplier TEXT,
+  p_payment_method TEXT,
+  p_total_cost NUMERIC(18, 4),
+  p_existing_payable_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_go_live DATE;
+  v_should_post BOOLEAN;
+  v_new_credit BOOLEAN;
+  v_payable_id UUID;
+  v_amount_paid NUMERIC(18, 4);
+BEGIN
+  SELECT go_live_date
+  INTO v_go_live
+  FROM inventory_balance_config
+  WHERE id = 1;
+
+  v_should_post := v_go_live IS NOT NULL AND p_purchase_date >= v_go_live;
+  v_new_credit := is_credit_payment_method(p_payment_method);
+
+  IF NOT v_should_post OR NOT v_new_credit THEN
+    PERFORM reverse_raw_material_purchase_payable(p_existing_payable_id);
+    UPDATE raw_material_purchases
+    SET accounts_payable_id = NULL
+    WHERE id = p_purchase_id;
+    RETURN;
+  END IF;
+
+  IF p_existing_payable_id IS NULL THEN
+    PERFORM create_raw_material_purchase_payable(
+      p_purchase_id,
+      p_material_id,
+      p_purchase_date,
+      p_supplier,
+      p_total_cost
+    );
+    RETURN;
+  END IF;
+
+  SELECT COALESCE(amount_paid, 0)
+  INTO v_amount_paid
+  FROM accounts_payable
+  WHERE id = p_existing_payable_id;
+
+  IF v_amount_paid > p_total_cost THEN
+    RAISE EXCEPTION
+      'Cannot reduce purchase total below amount already paid on accounts payable (GHS %)',
+      v_amount_paid;
+  END IF;
+
+  UPDATE accounts_payable
+  SET
+    vendor_name = COALESCE(NULLIF(TRIM(p_supplier), ''), 'Raw Material Supplier'),
+    invoice_date = p_purchase_date,
+    due_date = p_purchase_date + INTERVAL '30 days',
+    amount = p_total_cost,
+    balance_due = p_total_cost - v_amount_paid,
+    status = CASE
+      WHEN v_amount_paid >= p_total_cost THEN 'Paid'
+      WHEN v_amount_paid > 0 THEN 'Partial'
+      ELSE 'Outstanding'
+    END
+  WHERE id = p_existing_payable_id;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 4. Delete raw material purchase (recalc + reverse finance)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION delete_raw_material_purchase(p_purchase_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_purchase raw_material_purchases%ROWTYPE;
+BEGIN
+  SELECT *
+  INTO v_purchase
+  FROM raw_material_purchases
+  WHERE id = p_purchase_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Raw material purchase % not found', p_purchase_id;
+  END IF;
+
+  PERFORM assert_raw_material_stock_not_negative(
+    v_purch

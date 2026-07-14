@@ -1,15 +1,151 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
+import {
+  getCurrentUserClientId,
+  getCurrentUserEmployeeId,
+  getCurrentUserRole,
+} from "@/utils/dashboard-auth";
+import type { AppRole } from "@/app/dashboard/user-account-types";
+import { getDashboardVisibility } from "@/utils/rbac-access";
+import { buildClientDashboardSummary } from "./client-dashboard-utils";
+import ClientDashboard from "./client-dashboard";
+import { buildEmployeeDashboardSummary } from "./employee-dashboard-utils";
+import EmployeeDashboard from "./employee-dashboard";
+import { buildOperationsDashboardSummary } from "./operations-dashboard-utils";
+import OperationsDashboard from "./operations-dashboard";
 import Dashboard from "./dashboard";
-import { buildDashboardViewModel } from "./dashboard-utils";
-import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
+import { buildDashboardViewModel } from "./dashboard-utils";import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
 import { mergePayrollWagesSources } from "./finance/accrued-wages-utils";
+import { fetchLowStockRawMaterialCount } from "./reports/inventory-report-data";
+import { fetchInventoryBalanceSheetInput } from "./finance/balance-sheet-page-data";
 
 export default async function DashboardPage() {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+  const role = (await getCurrentUserRole()) as AppRole | null;
 
-  const [
+  if (role === "client") {
+    const clientId = await getCurrentUserClientId();
+
+    if (!clientId) {
+      return (
+        <ClientDashboard
+          summary={{
+            clientName: "Client",
+            outstandingBalance: 0,
+            invoiceCount: 0,
+            siteCount: 0,
+            inspectionsThisMonth: 0,
+            passedInspectionsThisMonth: 0,
+            periodLabel: new Date().toLocaleDateString("en-GB", {
+              month: "long",
+              year: "numeric",
+            }),
+          }}
+          fetchError="Your user account is not linked to a client record."
+        />
+      );
+    }
+
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+    const { summary, fetchError } = await buildClientDashboardSummary(
+      supabase,
+      clientId,
+    );
+
+    if (!summary) {
+      return (
+        <ClientDashboard
+          summary={{
+            clientName: "Client",
+            outstandingBalance: 0,
+            invoiceCount: 0,
+            siteCount: 0,
+            inspectionsThisMonth: 0,
+            passedInspectionsThisMonth: 0,
+            periodLabel: new Date().toLocaleDateString("en-GB", {
+              month: "long",
+              year: "numeric",
+            }),
+          }}
+          fetchError={fetchError}
+        />
+      );
+    }
+
+    return <ClientDashboard summary={summary} fetchError={fetchError} />;
+  }
+
+  if (role === "employee") {
+    const employeeId = await getCurrentUserEmployeeId();
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+
+    if (!employeeId) {
+      return (
+        <EmployeeDashboard
+          summary={{
+            employeeName: "Employee",
+            periodLabel: new Date().toLocaleDateString("en-GB", {
+              month: "long",
+              year: "numeric",
+            }),
+            attendanceRecorded: 0,
+            presentDays: 0,
+            leaveBalances: [],
+            pendingLeaveRequests: 0,
+            latestPayslipMonth: null,
+          }}
+          fetchError="Your user account is not linked to an employee record."
+        />
+      );
+    }
+
+    const { summary, fetchError } = await buildEmployeeDashboardSummary(
+      supabase,
+      employeeId,
+    );
+
+    if (!summary) {
+      return (
+        <EmployeeDashboard
+          summary={{
+            employeeName: "Employee",
+            periodLabel: new Date().toLocaleDateString("en-GB", {
+              month: "long",
+              year: "numeric",
+            }),
+            attendanceRecorded: 0,
+            presentDays: 0,
+            leaveBalances: [],
+            pendingLeaveRequests: 0,
+            latestPayslipMonth: null,
+          }}
+          fetchError={fetchError}
+        />
+      );
+    }
+
+    return <EmployeeDashboard summary={summary} fetchError={fetchError} />;
+  }
+
+  if (role === "supervisor" || role === "operations_manager") {
+    const summaryClient =
+      role === "supervisor" ? createAdminClient() : createClient(await cookies());
+    const { summary, fetchError } =
+      await buildOperationsDashboardSummary(summaryClient);
+
+    return (
+      <OperationsDashboard
+        summary={summary}
+        fetchError={fetchError}
+        roleLabel={role === "supervisor" ? "Supervisor" : "Operations"}
+      />
+    );
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);  const [
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
     { data: fixedAssets, error: fixedAssetsError },
@@ -21,6 +157,8 @@ export default async function DashboardPage() {
     { data: payrollProcessingEntries, error: payrollProcessingError },
     { data: payrollHistoryEntries, error: payrollHistoryError },
     { data: payrollPayables, error: payrollPayablesError },
+    lowStockResult,
+    inventoryBalanceSheetInput,
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -65,6 +203,8 @@ export default async function DashboardPage() {
       .from("accounts_payable")
       .select("vendor_name, status, amount, invoice_date, description")
       .order("invoice_date", { ascending: false }),
+    fetchLowStockRawMaterialCount(supabase),
+    fetchInventoryBalanceSheetInput(supabase),
   ]);
 
   const fetchError =
@@ -79,6 +219,7 @@ export default async function DashboardPage() {
     payrollProcessingError?.message ??
     payrollHistoryError?.message ??
     payrollPayablesError?.message ??
+    lowStockResult.error ??
     null;
 
   const cashFlowIncomeEntries =
@@ -146,7 +287,15 @@ export default async function DashboardPage() {
     payrollProcessingEntries: payrollProcessingEntries ?? [],
     payrollHistoryEntries: payrollHistoryEntries ?? [],
     payrollPayables: payrollPayables ?? [],
+    lowStockRawMaterialCount: lowStockResult.count,
+    inventoryBalanceSheetInput,
   });
 
-  return <Dashboard data={dashboardData} fetchError={fetchError} />;
+  return (
+    <Dashboard
+      data={dashboardData}
+      fetchError={fetchError}
+      visibility={getDashboardVisibility(role)}
+    />
+  );
 }

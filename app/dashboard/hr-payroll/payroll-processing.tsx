@@ -55,7 +55,7 @@ type PayrollProcessingProps = {
   initialOvertime: PayrollOvertimeSource[];
   initialLoans: LoanRegisterEntry[];
   taxConfigs: PayrollTaxConfigs;
-  isSuperAdmin: boolean;
+  canManagePayrollPeriod: boolean;
   fetchError: string | null;
 };
 
@@ -100,7 +100,7 @@ export default function PayrollProcessing({
   initialOvertime,
   initialLoans,
   taxConfigs,
-  isSuperAdmin,
+  canManagePayrollPeriod,
   fetchError,
 }: PayrollProcessingProps) {
   const supabase = createClient();
@@ -669,7 +669,7 @@ export default function PayrollProcessing({
   }
 
   async function handleReopenPeriod() {
-    if (!currentPeriod || !isSuperAdmin || !isPartiallyLocked) {
+    if (!currentPeriod || !canManagePayrollPeriod || !isPartiallyLocked) {
       return;
     }
 
@@ -733,7 +733,7 @@ export default function PayrollProcessing({
   }
 
   async function handleRepairPeriod() {
-    if (!currentPeriod || !isSuperAdmin) {
+    if (!currentPeriod || !canManagePayrollPeriod) {
       return;
     }
 
@@ -791,7 +791,7 @@ export default function PayrollProcessing({
   }
 
   async function handleReleasePeriod() {
-    if (!currentPeriod || !isSuperAdmin || !isFullyLocked) {
+    if (!currentPeriod || !canManagePayrollPeriod || !isFullyLocked) {
       return;
     }
 
@@ -894,7 +894,7 @@ export default function PayrollProcessing({
   }
 
   async function handleLockPeriod() {
-    if (!currentPeriod || !isSuperAdmin || isPeriodClosed || !canFullLock) {
+    if (!currentPeriod || !canManagePayrollPeriod || isPeriodClosed || !canFullLock) {
       return;
     }
 
@@ -926,7 +926,7 @@ export default function PayrollProcessing({
   }
 
   async function handlePartialLockPeriod() {
-    if (!currentPeriod || !isSuperAdmin || isPeriodClosed) {
+    if (!currentPeriod || !canManagePayrollPeriod || isPeriodClosed) {
       return;
     }
 
@@ -1050,7 +1050,7 @@ export default function PayrollProcessing({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {isSuperAdmin && isPartiallyLocked ? (
+          {canManagePayrollPeriod && isPartiallyLocked ? (
             <button
               type="button"
               onClick={handleReopenPeriod}
@@ -1060,7 +1060,7 @@ export default function PayrollProcessing({
               {reopening ? "Reopening…" : "Reopen Period"}
             </button>
           ) : null}
-          {isSuperAdmin && isFullyLocked ? (
+          {canManagePayrollPeriod && isFullyLocked ? (
             <button
               type="button"
               onClick={handleReleasePeriod}
@@ -1070,7 +1070,7 @@ export default function PayrollProcessing({
               {releasing ? "Releasing…" : "Release to Open"}
             </button>
           ) : null}
-          {isSuperAdmin && !isPeriodClosed ? (
+          {canManagePayrollPeriod && !isPeriodClosed ? (
             <>
               <span title={fullLockDisabledReason}>
                 <button
@@ -1120,7 +1120,7 @@ export default function PayrollProcessing({
             Stale payroll history exists for this Open period. Clear it before
             locking, or Payroll History may show the wrong status.
           </p>
-          {isSuperAdmin ? (
+          {canManagePayrollPeriod ? (
             <button
               type="button"
               onClick={handleRepairPeriod}

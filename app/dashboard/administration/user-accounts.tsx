@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Employee } from "../lookup-types";
 import { getRoleLabel } from "../role-labels";
@@ -9,12 +9,22 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
-import type { UserAccount } from "../user-account-types";
-import { USER_ROLE_OPTIONS } from "../user-account-types";
+import type {
+  ClientOption,
+  SiteOption,
+  UserAccount,
+} from "../user-account-types";
+import RoleAssignmentFields, {
+  createEmptyRoleAssignmentForm,
+  roleAssignmentFromAccount,
+  type RoleAssignmentFormState,
+} from "./role-assignment-fields";
 
 type UserAccountsProps = {
   initialAccounts: UserAccount[];
   initialEmployees: Employee[];
+  initialClients: ClientOption[];
+  initialSites: SiteOption[];
   fetchError: string | null;
 };
 
@@ -22,28 +32,98 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 const actionButtonClassName =
-  "rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+  "shrink-0 whitespace-nowrap rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 const deactivateButtonClassName =
-  "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+  "shrink-0 whitespace-nowrap rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
 
-const emptyCreateForm = {
-  employee_id: "",
+const deleteButtonClassName =
+  "shrink-0 whitespace-nowrap rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50";
+
+type CreateFormState = RoleAssignmentFormState & {
+  email: string;
+  password: string;
+};
+
+const emptyCreateForm = (): CreateFormState => ({
+  ...createEmptyRoleAssignmentForm(),
   email: "",
   password: "",
-  role: "",
+});
+
+type EditUserFormState = RoleAssignmentFormState & {
+  email: string;
+  is_active: boolean;
 };
+
+function editUserFromAccount(account: UserAccount): EditUserFormState {
+  return {
+    ...roleAssignmentFromAccount(account),
+    email: account.email,
+    is_active: account.is_active,
+  };
+}
+
+function deactivateConfirmMessage(displayName: string) {
+  return `Deactivate the account for ${displayName}? They will no longer be able to sign in. This is reversible — use Edit User to reactivate later.`;
+}
+
+function deleteConfirmMessage(displayName: string, dependencySummary?: string) {
+  const lines = [
+    `Permanently delete the login account for ${displayName}?`,
+    "",
+    "This will permanently delete this login account. The employee/client record itself will NOT be deleted. This cannot be undone.",
+    "",
+    "Deactivate is the recommended option for normal offboarding because it can be reversed.",
+  ];
+  if (dependencySummary) {
+    lines.push("", "Related data found:", dependencySummary);
+  }
+  return lines.join("\n");
+}
+
+function formatRoleLinks(account: UserAccount, sites: SiteOption[]) {
+  if (account.role === "client" && account.client_name) {
+    return `Client: ${account.client_name}`;
+  }
+
+  if (account.role === "supervisor" && account.supervisor_site_codes.length > 0) {
+    const labels = account.supervisor_site_codes.map((siteCode) => {
+      const site = sites.find((entry) => entry.site_code === siteCode);
+      return site ? site.site_name : siteCode;
+    });
+
+    return `Sites: ${labels.join(", ")}`;
+  }
+
+  if (account.role === "employee" && account.employee_id) {
+    return `Employee: ${account.full_name}`;
+  }
+
+  if (account.employee_id) {
+    return `Employee: ${account.full_name}`;
+  }
+
+  return "—";
+}
 
 export default function UserAccounts({
   initialAccounts,
   initialEmployees,
+  initialClients,
+  initialSites,
   fetchError,
 }: UserAccountsProps) {
   const router = useRouter();
   const [accounts, setAccounts] = useState(initialAccounts);
-  const [employees] = useState(initialEmployees);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
+  const [editingUid, setEditingUid] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<EditUserFormState>({
+    ...createEmptyRoleAssignmentForm(),
+    email: "",
+    is_active: true,
+  });
   const [resettingUid, setResettingUid] = useState<string | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -55,17 +135,27 @@ export default function UserAccounts({
     setAccounts(initialAccounts);
   }, [initialAccounts]);
 
-  const assignedEmployeeIds = new Set(accounts.map((account) => account.employee_id));
-  const availableEmployees = employees.filter(
-    (employee) => !assignedEmployeeIds.has(employee.employee_id),
+  const assignedEmployeeIds = useMemo(
+    () =>
+      new Set(
+        accounts
+          .map((account) => account.employee_id)
+          .filter((employeeId): employeeId is string => Boolean(employeeId)),
+      ),
+    [accounts],
   );
 
-  function updateCreateField(
-    field: keyof typeof emptyCreateForm,
-    value: string,
-  ) {
-    setCreateForm((current) => ({ ...current, [field]: value }));
-  }
+  const assignedClientIds = useMemo(
+    () =>
+      new Set(
+        accounts
+          .map((account) => account.client_id)
+          .filter((clientId): clientId is string => Boolean(clientId)),
+      ),
+    [accounts],
+  );
+
+  const editingAccount = accounts.find((account) => account.auth_uid === editingUid);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -89,10 +179,59 @@ export default function UserAccounts({
       return;
     }
 
-    setCreateForm(emptyCreateForm);
+    setCreateForm(emptyCreateForm());
     setShowCreateForm(false);
     setSuccess("User account created.");
     setLoading(false);
+    router.refresh();
+  }
+
+  async function handleUpdateUser(
+    e: React.FormEvent,
+    authUid: string,
+    displayName: string,
+  ) {
+    e.preventDefault();
+
+    const originalAccount = accounts.find((account) => account.auth_uid === authUid);
+    if (originalAccount?.is_active && !editForm.is_active) {
+      if (!window.confirm(deactivateConfirmMessage(displayName))) {
+        return;
+      }
+    }
+
+    setActionId(authUid);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/admin/users/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auth_uid: authUid,
+        ...editForm,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Failed to update user");
+      setActionId(null);
+      return;
+    }
+
+    setEditingUid(null);
+    setSuccess(
+      originalAccount?.is_active && !editForm.is_active
+        ? "User account deactivated."
+        : !originalAccount?.is_active && editForm.is_active
+          ? "User account reactivated."
+          : "User account updated.",
+    );
+    setActionId(null);
     router.refresh();
   }
 
@@ -124,12 +263,8 @@ export default function UserAccounts({
     setActionId(null);
   }
 
-  async function handleDeactivate(authUid: string, employeeName: string) {
-    if (
-      !window.confirm(
-        `Deactivate the account for ${employeeName}? They will no longer be able to sign in.`,
-      )
-    ) {
+  async function handleDeactivate(authUid: string, displayName: string) {
+    if (!window.confirm(deactivateConfirmMessage(displayName))) {
       return;
     }
 
@@ -158,6 +293,70 @@ export default function UserAccounts({
     router.refresh();
   }
 
+  async function handleDeleteUser(authUid: string, displayName: string) {
+    setActionId(authUid);
+    setError(null);
+    setSuccess(null);
+
+    const dependencyResponse = await fetch(
+      `/api/admin/users/delete-dependencies?auth_uid=${encodeURIComponent(authUid)}`,
+    );
+    const dependencyPayload = (await dependencyResponse.json().catch(() => null)) as {
+      error?: string;
+      summary?: string;
+      canDelete?: boolean;
+      blockMessage?: string;
+    } | null;
+
+    if (!dependencyResponse.ok) {
+      setError(dependencyPayload?.error ?? "Failed to inspect user dependencies");
+      setActionId(null);
+      return;
+    }
+
+    if (!dependencyPayload?.canDelete) {
+      setError(
+        dependencyPayload?.blockMessage ??
+          "This user account cannot be permanently deleted.",
+      );
+      setActionId(null);
+      return;
+    }
+
+    if (
+      !window.confirm(
+        deleteConfirmMessage(displayName, dependencyPayload.summary),
+      )
+    ) {
+      setActionId(null);
+      return;
+    }
+
+    const response = await fetch("/api/admin/users/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auth_uid: authUid }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      dependencySummary?: string;
+    } | null;
+
+    if (!response.ok) {
+      const detail = payload?.dependencySummary
+        ? `${payload.error ?? "Failed to delete user"}\n\n${payload.dependencySummary}`
+        : (payload?.error ?? "Failed to delete user");
+      setError(detail);
+      setActionId(null);
+      return;
+    }
+
+    setSuccess("User account permanently deleted.");
+    setActionId(null);
+    router.refresh();
+  }
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-4">
@@ -166,6 +365,7 @@ export default function UserAccounts({
           type="button"
           onClick={() => {
             setShowCreateForm((current) => !current);
+            setEditingUid(null);
             setError(null);
             setSuccess(null);
           }}
@@ -190,78 +390,64 @@ export default function UserAccounts({
       {showCreateForm && (
         <form
           onSubmit={handleCreate}
-          className="mb-6 grid gap-4 rounded-md border border-slate-200 bg-slate-50 p-4 md:grid-cols-2"
+          className="mb-6 space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4"
         >
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Employee
-            </label>
-            <select
-              required
-              value={createForm.employee_id}
-              onChange={(e) => updateCreateField("employee_id", e.target.value)}
-              className={inputClassName}
-            >
-              <option value="">Select employee</option>
-              {availableEmployees.map((employee) => (
-                <option key={employee.employee_id} value={employee.employee_id}>
-                  {employee.full_name}
-                </option>
-              ))}
-            </select>
+          <RoleAssignmentFields
+            form={createForm}
+            employees={initialEmployees}
+            clients={initialClients}
+            sites={initialSites}
+            assignedEmployeeIds={assignedEmployeeIds}
+            assignedClientIds={assignedClientIds}
+            onChange={(next) => setCreateForm((current) => ({ ...current, ...next }))}
+            idPrefix="create"
+          />
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Email
+              </label>
+              <input
+                type="email"
+                required
+                value={createForm.email}
+                onChange={(e) =>
+                  setCreateForm((current) => ({
+                    ...current,
+                    email: e.target.value,
+                  }))
+                }
+                className={inputClassName}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Temporary Password
+              </label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={createForm.password}
+                onChange={(e) =>
+                  setCreateForm((current) => ({
+                    ...current,
+                    password: e.target.value,
+                  }))
+                }
+                className={inputClassName}
+              />
+            </div>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Email
-            </label>
-            <input
-              type="email"
-              required
-              value={createForm.email}
-              onChange={(e) => updateCreateField("email", e.target.value)}
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Temporary Password
-            </label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={createForm.password}
-              onChange={(e) => updateCreateField("password", e.target.value)}
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Role
-            </label>
-            <select
-              required
-              value={createForm.role}
-              onChange={(e) => updateCreateField("role", e.target.value)}
-              className={inputClassName}
-            >
-              <option value="">Select role</option>
-              {USER_ROLE_OPTIONS.map((role) => (
-                <option key={role.value} value={role.value}>
-                  {role.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <button
-              type="submit"
-              disabled={loading || availableEmployees.length === 0}
-              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? "Creating…" : "Create User"}
-            </button>
-          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Creating…" : "Create User"}
+          </button>
         </form>
       )}
 
@@ -269,18 +455,21 @@ export default function UserAccounts({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Employee Name</th>
+              <th className={scrollableTableThClassName}>Name</th>
               <th className={scrollableTableThClassName}>Email</th>
               <th className={scrollableTableThClassName}>Role</th>
+              <th className={scrollableTableThClassName}>Role Links</th>
               <th className={scrollableTableThClassName}>Active</th>
-              <th className={scrollableTableThClassName}>Actions</th>
+              <th className={`${scrollableTableThClassName} w-[1%] whitespace-nowrap`}>
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {accounts.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No user accounts yet.
@@ -301,16 +490,34 @@ export default function UserAccounts({
                     <td className="px-4 py-3">
                       {getRoleLabel(account.role)}
                     </td>
+                    <td className="px-4 py-3 text-sm">
+                      {formatRoleLinks(account, initialSites)}
+                    </td>
                     <td className="px-4 py-3">
                       {account.is_active ? "Yes" : "No"}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="inline-flex flex-nowrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingUid(account.auth_uid);
+                            setEditForm(editUserFromAccount(account));
+                            setResettingUid(null);
+                            setError(null);
+                            setSuccess(null);
+                          }}
+                          disabled={actionId === account.auth_uid}
+                          className={actionButtonClassName}
+                        >
+                          Edit User
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
                             setResettingUid(account.auth_uid);
                             setResetPassword("");
+                            setEditingUid(null);
                             setError(null);
                             setSuccess(null);
                           }}
@@ -333,12 +540,118 @@ export default function UserAccounts({
                             ? "Working…"
                             : "Deactivate"}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteUser(account.auth_uid, account.full_name)
+                          }
+                          disabled={actionId === account.auth_uid}
+                          className={deleteButtonClassName}
+                        >
+                          Delete User
+                        </button>
                       </div>
                     </td>
                   </tr>
+
+                  {editingUid === account.auth_uid && (
+                    <tr className="bg-slate-50">
+                      <td colSpan={6} className="px-4 py-4">
+                        <form
+                          onSubmit={(e) =>
+                            handleUpdateUser(
+                              e,
+                              account.auth_uid,
+                              account.full_name,
+                            )
+                          }
+                          className="space-y-4"
+                        >
+                          <div className="max-w-md">
+                            <label className="mb-1 block text-sm font-medium text-slate-700">
+                              Email
+                            </label>
+                            <input
+                              type="email"
+                              required
+                              value={editForm.email}
+                              onChange={(e) =>
+                                setEditForm((current) => ({
+                                  ...current,
+                                  email: e.target.value,
+                                }))
+                              }
+                              className={inputClassName}
+                            />
+                          </div>
+                          <div>
+                            <span className="mb-1 block text-sm font-medium text-slate-700">
+                              Account Status
+                            </span>
+                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={editForm.is_active}
+                                onChange={(e) =>
+                                  setEditForm((current) => ({
+                                    ...current,
+                                    is_active: e.target.checked,
+                                  }))
+                                }
+                                className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+                              />
+                              {editForm.is_active ? "Active" : "Inactive"}
+                            </label>
+                            {!editForm.is_active && (
+                              <p className="mt-1 text-xs text-slate-500">
+                                Inactive users are signed out on their next
+                                request and cannot access the portal.
+                              </p>
+                            )}
+                          </div>
+                          <RoleAssignmentFields
+                            form={editForm}
+                            employees={initialEmployees}
+                            clients={initialClients}
+                            sites={initialSites}
+                            assignedEmployeeIds={assignedEmployeeIds}
+                            assignedClientIds={assignedClientIds}
+                            currentEmployeeId={editingAccount?.employee_id}
+                            currentClientId={editingAccount?.client_id}
+                            onChange={(next) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                ...next,
+                              }))
+                            }
+                            idPrefix={`edit-${account.auth_uid}`}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              disabled={actionId === account.auth_uid}
+                              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {actionId === account.auth_uid
+                                ? "Saving…"
+                                : "Save User"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingUid(null)}
+                              className={actionButtonClassName}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      </td>
+                    </tr>
+                  )}
+
                   {resettingUid === account.auth_uid && (
                     <tr className="bg-slate-50">
-                      <td colSpan={5} className="px-4 py-4">
+                      <td colSpan={6} className="px-4 py-4">
                         <form
                           onSubmit={(e) =>
                             handleResetPassword(e, account.auth_uid)

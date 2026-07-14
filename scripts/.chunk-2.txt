@@ -1,0 +1,132 @@
+ase.material_id,
+    p_exclude_purchase_id => p_purchase_id
+  );
+
+  PERFORM reverse_raw_material_purchase_payable(v_purchase.accounts_payable_id);
+
+  DELETE FROM raw_material_purchases
+  WHERE id = p_purchase_id;
+
+  PERFORM recalculate_raw_material_inventory(v_purchase.material_id);
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 5. Update raw material purchase (recalc + adjust finance; snapshots unchanged)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION update_raw_material_purchase(
+  p_purchase_id UUID,
+  p_purchase_date DATE,
+  p_quantity NUMERIC(18, 4),
+  p_cost_per_unit NUMERIC(18, 4),
+  p_supplier TEXT,
+  p_payment_method TEXT,
+  p_notes TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_purchase raw_material_purchases%ROWTYPE;
+  v_total_cost NUMERIC(18, 4);
+BEGIN
+  IF p_quantity IS NULL OR p_quantity <= 0 THEN
+    RAISE EXCEPTION 'Purchase quantity must be greater than zero';
+  END IF;
+
+  IF p_cost_per_unit IS NULL OR p_cost_per_unit < 0 THEN
+    RAISE EXCEPTION 'Cost per unit must be zero or greater';
+  END IF;
+
+  IF p_payment_method IS NULL OR TRIM(p_payment_method) = '' THEN
+    RAISE EXCEPTION 'Payment method is required for raw material purchases';
+  END IF;
+
+  SELECT *
+  INTO v_purchase
+  FROM raw_material_purchases
+  WHERE id = p_purchase_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Raw material purchase % not found', p_purchase_id;
+  END IF;
+
+  v_total_cost := ROUND(p_quantity * p_cost_per_unit, 4);
+
+  PERFORM assert_raw_material_stock_not_negative(
+    v_purchase.material_id,
+    p_override_purchase_id => p_purchase_id,
+    p_override_quantity => p_quantity,
+    p_action => 'save'
+  );
+
+  PERFORM sync_raw_material_purchase_payable(
+    p_purchase_id,
+    v_purchase.material_id,
+    p_purchase_date,
+    p_supplier,
+    p_payment_method,
+    v_total_cost,
+    v_purchase.accounts_payable_id
+  );
+
+  UPDATE raw_material_purchases
+  SET
+    purchase_date = p_purchase_date,
+    quantity = p_quantity,
+    cost_per_unit = p_cost_per_unit,
+    total_cost = v_total_cost,
+    supplier = NULLIF(TRIM(p_supplier), ''),
+    payment_method = TRIM(p_payment_method),
+    notes = NULLIF(TRIM(p_notes), '')
+  WHERE id = p_purchase_id;
+
+  PERFORM recalculate_raw_material_inventory(v_purchase.material_id);
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 6. Archive helpers
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION archive_raw_material(p_material_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE raw_materials
+  SET
+    is_archived = true,
+    updated_at = now()
+  WHERE id = p_material_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Raw material % not found', p_material_id;
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION archive_finished_product(p_product_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE finished_products
+  SET
+    is_archived = true,
+    updated_at = now()
+  WHERE id = p_product_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Finished product % not found', p_product_id;
+  END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION delete_raw_material_purchase(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION delete_raw_material_purchase(UUID) TO service_role;
+
+GRANT EXECUTE ON FUNCTION update_raw_material_purchase(
+  UUID, DATE, NUMERIC, NUMERIC, TEXT, TEXT, TEXT
+) TO authenticated;
+GRANT EXECUTE ON FUNCTIO

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import { inputClassName } from "../employees/employee-record-utils";
 import type { CorrectiveActionEntry } from "../operations/corrective-actions-utils";
@@ -9,9 +9,10 @@ import type { ClientEntry } from "../operations/clients-utils";
 import type {
   DutyRosterEmployee,
   DutyRosterProject,
-  RosterConfigRecord,
+  DutyRosterSite,
   RosterHistoryRecord,
 } from "../operations/duty-roster-utils";
+import type { RosterConfigRecord } from "../operations/roster-config-utils";
 import type { FailedInspectionEntry } from "../operations/failed-inspections-utils";
 import type { IncidentRegisterEntry } from "../operations/incident-register-utils";
 import type { InspectionSummaryEntry } from "../operations/inspection-summary-utils";
@@ -36,7 +37,6 @@ import {
   buildSitePerformanceReport,
   formatTrendIndicator,
   getIndividualIncidentReport,
-  resolveDefaultClientReportClient,
   type TrendDirection,
 } from "./operations-reports-utils";
 import {
@@ -163,26 +163,87 @@ function formatCount(value: number): string {
   return String(value);
 }
 
+function ReportClientFilter({
+  clients,
+  value,
+  onChange,
+  includeAllOption = true,
+  allOptionLabel = "All Clients",
+  placeholder = "Select client",
+}: {
+  clients: ClientEntry[];
+  value: string;
+  onChange: (clientId: string) => void;
+  includeAllOption?: boolean;
+  allOptionLabel?: string;
+  placeholder?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={inputClassName}
+      aria-label="Client filter"
+    >
+      {includeAllOption ? (
+        <option value="">{allOptionLabel}</option>
+      ) : (
+        <option value="">{placeholder}</option>
+      )}
+      {clients.map((client) => (
+        <option key={client.client_id} value={client.client_id}>
+          {client.client_name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function QualityKpiSummaryReport({
   initialInspections,
+  initialSites,
+  initialClients,
   availableYears,
   fetchError,
+  scopedClientId = null,
 }: {
   initialInspections: InspectionSummaryEntry[];
+  initialSites: SiteEntry[];
+  initialClients: ClientEntry[];
   availableYears: number[];
   fetchError: string | null;
+  scopedClientId?: string | null;
 }) {
   const { year, month, setYear, setMonth, periodLabel } =
     useMonthYearSelection(availableYears);
+  const [selectedClientId, setSelectedClientId] = useState(
+    scopedClientId ?? "",
+  );
+
+  useEffect(() => {
+    if (scopedClientId) {
+      setSelectedClientId(scopedClientId);
+    }
+  }, [scopedClientId]);
+
+  const activeClientId = (scopedClientId ?? selectedClientId) || null;
   const report = useMemo(
-    () => buildQualityKpiSummaryReport(initialInspections, year, month),
-    [initialInspections, year, month],
+    () =>
+      buildQualityKpiSummaryReport(
+        initialInspections,
+        initialSites,
+        year,
+        month,
+        activeClientId,
+      ),
+    [initialInspections, initialSites, year, month, activeClientId],
   );
 
   const handleExport = () => {
     downloadCsv(
       `quality-kpi-summary-${year}-${String(month).padStart(2, "0")}.csv`,
       [
+        "Client",
         "Site Name",
         "Inspections",
         "Avg Score %",
@@ -193,6 +254,7 @@ export function QualityKpiSummaryReport({
       ],
       [
         ...report.rows.map((row) => [
+          row.clientName,
           row.siteName,
           row.inspectionCount,
           row.averageScorePct,
@@ -203,6 +265,7 @@ export function QualityKpiSummaryReport({
         ]),
         [
           "Company Total",
+          "",
           report.totals.inspectionCount,
           report.totals.averageScorePct,
           report.totals.passCount,
@@ -219,6 +282,13 @@ export function QualityKpiSummaryReport({
       <ReportPrintStyles />
       <ReportFetchError fetchError={fetchError} />
       <ReportActionBar onPrint={handleReportPrint} onExportCsv={handleExport}>
+        {!scopedClientId ? (
+          <ReportClientFilter
+            clients={initialClients}
+            value={selectedClientId}
+            onChange={setSelectedClientId}
+          />
+        ) : null}
         <ReportMonthYearSelector
           year={year}
           month={month}
@@ -233,6 +303,7 @@ export function QualityKpiSummaryReport({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 {[
+                  "Client",
                   "Site Name",
                   "Inspections",
                   "Avg Score %",
@@ -250,6 +321,7 @@ export function QualityKpiSummaryReport({
             <tbody>
               {report.rows.map((row, index) => (
                 <tr key={row.siteId} className={getStripedRowClassName(index)}>
+                  <td className="px-4 py-3 text-sm text-slate-800">{row.clientName}</td>
                   <td className="px-4 py-3 text-sm text-slate-800">{row.siteName}</td>
                   <td className="px-4 py-3 text-sm text-slate-700">
                     {formatCount(row.inspectionCount)}
@@ -273,6 +345,7 @@ export function QualityKpiSummaryReport({
               ))}
               <tr className="bg-slate-100 font-semibold">
                 <td className="px-4 py-3 text-sm text-slate-900">Company Total</td>
+                <td className="px-4 py-3 text-sm text-slate-900" />
                 <td className="px-4 py-3 text-sm text-slate-900">
                   {report.totals.inspectionCount}
                 </td>
@@ -310,21 +383,36 @@ export function SitePerformanceReport({
   initialComplaints,
   initialIncidents,
   initialSites,
+  initialClients,
   availableYears,
   fetchError,
   incidentFetchError,
+  scopedClientId = null,
 }: {
   initialInspections: InspectionSummaryEntry[];
   initialFailedInspections: FailedInspectionEntry[];
   initialComplaints: ComplaintRegisterEntry[];
   initialIncidents: IncidentRegisterEntry[];
   initialSites: SiteEntry[];
+  initialClients: ClientEntry[];
   availableYears: number[];
   fetchError: string | null;
   incidentFetchError?: string | null;
+  scopedClientId?: string | null;
 }) {
   const { year, month, setYear, setMonth, periodLabel } =
     useMonthYearSelection(availableYears);
+  const [selectedClientId, setSelectedClientId] = useState(
+    scopedClientId ?? "",
+  );
+
+  useEffect(() => {
+    if (scopedClientId) {
+      setSelectedClientId(scopedClientId);
+    }
+  }, [scopedClientId]);
+
+  const activeClientId = (scopedClientId ?? selectedClientId) || null;
   const rows = useMemo(
     () =>
       buildSitePerformanceReport(
@@ -335,6 +423,7 @@ export function SitePerformanceReport({
         initialSites,
         year,
         month,
+        activeClientId,
       ),
     [
       initialInspections,
@@ -344,6 +433,7 @@ export function SitePerformanceReport({
       initialSites,
       year,
       month,
+      activeClientId,
     ],
   );
 
@@ -351,6 +441,7 @@ export function SitePerformanceReport({
     downloadCsv(
       `site-performance-${year}-${String(month).padStart(2, "0")}.csv`,
       [
+        "Client",
         "Site Name",
         "Avg Inspection Score %",
         "Open Failed Inspections",
@@ -358,6 +449,7 @@ export function SitePerformanceReport({
         "Incidents Logged",
       ],
       rows.map((row) => [
+        row.clientName,
         row.siteName,
         row.averageInspectionScorePct,
         row.openFailedInspections,
@@ -375,6 +467,13 @@ export function SitePerformanceReport({
         incidentFetchError={incidentFetchError}
       />
       <ReportActionBar onPrint={handleReportPrint} onExportCsv={handleExport}>
+        {!scopedClientId ? (
+          <ReportClientFilter
+            clients={initialClients}
+            value={selectedClientId}
+            onChange={setSelectedClientId}
+          />
+        ) : null}
         <ReportMonthYearSelector
           year={year}
           month={month}
@@ -393,6 +492,7 @@ export function SitePerformanceReport({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 {[
+                  "Client",
                   "Site Name",
                   "Avg Inspection Score %",
                   "Open Failed Inspections",
@@ -408,6 +508,9 @@ export function SitePerformanceReport({
             <tbody>
               {rows.map((row, index) => (
                 <tr key={row.siteId} className={getStripedRowClassName(index)}>
+                  <td className="px-4 py-3 text-sm text-slate-800">
+                    {row.clientName}
+                  </td>
                   <td className="px-4 py-3 text-sm font-medium text-slate-800">
                     {row.siteName}
                   </td>
@@ -573,13 +676,15 @@ export function MonthlyClientServiceReport({
   initialIncidents,
   initialComplaints,
   initialCorrectiveActions,
-  rosterConfig,
+  rosterConfigs,
   rosterEmployees,
   rosterProjects,
+  rosterSites,
   rosterHistory,
   availableYears,
   fetchError,
   incidentFetchError,
+  scopedClientId = null,
 }: {
   initialClients: ClientEntry[];
   initialSites: SiteEntry[];
@@ -588,19 +693,34 @@ export function MonthlyClientServiceReport({
   initialIncidents: IncidentRegisterEntry[];
   initialComplaints: ComplaintRegisterEntry[];
   initialCorrectiveActions: CorrectiveActionEntry[];
-  rosterConfig: RosterConfigRecord | null;
+  rosterConfigs: RosterConfigRecord[];
   rosterEmployees: DutyRosterEmployee[];
   rosterProjects: DutyRosterProject[];
+  rosterSites: DutyRosterSite[];
   rosterHistory: RosterHistoryRecord[];
   availableYears: number[];
   fetchError: string | null;
   incidentFetchError?: string | null;
+  scopedClientId?: string | null;
 }) {
   const { year, month, setYear, setMonth, periodLabel } =
     useMonthYearSelection(availableYears);
+  const [selectedClientId, setSelectedClientId] = useState(
+    scopedClientId ?? "",
+  );
+
+  useEffect(() => {
+    if (scopedClientId) {
+      setSelectedClientId(scopedClientId);
+    }
+  }, [scopedClientId]);
+
   const client = useMemo(
-    () => resolveDefaultClientReportClient(initialClients),
-    [initialClients],
+    () =>
+      initialClients.find(
+        (entry) => entry.client_id === (scopedClientId ?? selectedClientId),
+      ) ?? null,
+    [initialClients, scopedClientId, selectedClientId],
   );
 
   const report = useMemo(() => {
@@ -616,9 +736,10 @@ export function MonthlyClientServiceReport({
       incidents: initialIncidents,
       complaints: initialComplaints,
       correctiveActions: initialCorrectiveActions,
-      rosterConfig,
+      rosterConfigs,
       rosterEmployees,
       rosterProjects,
+      rosterSites,
       rosterHistory,
       year,
       month,
@@ -631,9 +752,10 @@ export function MonthlyClientServiceReport({
     initialIncidents,
     initialComplaints,
     initialCorrectiveActions,
-    rosterConfig,
+    rosterConfigs,
     rosterEmployees,
     rosterProjects,
+    rosterSites,
     rosterHistory,
     year,
     month,
@@ -678,6 +800,15 @@ export function MonthlyClientServiceReport({
         onExportCsv={handleExport}
         exportDisabled={!report}
       >
+        {!scopedClientId ? (
+          <ReportClientFilter
+            clients={initialClients}
+            value={selectedClientId}
+            onChange={setSelectedClientId}
+            includeAllOption={false}
+            placeholder="Select client"
+          />
+        ) : null}
         <ReportMonthYearSelector
           year={year}
           month={month}
@@ -688,9 +819,8 @@ export function MonthlyClientServiceReport({
       </ReportActionBar>
 
       {!client ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          No client found. Central University (CL-001) will be selected
-          automatically when available.
+        <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+          Select a client to generate this report.
         </p>
       ) : null}
 
@@ -838,7 +968,7 @@ export function MonthlyClientServiceReport({
                   <tbody>
                     {report.staffingRows.map((row, index) => (
                       <tr
-                        key={row.projectCode}
+                        key={row.siteCode}
                         className={`${getStripedRowClassName(index)} ${
                           row.isStaffingMismatch ? "bg-amber-50" : ""
                         }`}

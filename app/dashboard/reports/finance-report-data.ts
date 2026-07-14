@@ -3,8 +3,12 @@ import { fetchBalanceSheetPageData } from "../finance/balance-sheet-page-data";
 import { buildAvailableYears } from "../finance/finance-year-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
 import type { AccountsPayableEntry } from "../finance/accounts-payable-utils";
-import type { IncomeRegisterEntry } from "../finance/income-register-utils";
 import type { FixedAssetScheduleAsset } from "./finance-reports-utils";
+import {
+  RECEIVABLES_INCOME_SELECT,
+  normalizeIncomeRegisterEntry,
+  type IncomeRegisterEntry,
+} from "../finance/income-register-utils";
 
 export async function fetchMonthlyPlReportData(supabase: SupabaseClient) {
   const [
@@ -14,7 +18,7 @@ export async function fetchMonthlyPlReportData(supabase: SupabaseClient) {
   ] = await Promise.all([
     supabase
       .from("income_register")
-      .select("date, service_category, amount")
+      .select("date, service_category, amount, entry_type, sale_status")
       .order("date", { ascending: true }),
     supabase
       .from("expense_register")
@@ -89,11 +93,14 @@ export async function fetchCashFlowReportData(supabase: SupabaseClient) {
 export async function fetchArAgingReportData(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from("income_register")
-    .select("*")
+    .select(RECEIVABLES_INCOME_SELECT)
     .order("due_date", { ascending: true });
 
   return {
-    initialIncomeEntries: (data as IncomeRegisterEntry[] | null) ?? [],
+    initialIncomeEntries:
+      (data as IncomeRegisterEntry[] | null)?.map((entry) =>
+        normalizeIncomeRegisterEntry(entry),
+      ) ?? [],
     fetchError: error?.message ?? null,
   };
 }

@@ -1,0 +1,105 @@
+-- Script 45: Raw material purchase edit/delete + archive for raw materials & finished products.
+-- Purchase changes replay inventory from ledger; finance postings are adjusted in place.
+-- Archived items stay in master lists (optional filter) but drop out of active dropdowns.
+
+BEGIN;
+
+-- ---------------------------------------------------------------------------
+-- 1. Archive columns
+-- ---------------------------------------------------------------------------
+ALTER TABLE raw_materials
+  ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE finished_products
+  ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false;
+
+-- ---------------------------------------------------------------------------
+-- 2. Stock validation helper (preview purchases minus batch consumption)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION assert_raw_material_stock_not_negative(
+  p_material_id UUID,
+  p_exclude_purchase_id UUID DEFAULT NULL,
+  p_override_purchase_id UUID DEFAULT NULL,
+  p_override_quantity NUMERIC(18, 4) DEFAULT NULL,
+  p_action TEXT DEFAULT 'delete'
+)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_purchased_qty NUMERIC(18, 4) := 0;
+  v_consumed_qty NUMERIC(18, 4) := 0;
+  v_unit TEXT;
+  v_purchase RECORD;
+  v_action_label TEXT;
+BEGIN
+  FOR v_purchase IN
+    SELECT id, quantity
+    FROM raw_material_purchases
+    WHERE material_id = p_material_id
+      AND (p_exclude_purchase_id IS NULL OR id <> p_exclude_purchase_id)
+  LOOP
+    IF p_override_purchase_id IS NOT NULL AND v_purchase.id = p_override_purchase_id THEN
+      v_purchased_qty := v_purchased_qty + COALESCE(p_override_quantity, v_purchase.quantity);
+    ELSE
+      v_purchased_qty := v_purchased_qty + v_purchase.quantity;
+    END IF;
+  END LOOP;
+
+  SELECT COALESCE(SUM(quantity_used), 0)
+  INTO v_consumed_qty
+  FROM production_batch_materials
+  WHERE material_id = p_material_id;
+
+  IF v_purchased_qty - v_consumed_qty < 0 THEN
+    SELECT unit_of_measure
+    INTO v_unit
+    FROM raw_materials
+    WHERE id = p_material_id;
+
+    v_action_label := CASE
+      WHEN lower(trim(p_action)) IN ('update', 'edit', 'save') THEN 'save changes to this purchase'
+      ELSE 'delete'
+    END;
+
+    RAISE EXCEPTION
+      'Cannot % — % of this material has already been used in production, but remaining purchases only total %',
+      v_action_label,
+      TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM v_consumed_qty::TEXT)) || COALESCE(v_unit, ''),
+      TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM v_purchased_qty::TEXT)) || COALESCE(v_unit, '');
+  END IF;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 3. Reverse or adjust Accounts Payable for a purchase
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION reverse_raw_material_purchase_payable(p_payable_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF p_payable_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM accounts_payable
+    WHERE id = p_payable_id
+      AND COALESCE(amount_paid, 0) > 0
+  ) THEN
+    RAISE EXCEPTION
+      'Cannot reverse accounts payable — partial or full payment has already been recorded';
+  END IF;
+
+  DELETE FROM accounts_payable
+  WHERE id = p_payable_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION create_raw_material_purchase_payable(
+  p_purchase_id UUID,
+  p_material_id UUID,
+  p_purchase_date DATE,
+  p_supplier TEX

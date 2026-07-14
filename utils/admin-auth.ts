@@ -4,11 +4,11 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
-type SuperAdminResult =
-  | { ok: true }
-  | { ok: false; response: NextResponse };
+type AuthResult = { ok: true } | { ok: false; response: NextResponse };
 
-export async function requireSuperAdmin(): Promise<SuperAdminResult> {
+export type SuperAdminResult = AuthResult;
+
+export async function requireRoleIn(roles: readonly string[]): Promise<AuthResult> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
@@ -31,8 +31,8 @@ export async function requireSuperAdmin(): Promise<SuperAdminResult> {
 
   if (
     !account ||
-    account.role !== "super_admin" ||
-    account.is_active === false
+    account.is_active === false ||
+    !roles.includes(account.role)
   ) {
     return {
       ok: false,
@@ -41,4 +41,43 @@ export async function requireSuperAdmin(): Promise<SuperAdminResult> {
   }
 
   return { ok: true };
+}
+
+export async function requireSuperAdmin(): Promise<SuperAdminResult> {
+  return requireRoleIn(["super_admin"]);
+}
+
+export async function requireAuthenticated(): Promise<
+  AuthResult & { userId: string | null }
+> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      userId: null,
+    };
+  }
+
+  const { data: account } = await supabase
+    .from("user_accounts")
+    .select("is_active")
+    .eq("auth_uid", user.id)
+    .maybeSingle();
+
+  if (!account || account.is_active === false) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+      userId: null,
+    };
+  }
+
+  return { ok: true, userId: user.id };
 }

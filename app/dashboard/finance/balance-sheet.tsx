@@ -12,6 +12,7 @@ import {
   type BalanceSheetAccountsPayableEntry,
   type BalanceSheetIncomeEntry,
   type BalanceSheetRow,
+  type InventoryBalanceSheetInput,
 } from "./balance-sheet-utils";
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type {
@@ -39,6 +40,7 @@ type BalanceSheetProps = {
   initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
   initialPayrollHistory: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
+  initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   availableYears: number[];
   fetchError: string | null;
 };
@@ -121,6 +123,7 @@ export default function BalanceSheet({
   initialCashFlowExpenseEntries,
   initialPayrollHistory,
   initialMonthEndCloseNetPay,
+  initialInventoryBalanceSheet,
   availableYears,
   fetchError,
 }: BalanceSheetProps) {
@@ -140,6 +143,7 @@ export default function BalanceSheet({
         initialPayrollHistory,
         initialMonthEndCloseNetPay,
         selectedYear,
+        initialInventoryBalanceSheet,
       ),
     [
       initialIncomeEntries,
@@ -150,6 +154,7 @@ export default function BalanceSheet({
       initialCashFlowExpenseEntries,
       initialPayrollHistory,
       initialMonthEndCloseNetPay,
+      initialInventoryBalanceSheet,
       selectedYear,
     ],
   );
@@ -164,8 +169,8 @@ export default function BalanceSheet({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <p className="text-sm text-slate-600">
           Monthly balance sheet for financial year {report.financialYear},
-          calculated live from cash, receivables, fixed assets, payables,
-          accrued wages, and equity.
+          calculated live from cash, receivables, inventory, fixed assets,
+          payables, accrued wages, and equity.
         </p>
         <FinancialYearSelector
           years={availableYears}

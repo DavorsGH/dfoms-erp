@@ -11,6 +11,11 @@ import {
   type AssetDepreciationInput,
 } from "../finance/fixed-assets-utils";
 import type { IncomeRegisterEntry } from "../finance/income-register-utils";
+import {
+  getIncomeCustomerDisplayName,
+  isActiveIncomeForReporting,
+  normalizeIncomeRegisterEntry,
+} from "../finance/income-register-utils";
 import { calculateOutstanding } from "../finance/income-register-utils";
 import { MONTH_LABELS } from "../finance/profit-loss-utils";
 
@@ -172,6 +177,7 @@ export function buildAccountsReceivableAgingReport(
   totalOutstanding: number;
 } {
   const rows = entries
+    .filter((entry) => isActiveIncomeForReporting(entry))
     .map((entry) => {
       const outstandingBalance = getOutstandingBalance(entry);
 
@@ -184,7 +190,7 @@ export function buildAccountsReceivableAgingReport(
 
       return {
         invoiceNo: entry.invoice_no,
-        customerName: entry.customer_name,
+        customerName: getIncomeCustomerDisplayName(entry),
         invoiceDate: entry.date,
         dueDate: entry.due_date,
         amount: Number(entry.amount) || 0,

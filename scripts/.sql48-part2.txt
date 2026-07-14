@@ -1,0 +1,231 @@
+-- 5. Corrective actions (site derived from related work order / issue)
+-- ---------------------------------------------------------------------------
+ALTER TABLE corrective_actions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS corrective_actions_rbac_select ON corrective_actions;
+CREATE POLICY corrective_actions_rbac_select
+  ON corrective_actions
+  FOR SELECT
+  TO authenticated
+  USING (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND (
+        (
+          related_work_order IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM work_orders wo
+            WHERE wo.work_order_no = corrective_actions.related_work_order
+              AND can_access_operations_site(wo.site_id)
+          )
+        )
+        OR (
+          related_issue_no IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM failed_inspections fi
+            WHERE fi.issue_no = corrective_actions.related_issue_no
+              AND can_access_operations_site(fi.site_id)
+          )
+        )
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS corrective_actions_rbac_insert ON corrective_actions;
+CREATE POLICY corrective_actions_rbac_insert
+  ON corrective_actions
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND (
+        (
+          related_work_order IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM work_orders wo
+            WHERE wo.work_order_no = corrective_actions.related_work_order
+              AND can_access_operations_site(wo.site_id)
+          )
+        )
+        OR (
+          related_issue_no IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM failed_inspections fi
+            WHERE fi.issue_no = corrective_actions.related_issue_no
+              AND can_access_operations_site(fi.site_id)
+          )
+        )
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS corrective_actions_rbac_update ON corrective_actions;
+CREATE POLICY corrective_actions_rbac_update
+  ON corrective_actions
+  FOR UPDATE
+  TO authenticated
+  USING (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND (
+        (
+          related_work_order IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM work_orders wo
+            WHERE wo.work_order_no = corrective_actions.related_work_order
+              AND can_access_operations_site(wo.site_id)
+          )
+        )
+        OR (
+          related_issue_no IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM failed_inspections fi
+            WHERE fi.issue_no = corrective_actions.related_issue_no
+              AND can_access_operations_site(fi.site_id)
+          )
+        )
+      )
+    )
+  )
+  WITH CHECK (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND (
+        (
+          related_work_order IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM work_orders wo
+            WHERE wo.work_order_no = corrective_actions.related_work_order
+              AND can_access_operations_site(wo.site_id)
+          )
+        )
+        OR (
+          related_issue_no IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM failed_inspections fi
+            WHERE fi.issue_no = corrective_actions.related_issue_no
+              AND can_access_operations_site(fi.site_id)
+          )
+        )
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS corrective_actions_rbac_delete ON corrective_actions;
+CREATE POLICY corrective_actions_rbac_delete
+  ON corrective_actions
+  FOR DELETE
+  TO authenticated
+  USING (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND (
+        (
+          related_work_order IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM work_orders wo
+            WHERE wo.work_order_no = corrective_actions.related_work_order
+              AND can_access_operations_site(wo.site_id)
+          )
+        )
+        OR (
+          related_issue_no IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM failed_inspections fi
+            WHERE fi.issue_no = corrective_actions.related_issue_no
+              AND can_access_operations_site(fi.site_id)
+          )
+        )
+      )
+    )
+  );
+
+-- ---------------------------------------------------------------------------
+-- 6. Roster history (scoped via employee assigned site)
+-- ---------------------------------------------------------------------------
+ALTER TABLE roster_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS roster_history_rbac_select ON roster_history;
+CREATE POLICY roster_history_rbac_select
+  ON roster_history
+  FOR SELECT
+  TO authenticated
+  USING (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND employee_id IS NOT NULL
+      AND can_access_employee_record(
+        (SELECT e.assigned_site_id FROM employees e WHERE e.employee_id = roster_history.employee_id)
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS roster_history_rbac_insert ON roster_history;
+CREATE POLICY roster_history_rbac_insert
+  ON roster_history
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND employee_id IS NOT NULL
+      AND can_access_employee_record(
+        (SELECT e.assigned_site_id FROM employees e WHERE e.employee_id = roster_history.employee_id)
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS roster_history_rbac_update ON roster_history;
+CREATE POLICY roster_history_rbac_update
+  ON roster_history
+  FOR UPDATE
+  TO authenticated
+  USING (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND employee_id IS NOT NULL
+      AND can_access_employee_record(
+        (SELECT e.assigned_site_id FROM employees e WHERE e.employee_id = roster_history.employee_id)
+      )
+    )
+  )
+  WITH CHECK (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+    OR (
+      current_user_role() = 'supervisor'::app_role
+      AND employee_id IS NOT NULL
+      AND can_access_employee_record(
+        (SELECT e.assigned_site_id FROM employees e WHERE e.employee_id = roster_history.employee_id)
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS roster_history_rbac_delete ON roster_history;
+CREATE POLICY roster_history_rbac_delete
+  ON roster_history
+  FOR DELETE
+  TO authenticated
+  USING (
+    current_user_role() IN ('super_admin'::app_role, 'operations_manager'::app_role)
+  );
+
+NOTIFY pgrst, 'reload schema';

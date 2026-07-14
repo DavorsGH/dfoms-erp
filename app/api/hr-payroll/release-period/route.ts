@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/utils/admin-auth";
+import { requireRoleIn } from "@/utils/admin-auth";
+import { PAYROLL_PERIOD_MANAGE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
   PAYROLL_STATUS_LOCKED,
@@ -26,7 +27,7 @@ type ReleasePeriodBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireSuperAdmin();
+  const auth = await requireRoleIn(PAYROLL_PERIOD_MANAGE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

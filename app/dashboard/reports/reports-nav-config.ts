@@ -101,6 +101,30 @@ export const REPORT_NAV_CATEGORIES: ReportNavCategory[] = [
     ],
   },
   {
+    id: "inventory",
+    label: "Inventory",
+    baseHref: "/dashboard/reports/inventory",
+    pageTitle: "Inventory Reports",
+    items: [
+      {
+        label: "Stock on Hand",
+        href: "/dashboard/reports/inventory/stock-on-hand",
+      },
+      {
+        label: "Production History",
+        href: "/dashboard/reports/inventory/production-history",
+      },
+      {
+        label: "Product Sales",
+        href: "/dashboard/reports/inventory/product-sales",
+      },
+      {
+        label: "Internal Consumption",
+        href: "/dashboard/reports/inventory/internal-consumption",
+      },
+    ],
+  },
+  {
     id: "client-facing",
     label: "Client-Facing",
     baseHref: "/dashboard/reports/client",
@@ -140,7 +164,7 @@ export const REPORT_NAV_CATEGORIES: ReportNavCategory[] = [
 
 export const REPORT_SIDEBAR_LINKS = REPORT_NAV_CATEGORIES.map((category) => ({
   label: category.label,
-  href: category.baseHref,
+  href: category.items[0]?.href ?? category.baseHref,
   categoryId: category.id,
 }));
 

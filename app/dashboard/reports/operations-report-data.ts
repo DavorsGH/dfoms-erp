@@ -12,9 +12,10 @@ import {
 import { CLIENT_SELECT, type ClientEntry } from "../operations/clients-utils";
 import {
   normalizeDutyRosterEmployee,
+  normalizeDutyRosterSite,
   type DutyRosterEmployee,
   type DutyRosterProject,
-  type RosterConfigRecord,
+  type DutyRosterSite,
   type RosterHistoryRecord,
 } from "../operations/duty-roster-utils";
 import {
@@ -38,7 +39,15 @@ import {
   normalizeWorkOrderEntry,
   type WorkOrderEntry,
 } from "../operations/work-orders-utils";
+import {
+  normalizeProjectEntry,
+  PROJECT_SELECT,
+} from "../administration/projects-utils";
 import { buildAvailableOperationsReportYears } from "./operations-reports-utils";
+import {
+  ROSTER_CONFIG_SELECT,
+  type RosterConfigRecord,
+} from "../operations/roster-config-utils";
 
 async function fetchInspectionSummaries(supabase: SupabaseClient) {
   return supabase
@@ -101,9 +110,10 @@ async function fetchDutyRosterBundle(supabase: SupabaseClient) {
     { data: configRows, error: configError },
     { data: employees, error: employeesError },
     { data: projects, error: projectsError },
+    { data: sites, error: sitesError },
     { data: history, error: historyError },
   ] = await Promise.all([
-    supabase.from("roster_config").select("*").limit(1),
+    supabase.from("roster_config").select(ROSTER_CONFIG_SELECT),
     supabase
       .from("employees")
       .select(
@@ -112,8 +122,9 @@ async function fetchDutyRosterBundle(supabase: SupabaseClient) {
       .order("staff_id", { ascending: true }),
     supabase
       .from("projects")
-      .select("project_code, project_name, required_staff")
+      .select(PROJECT_SELECT)
       .order("project_name", { ascending: true }),
+    supabase.from("sites").select(SITE_SELECT).order("site_name", { ascending: true }),
     supabase
       .from("roster_history")
       .select("*")
@@ -121,17 +132,25 @@ async function fetchDutyRosterBundle(supabase: SupabaseClient) {
   ]);
 
   return {
-    rosterConfig: (configRows?.[0] as RosterConfigRecord | undefined) ?? null,
+    rosterConfigs: (configRows as RosterConfigRecord[] | null) ?? [],
     rosterEmployees:
       (employees as DutyRosterEmployee[] | null)?.map((employee) =>
         normalizeDutyRosterEmployee(employee),
       ) ?? [],
-    rosterProjects: (projects as DutyRosterProject[] | null) ?? [],
+    rosterProjects:
+      (projects as DutyRosterProject[] | null)?.map((project) =>
+        normalizeProjectEntry(project),
+      ) ?? [],
+    rosterSites:
+      (sites as DutyRosterSite[] | null)?.map((site) =>
+        normalizeDutyRosterSite(site),
+      ) ?? [],
     rosterHistory: (history as RosterHistoryRecord[] | null) ?? [],
     rosterFetchError:
       configError?.message ??
       employeesError?.message ??
       projectsError?.message ??
+      sitesError?.message ??
       historyError?.message ??
       null,
   };
@@ -156,15 +175,25 @@ function buildYearsFromInspectionDates(dates: string[]) {
 export async function fetchQualityKpiSummaryReportData(
   supabase: SupabaseClient,
 ) {
-  const { data, error } = await fetchInspectionSummaries(supabase);
+  const [
+    { data, error },
+    { data: sites, error: sitesError },
+    { data: clients, error: clientsError },
+  ] = await Promise.all([
+    fetchInspectionSummaries(supabase),
+    fetchSites(supabase),
+    fetchClients(supabase),
+  ]);
   const inspections = normalizeInspections(data as InspectionSummaryEntry[] | null);
 
   return {
     initialInspections: inspections,
+    initialSites: (sites as SiteEntry[] | null) ?? [],
+    initialClients: (clients as ClientEntry[] | null) ?? [],
     availableYears: buildYearsFromInspectionDates(
       inspections.map((row) => row.inspection_date),
     ),
-    fetchError: error?.message ?? null,
+    fetchError: error?.message ?? sitesError?.message ?? clientsError?.message ?? null,
   };
 }
 
@@ -175,12 +204,14 @@ export async function fetchSitePerformanceReportData(supabase: SupabaseClient) {
     { data: complaints, error: complaintsError },
     { data: incidents, error: incidentsError },
     { data: sites, error: sitesError },
+    { data: clients, error: clientsError },
   ] = await Promise.all([
     fetchInspectionSummaries(supabase),
     fetchFailedInspections(supabase),
     fetchComplaints(supabase),
     fetchIncidents(supabase),
     fetchSites(supabase),
+    fetchClients(supabase),
   ]);
 
   const normalizedInspections = normalizeInspections(
@@ -202,6 +233,7 @@ export async function fetchSitePerformanceReportData(supabase: SupabaseClient) {
       incidents as IncidentRegisterEntry[] | null,
     ),
     initialSites: (sites as SiteEntry[] | null) ?? [],
+    initialClients: (clients as ClientEntry[] | null) ?? [],
     availableYears: buildYearsFromInspectionDates(
       normalizedInspections.map((row) => row.inspection_date),
     ),
@@ -210,6 +242,7 @@ export async function fetchSitePerformanceReportData(supabase: SupabaseClient) {
       failedError?.message ??
       complaintsError?.message ??
       sitesError?.message ??
+      clientsError?.message ??
       null,
     incidentFetchError,
   };
@@ -273,9 +306,10 @@ export async function fetchClientServiceReportData(supabase: SupabaseClient) {
       (correctiveActions as CorrectiveActionEntry[] | null)?.map((row) =>
         normalizeCorrectiveActionEntry(row),
       ) ?? [],
-    rosterConfig: rosterBundle.rosterConfig,
+    rosterConfigs: rosterBundle.rosterConfigs,
     rosterEmployees: rosterBundle.rosterEmployees,
     rosterProjects: rosterBundle.rosterProjects,
+    rosterSites: rosterBundle.rosterSites,
     rosterHistory: rosterBundle.rosterHistory,
     availableYears: buildYearsFromInspectionDates(
       normalizedInspections.map((row) => row.inspection_date),

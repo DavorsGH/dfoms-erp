@@ -1,19 +1,22 @@
 import { compareStaffIds } from "../employees/employee-record-utils";
+import {
+  normalizeProjectEntry,
+  type ProjectEntry,
+} from "../administration/projects-utils";
+import {
+  isRosterStaffingSite,
+  normalizeSiteEntry,
+  type SiteEntry,
+} from "./sites-utils";
+import type { RosterConfigRecord } from "./roster-config-utils";
 
-export type RosterConfigRecord = {
-  id: string;
-  cycle_start_date: string;
-  cycle_length_days: number;
-  morning_time: string | null;
-  afternoon_time: string | null;
-  supervisor_time: string | null;
-};
+export type { RosterConfigRecord } from "./roster-config-utils";
 
-export type DutyRosterProject = {
-  project_code: string;
-  project_name: string;
-  required_staff: number | null;
-};
+export type DutyRosterProject = ProjectEntry;
+export type DutyRosterSite = SiteEntry;
+
+export { normalizeProjectEntry as normalizeDutyRosterProject };
+export { normalizeSiteEntry as normalizeDutyRosterSite };
 
 export type DutyRosterEmployee = {
   employee_id: string;
@@ -44,7 +47,7 @@ export type RosterHistoryRecord = {
 };
 
 export type DutyRosterFacilityRow = {
-  projectCode: string;
+  siteCode: string;
   facilityName: string;
   morningShift: string;
   afternoonShift: string;
@@ -69,6 +72,8 @@ export type DutyRosterSummary = {
 };
 
 export type DutyRosterViewModel = {
+  clientId: string;
+  clientName: string;
   summary: DutyRosterSummary;
   rows: DutyRosterFacilityRow[];
   totals: {
@@ -76,6 +81,11 @@ export type DutyRosterViewModel = {
     totalStaff: number;
   };
   currentRotationNumber: number;
+};
+
+export type UnassignedRosterSite = {
+  siteCode: string;
+  siteName: string;
 };
 
 export const ROSTER_NAME_SEPARATOR = " || ";
@@ -294,6 +304,103 @@ function resolveHistoryProjectCode(
   return byName?.project_code ?? normalized;
 }
 
+export function resolveLegacyProjectCodesForSite(
+  site: Pick<DutyRosterSite, "site_name">,
+  projects: DutyRosterProject[],
+): string[] {
+  const normalizedSiteName = site.site_name.trim().toLowerCase();
+
+  return projects
+    .filter(
+      (project) =>
+        project.required_staff != null &&
+        project.project_name.trim().toLowerCase() === normalizedSiteName,
+    )
+    .map((project) => project.project_code);
+}
+
+export function getContractProjectCodeForClient(
+  sites: DutyRosterSite[],
+  projects: DutyRosterProject[],
+  clientId: string,
+): string | null {
+  const clientSite = sites.find(
+    (site) => site.client_id === clientId && site.project?.project_code,
+  );
+
+  return clientSite?.project?.project_code ?? null;
+}
+
+export function filterSitesForClient(
+  sites: DutyRosterSite[],
+  clientId: string,
+): DutyRosterSite[] {
+  return sites.filter((site) => site.client_id === clientId && site.project_id);
+}
+
+export function filterRosterStaffingSites(sites: DutyRosterSite[]): DutyRosterSite[] {
+  return sites.filter((site) => isRosterStaffingSite(site));
+}
+
+export function getUnassignedRosterSites(
+  sites: DutyRosterSite[],
+  clientId: string,
+): UnassignedRosterSite[] {
+  return sites
+    .filter((site) => site.client_id === clientId && !site.project_id)
+    .map((site) => ({
+      siteCode: site.site_code,
+      siteName: site.site_name,
+    }))
+    .sort((left, right) => left.siteName.localeCompare(right.siteName));
+}
+
+function buildClientAssignmentProjectCodes(
+  sites: DutyRosterSite[],
+  projects: DutyRosterProject[],
+  clientId: string,
+): Set<string> {
+  const codes = new Set<string>();
+  const clientSites = filterSitesForClient(sites, clientId);
+
+  for (const site of clientSites) {
+    for (const projectCode of resolveLegacyProjectCodesForSite(site, projects)) {
+      codes.add(projectCode);
+    }
+  }
+
+  const contractProjectCode = getContractProjectCodeForClient(
+    sites,
+    projects,
+    clientId,
+  );
+  if (contractProjectCode) {
+    codes.add(contractProjectCode);
+  }
+
+  return codes;
+}
+
+function filterHistoryForClient(
+  history: RosterHistoryRecord[],
+  employees: DutyRosterEmployee[],
+  clientProjectCodes: Set<string>,
+): RosterHistoryRecord[] {
+  const clientEmployeeIds = new Set(
+    employees
+      .filter(
+        (employee) =>
+          employee.contract_project &&
+          clientProjectCodes.has(employee.contract_project),
+      )
+      .map((employee) => employee.employee_id),
+  );
+
+  return history.filter(
+    (row) => row.employee_id && clientEmployeeIds.has(row.employee_id),
+  );
+}
+
 export function isRosterFacilityProject(
   project: Pick<DutyRosterProject, "required_staff">,
 ): boolean {
@@ -321,47 +428,78 @@ export function isAdministrativeProjectAssignment(
 
 export function isRosterSiteAssignment(
   projectCode: string | null | undefined,
+  sites: DutyRosterSite[],
   projects: DutyRosterProject[],
 ): boolean {
+  if (!projectCode) {
+    return false;
+  }
+
   const project = findProjectByCode(projects, projectCode);
-  return project != null && isRosterFacilityProject(project);
+  if (project && isRosterFacilityProject(project)) {
+    return true;
+  }
+
+  return sites.some((site) =>
+    resolveLegacyProjectCodesForSite(site, projects).includes(projectCode),
+  );
 }
 
 export function buildDutyRosterViewModel(input: {
+  clientId: string;
+  clientName: string;
   config: RosterConfigRecord;
   employees: DutyRosterEmployee[];
   projects: DutyRosterProject[];
+  sites: DutyRosterSite[];
   history: RosterHistoryRecord[];
   referenceDate?: Date;
 }): DutyRosterViewModel {
   const activeEmployees = input.employees.filter(
     (employee) => employee.employment_status === ACTIVE_EMPLOYMENT_STATUS,
   );
-  const rosterRelevantEmployees = activeEmployees.filter(
-    (employee) =>
-      !isAdministrativeProjectAssignment(
-        employee.contract_project,
-        input.projects,
-      ),
+  const clientSites = filterSitesForClient(input.sites, input.clientId);
+  const staffingSites = filterRosterStaffingSites(clientSites);
+  const clientProjectCodes = buildClientAssignmentProjectCodes(
+    input.sites,
+    input.projects,
+    input.clientId,
   );
-  const rosterAssignedEmployees = rosterRelevantEmployees.filter((employee) =>
-    isRosterSiteAssignment(employee.contract_project, input.projects),
+  const clientActiveEmployees = activeEmployees.filter(
+    (employee) =>
+      employee.contract_project &&
+      clientProjectCodes.has(employee.contract_project),
+  );
+  const rosterRelevantEmployees = clientActiveEmployees;
+  const rosterAssignedEmployees = clientActiveEmployees.filter((employee) =>
+    isRosterSiteAssignment(
+      employee.contract_project,
+      input.sites,
+      input.projects,
+    ),
+  );
+  const clientHistory = filterHistoryForClient(
+    input.history,
+    input.employees,
+    clientProjectCodes,
   );
   const rotationDates = calculateRotationDates(input.config);
   const daysToRotation = calculateDaysToRotation(
     rotationDates.nextRotationDate,
     input.referenceDate,
   );
-  const currentRotationNumber = getCurrentRotationNumber(input.history);
+  const currentRotationNumber = getCurrentRotationNumber(clientHistory);
 
-  const rosterProjects = input.projects.filter((project) =>
-    isRosterFacilityProject(project),
-  );
-
-  const rows = rosterProjects
-    .map((project) => {
+  const rows = staffingSites
+    .map((site) => {
+      const legacyProjectCodes = resolveLegacyProjectCodesForSite(
+        site,
+        input.projects,
+      );
       const siteEmployees = activeEmployees.filter(
-        (employee) => employee.contract_project === project.project_code,
+        (employee) =>
+          employee.contract_project &&
+          legacyProjectCodes.includes(employee.contract_project),
       );
       const morningEmployees = siteEmployees.filter(
         (employee) => employee.shift === "Morning",
@@ -372,12 +510,12 @@ export function buildDutyRosterViewModel(input: {
       const supervisorEmployees = siteEmployees.filter((employee) =>
         isSupervisorEmployee(employee),
       );
-      const requiredStaff = project.required_staff ?? 0;
+      const requiredStaff = site.required_staff ?? 0;
       const totalStaff = siteEmployees.length;
 
       return {
-        projectCode: project.project_code,
-        facilityName: project.project_name,
+        siteCode: site.site_code,
+        facilityName: site.site_name,
         morningShift: joinEmployeeNames(morningEmployees),
         afternoonShift: joinEmployeeNames(afternoonEmployees),
         supervisors: joinEmployeeNames(supervisorEmployees),
@@ -397,6 +535,8 @@ export function buildDutyRosterViewModel(input: {
   );
 
   return {
+    clientId: input.clientId,
+    clientName: input.clientName,
     summary: {
       currentRotationLabel: `Rotation ${currentRotationNumber}: ${formatDisplayDate(rotationDates.cycleStartDate)} – ${formatDisplayDate(rotationDates.cycleEndDate)}`,
       cycleStartDate: rotationDates.cycleStartDate,
@@ -423,8 +563,10 @@ export function buildDutyRosterViewModel(input: {
 }
 
 export function buildRotationHistoryInserts(input: {
+  clientId: string;
   employees: DutyRosterEmployee[];
   projects: DutyRosterProject[];
+  sites: DutyRosterSite[];
   history: RosterHistoryRecord[];
   config: RosterConfigRecord;
   generatedBy: string;
@@ -434,18 +576,31 @@ export function buildRotationHistoryInserts(input: {
   nextCycleStartDate: string;
   nextRotationNumber: number;
 } {
-  const activeEmployees = input.employees.filter(
-    (employee) => employee.employment_status === ACTIVE_EMPLOYMENT_STATUS,
+  const clientProjectCodes = buildClientAssignmentProjectCodes(
+    input.sites,
+    input.projects,
+    input.clientId,
   );
-  const latestByEmployee = getLatestHistoryByEmployee(input.history);
+  const activeEmployees = input.employees.filter(
+    (employee) =>
+      employee.employment_status === ACTIVE_EMPLOYMENT_STATUS &&
+      employee.contract_project &&
+      clientProjectCodes.has(employee.contract_project),
+  );
+  const clientHistory = filterHistoryForClient(
+    input.history,
+    input.employees,
+    clientProjectCodes,
+  );
+  const latestByEmployee = getLatestHistoryByEmployee(clientHistory);
   const rotationDates = calculateRotationDates(input.config);
   const nextCycleStartDate = rotationDates.nextRotationDate;
   const nextCycleEndDate = formatIsoDate(
     addDays(parseIsoDate(nextCycleStartDate), input.config.cycle_length_days - 1),
   );
-  const nextRotationNumber = getCurrentRotationNumber(input.history) + 1;
+  const nextRotationNumber = getCurrentRotationNumber(clientHistory) + 1;
   let rosterCounter = getNextRosterNumber(
-    input.history.map((row) => row.roster_number),
+    clientHistory.map((row) => row.roster_number),
   );
 
   const inserts: Array<

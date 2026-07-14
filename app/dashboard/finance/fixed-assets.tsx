@@ -487,7 +487,9 @@ export default function FixedAssets({
                 <p>
                   Annual Depreciation Rate:{" "}
                   <span className="font-medium text-[#0f2744]">
-                    {formatPercent(previewCalculations.annualDepreciationRate)}
+                    {formatPercent(
+                      previewUsefulLife > 0 ? 100 / previewUsefulLife : 0,
+                    )}
                   </span>
                 </p>
                 <p>

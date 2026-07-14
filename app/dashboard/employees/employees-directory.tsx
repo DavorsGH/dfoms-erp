@@ -51,6 +51,8 @@ type EmployeesDirectoryProps = {
   departmentNameMap: Map<string, string>;
   projectNameMap: Map<string, string>;
   fetchError: string | null;
+  canEditEmployees: boolean;
+  canViewSalary: boolean;
 };
 
 const emptyForm = {
@@ -324,6 +326,8 @@ export default function EmployeesDirectory({
   departmentNameMap: initialDepartmentNameMap,
   projectNameMap: initialProjectNameMap,
   fetchError,
+  canEditEmployees,
+  canViewSalary,
 }: EmployeesDirectoryProps) {
   const supabase = createClient();
   const formRef = useRef<HTMLElement>(null);
@@ -758,6 +762,7 @@ export default function EmployeesDirectory({
             records.
           </p>
         </div>
+        {canEditEmployees ? (
         <button
           type="button"
           onClick={() => (showForm ? closeForm() : openAddForm())}
@@ -765,6 +770,7 @@ export default function EmployeesDirectory({
         >
           {showForm ? "Cancel" : "Add Employee"}
         </button>
+        ) : null}
       </div>
 
       {error && (
@@ -1203,6 +1209,7 @@ export default function EmployeesDirectory({
               </div>
             </div>
 
+            {canViewSalary ? (
             <div className="space-y-4">
               <SectionHeading title="Compensation (GHS)" />
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1274,6 +1281,7 @@ export default function EmployeesDirectory({
                 </p>
               </div>
             </div>
+            ) : null}
 
             <div className="space-y-4">
               <SectionHeading title="Emergency Contact" />
@@ -1335,6 +1343,7 @@ export default function EmployeesDirectory({
               </div>
 
             <div className="flex gap-3">
+              {canEditEmployees ? (
               <button
                 type="submit"
                 disabled={loading}
@@ -1346,6 +1355,7 @@ export default function EmployeesDirectory({
                     ? "Save Changes"
                     : "Add Employee"}
               </button>
+              ) : null}
               <button
                 type="button"
                 onClick={closeForm}
@@ -1413,6 +1423,8 @@ export default function EmployeesDirectory({
                 sortDirection={sortDirection}
                 onSort={handleSort}
               />
+              {canViewSalary ? (
+              <>
               <SortableHeader
                 label="Basic Salary"
                 column="basic_salary"
@@ -1434,6 +1446,8 @@ export default function EmployeesDirectory({
                 sortDirection={sortDirection}
                 onSort={handleSort}
               />
+              </>
+              ) : null}
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
           </thead>
@@ -1495,16 +1509,22 @@ export default function EmployeesDirectory({
                     <td className="px-4 py-3">
                       {employee.employment_status ?? "—"}
                     </td>
+                    {canViewSalary ? (
+                    <>
                     <td className="px-4 py-3">
                       {formatGHS(employee.basic_salary)}
                     </td>
                     <td className="px-4 py-3">{formatGHS(grossPay)}</td>
                     <td className="px-4 py-3">{formatGHS(estimatedNetPay)}</td>
+                    </>
+                    ) : null}
                     <EmployeeRowActions
                       onView={() => openEmployeeForm(employee)}
                       onEdit={() => openEmployeeForm(employee)}
                       onDelete={() => handleDelete(employee.employee_id)}
                       deleting={deletingEmployeeId === employee.employee_id}
+                      canEdit={canEditEmployees}
+                      canDelete={canEditEmployees}
                     />
                   </tr>
                 );

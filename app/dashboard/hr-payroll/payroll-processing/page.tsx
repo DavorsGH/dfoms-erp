@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
-import { isSuperAdmin } from "@/utils/dashboard-auth";
+import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import type { AppRole } from "@/app/dashboard/user-account-types";
+import { canManagePayrollPeriod } from "@/utils/rbac-access";
 import HrPayrollShell from "../hr-payroll-shell";
 import PayrollProcessing from "../payroll-processing";
 import {
@@ -116,7 +118,9 @@ export default async function PayrollProcessingPage() {
             (payeRows as Record<string, unknown>[] | null) ?? [],
           ),
         }}
-        isSuperAdmin={await isSuperAdmin()}
+        canManagePayrollPeriod={canManagePayrollPeriod(
+          (await getCurrentUserRole()) as AppRole | null,
+        )}
         fetchError={fetchError}
       />
     </HrPayrollShell>

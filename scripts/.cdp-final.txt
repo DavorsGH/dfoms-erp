@@ -1,0 +1,1 @@
+(() => { const sql = window.__b64chunks.map(c => atob(c)).join(''); const editors = window.monaco?.editor?.getEditors?.() || []; if (!editors.length) return 'no editor'; editors[0].getModel().setValue(sql); return 'loaded ' + sql.length; })()

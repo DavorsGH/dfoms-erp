@@ -3,6 +3,7 @@ import {
   getBalanceCheckForPeriod,
   type BalanceSheetAccountsPayableEntry,
   type BalanceSheetIncomeEntry,
+  type InventoryBalanceSheetInput,
 } from "./finance/balance-sheet-utils";
 import type { BalanceSheetCashExpenseEntry } from "./finance/accrued-wages-utils";
 import type {
@@ -109,6 +110,7 @@ export type DashboardViewModel = {
   profitTrend: DashboardProfitTrendPoint[];
   cashTrend: DashboardCashTrendPoint[];
   payrollTrend: DashboardPayrollTrendPoint[];
+  lowStockRawMaterialCount: number;
 };
 
 export type DashboardProfitTrendPoint = {
@@ -206,8 +208,10 @@ function buildMonthSnapshot(input: {
   payrollProcessingEntries: DashboardPayrollProcessingEntry[];
   payrollHistoryEntries: DashboardPayrollHistoryEntry[];
   payrollPayables: DashboardPayrollPayableEntry[];
+  inventoryBalanceSheetInput: InventoryBalanceSheetInput;
   year: number;
   month: number;
+  referenceDate?: Date;
 }): DashboardMonthSnapshot {
   const monthIndex = input.month - 1;
   const periodLabel = formatPeriodLabel(input.year, input.month);
@@ -227,6 +231,8 @@ function buildMonthSnapshot(input: {
     input.payrollHistoryWages,
     input.monthEndCloseNetPay,
     input.year,
+    input.inventoryBalanceSheetInput,
+    input.referenceDate,
   );
   const balanceCheck = getBalanceCheckForPeriod(balanceSheetReport, monthIndex);
   const cashRow = balanceSheetReport.rows.find((row) => row.key === "cash");
@@ -359,6 +365,8 @@ function buildBalanceSheetReportForYear(
   payrollHistory: PayrollHistoryWagesEntry[],
   monthEndCloseNetPay: MonthEndCloseNetPayEntry[],
   financialYear: number,
+  inventoryBalanceSheetInput: InventoryBalanceSheetInput,
+  referenceDate?: Date,
 ) {
   return buildBalanceSheetReport(
     incomeEntries,
@@ -370,6 +378,10 @@ function buildBalanceSheetReportForYear(
     payrollHistory,
     monthEndCloseNetPay,
     financialYear,
+    {
+      ...inventoryBalanceSheetInput,
+      referenceDate,
+    },
   );
 }
 
@@ -482,6 +494,8 @@ export function buildDashboardViewModel(input: {
   payrollProcessingEntries: DashboardPayrollProcessingEntry[];
   payrollHistoryEntries: DashboardPayrollHistoryEntry[];
   payrollPayables: DashboardPayrollPayableEntry[];
+  inventoryBalanceSheetInput: InventoryBalanceSheetInput;
+  lowStockRawMaterialCount?: number;
   referenceDate?: Date;
 }): DashboardViewModel {
   const referenceDate = input.referenceDate ?? new Date();
@@ -533,6 +547,8 @@ export function buildDashboardViewModel(input: {
       input.payrollHistoryWages,
       input.monthEndCloseNetPay,
       point.year,
+      input.inventoryBalanceSheetInput,
+      referenceDate,
     );
     const cashAmounts = report.rows.find((row) => row.key === "cash")?.amounts;
 
@@ -568,6 +584,7 @@ export function buildDashboardViewModel(input: {
     profitTrend,
     cashTrend,
     payrollTrend,
+    lowStockRawMaterialCount: input.lowStockRawMaterialCount ?? 0,
   };
 }
 

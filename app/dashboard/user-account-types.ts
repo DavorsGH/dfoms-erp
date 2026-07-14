@@ -1,17 +1,43 @@
+export type AppRole =
+  | "super_admin"
+  | "finance"
+  | "hr"
+  | "operations_manager"
+  | "supervisor"
+  | "employee"
+  | "client";
+
 export type UserAccount = {
   auth_uid: string;
-  employee_id: string;
+  employee_id: string | null;
   email: string;
-  role: string;
+  role: AppRole;
   is_active: boolean;
   full_name: string;
+  client_id: string | null;
+  client_name: string | null;
+  supervisor_site_codes: string[];
 };
 
-export const USER_ROLE_OPTIONS = [
+export const USER_ROLE_OPTIONS: ReadonlyArray<{
+  value: AppRole;
+  label: string;
+}> = [
   { value: "super_admin", label: "Admin" },
   { value: "finance", label: "Finance" },
   { value: "hr", label: "HR" },
   { value: "operations_manager", label: "Operations" },
   { value: "supervisor", label: "Supervisor" },
   { value: "employee", label: "Employee" },
-] as const;
+  { value: "client", label: "Client" },
+];
+
+export type SiteOption = {
+  site_code: string;
+  site_name: string;
+};
+
+export type ClientOption = {
+  client_id: string;
+  client_name: string;
+};

@@ -1,0 +1,13 @@
+N update_raw_material_purchase(
+  UUID, DATE, NUMERIC, NUMERIC, TEXT, TEXT, TEXT
+) TO service_role;
+
+GRANT EXECUTE ON FUNCTION archive_raw_material(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION archive_raw_material(UUID) TO service_role;
+
+GRANT EXECUTE ON FUNCTION archive_finished_product(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION archive_finished_product(UUID) TO service_role;
+
+COMMIT;
+
+NOTIFY pgrst, 'reload schema';
