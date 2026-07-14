@@ -511,27 +511,40 @@ BEGIN
     WHERE product_id = p_product_id
       AND entry_type = 'product_sale'
   LOOP
+    DELETE FROM stock_movements
+    WHERE reference_id = v_sale.id;
+
+    UPDATE income_register
+    SET cogs_expense_id = NULL,
+        cogs_reversal_expense_id = NULL
+    WHERE id = v_sale.id;
+
     IF v_sale.cogs_reversal_expense_id IS NOT NULL THEN
       DELETE FROM expense_register WHERE id = v_sale.cogs_reversal_expense_id;
     END IF;
     IF v_sale.cogs_expense_id IS NOT NULL THEN
       DELETE FROM expense_register WHERE id = v_sale.cogs_expense_id;
     END IF;
-    DELETE FROM stock_movements
-    WHERE reference_id = v_sale.id;
+
     DELETE FROM income_register WHERE id = v_sale.id;
   END LOOP;
 
   FOR v_consumption IN
-    SELECT id, expense_register_id, quantity
+    SELECT id, expense_register_id
     FROM internal_consumption
     WHERE product_id = p_product_id
     ORDER BY consumption_date, id
   LOOP
+    DELETE FROM stock_movements WHERE reference_id = v_consumption.id;
+
+    UPDATE internal_consumption
+    SET expense_register_id = NULL
+    WHERE id = v_consumption.id;
+
     IF v_consumption.expense_register_id IS NOT NULL THEN
       DELETE FROM expense_register WHERE id = v_consumption.expense_register_id;
     END IF;
-    DELETE FROM stock_movements WHERE reference_id = v_consumption.id;
+
     DELETE FROM internal_consumption WHERE id = v_consumption.id;
   END LOOP;
 

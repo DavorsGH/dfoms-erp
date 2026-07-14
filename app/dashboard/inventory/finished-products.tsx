@@ -9,7 +9,7 @@ import RegisterRowActions, {
 import {
   buildFinishedProductDeleteMessage,
   confirmCascadeDelete,
-  type FinishedProductDeletePreview,
+  normalizeFinishedProductDeletePreview,
 } from "./inventory-delete-utils";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -161,7 +161,7 @@ export default function FinishedProducts({
       return;
     }
 
-    const preview = previewData as FinishedProductDeletePreview;
+    const preview = normalizeFinishedProductDeletePreview(previewData);
     if (!confirmCascadeDelete(buildFinishedProductDeleteMessage(preview))) {
       setDeletingProductId(null);
       return;

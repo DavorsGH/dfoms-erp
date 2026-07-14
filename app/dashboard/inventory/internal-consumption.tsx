@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
+import { getStripedRowClassName } from "../finance/register-row-actions";
 import type { ContractProjectOption } from "../administration/projects-utils";
 import type { SiteEntry } from "../operations/sites-utils";
 import ScrollableTable, {
+  scrollableTableBodyClassName,
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
@@ -353,7 +355,7 @@ export default function InternalConsumption({
               <th className={scrollableTableThClassName}>Recorded By</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200">
+          <tbody className={scrollableTableBodyClassName}>
             {entries.length === 0 ? (
               <tr>
                 <td
@@ -365,26 +367,29 @@ export default function InternalConsumption({
               </tr>
             ) : (
               entries.map((entry, index) => (
-                <tr
-                  key={entry.id}
-                  className={index % 2 === 0 ? "bg-white" : "bg-slate-50"}
-                >
-                  <td className="px-4 py-3">{entry.consumption_date}</td>
-                  <td className="px-4 py-3">
+                <tr key={entry.id} className={getStripedRowClassName(index)}>
+                  <td className="px-4 py-3 text-slate-900">
+                    {entry.consumption_date}
+                  </td>
+                  <td className="px-4 py-3 text-slate-900">
                     {getInternalConsumptionClientName(entry)}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 text-slate-900">
                     {getInternalConsumptionSiteName(entry)}
                   </td>
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
                     {entry.product?.product_name ?? entry.product_id}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 text-slate-900">
                     {formatInventoryQuantity(entry.quantity)}{" "}
                     {entry.product?.unit_of_measure ?? ""}
                   </td>
-                  <td className="px-4 py-3">{entry.reason ?? "—"}</td>
-                  <td className="px-4 py-3">{entry.recorded_by ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-900">
+                    {entry.reason ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-900">
+                    {entry.recorded_by ?? "—"}
+                  </td>
                 </tr>
               ))
             )}

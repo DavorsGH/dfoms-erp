@@ -12,9 +12,7 @@ import { CLIENT_SELECT, type ClientEntry } from "../clients-utils";
 import OperationsShell from "../operations-shell";
 import DutyRoster from "../duty-roster";
 import {
-  normalizeDutyRosterEmployee,
   normalizeDutyRosterSite,
-  type DutyRosterEmployee,
   type DutyRosterProject,
   type DutyRosterSite,
   type RosterHistoryRecord,
@@ -24,6 +22,10 @@ import {
   type RosterConfigRecord,
 } from "../roster-config-utils";
 import { SITE_ASSIGNMENT_SELECT } from "../sites-utils";
+import {
+  attachDutyRosterProjectRefs,
+  fetchDutyRosterEmployeeDisplay,
+} from "@/utils/duty-roster-employees";
 
 export default async function DutyRosterPage() {
   const cookieStore = await cookies();
@@ -32,7 +34,7 @@ export default async function DutyRosterPage() {
   const [
     { data: clients, error: clientsError },
     { data: configRows, error: configError },
-    { data: employees, error: employeesError },
+    employeesResult,
     { data: projects, error: projectsError },
     { data: sites, error: sitesError },
     { data: history, error: historyError },
@@ -42,12 +44,7 @@ export default async function DutyRosterPage() {
       ascending: true,
     }),
     supabase.from("roster_config").select(ROSTER_CONFIG_SELECT),
-    supabase
-      .from("employees")
-      .select(
-        "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!contract_project(project_code, project_name)",
-      )
-      .order("staff_id", { ascending: true }),
+    fetchDutyRosterEmployeeDisplay(supabase),
     supabase
       .from("projects")
       .select(PROJECT_SELECT)
@@ -63,10 +60,15 @@ export default async function DutyRosterPage() {
     getCurrentUserFullName(),
   ]);
 
+  const normalizedProjects =
+    (projects as DutyRosterProject[] | null)?.map((project) =>
+      normalizeProjectEntry(project),
+    ) ?? [];
+
   const fetchError =
     clientsError?.message ??
     configError?.message ??
-    employeesError?.message ??
+    employeesResult.error ??
     projectsError?.message ??
     sitesError?.message ??
     historyError?.message ??
@@ -77,16 +79,11 @@ export default async function DutyRosterPage() {
       <DutyRoster
         initialClients={(clients as ClientEntry[] | null) ?? []}
         initialConfigs={(configRows as RosterConfigRecord[] | null) ?? []}
-        initialEmployees={
-          (employees as DutyRosterEmployee[] | null)?.map((employee) =>
-            normalizeDutyRosterEmployee(employee),
-          ) ?? []
-        }
-        initialProjects={
-          (projects as DutyRosterProject[] | null)?.map((project) =>
-            normalizeProjectEntry(project),
-          ) ?? []
-        }
+        initialEmployees={attachDutyRosterProjectRefs(
+          employeesResult.employees,
+          normalizedProjects,
+        )}
+        initialProjects={normalizedProjects}
         initialSites={
           (sites as unknown as DutyRosterSite[] | null)?.map((site) =>
             normalizeDutyRosterSite(site),

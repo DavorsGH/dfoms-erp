@@ -56,36 +56,44 @@ export function buildRawMaterialDeleteMessage(
   return message;
 }
 
+export function normalizeFinishedProductDeletePreview(
+  raw: unknown,
+): FinishedProductDeletePreview {
+  const preview = (raw ?? {}) as Partial<FinishedProductDeletePreview>;
+  return {
+    product_name: String(preview.product_name ?? "this product"),
+    sale_count: Number(preview.sale_count) || 0,
+    consumption_count: Number(preview.consumption_count) || 0,
+    stock_movement_count: Number(preview.stock_movement_count) || 0,
+    batch_count: Number(preview.batch_count) || 0,
+  };
+}
+
 export function buildFinishedProductDeleteMessage(
   preview: FinishedProductDeletePreview,
 ): string {
+  const saleCount = preview.sale_count;
+  const consumptionCount = preview.consumption_count;
+  const batchCount = preview.batch_count;
+
+  if (saleCount === 0 && consumptionCount === 0 && batchCount === 0) {
+    return `Deleting '${preview.product_name}' will permanently remove this finished product. This cannot be undone. Continue?`;
+  }
+
   const parts: string[] = [];
-
-  if (preview.sale_count > 0) {
-    parts.push(pluralize(preview.sale_count, "product sale"));
+  if (saleCount > 0) {
+    parts.push(`${saleCount} sale${saleCount === 1 ? "" : "s"}`);
   }
-  if (preview.consumption_count > 0) {
-    parts.push(pluralize(preview.consumption_count, "internal consumption record"));
+  if (consumptionCount > 0) {
+    parts.push(
+      `${consumptionCount} internal consumption entr${consumptionCount === 1 ? "y" : "ies"}`,
+    );
   }
-  if (preview.batch_count > 0) {
-    parts.push(pluralize(preview.batch_count, "production batch"));
-  }
-  if (preview.stock_movement_count > 0) {
-    parts.push(pluralize(preview.stock_movement_count, "stock movement"));
+  if (batchCount > 0) {
+    parts.push(`${batchCount} production batch${batchCount === 1 ? "" : "es"}`);
   }
 
-  let message = `Deleting '${preview.product_name}' will also permanently delete`;
-
-  if (parts.length === 0) {
-    message += " this finished product";
-  } else {
-    message += ` ${parts.join(", ")}`;
-  }
-
-  message +=
-    ". Linked COGS, internal-use expense, and stock movement records will be reversed or removed.";
-  message += " This cannot be undone. Continue?";
-  return message;
+  return `Deleting '${preview.product_name}' will also permanently void/delete ${parts.join(", ")}. This cannot be undone. Continue?`;
 }
 
 export function confirmCascadeDelete(message: string): boolean {

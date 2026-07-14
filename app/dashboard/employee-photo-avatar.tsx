@@ -3,7 +3,7 @@ import { getInitialsFromName } from "@/utils/employee-photo";
 type EmployeePhotoAvatarProps = {
   photoUrl?: string | null;
   fullName?: string | null;
-  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl" | "header";
   className?: string;
   square?: boolean;
 };
@@ -14,6 +14,7 @@ const sizeClasses = {
   md: "h-12 w-12 text-sm",
   lg: "h-16 w-16 text-base",
   xl: "h-24 w-24 text-xl",
+  header: "h-14 w-14 text-sm",
 } as const;
 
 function PersonSilhouetteIcon({ className }: { className: string }) {
@@ -37,7 +38,7 @@ export default function EmployeePhotoAvatar({
   square = false,
 }: EmployeePhotoAvatarProps) {
   const sizeClass = sizeClasses[size];
-  const shapeClass = square ? "rounded-md" : "rounded-full";
+  const shapeClass = square ? "rounded-lg" : "rounded-full";
   const initials = getInitialsFromName(fullName);
 
   if (photoUrl?.trim()) {

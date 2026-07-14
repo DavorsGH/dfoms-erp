@@ -14,17 +14,18 @@ export default function TopBar({
   userFullName,
 }: TopBarProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
+    <header className="flex min-h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-2">
       <div />
       <div className="flex items-center gap-4">
         <Link
           href="/dashboard/my-account"
-          className="flex items-center gap-2.5 text-sm text-slate-700 transition-colors hover:text-[#0f2744] hover:underline"
+          className="flex items-center gap-3 text-sm text-slate-700 transition-colors hover:text-[#0f2744] hover:underline"
         >
           <EmployeePhotoAvatar
             photoUrl={userPhotoUrl}
             fullName={userFullName ?? userLabel}
-            size="xs"
+            size="header"
+            square
           />
           <span>{userLabel}</span>
         </Link>
