@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import ServiceWorkerRegistrar from "./service-worker-registrar";
 import "./globals.css";
@@ -13,11 +13,38 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
   title: "Davors Facilities ERP",
   description: "Davors Facilities Management Services Ltd ERP System",
   manifest: "/manifest.json",
   themeColor: "#0F2744",
+  metadataBase: new URL("https://portal.davorsfacilities.com"),
+  openGraph: {
+    title: "Davors Facilities ERP",
+    description: "Davors Facilities Management Services Ltd ERP System",
+    url: "https://portal.davorsfacilities.com",
+    siteName: "Davors Facilities ERP",
+    images: [
+      {
+        url: "https://portal.davorsfacilities.com/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Davors Facilities ERP",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Davors Facilities ERP",
+    description: "Davors Facilities Management Services Ltd ERP System",
+    images: ["https://portal.davorsfacilities.com/og-image.png"],
+  },
   appleWebApp: {
     capable: true,
     title: "Davors ERP",
@@ -43,9 +70,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full overflow-x-hidden antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-full flex-col overflow-x-hidden">
         <ServiceWorkerRegistrar />
         {children}
       </body>
