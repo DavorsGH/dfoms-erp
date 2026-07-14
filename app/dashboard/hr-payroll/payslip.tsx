@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingState } from "@/components/loading-indicator";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -567,13 +568,22 @@ export default function Payslip({
         ) : null}
       </div>
 
+      {loadingEmployees ? (
+        <LoadingState
+          label="Loading employees…"
+          size="sm"
+          layout="section"
+          className="min-h-[8rem] py-4"
+        />
+      ) : null}
+
       {!selectedEmployeeId ? (
         <div className="no-print rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
           Select a payroll month and employee to generate a payslip.
         </div>
       ) : loadingPayslip ? (
-        <div className="no-print rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-          Loading payslip…
+        <div className="no-print rounded-md border border-slate-200 bg-slate-50 px-4 py-4">
+          <LoadingState label="Loading payslip…" size="md" layout="section" />
         </div>
       ) : !payrollRow || !employeeDetails ? (
         <div className="no-print rounded-md border border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-800">

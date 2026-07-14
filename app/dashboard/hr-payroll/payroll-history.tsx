@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingState } from "@/components/loading-indicator";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -357,7 +358,7 @@ export default function PayrollHistory({
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-slate-600">Loading payroll history…</p>
+        <LoadingState label="Loading payroll history…" size="md" layout="section" />
       ) : null}
 
       <ScrollableTable>
