@@ -1,9 +1,18 @@
 import "server-only";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
+import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 
-export async function getCurrentUserRole(): Promise<string | null> {
+type UserAccountRow = {
+  role: string | null;
+  employee_id: string | null;
+  client_id: string | null;
+};
+
+/** One auth.getUser() per request (layout + page both call helpers). */
+export const getCurrentAuthUser = cache(async (): Promise<User | null> => {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
@@ -11,99 +20,74 @@ export async function getCurrentUserRole(): Promise<string | null> {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    return null;
-  }
+  return user;
+});
 
-  const { data: account } = await supabase
-    .from("user_accounts")
-    .select("role")
-    .eq("auth_uid", user.id)
-    .maybeSingle();
+/** One user_accounts row load per request. */
+export const getCurrentUserAccount = cache(
+  async (): Promise<UserAccountRow | null> => {
+    const user = await getCurrentAuthUser();
+    if (!user) {
+      return null;
+    }
 
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+
+    const { data: account } = await supabase
+      .from("user_accounts")
+      .select("role, employee_id, client_id")
+      .eq("auth_uid", user.id)
+      .maybeSingle();
+
+    return account ?? null;
+  },
+);
+
+export async function getCurrentUserRole(): Promise<string | null> {
+  const account = await getCurrentUserAccount();
   return account?.role ?? null;
 }
 
 export async function getCurrentUserEmployeeId(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return null;
-  }
-
-  const { data: account } = await supabase
-    .from("user_accounts")
-    .select("employee_id")
-    .eq("auth_uid", user.id)
-    .maybeSingle();
-
+  const account = await getCurrentUserAccount();
   return account?.employee_id ?? null;
 }
 
 export async function getCurrentAuthUid(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentAuthUser();
   return user?.id ?? null;
 }
 
 export async function getCurrentUserClientId(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return null;
-  }
-
-  const { data: account } = await supabase
-    .from("user_accounts")
-    .select("client_id")
-    .eq("auth_uid", user.id)
-    .maybeSingle();
-
+  const account = await getCurrentUserAccount();
   return account?.client_id ?? null;
 }
 
+/** One leave-approver RPC result per request. */
+export const getCurrentLeaveApproverAuthUid = cache(
+  async (): Promise<string | null> => {
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+    const { data: currentApprover } = await supabase.rpc(
+      "current_leave_approver_auth_uid",
+    );
+    return (currentApprover as string | null) ?? null;
+  },
+);
+
 export async function isCurrentLeaveApprover(): Promise<boolean> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentAuthUser();
   if (!user) {
     return false;
   }
 
-  const { data: currentApprover } = await supabase.rpc(
-    "current_leave_approver_auth_uid",
-  );
-
+  const currentApprover = await getCurrentLeaveApproverAuthUid();
   return currentApprover === user.id;
 }
 
 export async function hasLeaveApprovalInbox(): Promise<boolean> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCurrentAuthUser();
   if (!user) {
     return false;
   }
@@ -111,6 +95,9 @@ export async function hasLeaveApprovalInbox(): Promise<boolean> {
   if (await isCurrentLeaveApprover()) {
     return true;
   }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
 
   const { count } = await supabase
     .from("leave_requests")

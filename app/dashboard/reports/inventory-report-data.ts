@@ -47,7 +47,6 @@ export async function fetchStockOnHandReportData(supabase: SupabaseClient) {
     { data: rawMaterials, error: rawMaterialsError },
     { data: finishedProducts, error: finishedProductsError },
     { data: batchSummaries, error: batchSummariesError },
-    lowStockResult,
   ] = await Promise.all([
     supabase
       .from("raw_materials")
@@ -60,23 +59,23 @@ export async function fetchStockOnHandReportData(supabase: SupabaseClient) {
     supabase
       .from("production_batches")
       .select("finished_product_id, total_batch_cost, quantity_produced"),
-    fetchLowStockRawMaterialCount(supabase),
   ]);
+
+  const normalizedRawMaterials =
+    (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)) ?? [];
 
   const fetchError =
     rawMaterialsError?.message ??
     finishedProductsError?.message ??
     batchSummariesError?.message ??
-    lowStockResult.error ??
     null;
 
   return {
-    initialRawMaterials:
-      (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)) ?? [],
+    initialRawMaterials: normalizedRawMaterials,
     initialFinishedProducts:
       (finishedProducts ?? []).map((row) => normalizeFinishedProduct(row)) ?? [],
     initialBatchSummaries: batchSummaries ?? [],
-    lowStockRawMaterialCount: lowStockResult.count,
+    lowStockRawMaterialCount: countLowStockRawMaterials(normalizedRawMaterials),
     fetchError,
   };
 }

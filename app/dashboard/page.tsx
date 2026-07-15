@@ -17,7 +17,7 @@ import OperationsDashboard from "./operations-dashboard";
 import Dashboard from "./dashboard";
 import { buildDashboardViewModel } from "./dashboard-utils";import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
 import { mergePayrollWagesSources } from "./finance/accrued-wages-utils";
-import { fetchLowStockRawMaterialCount } from "./reports/inventory-report-data";
+import { countLowStockRawMaterials } from "./reports/inventory-reports-utils";
 import { fetchInventoryBalanceSheetInput } from "./finance/balance-sheet-page-data";
 
 export default async function DashboardPage() {
@@ -145,19 +145,17 @@ export default async function DashboardPage() {
   }
 
   const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);  const [
+  const supabase = createClient(cookieStore);
+  const [
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
     { data: fixedAssets, error: fixedAssetsError },
     { data: payableEntries, error: payableError },
     { data: capitalContributions, error: capitalContributionsError },
     { data: manualEntries, error: manualError },
-    { data: payrollHistoryWages, error: payrollHistoryWagesError },
+    { data: payrollHistoryRows, error: payrollHistoryError },
     { data: monthEndCloseRecords, error: monthEndCloseError },
     { data: payrollProcessingEntries, error: payrollProcessingError },
-    { data: payrollHistoryEntries, error: payrollHistoryError },
-    { data: payrollPayables, error: payrollPayablesError },
-    lowStockResult,
     inventoryBalanceSheetInput,
   ] = await Promise.all([
     supabase
@@ -174,9 +172,12 @@ export default async function DashboardPage() {
         "original_cost, quantity, useful_life_years, purchase_date, depreciation_method",
       )
       .order("asset_id", { ascending: true }),
+    // One AP query covers balance-sheet totals and payroll liability panel fields.
     supabase
       .from("accounts_payable")
-      .select("invoice_date, balance_due, amount, amount_paid")
+      .select(
+        "invoice_date, balance_due, amount, amount_paid, vendor_name, status, description",
+      )
       .order("invoice_date", { ascending: true }),
     supabase
       .from("capital_contributions")
@@ -186,24 +187,17 @@ export default async function DashboardPage() {
       .from("manual_financial_entries")
       .select("*")
       .order("period_month", { ascending: true }),
+    // One payroll_history query covers both net (wages) and gross (cost trend).
     supabase
       .from("payroll_history")
-      .select("payroll_month, net_pay")
+      .select("payroll_month, net_pay, gross_pay")
       .order("payroll_month", { ascending: true }),
     supabase.from("month_end_close").select("*").order("month", { ascending: false }),
     supabase
       .from("payroll_processing")
       .select("payroll_month, gross_pay, net_pay")
       .order("payroll_month", { ascending: true }),
-    supabase
-      .from("payroll_history")
-      .select("payroll_month, gross_pay")
-      .order("payroll_month", { ascending: true }),
-    supabase
-      .from("accounts_payable")
-      .select("vendor_name, status, amount, invoice_date, description")
-      .order("invoice_date", { ascending: false }),
-    fetchLowStockRawMaterialCount(supabase),
+    // Inventory input already loads raw_materials; derive low-stock count from it.
     fetchInventoryBalanceSheetInput(supabase),
   ]);
 
@@ -214,13 +208,32 @@ export default async function DashboardPage() {
     payableError?.message ??
     capitalContributionsError?.message ??
     manualError?.message ??
-    payrollHistoryWagesError?.message ??
+    payrollHistoryError?.message ??
     monthEndCloseError?.message ??
     payrollProcessingError?.message ??
-    payrollHistoryError?.message ??
-    payrollPayablesError?.message ??
-    lowStockResult.error ??
     null;
+
+  const payrollHistoryWages =
+    payrollHistoryRows?.map((entry) => ({
+      payroll_month: entry.payroll_month,
+      net_pay: Number(entry.net_pay) || 0,
+    })) ?? [];
+  const payrollHistoryEntries =
+    payrollHistoryRows?.map((entry) => ({
+      payroll_month: entry.payroll_month,
+      gross_pay: Number(entry.gross_pay) || 0,
+    })) ?? [];
+  const payrollPayables =
+    payableEntries?.map((entry) => ({
+      vendor_name: entry.vendor_name ?? "",
+      status: entry.status ?? null,
+      amount: Number(entry.amount) || 0,
+      invoice_date: entry.invoice_date,
+      description: entry.description ?? null,
+    })) ?? [];
+  const lowStockRawMaterialCount = countLowStockRawMaterials(
+    inventoryBalanceSheetInput.rawMaterials,
+  );
 
   const cashFlowIncomeEntries =
     incomeEntries?.map((entry) => ({
@@ -271,7 +284,7 @@ export default async function DashboardPage() {
     cashFlowIncomeEntries,
     cashFlowExpenseEntries,
     payrollHistoryWages: mergePayrollWagesSources(
-      payrollHistoryWages ?? [],
+      payrollHistoryWages,
       (payrollProcessingEntries ?? []).map((entry) => ({
         payroll_month: entry.payroll_month,
         net_pay: Number(entry.net_pay) || 0,
@@ -285,9 +298,9 @@ export default async function DashboardPage() {
     manualEntries: manualEntries ?? [],
     monthEndCloseRecords: monthEndCloseRecords ?? [],
     payrollProcessingEntries: payrollProcessingEntries ?? [],
-    payrollHistoryEntries: payrollHistoryEntries ?? [],
-    payrollPayables: payrollPayables ?? [],
-    lowStockRawMaterialCount: lowStockResult.count,
+    payrollHistoryEntries,
+    payrollPayables,
+    lowStockRawMaterialCount,
     inventoryBalanceSheetInput,
   });
 

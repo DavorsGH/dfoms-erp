@@ -1,0 +1,1426 @@
+﻿{
+  "rlsTableCount": 68,
+  "rlsTables": [
+    "accounts_payable",
+    "action_status_options",
+    "approvers",
+    "asset_categories",
+    "asset_register",
+    "attendance_register",
+    "capital_contributions",
+    "casual_tax_rate_config",
+    "clients",
+    "complaint_priority_options",
+    "complaint_register",
+    "consumables",
+    "contract_status_options",
+    "corrective_actions",
+    "departments",
+    "depreciation_methods",
+    "disciplinary_records",
+    "employee_employment_history",
+    "employee_leave_balances",
+    "employees",
+    "equipment_register",
+    "equipment_status_options",
+    "exit_management",
+    "expense_categories",
+    "expense_register",
+    "expense_subcategories",
+    "failed_inspections",
+    "fixed_assets",
+    "incident_register",
+    "incident_type_options",
+    "income_register",
+    "inspection_result_options",
+    "inspection_summary",
+    "leave_approver_config",
+    "leave_management",
+    "leave_requests",
+    "leave_types",
+    "loan_register",
+    "manual_financial_entries",
+    "month_end_close",
+    "operations_config",
+    "overtime_register",
+    "pay_rate_structure",
+    "paye_bands",
+    "paye_config",
+    "paye_tax_bands",
+    "payment_methods",
+    "payroll_history",
+    "payroll_link",
+    "payroll_processing",
+    "positions",
+    "projects",
+    "recruitment_tracker",
+    "risk_level_options",
+    "roles",
+    "roster_config",
+    "roster_history",
+    "salary_rate_config",
+    "service_types",
+    "severity_options",
+    "sites",
+    "ssnit_config",
+    "ssnit_rate_config",
+    "ssnit_rates",
+    "todos",
+    "user_account_supervisor_sites",
+    "user_accounts",
+    "work_orders"
+  ],
+  "policyCount": 120,
+  "candidateFilterColumns": [
+    {
+      "table_name": "approvers",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "asset_register",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "clients",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "complaint_register",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "complaint_register",
+      "column_name": "site_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "consumables",
+      "column_name": "recorded_by",
+      "data_type": "text"
+    },
+    {
+      "table_name": "corrective_actions",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "disciplinary_records",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "employee_employment_history",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "employee_leave_balances",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "employees",
+      "column_name": "assigned_site_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "employees",
+      "column_name": "contract_project",
+      "data_type": "text"
+    },
+    {
+      "table_name": "employees",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "exit_management",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "failed_inspections",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "failed_inspections",
+      "column_name": "site_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "incident_register",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "incident_register",
+      "column_name": "site_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "income_register",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "inspection_summary",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "inspection_summary",
+      "column_name": "site_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "leave_management",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "leave_requests",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "loan_register",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "overtime_register",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "payroll_history",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "payroll_link",
+      "column_name": "employee_ssnit_paid",
+      "data_type": "boolean"
+    },
+    {
+      "table_name": "payroll_processing",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "roster_config",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "roster_history",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "sites",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "sites",
+      "column_name": "project_id",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "user_account_supervisor_sites",
+      "column_name": "auth_uid",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "user_accounts",
+      "column_name": "auth_uid",
+      "data_type": "uuid"
+    },
+    {
+      "table_name": "user_accounts",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "user_accounts",
+      "column_name": "employee_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "work_orders",
+      "column_name": "client_id",
+      "data_type": "text"
+    },
+    {
+      "table_name": "work_orders",
+      "column_name": "site_id",
+      "data_type": "text"
+    }
+  ],
+  "missingLeadingIndexes": [
+    {
+      "table": "approvers",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "asset_register",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "clients",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "complaint_register",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "complaint_register",
+      "column": "site_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "consumables",
+      "column": "recorded_by",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "corrective_actions",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "disciplinary_records",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employee_employment_history",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employee_leave_balances",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employees",
+      "column": "assigned_site_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employees",
+      "column": "contract_project",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employees",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "exit_management",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "failed_inspections",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "failed_inspections",
+      "column": "site_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "incident_register",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "incident_register",
+      "column": "site_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "income_register",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "inspection_summary",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "inspection_summary",
+      "column": "site_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "leave_management",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "leave_requests",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "loan_register",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "overtime_register",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "payroll_history",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "payroll_link",
+      "column": "employee_ssnit_paid",
+      "data_type": "boolean",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "payroll_processing",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "roster_config",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "roster_history",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "sites",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "sites",
+      "column": "project_id",
+      "data_type": "uuid",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "user_account_supervisor_sites",
+      "column": "auth_uid",
+      "data_type": "uuid",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "user_accounts",
+      "column": "auth_uid",
+      "data_type": "uuid",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "user_accounts",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "user_accounts",
+      "column": "employee_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "work_orders",
+      "column": "client_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "work_orders",
+      "column": "site_id",
+      "data_type": "text",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "attendance_register",
+      "column": "staff_id",
+      "data_type": "fk",
+      "foreign": "employees.staff_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "capital_contributions",
+      "column": "contributed_by",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "clients",
+      "column": "assigned_supervisor",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "complaint_register",
+      "column": "assigned_supervisor",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "consumables",
+      "column": "client_site",
+      "data_type": "fk",
+      "foreign": "sites.site_code",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "corrective_actions",
+      "column": "related_issue_no",
+      "data_type": "fk",
+      "foreign": "failed_inspections.issue_no",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "corrective_actions",
+      "column": "related_work_order",
+      "data_type": "fk",
+      "foreign": "work_orders.work_order_no",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "corrective_actions",
+      "column": "responsible_person",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employee_employment_history",
+      "column": "department",
+      "data_type": "fk",
+      "foreign": "departments.dept_code",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employee_employment_history",
+      "column": "position",
+      "data_type": "fk",
+      "foreign": "positions.position_title",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employee_employment_history",
+      "column": "rate_id",
+      "data_type": "fk",
+      "foreign": "pay_rate_structure.rate_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employee_leave_balances",
+      "column": "leave_type_id",
+      "data_type": "fk",
+      "foreign": "leave_types.id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employees",
+      "column": "department",
+      "data_type": "fk",
+      "foreign": "departments.dept_code",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employees",
+      "column": "position",
+      "data_type": "fk",
+      "foreign": "positions.position_title",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "employees",
+      "column": "supervisor",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "equipment_register",
+      "column": "assigned_site",
+      "data_type": "fk",
+      "foreign": "sites.site_code",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "equipment_register",
+      "column": "assigned_to",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "failed_inspections",
+      "column": "assigned_person",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "failed_inspections",
+      "column": "checklist_id",
+      "data_type": "fk",
+      "foreign": "inspection_summary.checklist_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "incident_register",
+      "column": "reported_by",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "income_register",
+      "column": "cogs_expense_id",
+      "data_type": "fk",
+      "foreign": "expense_register.id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "income_register",
+      "column": "cogs_reversal_expense_id",
+      "data_type": "fk",
+      "foreign": "expense_register.id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "income_register",
+      "column": "product_id",
+      "data_type": "fk",
+      "foreign": "finished_products.id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "inspection_summary",
+      "column": "supervisor",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "inspection_summary",
+      "column": "work_order_no",
+      "data_type": "fk",
+      "foreign": "work_orders.work_order_no",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "leave_approver_config",
+      "column": "approver_user_account_id",
+      "data_type": "fk",
+      "foreign": "user_accounts.auth_uid",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "leave_requests",
+      "column": "approver_user_account_id",
+      "data_type": "fk",
+      "foreign": "user_accounts.auth_uid",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "leave_requests",
+      "column": "leave_type_id",
+      "data_type": "fk",
+      "foreign": "leave_types.id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "pay_rate_structure",
+      "column": "position",
+      "data_type": "fk",
+      "foreign": "positions.position_title",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "payroll_history",
+      "column": "project_contract",
+      "data_type": "fk",
+      "foreign": "projects.project_code",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "payroll_processing",
+      "column": "project_contract",
+      "data_type": "fk",
+      "foreign": "projects.project_code",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "recruitment_tracker",
+      "column": "department",
+      "data_type": "fk",
+      "foreign": "departments.dept_code",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "sites",
+      "column": "assigned_supervisor",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "user_account_supervisor_sites",
+      "column": "site_code",
+      "data_type": "fk",
+      "foreign": "sites.site_code",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "work_orders",
+      "column": "assigned_cleaner",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    },
+    {
+      "table": "work_orders",
+      "column": "supervisor",
+      "data_type": "fk",
+      "foreign": "employees.employee_id",
+      "indexedAnywhere": false
+    }
+  ],
+  "indexSummary": [
+    {
+      "table": "accounts_payable",
+      "indexes": [
+        {
+          "name": "accounts_payable_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "action_status_options",
+      "indexes": [
+        {
+          "name": "action_status_options_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "approvers",
+      "indexes": [
+        {
+          "name": "approvers_pkey",
+          "columns": "{employee_id}"
+        }
+      ]
+    },
+    {
+      "table": "asset_categories",
+      "indexes": [
+        {
+          "name": "asset_categories_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "asset_register",
+      "indexes": [
+        {
+          "name": "asset_register_pkey",
+          "columns": "{asset_id}"
+        }
+      ]
+    },
+    {
+      "table": "attendance_register",
+      "indexes": [
+        {
+          "name": "attendance_register_pkey",
+          "columns": "{id}"
+        },
+        {
+          "name": "idx_attendance_staff_date",
+          "columns": "{staff_id,date}"
+        }
+      ]
+    },
+    {
+      "table": "capital_contributions",
+      "indexes": [
+        {
+          "name": "capital_contributions_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "casual_tax_rate_config",
+      "indexes": [
+        {
+          "name": "casual_tax_rate_config_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "clients",
+      "indexes": [
+        {
+          "name": "clients_pkey",
+          "columns": "{client_id}"
+        }
+      ]
+    },
+    {
+      "table": "complaint_priority_options",
+      "indexes": [
+        {
+          "name": "complaint_priority_options_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "complaint_register",
+      "indexes": [
+        {
+          "name": "complaint_register_pkey",
+          "columns": "{complaint_no}"
+        }
+      ]
+    },
+    {
+      "table": "consumables",
+      "indexes": [
+        {
+          "name": "consumables_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "contract_status_options",
+      "indexes": [
+        {
+          "name": "contract_status_options_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "corrective_actions",
+      "indexes": [
+        {
+          "name": "corrective_actions_pkey",
+          "columns": "{action_no}"
+        }
+      ]
+    },
+    {
+      "table": "departments",
+      "indexes": [
+        {
+          "name": "departments_pkey",
+          "columns": "{dept_code}"
+        }
+      ]
+    },
+    {
+      "table": "depreciation_methods",
+      "indexes": [
+        {
+          "name": "depreciation_methods_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "disciplinary_records",
+      "indexes": [
+        {
+          "name": "disciplinary_records_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "employee_employment_history",
+      "indexes": [
+        {
+          "name": "employee_employment_history_pkey",
+          "columns": "{history_id}"
+        },
+        {
+          "name": "idx_emp_history_employee_date",
+          "columns": "{employee_id,effective_date}"
+        }
+      ]
+    },
+    {
+      "table": "employee_leave_balances",
+      "indexes": [
+        {
+          "name": "employee_leave_balances_employee_id_leave_type_id_year_key",
+          "columns": "{employee_id,leave_type_id,year}"
+        },
+        {
+          "name": "employee_leave_balances_pkey",
+          "columns": "{id}"
+        },
+        {
+          "name": "idx_employee_leave_balances_employee_year",
+          "columns": "{employee_id,year}"
+        }
+      ]
+    },
+    {
+      "table": "employees",
+      "indexes": [
+        {
+          "name": "employees_pkey",
+          "columns": "{employee_id}"
+        },
+        {
+          "name": "employees_staff_id_key",
+          "columns": "{staff_id}"
+        }
+      ]
+    },
+    {
+      "table": "equipment_register",
+      "indexes": [
+        {
+          "name": "equipment_register_pkey",
+          "columns": "{equipment_id}"
+        }
+      ]
+    },
+    {
+      "table": "equipment_status_options",
+      "indexes": [
+        {
+          "name": "equipment_status_options_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "exit_management",
+      "indexes": [
+        {
+          "name": "exit_management_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "expense_categories",
+      "indexes": [
+        {
+          "name": "expense_categories_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "expense_register",
+      "indexes": [
+        {
+          "name": "expense_register_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "expense_subcategories",
+      "indexes": [
+        {
+          "name": "expense_subcategories_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "failed_inspections",
+      "indexes": [
+        {
+          "name": "failed_inspections_pkey",
+          "columns": "{issue_no}"
+        }
+      ]
+    },
+    {
+      "table": "fixed_assets",
+      "indexes": [
+        {
+          "name": "fixed_assets_pkey",
+          "columns": "{asset_id}"
+        }
+      ]
+    },
+    {
+      "table": "incident_register",
+      "indexes": [
+        {
+          "name": "incident_register_pkey",
+          "columns": "{incident_no}"
+        }
+      ]
+    },
+    {
+      "table": "incident_type_options",
+      "indexes": [
+        {
+          "name": "incident_type_options_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "income_register",
+      "indexes": [
+        {
+          "name": "income_register_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "inspection_result_options",
+      "indexes": [
+        {
+          "name": "inspection_result_options_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "inspection_summary",
+      "indexes": [
+        {
+          "name": "inspection_summary_pkey",
+          "columns": "{checklist_id}"
+        }
+      ]
+    },
+    {
+      "table": "leave_approver_config",
+      "indexes": [
+        {
+          "name": "idx_leave_approver_config_effective_from",
+          "columns": "{effective_from,created_at}"
+        },
+        {
+          "name": "leave_approver_config_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "leave_management",
+      "indexes": [
+        {
+          "name": "leave_management_pkey",
+          "columns": "{leave_id}"
+        }
+      ]
+    },
+    {
+      "table": "leave_requests",
+      "indexes": [
+        {
+          "name": "idx_leave_requests_approver_status",
+          "columns": "{approver_user_account_id,status}"
+        },
+        {
+          "name": "idx_leave_requests_employee_id",
+          "columns": "{employee_id,submitted_at}"
+        },
+        {
+          "name": "leave_requests_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "leave_types",
+      "indexes": [
+        {
+          "name": "leave_types_pkey",
+          "columns": "{id}"
+        },
+        {
+          "name": "leave_types_type_name_key",
+          "columns": "{type_name}"
+        }
+      ]
+    },
+    {
+      "table": "loan_register",
+      "indexes": [
+        {
+          "name": "loan_register_pkey",
+          "columns": "{loan_id}"
+        }
+      ]
+    },
+    {
+      "table": "manual_financial_entries",
+      "indexes": [
+        {
+          "name": "manual_financial_entries_pkey",
+          "columns": "{period_month}"
+        }
+      ]
+    },
+    {
+      "table": "month_end_close",
+      "indexes": [
+        {
+          "name": "month_end_close_pkey",
+          "columns": "{month}"
+        }
+      ]
+    },
+    {
+      "table": "operations_config",
+      "indexes": [
+        {
+          "name": "operations_config_pkey",
+          "columns": "{config_key}"
+        }
+      ]
+    },
+    {
+      "table": "overtime_register",
+      "indexes": [
+        {
+          "name": "overtime_register_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "pay_rate_structure",
+      "indexes": [
+        {
+          "name": "pay_rate_structure_pkey",
+          "columns": "{rate_id}"
+        },
+        {
+          "name": "pay_rate_structure_position_employment_type_shift_effective_key",
+          "columns": "{position,employment_type,shift,effective_date}"
+        }
+      ]
+    },
+    {
+      "table": "paye_bands",
+      "indexes": [
+        {
+          "name": "paye_bands_pkey",
+          "columns": "{band_name,tax_year}"
+        }
+      ]
+    },
+    {
+      "table": "paye_config",
+      "indexes": [
+        {
+          "name": "paye_config_pkey",
+          "columns": "{config_key}"
+        }
+      ]
+    },
+    {
+      "table": "paye_tax_bands",
+      "indexes": [
+        {
+          "name": "paye_tax_bands_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "payment_methods",
+      "indexes": [
+        {
+          "name": "payment_methods_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "payroll_history",
+      "indexes": [
+        {
+          "name": "payroll_history_payroll_month_employee_id_key",
+          "columns": "{payroll_month,employee_id}"
+        },
+        {
+          "name": "payroll_history_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "payroll_link",
+      "indexes": [
+        {
+          "name": "payroll_link_pkey",
+          "columns": "{payroll_month}"
+        }
+      ]
+    },
+    {
+      "table": "payroll_processing",
+      "indexes": [
+        {
+          "name": "payroll_processing_payroll_month_employee_id_key",
+          "columns": "{payroll_month,employee_id}"
+        },
+        {
+          "name": "payroll_processing_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "positions",
+      "indexes": [
+        {
+          "name": "positions_pkey",
+          "columns": "{position_title}"
+        }
+      ]
+    },
+    {
+      "table": "projects",
+      "indexes": [
+        {
+          "name": "projects_id_unique",
+          "columns": "{id}"
+        },
+        {
+          "name": "projects_pkey",
+          "columns": "{project_code}"
+        }
+      ]
+    },
+    {
+      "table": "recruitment_tracker",
+      "indexes": [
+        {
+          "name": "recruitment_tracker_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "risk_level_options",
+      "indexes": [
+        {
+          "name": "risk_level_options_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "roles",
+      "indexes": [
+        {
+          "name": "roles_pkey",
+          "columns": "{code}"
+        }
+      ]
+    },
+    {
+      "table": "roster_config",
+      "indexes": [
+        {
+          "name": "roster_config_client_id_unique",
+          "columns": "{client_id}"
+        },
+        {
+          "name": "roster_config_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "roster_history",
+      "indexes": [
+        {
+          "name": "roster_history_pkey",
+          "columns": "{roster_number}"
+        }
+      ]
+    },
+    {
+      "table": "salary_rate_config",
+      "indexes": [
+        {
+          "name": "salary_rate_config_pkey",
+          "columns": "{id}"
+        },
+        {
+          "name": "salary_rate_config_position_employment_type_shift_effective_key",
+          "columns": "{position,employment_type,shift,effective_date}"
+        }
+      ]
+    },
+    {
+      "table": "service_types",
+      "indexes": [
+        {
+          "name": "service_types_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "severity_options",
+      "indexes": [
+        {
+          "name": "severity_options_pkey",
+          "columns": "{name}"
+        }
+      ]
+    },
+    {
+      "table": "sites",
+      "indexes": [
+        {
+          "name": "sites_pkey",
+          "columns": "{site_code}"
+        }
+      ]
+    },
+    {
+      "table": "ssnit_config",
+      "indexes": [
+        {
+          "name": "ssnit_config_pkey",
+          "columns": "{config_key}"
+        }
+      ]
+    },
+    {
+      "table": "ssnit_rate_config",
+      "indexes": [
+        {
+          "name": "ssnit_rate_config_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "ssnit_rates",
+      "indexes": [
+        {
+          "name": "ssnit_rates_pkey",
+          "columns": "{rate_name}"
+        }
+      ]
+    },
+    {
+      "table": "todos",
+      "indexes": [
+        {
+          "name": "todos_pkey",
+          "columns": "{id}"
+        }
+      ]
+    },
+    {
+      "table": "user_account_supervisor_sites",
+      "indexes": [
+        {
+          "name": "idx_user_account_supervisor_sites_site_code",
+          "columns": "{site_code}"
+        },
+        {
+          "name": "user_account_supervisor_sites_pkey",
+          "columns": "{auth_uid,site_code}"
+        }
+      ]
+    },
+    {
+      "table": "user_accounts",
+      "indexes": [
+        {
+          "name": "user_accounts_pkey",
+          "columns": "{auth_uid}"
+        }
+      ]
+    },
+    {
+      "table": "work_orders",
+      "indexes": [
+        {
+          "name": "work_orders_pkey",
+          "columns": "{work_order_no}"
+        }
+      ]
+    }
+  ]
+}
