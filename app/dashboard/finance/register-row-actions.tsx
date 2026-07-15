@@ -25,7 +25,7 @@ export function toDateInputValue(value: string): string {
 }
 
 export function getStripedRowClassName(index: number): string {
-  return index % 2 === 1 ? "bg-slate-50 text-slate-700" : "text-slate-700";
+  return index % 2 === 1 ? "bg-slate-50 text-slate-900" : "text-slate-900";
 }
 
 export function confirmDeleteEntry(): boolean {

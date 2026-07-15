@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { inputClassName } from "../employees/employee-record-utils";
+import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
+  scrollableTableBodyClassName,
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
@@ -131,36 +133,54 @@ export default function RosterHistory({
               <th className={scrollableTableThClassName}>Date Generated</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200">
+          <tbody className={scrollableTableBodyClassName}>
             {filteredHistory.length === 0 ? (
               <tr>
                 <td
                   colSpan={11}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
-                  No roster history records match the selected filters.
+                  {initialHistory.length === 0
+                    ? "No roster history records yet. Records appear here after a Duty Roster rotation is started."
+                    : "No roster history records match the selected filters."}
                 </td>
               </tr>
             ) : (
-              filteredHistory.map((row) => (
-                <tr key={row.roster_number}>
-                  <td className="px-4 py-3 text-sm">{row.roster_number}</td>
-                  <td className="px-4 py-3 text-sm">{row.rotation_number ?? "—"}</td>
-                  <td className="px-4 py-3 text-sm">{row.effective_date}</td>
-                  <td className="px-4 py-3 text-sm">{row.end_date ?? "—"}</td>
-                  <td className="px-4 py-3 text-sm">
+              filteredHistory.map((row, index) => (
+                <tr key={row.roster_number} className={getStripedRowClassName(index)}>
+                  <td className="px-4 py-3 text-sm text-slate-900">
+                    {row.roster_number}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-900">
+                    {row.rotation_number ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-900">
+                    {row.effective_date}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-900">
+                    {row.end_date ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-900">
                     {row.employee_id
                       ? (employeeNameById.get(row.employee_id) ?? row.employee_id)
                       : "—"}
                   </td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-3 text-sm text-slate-900">
                     {row.previous_location ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-sm">{row.new_location ?? "—"}</td>
-                  <td className="px-4 py-3 text-sm">{row.position ?? "—"}</td>
-                  <td className="px-4 py-3 text-sm">{row.shift ?? "—"}</td>
-                  <td className="px-4 py-3 text-sm">{row.generated_by ?? "—"}</td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-3 text-sm text-slate-900">
+                    {row.new_location ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-900">
+                    {row.position ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-900">
+                    {row.shift ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-900">
+                    {row.generated_by ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-900">
                     {row.date_generated ?? "—"}
                   </td>
                 </tr>
