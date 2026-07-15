@@ -79,7 +79,10 @@ export type BalanceSheetRow = {
 export type InventoryBalanceSheetInput = {
   config: InventoryBalanceConfig | null;
   rawMaterials: Array<
-    Pick<RawMaterialRecord, "current_stock" | "average_cost_per_unit">
+    Pick<
+      RawMaterialRecord,
+      "current_stock" | "average_cost_per_unit" | "reorder_level"
+    >
   >;
   finishedProducts: Array<Pick<FinishedProductRecord, "id" | "current_stock">>;
   batchSummaries: ProductionBatchCostSummary[];
