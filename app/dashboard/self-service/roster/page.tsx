@@ -45,7 +45,7 @@ export default async function SelfServiceRosterPage() {
       .maybeSingle(),
     supabase
       .from("roster_history")
-      .select("effective_date, roster_number, shift, new_location, prepared_by")
+      .select("effective_date, roster_number, shift, new_location, generated_by")
       .eq("employee_id", employeeId)
       .order("effective_date", { ascending: false }),
     supabase.from("projects").select(PROJECT_SELECT),
@@ -117,7 +117,7 @@ export default async function SelfServiceRosterPage() {
       projectLookup.get(row.new_location ?? "") ??
       row.new_location ??
       "—",
-    preparedBy: row.prepared_by,
+    preparedBy: row.generated_by,
   }));
 
   return (
