@@ -159,6 +159,81 @@ export function isSupervisorEmployee(employee: {
   return position.includes("supervisor") || employee.shift === "Full Day";
 }
 
+export type DutyRosterShiftRole = "Morning" | "Afternoon" | "Supervisor";
+
+/** Same role buckets used when Duty Roster assigns employees to facility columns. */
+export function getDutyRosterShiftRole(employee: {
+  position: string | null;
+  shift: string | null;
+}): DutyRosterShiftRole | null {
+  if (isSupervisorEmployee(employee)) {
+    return "Supervisor";
+  }
+
+  if (employee.shift === "Morning") {
+    return "Morning";
+  }
+
+  if (employee.shift === "Afternoon") {
+    return "Afternoon";
+  }
+
+  return null;
+}
+
+export function getDutyRosterShiftTime(
+  config: Pick<
+    RosterConfigRecord,
+    "morning_time" | "afternoon_time" | "supervisor_time"
+  >,
+  role: DutyRosterShiftRole | null,
+): string | null {
+  if (role === "Morning") {
+    return config.morning_time?.trim() || null;
+  }
+  if (role === "Afternoon") {
+    return config.afternoon_time?.trim() || null;
+  }
+  if (role === "Supervisor") {
+    return config.supervisor_time?.trim() || null;
+  }
+  return null;
+}
+
+export function formatDutyRosterRotationLabel(
+  rotationNumber: number,
+  cycleStartDate: string,
+  cycleEndDate: string,
+): string {
+  return `Rotation ${rotationNumber}: ${formatDisplayDate(cycleStartDate)} – ${formatDisplayDate(cycleEndDate)}`;
+}
+
+export function buildDutyRosterCycleSummary(
+  config: Pick<RosterConfigRecord, "cycle_start_date" | "cycle_length_days">,
+  history: RosterHistoryRecord[],
+  referenceDate?: Date,
+) {
+  const rotationDates = calculateRotationDates(config);
+  const currentRotationNumber = getCurrentRotationNumber(history);
+  const daysToRotation = calculateDaysToRotation(
+    rotationDates.nextRotationDate,
+    referenceDate,
+  );
+
+  return {
+    currentRotationNumber,
+    currentRotationLabel: formatDutyRosterRotationLabel(
+      currentRotationNumber,
+      rotationDates.cycleStartDate,
+      rotationDates.cycleEndDate,
+    ),
+    cycleStartDate: rotationDates.cycleStartDate,
+    cycleEndDate: rotationDates.cycleEndDate,
+    nextRotationDate: rotationDates.nextRotationDate,
+    daysToRotation,
+  };
+}
+
 export function getProjectDisplayName(
   projectCode: string | null | undefined,
   projects: DutyRosterProject[],
@@ -483,12 +558,19 @@ export function buildDutyRosterViewModel(input: {
     input.employees,
     clientProjectCodes,
   );
-  const rotationDates = calculateRotationDates(input.config);
-  const daysToRotation = calculateDaysToRotation(
-    rotationDates.nextRotationDate,
+  const cycleSummary = buildDutyRosterCycleSummary(
+    input.config,
+    clientHistory,
     input.referenceDate,
   );
-  const currentRotationNumber = getCurrentRotationNumber(clientHistory);
+  const {
+    cycleStartDate,
+    cycleEndDate,
+    nextRotationDate,
+    daysToRotation,
+    currentRotationNumber,
+    currentRotationLabel,
+  } = cycleSummary;
 
   const rows = staffingSites
     .map((site) => {
@@ -538,10 +620,10 @@ export function buildDutyRosterViewModel(input: {
     clientId: input.clientId,
     clientName: input.clientName,
     summary: {
-      currentRotationLabel: `Rotation ${currentRotationNumber}: ${formatDisplayDate(rotationDates.cycleStartDate)} – ${formatDisplayDate(rotationDates.cycleEndDate)}`,
-      cycleStartDate: rotationDates.cycleStartDate,
-      cycleEndDate: rotationDates.cycleEndDate,
-      nextRotationDate: rotationDates.nextRotationDate,
+      currentRotationLabel,
+      cycleStartDate,
+      cycleEndDate,
+      nextRotationDate,
       daysToRotation,
       staffAssignedCount: rosterAssignedEmployees.length,
       totalActiveCount: rosterRelevantEmployees.length,

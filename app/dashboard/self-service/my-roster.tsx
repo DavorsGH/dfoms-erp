@@ -5,14 +5,20 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import type { DutyRosterShiftRole } from "../operations/duty-roster-utils";
 
 export type MyRosterAssignment = {
   staffId: string;
   fullName: string;
-  shift: string | null;
+  shiftRole: DutyRosterShiftRole | null;
+  shiftTime: string | null;
+  shiftFallback: string | null;
   contractProjectLabel: string;
   assignedSiteLabel: string;
-  cycleLabel: string | null;
+  rotationLabel: string | null;
+  cycleStartDate: string | null;
+  cycleEndDate: string | null;
+  daysToRotation: number | null;
 };
 
 export type MyRosterHistoryRow = {
@@ -28,6 +34,30 @@ type MyRosterProps = {
   history: MyRosterHistoryRow[];
   fetchError: string | null;
 };
+
+function formatShiftDisplay(
+  role: DutyRosterShiftRole | null,
+  time: string | null,
+  fallback: string | null,
+): string {
+  if (role && time) {
+    return `${role} (${time})`;
+  }
+  if (role) {
+    return role;
+  }
+  return fallback?.trim() || "—";
+}
+
+function formatCycleRange(
+  startDate: string | null,
+  endDate: string | null,
+): string | null {
+  if (!startDate || !endDate) {
+    return null;
+  }
+  return `${startDate} – ${endDate}`;
+}
 
 export default function MyRoster({
   assignment,
@@ -49,6 +79,11 @@ export default function MyRoster({
       </div>
     );
   }
+
+  const cycleRange = formatCycleRange(
+    assignment.cycleStartDate,
+    assignment.cycleEndDate,
+  );
 
   return (
     <div className="space-y-6">
@@ -74,15 +109,29 @@ export default function MyRoster({
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-slate-600">Shift Pattern</dt>
+            <dt className="text-sm font-medium text-slate-600">Shift</dt>
             <dd className="mt-1 text-sm text-slate-900">
-              {assignment.shift?.trim() || "—"}
+              {formatShiftDisplay(
+                assignment.shiftRole,
+                assignment.shiftTime,
+                assignment.shiftFallback,
+              )}
             </dd>
           </div>
           <div className="sm:col-span-2">
             <dt className="text-sm font-medium text-slate-600">Rotation Cycle</dt>
-            <dd className="mt-1 text-sm text-slate-900">
-              {assignment.cycleLabel ?? "—"}
+            <dd className="mt-1 space-y-1 text-sm text-slate-900">
+              <p>{assignment.rotationLabel ?? "—"}</p>
+              {cycleRange ? (
+                <p className="text-slate-600">
+                  Cycle dates: {cycleRange}
+                  {assignment.daysToRotation != null
+                    ? ` · ${assignment.daysToRotation} day${
+                        assignment.daysToRotation === 1 ? "" : "s"
+                      } to next rotation`
+                    : null}
+                </p>
+              ) : null}
             </dd>
           </div>
         </dl>
@@ -117,12 +166,17 @@ export default function MyRoster({
                 </tr>
               ) : (
                 history.map((row) => (
-                  <tr key={`${row.effectiveDate}-${row.rosterNumber}`} className="text-slate-700">
+                  <tr
+                    key={`${row.effectiveDate}-${row.rosterNumber}`}
+                    className="text-slate-700"
+                  >
                     <td className="px-4 py-3">{row.effectiveDate}</td>
                     <td className="px-4 py-3">{row.rosterNumber}</td>
                     <td className="px-4 py-3">{row.locationLabel}</td>
                     <td className="px-4 py-3">{row.shift?.trim() || "—"}</td>
-                    <td className="px-4 py-3">{row.preparedBy?.trim() || "—"}</td>
+                    <td className="px-4 py-3">
+                      {row.preparedBy?.trim() || "—"}
+                    </td>
                   </tr>
                 ))
               )}

@@ -5,6 +5,12 @@ import {
   PROJECT_SELECT,
   normalizeProjectEntry,
 } from "../../administration/projects-utils";
+import {
+  buildDutyRosterCycleSummary,
+  getDutyRosterShiftRole,
+  getDutyRosterShiftTime,
+  type RosterHistoryRecord,
+} from "../../operations/duty-roster-utils";
 import { getRosterConfigForClient } from "../../operations/roster-config-utils";
 import { SITE_ASSIGNMENT_SELECT } from "../../operations/sites-utils";
 import MyRoster, {
@@ -32,6 +38,7 @@ export default async function SelfServiceRosterPage() {
   const [
     { data: employee, error: employeeError },
     { data: historyRows, error: historyError },
+    { data: rotationHistory, error: rotationHistoryError },
     { data: projects, error: projectsError },
     { data: sites, error: sitesError },
     { data: rosterConfigs, error: configError },
@@ -39,7 +46,7 @@ export default async function SelfServiceRosterPage() {
     supabase
       .from("employees")
       .select(
-        "employee_id, staff_id, full_name, shift, contract_project, assigned_site_id, project_ref:projects!contract_project(project_code, project_name)",
+        "employee_id, staff_id, full_name, position, shift, contract_project, assigned_site_id, project_ref:projects!contract_project(project_code, project_name)",
       )
       .eq("employee_id", employeeId)
       .maybeSingle(),
@@ -48,6 +55,8 @@ export default async function SelfServiceRosterPage() {
       .select("effective_date, roster_number, shift, new_location, generated_by")
       .eq("employee_id", employeeId)
       .order("effective_date", { ascending: false }),
+    // Rotation number matches admin Duty Roster (max rotation across history).
+    supabase.from("roster_history").select("rotation_number"),
     supabase.from("projects").select(PROJECT_SELECT),
     supabase.from("sites").select(SITE_ASSIGNMENT_SELECT),
     supabase.from("roster_config").select(
@@ -58,6 +67,7 @@ export default async function SelfServiceRosterPage() {
   const fetchError =
     employeeError?.message ??
     historyError?.message ??
+    rotationHistoryError?.message ??
     projectsError?.message ??
     sitesError?.message ??
     configError?.message ??
@@ -95,17 +105,34 @@ export default async function SelfServiceRosterPage() {
     const rosterConfig = assignedSite?.client_id
       ? getRosterConfigForClient(rosterConfigs ?? [], assignedSite.client_id)
       : null;
-    const cycleLabel = rosterConfig
-      ? `${rosterConfig.cycle_length_days}-day cycle from ${rosterConfig.cycle_start_date}`
+
+    const shiftRole = getDutyRosterShiftRole({
+      position: employee.position,
+      shift: employee.shift,
+    });
+    const shiftTime = rosterConfig
+      ? getDutyRosterShiftTime(rosterConfig, shiftRole)
+      : null;
+
+    const cycleSummary = rosterConfig
+      ? buildDutyRosterCycleSummary(
+          rosterConfig,
+          (rotationHistory as RosterHistoryRecord[] | null) ?? [],
+        )
       : null;
 
     assignment = {
       staffId: employee.staff_id,
       fullName: employee.full_name,
-      shift: employee.shift,
+      shiftRole,
+      shiftTime,
+      shiftFallback: employee.shift?.trim() || null,
       contractProjectLabel,
       assignedSiteLabel,
-      cycleLabel,
+      rotationLabel: cycleSummary?.currentRotationLabel ?? null,
+      cycleStartDate: cycleSummary?.cycleStartDate ?? null,
+      cycleEndDate: cycleSummary?.cycleEndDate ?? null,
+      daysToRotation: cycleSummary?.daysToRotation ?? null,
     };
   }
 
