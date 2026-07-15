@@ -909,7 +909,7 @@ export function getIndividualIncidentReport(
   return {
     incidentNo: entry.incident_no,
     date: entry.date,
-    time: entry.incident_time,
+    time: entry.time,
     clientName: getIncidentClientName(entry),
     siteName: getIncidentSiteName(entry),
     area: entry.area?.trim() || "—",

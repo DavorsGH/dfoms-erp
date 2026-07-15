@@ -1,7 +1,7 @@
 export type IncidentRegisterEntry = {
   incident_no: string;
   date: string;
-  incident_time: string | null;
+  time: string | null;
   client_id: string | null;
   site_id: string | null;
   area: string | null;

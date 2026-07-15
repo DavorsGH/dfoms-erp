@@ -1,0 +1,78 @@
+﻿9c5949e 2026-07-13 Operations: Clients, Sites, Work Orders, Inspection Summary, Failed Inspections, Corrective Actions, Complaint Register screens; incident and complaint data import; sidebar logo/header sizing fixes
+c49a1b9 2026-07-13 HR & Payroll: Payroll History, Payslip, P&L Integration auto-posting, partial/full lock with reopen, Employees screen fixes, Attendance bulk import
+f028365 2026-07-13 HR & Payroll: Payroll Processing built - SSNIT/PAYE calculation, absence/overtime/loan integration, partial month lock support
+9476f1d 2026-07-13 Fix: depreciation now starts from asset acquisition date, not FY start
+0a67647 2026-07-13 Add Profit & Loss screen and manual financial entries table - v1.1
+6d4bcc7 2026-07-13 Add Fixed Assets screen, asset reference tables, sidebar branding, and scrollable table layout across Finance - v0.9
+f2f2491 2026-07-12 Add Accounts Payable screen and Edit/Delete across all Finance screens - v0.8
+bf1b563 2026-07-12 Add Expense Register, Finance reference tables, and Administration management screens - v0.7
+==== blame ====
+9c5949e3 (DavorsGH 2026-07-13  1) "use client";
+9c5949e3 (DavorsGH 2026-07-13  2) 
+9c5949e3 (DavorsGH 2026-07-13  3) import Link from "next/link";
+9c5949e3 (DavorsGH 2026-07-13  4) import { usePathname } from "next/navigation";
+9c5949e3 (DavorsGH 2026-07-13  5) 
+9c5949e3 (DavorsGH 2026-07-13  6) const navItems = [
+9c5949e3 (DavorsGH 2026-07-13  7)   { label: "Duty Roster", href: "/dashboard/operations/duty-roster" },
+9c5949e3 (DavorsGH 2026-07-13  8)   { label: "Roster History", href: "/dashboard/operations/roster-history" },
+9c5949e3 (DavorsGH 2026-07-13  9)   { label: "Clients", href: "/dashboard/operations/clients" },
+9c5949e3 (DavorsGH 2026-07-13 10)   { label: "Sites", href: "/dashboard/operations/sites" },
+9c5949e3 (DavorsGH 2026-07-13 11)   { label: "Work Orders", href: "/dashboard/operations/work-orders" },
+9c5949e3 (DavorsGH 2026-07-13 12)   {
+9c5949e3 (DavorsGH 2026-07-13 13)     label: "Inspection Summary",
+9c5949e3 (DavorsGH 2026-07-13 14)     href: "/dashboard/operations/inspection-summary",
+9c5949e3 (DavorsGH 2026-07-13 15)   },
+9c5949e3 (DavorsGH 2026-07-13 16)   {
+9c5949e3 (DavorsGH 2026-07-13 17)     label: "Failed Inspections",
+9c5949e3 (DavorsGH 2026-07-13 18)     href: "/dashboard/operations/failed-inspections",
+9c5949e3 (DavorsGH 2026-07-13 19)   },
+9c5949e3 (DavorsGH 2026-07-13 20)   {
+9c5949e3 (DavorsGH 2026-07-13 21)     label: "Corrective Actions",
+9c5949e3 (DavorsGH 2026-07-13 22)     href: "/dashboard/operations/corrective-actions",
+9c5949e3 (DavorsGH 2026-07-13 23)   },
+9c5949e3 (DavorsGH 2026-07-13 24)   {
+9c5949e3 (DavorsGH 2026-07-13 25)     label: "Complaint Register",
+9c5949e3 (DavorsGH 2026-07-13 26)     href: "/dashboard/operations/complaint-register",
+9c5949e3 (DavorsGH 2026-07-13 27)   },
+9c5949e3 (DavorsGH 2026-07-13 28) ] as const;
+9c5949e3 (DavorsGH 2026-07-13 29) 
+9c5949e3 (DavorsGH 2026-07-13 30) export default function OperationsNav() {
+9c5949e3 (DavorsGH 2026-07-13 31)   const pathname = usePathname();
+9c5949e3 (DavorsGH 2026-07-13 32) 
+9c5949e3 (DavorsGH 2026-07-13 33)   return (
+9c5949e3 (DavorsGH 2026-07-13 34)     <nav className="mb-6 border-b border-slate-200 pb-4">
+9c5949e3 (DavorsGH 2026-07-13 35)       <div className="flex gap-2 overflow-x-auto pb-1">
+9c5949e3 (DavorsGH 2026-07-13 36)         {navItems.map((item) => {
+9c5949e3 (DavorsGH 2026-07-13 37)           const active = pathname === item.href;
+9c5949e3 (DavorsGH 2026-07-13 38) 
+9c5949e3 (DavorsGH 2026-07-13 39)           return (
+9c5949e3 (DavorsGH 2026-07-13 40)             <Link
+9c5949e3 (DavorsGH 2026-07-13 41)               key={item.href}
+9c5949e3 (DavorsGH 2026-07-13 42)               href={item.href}
+9c5949e3 (DavorsGH 2026-07-13 43)               scroll
+9c5949e3 (DavorsGH 2026-07-13 44)               className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+9c5949e3 (DavorsGH 2026-07-13 45)                 active
+9c5949e3 (DavorsGH 2026-07-13 46)                   ? "bg-[#0f2744] text-white"
+9c5949e3 (DavorsGH 2026-07-13 47)                   : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+9c5949e3 (DavorsGH 2026-07-13 48)               }`}
+9c5949e3 (DavorsGH 2026-07-13 49)             >
+9c5949e3 (DavorsGH 2026-07-13 50)               {item.label}
+9c5949e3 (DavorsGH 2026-07-13 51)             </Link>
+9c5949e3 (DavorsGH 2026-07-13 52)           );
+9c5949e3 (DavorsGH 2026-07-13 53)         })}
+9c5949e3 (DavorsGH 2026-07-13 54)       </div>
+9c5949e3 (DavorsGH 2026-07-13 55)     </nav>
+9c5949e3 (DavorsGH 2026-07-13 56)   );
+9c5949e3 (DavorsGH 2026-07-13 57) }
+==== pickaxe Incident ====
+==== pickaxe incident-register path ====
+==== ls-files incident ====
+app/dashboard/operations/incident-register-utils.ts
+app/dashboard/reports/incidents/escalated-incidents/page.tsx
+app/dashboard/reports/incidents/individual-incident/page.tsx
+app/dashboard/reports/incidents/layout.tsx
+app/dashboard/reports/incidents/monthly-incident-summary/page.tsx
+app/dashboard/reports/incidents/page.tsx
+app/dashboard/reports/incidents/recurring-issue-trend/page.tsx
+==== first appearance of ops-nav ====
+9c5949e 2026-07-13 Operations: Clients, Sites, Work Orders, Inspection Summary, Failed Inspections, Corrective Actions, Complaint Register screens; incident and complaint data import; sidebar logo/header sizing fixes

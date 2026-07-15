@@ -21,6 +21,20 @@ export const COMPLAINT_STATUS_OPTIONS = [
   "Resolved",
 ] as const;
 
+export const INCIDENT_STATUS_OPTIONS = [
+  "Open",
+  "In Progress",
+  "Completed",
+] as const;
+
+export const INCIDENT_TYPE_OPTIONS = [
+  "Blocked Drain",
+  "Complaint",
+  "Flooding",
+  "Missing Items",
+  "Other",
+] as const;
+
 export const CORRECTIVE_ACTION_STATUS_OPTIONS = [
   "Open",
   "In Progress",
@@ -31,6 +45,8 @@ export const CORRECTIVE_ACTION_STATUS_OPTIONS = [
 export const DEFAULT_CORRECTIVE_ACTION_STATUS = "Open";
 
 export const DEFAULT_COMPLAINT_STATUS = "Open";
+
+export const DEFAULT_INCIDENT_STATUS = "Open";
 
 export const DEFAULT_INSPECTION_PASSING_THRESHOLD = 70;
 

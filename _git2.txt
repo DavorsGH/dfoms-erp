@@ -1,3 +1,5 @@
+﻿ecacb6f Reports: fixed Site Performance incident_register column bug; restructured navigation to 5 sidebar categories (Finance, HR & Payroll, Operations, Client-Facing, Incidents) with horizontal report tabs per category
+ecacb6f Reports: fixed Site Performance incident_register column bug; restructured navigation to 5 sidebar categories (Finance, HR & Payroll, Operations, Client-Facing, Incidents) with horizontal report tabs per category
 "use client";
 
 import Link from "next/link";
@@ -24,10 +26,6 @@ const navItems = [
   {
     label: "Complaint Register",
     href: "/dashboard/operations/complaint-register",
-  },
-  {
-    label: "Incident Register",
-    href: "/dashboard/operations/incident-register",
   },
 ] as const;
 

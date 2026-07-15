@@ -1,0 +1,26 @@
+﻿==== ops-nav creation commit content search ====
+first=9c5949e3927e703c3c1491a30b739eac3ce4c0e8
+git : fatal: ambiguous argument '/dashboard/operations/operations-nav.tsx': unknown revision or path not in the 
+working tree.
+At C:\Users\HP\AppData\Local\Temp\ps-script-ab0bc9d7-9a53-4b0d-aa78-6791cd7ae6c2.ps1:109 char:293
++ ... f8 _g4.txt; git show "$first:app/dashboard/operations/operations-nav. ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (fatal: ambiguou...e working tree.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+==== all commits touching ops-nav ====
+9c5949e 2026-07-13 Operations: Clients, Sites, Work Orders, Inspection Summary, Failed Inspections, Corrective Actions, Complaint Register screens; incident and complaint data import; sidebar logo/header sizing fixes
+==== search deleted incident register page ====
+==== pickaxe label Incident Register in tsx ====
+==== rbac incident_register ====
+
+  scripts\48_rbac_page_access.sql:197:    'failed_inspections',
+  scripts\48_rbac_page_access.sql:198:    'complaint_register',
+> scripts\48_rbac_page_access.sql:199:    'incident_register'
+  scripts\48_rbac_page_access.sql:200:  ]
+  scripts\48_rbac_page_access.sql:201:  LOOP
+
+
+==== sidebar ops ====
