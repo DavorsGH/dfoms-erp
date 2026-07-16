@@ -10,6 +10,11 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // External cron keepalive — must stay reachable without a session.
+  if (pathname === "/api/heartbeat") {
+    return response;
+  }
+
   if (!user && pathname !== "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
