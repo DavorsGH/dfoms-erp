@@ -234,6 +234,29 @@ function calculateCapitalContributionCashInflowsByMonth(
   return roundMonthlyTotals(totals);
 }
 
+/** Mirrors cash-flow-utils sumCashReceivedByMonth: sum amount_received by invoice date month. */
+function sumIncomeReceivedByMonth(
+  incomeEntries: BalanceSheetIncomeEntry[],
+  financialYear: number,
+): MonthlyTotals {
+  const totals = createEmptyMonthlyTotals();
+
+  for (const entry of incomeEntries) {
+    if (!isActiveIncomeForReporting(entry)) {
+      continue;
+    }
+
+    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
+    if (monthIndex === null) {
+      continue;
+    }
+
+    addAmountToMonth(totals, monthIndex, Number(entry.amount_received) || 0);
+  }
+
+  return roundMonthlyTotals(totals);
+}
+
 function calculateFixedAssetPurchaseOutflowsByMonth(
   fixedAssets: ProfitLossAssetEntry[],
   financialYear: number,
@@ -280,6 +303,7 @@ function calculatePaidExpensesByMonth(
 
 function calculateCashAndCashEquivalentsByMonth(
   capitalContributions: CapitalContributionEntry[],
+  incomeEntries: BalanceSheetIncomeEntry[],
   expenseEntries: BalanceSheetCashExpenseEntry[],
   fixedAssets: ProfitLossAssetEntry[],
   rawMaterialCashPurchases: RawMaterialPurchaseCashEntry[],
@@ -289,6 +313,10 @@ function calculateCashAndCashEquivalentsByMonth(
   const totals = createEmptyMonthlyTotals();
   const contributionInflows = calculateCapitalContributionCashInflowsByMonth(
     capitalContributions,
+    financialYear,
+  );
+  const incomeReceivedInflows = sumIncomeReceivedByMonth(
+    incomeEntries,
     financialYear,
   );
   const paidExpenseOutflows = calculatePaidExpensesByMonth(
@@ -310,7 +338,8 @@ function calculateCashAndCashEquivalentsByMonth(
   for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
     runningBalance = roundCurrency(
       runningBalance +
-        (contributionInflows[monthIndex] ?? 0) -
+        (contributionInflows[monthIndex] ?? 0) +
+        (incomeReceivedInflows[monthIndex] ?? 0) -
         (paidExpenseOutflows[monthIndex] ?? 0) -
         (fixedAssetPurchases[monthIndex] ?? 0) -
         (rawMaterialPurchases[monthIndex] ?? 0),
@@ -384,6 +413,7 @@ export function buildBalanceSheetReport(
 ): BalanceSheetReport {
   const cash = calculateCashAndCashEquivalentsByMonth(
     capitalContributions,
+    incomeEntries,
     cashFlowExpenseEntries,
     fixedAssets,
     inventoryInput.cashPurchases,
