@@ -82,16 +82,29 @@ function formatChartCurrency(value: number): string {
 
 export default function Dashboard({ data, fetchError, visibility }: DashboardProps) {
   const [selectedMonthKey, setSelectedMonthKey] = useState(data.defaultMonthKey);
+  const isYtdMode = selectedMonthKey === "ytd";
 
   const selectedSnapshot = useMemo(() => {
     return (
-      data.monthSnapshots[selectedMonthKey] ??
+      data.monthSnapshots[isYtdMode ? data.defaultMonthKey : selectedMonthKey] ??
       data.monthSnapshots[data.defaultMonthKey]
     );
-  }, [data.defaultMonthKey, data.monthSnapshots, selectedMonthKey]);
+  }, [data.defaultMonthKey, data.monthSnapshots, isYtdMode, selectedMonthKey]);
 
   const { summary, payroll } = selectedSnapshot;
   const { profitTrend, cashTrend, payrollTrend } = data;
+  const selectedPeriodLabel = isYtdMode ? "YTD" : summary.periodLabel;
+  const netProfitCardTitle = isYtdMode ? "Net Profit (YTD)" : "Net Profit (Month)";
+  const netProfitCardSubtitle = isYtdMode ? summary.ytdThroughLabel : summary.periodLabel;
+  const displayedRevenue = isYtdMode ? summary.totalRevenueYtd : summary.totalRevenue;
+  const displayedExpenses = isYtdMode
+    ? summary.totalExpensesYtd
+    : summary.totalExpenses;
+  const displayedNetProfit = isYtdMode ? summary.netProfitYtd : summary.netProfit;
+  const displayedPayrollCost = isYtdMode
+    ? payroll.totalPayrollCostYtd
+    : payroll.totalPayrollCost;
+  const asOfLabel = `as of ${summary.periodLabel}`;
 
   return (
     <div className="min-w-0 space-y-6">
@@ -116,6 +129,7 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
             onChange={(event) => setSelectedMonthKey(event.target.value)}
             className={inputClassName}
           >
+            <option value="ytd">YTD</option>
             {data.monthOptions.map((option) => (
               <option key={option.key} value={option.key}>
                 {option.label}
@@ -153,30 +167,30 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           tone="ytd"
         />
         <SummaryCard
-          title={`Total Revenue (${summary.periodLabel})`}
-          value={formatGHS(summary.totalRevenue)}
+          title={`Total Revenue (${selectedPeriodLabel})`}
+          value={formatGHS(displayedRevenue)}
           href="/dashboard/finance"
         />
         <SummaryCard
-          title={`Total Expenses (${summary.periodLabel})`}
-          value={formatGHS(summary.totalExpenses)}
+          title={`Total Expenses (${selectedPeriodLabel})`}
+          value={formatGHS(displayedExpenses)}
           href="/dashboard/finance/expenses"
         />
         <SummaryCard
-          title="Net Profit (Month)"
-          subtitle={summary.periodLabel}
-          value={formatGHS(summary.netProfit)}
+          title={netProfitCardTitle}
+          subtitle={netProfitCardSubtitle}
+          value={formatGHS(displayedNetProfit)}
           href="/dashboard/finance/profit-loss"
         />
         <SummaryCard
           title="Cash Position"
-          subtitle={summary.periodLabel}
+          subtitle={asOfLabel}
           value={formatGHS(summary.cashPosition)}
           href="/dashboard/finance/balance-sheet"
         />
         <SummaryCard
           title="Balance Sheet Check"
-          subtitle={summary.periodLabel}
+          subtitle={asOfLabel}
           value={
             summary.balanceCheck.isBalanced
               ? "Balanced"
@@ -273,10 +287,10 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
             className="rounded-md border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-[#0f2744]"
           >
             <p className="text-sm text-slate-600">
-              Total Payroll Cost ({payroll.periodLabel})
+              Total Payroll Cost ({selectedPeriodLabel})
             </p>
             <p className="mt-1 text-lg font-semibold text-[#0f2744]">
-              {formatGHS(payroll.totalPayrollCost)}
+              {formatGHS(displayedPayrollCost)}
             </p>
           </Link>
           <Link

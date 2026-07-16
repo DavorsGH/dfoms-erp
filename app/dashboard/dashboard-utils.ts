@@ -70,7 +70,9 @@ export type DashboardMonthPoint = {
 export type DashboardSummaryCards = {
   periodLabel: string;
   totalRevenue: number;
+  totalRevenueYtd: number;
   totalExpenses: number;
+  totalExpensesYtd: number;
   netProfit: number;
   netProfitYtd: number;
   ytdThroughLabel: string;
@@ -97,6 +99,7 @@ export type DashboardPayrollPanel = {
   periodLabel: string;
   lockStatus: string;
   totalPayrollCost: number;
+  totalPayrollCostYtd: number;
   pendingPayrollLiabilities: number;
   liabilityReferenceLabel: string | null;
   payrollNotProcessed: boolean;
@@ -182,6 +185,23 @@ function sumNetProfitYtd(
   return roundCurrency(total);
 }
 
+function sumRegisterAmountYtd(
+  entries: Array<{ date: string; amount: number }>,
+  year: number,
+  throughMonth: number,
+): number {
+  return roundCurrency(
+    entries.reduce((sum, entry) => {
+      const monthIndex = getEntryMonthIndex(entry.date, year);
+      if (monthIndex === null || monthIndex > throughMonth - 1) {
+        return sum;
+      }
+
+      return sum + (Number(entry.amount) || 0);
+    }, 0),
+  );
+}
+
 function buildYtdThroughLabel(year: number, throughMonth: number): string {
   if (throughMonth <= 1) {
     return formatPeriodLabel(year, 1);
@@ -258,7 +278,17 @@ function buildMonthSnapshot(input: {
         input.year,
         input.month,
       ),
+      totalRevenueYtd: sumRegisterAmountYtd(
+        input.incomeEntries,
+        input.year,
+        input.month,
+      ),
       totalExpenses: sumRegisterAmountForMonth(
+        input.expenseEntries,
+        input.year,
+        input.month,
+      ),
+      totalExpensesYtd: sumRegisterAmountYtd(
         input.expenseEntries,
         input.year,
         input.month,
@@ -285,6 +315,13 @@ function buildMonthSnapshot(input: {
         input.payrollHistoryEntries,
         closeRecord,
       ),
+      totalPayrollCostYtd: sumPayrollGrossYtd({
+        year: input.year,
+        throughMonth: input.month,
+        processingEntries: input.payrollProcessingEntries,
+        historyEntries: input.payrollHistoryEntries,
+        monthEndCloseRecords: input.monthEndCloseRecords,
+      }),
       pendingPayrollLiabilities: isMonthClosed(closeRecord)
         ? sumPendingPayrollLiabilities(input.payrollPayables, payrollMonth)
         : 0,
@@ -406,6 +443,34 @@ function sumPayrollGrossForMonth(
       .filter((entry) => entry.payroll_month.slice(0, 10) === normalizedMonth)
       .reduce((sum, entry) => sum + (Number(entry.gross_pay) || 0), 0),
   );
+}
+
+function sumPayrollGrossYtd(input: {
+  year: number;
+  throughMonth: number;
+  processingEntries: DashboardPayrollProcessingEntry[];
+  historyEntries: DashboardPayrollHistoryEntry[];
+  monthEndCloseRecords: MonthEndCloseRecord[];
+}): number {
+  let total = 0;
+
+  for (let month = 1; month <= input.throughMonth; month += 1) {
+    const payrollMonth = getPeriodStartDate(input.year, month);
+    const closeRecord = getCurrentMonthCloseRecord(
+      input.monthEndCloseRecords,
+      input.year,
+      month,
+    );
+
+    total += sumPayrollGrossForMonth(
+      payrollMonth,
+      input.processingEntries,
+      input.historyEntries,
+      closeRecord,
+    );
+  }
+
+  return roundCurrency(total);
 }
 
 function sumPendingPayrollLiabilities(
