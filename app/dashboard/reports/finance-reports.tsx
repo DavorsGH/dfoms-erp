@@ -39,6 +39,7 @@ import {
   AGING_BUCKET_LABELS,
   buildAccountsReceivableAgingReport,
   buildCapitalContributionsSummary,
+  buildExpenseReport,
   buildFixedAssetDepreciationSchedule,
   buildStatutoryLiabilitiesReport,
   extractStatementRowsForMonth,
@@ -46,6 +47,7 @@ import {
   getDefaultReportMonthYear,
   monthIndexFromMonthNumber,
   type AgingBucketKey,
+  type ExpenseReportSourceEntry,
   type FixedAssetScheduleAsset,
   type StatementReportRow,
 } from "./finance-reports-utils";
@@ -971,6 +973,193 @@ export function CapitalContributionsReport({
             ) : null}
           </table>
         </ScrollableTable>
+      </div>
+    </div>
+  );
+}
+
+export function ExpenseReport({
+  initialExpenseEntries,
+  availableYears,
+  fetchError,
+}: {
+  initialExpenseEntries: ExpenseReportSourceEntry[];
+  availableYears: number[];
+  fetchError: string | null;
+}) {
+  const { year, month, setYear, setMonth, periodLabel } =
+    useMonthYearSelection(availableYears);
+
+  const report = useMemo(
+    () => buildExpenseReport(initialExpenseEntries, year, month),
+    [initialExpenseEntries, year, month],
+  );
+
+  const hasRows = report.groups.some((group) => group.rows.length > 0);
+
+  function exportCsv() {
+    const csvRows: Array<Array<string | number>> = [];
+
+    for (const group of report.groups) {
+      for (const row of group.rows) {
+        csvRows.push([
+          row.date,
+          row.description,
+          row.category,
+          row.paymentStatus,
+          row.amount,
+        ]);
+      }
+      csvRows.push(["", "", `${group.category} Subtotal`, "", group.subtotal]);
+    }
+
+    csvRows.push(["", "", "GRAND TOTAL", "", report.grandTotal]);
+    csvRows.push([]);
+    csvRows.push(["", "", "Total Paid", "", report.totalPaid]);
+    csvRows.push([
+      "",
+      "",
+      "Total Accrued - Not Yet Paid",
+      "",
+      report.totalAccrued,
+    ]);
+
+    downloadCsv(
+      `expense-report-${year}-${String(month).padStart(2, "0")}.csv`,
+      ["Date", "Description", "Category", "Payment Status", "Amount"],
+      csvRows,
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <ReportPrintStyles />
+      <ReportActionBar
+        onPrint={handleReportPrint}
+        onExportCsv={exportCsv}
+        exportDisabled={!hasRows}
+      >
+        <ReportMonthYearSelector
+          year={year}
+          month={month}
+          availableYears={availableYears}
+          onYearChange={setYear}
+          onMonthChange={setMonth}
+        />
+      </ReportActionBar>
+      <ReportFetchError fetchError={fetchError} />
+      <div
+        id={FINANCE_REPORT_PRINT_AREA_ID}
+        className="space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <ReportCompanyHeader
+          title="Expense Report"
+          periodLabel={periodLabel}
+        />
+        <ScrollableTable>
+          <table className={scrollableTableClassName}>
+            <thead className={scrollableTableHeadClassName}>
+              <tr>
+                <th className={scrollableTableThClassName}>Date</th>
+                <th className={scrollableTableThClassName}>Description</th>
+                <th className={scrollableTableThClassName}>Category</th>
+                <th className={scrollableTableThClassName}>Payment Status</th>
+                <th className={`${scrollableTableThClassName} text-right`}>
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {!hasRows ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-4 py-8 text-center text-slate-500"
+                  >
+                    No expenses recorded for {periodLabel}.
+                  </td>
+                </tr>
+              ) : (
+                report.groups.flatMap((group) => {
+                  const dataRows = group.rows.map((row, index) => (
+                    <tr key={row.key} className={getStripedRowClassName(index)}>
+                      <td className="px-4 py-3">
+                        {formatReportDate(row.date)}
+                      </td>
+                      <td className="px-4 py-3">{row.description}</td>
+                      <td className="px-4 py-3">{row.category}</td>
+                      <td className="px-4 py-3">{row.paymentStatus}</td>
+                      <td className="px-4 py-3 text-right">
+                        {formatReportCurrency(row.amount)}
+                      </td>
+                    </tr>
+                  ));
+
+                  return [
+                    <tr
+                      key={`section-${group.category}`}
+                      className="bg-[#0f2744] text-sm font-semibold uppercase tracking-wide text-white"
+                    >
+                      <td className="px-4 py-3" colSpan={5}>
+                        {group.category}
+                      </td>
+                    </tr>,
+                    ...dataRows,
+                    <tr
+                      key={`subtotal-${group.category}`}
+                      className="bg-slate-50 text-sm font-semibold text-[#0f2744]"
+                    >
+                      <td className="px-4 py-3" colSpan={4}>
+                        {group.category} Subtotal
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {formatReportCurrency(group.subtotal)}
+                      </td>
+                    </tr>,
+                  ];
+                })
+              )}
+            </tbody>
+            {hasRows ? (
+              <tfoot>
+                <tr className="bg-slate-100 text-sm font-semibold text-[#0f2744]">
+                  <td className="px-4 py-3" colSpan={4}>
+                    GRAND TOTAL
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {formatReportCurrency(report.grandTotal)}
+                  </td>
+                </tr>
+              </tfoot>
+            ) : null}
+          </table>
+        </ScrollableTable>
+        {hasRows ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Total Paid
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[#0f2744]">
+                {formatReportCurrency(report.totalPaid)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Cash outflow (payment status = Paid)
+              </p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Total Accrued - Not Yet Paid
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[#0f2744]">
+                {formatReportCurrency(report.totalAccrued)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Excluded from Cash Position until paid
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -46,6 +46,10 @@ export const REPORT_NAV_CATEGORIES: ReportNavCategory[] = [
         label: "Capital Contributions Summary",
         href: "/dashboard/reports/finance/capital-contributions",
       },
+      {
+        label: "Expense Report",
+        href: "/dashboard/reports/finance/expense-report",
+      },
     ],
   },
   {

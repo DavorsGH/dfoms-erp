@@ -16,13 +16,13 @@ const geistMono = Geist_Mono({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#0F2744",
 };
 
 export const metadata: Metadata = {
   title: "Davors Facilities ERP",
   description: "Davors Facilities Management Services Ltd ERP System",
   manifest: "/manifest.json",
-  themeColor: "#0F2744",
   metadataBase: new URL("https://portal.davorsfacilities.com"),
   openGraph: {
     title: "Davors Facilities ERP",

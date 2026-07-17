@@ -161,3 +161,21 @@ export async function fetchCapitalContributionsReportData(
     fetchError: error?.message ?? null,
   };
 }
+
+export async function fetchExpenseReportData(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from("expense_register")
+    .select(
+      "id, date, description, expense_category, sub_category, payment_status, amount",
+    )
+    .order("date", { ascending: true });
+
+  return {
+    initialExpenseEntries: data ?? [],
+    availableYears: buildAvailableYears(
+      (data ?? []).map((entry) => entry.date),
+      [],
+    ),
+    fetchError: error?.message ?? null,
+  };
+}

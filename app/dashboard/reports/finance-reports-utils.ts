@@ -1,5 +1,6 @@
 import { calculateDaysOutstanding } from "../finance/accounts-payable-utils";
 import type { AccountsPayableEntry } from "../finance/accounts-payable-utils";
+import { isPaidStatus } from "../finance/accrued-wages-utils";
 import { getMonthEndDate } from "../finance/capital-contributions-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
 import type { ManualFinancialEntry } from "../finance/cash-flow-utils";
@@ -17,7 +18,7 @@ import {
   normalizeIncomeRegisterEntry,
 } from "../finance/income-register-utils";
 import { calculateOutstanding } from "../finance/income-register-utils";
-import { MONTH_LABELS } from "../finance/profit-loss-utils";
+import { getEntryMonthIndex, MONTH_LABELS } from "../finance/profit-loss-utils";
 
 export const REPORT_MONTH_OPTIONS = [
   { value: 1, label: "January" },
@@ -462,5 +463,141 @@ export function buildCapitalContributionsSummary(
   return {
     rows,
     grandTotal: runningTotal,
+  };
+}
+
+export type ExpenseReportSourceEntry = {
+  id?: string | null;
+  date: string;
+  description?: string | null;
+  expense_category: string;
+  sub_category?: string | null;
+  payment_status: string;
+  amount: number;
+};
+
+export type ExpenseReportLine = {
+  key: string;
+  date: string;
+  description: string;
+  category: string;
+  paymentStatus: string;
+  amount: number;
+  isPaid: boolean;
+};
+
+export type ExpenseReportCategoryGroup = {
+  category: string;
+  rows: ExpenseReportLine[];
+  subtotal: number;
+};
+
+function roundReportCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function resolveExpenseReportCategoryLabel(
+  entry: ExpenseReportSourceEntry,
+): string {
+  const category = entry.expense_category?.trim() || "Uncategorized";
+  const subCategory = entry.sub_category?.trim();
+
+  if (!subCategory) {
+    return category;
+  }
+
+  return `${category} / ${subCategory}`;
+}
+
+function resolveExpenseReportGroupKey(entry: ExpenseReportSourceEntry): string {
+  return entry.expense_category?.trim() || "Uncategorized";
+}
+
+/**
+ * Monthly expense_register report. Paid vs accrued totals reuse isPaidStatus()
+ * (same gate as calculateCashAndCashEquivalentsByMonth / isCashOutflowExpense).
+ */
+export function buildExpenseReport(
+  entries: ExpenseReportSourceEntry[],
+  year: number,
+  month: number,
+): {
+  groups: ExpenseReportCategoryGroup[];
+  grandTotal: number;
+  totalPaid: number;
+  totalAccrued: number;
+} {
+  const monthIndex = monthIndexFromMonthNumber(month);
+  const grouped = new Map<string, ExpenseReportLine[]>();
+
+  const monthEntries = entries
+    .filter((entry) => getEntryMonthIndex(entry.date, year) === monthIndex)
+    .sort((left, right) => {
+      const groupCompare = resolveExpenseReportGroupKey(left).localeCompare(
+        resolveExpenseReportGroupKey(right),
+      );
+      if (groupCompare !== 0) {
+        return groupCompare;
+      }
+
+      const dateCompare = left.date.localeCompare(right.date);
+      if (dateCompare !== 0) {
+        return dateCompare;
+      }
+
+      return resolveExpenseReportCategoryLabel(left).localeCompare(
+        resolveExpenseReportCategoryLabel(right),
+      );
+    });
+
+  monthEntries.forEach((entry, index) => {
+    const groupKey = resolveExpenseReportGroupKey(entry);
+    const amount = Number(entry.amount) || 0;
+    const line: ExpenseReportLine = {
+      key: entry.id?.trim() || `${entry.date}-${groupKey}-${index}`,
+      date: entry.date,
+      description: entry.description?.trim() || "—",
+      category: resolveExpenseReportCategoryLabel(entry),
+      paymentStatus: entry.payment_status?.trim() || "—",
+      amount,
+      isPaid: isPaidStatus(entry.payment_status),
+    };
+
+    const rows = grouped.get(groupKey) ?? [];
+    rows.push(line);
+    grouped.set(groupKey, rows);
+  });
+
+  const groups = Array.from(grouped.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([category, rows]) => ({
+      category,
+      rows,
+      subtotal: roundReportCurrency(
+        rows.reduce((sum, row) => sum + row.amount, 0),
+      ),
+    }));
+
+  const grandTotal = roundReportCurrency(
+    groups.reduce((sum, group) => sum + group.subtotal, 0),
+  );
+  const totalPaid = roundReportCurrency(
+    groups.reduce(
+      (sum, group) =>
+        sum +
+        group.rows.reduce(
+          (groupSum, row) => groupSum + (row.isPaid ? row.amount : 0),
+          0,
+        ),
+      0,
+    ),
+  );
+  const totalAccrued = roundReportCurrency(grandTotal - totalPaid);
+
+  return {
+    groups,
+    grandTotal,
+    totalPaid,
+    totalAccrued,
   };
 }
