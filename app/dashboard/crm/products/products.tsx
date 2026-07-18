@@ -26,6 +26,7 @@ import {
   PRODUCT_TYPE_OPTIONS,
   type CrmProductEntry,
 } from "./products-utils";
+import ProductsBulkImport from "./products-bulk-import";
 
 type ProductsProps = {
   initialProducts: CrmProductEntry[];
@@ -61,6 +62,7 @@ export default function Products({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductFormState>(emptyForm());
   const [loading, setLoading] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [filterCategory, setFilterCategory] = useState(ERP_SUITE_CATEGORY);
 
@@ -100,6 +102,7 @@ export default function Products({
   }
 
   function openAddForm() {
+    setShowBulkImport(false);
     setEditingId(null);
     setForm({
       ...emptyForm(),
@@ -112,6 +115,17 @@ export default function Products({
     setEditingId(null);
     setForm(emptyForm());
     setShowForm(false);
+  }
+
+  function openBulkImport() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm());
+    setShowBulkImport(true);
+  }
+
+  function closeBulkImport() {
+    setShowBulkImport(false);
   }
 
   function openEditForm(product: CrmProductEntry) {
@@ -220,19 +234,36 @@ export default function Products({
             ))}
           </select>
         </div>
-        <button
-          type="button"
-          onClick={() => (showForm ? closeForm() : openAddForm())}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          {showForm ? "Cancel" : "Add Product"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => (showBulkImport ? closeBulkImport() : openBulkImport())}
+            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+          >
+            {showBulkImport ? "Cancel Import" : "Bulk Import"}
+          </button>
+          <button
+            type="button"
+            onClick={() => (showForm ? closeForm() : openAddForm())}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+          >
+            {showForm ? "Cancel" : "Add Product"}
+          </button>
+        </div>
       </div>
 
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
+      ) : null}
+
+      {showBulkImport ? (
+        <ProductsBulkImport
+          existingProducts={products}
+          onClose={closeBulkImport}
+          onImported={refreshProducts}
+        />
       ) : null}
 
       {showForm ? (

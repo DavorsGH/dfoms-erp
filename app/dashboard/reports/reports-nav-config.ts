@@ -119,12 +119,24 @@ export const REPORT_NAV_CATEGORIES: ReportNavCategory[] = [
         href: "/dashboard/reports/inventory/production-history",
       },
       {
-        label: "Product Sales",
-        href: "/dashboard/reports/inventory/product-sales",
-      },
-      {
         label: "Internal Consumption",
         href: "/dashboard/reports/inventory/internal-consumption",
+      },
+    ],
+  },
+  {
+    id: "sales",
+    label: "Sales",
+    baseHref: "/dashboard/reports/sales",
+    pageTitle: "Sales Reports",
+    items: [
+      {
+        label: "Product Catalog",
+        href: "/dashboard/reports/sales/product-catalog",
+      },
+      {
+        label: "Product Sales",
+        href: "/dashboard/reports/sales/product-sales",
       },
     ],
   },

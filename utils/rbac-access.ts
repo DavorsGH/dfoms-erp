@@ -92,6 +92,7 @@ export const REPORT_CATEGORY_ROLES: Record<string, readonly AppRole[]> = {
   "hr-payroll": ["super_admin", "finance", "hr"],
   operations: ["super_admin", "operations_manager", "supervisor"],
   inventory: ["super_admin", "operations_manager", "finance"],
+  sales: CRM_SECTION_ROLES,
   "client-facing": ["super_admin"],
   incidents: ["super_admin", "operations_manager", "supervisor"],
 };
