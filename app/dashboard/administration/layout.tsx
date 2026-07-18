@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { isSuperAdmin } from "@/utils/dashboard-auth";
-import AdministrationNav from "./administration-nav";
+import AdministrationShell from "./administration-shell";
 
 export default async function AdministrationLayout({
   children,
@@ -11,13 +11,5 @@ export default async function AdministrationLayout({
     redirect("/dashboard");
   }
 
-  return (
-    <div>
-      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">
-        Administration
-      </h1>
-      <AdministrationNav />
-      {children}
-    </div>
-  );
+  return <AdministrationShell>{children}</AdministrationShell>;
 }

@@ -218,6 +218,10 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
     items.push({ label: "Finance", href: "/dashboard/finance" });
   }
 
+  if (canAccessCrmSection(role)) {
+    items.push({ label: "CRM", href: "/dashboard/crm" });
+  }
+
   if (canAccessHrManagementSection(role)) {
     items.push({ label: "HR Management", href: "/dashboard/hr-payroll" });
   }
@@ -228,10 +232,6 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
 
   if (canAccessInventorySection(role)) {
     items.push({ label: "Inventory", href: "/dashboard/inventory" });
-  }
-
-  if (canAccessCrmSection(role)) {
-    items.push({ label: "CRM", href: "/dashboard/crm" });
   }
 
   if (canAccessSelfServiceSection(role)) {
@@ -247,10 +247,7 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
   }
 
   if (role === "super_admin") {
-    items.push(
-      { label: "Administration", href: "/dashboard/administration" },
-      { label: "User Accounts", href: "/dashboard/user-accounts" },
-    );
+    items.push({ label: "Administration", href: "/dashboard/administration" });
   }
 
   return items;

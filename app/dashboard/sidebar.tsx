@@ -18,6 +18,11 @@ import {
   isHrManagementPath,
 } from "./hr-payroll/hr-management-nav-config";
 import {
+  ADMINISTRATION_SIDEBAR_LINKS,
+  isAdministrationGroupActive,
+  isAdministrationPath,
+} from "./administration/administration-nav-config";
+import {
   isReportCategoryActive,
   isReportPath,
   REPORT_SIDEBAR_LINKS,
@@ -42,6 +47,10 @@ function isActive(pathname: string, href: string) {
 
   if (href === "/dashboard/hr-payroll") {
     return isHrManagementPath(pathname);
+  }
+
+  if (href === "/dashboard/administration") {
+    return isAdministrationPath(pathname);
   }
 
   return pathname.startsWith(href);
@@ -177,12 +186,52 @@ export default function Sidebar({
     isExpanded: hrManagementExpanded,
     handleToggle: handleHrManagementToggle,
   } = useSidebarExpandableSection(hrManagementActive);
+  const administrationActive = isAdministrationPath(pathname);
+  const {
+    isExpanded: administrationExpanded,
+    handleToggle: handleAdministrationToggle,
+  } = useSidebarExpandableSection(administrationActive);
 
   function handleNavigate() {
     onNavigate?.();
   }
 
   function renderNavItem(item: SidebarNavItem) {
+    if (item.href === "/dashboard/administration") {
+      return (
+        <div key={item.href}>
+          <SidebarExpandableNavSection
+            label={item.label}
+            isActive={administrationActive}
+            isExpanded={administrationExpanded}
+            onToggle={handleAdministrationToggle}
+          >
+            {ADMINISTRATION_SIDEBAR_LINKS.map((link) => {
+              const groupActive = isAdministrationGroupActive(
+                pathname,
+                link.groupId,
+              );
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={handleNavigate}
+                  className={`block rounded-md px-2 py-1.5 text-xs font-medium leading-snug transition-colors ${
+                    groupActive
+                      ? "bg-white/15 text-white"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </SidebarExpandableNavSection>
+        </div>
+      );
+    }
+
     if (item.href === "/dashboard/hr-payroll") {
       return (
         <div key={item.href}>

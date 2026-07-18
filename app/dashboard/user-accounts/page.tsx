@@ -8,6 +8,7 @@ import {
   USER_ACCOUNT_SELECT,
 } from "../user-account-utils";
 import type { Employee } from "../lookup-types";
+import AdministrationShell from "../administration/administration-shell";
 import UserAccounts from "../administration/user-accounts";
 
 export default async function UserAccountsPage() {
@@ -44,10 +45,10 @@ export default async function UserAccountsPage() {
   ]);
 
   return (
-    <div>
-      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">
+    <AdministrationShell>
+      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
         User Accounts
-      </h1>
+      </h2>
       <UserAccounts
         initialAccounts={mapUserAccountRows(accounts ?? [])}
         initialEmployees={(employees as Employee[] | null) ?? []}
@@ -61,6 +62,6 @@ export default async function UserAccountsPage() {
           null
         }
       />
-    </div>
+    </AdministrationShell>
   );
 }
