@@ -1,4 +1,4 @@
-import HrPayrollNav from "./hr-payroll-nav";
+import HrManagementNav from "./hr-management-nav";
 
 type HrPayrollShellProps = {
   children: React.ReactNode;
@@ -11,8 +11,10 @@ export default function HrPayrollShell({
 }: HrPayrollShellProps) {
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">HR &amp; Payroll</h1>
-      <HrPayrollNav />
+      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">
+        HR Management
+      </h1>
+      <HrManagementNav />
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">{sectionTitle}</h2>
       {children}
     </div>

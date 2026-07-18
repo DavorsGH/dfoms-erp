@@ -55,6 +55,12 @@ export const INVENTORY_EDIT_ROLES: readonly AppRole[] = [
   "operations_manager",
 ];
 
+export const CRM_SECTION_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "finance",
+  "hr",
+];
+
 export const PAYROLL_PERIOD_MANAGE_ROLES: readonly AppRole[] = [
   "super_admin",
   "hr",
@@ -114,6 +120,12 @@ export function canAccessHrPayrollSection(role: AppRole | null): boolean {
   return roleIn(role, HR_PAYROLL_SECTION_ROLES);
 }
 
+export function canAccessHrManagementSection(role: AppRole | null): boolean {
+  return (
+    canAccessHrPayrollSection(role) || canAccessEmployeesSection(role)
+  );
+}
+
 export function canAccessEmployeesSection(role: AppRole | null): boolean {
   return roleIn(role, EMPLOYEES_SECTION_ROLES);
 }
@@ -148,6 +160,10 @@ export function canManageLeaveBalances(role: AppRole | null): boolean {
 
 export function canAccessInventorySection(role: AppRole | null): boolean {
   return roleIn(role, INVENTORY_SECTION_ROLES);
+}
+
+export function canAccessCrmSection(role: AppRole | null): boolean {
+  return roleIn(role, CRM_SECTION_ROLES);
 }
 
 export function canEditInventory(role: AppRole | null): boolean {
@@ -202,12 +218,8 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
     items.push({ label: "Finance", href: "/dashboard/finance" });
   }
 
-  if (canAccessHrPayrollSection(role)) {
-    items.push({ label: "HR & Payroll", href: "/dashboard/hr-payroll" });
-  }
-
-  if (canAccessEmployeesSection(role)) {
-    items.push({ label: "Employees", href: "/dashboard/employees" });
+  if (canAccessHrManagementSection(role)) {
+    items.push({ label: "HR Management", href: "/dashboard/hr-payroll" });
   }
 
   if (canAccessOperationsSection(role)) {
@@ -216,6 +228,10 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
 
   if (canAccessInventorySection(role)) {
     items.push({ label: "Inventory", href: "/dashboard/inventory" });
+  }
+
+  if (canAccessCrmSection(role)) {
+    items.push({ label: "CRM", href: "/dashboard/crm" });
   }
 
   if (canAccessSelfServiceSection(role)) {

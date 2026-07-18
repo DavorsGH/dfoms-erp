@@ -6,10 +6,17 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
+  canAccessEmployeesSection,
+  canAccessHrPayrollSection,
   canAccessReportCategory,
   getSidebarNavItems,
   type SidebarNavItem,
 } from "@/utils/rbac-access";
+import {
+  HR_MANAGEMENT_SIDEBAR_LINKS,
+  isHrManagementGroupActive,
+  isHrManagementPath,
+} from "./hr-payroll/hr-management-nav-config";
 import {
   isReportCategoryActive,
   isReportPath,
@@ -33,6 +40,10 @@ function isActive(pathname: string, href: string) {
     return isReportPath(pathname);
   }
 
+  if (href === "/dashboard/hr-payroll") {
+    return isHrManagementPath(pathname);
+  }
+
   return pathname.startsWith(href);
 }
 
@@ -53,6 +64,82 @@ function CloseIcon() {
   );
 }
 
+function useSidebarExpandableSection(isActive: boolean) {
+  const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
+  const isExpanded = isActive || isOpen;
+
+  useEffect(() => {
+    if (!isActive) {
+      setIsOpen(false);
+    }
+  }, [pathname, isActive]);
+
+  function handleToggle() {
+    if (isActive) {
+      return;
+    }
+
+    setIsOpen((current) => !current);
+  }
+
+  return { isExpanded, handleToggle };
+}
+
+type SidebarExpandableNavSectionProps = {
+  label: string;
+  isActive: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+};
+
+function SidebarExpandableNavSection({
+  label,
+  isActive,
+  isExpanded,
+  onToggle,
+  children,
+}: SidebarExpandableNavSectionProps) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+        className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+          isActive
+            ? "bg-white/15 text-white"
+            : "text-white/75 hover:bg-white/10 hover:text-white"
+        }`}
+      >
+        <span>{label}</span>
+        <svg
+          aria-hidden
+          viewBox="0 0 24 24"
+          width={20}
+          height={20}
+          className={`shrink-0 text-white/60 transition-transform duration-150 ${
+            isExpanded ? "rotate-90" : ""
+          }`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+      {isExpanded ? (
+        <div className="ml-3 mt-1 space-y-0.5 border-l border-white/10 pl-2">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function Sidebar({
   userRole,
   showLeaveApprovals = false,
@@ -61,7 +148,6 @@ export default function Sidebar({
   onClose,
 }: SidebarProps) {
   const pathname = usePathname();
-  const [reportsOpen, setReportsOpen] = useState(false);
   const navItems = getSidebarNavItems(userRole);
 
   if (showLeaveApprovals) {
@@ -75,83 +161,94 @@ export default function Sidebar({
     canAccessReportCategory(userRole, link.categoryId),
   );
   const reportsActive = isReportPath(pathname);
-  const reportsExpanded = reportsActive || reportsOpen;
-
-  useEffect(() => {
-    if (!reportsActive) {
-      setReportsOpen(false);
-    }
-  }, [pathname, reportsActive]);
-
-  function handleReportsToggle() {
-    if (reportsActive) {
-      return;
+  const {
+    isExpanded: reportsExpanded,
+    handleToggle: handleReportsToggle,
+  } = useSidebarExpandableSection(reportsActive);
+  const hrManagementLinks = HR_MANAGEMENT_SIDEBAR_LINKS.filter((link) => {
+    if (link.groupId === "employees") {
+      return canAccessEmployeesSection(userRole);
     }
 
-    setReportsOpen((current) => !current);
-  }
+    return canAccessHrPayrollSection(userRole);
+  });
+  const hrManagementActive = isHrManagementPath(pathname);
+  const {
+    isExpanded: hrManagementExpanded,
+    handleToggle: handleHrManagementToggle,
+  } = useSidebarExpandableSection(hrManagementActive);
 
   function handleNavigate() {
     onNavigate?.();
   }
 
   function renderNavItem(item: SidebarNavItem) {
+    if (item.href === "/dashboard/hr-payroll") {
+      return (
+        <div key={item.href}>
+          <SidebarExpandableNavSection
+            label={item.label}
+            isActive={hrManagementActive}
+            isExpanded={hrManagementExpanded}
+            onToggle={handleHrManagementToggle}
+          >
+            {hrManagementLinks.map((link) => {
+              const groupActive = isHrManagementGroupActive(
+                pathname,
+                link.groupId,
+              );
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={handleNavigate}
+                  className={`block rounded-md px-2 py-1.5 text-xs font-medium leading-snug transition-colors ${
+                    groupActive
+                      ? "bg-white/15 text-white"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </SidebarExpandableNavSection>
+        </div>
+      );
+    }
+
     if (item.href === "/dashboard/reports") {
       return (
         <div key={item.href}>
-          <button
-            type="button"
-            onClick={handleReportsToggle}
-            aria-expanded={reportsExpanded}
-            className={`flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-              reportsActive
-                ? "bg-white/15 text-white"
-                : "text-white/75 hover:bg-white/10 hover:text-white"
-            }`}
+          <SidebarExpandableNavSection
+            label={item.label}
+            isActive={reportsActive}
+            isExpanded={reportsExpanded}
+            onToggle={handleReportsToggle}
           >
-            <span>{item.label}</span>
-            <svg
-              aria-hidden
-              viewBox="0 0 24 24"
-              width={20}
-              height={20}
-              className={`shrink-0 text-white/60 transition-transform duration-150 ${
-                reportsExpanded ? "rotate-90" : ""
-              }`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M9 6l6 6-6 6" />
-            </svg>
-          </button>
-          {reportsExpanded ? (
-            <div className="ml-3 mt-1 space-y-0.5 border-l border-white/10 pl-2">
-              {reportLinks.map((link) => {
-                const categoryActive = isReportCategoryActive(
-                  pathname,
-                  link.categoryId,
-                );
+            {reportLinks.map((link) => {
+              const categoryActive = isReportCategoryActive(
+                pathname,
+                link.categoryId,
+              );
 
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={handleNavigate}
-                    className={`block rounded-md px-2 py-1.5 text-xs font-medium leading-snug transition-colors ${
-                      categoryActive
-                        ? "bg-white/15 text-white"
-                        : "text-white/70 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
-            </div>
-          ) : null}
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={handleNavigate}
+                  className={`block rounded-md px-2 py-1.5 text-xs font-medium leading-snug transition-colors ${
+                    categoryActive
+                      ? "bg-white/15 text-white"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </SidebarExpandableNavSection>
         </div>
       );
     }

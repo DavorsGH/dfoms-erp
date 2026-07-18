@@ -6,6 +6,7 @@ import {
   canEditEmployees,
   canViewEmployeeSalary,
 } from "@/utils/rbac-access";
+import HrPayrollShell from "../hr-payroll/hr-payroll-shell";
 import EmployeesDirectory from "./employees-directory";
 import type { EmployeeRecord } from "./employee-record-utils";
 import { EMPLOYEE_SELECT } from "./employee-record-utils";
@@ -29,15 +30,17 @@ export default async function EmployeesPage() {
   const role = (await getCurrentUserRole()) as AppRole | null;
 
   return (
-    <EmployeesDirectory
-      initialEmployees={(data as EmployeeRecord[] | null) ?? []}
-      initialLookups={lookups}
-      initialPayConfig={payConfig}
-      departmentNameMap={buildDepartmentNameMap(lookups.departments)}
-      projectNameMap={buildProjectNameMap(lookups.projects)}
-      fetchError={error?.message ?? null}
-      canEditEmployees={canEditEmployees(role)}
-      canViewSalary={canViewEmployeeSalary(role)}
-    />
+    <HrPayrollShell sectionTitle="Employee Directory">
+      <EmployeesDirectory
+        initialEmployees={(data as EmployeeRecord[] | null) ?? []}
+        initialLookups={lookups}
+        initialPayConfig={payConfig}
+        departmentNameMap={buildDepartmentNameMap(lookups.departments)}
+        projectNameMap={buildProjectNameMap(lookups.projects)}
+        fetchError={error?.message ?? null}
+        canEditEmployees={canEditEmployees(role)}
+        canViewSalary={canViewEmployeeSalary(role)}
+      />
+    </HrPayrollShell>
   );
 }

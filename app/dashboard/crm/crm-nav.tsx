@@ -4,30 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
-  { label: "Attendance", href: "/dashboard/hr-payroll/attendance" },
-  { label: "Leave", href: "/dashboard/hr-payroll/leave" },
-  { label: "Leave Balances", href: "/dashboard/hr-payroll/leave-balances" },
-  { label: "Overtime", href: "/dashboard/hr-payroll/overtime" },
-  { label: "Loans", href: "/dashboard/hr-payroll/loans" },
-  {
-    label: "Payroll Processing",
-    href: "/dashboard/hr-payroll/payroll-processing",
-  },
-  {
-    label: "Payroll History",
-    href: "/dashboard/hr-payroll/payroll-history",
-  },
-  {
-    label: "Payslip",
-    href: "/dashboard/hr-payroll/payslip",
-  },
-  {
-    label: "Staff ID Cards",
-    href: "/dashboard/hr-payroll/staff-id-cards",
-  },
+  { label: "Customer List", href: "/dashboard/crm/customers" },
+  { label: "Product Catalog", href: "/dashboard/crm/products" },
+  { label: "Sales Log", href: "/dashboard/crm/sales" },
 ] as const;
 
-export default function HrPayrollNav() {
+export default function CrmNav() {
   const pathname = usePathname();
 
   return (
