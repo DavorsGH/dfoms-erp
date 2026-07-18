@@ -9,6 +9,7 @@ type UserAccountRow = {
   role: string | null;
   employee_id: string | null;
   client_id: string | null;
+  tenant_id: string | null;
 };
 
 /** One auth.getUser() per request (layout + page both call helpers). */
@@ -36,7 +37,7 @@ export const getCurrentUserAccount = cache(
 
     const { data: account } = await supabase
       .from("user_accounts")
-      .select("role, employee_id, client_id")
+      .select("role, employee_id, client_id, tenant_id")
       .eq("auth_uid", user.id)
       .maybeSingle();
 
@@ -62,6 +63,11 @@ export async function getCurrentAuthUid(): Promise<string | null> {
 export async function getCurrentUserClientId(): Promise<string | null> {
   const account = await getCurrentUserAccount();
   return account?.client_id ?? null;
+}
+
+export async function getCurrentUserTenantId(): Promise<string | null> {
+  const account = await getCurrentUserAccount();
+  return account?.tenant_id ?? null;
 }
 
 /** One leave-approver RPC result per request. */

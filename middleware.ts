@@ -43,6 +43,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Trial enforcement runs in app/dashboard/layout.tsx only — not on
+  // /trial-expired, /login, /signup, or /api/signup (avoids redirect loops).
+
   return response;
 }
 

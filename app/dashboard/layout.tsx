@@ -1,6 +1,7 @@
 import DashboardShell from "./dashboard-shell";
 import { getCurrentUserRole, hasLeaveApprovalInbox } from "@/utils/dashboard-auth";
 import { getUserDisplayInfo } from "@/utils/user-display";
+import { ensureTrialAccess } from "@/utils/trial-enforcement";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 
 export default async function DashboardLayout({
@@ -8,6 +9,8 @@ export default async function DashboardLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  await ensureTrialAccess();
+
   const [displayInfo, userRole, showLeaveApprovals] = await Promise.all([
     getUserDisplayInfo(),
     getCurrentUserRole(),
