@@ -385,6 +385,16 @@ export default function Sidebar({
       >
         {navItems.map((item) => renderNavItem(item))}
       </nav>
+
+      <footer
+        className={`shrink-0 border-t border-white/10 pt-4 pb-4 ${
+          mobile ? "px-2" : "px-3"
+        }`}
+      >
+        <p className="text-[10px] leading-snug text-white/45">
+          © 2026 Davors Facilities Management Services Ltd. All rights reserved.
+        </p>
+      </footer>
     </aside>
   );
 }
