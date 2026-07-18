@@ -15,7 +15,8 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  if (!user && pathname !== "/login") {
+  const publicPaths = new Set(["/login", "/signup", "/api/signup"]);
+  if (!user && !publicPaths.has(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
@@ -36,7 +37,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (user && (pathname === "/" || pathname === "/login")) {
+  if (user && (pathname === "/" || pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
