@@ -12,7 +12,7 @@ export default function InventoryShell({
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">
-        Sales & Inventory
+        Inventory
       </h1>
       <InventoryNav />
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">{sectionTitle}</h2>
