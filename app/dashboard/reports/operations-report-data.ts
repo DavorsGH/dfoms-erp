@@ -93,7 +93,7 @@ async function fetchSites(supabase: SupabaseClient) {
 
 async function fetchClients(supabase: SupabaseClient) {
   return supabase
-    .from("clients")
+    .from("customers")
     .select(CLIENT_SELECT)
     .order("client_name", { ascending: true });
 }

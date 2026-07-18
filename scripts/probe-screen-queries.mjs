@@ -58,7 +58,7 @@ async function main() {
   checks.push(
     await probe("Monthly Client Service Report queries", async () =>
       Promise.all([
-        supabase.from("clients").select("client_id, client_name").order("client_name"),
+        supabase.from("customers").select("client_id, client_name").order("client_name"),
         supabase.from("roster_config").select("id, client_id, cycle_start_date, cycle_length_days"),
       ]).then(([clients, configs]) => {
         if (clients.error) return { data: null, error: clients.error };
@@ -82,7 +82,7 @@ async function main() {
   checks.push(
     await probe("Roster Settings page queries", async () =>
       Promise.all([
-        supabase.from("clients").select("client_id, client_name").order("client_name"),
+        supabase.from("customers").select("client_id, client_name").order("client_name"),
         supabase
           .from("roster_config")
           .select("id, client_id, cycle_start_date, cycle_length_days, morning_time, afternoon_time, supervisor_time"),

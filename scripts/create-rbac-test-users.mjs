@@ -85,7 +85,7 @@ async function main() {
     { data: accounts },
   ] = await Promise.all([
     admin.from("employees").select("employee_id, full_name").order("employee_id"),
-    admin.from("clients").select("client_id, client_name").order("client_id"),
+    admin.from("customers").select("client_id, client_name").order("client_id"),
     admin.from("sites").select("site_code, site_name").order("site_code").limit(3),
     admin.from("user_accounts").select("employee_id, client_id, email"),
   ]);

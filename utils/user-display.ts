@@ -52,7 +52,7 @@ export async function getUserDisplayInfo(): Promise<UserDisplayInfo> {
     }
   } else if (account.client_id) {
     const { data: client } = await supabase
-      .from("clients")
+      .from("customers")
       .select("client_name")
       .eq("client_id", account.client_id)
       .maybeSingle();

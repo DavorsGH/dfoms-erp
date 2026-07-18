@@ -22,7 +22,7 @@ export type FailedInspectionEntry = {
 };
 
 export const FAILED_INSPECTION_SELECT =
-  "*, client:clients!client_id(client_id, client_name), site:sites!site_id(site_code, site_name)";
+  "*, client:customers!client_id(client_id, client_name), site:sites!site_id(site_code, site_name)";
 
 export type InspectionChecklistLookup = {
   checklist_id: string;

@@ -35,7 +35,7 @@ export default async function InspectionSummaryPage() {
       .select(INSPECTION_SUMMARY_SELECT)
       .order("inspection_date", { ascending: false }),
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .order("client_name", { ascending: true }),
     supabase

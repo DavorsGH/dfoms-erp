@@ -58,4 +58,4 @@ export function mapUserAccountRows(rows: UserAccountRow[]): UserAccount[] {
 }
 
 export const USER_ACCOUNT_SELECT =
-  "auth_uid, employee_id, email, role, is_active, client_id, employees(full_name), clients(client_name), user_account_supervisor_sites(site_code)";
+  "auth_uid, employee_id, email, role, is_active, client_id, employees(full_name), clients:customers(client_name), user_account_supervisor_sites(site_code)";

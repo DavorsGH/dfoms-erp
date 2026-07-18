@@ -108,7 +108,7 @@ async function main() {
         .order("product_name", { ascending: true })
         .limit(1),
       supabase
-        .from("clients")
+        .from("customers")
         .select("client_id, client_name")
         .order("client_name", { ascending: true })
         .limit(1),

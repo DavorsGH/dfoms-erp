@@ -29,7 +29,7 @@ export default async function IncidentRegisterPage() {
       .select(INCIDENT_REGISTER_SELECT)
       .order("date", { ascending: false }),
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .order("client_name", { ascending: true }),
     supabase

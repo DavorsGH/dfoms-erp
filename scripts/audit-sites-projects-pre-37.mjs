@@ -41,7 +41,7 @@ async function main() {
   }
 
   const { data: clients, error: clientsError } = await supabase
-    .from("clients")
+    .from("customers")
     .select("client_id, client_name")
     .order("client_name");
 

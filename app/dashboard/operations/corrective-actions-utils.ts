@@ -19,7 +19,7 @@ export type CorrectiveActionEntry = {
 };
 
 export const CORRECTIVE_ACTION_SELECT =
-  "*, client:clients!client_id(client_id, client_name)";
+  "*, client:customers!client_id(client_id, client_name)";
 
 export type WorkOrderLookupOption = {
   work_order_no: string;

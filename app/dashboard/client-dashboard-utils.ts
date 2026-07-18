@@ -48,7 +48,7 @@ export async function buildClientDashboardSummary(
     { data: inspections, error: inspectionsError },
   ] = await Promise.all([
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .eq("client_id", clientId)
       .maybeSingle(),

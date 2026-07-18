@@ -31,7 +31,7 @@ export default async function FailedInspectionsPage() {
       .select(FAILED_INSPECTION_SELECT)
       .order("date_identified", { ascending: false }),
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .order("client_name", { ascending: true }),
     supabase

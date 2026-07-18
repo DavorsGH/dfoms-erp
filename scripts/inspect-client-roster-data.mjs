@@ -58,7 +58,7 @@ async function main() {
     client.from("projects").select("*"),
     client.from("roster_config").select("*"),
     client.from("roster_history").select("*"),
-    client.from("clients").select("*").eq("client_id", clientId),
+    client.from("customers").select("*").eq("client_id", clientId),
   ]);
 
   console.log(

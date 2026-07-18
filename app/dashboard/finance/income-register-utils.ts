@@ -45,7 +45,7 @@ export type IncomeRegisterEntry = {
 };
 
 export const SERVICE_INCOME_REGISTER_SELECT =
-  "*, client:clients!client_id(client_id, client_name)";
+  "*, client:customers!client_id(client_id, client_name)";
 
 export const RECEIVABLES_INCOME_SELECT = SERVICE_INCOME_REGISTER_SELECT;
 

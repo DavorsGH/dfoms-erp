@@ -52,7 +52,7 @@ export default async function FinancePage() {
 
     supabase.from("service_types").select("name").order("name", { ascending: true }),
 
-    supabase.from("clients").select(CLIENT_SELECT).order("client_name", { ascending: true }),
+    supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
 
   ]);
 

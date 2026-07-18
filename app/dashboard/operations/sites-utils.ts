@@ -27,10 +27,10 @@ export type SiteEntry = {
 };
 
 export const SITE_SELECT =
-  "*, client:clients!client_id(client_id, client_name), project:projects!project_id(id, project_code, project_name)";
+  "*, client:customers!client_id(client_id, client_name), project:projects!project_id(id, project_code, project_name)";
 
 export const SITE_ASSIGNMENT_SELECT =
-  "site_code, site_name, client_id, building, floor_zone, area_room, cleaning_frequency, risk_level, required_staff, project_id, assigned_supervisor, notes, client:clients!client_id(client_id, client_name), project:projects!project_id(id, project_code, project_name)";
+  "site_code, site_name, client_id, building, floor_zone, area_room, cleaning_frequency, risk_level, required_staff, project_id, assigned_supervisor, notes, client:customers!client_id(client_id, client_name), project:projects!project_id(id, project_code, project_name)";
 
 export function normalizeSiteEntry(raw: SiteEntry): SiteEntry {
   const client = Array.isArray(raw.client)

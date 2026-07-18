@@ -58,7 +58,7 @@ export default async function ProductSalesPage() {
 
       .order("date", { ascending: false }),
 
-    supabase.from("clients").select(CLIENT_SELECT).order("client_name", { ascending: true }),
+    supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
 
     supabase
 

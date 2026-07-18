@@ -16,7 +16,7 @@ export default async function ClientsPage() {
   const [{ data, error }, { data: employees, error: employeesError }] =
     await Promise.all([
       supabase
-        .from("clients")
+        .from("customers")
         .select("*")
         .order("client_name", { ascending: true }),
       supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),

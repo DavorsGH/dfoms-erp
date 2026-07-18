@@ -32,7 +32,7 @@ export default async function WorkOrdersPage() {
       .order("date", { ascending: false })
       .order("work_order_no", { ascending: false }),
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .order("client_name", { ascending: true }),
     supabase

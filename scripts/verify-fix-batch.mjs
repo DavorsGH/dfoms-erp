@@ -46,7 +46,7 @@ async function main() {
     .eq("email", "rbac.client@test.davors")
     .maybeSingle();
   const { data: clientRecord } = await clientUser
-    .from("clients")
+    .from("customers")
     .select("client_name")
     .eq("client_id", clientAccount?.client_id ?? "")
     .maybeSingle();

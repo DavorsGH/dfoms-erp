@@ -21,7 +21,7 @@ export default async function SitesPage() {
   ] = await Promise.all([
     supabase.from("sites").select(SITE_SELECT).order("site_name", { ascending: true }),
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .order("client_name", { ascending: true }),
     supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),

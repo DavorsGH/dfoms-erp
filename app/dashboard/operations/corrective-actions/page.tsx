@@ -31,7 +31,7 @@ export default async function CorrectiveActionsPage() {
       .select(CORRECTIVE_ACTION_SELECT)
       .order("date_raised", { ascending: false }),
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .order("client_name", { ascending: true }),
     supabase

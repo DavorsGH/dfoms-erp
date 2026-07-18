@@ -68,7 +68,7 @@ export async function buildOperationsDashboardSummary(
     { data: workOrders, error: workOrdersError },
     { data: inspections, error: inspectionsError },
   ] = await Promise.all([
-    supabase.from("clients").select(CLIENT_SELECT),
+    supabase.from("customers").select(CLIENT_SELECT),
     supabase.from("roster_config").select(ROSTER_CONFIG_SELECT),
     supabase
       .from("employees")

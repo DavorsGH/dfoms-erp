@@ -29,7 +29,7 @@ export default async function ComplaintRegisterPage() {
       .select(COMPLAINT_REGISTER_SELECT)
       .order("date_received", { ascending: false }),
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .order("client_name", { ascending: true }),
     supabase

@@ -84,7 +84,7 @@ export default function Clients({
 
   async function refreshClients() {
     const { data, error: refreshError } = await supabase
-      .from("clients")
+      .from("customers")
       .select("*")
       .order("client_name", { ascending: true });
 
@@ -156,7 +156,7 @@ export default function Clients({
     setError(null);
 
     const { error: deleteError } = await supabase
-      .from("clients")
+      .from("customers")
       .delete()
       .eq("client_id", clientId);
 
@@ -199,7 +199,7 @@ export default function Clients({
 
     const { error: saveError } = editingId
       ? await supabase
-          .from("clients")
+          .from("customers")
           .update({
             client_name: payload.client_name,
             contact_person: payload.contact_person,
@@ -217,7 +217,7 @@ export default function Clients({
             notes: payload.notes,
           })
           .eq("client_id", editingId)
-      : await supabase.from("clients").insert(payload);
+      : await supabase.from("customers").insert(payload);
 
     if (saveError) {
       setError(saveError.message);

@@ -34,7 +34,7 @@ export default async function UserAccountsPage() {
       .select("employee_id, full_name")
       .order("full_name", { ascending: true }),
     supabase
-      .from("clients")
+      .from("customers")
       .select("client_id, client_name")
       .order("client_name", { ascending: true }),
     supabase

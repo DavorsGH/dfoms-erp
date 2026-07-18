@@ -34,7 +34,7 @@ export type ProductSaleEntry = {
 };
 
 export const PRODUCT_SALES_SELECT =
-  "*, client:clients!client_id(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price)";
+  "*, client:customers!client_id(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price)";
 
 export function normalizeProductSaleEntry(raw: ProductSaleEntry): ProductSaleEntry {
   const product = Array.isArray(raw.product)

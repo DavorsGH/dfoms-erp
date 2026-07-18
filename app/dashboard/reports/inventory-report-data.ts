@@ -25,7 +25,7 @@ import {
 } from "./inventory-reports-utils";
 
 export const PRODUCT_SALES_REPORT_SELECT =
-  "id, date, invoice_no, client_id, customer_name, amount, sale_quantity, unit_price, product_id, cogs_expense_id, sale_status, client:clients!client_id(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure), cogs:expense_register!cogs_expense_id(amount)";
+  "id, date, invoice_no, client_id, customer_name, amount, sale_quantity, unit_price, product_id, cogs_expense_id, sale_status, client:customers!client_id(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure), cogs:expense_register!cogs_expense_id(amount)";
 
 export async function fetchLowStockRawMaterialCount(supabase: SupabaseClient) {
   const { data, error } = await supabase
@@ -116,7 +116,7 @@ export async function fetchProductSalesReportData(supabase: SupabaseClient) {
       .select(PRODUCT_SALES_REPORT_SELECT)
       .eq("entry_type", "product_sale")
       .order("date", { ascending: false }),
-    supabase.from("clients").select(CLIENT_SELECT).order("client_name", { ascending: true }),
+    supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
       .from("finished_products")
       .select("id, product_name")
@@ -149,7 +149,7 @@ export async function fetchInternalConsumptionReportData(
       .from("finished_products")
       .select("id, product_name")
       .order("product_name", { ascending: true }),
-    supabase.from("clients").select(CLIENT_SELECT).order("client_name", { ascending: true }),
+    supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
       .from("sites")
       .select(SITE_ASSIGNMENT_SELECT)
