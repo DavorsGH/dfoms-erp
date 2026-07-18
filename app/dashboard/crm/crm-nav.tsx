@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { label: "Customer List", href: "/dashboard/crm/customers" },
   { label: "Product Catalog", href: "/dashboard/crm/products" },
+  { label: "Product Sales", href: "/dashboard/crm/product-sales" },
   { label: "Sales Log", href: "/dashboard/crm/sales" },
 ] as const;
 

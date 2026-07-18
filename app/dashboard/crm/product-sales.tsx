@@ -11,7 +11,7 @@ import { formatInventoryQuantity } from "../inventory/inventory-utils";
 import type { ClientEntry } from "../operations/clients-utils";
 import RegisterRowActions, {
   getStripedRowClassName,
-} from "./register-row-actions";
+} from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,

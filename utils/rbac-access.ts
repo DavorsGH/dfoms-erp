@@ -219,7 +219,7 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
   }
 
   if (canAccessCrmSection(role)) {
-    items.push({ label: "CRM", href: "/dashboard/crm" });
+    items.push({ label: "Sales & CRM", href: "/dashboard/crm" });
   }
 
   if (canAccessHrManagementSection(role)) {

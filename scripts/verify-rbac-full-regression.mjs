@@ -14,6 +14,7 @@ import {
   INVENTORY_SECTION_ROLES,
   SELF_SERVICE_SECTION_ROLES,
   CLIENT_PORTAL_SECTION_ROLES,
+  CRM_SECTION_ROLES,
   PAYROLL_PERIOD_MANAGE_ROLES,
   START_ROTATION_ROLES,
   REPORT_CATEGORY_ROLES,
@@ -25,6 +26,7 @@ import {
   canAccessInventorySection,
   canAccessSelfServiceSection,
   canAccessClientPortalSection,
+  canAccessCrmSection,
   canAccessReportCategory,
   canEditEmployees,
   canViewEmployeeSalary,
@@ -92,6 +94,7 @@ function getRouteAllowedRoles(path) {
     ];
   }
   if (path.startsWith("/dashboard/finance")) return FINANCE_SECTION_ROLES;
+  if (path.startsWith("/dashboard/crm")) return CRM_SECTION_ROLES;
   if (path.startsWith("/dashboard/hr-payroll")) return HR_PAYROLL_SECTION_ROLES;
   if (path.startsWith("/dashboard/employees")) return EMPLOYEES_SECTION_ROLES;
   if (path.startsWith("/dashboard/operations")) return OPERATIONS_SECTION_ROLES;
@@ -119,6 +122,11 @@ const APP_ROUTES = [
   "/dashboard",
   "/dashboard/finance",
   "/dashboard/finance/product-sales",
+  "/dashboard/crm",
+  "/dashboard/crm/customers",
+  "/dashboard/crm/products",
+  "/dashboard/crm/product-sales",
+  "/dashboard/crm/sales",
   "/dashboard/finance/expenses",
   "/dashboard/finance/accounts-payable",
   "/dashboard/finance/fixed-assets",

@@ -7,7 +7,7 @@ import {
   type IncomeRegisterClient,
   type IncomeRegisterProduct,
   type ProductSaleStatus,
-} from "./income-register-utils";
+} from "../finance/income-register-utils";
 import { formatInventoryQuantity } from "../inventory/inventory-utils";
 
 export type ProductSaleEntry = {

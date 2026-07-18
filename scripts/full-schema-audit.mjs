@@ -234,7 +234,7 @@ async function main() {
   // Import select constants by reading key utils files
   const utilsReads = {
     SERVICE_INCOME_REGISTER_SELECT: readFileSync(resolve("app/dashboard/finance/income-register-utils.ts"), "utf8").match(/SERVICE_INCOME_REGISTER_SELECT\s*=\s*["'`]([^"'`]+)["'`]/)?.[1],
-    PRODUCT_SALES_SELECT: readFileSync(resolve("app/dashboard/finance/product-sales-utils.ts"), "utf8").match(/PRODUCT_SALES_SELECT\s*=\s*["'`]([^"'`]+)["'`]/)?.[1],
+    PRODUCT_SALES_SELECT: readFileSync(resolve("app/dashboard/crm/product-sales-utils.ts"), "utf8").match(/PRODUCT_SALES_SELECT\s*=\s*["'`]([^"'`]+)["'`]/)?.[1],
     PRODUCT_SALES_REPORT_SELECT: readFileSync(resolve("app/dashboard/reports/inventory-report-data.ts"), "utf8").match(/PRODUCT_SALES_REPORT_SELECT\s*=\s*["'`]([^"'`]+)["'`]/)?.[1],
     PROJECT_SELECT: readFileSync(resolve("app/dashboard/administration/projects-utils.ts"), "utf8").match(/PROJECT_SELECT\s*=\s*["'`]([^"'`]+)["'`]/)?.[1],
     ROSTER_CONFIG_SELECT: readFileSync(resolve("app/dashboard/operations/roster-config-utils.ts"), "utf8").match(/ROSTER_CONFIG_SELECT\s*=\s*["'`]([^"'`]+)["'`]/)?.[1],
