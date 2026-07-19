@@ -64,6 +64,8 @@ export const CRM_SECTION_ROLES: readonly AppRole[] = [
 
 export const POS_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
+  "finance",
+  "hr",
   "sales_rep",
 ];
 
