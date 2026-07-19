@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
 export default function ResetPasswordPage() {
@@ -13,27 +13,30 @@ export default function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
   const [success, setSuccess] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setReady(true);
-      }
-    });
+    const tokenHash = searchParams.get("token_hash");
+    const type = searchParams.get("type");
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setReady(true);
-      }
-    });
+    if (!tokenHash || type !== "recovery") {
+      setError("This reset link is invalid or missing required parameters.");
+      return;
+    }
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [supabase]);
+    supabase.auth
+      .verifyOtp({ token_hash: tokenHash, type: "recovery" })
+      .then(({ error }) => {
+        if (error) {
+          setError(
+            "This reset link is invalid or has expired. Please request a new one.",
+          );
+          return;
+        }
+        setReady(true);
+      });
+  }, [searchParams, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -85,6 +88,16 @@ export default function ResetPasswordPage() {
           <p className="text-center text-sm text-zinc-700">
             Password updated. Redirecting to login…
           </p>
+        ) : error && !ready ? (
+          <div className="space-y-4 text-center">
+            <p className="text-sm text-red-600">{error}</p>
+            <a
+              href="/forgot-password"
+              className="inline-block text-sm font-medium text-zinc-900 underline hover:text-zinc-700"
+            >
+              Request a new reset link
+            </a>
+          </div>
         ) : !ready ? (
           <p className="text-center text-sm text-zinc-600">
             Verifying reset link…
