@@ -369,8 +369,11 @@ export default function Sidebar({
                 className="h-14 w-14 shrink-0 rounded-sm object-cover"
               />
             )}
-            <div>
-              <p className="text-base font-semibold leading-tight text-emerald-400">
+            <div className="max-w-[10rem]">
+              <p
+                className="truncate text-base font-semibold leading-tight text-emerald-400"
+                title={workspaceName}
+              >
                 {workspaceName}
               </p>
               <p className="mt-0.5 text-xs font-medium leading-tight text-white/90">
@@ -398,7 +401,10 @@ export default function Sidebar({
             />
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-lg font-semibold leading-tight text-emerald-400">
+            <p
+              className="truncate text-lg font-semibold leading-tight text-emerald-400"
+              title={workspaceName}
+            >
               {workspaceName}
             </p>
             <p className="mt-0.5 text-sm font-medium leading-tight text-white/90">
