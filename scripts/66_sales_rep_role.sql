@@ -5,9 +5,10 @@ ALTER TYPE app_role ADD VALUE IF NOT EXISTS 'sales_rep';
 
 BEGIN;
 
-INSERT INTO roles (code, label, sort_order) VALUES
-  ('sales_rep', 'Sales Rep', 8)
-ON CONFLICT (code) DO UPDATE
+-- roles PK is composite (tenant_id, code) as of script 59 — insert one row per tenant.
+INSERT INTO roles (tenant_id, code, label, sort_order)
+  SELECT t.id, 'sales_rep', 'Sales Rep', 8 FROM tenants t
+ON CONFLICT (tenant_id, code) DO UPDATE
 SET label = EXCLUDED.label,
     sort_order = EXCLUDED.sort_order;
 
