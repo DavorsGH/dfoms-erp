@@ -19,8 +19,7 @@ export default async function TierPricingPage() {
     .from("crm_products")
     .select(TIER_PRICING_SELECT)
     .eq("tenant_id", DAVORS_TENANT_ID)
-    .eq("category", ERP_SUITE_CATEGORY)
-    .order("name", { ascending: true });
+    .eq("category", ERP_SUITE_CATEGORY);
 
   return (
     <>

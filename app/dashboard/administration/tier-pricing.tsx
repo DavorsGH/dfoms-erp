@@ -42,6 +42,35 @@ type EditForm = {
   price_ghs: string;
 };
 
+const TIER_RANK: Record<string, number> = {
+  Starter: 0,
+  Professional: 1,
+  Business: 2,
+  Enterprise: 3,
+};
+
+const BILLING_RANK: Record<string, number> = {
+  monthly: 0,
+  yearly: 1,
+};
+
+function tierSortKey(row: { name: string; billing_cycle: string | null }) {
+  const tierName = Object.keys(TIER_RANK).find((tier) =>
+    row.name.includes(tier),
+  );
+  const tierRank = tierName ? TIER_RANK[tierName] : 99;
+  const billingRank = row.billing_cycle
+    ? (BILLING_RANK[row.billing_cycle] ?? 99)
+    : 99;
+  return tierRank * 10 + billingRank;
+}
+
+function sortTierPricingRows(rows: TierPricingRow[]): TierPricingRow[] {
+  return [...rows].sort(
+    (a, b) => tierSortKey(a) - tierSortKey(b) || a.name.localeCompare(b.name),
+  );
+}
+
 function toEditForm(row: TierPricingRow): EditForm {
   return {
     unit_price:
@@ -60,7 +89,7 @@ export default function TierPricing({
   fetchError,
 }: TierPricingProps) {
   const router = useRouter();
-  const [rows, setRows] = useState(initialRows);
+  const [rows, setRows] = useState(() => sortTierPricingRows(initialRows));
   const [error, setError] = useState<string | null>(fetchError);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({
@@ -70,7 +99,7 @@ export default function TierPricing({
   const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
-    setRows(initialRows);
+    setRows(sortTierPricingRows(initialRows));
   }, [initialRows]);
 
   function openEdit(row: TierPricingRow) {
@@ -129,10 +158,12 @@ export default function TierPricing({
     }
 
     setRows((current) =>
-      current.map((entry) =>
-        entry.id === row.id
-          ? { ...entry, unit_price: unitPrice, price_ghs: priceGhs }
-          : entry,
+      sortTierPricingRows(
+        current.map((entry) =>
+          entry.id === row.id
+            ? { ...entry, unit_price: unitPrice, price_ghs: priceGhs }
+            : entry,
+        ),
       ),
     );
     cancelEdit();
