@@ -121,7 +121,7 @@ export async function POST(request: Request) {
   const { data: authData, error: authError } = await admin.auth.admin.createUser({
     email: adminEmail,
     password,
-    email_confirm: false,
+    email_confirm: true,
     user_metadata: {
       full_name: adminFullName,
       company_name: companyName,
@@ -230,7 +230,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     message:
-      "Account created. Check your email to verify your address before signing in. Your 90-day trial starts once you log in.",
+      "Account created. You can log in now — your 90-day trial starts once you log in.",
     tenant_id: tenantRow.id,
     slug,
     client_id: clientId,

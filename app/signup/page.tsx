@@ -46,7 +46,7 @@ export default function SignupPage() {
 
     setSuccess(
       payload?.message ??
-        "Account created. Check your email to verify your address before signing in.",
+        "Account created. You can log in now — your 90-day trial starts once you log in.",
     );
     setLoading(false);
   }
