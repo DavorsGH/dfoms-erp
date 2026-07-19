@@ -15,7 +15,14 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const publicPaths = new Set(["/", "/login", "/signup", "/api/signup"]);
+  const publicPaths = new Set([
+    "/",
+    "/login",
+    "/signup",
+    "/api/signup",
+    "/forgot-password",
+    "/reset-password",
+  ]);
   if (!user && !publicPaths.has(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
