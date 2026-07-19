@@ -370,10 +370,7 @@ export default function Sidebar({
               />
             )}
             <div className="max-w-[10rem]">
-              <p
-                className="truncate text-base font-semibold leading-tight text-emerald-400"
-                title={workspaceName}
-              >
+              <p className="break-words text-base font-semibold leading-tight text-emerald-400">
                 {workspaceName}
               </p>
               <p className="mt-0.5 text-xs font-medium leading-tight text-white/90">
@@ -401,10 +398,7 @@ export default function Sidebar({
             />
           )}
           <div className="min-w-0 flex-1">
-            <p
-              className="truncate text-lg font-semibold leading-tight text-emerald-400"
-              title={workspaceName}
-            >
+            <p className="break-words text-lg font-semibold leading-tight text-emerald-400">
               {workspaceName}
             </p>
             <p className="mt-0.5 text-sm font-medium leading-tight text-white/90">
