@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
-  getCurrentUserAccount,
   getCurrentUserClientId,
   getCurrentUserEmployeeId,
   getCurrentUserRole,
@@ -208,73 +207,19 @@ export default async function DashboardPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const [
-    {
-      data: { user: authUser },
-      error: authUserError,
-    },
-    tenantId,
-    userAccount,
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    getCurrentUserTenantId(),
-    getCurrentUserAccount(),
-  ]);
-
-  console.log("[dashboard-debug] auth.getUser()", {
-    auth_uid: authUser?.id ?? null,
-    email: authUser?.email ?? null,
-    error: authUserError?.message ?? null,
-  });
-  console.log("[dashboard-debug] tenant resolution (app-side)", {
-    tenantIdFromHelper: tenantId,
-    userAccount: userAccount
-      ? {
-          role: userAccount.role,
-          tenant_id: userAccount.tenant_id,
-        }
-      : null,
-  });
-
-  console.log("[dashboard-debug] income_register BEFORE query");
   const { data: incomeEntries, error: incomeError } = await supabase
     .from("income_register")
     .select(
       "tenant_id, date, amount, amount_received, outstanding_balance, service_category",
     )
     .order("date", { ascending: true });
-  console.log("[dashboard-debug] income_register AFTER query", {
-    rowCount: incomeEntries?.length ?? 0,
-    error: incomeError?.message ?? null,
-    sample: incomeEntries?.slice(0, 5) ?? [],
-    distinctTenantIds: [
-      ...new Set(
-        (incomeEntries ?? [])
-          .map((row) => row.tenant_id)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ],
-  });
 
-  console.log("[dashboard-debug] expense_register BEFORE query");
   const { data: expenseEntries, error: expenseError } = await supabase
     .from("expense_register")
     .select(
       "tenant_id, date, expense_category, sub_category, amount, payment_status, description, receipt_no",
     )
     .order("date", { ascending: true });
-  console.log("[dashboard-debug] expense_register AFTER query", {
-    rowCount: expenseEntries?.length ?? 0,
-    error: expenseError?.message ?? null,
-    sample: expenseEntries?.slice(0, 5) ?? [],
-    distinctTenantIds: [
-      ...new Set(
-        (expenseEntries ?? [])
-          .map((row) => row.tenant_id)
-          .filter((value): value is string => Boolean(value)),
-      ),
-    ],
-  });
 
   const [
     { data: fixedAssets, error: fixedAssetsError },
