@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/utils/admin-auth";
+import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import {
   buildUserAccountPayload,
   ensureClientAvailable,
@@ -21,10 +21,12 @@ type UpdateUserBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireSuperAdmin();
+  const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   let body: UpdateUserBody;
   try {
@@ -71,6 +73,7 @@ export async function POST(request: Request) {
     .from("user_accounts")
     .select("auth_uid, email, is_active")
     .eq("auth_uid", auth_uid)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (fetchError) {
@@ -85,6 +88,7 @@ export async function POST(request: Request) {
     admin,
     normalizedEmail,
     auth_uid,
+    tenantId,
   );
   if (emailError) {
     return NextResponse.json({ error: emailError }, { status: 409 });
@@ -95,6 +99,7 @@ export async function POST(request: Request) {
       admin,
       built.payload.employee_id,
       auth_uid,
+      tenantId,
     );
     if (employeeError) {
       return NextResponse.json({ error: employeeError }, { status: 409 });
@@ -106,6 +111,7 @@ export async function POST(request: Request) {
       admin,
       built.payload.client_id,
       auth_uid,
+      tenantId,
     );
     if (clientError) {
       return NextResponse.json({ error: clientError }, { status: 409 });
@@ -137,7 +143,8 @@ export async function POST(request: Request) {
         ? { is_active }
         : { is_active: existingAccount.is_active }),
     })
-    .eq("auth_uid", auth_uid);
+    .eq("auth_uid", auth_uid)
+    .eq("tenant_id", tenantId);
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });

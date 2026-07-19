@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/utils/admin-auth";
+import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 type ResetPasswordBody = {
@@ -8,10 +8,12 @@ type ResetPasswordBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireSuperAdmin();
+  const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   let body: ResetPasswordBody;
   try {
@@ -42,6 +44,7 @@ export async function POST(request: Request) {
     .from("user_accounts")
     .select("auth_uid")
     .eq("auth_uid", auth_uid)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (!account) {

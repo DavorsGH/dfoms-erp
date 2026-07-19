@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/utils/admin-auth";
+import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import {
   buildUserAccountPayload,
   ensureClientAvailable,
@@ -19,10 +19,12 @@ type CreateUserBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireSuperAdmin();
+  const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   let body: CreateUserBody;
   try {
@@ -68,6 +70,8 @@ export async function POST(request: Request) {
     const employeeError = await ensureEmployeeAvailable(
       admin,
       built.payload.employee_id,
+      undefined,
+      tenantId,
     );
     if (employeeError) {
       return NextResponse.json({ error: employeeError }, { status: 409 });
@@ -78,6 +82,8 @@ export async function POST(request: Request) {
     const clientError = await ensureClientAvailable(
       admin,
       built.payload.client_id,
+      undefined,
+      tenantId,
     );
     if (clientError) {
       return NextResponse.json({ error: clientError }, { status: 409 });
@@ -105,6 +111,7 @@ export async function POST(request: Request) {
     role: built.payload.role,
     email,
     is_active: true,
+    tenant_id: tenantId,
   });
 
   if (insertError) {

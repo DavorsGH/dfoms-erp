@@ -1,8 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
-import { createAdminClient } from "@/utils/supabase/admin";
-import { isSuperAdmin } from "@/utils/dashboard-auth";
+import { getCurrentUserTenantId, isSuperAdmin } from "@/utils/dashboard-auth";
 import {
   mapUserAccountRows,
   USER_ACCOUNT_SELECT,
@@ -16,9 +15,13 @@ export default async function UserAccountsPage() {
     redirect("/dashboard");
   }
 
+  const tenantId = await getCurrentUserTenantId();
+  if (!tenantId) {
+    redirect("/dashboard");
+  }
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const admin = createAdminClient();
 
   const [
     { data: accounts, error: accountsError },
@@ -26,9 +29,10 @@ export default async function UserAccountsPage() {
     { data: clients, error: clientsError },
     { data: sites, error: sitesError },
   ] = await Promise.all([
-    admin
+    supabase
       .from("user_accounts")
       .select(USER_ACCOUNT_SELECT)
+      .eq("tenant_id", tenantId)
       .order("email", { ascending: true }),
     supabase
       .from("employees")

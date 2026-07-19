@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/utils/admin-auth";
+import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import {
   deleteUserAccount,
   formatUserDeleteDependencyReport,
@@ -14,10 +14,12 @@ type DeleteUserBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireSuperAdmin();
+  const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   let body: DeleteUserBody;
   try {
@@ -32,12 +34,24 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
-  const report = await getUserDeleteDependencyReport(admin, auth_uid);
+
+  const { data: account } = await admin
+    .from("user_accounts")
+    .select("auth_uid")
+    .eq("auth_uid", auth_uid)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (!account) {
+    return NextResponse.json({ error: "User account not found" }, { status: 404 });
+  }
+
+  const report = await getUserDeleteDependencyReport(admin, auth_uid, tenantId);
   if (!report) {
     return NextResponse.json({ error: "User account not found" }, { status: 404 });
   }
 
-  const validation = await validateUserCanBeDeleted(admin, auth_uid);
+  const validation = await validateUserCanBeDeleted(admin, auth_uid, tenantId);
   if (!validation.ok) {
     return NextResponse.json(
       {
@@ -49,7 +63,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await deleteUserAccount(admin, auth_uid);
+  const result = await deleteUserAccount(admin, auth_uid, tenantId);
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });

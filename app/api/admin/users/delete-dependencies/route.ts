@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSuperAdmin } from "@/utils/admin-auth";
+import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import {
   formatUserDeleteDependencyReport,
   getUserDeleteDependencyReport,
@@ -9,10 +9,12 @@ import {
 import { createAdminClient } from "@/utils/supabase/admin";
 
 export async function GET(request: Request) {
-  const auth = await requireSuperAdmin();
+  const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   const authUid = new URL(request.url).searchParams.get("auth_uid");
   if (!authUid) {
@@ -20,13 +22,25 @@ export async function GET(request: Request) {
   }
 
   const admin = createAdminClient();
-  const report = await getUserDeleteDependencyReport(admin, authUid);
+
+  const { data: account } = await admin
+    .from("user_accounts")
+    .select("auth_uid")
+    .eq("auth_uid", authUid)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (!account) {
+    return NextResponse.json({ error: "User account not found" }, { status: 404 });
+  }
+
+  const report = await getUserDeleteDependencyReport(admin, authUid, tenantId);
 
   if (!report) {
     return NextResponse.json({ error: "User account not found" }, { status: 404 });
   }
 
-  const validation = await validateUserCanBeDeleted(admin, authUid);
+  const validation = await validateUserCanBeDeleted(admin, authUid, tenantId);
 
   return NextResponse.json({
     report,

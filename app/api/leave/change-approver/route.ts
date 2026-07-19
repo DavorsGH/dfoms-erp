@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { requireSuperAdmin } from "@/utils/admin-auth";
+import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import { createClient } from "@/utils/supabase/server";
 
 type ChangeApproverBody = {
@@ -10,10 +10,12 @@ type ChangeApproverBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireSuperAdmin();
+  const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   let body: ChangeApproverBody;
   try {
@@ -31,6 +33,21 @@ export async function POST(request: Request) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+
+  const { data: approverAccount } = await supabase
+    .from("user_accounts")
+    .select("auth_uid")
+    .eq("auth_uid", body.approver_auth_uid)
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!approverAccount) {
+    return NextResponse.json(
+      { error: "Selected approver not found in your workspace" },
+      { status: 404 },
+    );
+  }
 
   const { data: configId, error } = await supabase.rpc("change_leave_approver", {
     p_approver_auth_uid: body.approver_auth_uid,

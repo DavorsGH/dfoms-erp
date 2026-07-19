@@ -68,12 +68,18 @@ export function getUserDeleteBlockMessage(
 export async function getUserDeleteDependencyReport(
   admin: AdminClient,
   authUid: string,
+  tenantId?: string,
 ): Promise<UserDeleteDependencyReport | null> {
-  const { data: account } = await admin
+  let accountQuery = admin
     .from("user_accounts")
     .select("auth_uid")
-    .eq("auth_uid", authUid)
-    .maybeSingle();
+    .eq("auth_uid", authUid);
+
+  if (tenantId) {
+    accountQuery = accountQuery.eq("tenant_id", tenantId);
+  }
+
+  const { data: account } = await accountQuery.maybeSingle();
 
   if (!account) {
     return null;
@@ -125,11 +131,12 @@ export async function getUserDeleteDependencyReport(
 export async function validateUserCanBeDeleted(
   admin: AdminClient,
   authUid: string,
+  tenantId?: string,
 ): Promise<
   | { ok: true; report: UserDeleteDependencyReport }
   | { ok: false; reason: UserDeleteBlockReason; report?: UserDeleteDependencyReport }
 > {
-  const report = await getUserDeleteDependencyReport(admin, authUid);
+  const report = await getUserDeleteDependencyReport(admin, authUid, tenantId);
   if (!report) {
     return { ok: false, reason: "not_found" };
   }
@@ -161,8 +168,9 @@ export async function validateUserCanBeDeleted(
 export async function deleteUserAccount(
   admin: AdminClient,
   authUid: string,
+  tenantId?: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const validation = await validateUserCanBeDeleted(admin, authUid);
+  const validation = await validateUserCanBeDeleted(admin, authUid, tenantId);
   if (!validation.ok) {
     return {
       ok: false,
@@ -170,11 +178,16 @@ export async function deleteUserAccount(
     };
   }
 
-  const { data: account } = await admin
+  let fetchAccountQuery = admin
     .from("user_accounts")
     .select("auth_uid, employee_id, client_id")
-    .eq("auth_uid", authUid)
-    .maybeSingle();
+    .eq("auth_uid", authUid);
+
+  if (tenantId) {
+    fetchAccountQuery = fetchAccountQuery.eq("tenant_id", tenantId);
+  }
+
+  const { data: account } = await fetchAccountQuery.maybeSingle();
 
   if (!account) {
     return { ok: false, error: "User account not found." };
@@ -223,10 +236,16 @@ export async function deleteUserAccount(
     }
   }
 
-  const { error: accountDeleteError } = await admin
+  let deleteAccountQuery = admin
     .from("user_accounts")
     .delete()
     .eq("auth_uid", authUid);
+
+  if (tenantId) {
+    deleteAccountQuery = deleteAccountQuery.eq("tenant_id", tenantId);
+  }
+
+  const { error: accountDeleteError } = await deleteAccountQuery;
 
   if (accountDeleteError) {
     return { ok: false, error: accountDeleteError.message };

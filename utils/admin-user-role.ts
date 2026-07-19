@@ -69,11 +69,29 @@ export async function ensureEmployeeAvailable(
   admin: AdminClient,
   employeeId: string,
   excludeAuthUid?: string,
+  tenantId?: string,
 ) {
+  if (tenantId) {
+    const { data: employee } = await admin
+      .from("employees")
+      .select("employee_id")
+      .eq("employee_id", employeeId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (!employee) {
+      return "Employee not found in your workspace";
+    }
+  }
+
   let query = admin
     .from("user_accounts")
     .select("auth_uid")
     .eq("employee_id", employeeId);
+
+  if (tenantId) {
+    query = query.eq("tenant_id", tenantId);
+  }
 
   if (excludeAuthUid) {
     query = query.neq("auth_uid", excludeAuthUid);
@@ -92,11 +110,29 @@ export async function ensureClientAvailable(
   admin: AdminClient,
   clientId: string,
   excludeAuthUid?: string,
+  tenantId?: string,
 ) {
+  if (tenantId) {
+    const { data: client } = await admin
+      .from("customers")
+      .select("client_id")
+      .eq("client_id", clientId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (!client) {
+      return "Client not found in your workspace";
+    }
+  }
+
   let query = admin
     .from("user_accounts")
     .select("auth_uid")
     .eq("client_id", clientId);
+
+  if (tenantId) {
+    query = query.eq("tenant_id", tenantId);
+  }
 
   if (excludeAuthUid) {
     query = query.neq("auth_uid", excludeAuthUid);
@@ -115,6 +151,7 @@ export async function ensureEmailAvailable(
   admin: AdminClient,
   email: string,
   excludeAuthUid?: string,
+  tenantId?: string,
 ) {
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) {
@@ -125,6 +162,10 @@ export async function ensureEmailAvailable(
     .from("user_accounts")
     .select("auth_uid")
     .ilike("email", normalizedEmail);
+
+  if (tenantId) {
+    query = query.eq("tenant_id", tenantId);
+  }
 
   if (excludeAuthUid) {
     query = query.neq("auth_uid", excludeAuthUid);
