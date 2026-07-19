@@ -17,6 +17,7 @@ import {
 } from "../employees/lookup-utils";
 import { compareStaffIds } from "../employees/employee-record-utils";
 import type { StaffIdCardEmployee } from "./staff-id-cards-utils";
+import { useTenantBranding } from "../tenant-branding-context";
 
 function isActiveStaffIdCardEmployee(employee: StaffIdCardEmployee): boolean {
   const status = employee.employment_status?.trim().toLowerCase();
@@ -44,18 +45,20 @@ function StaffIdCard({
   departmentName: string;
   positionName: string;
 }) {
+  const { companyLegalName, workspaceLogoUrl } = useTenantBranding();
+
   return (
     <article className="id-card-sheet overflow-hidden rounded-md border-2 border-slate-300 bg-white shadow-sm">
       <div className="flex h-full flex-col p-2.5">
         <div className="mb-1.5 flex items-center gap-2 border-b border-[#0f2744]/20 pb-1.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo.jpg"
-            alt="Davors Facilities logo"
+            src={workspaceLogoUrl}
+            alt={`${companyLegalName} logo`}
             className="h-7 w-7 shrink-0 rounded-sm object-cover"
           />
           <p className="text-[7px] font-bold leading-tight text-[#0f2744]">
-            Davors Facilities Management Services Ltd
+            {companyLegalName}
           </p>
         </div>
 

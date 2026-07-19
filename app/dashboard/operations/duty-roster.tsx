@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import { useTenantBranding } from "../tenant-branding-context";
 import {
   buildDutyRosterViewModel,
   formatDutyRosterEffectiveLabel,
@@ -135,6 +136,7 @@ export default function DutyRoster({
   canStartRotation,
 }: DutyRosterProps) {
   const router = useRouter();
+  const { companyLegalName } = useTenantBranding();
   const [selectedClientId, setSelectedClientId] = useState("");
   const [preparedBy, setPreparedBy] = useState(preparedByDefault);
   const [approvedBy, setApprovedBy] = useState("");
@@ -494,7 +496,7 @@ export default function DutyRoster({
         <div id="duty-roster-print-area">
           <header className="mb-6 border-b border-slate-300 pb-4 text-center">
             <p className="text-lg font-semibold text-[#0f2744]">
-              Davors Facilities Management Services Ltd
+              {companyLegalName}
             </p>
             <h1 className="mt-2 text-xl font-bold text-[#0f2744]">Duty Roster</h1>
             <p className="mt-2 text-sm font-semibold text-slate-800">

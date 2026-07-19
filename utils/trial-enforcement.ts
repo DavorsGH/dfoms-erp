@@ -4,6 +4,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { getTenantStatus } from "@/utils/tenant-management";
 import type { CrmSubscriptionStatus } from "@/utils/tenant-signup";
 
 type SubscriptionRow = {
@@ -59,14 +60,20 @@ export const getLinkedTenantSubscription = cache(
 );
 
 /**
- * Blocks dashboard access when a self-serve subscription exists and is not
- * active or in a valid trial. Skipped when no crm_subscriptions row exists
- * (e.g. Davors / Tenant 1). Only invoked from app/dashboard/layout.tsx.
+ * Blocks dashboard access when the tenant is suspended, or when a self-serve
+ * subscription exists and is not active or in a valid trial. Skipped when no
+ * crm_subscriptions row exists (e.g. Davors / Tenant 1). Only invoked from
+ * app/dashboard/layout.tsx.
  */
 export async function ensureTrialAccess(): Promise<void> {
   const tenantId = await getCurrentUserTenantId();
   if (!tenantId) {
     return;
+  }
+
+  const tenantStatus = await getTenantStatus(tenantId);
+  if (tenantStatus === "suspended") {
+    redirect("/account-suspended");
   }
 
   const subscription = await getLinkedTenantSubscription(tenantId);

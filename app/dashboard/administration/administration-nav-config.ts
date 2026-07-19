@@ -9,6 +9,8 @@ export type AdministrationNavGroup = {
   items: readonly AdministrationNavItem[];
 };
 
+export const PLATFORM_SETTINGS_GROUP_ID = "platform-settings";
+
 export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
   {
     id: "finance-settings",
@@ -79,6 +81,26 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
       { label: "User Accounts", href: "/dashboard/user-accounts" },
     ],
   },
+  {
+    id: "workspace-settings",
+    label: "Workspace Settings",
+    items: [
+      {
+        label: "Workspace Settings",
+        href: "/dashboard/administration/workspace",
+      },
+    ],
+  },
+  {
+    id: PLATFORM_SETTINGS_GROUP_ID,
+    label: "Platform Settings",
+    items: [
+      {
+        label: "Tenant Management",
+        href: "/dashboard/administration/tenants",
+      },
+    ],
+  },
 ] as const;
 
 export function isAdministrationPath(pathname: string): boolean {
@@ -125,13 +147,20 @@ export function getAdministrationGroupDefaultHref(
   return group.items[0]?.href ?? "/dashboard/administration/expense-categories";
 }
 
-export const ADMINISTRATION_SIDEBAR_LINKS = ADMINISTRATION_GROUPS.map(
-  (group) => ({
+export function getAdministrationSidebarLinks(
+  includePlatformSettings = false,
+) {
+  return ADMINISTRATION_GROUPS.filter(
+    (group) =>
+      includePlatformSettings || group.id !== PLATFORM_SETTINGS_GROUP_ID,
+  ).map((group) => ({
     label: group.label,
     href: getAdministrationGroupDefaultHref(group),
     groupId: group.id,
-  }),
-);
+  }));
+}
+
+export const ADMINISTRATION_SIDEBAR_LINKS = getAdministrationSidebarLinks(true);
 
 export function isAdministrationGroupActive(
   pathname: string,

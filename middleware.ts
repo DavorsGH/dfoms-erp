@@ -15,7 +15,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const publicPaths = new Set(["/login", "/signup", "/api/signup"]);
+  const publicPaths = new Set(["/", "/login", "/signup", "/api/signup"]);
   if (!user && !publicPaths.has(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -43,8 +43,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Trial enforcement runs in app/dashboard/layout.tsx only — not on
-  // /trial-expired, /login, /signup, or /api/signup (avoids redirect loops).
+  // Trial / suspension enforcement runs in app/dashboard/layout.tsx only — not on
+  // /trial-expired, /account-suspended, /login, /signup, or /api/signup.
+
+  response.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
 
   return response;
 }

@@ -5,9 +5,10 @@ import { inputClassName } from "../employees/employee-record-utils";
 import {
   REPORT_MONTH_OPTIONS,
 } from "./finance-reports-utils";
+import { useTenantBranding } from "../tenant-branding-context";
+import { DEFAULT_COMPANY_LEGAL_NAME } from "@/utils/tenant-branding-types";
 
-export const REPORT_COMPANY_NAME =
-  "Davors Facilities Management Services Ltd";
+export const REPORT_COMPANY_NAME = DEFAULT_COMPANY_LEGAL_NAME;
 
 export const FINANCE_REPORT_PRINT_AREA_ID = "finance-report-print-area";
 
@@ -103,18 +104,20 @@ export function ReportCompanyHeader({
   title: string;
   periodLabel: string;
 }) {
+  const { companyLegalName, workspaceLogoUrl } = useTenantBranding();
+
   return (
     <header className="mb-6 border-b-4 border-[#0f2744] pb-4">
       <div className="flex items-start gap-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/logo.jpg"
-          alt="Davors Facilities logo"
+          src={workspaceLogoUrl}
+          alt={`${companyLegalName} logo`}
           className="h-16 w-16 rounded-md object-cover"
         />
         <div>
           <h3 className="text-lg font-bold text-[#0f2744]">
-            {REPORT_COMPANY_NAME}
+            {companyLegalName}
           </h3>
           <p className="mt-1 text-base font-semibold text-slate-800">{title}</p>
           <p className="mt-1 text-sm text-slate-600">Period: {periodLabel}</p>

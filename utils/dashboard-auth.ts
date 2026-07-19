@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
+import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
 type UserAccountRow = {
   role: string | null;
@@ -117,4 +118,12 @@ export async function hasLeaveApprovalInbox(): Promise<boolean> {
 export async function isSuperAdmin(): Promise<boolean> {
   const role = await getCurrentUserRole();
   return role === "super_admin";
+}
+
+export async function isDavorsPlatformSuperAdmin(): Promise<boolean> {
+  const account = await getCurrentUserAccount();
+  return (
+    account?.role === "super_admin" &&
+    account.tenant_id === DAVORS_TENANT_ID
+  );
 }

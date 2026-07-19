@@ -2,13 +2,17 @@
 
 import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
+import type { TenantBranding } from "@/utils/tenant-branding-types";
 import Sidebar from "./sidebar";
 import TopBar from "./top-bar";
+import { TenantBrandingProvider } from "./tenant-branding-context";
 
 type DashboardShellProps = {
   children: React.ReactNode;
   userRole: AppRole | null;
   showLeaveApprovals: boolean;
+  showPlatformSettings: boolean;
+  tenantBranding: TenantBranding;
   userLabel: string;
   userPhotoUrl?: string | null;
   userFullName?: string | null;
@@ -18,6 +22,8 @@ export default function DashboardShell({
   children,
   userRole,
   showLeaveApprovals,
+  showPlatformSettings,
+  tenantBranding,
   userLabel,
   userPhotoUrl,
   userFullName,
@@ -42,9 +48,15 @@ export default function DashboardShell({
   }
 
   return (
-    <div className="flex min-h-screen min-w-0">
+    <TenantBrandingProvider branding={tenantBranding}>
+      <div className="flex min-h-screen min-w-0">
       <div className="hidden shrink-0 md:flex">
-        <Sidebar userRole={userRole} showLeaveApprovals={showLeaveApprovals} />
+        <Sidebar
+          userRole={userRole}
+          showLeaveApprovals={showLeaveApprovals}
+          showPlatformSettings={showPlatformSettings}
+          tenantBranding={tenantBranding}
+        />
       </div>
 
       {mobileNavOpen ? (
@@ -59,6 +71,8 @@ export default function DashboardShell({
             <Sidebar
               userRole={userRole}
               showLeaveApprovals={showLeaveApprovals}
+              showPlatformSettings={showPlatformSettings}
+              tenantBranding={tenantBranding}
               onNavigate={closeMobileNav}
               onClose={closeMobileNav}
               mobile
@@ -79,6 +93,7 @@ export default function DashboardShell({
           {children}
         </main>
       </div>
-    </div>
+      </div>
+    </TenantBrandingProvider>
   );
 }

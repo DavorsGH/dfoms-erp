@@ -6,6 +6,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
+  DAVORS_PLATFORM_LOGO,
+  type TenantBranding,
+} from "@/utils/tenant-branding-types";
+import {
   canAccessEmployeesSection,
   canAccessHrPayrollSection,
   canAccessReportCategory,
@@ -18,7 +22,7 @@ import {
   isHrManagementPath,
 } from "./hr-payroll/hr-management-nav-config";
 import {
-  ADMINISTRATION_SIDEBAR_LINKS,
+  getAdministrationSidebarLinks,
   isAdministrationGroupActive,
   isAdministrationPath,
 } from "./administration/administration-nav-config";
@@ -31,6 +35,8 @@ import {
 type SidebarProps = {
   userRole: AppRole | null;
   showLeaveApprovals?: boolean;
+  showPlatformSettings?: boolean;
+  tenantBranding: TenantBranding;
   mobile?: boolean;
   onNavigate?: () => void;
   onClose?: () => void;
@@ -152,12 +158,18 @@ function SidebarExpandableNavSection({
 export default function Sidebar({
   userRole,
   showLeaveApprovals = false,
+  showPlatformSettings = false,
+  tenantBranding,
   mobile = false,
   onNavigate,
   onClose,
 }: SidebarProps) {
   const pathname = usePathname();
   const navItems = getSidebarNavItems(userRole);
+  const administrationLinks = getAdministrationSidebarLinks(showPlatformSettings);
+  const workspaceLogoUrl = tenantBranding.workspaceLogoUrl;
+  const workspaceName = tenantBranding.workspaceName;
+  const usesRemoteLogo = workspaceLogoUrl.startsWith("http");
 
   if (showLeaveApprovals) {
     navItems.push({
@@ -206,7 +218,7 @@ export default function Sidebar({
             isExpanded={administrationExpanded}
             onToggle={handleAdministrationToggle}
           >
-            {ADMINISTRATION_SIDEBAR_LINKS.map((link) => {
+            {administrationLinks.map((link) => {
               const groupActive = isAdministrationGroupActive(
                 pathname,
                 link.groupId,
@@ -341,16 +353,25 @@ export default function Sidebar({
             </button>
           ) : null}
           <div className="flex flex-col items-center gap-2 text-center">
-            <Image
-              src="/logo.jpg"
-              alt="Davors Facilities ERP logo"
-              width={56}
-              height={56}
-              className="h-14 w-14 shrink-0 rounded-sm object-cover"
-            />
+            {usesRemoteLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={workspaceLogoUrl}
+                alt={`${workspaceName} logo`}
+                className="h-14 w-14 shrink-0 rounded-sm object-cover"
+              />
+            ) : (
+              <Image
+                src={workspaceLogoUrl}
+                alt={`${workspaceName} logo`}
+                width={56}
+                height={56}
+                className="h-14 w-14 shrink-0 rounded-sm object-cover"
+              />
+            )}
             <div>
               <p className="text-base font-semibold leading-tight text-emerald-400">
-                Davors Facilities
+                {workspaceName}
               </p>
               <p className="mt-0.5 text-xs font-medium leading-tight text-white/90">
                 ERP System
@@ -360,16 +381,25 @@ export default function Sidebar({
         </div>
       ) : (
         <div className="flex items-center gap-4 border-b border-white/10 px-5 py-8">
-          <Image
-            src="/logo.jpg"
-            alt="Davors Facilities ERP logo"
-            width={80}
-            height={80}
-            className="h-20 w-20 shrink-0 rounded-sm object-cover"
-          />
+          {usesRemoteLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={workspaceLogoUrl}
+              alt={`${workspaceName} logo`}
+              className="h-20 w-20 shrink-0 rounded-sm object-cover"
+            />
+          ) : (
+            <Image
+              src={workspaceLogoUrl}
+              alt={`${workspaceName} logo`}
+              width={80}
+              height={80}
+              className="h-20 w-20 shrink-0 rounded-sm object-cover"
+            />
+          )}
           <div className="min-w-0 flex-1">
             <p className="text-lg font-semibold leading-tight text-emerald-400">
-              Davors Facilities
+              {workspaceName}
             </p>
             <p className="mt-0.5 text-sm font-medium leading-tight text-white/90">
               ERP System
@@ -394,6 +424,16 @@ export default function Sidebar({
         <p className="text-[10px] leading-snug text-white/45">
           © 2026 Davors Facilities Management Services Ltd. All rights reserved.
         </p>
+        <div className="mt-2 flex items-center gap-1.5">
+          <Image
+            src={DAVORS_PLATFORM_LOGO}
+            alt="Davors"
+            width={36}
+            height={36}
+            className="h-9 w-9 shrink-0 rounded-sm object-cover"
+          />
+          <p className="text-[10px] leading-snug text-white/45">Powered by Davors Facilities</p>
+        </div>
       </footer>
     </aside>
   );

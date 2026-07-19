@@ -49,6 +49,7 @@ import {
   downloadCsv,
   formatReportDate,
 } from "./report-ui";
+import { useTenantBranding } from "../tenant-branding-context";
 
 type FetchErrorProps = {
   fetchError: string | null;
@@ -703,6 +704,7 @@ export function MonthlyClientServiceReport({
   incidentFetchError?: string | null;
   scopedClientId?: string | null;
 }) {
+  const { companyLegalName, workspaceLogoUrl } = useTenantBranding();
   const { year, month, setYear, setMonth, periodLabel } =
     useMonthYearSelection(availableYears);
   const [selectedClientId, setSelectedClientId] = useState(
@@ -832,15 +834,15 @@ export function MonthlyClientServiceReport({
           <header className="mb-8 border-b-2 border-[#0f2744] pb-6 text-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo.jpg"
-              alt="Davors Facilities logo"
+              src={workspaceLogoUrl}
+              alt={`${companyLegalName} logo`}
               className="mx-auto mb-4 h-20 w-20 rounded-md object-cover"
             />
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
               Service Performance Report
             </p>
             <h3 className="mt-2 text-2xl font-bold text-[#0f2744]">
-              {REPORT_COMPANY_NAME}
+              {companyLegalName}
             </h3>
             <p className="mt-3 text-lg font-semibold text-slate-800">
               {report.client.client_name}
@@ -1100,7 +1102,7 @@ export function MonthlyClientServiceReport({
           </ClientReportSection>
 
           <footer className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
-            Prepared by {REPORT_COMPANY_NAME} · Confidential client service report
+            Prepared by {companyLegalName} · Confidential client service report
           </footer>
         </div>
       ) : null}
