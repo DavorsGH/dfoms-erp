@@ -228,6 +228,41 @@ export async function POST(request: Request) {
 
   rollbackState.subscriptionId = subscriptionRow.id;
 
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: "signup",
+    email: adminEmail,
+    password,
+  });
+
+  if (linkError || !linkData?.properties?.hashed_token) {
+    console.error("Failed to generate signup verification link:", linkError?.message);
+  } else {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://portal.davorsfacilities.com";
+    const verifyUrl = `${siteUrl}/verify-email?token_hash=${linkData.properties.hashed_token}&type=signup`;
+
+    try {
+      const resendResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Davors Facilities ERP <noreply@davorsfacilities.com>",
+          to: adminEmail,
+          subject: "Confirm your email address",
+          html: `<h2>Confirm your email address</h2><p>Follow the link below to confirm this email address.</p><p><a href="${verifyUrl}">Confirm email address</a></p>`,
+        }),
+      });
+
+      if (!resendResponse.ok) {
+        console.error("Failed to send signup confirmation email:", await resendResponse.text());
+      }
+    } catch (emailSendError) {
+      console.error("Error sending signup confirmation email:", emailSendError);
+    }
+  }
+
   return NextResponse.json({
     message:
       "Account created. You can log in now — your 90-day trial starts once you log in.",
