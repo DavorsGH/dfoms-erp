@@ -46,7 +46,7 @@ export default function SignupPage() {
 
     setSuccess(
       payload?.message ??
-        "Account created. You can log in now — your 90-day trial starts once you log in.",
+        "Account created. You can log in now — check your email for a link to verify your address.",
     );
     setLoading(false);
   }
@@ -76,6 +76,9 @@ export default function SignupPage() {
           <div className="space-y-4">
             <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
               {success}
+            </p>
+            <p className="text-center text-sm text-zinc-600">
+              We&apos;ve sent a verification link to your email. Please check your inbox (and spam folder) and click it to verify your address.
             </p>
             <button
               type="button"

@@ -265,7 +265,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     message:
-      "Account created. You can log in now — your 90-day trial starts once you log in.",
+      "Account created. You can log in now — check your email for a link to verify your address.",
     tenant_id: tenantRow.id,
     slug,
     client_id: clientId,
