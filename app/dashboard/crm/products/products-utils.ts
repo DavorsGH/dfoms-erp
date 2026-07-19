@@ -39,6 +39,17 @@ export function formatProductPrice(value: number | null | undefined): string {
   })}`;
 }
 
+export function formatUsdPrice(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  return `USD ${Number(value).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export function formatActiveStatus(isActive: boolean | null | undefined): string {
   if (isActive === null || isActive === undefined) {
     return "—";

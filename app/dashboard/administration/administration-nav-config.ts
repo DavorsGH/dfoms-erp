@@ -99,6 +99,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Tenant Management",
         href: "/dashboard/administration/tenants",
       },
+      {
+        label: "Tier Pricing",
+        href: "/dashboard/administration/tier-pricing",
+      },
     ],
   },
 ] as const;
