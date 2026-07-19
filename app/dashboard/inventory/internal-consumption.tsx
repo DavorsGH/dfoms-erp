@@ -37,6 +37,7 @@ type InternalConsumptionProps = {
   initialSites: SiteEntry[];
   recordedByLabel: string;
   fetchError: string | null;
+  readOnly?: boolean;
 };
 
 const emptyForm = {
@@ -56,6 +57,7 @@ export default function InternalConsumption({
   initialSites,
   recordedByLabel,
   fetchError,
+  readOnly = false,
 }: InternalConsumptionProps) {
   const supabase = createClient();
   const [entries, setEntries] = useState(
@@ -201,6 +203,7 @@ export default function InternalConsumption({
           use. Entries are append-only and reduce finished product stock
           automatically — nothing posts to Finance in this phase.
         </p>
+        {!readOnly ? (
         <button
           type="button"
           onClick={() => setShowForm((current) => !current)}
@@ -208,9 +211,10 @@ export default function InternalConsumption({
         >
           {showForm ? "Cancel" : "Record Internal Use"}
         </button>
+        ) : null}
       </div>
 
-      {showForm ? (
+      {showForm && !readOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             New Internal Consumption

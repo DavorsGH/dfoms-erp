@@ -31,6 +31,7 @@ import {
 type FinishedProductsProps = {
   initialProducts: FinishedProductRecord[];
   fetchError: string | null;
+  readOnly?: boolean;
 };
 
 const emptyForm = {
@@ -43,6 +44,7 @@ const emptyForm = {
 export default function FinishedProducts({
   initialProducts,
   fetchError,
+  readOnly = false,
 }: FinishedProductsProps) {
   const supabase = createClient();
   const [products, setProducts] = useState(
@@ -199,6 +201,7 @@ export default function FinishedProducts({
           Finished product master data. Unit cost is derived per production batch,
           not stored here.
         </p>
+        {!readOnly ? (
         <button
           type="button"
           onClick={() => (showForm ? closeForm() : openAddForm())}
@@ -206,9 +209,10 @@ export default function FinishedProducts({
         >
           {showForm ? "Cancel" : "Add Finished Product"}
         </button>
+        ) : null}
       </div>
 
-      {showForm ? (
+      {showForm && !readOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingProductId ? "Edit Finished Product" : "New Finished Product"}
@@ -309,14 +313,16 @@ export default function FinishedProducts({
               <th className={scrollableTableThClassName}>Unit</th>
               <th className={scrollableTableThClassName}>Current Stock</th>
               <th className={scrollableTableThClassName}>Selling Price</th>
-              <th className={scrollableTableThClassName}>Actions</th>
+              {!readOnly ? (
+                <th className={scrollableTableThClassName}>Actions</th>
+              ) : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {products.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={readOnly ? 5 : 6}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No finished products yet.
@@ -336,11 +342,13 @@ export default function FinishedProducts({
                   <td className="px-4 py-3">
                     {formatInventoryMoney(product.standard_selling_price)}
                   </td>
+                  {!readOnly ? (
                   <RegisterRowActions
                     onEdit={() => openEditForm(product)}
                     onDelete={() => handleDelete(product.id)}
                     deleting={deletingProductId === product.id}
                   />
+                  ) : null}
                 </tr>
               ))
             )}

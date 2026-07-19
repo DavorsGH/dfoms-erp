@@ -5,7 +5,8 @@ export type AppRole =
   | "operations_manager"
   | "supervisor"
   | "employee"
-  | "client";
+  | "client"
+  | "sales_rep";
 
 export type UserAccount = {
   auth_uid: string;
@@ -30,6 +31,7 @@ export const USER_ROLE_OPTIONS: ReadonlyArray<{
   { value: "supervisor", label: "Supervisor" },
   { value: "employee", label: "Employee" },
   { value: "client", label: "Client" },
+  { value: "sales_rep", label: "Sales Rep" },
 ];
 
 export type SiteOption = {

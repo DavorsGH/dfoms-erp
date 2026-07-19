@@ -36,7 +36,7 @@ async function main() {
 
   checks.push({
     name: "roles table",
-    ok: !rolesError && (roles?.length ?? 0) === 7,
+    ok: !rolesError && (roles?.length ?? 0) === 8,
     detail: rolesError?.message ?? `${roles?.length ?? 0} roles`,
   });
 

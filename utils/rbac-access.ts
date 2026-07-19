@@ -48,6 +48,7 @@ export const INVENTORY_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",
   "finance",
+  "sales_rep",
 ];
 
 export const INVENTORY_EDIT_ROLES: readonly AppRole[] = [
@@ -59,6 +60,11 @@ export const CRM_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+];
+
+export const POS_SECTION_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "sales_rep",
 ];
 
 export const PAYROLL_PERIOD_MANAGE_ROLES: readonly AppRole[] = [
@@ -167,6 +173,10 @@ export function canAccessCrmSection(role: AppRole | null): boolean {
   return roleIn(role, CRM_SECTION_ROLES);
 }
 
+export function canAccessPosSection(role: AppRole | null): boolean {
+  return roleIn(role, POS_SECTION_ROLES);
+}
+
 export function canEditInventory(role: AppRole | null): boolean {
   return roleIn(role, INVENTORY_EDIT_ROLES);
 }
@@ -214,6 +224,10 @@ export function getDashboardVisibility(role: AppRole | null): DashboardVisibilit
 
 export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
   const items: SidebarNavItem[] = [{ label: "Dashboard", href: "/dashboard" }];
+
+  if (canAccessPosSection(role)) {
+    items.push({ label: "POS", href: "/dashboard/pos" });
+  }
 
   if (canAccessFinanceSection(role)) {
     items.push({ label: "Finance", href: "/dashboard/finance" });

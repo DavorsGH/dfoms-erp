@@ -15,7 +15,10 @@ import EmployeeDashboard from "./employee-dashboard";
 import { buildOperationsDashboardSummary } from "./operations-dashboard-utils";
 import OperationsDashboard from "./operations-dashboard";
 import Dashboard from "./dashboard";
-import { buildDashboardViewModel } from "./dashboard-utils";import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
+import { buildDashboardViewModel } from "./dashboard-utils";
+import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
+import SalesRepDashboard from "./sales-rep-dashboard";
+import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
 import { mergePayrollWagesSources } from "./finance/accrued-wages-utils";
 import { countLowStockRawMaterials } from "./reports/inventory-reports-utils";
 import { fetchInventoryBalanceSheetInput } from "./finance/balance-sheet-page-data";
@@ -142,6 +145,37 @@ export default async function DashboardPage() {
         roleLabel={role === "supervisor" ? "Supervisor" : "Operations"}
       />
     );
+  }
+
+  if (role === "sales_rep") {
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+    const { summary, fetchError } = await buildSalesRepDashboardSummary(supabase);
+
+    if (!summary) {
+      return (
+        <SalesRepDashboard
+          summary={{
+            periodLabel: new Date().toLocaleDateString("en-GB", {
+              month: "long",
+              year: "numeric",
+            }),
+            todayLabel: new Date().toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            }),
+            todaysSalesTotal: 0,
+            todaysSaleCount: 0,
+            monthSalesTotal: 0,
+            monthSaleCount: 0,
+          }}
+          fetchError={fetchError}
+        />
+      );
+    }
+
+    return <SalesRepDashboard summary={summary} fetchError={fetchError} />;
   }
 
   const cookieStore = await cookies();

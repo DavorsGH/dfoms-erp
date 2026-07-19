@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import type { AppRole } from "@/app/dashboard/user-account-types";
+import { canEditInventory } from "@/utils/rbac-access";
 import { getRoleLabel } from "../../role-labels";
 import { CONTRACT_PROJECT_SELECT } from "../../administration/projects-utils";
 import { CLIENT_SELECT } from "../../operations/clients-utils";
@@ -93,6 +96,8 @@ export default async function InternalConsumptionPage() {
     sitesError?.message ??
     null;
 
+  const role = (await getCurrentUserRole()) as AppRole | null;
+
   return (
     <InventoryShell sectionTitle="Internal Consumption">
       <InternalConsumption
@@ -112,6 +117,7 @@ export default async function InternalConsumptionPage() {
         )}
         recordedByLabel={recordedByLabel}
         fetchError={fetchError}
+        readOnly={!canEditInventory(role)}
       />
     </InventoryShell>
   );

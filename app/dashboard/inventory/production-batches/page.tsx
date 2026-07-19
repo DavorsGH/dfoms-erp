@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import type { AppRole } from "@/app/dashboard/user-account-types";
+import { canEditInventory } from "@/utils/rbac-access";
 import InventoryShell from "../inventory-shell";
 import ProductionBatches from "../production-batches";
 import {
@@ -47,6 +50,8 @@ export default async function ProductionBatchesPage() {
     materialsError?.message ??
     null;
 
+  const role = (await getCurrentUserRole()) as AppRole | null;
+
   return (
     <InventoryShell sectionTitle="Production Batches">
       <ProductionBatches
@@ -66,6 +71,7 @@ export default async function ProductionBatchesPage() {
           ) ?? []
         }
         fetchError={fetchError}
+        readOnly={!canEditInventory(role)}
       />
     </InventoryShell>
   );

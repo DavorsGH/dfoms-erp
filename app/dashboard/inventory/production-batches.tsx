@@ -36,6 +36,7 @@ type ProductionBatchesProps = {
   initialProducts: FinishedProductRecord[];
   initialMaterials: RawMaterialRecord[];
   fetchError: string | null;
+  readOnly?: boolean;
 };
 
 type MaterialLine = {
@@ -61,6 +62,7 @@ export default function ProductionBatches({
   initialProducts,
   initialMaterials,
   fetchError,
+  readOnly = false,
 }: ProductionBatchesProps) {
   const supabase = createClient();
   const [batches, setBatches] = useState(
@@ -292,6 +294,7 @@ export default function ProductionBatches({
           Record production batches. Raw material stock decreases, finished
           product stock increases, and a stock movement ledger entry is created.
         </p>
+        {!readOnly ? (
         <button
           type="button"
           onClick={() => (showForm ? closeForm() : openAddForm())}
@@ -299,9 +302,10 @@ export default function ProductionBatches({
         >
           {showForm ? "Cancel" : "Create Production Batch"}
         </button>
+        ) : null}
       </div>
 
-      {showForm ? (
+      {showForm && !readOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             New Production Batch
