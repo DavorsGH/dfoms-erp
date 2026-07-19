@@ -22,6 +22,7 @@ export async function middleware(request: NextRequest) {
     "/api/signup",
     "/forgot-password",
     "/reset-password",
+    "/verify-email",
   ]);
   if (!user && !publicPaths.has(pathname)) {
     const url = request.nextUrl.clone();
