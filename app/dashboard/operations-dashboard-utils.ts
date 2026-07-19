@@ -53,6 +53,7 @@ function isOpenCorrectiveStatus(status: string | null | undefined) {
 
 export async function buildOperationsDashboardSummary(
   supabase: SupabaseClient,
+  tenantId: string,
 ): Promise<{ summary: OperationsDashboardSummary; fetchError: string | null }> {
   const { periodLabel, startIso, endIso } = currentMonthBounds();
 
@@ -68,26 +69,29 @@ export async function buildOperationsDashboardSummary(
     { data: workOrders, error: workOrdersError },
     { data: inspections, error: inspectionsError },
   ] = await Promise.all([
-    supabase.from("customers").select(CLIENT_SELECT),
-    supabase.from("roster_config").select(ROSTER_CONFIG_SELECT),
+    supabase.from("customers").select(CLIENT_SELECT).eq("tenant_id", tenantId),
+    supabase.from("roster_config").select(ROSTER_CONFIG_SELECT).eq("tenant_id", tenantId),
     supabase
       .from("employees")
       .select(
         "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!contract_project(project_code, project_name)",
-      ),
-    supabase.from("projects").select(PROJECT_SELECT),
-    supabase.from("sites").select(SITE_ASSIGNMENT_SELECT),
-    supabase.from("roster_history").select("*"),
-    supabase.from("corrective_actions").select("status"),
-    supabase.from("failed_inspections").select("issue_no"),
+      )
+      .eq("tenant_id", tenantId),
+    supabase.from("projects").select(PROJECT_SELECT).eq("tenant_id", tenantId),
+    supabase.from("sites").select(SITE_ASSIGNMENT_SELECT).eq("tenant_id", tenantId),
+    supabase.from("roster_history").select("*").eq("tenant_id", tenantId),
+    supabase.from("corrective_actions").select("status").eq("tenant_id", tenantId),
+    supabase.from("failed_inspections").select("issue_no").eq("tenant_id", tenantId),
     supabase
       .from("work_orders")
       .select("work_order_no, date")
+      .eq("tenant_id", tenantId)
       .gte("date", startIso)
       .lte("date", endIso),
     supabase
       .from("inspection_summary")
       .select("checklist_id, inspection_date")
+      .eq("tenant_id", tenantId)
       .gte("inspection_date", startIso)
       .lte("inspection_date", endIso),
   ]);

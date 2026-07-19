@@ -88,6 +88,44 @@ export async function requireTenantSuperAdmin(): Promise<TenantSuperAdminResult>
   return { ok: true, tenantId: account.tenant_id };
 }
 
+export async function requireTenantRoleIn(
+  roles: readonly string[],
+): Promise<TenantSuperAdminResult> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  const { data: account } = await supabase
+    .from("user_accounts")
+    .select("role, is_active, tenant_id")
+    .eq("auth_uid", user.id)
+    .maybeSingle();
+
+  if (
+    !account ||
+    account.is_active === false ||
+    !roles.includes(account.role) ||
+    !account.tenant_id
+  ) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  return { ok: true, tenantId: account.tenant_id };
+}
+
 export async function requireDavorsPlatformSuperAdmin(): Promise<SuperAdminResult> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);

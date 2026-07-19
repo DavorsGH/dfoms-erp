@@ -134,11 +134,13 @@ function buildExpenseRegisterPayload(
   amount: number,
   vendor: string,
   receiptSuffix: string,
+  tenantId: string,
 ) {
   const description = buildPayrollExpenseAutoDescription(period.monthLabel);
   const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
 
   return {
+    tenant_id: tenantId,
     date: period.periodEndDate,
     expense_category: expenseCategory,
     sub_category: PAYROLL_EXPENSE_SUB_CATEGORY_PAYROLL,
@@ -162,10 +164,12 @@ function buildAccountsPayablePayload(
   description: string,
   amount: number,
   invoiceSuffix: string,
+  tenantId: string,
 ) {
   const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
 
   return {
+    tenant_id: tenantId,
     vendor_name: vendorName,
     invoice_number: `PAYROLL-${invoiceSuffix}-${periodKey}`,
     expense_category: expenseCategory,
@@ -188,6 +192,7 @@ async function upsertPayrollExpenseRegisterEntry(
   const { data: existing, error: selectError } = await admin
     .from("expense_register")
     .select("id, expense_category, payment_status, amount")
+    .eq("tenant_id", payload.tenant_id)
     .eq("receipt_no", payload.receipt_no)
     .maybeSingle();
 
@@ -241,10 +246,12 @@ export async function repairPayrollAutoPostedExpenseRegisterEntry(
   admin: SupabaseClient,
   receiptNo: string,
   expenseCategory: string,
+  tenantId: string,
 ): Promise<"updated" | "not_found"> {
   const { data: existing, error: selectError } = await admin
     .from("expense_register")
     .select("id")
+    .eq("tenant_id", tenantId)
     .eq("receipt_no", receiptNo)
     .maybeSingle();
 
@@ -277,10 +284,12 @@ async function payableEntryExists(
   admin: SupabaseClient,
   period: PayrollLockFinancePeriod,
   expenseCategory: string,
+  tenantId: string,
 ): Promise<boolean> {
   const { data, error } = await admin
     .from("accounts_payable")
     .select("id")
+    .eq("tenant_id", tenantId)
     .eq("expense_category", expenseCategory)
     .ilike("description", `%${period.monthLabel}%`)
     .limit(1);
@@ -296,6 +305,7 @@ export async function postPayrollLockFinanceEntries(
   admin: SupabaseClient,
   period: PayrollLockFinancePeriod,
   rows: PayrollLockFinanceSourceRow[],
+  tenantId: string,
 ): Promise<{ insertedExpenses: number; insertedPayables: number; updatedExpenses: number }> {
   const totals = calculatePayrollLockFinanceTotals(rows);
   let insertedExpenses = 0;
@@ -310,6 +320,7 @@ export async function postPayrollLockFinanceEntries(
           totals.totalGrossPay,
           "Payroll",
           "SAL",
+          tenantId,
         )
       : null;
 
@@ -333,6 +344,7 @@ export async function postPayrollLockFinanceEntries(
           totals.totalEmployerSsnitContribution,
           "SSNIT",
           "ESSNIT",
+          tenantId,
         )
       : null;
 
@@ -355,6 +367,7 @@ export async function postPayrollLockFinanceEntries(
       admin,
       period,
       PAYROLL_PAYABLE_CATEGORY_SSNIT,
+      tenantId,
     ))
   ) {
     payableRows.push(
@@ -365,6 +378,7 @@ export async function postPayrollLockFinanceEntries(
         ssnitDescription,
         totals.totalSsnitRemittance,
         "SSNIT",
+        tenantId,
       ),
     );
   }
@@ -372,7 +386,7 @@ export async function postPayrollLockFinanceEntries(
   const payeDescription = buildPayrollPayePayableDescription(period.monthLabel);
   if (
     totals.totalPayeTax > 0 &&
-    !(await payableEntryExists(admin, period, PAYROLL_PAYABLE_CATEGORY_PAYE))
+    !(await payableEntryExists(admin, period, PAYROLL_PAYABLE_CATEGORY_PAYE, tenantId))
   ) {
     payableRows.push(
       buildAccountsPayablePayload(
@@ -382,6 +396,7 @@ export async function postPayrollLockFinanceEntries(
         payeDescription,
         totals.totalPayeTax,
         "GRA",
+        tenantId,
       ),
     );
   }
@@ -403,12 +418,14 @@ export async function postPayrollLockFinanceEntries(
 export async function deletePayrollLockFinanceEntries(
   admin: SupabaseClient,
   period: PayrollLockFinancePeriod,
+  tenantId: string,
 ): Promise<{ deletedExpenses: number; deletedPayables: number }> {
   const expenseDescription = buildPayrollExpenseAutoDescription(period.monthLabel);
 
   const { data: expenseRows, error: expenseSelectError } = await admin
     .from("expense_register")
     .select("id")
+    .eq("tenant_id", tenantId)
     .ilike("description", `%${expenseDescription}%`);
 
   if (expenseSelectError) {
@@ -419,6 +436,7 @@ export async function deletePayrollLockFinanceEntries(
     const { error: expenseDeleteError } = await admin
       .from("expense_register")
       .delete()
+      .eq("tenant_id", tenantId)
       .ilike("description", `%${expenseDescription}%`);
 
     if (expenseDeleteError) {
@@ -429,6 +447,7 @@ export async function deletePayrollLockFinanceEntries(
   const { data: payableRows, error: payableSelectError } = await admin
     .from("accounts_payable")
     .select("id")
+    .eq("tenant_id", tenantId)
     .ilike("description", `%${period.monthLabel}%`)
     .in("vendor_name", ["SSNIT", "GRA"]);
 
@@ -440,6 +459,7 @@ export async function deletePayrollLockFinanceEntries(
     const { error: payableDeleteError } = await admin
       .from("accounts_payable")
       .delete()
+      .eq("tenant_id", tenantId)
       .ilike("description", `%${period.monthLabel}%`)
       .in("vendor_name", ["SSNIT", "GRA"]);
 

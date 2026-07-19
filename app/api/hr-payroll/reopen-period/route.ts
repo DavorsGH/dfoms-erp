@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleIn } from "@/utils/admin-auth";
+import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { PAYROLL_PERIOD_MANAGE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -27,10 +27,12 @@ type ReopenPeriodBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireRoleIn(PAYROLL_PERIOD_MANAGE_ROLES);
+  const auth = await requireTenantRoleIn(PAYROLL_PERIOD_MANAGE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   let body: ReopenPeriodBody;
   try {
@@ -62,6 +64,7 @@ export async function POST(request: Request) {
   const { data: closeRecord, error: closeFetchError } = await admin
     .from("month_end_close")
     .select("*")
+    .eq("tenant_id", tenantId)
     .eq("month", payrollMonth)
     .maybeSingle();
 
@@ -79,6 +82,7 @@ export async function POST(request: Request) {
   const { data: historyRows, error: historyFetchError } = await admin
     .from("payroll_history")
     .select("*")
+    .eq("tenant_id", tenantId)
     .eq("payroll_month", payrollMonth);
 
   if (historyFetchError) {
@@ -106,7 +110,7 @@ export async function POST(request: Request) {
 
   let financeResult;
   try {
-    financeResult = await deletePayrollLockFinanceEntries(admin, financePeriod);
+    financeResult = await deletePayrollLockFinanceEntries(admin, financePeriod, tenantId);
   } catch (financeError) {
     const message =
       financeError instanceof Error
@@ -116,11 +120,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const processingRows = rows.map((row) => historyRowToProcessingPayload(row));
+  const processingRows = rows.map((row) => ({
+    ...historyRowToProcessingPayload(row),
+    tenant_id: tenantId,
+  }));
 
   const { error: processingCleanupError } = await admin
     .from("payroll_processing")
     .delete()
+    .eq("tenant_id", tenantId)
     .eq("payroll_month", payrollMonth);
 
   if (processingCleanupError) {
@@ -142,7 +150,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await deletePayrollHistoryForMonth(admin, payrollMonth);
+    await deletePayrollHistoryForMonth(admin, payrollMonth, tenantId);
   } catch (cleanupError) {
     const message =
       cleanupError instanceof PayrollHistoryCleanupError
@@ -158,6 +166,7 @@ export async function POST(request: Request) {
   );
 
   const reopenedClosePayload = {
+    tenant_id: tenantId,
     month: payrollMonth,
     employees_recorded: rows.length,
     total_net_pay: Math.round(totalNetPay * 100) / 100,
@@ -167,7 +176,7 @@ export async function POST(request: Request) {
 
   const { data: reopenedCloseRecord, error: closeUpdateError } = await admin
     .from("month_end_close")
-    .upsert(reopenedClosePayload, { onConflict: "month" })
+    .upsert(reopenedClosePayload, { onConflict: "tenant_id,month" })
     .select("*")
     .single();
 

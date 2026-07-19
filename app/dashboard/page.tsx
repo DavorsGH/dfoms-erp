@@ -137,8 +137,33 @@ export default async function DashboardPage() {
   if (role === "supervisor" || role === "operations_manager") {
     const summaryClient =
       role === "supervisor" ? createAdminClient() : createClient(await cookies());
-    const { summary, fetchError } =
-      await buildOperationsDashboardSummary(summaryClient);
+    const tenantId = await getCurrentUserTenantId();
+
+    if (!tenantId) {
+      return (
+        <OperationsDashboard
+          summary={{
+            periodLabel: new Date().toLocaleDateString("en-GB", {
+              month: "long",
+              year: "numeric",
+            }),
+            understaffedSites: 0,
+            totalRosterSites: 0,
+            openCorrectiveActions: 0,
+            openFailedInspections: 0,
+            workOrdersThisMonth: 0,
+            inspectionsThisMonth: 0,
+          }}
+          fetchError="Your user account is not linked to a tenant record."
+          roleLabel={role === "supervisor" ? "Supervisor" : "Operations"}
+        />
+      );
+    }
+
+    const { summary, fetchError } = await buildOperationsDashboardSummary(
+      summaryClient,
+      tenantId,
+    );
 
     return (
       <OperationsDashboard

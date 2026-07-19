@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleIn } from "@/utils/admin-auth";
+import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { START_ROTATION_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getCurrentUserFullName } from "@/utils/current-user";
@@ -30,10 +30,12 @@ function formatTodayIsoDate(): string {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireRoleIn(START_ROTATION_ROLES);
+  const auth = await requireTenantRoleIn(START_ROTATION_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   const body = (await request.json().catch(() => ({}))) as {
     client_id?: string;
@@ -61,16 +63,18 @@ export async function POST(request: Request) {
     supabase
       .from("roster_config")
       .select(ROSTER_CONFIG_SELECT)
+      .eq("tenant_id", tenantId)
       .eq("client_id", clientId)
       .limit(1),
     supabase
       .from("employees")
       .select(
         "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!contract_project(project_code, project_name)",
-      ),
-    supabase.from("projects").select(PROJECT_SELECT),
-    supabase.from("sites").select(SITE_ASSIGNMENT_SELECT),
-    supabase.from("roster_history").select("*"),
+      )
+      .eq("tenant_id", tenantId),
+    supabase.from("projects").select(PROJECT_SELECT).eq("tenant_id", tenantId),
+    supabase.from("sites").select(SITE_ASSIGNMENT_SELECT).eq("tenant_id", tenantId),
+    supabase.from("roster_history").select("*").eq("tenant_id", tenantId),
   ]);
 
   if (configError) {
@@ -127,9 +131,14 @@ export async function POST(request: Request) {
     });
 
   if (inserts.length > 0) {
+    const insertsWithTenant = inserts.map((insert) => ({
+      ...insert,
+      tenant_id: tenantId,
+    }));
+
     const { error: insertError } = await supabase
       .from("roster_history")
-      .insert(inserts);
+      .insert(insertsWithTenant);
 
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
@@ -139,6 +148,7 @@ export async function POST(request: Request) {
   const { error: updateError } = await supabase
     .from("roster_config")
     .update({ cycle_start_date: nextCycleStartDate })
+    .eq("tenant_id", tenantId)
     .eq("id", config.id);
 
   if (updateError) {

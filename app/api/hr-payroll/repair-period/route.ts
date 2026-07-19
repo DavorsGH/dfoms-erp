@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleIn } from "@/utils/admin-auth";
+import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { PAYROLL_PERIOD_MANAGE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -19,10 +19,12 @@ type RepairPeriodBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireRoleIn(PAYROLL_PERIOD_MANAGE_ROLES);
+  const auth = await requireTenantRoleIn(PAYROLL_PERIOD_MANAGE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
+
+  const { tenantId } = auth;
 
   let body: RepairPeriodBody;
   try {
@@ -41,6 +43,7 @@ export async function POST(request: Request) {
   const { data: closeRecord, error: closeFetchError } = await admin
     .from("month_end_close")
     .select("*")
+    .eq("tenant_id", tenantId)
     .eq("month", payrollMonth)
     .maybeSingle();
 
@@ -75,6 +78,7 @@ export async function POST(request: Request) {
     const deletedHistoryRows = await deletePayrollHistoryForMonth(
       admin,
       payrollMonth,
+      tenantId,
     );
 
     return NextResponse.json({

@@ -13,10 +13,12 @@ export class PayrollHistoryCleanupError extends Error {
 export async function deletePayrollHistoryForMonth(
   admin: SupabaseClient,
   payrollMonth: string,
+  tenantId: string,
 ): Promise<number> {
   const { data: existingRows, error: fetchError } = await admin
     .from("payroll_history")
     .select("id, locked")
+    .eq("tenant_id", tenantId)
     .eq("payroll_month", payrollMonth);
 
   if (fetchError) {
@@ -34,6 +36,7 @@ export async function deletePayrollHistoryForMonth(
     const { data: unlockedRows, error: unlockError } = await admin
       .from("payroll_history")
       .update({ locked: false })
+      .eq("tenant_id", tenantId)
       .eq("payroll_month", payrollMonth)
       .eq("locked", true)
       .select("id");
@@ -41,7 +44,7 @@ export async function deletePayrollHistoryForMonth(
     if (unlockError) {
       const { error: rpcError } = await admin.rpc(
         "admin_delete_payroll_history_for_month",
-        { p_month: payrollMonth },
+        { p_month: payrollMonth, p_tenant_id: tenantId },
       );
 
       if (rpcError) {
@@ -60,7 +63,7 @@ export async function deletePayrollHistoryForMonth(
     if ((unlockedRows ?? []).length === 0) {
       const { error: rpcError } = await admin.rpc(
         "admin_delete_payroll_history_for_month",
-        { p_month: payrollMonth },
+        { p_month: payrollMonth, p_tenant_id: tenantId },
       );
 
       if (rpcError) {
@@ -80,6 +83,7 @@ export async function deletePayrollHistoryForMonth(
   const { data: deletedRows, error: deleteError } = await admin
     .from("payroll_history")
     .delete()
+    .eq("tenant_id", tenantId)
     .eq("payroll_month", payrollMonth)
     .select("id");
 
@@ -87,7 +91,7 @@ export async function deletePayrollHistoryForMonth(
     if (hasProtectedRows) {
       const { error: rpcError } = await admin.rpc(
         "admin_delete_payroll_history_for_month",
-        { p_month: payrollMonth },
+        { p_month: payrollMonth, p_tenant_id: tenantId },
       );
 
       if (rpcError) {
@@ -110,7 +114,7 @@ export async function deletePayrollHistoryForMonth(
   if (deletedCount === 0 && rows.length > 0) {
     const { error: rpcError } = await admin.rpc(
       "admin_delete_payroll_history_for_month",
-      { p_month: payrollMonth },
+      { p_month: payrollMonth, p_tenant_id: tenantId },
     );
 
     if (rpcError) {
@@ -129,6 +133,7 @@ export async function deletePayrollHistoryForMonth(
   const remainingCount = await countPayrollHistoryRowsForMonth(
     admin,
     payrollMonth,
+    tenantId,
   );
 
   if (remainingCount > 0) {
@@ -143,10 +148,12 @@ export async function deletePayrollHistoryForMonth(
 export async function countPayrollHistoryRowsForMonth(
   admin: SupabaseClient,
   payrollMonth: string,
+  tenantId: string,
 ): Promise<number> {
   const { count, error } = await admin
     .from("payroll_history")
     .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
     .eq("payroll_month", payrollMonth);
 
   if (error) {
