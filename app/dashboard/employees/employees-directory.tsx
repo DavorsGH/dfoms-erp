@@ -202,7 +202,7 @@ function buildPayload(form: typeof emptyForm) {
     contract_project: form.contract_project || null,
     shift: form.shift || null,
     assigned_site_id: form.assigned_site_id || null,
-    basic_salary: form.basic_salary ? Number(form.basic_salary) : null,
+    basic_salary: form.basic_salary ? Number(form.basic_salary) : 0,
     housing_allowance: form.housing_allowance
       ? Number(form.housing_allowance)
       : null,
