@@ -21,6 +21,8 @@ import {
   EMPLOYEE_SELECT,
   EMPLOYMENT_STATUS_OPTIONS,
   EMPLOYMENT_TYPE_OPTIONS,
+  GENDER_OPTIONS,
+  MARITAL_STATUS_OPTIONS,
   SHIFT_OPTIONS,
   formatGHS,
   generateNextEmployeeId,
@@ -205,13 +207,13 @@ function buildPayload(form: typeof emptyForm) {
     basic_salary: form.basic_salary ? Number(form.basic_salary) : 0,
     housing_allowance: form.housing_allowance
       ? Number(form.housing_allowance)
-      : null,
+      : 0,
     transport_allowance: form.transport_allowance
       ? Number(form.transport_allowance)
-      : null,
+      : 0,
     other_allowances: form.other_allowances
       ? Number(form.other_allowances)
-      : null,
+      : 0,
     emergency_contact_name: form.emergency_contact_name || null,
     emergency_contact_address: form.emergency_contact_address || null,
     emergency_contact_phone: form.emergency_contact_phone || null,
@@ -615,12 +617,15 @@ export default function EmployeesDirectory({
     const nextEmployeeId = generateNextEmployeeId(
       employees.map((employee) => employee.employee_id),
     );
+    const nextNumber = nextEmployeeId.replace(/^EMP/i, "");
+    const nextStaffId = `DF${nextNumber}`;
 
     basicSalaryManualRef.current = false;
     setEditingEmployeeId(null);
     setForm({
       ...emptyForm,
       employee_id: nextEmployeeId,
+      staff_id: nextStaffId,
       employment_status: DEFAULT_EMPLOYMENT_STATUS,
     });
     setShowForm(true);
@@ -938,10 +943,9 @@ export default function EmployeesDirectory({
                 <Field label="Staff ID">
                   <input
                     type="text"
-                    required
+                    readOnly
                     value={form.staff_id}
-                    onChange={(e) => updateField("staff_id", e.target.value)}
-                    className={inputClassName}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
                   />
                 </Field>
                 <Field label="Full Name">
@@ -954,12 +958,18 @@ export default function EmployeesDirectory({
                   />
                 </Field>
                 <Field label="Gender">
-                  <input
-                    type="text"
+                  <select
                     value={form.gender}
                     onChange={(e) => updateField("gender", e.target.value)}
                     className={inputClassName}
-                  />
+                  >
+                    <option value="">Select gender</option>
+                    {GENDER_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Date of Birth">
                   <input
@@ -980,14 +990,20 @@ export default function EmployeesDirectory({
                   />
                 </Field>
                 <Field label="Marital Status">
-                  <input
-                    type="text"
+                  <select
                     value={form.marital_status}
                     onChange={(e) =>
                       updateField("marital_status", e.target.value)
                     }
                     className={inputClassName}
-                  />
+                  >
+                    <option value="">Select status</option>
+                    {MARITAL_STATUS_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Phone/WhatsApp">
                   <input

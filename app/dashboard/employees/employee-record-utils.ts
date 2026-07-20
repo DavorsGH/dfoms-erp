@@ -53,6 +53,16 @@ export type SiteLookup = {
   name: string;
 };
 
+export const GENDER_OPTIONS = ["Male", "Female"] as const;
+
+export const MARITAL_STATUS_OPTIONS = [
+  "Single",
+  "Married",
+  "Divorced",
+  "Widowed",
+  "Single Parent",
+] as const;
+
 export const EMPLOYMENT_TYPE_OPTIONS = [
   "Casual",
   "Part-Time",
