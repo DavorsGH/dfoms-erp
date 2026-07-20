@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import PasswordInput from "@/components/password-input";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -111,9 +112,8 @@ export default function ResetPasswordPage() {
               >
                 New Password
               </label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -128,9 +128,8 @@ export default function ResetPasswordPage() {
               >
                 Confirm New Password
               </label>
-              <input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required

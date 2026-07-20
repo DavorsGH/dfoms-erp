@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import PasswordInput from "@/components/password-input";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -76,9 +77,8 @@ export default function LoginPage() {
             >
               Password
             </label>
-            <input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

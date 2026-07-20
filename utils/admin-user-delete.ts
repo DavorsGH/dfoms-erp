@@ -18,10 +18,12 @@ export type UserDeleteBlockReason =
 
 async function getCurrentLeaveApproverId(
   admin: AdminClient,
+  tenantId: string,
 ): Promise<string | null> {
   const { data } = await admin
     .from("leave_approver_config")
     .select("approver_user_account_id")
+    .eq("tenant_id", tenantId)
     .order("effective_from", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(1)
@@ -68,18 +70,14 @@ export function getUserDeleteBlockMessage(
 export async function getUserDeleteDependencyReport(
   admin: AdminClient,
   authUid: string,
-  tenantId?: string,
+  tenantId: string,
 ): Promise<UserDeleteDependencyReport | null> {
-  let accountQuery = admin
+  const { data: account } = await admin
     .from("user_accounts")
     .select("auth_uid")
-    .eq("auth_uid", authUid);
-
-  if (tenantId) {
-    accountQuery = accountQuery.eq("tenant_id", tenantId);
-  }
-
-  const { data: account } = await accountQuery.maybeSingle();
+    .eq("auth_uid", authUid)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
 
   if (!account) {
     return null;
@@ -95,23 +93,28 @@ export async function getUserDeleteDependencyReport(
     admin
       .from("user_account_supervisor_sites")
       .select("site_code", { count: "exact", head: true })
-      .eq("auth_uid", authUid),
+      .eq("auth_uid", authUid)
+      .eq("tenant_id", tenantId),
     admin
       .from("leave_approver_config")
       .select("id", { count: "exact", head: true })
-      .eq("approver_user_account_id", authUid),
+      .eq("approver_user_account_id", authUid)
+      .eq("tenant_id", tenantId),
     admin
       .from("leave_requests")
       .select("id", { count: "exact", head: true })
       .eq("approver_user_account_id", authUid)
+      .eq("tenant_id", tenantId)
       .eq("status", "Pending"),
     admin
       .from("leave_requests")
       .select("id", { count: "exact", head: true })
-      .eq("approver_user_account_id", authUid),
+      .eq("approver_user_account_id", authUid)
+      .eq("tenant_id", tenantId),
     admin
       .from("leave_approver_config")
       .select("approver_user_account_id")
+      .eq("tenant_id", tenantId)
       .order("effective_from", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(1)
@@ -131,7 +134,7 @@ export async function getUserDeleteDependencyReport(
 export async function validateUserCanBeDeleted(
   admin: AdminClient,
   authUid: string,
-  tenantId?: string,
+  tenantId: string,
 ): Promise<
   | { ok: true; report: UserDeleteDependencyReport }
   | { ok: false; reason: UserDeleteBlockReason; report?: UserDeleteDependencyReport }
@@ -152,7 +155,7 @@ export async function validateUserCanBeDeleted(
   const historicalApprovalCount =
     report.leaveRequestApproverCount - report.pendingLeaveApprovalCount;
   if (historicalApprovalCount > 0) {
-    const currentApproverId = await getCurrentLeaveApproverId(admin);
+    const currentApproverId = await getCurrentLeaveApproverId(admin, tenantId);
     if (!currentApproverId || currentApproverId === authUid) {
       return {
         ok: false,
@@ -168,7 +171,7 @@ export async function validateUserCanBeDeleted(
 export async function deleteUserAccount(
   admin: AdminClient,
   authUid: string,
-  tenantId?: string,
+  tenantId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const validation = await validateUserCanBeDeleted(admin, authUid, tenantId);
   if (!validation.ok) {
@@ -178,16 +181,12 @@ export async function deleteUserAccount(
     };
   }
 
-  let fetchAccountQuery = admin
+  const { data: account } = await admin
     .from("user_accounts")
     .select("auth_uid, employee_id, client_id")
-    .eq("auth_uid", authUid);
-
-  if (tenantId) {
-    fetchAccountQuery = fetchAccountQuery.eq("tenant_id", tenantId);
-  }
-
-  const { data: account } = await fetchAccountQuery.maybeSingle();
+    .eq("auth_uid", authUid)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
 
   if (!account) {
     return { ok: false, error: "User account not found." };
@@ -198,7 +197,7 @@ export async function deleteUserAccount(
     validation.report.pendingLeaveApprovalCount;
 
   if (historicalApprovalCount > 0) {
-    const currentApproverId = await getCurrentLeaveApproverId(admin);
+    const currentApproverId = await getCurrentLeaveApproverId(admin, tenantId);
     if (!currentApproverId || currentApproverId === authUid) {
       return {
         ok: false,
@@ -213,6 +212,7 @@ export async function deleteUserAccount(
       .from("leave_requests")
       .update({ approver_user_account_id: currentApproverId })
       .eq("approver_user_account_id", authUid)
+      .eq("tenant_id", tenantId)
       .neq("status", "Pending");
 
     if (reassignError) {
@@ -223,29 +223,26 @@ export async function deleteUserAccount(
   await admin
     .from("user_account_supervisor_sites")
     .delete()
-    .eq("auth_uid", authUid);
+    .eq("auth_uid", authUid)
+    .eq("tenant_id", tenantId);
 
   if (validation.report.leaveApproverConfigCount > 0) {
     const { error: configDeleteError } = await admin
       .from("leave_approver_config")
       .delete()
-      .eq("approver_user_account_id", authUid);
+      .eq("approver_user_account_id", authUid)
+      .eq("tenant_id", tenantId);
 
     if (configDeleteError) {
       return { ok: false, error: configDeleteError.message };
     }
   }
 
-  let deleteAccountQuery = admin
+  const { error: accountDeleteError } = await admin
     .from("user_accounts")
     .delete()
-    .eq("auth_uid", authUid);
-
-  if (tenantId) {
-    deleteAccountQuery = deleteAccountQuery.eq("tenant_id", tenantId);
-  }
-
-  const { error: accountDeleteError } = await deleteAccountQuery;
+    .eq("auth_uid", authUid)
+    .eq("tenant_id", tenantId);
 
   if (accountDeleteError) {
     return { ok: false, error: accountDeleteError.message };

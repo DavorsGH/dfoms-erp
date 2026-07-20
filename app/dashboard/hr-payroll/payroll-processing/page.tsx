@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
+import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import { getCurrentUserRole } from "@/utils/dashboard-auth";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canManagePayrollPeriod } from "@/utils/rbac-access";
@@ -57,14 +58,17 @@ export default async function PayrollProcessingPage() {
     admin
       .from("ssnit_rate_config")
       .select("*")
+      .eq("tenant_id", DAVORS_TENANT_ID)
       .order("effective_date", { ascending: false }),
     admin
       .from("casual_tax_rate_config")
       .select("*")
+      .eq("tenant_id", DAVORS_TENANT_ID)
       .order("effective_date", { ascending: false }),
     admin
       .from("paye_tax_bands")
       .select("band_order, lower_bound, upper_bound, rate, effective_date")
+      .eq("tenant_id", DAVORS_TENANT_ID)
       .order("effective_date", { ascending: false })
       .order("band_order", { ascending: true }),
   ]);

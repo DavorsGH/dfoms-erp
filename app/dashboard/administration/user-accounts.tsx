@@ -19,6 +19,7 @@ import RoleAssignmentFields, {
   roleAssignmentFromAccount,
   type RoleAssignmentFormState,
 } from "./role-assignment-fields";
+import PasswordInput from "@/components/password-input";
 
 type UserAccountsProps = {
   initialAccounts: UserAccount[];
@@ -425,8 +426,7 @@ export default function UserAccounts({
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Temporary Password
               </label>
-              <input
-                type="password"
+              <PasswordInput
                 required
                 minLength={6}
                 value={createForm.password}
@@ -662,8 +662,7 @@ export default function UserAccounts({
                             <label className="mb-1 block text-sm font-medium text-slate-700">
                               New Password for {account.full_name}
                             </label>
-                            <input
-                              type="password"
+                            <PasswordInput
                               required
                               minLength={6}
                               value={resetPassword}

@@ -51,6 +51,7 @@ export async function POST(request: Request) {
   }
 
   const built = buildUserAccountPayload({
+    tenant_id: tenantId,
     role,
     employee_id,
     client_id,
@@ -70,7 +71,6 @@ export async function POST(request: Request) {
     const employeeError = await ensureEmployeeAvailable(
       admin,
       built.payload.employee_id,
-      undefined,
       tenantId,
     );
     if (employeeError) {
@@ -82,7 +82,6 @@ export async function POST(request: Request) {
     const clientError = await ensureClientAvailable(
       admin,
       built.payload.client_id,
-      undefined,
       tenantId,
     );
     if (clientError) {
@@ -111,7 +110,7 @@ export async function POST(request: Request) {
     role: built.payload.role,
     email,
     is_active: true,
-    tenant_id: tenantId,
+    tenant_id: built.payload.tenant_id,
   });
 
   if (insertError) {
@@ -124,6 +123,7 @@ export async function POST(request: Request) {
     authData.user.id,
     built.payload.role,
     built.supervisor_site_codes,
+    tenantId,
   );
 
   if (siteSyncError) {

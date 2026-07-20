@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import PasswordInput from "@/components/password-input";
 
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
@@ -70,8 +71,7 @@ export default function ChangePasswordForm() {
           <label className="mb-1 block text-sm font-medium text-slate-700">
             New Password
           </label>
-          <input
-            type="password"
+          <PasswordInput
             required
             minLength={6}
             value={password}
@@ -83,8 +83,7 @@ export default function ChangePasswordForm() {
           <label className="mb-1 block text-sm font-medium text-slate-700">
             Confirm New Password
           </label>
-          <input
-            type="password"
+          <PasswordInput
             required
             minLength={6}
             value={confirmPassword}

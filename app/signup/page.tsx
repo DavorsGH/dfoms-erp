@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import PasswordInput from "@/components/password-input";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -149,9 +150,8 @@ export default function SignupPage() {
               >
                 Password
               </label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
                 required
                 minLength={6}
                 value={password}
@@ -167,9 +167,8 @@ export default function SignupPage() {
               >
                 Confirm password
               </label>
-              <input
+              <PasswordInput
                 id="confirm_password"
-                type="password"
                 required
                 minLength={6}
                 value={confirmPassword}

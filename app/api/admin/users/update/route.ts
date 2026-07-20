@@ -53,6 +53,7 @@ export async function POST(request: Request) {
   }
 
   const built = buildUserAccountPayload({
+    tenant_id: tenantId,
     role,
     employee_id,
     client_id,
@@ -87,8 +88,8 @@ export async function POST(request: Request) {
   const emailError = await ensureEmailAvailable(
     admin,
     normalizedEmail,
-    auth_uid,
     tenantId,
+    auth_uid,
   );
   if (emailError) {
     return NextResponse.json({ error: emailError }, { status: 409 });
@@ -98,8 +99,8 @@ export async function POST(request: Request) {
     const employeeError = await ensureEmployeeAvailable(
       admin,
       built.payload.employee_id,
-      auth_uid,
       tenantId,
+      auth_uid,
     );
     if (employeeError) {
       return NextResponse.json({ error: employeeError }, { status: 409 });
@@ -110,8 +111,8 @@ export async function POST(request: Request) {
     const clientError = await ensureClientAvailable(
       admin,
       built.payload.client_id,
-      auth_uid,
       tenantId,
+      auth_uid,
     );
     if (clientError) {
       return NextResponse.json({ error: clientError }, { status: 409 });
@@ -155,6 +156,7 @@ export async function POST(request: Request) {
     auth_uid,
     built.payload.role,
     built.supervisor_site_codes,
+    tenantId,
   );
 
   if (siteSyncError) {

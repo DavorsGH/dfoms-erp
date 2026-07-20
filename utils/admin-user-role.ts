@@ -11,6 +11,7 @@ import type { AppRole } from "@/app/dashboard/user-account-types";
 type AdminClient = SupabaseClient;
 
 export type PersistUserRoleInput = {
+  tenant_id: string;
   role: string;
   employee_id?: string | null;
   client_id?: string | null;
@@ -22,11 +23,13 @@ export async function syncSupervisorSites(
   authUid: string,
   role: AppRole,
   siteCodes: string[],
+  tenantId: string,
 ) {
   await admin
     .from("user_account_supervisor_sites")
     .delete()
-    .eq("auth_uid", authUid);
+    .eq("auth_uid", authUid)
+    .eq("tenant_id", tenantId);
 
   if (!roleRequiresSupervisorSites(role) || siteCodes.length === 0) {
     return null;
@@ -36,6 +39,7 @@ export async function syncSupervisorSites(
     siteCodes.map((site_code) => ({
       auth_uid: authUid,
       site_code,
+      tenant_id: tenantId,
     })),
   );
 
@@ -55,6 +59,7 @@ export function buildUserAccountPayload(input: PersistUserRoleInput) {
   return {
     ok: true as const,
     payload: {
+      tenant_id: input.tenant_id,
       role,
       employee_id: roleShowsEmployeePicker(role) ? employeeId : null,
       client_id: roleRequiresClient(role) ? clientId : null,
@@ -68,30 +73,25 @@ export function buildUserAccountPayload(input: PersistUserRoleInput) {
 export async function ensureEmployeeAvailable(
   admin: AdminClient,
   employeeId: string,
+  tenantId: string,
   excludeAuthUid?: string,
-  tenantId?: string,
 ) {
-  if (tenantId) {
-    const { data: employee } = await admin
-      .from("employees")
-      .select("employee_id")
-      .eq("employee_id", employeeId)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
+  const { data: employee } = await admin
+    .from("employees")
+    .select("employee_id")
+    .eq("employee_id", employeeId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
 
-    if (!employee) {
-      return "Employee not found in your workspace";
-    }
+  if (!employee) {
+    return "Employee not found in your workspace";
   }
 
   let query = admin
     .from("user_accounts")
     .select("auth_uid")
-    .eq("employee_id", employeeId);
-
-  if (tenantId) {
-    query = query.eq("tenant_id", tenantId);
-  }
+    .eq("employee_id", employeeId)
+    .eq("tenant_id", tenantId);
 
   if (excludeAuthUid) {
     query = query.neq("auth_uid", excludeAuthUid);
@@ -109,30 +109,25 @@ export async function ensureEmployeeAvailable(
 export async function ensureClientAvailable(
   admin: AdminClient,
   clientId: string,
+  tenantId: string,
   excludeAuthUid?: string,
-  tenantId?: string,
 ) {
-  if (tenantId) {
-    const { data: client } = await admin
-      .from("customers")
-      .select("client_id")
-      .eq("client_id", clientId)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
+  const { data: client } = await admin
+    .from("customers")
+    .select("client_id")
+    .eq("client_id", clientId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
 
-    if (!client) {
-      return "Client not found in your workspace";
-    }
+  if (!client) {
+    return "Client not found in your workspace";
   }
 
   let query = admin
     .from("user_accounts")
     .select("auth_uid")
-    .eq("client_id", clientId);
-
-  if (tenantId) {
-    query = query.eq("tenant_id", tenantId);
-  }
+    .eq("client_id", clientId)
+    .eq("tenant_id", tenantId);
 
   if (excludeAuthUid) {
     query = query.neq("auth_uid", excludeAuthUid);
@@ -150,8 +145,8 @@ export async function ensureClientAvailable(
 export async function ensureEmailAvailable(
   admin: AdminClient,
   email: string,
+  tenantId: string,
   excludeAuthUid?: string,
-  tenantId?: string,
 ) {
   const normalizedEmail = email.trim().toLowerCase();
   if (!normalizedEmail) {
@@ -161,11 +156,8 @@ export async function ensureEmailAvailable(
   let query = admin
     .from("user_accounts")
     .select("auth_uid")
-    .ilike("email", normalizedEmail);
-
-  if (tenantId) {
-    query = query.eq("tenant_id", tenantId);
-  }
+    .ilike("email", normalizedEmail)
+    .eq("tenant_id", tenantId);
 
   if (excludeAuthUid) {
     query = query.neq("auth_uid", excludeAuthUid);
