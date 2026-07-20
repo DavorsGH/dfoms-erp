@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const navItems = [
   { label: "Income Register", href: "/dashboard/finance" },
+  { label: "Client Invoices", href: "/dashboard/finance/client-invoices" },
   { label: "Expense Register", href: "/dashboard/finance/expenses" },
   { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
   { label: "Fixed Assets", href: "/dashboard/finance/fixed-assets" },
@@ -31,7 +32,10 @@ export default function FinanceNav() {
             item.href === "/dashboard/finance/balance-sheet"
               ? pathname === item.href ||
                 pathname.startsWith("/dashboard/finance/balance-sheet/")
-              : pathname === item.href;
+              : item.href === "/dashboard/finance/client-invoices"
+                ? pathname === item.href ||
+                  pathname.startsWith("/dashboard/finance/client-invoices/")
+                : pathname === item.href;
 
           return (
             <Link

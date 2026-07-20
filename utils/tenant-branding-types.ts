@@ -8,10 +8,16 @@ export type TenantBranding = {
   workspaceName: string;
   workspaceLogoUrl: string;
   companyLegalName: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
 };
 
 export const DEFAULT_TENANT_BRANDING: TenantBranding = {
   workspaceName: DEFAULT_WORKSPACE_NAME,
   workspaceLogoUrl: DEFAULT_WORKSPACE_LOGO,
   companyLegalName: DEFAULT_COMPANY_LEGAL_NAME,
+  address: null,
+  phone: null,
+  email: null,
 };

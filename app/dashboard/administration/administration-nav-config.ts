@@ -29,6 +29,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration/payment-methods",
       },
       {
+        label: "Payment Accounts",
+        href: "/dashboard/administration/payment-accounts",
+      },
+      {
         label: "Asset Categories",
         href: "/dashboard/administration/asset-categories",
       },

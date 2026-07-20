@@ -26,6 +26,15 @@ export type BillingSettingsUpdateBody = {
   business_tax_id?: string;
 };
 
+export type BillingSettingsHeaderFields = {
+  bill_to_name: string | null;
+  country_region: string | null;
+  address_line1: string | null;
+};
+
+export const BILLING_SETTINGS_HEADER_SELECT =
+  "bill_to_name, country_region, address_line1";
+
 export const BILLING_SETTINGS_SELECT =
   "tenant_id, credit_balance, email_recipient, additional_emails, bill_to_name, country_region, address_line1, business_tax_id";
 

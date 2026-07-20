@@ -1,18 +1,20 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
-import WorkspaceSettings from "../workspace-settings";
+import {
+  PAYMENT_ACCOUNT_SELECT,
+  type PaymentAccountRow,
+} from "@/utils/payment-accounts-types";
+import PaymentAccountsSettings from "../payment-accounts-settings";
 
-export default async function WorkspaceSettingsPage() {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+export default async function PaymentAccountsPage() {
   const tenantId = await getCurrentUserTenantId();
 
   if (!tenantId) {
     return (
       <>
         <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
-          Workspace Settings
+          Payment Accounts
         </h2>
         <p className="text-sm text-red-700">
           Unable to resolve your workspace. Contact support if this persists.
@@ -21,24 +23,22 @@ export default async function WorkspaceSettingsPage() {
     );
   }
 
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
   const { data, error } = await supabase
-    .from("tenants")
-    .select("name, logo_url, address, phone, email")
-    .eq("id", tenantId)
-    .maybeSingle();
+    .from("payment_accounts")
+    .select(PAYMENT_ACCOUNT_SELECT)
+    .eq("tenant_id", tenantId)
+    .order("account_name", { ascending: true });
 
   return (
     <>
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
-        Workspace Settings
+        Payment Accounts
       </h2>
-      <WorkspaceSettings
-        tenantId={tenantId}
-        initialName={data?.name ?? ""}
-        initialLogoUrl={data?.logo_url ?? null}
-        initialAddress={data?.address ?? null}
-        initialPhone={data?.phone ?? null}
-        initialEmail={data?.email ?? null}
+      <PaymentAccountsSettings
+        initialAccounts={(data as PaymentAccountRow[] | null) ?? []}
         fetchError={error?.message ?? null}
       />
     </>

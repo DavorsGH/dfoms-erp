@@ -33,7 +33,7 @@ export const getCurrentTenantBranding = cache(
 
     const { data, error } = await supabase
       .from("tenants")
-      .select("name, logo_url")
+      .select("name, logo_url, address, phone, email")
       .eq("id", tenantId)
       .maybeSingle();
 
@@ -45,6 +45,9 @@ export const getCurrentTenantBranding = cache(
       workspaceName: data.name?.trim() || DEFAULT_WORKSPACE_NAME,
       workspaceLogoUrl: data.logo_url?.trim() || DEFAULT_WORKSPACE_LOGO,
       companyLegalName: data.name?.trim() || DEFAULT_COMPANY_LEGAL_NAME,
+      address: data.address?.trim() || null,
+      phone: data.phone?.trim() || null,
+      email: data.email?.trim() || null,
     };
   },
 );

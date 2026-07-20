@@ -1,0 +1,106 @@
+import { cookies } from "next/headers";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { createClient } from "@/utils/supabase/server";
+import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
+import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadClientInvoiceDetail } from "@/utils/client-invoices-api";
+import {
+  clientInvoiceToFormState,
+  type ClientInvoiceLineItemRow,
+  type ClientInvoiceSiteOption,
+} from "@/utils/client-invoices-types";
+import { PAYMENT_ACCOUNT_SELECT } from "@/utils/payment-accounts-types";
+import FinanceNav from "../../../finance-nav";
+import ClientInvoiceForm from "../../client-invoice-form";
+
+type EditClientInvoicePageProps = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function EditClientInvoicePage({
+  params,
+}: EditClientInvoicePageProps) {
+  const { id } = await params;
+  const tenantId = await getCurrentUserTenantId();
+
+  if (!tenantId) {
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
+        <FinanceNav />
+        <p className="text-sm text-red-700">
+          Unable to resolve your workspace. Contact support if this persists.
+        </p>
+      </div>
+    );
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const [
+    detail,
+    { data: customers, error: customersError },
+    { data: sites, error: sitesError },
+    { data: paymentAccounts, error: paymentAccountsError },
+  ] = await Promise.all([
+    loadClientInvoiceDetail(supabase, tenantId, id),
+    supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
+    supabase
+      .from("sites")
+      .select("site_code, site_name, client_id")
+      .order("site_name", { ascending: true }),
+    supabase
+      .from("payment_accounts")
+      .select(PAYMENT_ACCOUNT_SELECT)
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .order("account_name", { ascending: true }),
+  ]);
+
+  if (!detail.invoice) {
+    notFound();
+  }
+
+  const fetchError =
+    detail.error ??
+    customersError?.message ??
+    sitesError?.message ??
+    paymentAccountsError?.message ??
+    null;
+
+  const initialForm = clientInvoiceToFormState(
+    detail.invoice,
+    detail.line_items as ClientInvoiceLineItemRow[],
+    detail.payment_account_ids,
+  );
+
+  return (
+    <div>
+      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
+      <FinanceNav />
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h2 className="text-xl font-semibold text-[#0f2744]">
+          Edit Client Invoice {detail.invoice.invoice_number}
+        </h2>
+        <Link
+          href="/dashboard/finance/client-invoices"
+          className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50"
+        >
+          Back to list
+        </Link>
+      </div>
+      <ClientInvoiceForm
+        mode="edit"
+        invoiceId={id}
+        existingInvoiceNumber={detail.invoice.invoice_number}
+        initialCustomers={(customers as ClientEntry[] | null) ?? []}
+        initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
+        initialPaymentAccounts={paymentAccounts ?? []}
+        initialForm={initialForm}
+        fetchError={fetchError}
+      />
+    </div>
+  );
+}
