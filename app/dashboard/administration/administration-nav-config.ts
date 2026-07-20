@@ -89,6 +89,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Workspace Settings",
         href: "/dashboard/administration/workspace",
       },
+      {
+        label: "Billing Settings",
+        href: "/dashboard/administration/billing",
+      },
     ],
   },
   {
