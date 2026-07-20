@@ -2,18 +2,24 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
-  const { supabase, response } = createClient(request);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const pathname = request.nextUrl.pathname;
 
   // External cron keepalive — must stay reachable without a session.
   if (pathname === "/api/heartbeat") {
-    return response;
+    return NextResponse.next();
   }
+
+  // Maintenance mode — blocks all access except heartbeat and the maintenance page itself.
+  if (process.env.MAINTENANCE_MODE === "true" && pathname !== "/maintenance") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/maintenance";
+    return NextResponse.redirect(url);
+  }
+
+  const { supabase, response } = createClient(request);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const publicPaths = new Set([
     "/",
