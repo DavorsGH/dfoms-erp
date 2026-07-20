@@ -22,7 +22,7 @@ export type InspectionSummaryEntry = {
 };
 
 export const INSPECTION_SUMMARY_SELECT =
-  "*, client:customers!client_id(client_id, client_name), site:sites!site_id(site_code, site_name)";
+  "*, client:customers!inspection_summary_client_id_fkey(client_id, client_name), site:sites!inspection_summary_site_id_fkey(site_code, site_name)";
 
 export type WorkOrderLookup = {
   work_order_no: string;

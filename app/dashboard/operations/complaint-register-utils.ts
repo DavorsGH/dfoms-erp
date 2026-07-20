@@ -24,7 +24,7 @@ export type ComplaintRegisterEntry = {
 };
 
 export const COMPLAINT_REGISTER_SELECT =
-  "*, client:customers!client_id(client_id, client_name), site:sites!site_id(site_code, site_name)";
+  "*, client:customers!complaint_register_client_id_fkey(client_id, client_name), site:sites!complaint_register_site_id_fkey(site_code, site_name)";
 
 export function normalizeComplaintRegisterEntry(
   raw: ComplaintRegisterEntry,

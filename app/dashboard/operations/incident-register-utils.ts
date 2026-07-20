@@ -29,7 +29,7 @@ export type IncidentRegisterEntry = {
 };
 
 export const INCIDENT_REGISTER_SELECT =
-  "*, client:customers!client_id(client_id, client_name), site:sites!site_id(site_code, site_name), reporter:employees!reported_by(employee_id, full_name)";
+  "*, client:customers!incident_register_client_id_fkey(client_id, client_name), site:sites!incident_register_site_id_fkey(site_code, site_name), reporter:employees!reported_by(employee_id, full_name)";
 
 export function normalizeIncidentRegisterEntry(
   raw: IncidentRegisterEntry,

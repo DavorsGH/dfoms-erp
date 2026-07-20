@@ -25,7 +25,7 @@ type CrmSaleRow = {
 };
 
 export const CRM_SALE_SELECT =
-  "id, sale_date, amount, payment_status, payment_method, customer_id, product_id, customer:customers!customer_id(client_id, client_name), product:crm_products!product_id(name)";
+  "id, sale_date, amount, payment_status, payment_method, customer_id, product_id, customer:customers!crm_sales_customer_id_fkey(client_id, client_name), product:crm_products!product_id(name)";
 
 function firstRelation<T>(value: T | T[] | null | undefined): T | null {
   if (!value) {

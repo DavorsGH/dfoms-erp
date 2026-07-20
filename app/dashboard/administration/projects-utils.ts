@@ -21,7 +21,7 @@ export type ProjectEntry = {
 };
 
 export const PROJECT_SELECT =
-  "id, project_code, project_name, required_staff, sites:sites!project_id(site_code, site_name, client_id, required_staff, project_id)";
+  "id, project_code, project_name, required_staff, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
 
 export const CONTRACT_PROJECT_SELECT = "id, project_code, project_name";
 

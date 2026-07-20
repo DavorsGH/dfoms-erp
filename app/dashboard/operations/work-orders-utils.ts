@@ -27,7 +27,7 @@ export type WorkOrderEntry = {
 };
 
 export const WORK_ORDER_SELECT =
-  "*, client:customers!client_id(client_id, client_name), site:sites!site_id(site_code, site_name)";
+  "*, client:customers!work_orders_client_id_fkey(client_id, client_name), site:sites!work_orders_site_id_fkey(site_code, site_name)";
 
 export function normalizeSiteRelation(
   site:

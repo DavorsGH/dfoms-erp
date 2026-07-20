@@ -25,7 +25,7 @@ import {
 } from "./inventory-reports-utils";
 
 export const PRODUCT_SALES_REPORT_SELECT =
-  "id, date, invoice_no, client_id, customer_name, amount, sale_quantity, unit_price, product_id, cogs_expense_id, sale_status, client:customers!client_id(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure), cogs:expense_register!cogs_expense_id(amount)";
+  "id, date, invoice_no, client_id, customer_name, amount, sale_quantity, unit_price, product_id, cogs_expense_id, sale_status, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure), cogs:expense_register!cogs_expense_id(amount)";
 
 export async function fetchLowStockRawMaterialCount(supabase: SupabaseClient) {
   const { data, error } = await supabase
