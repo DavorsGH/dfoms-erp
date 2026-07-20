@@ -727,9 +727,14 @@ export default function EmployeesDirectory({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
 
+    if (!form.employment_type) {
+      setError("Employment Type is required.");
+      return;
+    }
+
+    setLoading(true);
     const payload = buildPayload(form);
 
     const { error: saveError } = editingEmployeeId
