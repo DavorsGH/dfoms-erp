@@ -55,6 +55,7 @@ function buildHeaderPayload(
     wht_amount: totals.wht_amount,
     total_amount_due: totals.total_amount_due,
     status: normalizeStatus(body.status),
+    amount_received: roundMoney(toNumber(body.amount_received ?? 0)),
     notes: nullableText(body.notes ?? null),
     updated_at: new Date().toISOString(),
   };
@@ -161,6 +162,66 @@ export async function getNextInvoiceSequence(
   };
 }
 
+async function syncIncomeRegisterFromClientInvoice(
+  supabase: DbClient,
+  tenantId: string,
+  invoice: ClientInvoiceHeaderRow,
+) {
+  // Draft invoices should have no Income Register entry at all.
+  if (invoice.status === "draft") {
+    const { error } = await supabase
+      .from("income_register")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("client_invoice_id", invoice.id);
+    return { error: error?.message ?? null };
+  }
+
+  const amount = toNumber(invoice.total_amount_due);
+  const amountReceived =
+    invoice.status === "paid"
+      ? amount
+      : invoice.status === "partial"
+        ? toNumber(invoice.amount_received)
+        : 0;
+  const outstandingBalance = amount - amountReceived;
+
+  let paymentStatus: string;
+  if (invoice.status === "paid") {
+    paymentStatus = "Paid";
+  } else if (invoice.status === "partial") {
+    paymentStatus = "Partial";
+  } else {
+    // status === "sent"
+    const today = new Date().toISOString().slice(0, 10);
+    const dueDate = invoice.due_date ?? invoice.invoice_date;
+    paymentStatus = dueDate && dueDate < today ? "Overdue" : "Pending";
+  }
+
+  const payload = {
+    tenant_id: tenantId,
+    client_invoice_id: invoice.id,
+    date: invoice.invoice_date,
+    invoice_no: invoice.invoice_number,
+    client_id: invoice.client_id,
+    customer_name: invoice.bill_to_name,
+    entry_type: "service" as const,
+    service_category: "Client Invoice",
+    description: invoice.notes ?? null,
+    amount,
+    amount_received: amountReceived,
+    outstanding_balance: outstandingBalance,
+    payment_status: paymentStatus,
+    due_date: invoice.due_date ?? invoice.invoice_date,
+  };
+
+  const { error } = await supabase
+    .from("income_register")
+    .upsert(payload, { onConflict: "client_invoice_id" });
+
+  return { error: error?.message ?? null };
+}
+
 export async function createClientInvoice(
   supabase: DbClient,
   tenantId: string,
@@ -211,6 +272,15 @@ export async function createClientInvoice(
     return { invoice: null, error: childResult.error };
   }
 
+  const syncResult = await syncIncomeRegisterFromClientInvoice(
+    supabase,
+    tenantId,
+    invoice as ClientInvoiceHeaderRow,
+  );
+  if (syncResult.error) {
+    return { invoice: invoice as ClientInvoiceHeaderRow, error: null, syncWarning: syncResult.error };
+  }
+
   return { invoice: invoice as ClientInvoiceHeaderRow, error: null };
 }
 
@@ -249,6 +319,15 @@ export async function updateClientInvoice(
 
   if (childResult.error) {
     return { invoice: null, error: childResult.error };
+  }
+
+  const syncResult = await syncIncomeRegisterFromClientInvoice(
+    supabase,
+    tenantId,
+    invoice as ClientInvoiceHeaderRow,
+  );
+  if (syncResult.error) {
+    return { invoice: invoice as ClientInvoiceHeaderRow, error: null, syncWarning: syncResult.error };
   }
 
   return { invoice: invoice as ClientInvoiceHeaderRow, error: null };

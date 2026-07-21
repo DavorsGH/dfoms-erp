@@ -1,13 +1,13 @@
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
 
-export const CLIENT_INVOICE_STATUSES = ["draft", "sent", "paid"] as const;
+export const CLIENT_INVOICE_STATUSES = ["draft", "sent", "partial", "paid"] as const;
 export type ClientInvoiceStatus = (typeof CLIENT_INVOICE_STATUSES)[number];
 
 export const CLIENT_INVOICE_LIST_SELECT =
-  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name)" as const;
+  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, amount_received, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name)" as const;
 
 export const CLIENT_INVOICE_HEADER_SELECT =
-  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, status, notes, created_at, updated_at" as const;
+  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, created_at, updated_at" as const;
 
 export const CLIENT_INVOICE_LINE_ITEM_SELECT =
   "id, invoice_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, sort_order" as const;
@@ -30,6 +30,7 @@ export type ClientInvoiceListRow = {
   tax_due: number;
   wht_amount: number;
   total_amount_due: number;
+  amount_received: number;
   status: ClientInvoiceStatus;
   created_at: string;
   client?: ClientInvoiceCustomer | ClientInvoiceCustomer[] | null;
@@ -69,6 +70,7 @@ export type ClientInvoiceHeaderRow = {
   wht_rate: number;
   wht_amount: number;
   total_amount_due: number;
+  amount_received: number;
   status: ClientInvoiceStatus;
   notes: string | null;
   created_at: string;
@@ -98,6 +100,7 @@ export type ClientInvoiceWriteBody = {
   vat_nhil_getfund_rate?: number;
   wht_rate?: number;
   status?: ClientInvoiceStatus;
+  amount_received?: number;
   notes?: string | null;
   line_items: ClientInvoiceLineItemInput[];
   payment_account_ids: string[];
@@ -168,6 +171,8 @@ export function formatInvoiceStatus(status: string) {
   switch (status) {
     case "sent":
       return "Sent";
+    case "partial":
+      return "Partial";
     case "paid":
       return "Paid";
     default:
@@ -231,6 +236,7 @@ export function normalizeClientInvoiceListRow(row: ClientInvoiceListRow): Client
     tax_due: toNumber(row.tax_due),
     wht_amount: toNumber(row.wht_amount),
     total_amount_due: toNumber(row.total_amount_due),
+    amount_received: toNumber(row.amount_received),
     client: Array.isArray(row.client) ? row.client[0] ?? null : row.client ?? null,
   };
 }
@@ -266,7 +272,7 @@ export function validateClientInvoiceBody(body: ClientInvoiceWriteBody): string 
 }
 
 export function normalizeStatus(value: unknown): ClientInvoiceStatus {
-  if (value === "sent" || value === "paid") {
+  if (value === "sent" || value === "partial" || value === "paid") {
     return value;
   }
 
@@ -290,6 +296,7 @@ export function clientInvoiceToFormState(
     vat_nhil_getfund_rate: toNumber(invoice.vat_nhil_getfund_rate) || 20,
     wht_rate: toNumber(invoice.wht_rate) || 7.5,
     status: normalizeStatus(invoice.status),
+    amount_received: toNumber(invoice.amount_received),
     notes: invoice.notes ?? "",
     payment_account_ids: paymentAccountIds,
     line_items: [...lineItems]

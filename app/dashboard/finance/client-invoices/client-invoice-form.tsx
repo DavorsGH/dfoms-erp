@@ -209,6 +209,7 @@ export default function ClientInvoiceForm({
       vat_nhil_getfund_rate: form.vat_nhil_getfund_rate,
       wht_rate: form.wht_rate,
       status: form.status,
+      amount_received: form.amount_received ?? 0,
       notes: form.notes,
       line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => line),
       payment_account_ids: form.payment_account_ids,
@@ -357,9 +358,31 @@ export default function ClientInvoiceForm({
             >
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
+              <option value="partial">Partial</option>
               <option value="paid">Paid</option>
             </select>
           </div>
+          {form.status === "partial" && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Amount Received *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                value={form.amount_received ?? 0}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    amount_received: Number(event.target.value),
+                  }))
+                }
+                className={inputClassName}
+              />
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Invoice Date *

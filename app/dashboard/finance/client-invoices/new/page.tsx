@@ -91,6 +91,7 @@ export default async function NewClientInvoicePage() {
           vat_nhil_getfund_rate: 20,
           wht_rate: 7.5,
           status: "draft",
+          amount_received: 0,
           notes: "",
           payment_account_ids: [],
           line_items: [],
