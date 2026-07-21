@@ -7,7 +7,141 @@ export const CLIENT_INVOICE_LIST_SELECT =
   "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, amount_received, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name)" as const;
 
 export const CLIENT_INVOICE_HEADER_SELECT =
-  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, created_at, updated_at" as const;
+  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, authorized_by_name, authorized_by_title, created_at, updated_at" as const;
+
+export const AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT =
+  "auth_uid, employee_id, employees(full_name, position)" as const;
+
+export const AUTHORIZED_BY_OTHER = "__other__";
+
+export type ClientInvoiceAuthorizedSignerOption = {
+  employee_id: string;
+  full_name: string;
+  position: string | null;
+};
+
+type AuthorizedSignerUserAccountRow = {
+  auth_uid: string;
+  employee_id: string | null;
+  employees:
+    | { full_name: string; position: string | null }
+    | { full_name: string; position: string | null }[]
+    | null;
+};
+
+function firstEmployeeRelation(
+  value: AuthorizedSignerUserAccountRow["employees"],
+): { full_name: string; position: string | null } | null {
+  if (!value) {
+    return null;
+  }
+
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+export function mapAuthorizedSignerOptions(
+  rows: AuthorizedSignerUserAccountRow[],
+): ClientInvoiceAuthorizedSignerOption[] {
+  const byEmployeeId = new Map<string, ClientInvoiceAuthorizedSignerOption>();
+
+  for (const row of rows) {
+    if (!row.employee_id) {
+      continue;
+    }
+
+    const employee = firstEmployeeRelation(row.employees);
+    if (!employee?.full_name?.trim()) {
+      continue;
+    }
+
+    byEmployeeId.set(row.employee_id, {
+      employee_id: row.employee_id,
+      full_name: employee.full_name.trim(),
+      position: employee.position?.trim() ? employee.position.trim() : null,
+    });
+  }
+
+  return [...byEmployeeId.values()].sort((left, right) =>
+    left.full_name.localeCompare(right.full_name),
+  );
+}
+
+export function formatAuthorizedSignerLabel(
+  signer: ClientInvoiceAuthorizedSignerOption,
+) {
+  return signer.position
+    ? `${signer.full_name} (${signer.position})`
+    : signer.full_name;
+}
+
+export function resolveAuthorizedByFields(
+  selection: string,
+  otherName: string,
+  otherTitle: string,
+  signers: ClientInvoiceAuthorizedSignerOption[],
+): { authorized_by_name: string | null; authorized_by_title: string | null } {
+  if (!selection) {
+    return { authorized_by_name: null, authorized_by_title: null };
+  }
+
+  if (selection === AUTHORIZED_BY_OTHER) {
+    const name = otherName.trim();
+    const title = otherTitle.trim();
+    if (!name) {
+      return { authorized_by_name: null, authorized_by_title: null };
+    }
+
+    return {
+      authorized_by_name: name,
+      authorized_by_title: title || null,
+    };
+  }
+
+  const signer = signers.find((entry) => entry.employee_id === selection);
+  if (!signer) {
+    return { authorized_by_name: null, authorized_by_title: null };
+  }
+
+  return {
+    authorized_by_name: signer.full_name,
+    authorized_by_title: signer.position,
+  };
+}
+
+export function resolveAuthorizedByFormState(
+  invoice: Pick<ClientInvoiceHeaderRow, "authorized_by_name" | "authorized_by_title">,
+  signers: ClientInvoiceAuthorizedSignerOption[],
+) {
+  const name = invoice.authorized_by_name?.trim();
+  const title = invoice.authorized_by_title?.trim() ?? "";
+
+  if (!name) {
+    return {
+      authorized_by_selection: "",
+      authorized_by_other_name: "",
+      authorized_by_other_title: "",
+    };
+  }
+
+  const match = signers.find(
+    (signer) =>
+      signer.full_name === name && (signer.position?.trim() ?? "") === title,
+  );
+
+  if (match) {
+    return {
+      authorized_by_selection: match.employee_id,
+      authorized_by_other_name: "",
+      authorized_by_other_title: "",
+    };
+  }
+
+  return {
+    authorized_by_selection: AUTHORIZED_BY_OTHER,
+    authorized_by_other_name: name,
+    authorized_by_other_title: title,
+  };
+}
 
 export const CLIENT_INVOICE_LINE_ITEM_SELECT =
   "id, invoice_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, sort_order" as const;
@@ -73,6 +207,8 @@ export type ClientInvoiceHeaderRow = {
   amount_received: number;
   status: ClientInvoiceStatus;
   notes: string | null;
+  authorized_by_name: string | null;
+  authorized_by_title: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -102,8 +238,16 @@ export type ClientInvoiceWriteBody = {
   status?: ClientInvoiceStatus;
   amount_received?: number;
   notes?: string | null;
+  authorized_by_name?: string | null;
+  authorized_by_title?: string | null;
   line_items: ClientInvoiceLineItemInput[];
   payment_account_ids: string[];
+};
+
+export type ClientInvoiceFormAuthorizedByState = {
+  authorized_by_selection: string;
+  authorized_by_other_name: string;
+  authorized_by_other_title: string;
 };
 
 export type ClientInvoiceFormLineItem = ClientInvoiceLineItemInput & {
@@ -283,8 +427,10 @@ export function clientInvoiceToFormState(
   invoice: ClientInvoiceHeaderRow,
   lineItems: ClientInvoiceLineItemRow[],
   paymentAccountIds: string[],
+  signers: ClientInvoiceAuthorizedSignerOption[] = [],
 ) {
   return {
+    ...resolveAuthorizedByFormState(invoice, signers),
     client_id: invoice.client_id,
     invoice_date: invoice.invoice_date,
     due_date: invoice.due_date ?? defaultDueDate(new Date(invoice.invoice_date)),

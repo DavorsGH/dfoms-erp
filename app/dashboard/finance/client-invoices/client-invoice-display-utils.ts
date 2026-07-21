@@ -226,6 +226,12 @@ export function formatBillingPeriodLabel(
 export const CLIENT_INVOICE_PAYMENT_FOOTER =
   "Payment is due within 30 days. Please include the invoice number on your payment.";
 
+export function hasAuthorizedBySignature(
+  invoice: Pick<ClientInvoiceHeaderRow, "authorized_by_name">,
+) {
+  return Boolean(invoice.authorized_by_name?.trim());
+}
+
 export const CLIENT_INVOICE_LABOUR_TAX_NOTE = "Calculated on Service cost only";
 
 /** Shared invoice palette — keep view + PDF in sync. */

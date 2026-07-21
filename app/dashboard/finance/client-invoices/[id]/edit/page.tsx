@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
-import { loadClientInvoiceDetail } from "@/utils/client-invoices-api";
+import { loadClientInvoiceDetail, loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import {
   clientInvoiceToFormState,
   type ClientInvoiceLineItemRow,
@@ -44,6 +44,7 @@ export default async function EditClientInvoicePage({
     { data: customers, error: customersError },
     { data: sites, error: sitesError },
     { data: paymentAccounts, error: paymentAccountsError },
+    authorizedSignersResult,
   ] = await Promise.all([
     loadClientInvoiceDetail(supabase, tenantId, id),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
@@ -57,6 +58,7 @@ export default async function EditClientInvoicePage({
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .order("account_name", { ascending: true }),
+    loadAuthorizedSignerOptions(supabase, tenantId),
   ]);
 
   if (!detail.invoice) {
@@ -68,12 +70,14 @@ export default async function EditClientInvoicePage({
     customersError?.message ??
     sitesError?.message ??
     paymentAccountsError?.message ??
+    authorizedSignersResult.error ??
     null;
 
   const initialForm = clientInvoiceToFormState(
     detail.invoice,
     detail.line_items as ClientInvoiceLineItemRow[],
     detail.payment_account_ids,
+    authorizedSignersResult.signers,
   );
 
   return (
@@ -98,6 +102,7 @@ export default async function EditClientInvoicePage({
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
+        initialAuthorizedSigners={authorizedSignersResult.signers}
         initialForm={initialForm}
         fetchError={fetchError}
       />

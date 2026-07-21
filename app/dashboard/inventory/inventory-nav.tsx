@@ -11,6 +11,8 @@ const navItems = [
     label: "Internal Consumption",
     href: "/dashboard/inventory/internal-consumption",
   },
+  { label: "Suppliers", href: "/dashboard/inventory/suppliers" },
+  { label: "Purchases", href: "/dashboard/inventory/product-purchases" },
 ] as const;
 
 export default function InventoryNav() {

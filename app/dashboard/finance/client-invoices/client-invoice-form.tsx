@@ -5,13 +5,18 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import {
+  AUTHORIZED_BY_OTHER,
   computeInvoiceTotals,
   computeLineTotalCost,
   defaultDueDate,
   emptyLineItem,
+  formatAuthorizedSignerLabel,
   formatInvoiceMoney,
   groupLineItemsByCategory,
+  resolveAuthorizedByFields,
   suggestInvoiceNumber,
+  type ClientInvoiceAuthorizedSignerOption,
+  type ClientInvoiceFormAuthorizedByState,
   type ClientInvoiceFormLineItem,
   type ClientInvoiceSiteOption,
   type ClientInvoiceStatus,
@@ -19,9 +24,10 @@ import {
 } from "@/utils/client-invoices-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 
-type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> & {
-  line_items: ClientInvoiceFormLineItem[];
-};
+type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> &
+  ClientInvoiceFormAuthorizedByState & {
+    line_items: ClientInvoiceFormLineItem[];
+  };
 
 type ClientInvoiceFormProps = {
   mode: "create" | "edit";
@@ -31,6 +37,7 @@ type ClientInvoiceFormProps = {
   initialCustomers: ClientEntry[];
   initialSites: ClientInvoiceSiteOption[];
   initialPaymentAccounts: PaymentAccountRow[];
+  initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
   initialForm: ClientInvoiceFormState;
   fetchError?: string | null;
 };
@@ -59,6 +66,7 @@ export default function ClientInvoiceForm({
   initialCustomers,
   initialSites,
   initialPaymentAccounts,
+  initialAuthorizedSigners,
   initialForm,
   fetchError = null,
 }: ClientInvoiceFormProps) {
@@ -197,6 +205,13 @@ export default function ClientInvoiceForm({
     setSaving(true);
     setError(null);
 
+    const authorizedBy = resolveAuthorizedByFields(
+      form.authorized_by_selection,
+      form.authorized_by_other_name,
+      form.authorized_by_other_title,
+      initialAuthorizedSigners,
+    );
+
     const payload: ClientInvoiceWriteBody = {
       client_id: form.client_id,
       invoice_date: form.invoice_date,
@@ -211,6 +226,8 @@ export default function ClientInvoiceForm({
       status: form.status,
       amount_received: form.amount_received ?? 0,
       notes: form.notes,
+      authorized_by_name: authorizedBy.authorized_by_name,
+      authorized_by_title: authorizedBy.authorized_by_title,
       line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => line),
       payment_account_ids: form.payment_account_ids,
     };
@@ -672,6 +689,76 @@ export default function ClientInvoiceForm({
             ))}
           </div>
         )}
+      </section>
+
+      <section className={cardClassName}>
+        <div>
+          <h3 className="text-sm font-medium text-slate-700">Authorized By</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Optional signature block shown on the printed invoice.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Authorized By
+            </label>
+            <select
+              value={form.authorized_by_selection}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  authorized_by_selection: event.target.value,
+                }))
+              }
+              className={inputClassName}
+            >
+              <option value="">None</option>
+              {initialAuthorizedSigners.map((signer) => (
+                <option key={signer.employee_id} value={signer.employee_id}>
+                  {formatAuthorizedSignerLabel(signer)}
+                </option>
+              ))}
+              <option value={AUTHORIZED_BY_OTHER}>Other</option>
+            </select>
+          </div>
+          {form.authorized_by_selection === AUTHORIZED_BY_OTHER ? (
+            <>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={form.authorized_by_other_name}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      authorized_by_other_name: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Title/Role
+                </label>
+                <input
+                  type="text"
+                  value={form.authorized_by_other_title}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      authorized_by_other_title: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+            </>
+          ) : null}
+        </div>
       </section>
 
       <section className={cardClassName}>

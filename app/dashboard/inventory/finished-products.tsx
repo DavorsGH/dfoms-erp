@@ -20,16 +20,22 @@ import {
   formatInventoryMoney,
   formatInventoryQuantity,
   generateNextInventoryCode,
-  nullableNumber,
 } from "./inventory-utils";
 import {
+  buildFinishedProductSavePayload,
+  DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
   FINISHED_PRODUCT_SELECT,
+  FINISHED_PRODUCT_SOURCING_OPTIONS,
+  finishedProductToForm,
   normalizeFinishedProduct,
   type FinishedProductRecord,
+  type FinishedProductSourcingType,
 } from "./finished-products-utils";
+import type { SupplierRow } from "@/utils/suppliers-types";
 
 type FinishedProductsProps = {
   initialProducts: FinishedProductRecord[];
+  initialSuppliers: SupplierRow[];
   fetchError: string | null;
   readOnly?: boolean;
 };
@@ -39,10 +45,13 @@ const emptyForm = {
   product_name: "",
   unit_of_measure: "",
   standard_selling_price: "",
+  sourcing_type: DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
+  supplier_id: "",
 };
 
 export default function FinishedProducts({
   initialProducts,
+  initialSuppliers,
   fetchError,
   readOnly = false,
 }: FinishedProductsProps) {
@@ -95,15 +104,7 @@ export default function FinishedProducts({
 
   function openEditForm(product: FinishedProductRecord) {
     setEditingProductId(product.id);
-    setForm({
-      product_code: product.product_code,
-      product_name: product.product_name,
-      unit_of_measure: product.unit_of_measure,
-      standard_selling_price:
-        product.standard_selling_price == null
-          ? ""
-          : String(product.standard_selling_price),
-    });
+    setForm(finishedProductToForm(product));
     setShowForm(true);
   }
 
@@ -118,12 +119,7 @@ export default function FinishedProducts({
     setLoading(true);
     setError(null);
 
-    const payload = {
-      product_code: form.product_code.trim(),
-      product_name: form.product_name.trim(),
-      unit_of_measure: form.unit_of_measure.trim(),
-      standard_selling_price: nullableNumber(form.standard_selling_price),
-    };
+    const payload = buildFinishedProductSavePayload(form);
 
     const { error: saveError } = editingProductId
       ? await supabase
@@ -132,6 +128,8 @@ export default function FinishedProducts({
             product_name: payload.product_name,
             unit_of_measure: payload.unit_of_measure,
             standard_selling_price: payload.standard_selling_price,
+            sourcing_type: payload.sourcing_type,
+            supplier_id: payload.supplier_id,
             updated_at: new Date().toISOString(),
           })
           .eq("id", editingProductId)
@@ -283,6 +281,75 @@ export default function FinishedProducts({
                 className={inputClassName}
               />
             </div>
+            <div className="md:col-span-2">
+              <fieldset>
+                <legend className="mb-2 block text-sm font-medium text-slate-700">
+                  Sourcing
+                </legend>
+                <div className="flex flex-wrap gap-4">
+                  {FINISHED_PRODUCT_SOURCING_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex items-center gap-2 text-sm text-slate-700"
+                    >
+                      <input
+                        type="radio"
+                        name="sourcing_type"
+                        required
+                        value={option.value}
+                        checked={form.sourcing_type === option.value}
+                        onChange={() =>
+                          setForm((current) => ({
+                            ...current,
+                            sourcing_type: option.value as FinishedProductSourcingType,
+                            supplier_id:
+                              option.value === "purchased"
+                                ? current.supplier_id
+                                : "",
+                          }))
+                        }
+                        className="h-4 w-4 border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+                      />
+                      {option.label}
+                      <span className="text-xs text-slate-500">
+                        {option.value === "manufactured"
+                          ? "(produced in-house)"
+                          : "(bought from a supplier for resale)"}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            {form.sourcing_type === "purchased" ? (
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Primary Supplier{" "}
+                  <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <select
+                  value={form.supplier_id}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      supplier_id: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                >
+                  <option value="">No default supplier</option>
+                  {initialSuppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Per-purchase supplier is recorded on the Purchases screen. This
+                  field is only a default reference.
+                </p>
+              </div>
+            ) : null}
             <div className="md:col-span-2 flex gap-3">
               <button
                 type="submit"

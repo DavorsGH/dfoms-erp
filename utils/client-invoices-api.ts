@@ -1,12 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT,
   CLIENT_INVOICE_HEADER_SELECT,
   CLIENT_INVOICE_LINE_ITEM_SELECT,
   computeInvoiceTotals,
+  mapAuthorizedSignerOptions,
   normalizeStatus,
   roundMoney,
   suggestInvoiceNumber,
   toNumber,
+  type ClientInvoiceAuthorizedSignerOption,
   type ClientInvoiceHeaderRow,
   type ClientInvoiceLineItemInput,
   type ClientInvoiceWriteBody,
@@ -57,7 +60,31 @@ function buildHeaderPayload(
     status: normalizeStatus(body.status),
     amount_received: roundMoney(toNumber(body.amount_received ?? 0)),
     notes: nullableText(body.notes ?? null),
+    authorized_by_name: nullableText(body.authorized_by_name ?? null),
+    authorized_by_title: nullableText(body.authorized_by_title ?? null),
     updated_at: new Date().toISOString(),
+  };
+}
+
+export async function loadAuthorizedSignerOptions(
+  supabase: DbClient,
+  tenantId: string,
+): Promise<{ signers: ClientInvoiceAuthorizedSignerOption[]; error: string | null }> {
+  const { data, error } = await supabase
+    .from("user_accounts")
+    .select(AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT)
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .not("employee_id", "is", null)
+    .order("email", { ascending: true });
+
+  if (error) {
+    return { signers: [], error: error.message };
+  }
+
+  return {
+    signers: mapAuthorizedSignerOptions(data ?? []),
+    error: null,
   };
 }
 

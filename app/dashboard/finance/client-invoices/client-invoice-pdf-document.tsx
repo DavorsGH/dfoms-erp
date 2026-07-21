@@ -14,6 +14,7 @@ import {
   formatBillingPeriodLabel,
   formatInvoiceDate,
   formatInvoiceMoney,
+  hasAuthorizedBySignature,
   paymentAccountDetailLines,
   resolveInvoiceCompanyName,
   sumLineItemColumns,
@@ -262,6 +263,48 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: C.textDark,
   },
+  signatureBlock: {
+    marginTop: 16,
+    alignSelf: "flex-start",
+  },
+  signatureLabel: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: C.textMuted,
+  },
+  signatureName: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: C.navy,
+    marginTop: 4,
+  },
+  signatureTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    flexWrap: "wrap",
+    marginTop: 6,
+  },
+  signatureTitle: {
+    fontSize: 9,
+    color: C.textMuted,
+  },
+  signatureTitleSpacer: {
+    width: 12,
+  },
+  signaturePromptGroup: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  signaturePrompt: {
+    fontSize: 9,
+    color: C.textMuted,
+  },
+  signatureLine: {
+    width: 120,
+    borderBottomWidth: 2,
+    borderBottomColor: C.navy,
+  },
   notes: {
     fontSize: 9,
     color: C.textDark,
@@ -479,6 +522,29 @@ export default function ClientInvoicePdfDocument({
         ) : null}
 
         <Text style={styles.footer}>{CLIENT_INVOICE_PAYMENT_FOOTER}</Text>
+
+        {hasAuthorizedBySignature(invoice) ? (
+          <View style={styles.signatureBlock}>
+            <Text style={styles.signatureLabel}>Authorized By:</Text>
+            <Text style={styles.signatureName}>
+              {invoice.authorized_by_name?.trim()}
+            </Text>
+            <View style={styles.signatureTitleRow}>
+              {invoice.authorized_by_title?.trim() ? (
+                <>
+                  <Text style={styles.signatureTitle}>
+                    {invoice.authorized_by_title.trim()},
+                  </Text>
+                  <View style={styles.signatureTitleSpacer} />
+                </>
+              ) : null}
+              <View style={styles.signaturePromptGroup}>
+                <Text style={styles.signaturePrompt}>Signature:</Text>
+                <View style={styles.signatureLine} />
+              </View>
+            </View>
+          </View>
+        ) : null}
       </Page>
     </Document>
   );

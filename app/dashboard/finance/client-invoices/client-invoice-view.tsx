@@ -13,6 +13,7 @@ import {
   formatBillingPeriodLabel,
   formatInvoiceDate,
   formatInvoiceMoney,
+  hasAuthorizedBySignature,
   normalizeClientInvoiceDetail,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
@@ -475,6 +476,29 @@ export default function ClientInvoiceView({
         <footer className="rounded-lg border-2 border-[#0f2744]/25 bg-[#e8f4f8] px-4 py-3 text-sm text-slate-800">
           {CLIENT_INVOICE_PAYMENT_FOOTER}
         </footer>
+
+        {hasAuthorizedBySignature(invoice) ? (
+          <section className="pt-4 text-left">
+            <p className="text-xs font-medium text-slate-600">Authorized By:</p>
+            <p className="mt-1 text-sm font-bold text-[#0f2744]">
+              {invoice.authorized_by_name?.trim()}
+            </p>
+            <div className="mt-2 flex flex-wrap items-end text-sm text-slate-700">
+              {invoice.authorized_by_title?.trim() ? (
+                <>
+                  <span>{invoice.authorized_by_title.trim()},</span>
+                  <span className="ml-3">Signature:</span>
+                </>
+              ) : (
+                <span>Signature:</span>
+              )}
+              <span
+                className="ml-1.5 mb-1 inline-block h-0 w-[180px] min-w-[180px] shrink-0 border-b border-solid border-[#0f2744]"
+                aria-hidden="true"
+              />
+            </div>
+          </section>
+        ) : null}
         </div>
       </div>
     </div>

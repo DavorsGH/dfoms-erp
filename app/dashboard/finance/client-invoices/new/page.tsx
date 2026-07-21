@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
-import { getNextInvoiceSequence } from "@/utils/client-invoices-api";
+import { getNextInvoiceSequence, loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import {
   defaultDueDate,
   todayIsoDate,
@@ -36,6 +36,7 @@ export default async function NewClientInvoicePage() {
     { data: sites, error: sitesError },
     { data: paymentAccounts, error: paymentAccountsError },
     nextSequenceResult,
+    authorizedSignersResult,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
@@ -49,6 +50,7 @@ export default async function NewClientInvoicePage() {
       .eq("is_active", true)
       .order("account_name", { ascending: true }),
     getNextInvoiceSequence(supabase, tenantId),
+    loadAuthorizedSignerOptions(supabase, tenantId),
   ]);
 
   const fetchError =
@@ -56,6 +58,7 @@ export default async function NewClientInvoicePage() {
     sitesError?.message ??
     paymentAccountsError?.message ??
     nextSequenceResult.error ??
+    authorizedSignersResult.error ??
     null;
 
   const nextSequence = nextSequenceResult.sequence;
@@ -79,6 +82,7 @@ export default async function NewClientInvoicePage() {
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
+        initialAuthorizedSigners={authorizedSignersResult.signers}
         initialForm={{
           client_id: "",
           invoice_date: todayIsoDate(),
@@ -93,6 +97,9 @@ export default async function NewClientInvoicePage() {
           status: "draft",
           amount_received: 0,
           notes: "",
+          authorized_by_selection: "",
+          authorized_by_other_name: "",
+          authorized_by_other_title: "",
           payment_account_ids: [],
           line_items: [],
         }}

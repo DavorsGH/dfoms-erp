@@ -43,3 +43,6 @@ next-env.d.ts
 # data backups / scratch files - never commit
 dfoms-pre-phase1-backup.sql
 diff-summary.txt
+# local backups / scratch archives - never commit
+backups/
+scripts.zip
