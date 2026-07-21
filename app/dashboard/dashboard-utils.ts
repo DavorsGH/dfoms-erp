@@ -73,6 +73,12 @@ export type DashboardSummaryCards = {
   totalRevenueYtd: number;
   totalExpenses: number;
   totalExpensesYtd: number;
+  rawMaterialPurchases: number;
+  rawMaterialPurchasesYtd: number;
+  productPurchases: number;
+  productPurchasesYtd: number;
+  totalPurchases: number;
+  totalPurchasesYtd: number;
   netProfit: number;
   netProfitYtd: number;
   ytdThroughLabel: string;
@@ -141,6 +147,7 @@ export function getAvailableDashboardMonths(
   incomeEntries: Array<{ date: string }>,
   expenseEntries: Array<{ date: string }>,
   referenceDate = new Date(),
+  purchaseEntries: Array<{ date: string }> = [],
 ): DashboardMonthOption[] {
   const { year: currentYear } = getCurrentCalendarMonth(referenceDate);
   const monthKeys = new Set<string>();
@@ -149,7 +156,7 @@ export function getAvailableDashboardMonths(
     monthKeys.add(createMonthKey(currentYear, month));
   }
 
-  for (const entry of [...incomeEntries, ...expenseEntries]) {
+  for (const entry of [...incomeEntries, ...expenseEntries, ...purchaseEntries]) {
     const date = entry.date.slice(0, 10);
     const year = Number(date.slice(0, 4));
     const month = Number(date.slice(5, 7));
@@ -198,6 +205,40 @@ function sumRegisterAmountYtd(
       }
 
       return sum + (Number(entry.amount) || 0);
+    }, 0),
+  );
+}
+
+function sumPurchaseAmountForMonth(
+  entries: Array<{ purchase_date: string; total_cost: number }>,
+  year: number,
+  month: number,
+): number {
+  return roundCurrency(
+    entries.reduce((sum, entry) => {
+      const monthIndex = getEntryMonthIndex(entry.purchase_date, year);
+      if (monthIndex !== month - 1) {
+        return sum;
+      }
+
+      return sum + (Number(entry.total_cost) || 0);
+    }, 0),
+  );
+}
+
+function sumPurchaseAmountYtd(
+  entries: Array<{ purchase_date: string; total_cost: number }>,
+  year: number,
+  throughMonth: number,
+): number {
+  return roundCurrency(
+    entries.reduce((sum, entry) => {
+      const monthIndex = getEntryMonthIndex(entry.purchase_date, year);
+      if (monthIndex === null || monthIndex > throughMonth - 1) {
+        return sum;
+      }
+
+      return sum + (Number(entry.total_cost) || 0);
     }, 0),
   );
 }
@@ -269,6 +310,26 @@ function buildMonthSnapshot(input: {
   );
   const payrollNotProcessed =
     !isMonthClosed(closeRecord) && !hasPayrollActivity;
+  const rawMaterialPurchases = sumPurchaseAmountForMonth(
+    input.inventoryBalanceSheetInput.cashPurchases,
+    input.year,
+    input.month,
+  );
+  const rawMaterialPurchasesYtd = sumPurchaseAmountYtd(
+    input.inventoryBalanceSheetInput.cashPurchases,
+    input.year,
+    input.month,
+  );
+  const productPurchases = sumPurchaseAmountForMonth(
+    input.inventoryBalanceSheetInput.productCashPurchases,
+    input.year,
+    input.month,
+  );
+  const productPurchasesYtd = sumPurchaseAmountYtd(
+    input.inventoryBalanceSheetInput.productCashPurchases,
+    input.year,
+    input.month,
+  );
 
   return {
     summary: {
@@ -292,6 +353,16 @@ function buildMonthSnapshot(input: {
         input.expenseEntries,
         input.year,
         input.month,
+      ),
+      rawMaterialPurchases,
+      rawMaterialPurchasesYtd,
+      productPurchases,
+      productPurchasesYtd,
+      totalPurchases: roundCurrency(
+        rawMaterialPurchases + productPurchases,
+      ),
+      totalPurchasesYtd: roundCurrency(
+        rawMaterialPurchasesYtd + productPurchasesYtd,
       ),
       netProfit: getProfitLossRowAmount(
         profitLossReport,
@@ -571,6 +642,14 @@ export function buildDashboardViewModel(input: {
     input.incomeEntries,
     input.expenseEntries,
     referenceDate,
+    [
+      ...input.inventoryBalanceSheetInput.cashPurchases.map((entry) => ({
+        date: entry.purchase_date,
+      })),
+      ...input.inventoryBalanceSheetInput.productCashPurchases.map((entry) => ({
+        date: entry.purchase_date,
+      })),
+    ],
   );
   const trendMonths = getLastSixCalendarMonths(referenceDate);
   const monthSnapshots: Record<string, DashboardMonthSnapshot> = {};

@@ -29,12 +29,14 @@ function SummaryCard({
   title,
   subtitle,
   value,
+  breakdown,
   href,
   tone = "default",
 }: {
   title: string;
   subtitle?: string;
   value: string;
+  breakdown?: Array<{ label: string; value: string }>;
   href: string;
   tone?: "default" | "success" | "danger" | "ytd";
 }) {
@@ -56,7 +58,25 @@ function SummaryCard({
       {subtitle ? (
         <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
       ) : null}
-      <p className="mt-2 text-2xl font-semibold text-[#0f2744]">{value}</p>
+      {breakdown ? (
+        <div className="mt-4 space-y-2 text-sm">
+          {breakdown.map((item) => (
+            <div
+              key={item.label}
+              className="flex items-start justify-between gap-3 text-slate-600"
+            >
+              <span>{item.label}</span>
+              <span className="font-medium text-slate-800">{item.value}</span>
+            </div>
+          ))}
+          <div className="flex items-start justify-between gap-3 border-t border-slate-200 pt-2">
+            <span className="font-medium text-slate-700">Total</span>
+            <span className="text-lg font-semibold text-[#0f2744]">{value}</span>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2 text-2xl font-semibold text-[#0f2744]">{value}</p>
+      )}
     </Link>
   );
 }
@@ -158,12 +178,29 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
       ) : null}
 
       {visibility.showFinancialSummary ? (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           title="Net Profit (YTD)"
           subtitle={summary.ytdThroughLabel}
           value={formatGHS(summary.netProfitYtd)}
           href="/dashboard/finance/profit-loss"
+          tone="ytd"
+        />
+        <SummaryCard
+          title="Total Purchases (YTD)"
+          subtitle={summary.ytdThroughLabel}
+          value={formatGHS(summary.totalPurchasesYtd)}
+          breakdown={[
+            {
+              label: "Raw Material Purchases",
+              value: formatGHS(summary.rawMaterialPurchasesYtd),
+            },
+            {
+              label: "Product Purchases",
+              value: formatGHS(summary.productPurchasesYtd),
+            },
+          ]}
+          href="/dashboard/inventory/product-purchases"
           tone="ytd"
         />
         <SummaryCard
@@ -181,6 +218,22 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           subtitle={netProfitCardSubtitle}
           value={formatGHS(displayedNetProfit)}
           href="/dashboard/finance/profit-loss"
+        />
+        <SummaryCard
+          title="Total Purchases (Month)"
+          subtitle={summary.periodLabel}
+          value={formatGHS(summary.totalPurchases)}
+          breakdown={[
+            {
+              label: "Raw Material Purchases",
+              value: formatGHS(summary.rawMaterialPurchases),
+            },
+            {
+              label: "Product Purchases",
+              value: formatGHS(summary.productPurchases),
+            },
+          ]}
+          href="/dashboard/inventory/product-purchases"
         />
         <SummaryCard
           title="Cash Position"
