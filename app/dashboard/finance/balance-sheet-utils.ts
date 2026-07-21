@@ -31,11 +31,13 @@ import { isActiveIncomeForReporting } from "./income-register-utils";
 import {
   calculateInventoryByMonth,
   calculateInventoryOpeningEquityByMonth,
+  calculateProductPurchaseCashOutflowsByMonth,
   calculateRawMaterialPurchaseCashOutflowsByMonth,
+  type FinishedProductAverageCostRow,
   type InventoryBalanceConfig,
+  type ProductPurchaseCashEntry,
   type RawMaterialPurchaseCashEntry,
 } from "../inventory/inventory-balance-sheet-utils";
-import type { ProductionBatchCostSummary } from "../reports/inventory-reports-utils";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
 
@@ -85,8 +87,9 @@ export type InventoryBalanceSheetInput = {
     >
   >;
   finishedProducts: Array<Pick<FinishedProductRecord, "id" | "current_stock">>;
-  batchSummaries: ProductionBatchCostSummary[];
+  finishedProductAverageCosts: FinishedProductAverageCostRow[];
   cashPurchases: RawMaterialPurchaseCashEntry[];
+  productCashPurchases: ProductPurchaseCashEntry[];
   referenceDate?: Date;
 };
 
@@ -307,6 +310,7 @@ function calculateCashAndCashEquivalentsByMonth(
   expenseEntries: BalanceSheetCashExpenseEntry[],
   fixedAssets: ProfitLossAssetEntry[],
   rawMaterialCashPurchases: RawMaterialPurchaseCashEntry[],
+  productCashPurchases: ProductPurchaseCashEntry[],
   inventoryConfig: InventoryBalanceConfig | null,
   financialYear: number,
 ): MonthlyTotals {
@@ -332,6 +336,11 @@ function calculateCashAndCashEquivalentsByMonth(
     inventoryConfig,
     financialYear,
   );
+  const productPurchases = calculateProductPurchaseCashOutflowsByMonth(
+    productCashPurchases,
+    inventoryConfig,
+    financialYear,
+  );
 
   let runningBalance = 0;
 
@@ -342,7 +351,8 @@ function calculateCashAndCashEquivalentsByMonth(
         (incomeReceivedInflows[monthIndex] ?? 0) -
         (paidExpenseOutflows[monthIndex] ?? 0) -
         (fixedAssetPurchases[monthIndex] ?? 0) -
-        (rawMaterialPurchases[monthIndex] ?? 0),
+        (rawMaterialPurchases[monthIndex] ?? 0) -
+        (productPurchases[monthIndex] ?? 0),
     );
     totals[monthIndex] = runningBalance;
   }
@@ -407,8 +417,9 @@ export function buildBalanceSheetReport(
     config: null,
     rawMaterials: [],
     finishedProducts: [],
-    batchSummaries: [],
+    finishedProductAverageCosts: [],
     cashPurchases: [],
+    productCashPurchases: [],
   },
 ): BalanceSheetReport {
   const cash = calculateCashAndCashEquivalentsByMonth(
@@ -417,6 +428,7 @@ export function buildBalanceSheetReport(
     cashFlowExpenseEntries,
     fixedAssets,
     inventoryInput.cashPurchases,
+    inventoryInput.productCashPurchases,
     inventoryInput.config,
     financialYear,
   );
@@ -430,7 +442,7 @@ export function buildBalanceSheetReport(
     calculateInventoryByMonth(
       inventoryInput.rawMaterials,
       inventoryInput.finishedProducts,
-      inventoryInput.batchSummaries,
+      inventoryInput.finishedProductAverageCosts,
       inventoryInput.config,
       financialYear,
       inventoryInput.referenceDate,

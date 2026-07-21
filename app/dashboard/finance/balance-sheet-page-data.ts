@@ -15,6 +15,7 @@ import type {
   BalanceSheetIncomeEntry,
   InventoryBalanceSheetInput,
 } from "./balance-sheet-utils";
+import type { CashFlowInventoryPurchaseInput } from "./cash-flow-utils";
 import type {
   ProfitLossAssetEntry,
   ProfitLossExpenseEntry,
@@ -23,7 +24,10 @@ import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
 } from "../inventory/finished-products-utils";
-import type { InventoryBalanceConfig } from "../inventory/inventory-balance-sheet-utils";
+import type {
+  FinishedProductAverageCostRow,
+  InventoryBalanceConfig,
+} from "../inventory/inventory-balance-sheet-utils";
 import {
   RAW_MATERIAL_SELECT,
   normalizeRawMaterial,
@@ -47,18 +51,20 @@ export type BalanceSheetPageData = {
 
 export async function fetchInventoryBalanceSheetInput(
   supabase: SupabaseClient,
+  tenantId: string,
 ): Promise<InventoryBalanceSheetInput> {
   const [
     { data: configRows },
     { data: rawMaterials },
     { data: finishedProducts },
-    { data: batchSummaries },
+    { data: averageCostRows },
     { data: cashPurchases },
+    { data: productCashPurchases },
   ] = await Promise.all([
     supabase
       .from("inventory_balance_config")
       .select("go_live_date, opening_inventory_value, created_at")
-      .eq("id", 1)
+      .eq("tenant_id", tenantId)
       .maybeSingle(),
     supabase
       .from("raw_materials")
@@ -68,11 +74,14 @@ export async function fetchInventoryBalanceSheetInput(
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
       .order("product_name", { ascending: true }),
-    supabase
-      .from("production_batches")
-      .select("finished_product_id, total_batch_cost, quantity_produced"),
+    // Combined production_batches + product_purchases weighted average cost
+    // per finished product, computed server-side.
+    supabase.rpc("get_finished_product_average_costs"),
     supabase
       .from("raw_material_purchases")
+      .select("purchase_date, total_cost, payment_method, created_at"),
+    supabase
+      .from("product_purchases")
       .select("purchase_date, total_cost, payment_method, created_at"),
   ]);
 
@@ -90,13 +99,61 @@ export async function fetchInventoryBalanceSheetInput(
     finishedProducts: (finishedProducts ?? []).map((row) =>
       normalizeFinishedProduct(row),
     ),
-    batchSummaries: batchSummaries ?? [],
+    finishedProductAverageCosts: (
+      (averageCostRows as FinishedProductAverageCostRow[] | null) ?? []
+    ).map((row) => ({
+      product_id: row.product_id,
+      average_cost: Number(row.average_cost) || 0,
+    })),
     cashPurchases: cashPurchases ?? [],
+    productCashPurchases: productCashPurchases ?? [],
+  };
+}
+
+/**
+ * Lean loader for the Cash Flow Statement: cash inventory purchases plus the
+ * inventory go-live config, without the stock/valuation data the Balance
+ * Sheet needs.
+ */
+export async function fetchCashFlowInventoryPurchaseInput(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<CashFlowInventoryPurchaseInput> {
+  const [
+    { data: configRows },
+    { data: rawMaterialPurchases },
+    { data: productPurchases },
+  ] = await Promise.all([
+    supabase
+      .from("inventory_balance_config")
+      .select("go_live_date, opening_inventory_value, created_at")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
+    supabase
+      .from("raw_material_purchases")
+      .select("purchase_date, total_cost, payment_method, created_at"),
+    supabase
+      .from("product_purchases")
+      .select("purchase_date, total_cost, payment_method, created_at"),
+  ]);
+
+  return {
+    inventoryConfig: configRows
+      ? ({
+          go_live_date: configRows.go_live_date,
+          opening_inventory_value:
+            Number(configRows.opening_inventory_value) || 0,
+          created_at: configRows.created_at,
+        } satisfies InventoryBalanceConfig)
+      : null,
+    rawMaterialCashPurchases: rawMaterialPurchases ?? [],
+    productCashPurchases: productPurchases ?? [],
   };
 }
 
 export async function fetchBalanceSheetPageData(
   supabase: SupabaseClient,
+  tenantId: string,
 ): Promise<BalanceSheetPageData> {
   const [
     { data: incomeEntries, error: incomeError },
@@ -152,7 +209,7 @@ export async function fetchBalanceSheetPageData(
       .from("month_end_close")
       .select("month, total_net_pay")
       .order("month", { ascending: true }),
-    fetchInventoryBalanceSheetInput(supabase),
+    fetchInventoryBalanceSheetInput(supabase, tenantId),
   ]);
 
   const cashFlowIncomeEntries =

@@ -47,6 +47,10 @@ async function rollbackSignup(
   }
 
   if (state.tenantId) {
+    await admin
+      .from("inventory_balance_config")
+      .delete()
+      .eq("tenant_id", state.tenantId);
     await admin.from("tenants").delete().eq("id", state.tenantId);
   }
 }
@@ -87,6 +91,7 @@ export async function POST(request: Request) {
 
   const { companyName, adminFullName, adminEmail, password } = validation.data;
   const admin = createAdminClient();
+  const signupDate = new Date().toISOString().slice(0, 10);
   const rollbackState: SignupRollbackState = {
     authUserId: null,
     tenantId: null,
@@ -178,6 +183,22 @@ export async function POST(request: Request) {
   if (userAccountError) {
     await rollbackSignup(admin, rollbackState);
     return NextResponse.json({ error: userAccountError.message }, { status: 400 });
+  }
+
+  const { error: inventoryConfigError } = await admin
+    .from("inventory_balance_config")
+    .insert({
+      tenant_id: tenantRow.id,
+      go_live_date: signupDate,
+      opening_inventory_value: 0,
+    });
+
+  if (inventoryConfigError) {
+    await rollbackSignup(admin, rollbackState);
+    return NextResponse.json(
+      { error: inventoryConfigError.message },
+      { status: 400 },
+    );
   }
 
   const { error: customerError } = await admin.from("customers").insert({

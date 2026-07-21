@@ -7,6 +7,13 @@ import {
   sumMonthlyTotals,
   type MonthlyTotals,
 } from "./profit-loss-utils";
+import {
+  calculateProductPurchaseCashOutflowsByMonth,
+  calculateRawMaterialPurchaseCashOutflowsByMonth,
+  type InventoryBalanceConfig,
+  type ProductPurchaseCashEntry,
+  type RawMaterialPurchaseCashEntry,
+} from "../inventory/inventory-balance-sheet-utils";
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
 export { getCurrentFinancialYear } from "./finance-year-utils";
@@ -22,6 +29,17 @@ export type CashFlowExpenseEntry = {
   sub_category: string;
   amount: number;
   payment_status: string;
+};
+
+/**
+ * Cash inventory purchases (raw materials + finished products) never enter
+ * expense_register, so the Cash Flow Statement must read them directly —
+ * same sources the Balance Sheet cash calculation uses.
+ */
+export type CashFlowInventoryPurchaseInput = {
+  rawMaterialCashPurchases: RawMaterialPurchaseCashEntry[];
+  productCashPurchases: ProductPurchaseCashEntry[];
+  inventoryConfig: InventoryBalanceConfig | null;
 };
 
 export type ManualFinancialEntry = {
@@ -216,11 +234,18 @@ function setBalanceFullYear(
   totals[FULL_YEAR_INDEX] = mode === "january" ? totals[0] : totals[11];
 }
 
+const EMPTY_INVENTORY_PURCHASE_INPUT: CashFlowInventoryPurchaseInput = {
+  rawMaterialCashPurchases: [],
+  productCashPurchases: [],
+  inventoryConfig: null,
+};
+
 export function buildCashFlowReport(
   incomeEntries: CashFlowIncomeEntry[],
   expenseEntries: CashFlowExpenseEntry[],
   manualEntries: ManualFinancialEntry[],
   financialYear = getCurrentFinancialYear(),
+  inventoryPurchases: CashFlowInventoryPurchaseInput = EMPTY_INVENTORY_PURCHASE_INPUT,
 ): CashFlowReport {
   const rows: CashFlowRow[] = [];
 
@@ -263,8 +288,37 @@ export function buildCashFlowReport(
     expenseEntries,
     financialYear,
   );
+
+  // Cash inventory purchases: mirrors the Balance Sheet cash calculation
+  // (calculateCashAndCashEquivalentsByMonth), which subtracts the same values.
+  const rawMaterialCashOutflows = calculateRawMaterialPurchaseCashOutflowsByMonth(
+    inventoryPurchases.rawMaterialCashPurchases,
+    inventoryPurchases.inventoryConfig,
+    financialYear,
+  );
+  const productCashOutflows = calculateProductPurchaseCashOutflowsByMonth(
+    inventoryPurchases.productCashPurchases,
+    inventoryPurchases.inventoryConfig,
+    financialYear,
+  );
+
+  const inventoryOutflowRows: CashFlowRow[] = [
+    {
+      key: "outflow-raw-material-cash-purchases",
+      label: "Raw Material Purchases (Cash)",
+      amounts: rawMaterialCashOutflows,
+      kind: "data" as const,
+    },
+    {
+      key: "outflow-product-cash-purchases",
+      label: "Product Purchases (Cash)",
+      amounts: productCashOutflows,
+      kind: "data" as const,
+    },
+  ].filter((row) => row.amounts.some((amount) => amount !== 0));
+
   const totalCashOutflows = sumMonthlyTotals(
-    outflowRows.map((row) => row.amounts),
+    [...outflowRows, ...inventoryOutflowRows].map((row) => row.amounts),
   );
 
   rows.push({
@@ -273,7 +327,7 @@ export function buildCashFlowReport(
     amounts: createEmptyMonthlyTotals(),
     kind: "section",
   });
-  rows.push(...outflowRows);
+  rows.push(...outflowRows, ...inventoryOutflowRows);
   rows.push({
     key: "total-outflows",
     label: "TOTAL CASH OUTFLOWS",

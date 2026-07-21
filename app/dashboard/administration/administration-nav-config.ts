@@ -40,6 +40,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Depreciation Methods",
         href: "/dashboard/administration/depreciation-methods",
       },
+      {
+        label: "Inventory Go-Live",
+        href: "/dashboard/administration/inventory-go-live",
+      },
     ],
   },
   {

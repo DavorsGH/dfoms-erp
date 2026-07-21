@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import BalanceSheet from "../balance-sheet";
 import { fetchBalanceSheetPageData } from "../balance-sheet-page-data";
 import BalanceSheetShell from "../balance-sheet-shell";
@@ -7,7 +8,13 @@ import BalanceSheetShell from "../balance-sheet-shell";
 export default async function BalanceSheetPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const data = await fetchBalanceSheetPageData(supabase);
+  const tenantId = await getCurrentUserTenantId();
+
+  if (!tenantId) {
+    throw new Error("Unable to resolve the current workspace.");
+  }
+
+  const data = await fetchBalanceSheetPageData(supabase, tenantId);
   const {
     initialIncomeEntries,
     initialExpenseEntries,

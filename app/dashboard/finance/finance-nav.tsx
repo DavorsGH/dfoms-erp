@@ -19,6 +19,10 @@ const navItems = [
     label: "Balance Sheet",
     href: "/dashboard/finance/balance-sheet",
   },
+  {
+    label: "Inventory Go-Live",
+    href: "/dashboard/finance/inventory-go-live",
+  },
 ];
 
 export default function FinanceNav() {

@@ -145,17 +145,15 @@ async function main() {
     }
   }
 
-  const { data: config, error: configError } = await supabase
+  const { data: configRows, error: configError } = await supabase
     .from("inventory_balance_config")
-    .select("*")
-    .eq("id", 1)
-    .maybeSingle();
+    .select("tenant_id, go_live_date, opening_inventory_value");
 
   if (configError) throw new Error(configError.message);
-  if (config) {
+  for (const config of configRows ?? []) {
     deletedFinance.push({
       table: "inventory_balance_config",
-      id: String(config.id),
+      id: String(config.tenant_id),
       label: `go_live=${config.go_live_date}, opening_value=${config.opening_inventory_value}`,
     });
   }
@@ -200,8 +198,11 @@ async function main() {
     if (error) throw new Error(`Delete payables failed: ${error.message}`);
   }
 
-  if (config) {
-    const { error } = await supabase.from("inventory_balance_config").delete().eq("id", 1);
+  if ((configRows ?? []).length > 0) {
+    const { error } = await supabase
+      .from("inventory_balance_config")
+      .delete()
+      .not("tenant_id", "is", null);
     if (error) throw new Error(`Delete inventory config failed: ${error.message}`);
   }
 
@@ -278,12 +279,13 @@ async function main() {
     throw new Error("Product sales remain after wipe");
   }
 
-  const { data: remainingConfig } = await supabase
-    .from("inventory_balance_config")
-    .select("id")
-    .maybeSingle();
-  console.log(`inventory_balance_config: ${remainingConfig ? 1 : 0}`);
-  if (remainingConfig) {
+  const { count: remainingConfigCount, error: remainingConfigError } =
+    await supabase
+      .from("inventory_balance_config")
+      .select("*", { count: "exact", head: true });
+  if (remainingConfigError) throw new Error(remainingConfigError.message);
+  console.log(`inventory_balance_config: ${remainingConfigCount ?? 0}`);
+  if ((remainingConfigCount ?? 0) !== 0) {
     throw new Error("inventory_balance_config still exists");
   }
 

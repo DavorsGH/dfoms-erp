@@ -2,6 +2,10 @@ import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { ProductionBatchRecord } from "../inventory/production-batches-utils";
 import {
+  buildAverageFinishedProductCostMap,
+  type FinishedProductAverageCostRow,
+} from "../inventory/inventory-balance-sheet-utils";
+import {
   getInternalConsumptionClientName,
   getInternalConsumptionSiteName,
   type InternalConsumptionRecord,
@@ -10,12 +14,6 @@ import {
   getIncomeCustomerDisplayName,
   type ProductSaleStatus,
 } from "../finance/income-register-utils";
-
-export type ProductionBatchCostSummary = {
-  finished_product_id: string;
-  total_batch_cost: number;
-  quantity_produced: number;
-};
 
 export type ProductSaleReportRecord = {
   id: string;
@@ -150,39 +148,10 @@ export function countLowStockRawMaterials(
   return materials.filter((material) => isRawMaterialLowStock(material)).length;
 }
 
-export function buildAverageCostByProductId(
-  summaries: ProductionBatchCostSummary[],
-): Map<string, number> {
-  const totals = new Map<string, { cost: number; quantity: number }>();
-
-  for (const summary of summaries) {
-    const existing = totals.get(summary.finished_product_id) ?? {
-      cost: 0,
-      quantity: 0,
-    };
-    existing.cost += Number(summary.total_batch_cost) || 0;
-    existing.quantity += Number(summary.quantity_produced) || 0;
-    totals.set(summary.finished_product_id, existing);
-  }
-
-  const averages = new Map<string, number>();
-  for (const [productId, totalsByProduct] of totals.entries()) {
-    averages.set(
-      productId,
-      totalsByProduct.quantity > 0
-        ? Math.round((totalsByProduct.cost / totalsByProduct.quantity) * 10000) /
-          10000
-        : 0,
-    );
-  }
-
-  return averages;
-}
-
 export function buildStockOnHandReport(
   rawMaterials: RawMaterialRecord[],
   finishedProducts: FinishedProductRecord[],
-  batchSummaries: ProductionBatchCostSummary[],
+  finishedProductAverageCosts: FinishedProductAverageCostRow[],
   options?: { lowStockOnly?: boolean },
 ): {
   rawMaterialRows: StockOnHandRawMaterialRow[];
@@ -190,7 +159,9 @@ export function buildStockOnHandReport(
   rawMaterialsTotalValue: number;
   finishedProductsTotalValue: number;
 } {
-  const averageCostByProductId = buildAverageCostByProductId(batchSummaries);
+  const averageCostByProductId = buildAverageFinishedProductCostMap(
+    finishedProductAverageCosts,
+  );
 
   const rawMaterialRows = rawMaterials
     .map((material) => {

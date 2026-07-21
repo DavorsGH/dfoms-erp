@@ -29,15 +29,19 @@ function assertTrue(condition, label) {
 }
 
 async function ensureGoLive(supabase) {
+  const tenantId =
+    process.env.VERIFY_TENANT_ID ??
+    "00000001-0000-4000-8000-000000000001";
+
   const { data } = await supabase
     .from("inventory_balance_config")
     .select("go_live_date")
-    .eq("id", 1)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (!data) {
     const { error } = await supabase.from("inventory_balance_config").insert({
-      id: 1,
+      tenant_id: tenantId,
       go_live_date: "2026-01-01",
       opening_inventory_value: 0,
     });

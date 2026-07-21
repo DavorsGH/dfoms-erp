@@ -27,6 +27,9 @@ import {
 import ReceivePurchaseModal, {
   type ReceivePurchaseTarget,
 } from "./receive-purchase-modal";
+import ReceiveRawMaterialModal, {
+  type ReceiveRawMaterialTarget,
+} from "./receive-raw-material-modal";
 
 type PurchaseOrderView = ReturnType<typeof normalizePurchaseOrderDetail>;
 
@@ -59,6 +62,8 @@ export default function PurchaseOrderDetailView({
   const [receiveTarget, setReceiveTarget] = useState<ReceivePurchaseTarget | null>(
     null,
   );
+  const [rawReceiveTarget, setRawReceiveTarget] =
+    useState<ReceiveRawMaterialTarget | null>(null);
 
   // Server refresh (router.refresh) delivers a new initialPurchaseOrder;
   // drop any local override so the freshest data wins.
@@ -227,6 +232,11 @@ export default function PurchaseOrderDetailView({
                   item.finished_product_id !== null &&
                   purchaseOrder.supplier_id !== null &&
                   remaining > 0;
+                const canReceiveRawMaterial =
+                  !readOnly &&
+                  item.item_type === "raw_material" &&
+                  item.raw_material_id !== null &&
+                  remaining > 0;
 
                 return (
                   <tr key={item.id} className={getStripedRowClassName(index)}>
@@ -282,13 +292,34 @@ export default function PurchaseOrderDetailView({
                           >
                             Receive
                           </button>
+                        ) : canReceiveRawMaterial ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError(null);
+                              setSuccess(null);
+                              const supplierName = getPurchaseOrderSupplierName(
+                                purchaseOrder.supplier,
+                              );
+                              setRawReceiveTarget({
+                                po_id: purchaseOrder.id,
+                                po_item_id: item.id,
+                                material_id: item.raw_material_id as string,
+                                material_label: getPurchaseOrderItemLabel(item),
+                                unit_of_measure: unit,
+                                supplier_name:
+                                  supplierName === "—" ? "" : supplierName,
+                                remaining_quantity: remaining,
+                                po_unit_cost: item.unit_cost,
+                              });
+                            }}
+                            className={receiveButtonClassName}
+                          >
+                            Receive
+                          </button>
                         ) : (
                           <span className="text-sm text-slate-400">
-                            {item.item_type === "raw_material"
-                              ? "—"
-                              : remaining <= 0
-                                ? "Fully received"
-                                : "—"}
+                            {remaining <= 0 ? "Fully received" : "—"}
                           </span>
                         )}
                       </td>
@@ -308,6 +339,19 @@ export default function PurchaseOrderDetailView({
           onClose={() => setReceiveTarget(null)}
           onReceived={() => {
             setReceiveTarget(null);
+            setSuccess("Receipt recorded against this purchase order.");
+            router.refresh();
+          }}
+        />
+      ) : null}
+
+      {rawReceiveTarget ? (
+        <ReceiveRawMaterialModal
+          target={rawReceiveTarget}
+          paymentMethods={paymentMethods}
+          onClose={() => setRawReceiveTarget(null)}
+          onReceived={() => {
+            setRawReceiveTarget(null);
             setSuccess("Receipt recorded against this purchase order.");
             router.refresh();
           }}

@@ -1,4 +1,3 @@
-import type { ProductionBatchCostSummary } from "../reports/inventory-reports-utils";
 import type { FinishedProductRecord } from "./finished-products-utils";
 import type { RawMaterialRecord } from "./raw-materials-utils";
 import {
@@ -67,29 +66,23 @@ export function isCashPaymentMethod(
   return !isCreditPaymentMethod(paymentMethod);
 }
 
+/**
+ * Row shape returned by the get_finished_product_average_costs() database
+ * function: combined production_batches + product_purchases weighted average
+ * cost per finished product.
+ */
+export type FinishedProductAverageCostRow = {
+  product_id: string;
+  average_cost: number;
+};
+
 export function buildAverageFinishedProductCostMap(
-  batchSummaries: ProductionBatchCostSummary[],
+  averageCosts: FinishedProductAverageCostRow[],
 ): Map<string, number> {
-  const totals = new Map<string, { cost: number; quantity: number }>();
-
-  for (const summary of batchSummaries) {
-    const existing = totals.get(summary.finished_product_id) ?? {
-      cost: 0,
-      quantity: 0,
-    };
-    existing.cost += Number(summary.total_batch_cost) || 0;
-    existing.quantity += Number(summary.quantity_produced) || 0;
-    totals.set(summary.finished_product_id, existing);
-  }
-
   const averages = new Map<string, number>();
-  for (const [productId, value] of totals.entries()) {
-    averages.set(
-      productId,
-      value.quantity > 0
-        ? Math.round((value.cost / value.quantity) * 10000) / 10000
-        : 0,
-    );
+
+  for (const row of averageCosts) {
+    averages.set(row.product_id, Number(row.average_cost) || 0);
   }
 
   return averages;
@@ -98,9 +91,11 @@ export function buildAverageFinishedProductCostMap(
 export function calculateTotalInventoryValue(
   rawMaterials: Array<Pick<RawMaterialRecord, "current_stock" | "average_cost_per_unit">>,
   finishedProducts: Array<Pick<FinishedProductRecord, "id" | "current_stock">>,
-  batchSummaries: ProductionBatchCostSummary[],
+  finishedProductAverageCosts: FinishedProductAverageCostRow[],
 ): number {
-  const finishedAverageCosts = buildAverageFinishedProductCostMap(batchSummaries);
+  const finishedAverageCosts = buildAverageFinishedProductCostMap(
+    finishedProductAverageCosts,
+  );
 
   const rawTotal = rawMaterials.reduce((sum, material) => {
     const stock = Number(material.current_stock) || 0;
@@ -135,7 +130,7 @@ function isOnOrAfterGoLive(
 export function calculateInventoryByMonth(
   rawMaterials: Array<Pick<RawMaterialRecord, "current_stock" | "average_cost_per_unit">>,
   finishedProducts: Array<Pick<FinishedProductRecord, "id" | "current_stock">>,
-  batchSummaries: ProductionBatchCostSummary[],
+  finishedProductAverageCosts: FinishedProductAverageCostRow[],
   config: InventoryBalanceConfig | null,
   financialYear: number,
   referenceDate = new Date(),
@@ -158,7 +153,7 @@ export function calculateInventoryByMonth(
   const liveValue = calculateTotalInventoryValue(
     rawMaterials,
     finishedProducts,
-    batchSummaries,
+    finishedProductAverageCosts,
   );
 
   for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
@@ -212,7 +207,10 @@ function isActivatedPurchase(
   );
 }
 
-export function calculateRawMaterialPurchaseCashOutflowsByMonth(
+/** Same row shape as RawMaterialPurchaseCashEntry, read from product_purchases. */
+export type ProductPurchaseCashEntry = RawMaterialPurchaseCashEntry;
+
+function calculateInventoryPurchaseCashOutflowsByMonth(
   purchases: RawMaterialPurchaseCashEntry[],
   config: InventoryBalanceConfig | null,
   financialYear: number,
@@ -246,6 +244,30 @@ export function calculateRawMaterialPurchaseCashOutflowsByMonth(
   return totals.map((value) => roundInventoryCurrency(value)) as MonthlyTotals;
 }
 
+export function calculateRawMaterialPurchaseCashOutflowsByMonth(
+  purchases: RawMaterialPurchaseCashEntry[],
+  config: InventoryBalanceConfig | null,
+  financialYear: number,
+): MonthlyTotals {
+  return calculateInventoryPurchaseCashOutflowsByMonth(
+    purchases,
+    config,
+    financialYear,
+  );
+}
+
+export function calculateProductPurchaseCashOutflowsByMonth(
+  purchases: ProductPurchaseCashEntry[],
+  config: InventoryBalanceConfig | null,
+  financialYear: number,
+): MonthlyTotals {
+  return calculateInventoryPurchaseCashOutflowsByMonth(
+    purchases,
+    config,
+    financialYear,
+  );
+}
+
 export function isInventoryBalanceSheetActive(
   config: InventoryBalanceConfig | null,
   asOfDate: string,
@@ -256,7 +278,7 @@ export function isInventoryBalanceSheetActive(
 export function getMonthEndInventoryValue(
   rawMaterials: Array<Pick<RawMaterialRecord, "current_stock" | "average_cost_per_unit">>,
   finishedProducts: Array<Pick<FinishedProductRecord, "id" | "current_stock">>,
-  batchSummaries: ProductionBatchCostSummary[],
+  finishedProductAverageCosts: FinishedProductAverageCostRow[],
   config: InventoryBalanceConfig | null,
   financialYear: number,
   monthIndex: number,
@@ -265,7 +287,7 @@ export function getMonthEndInventoryValue(
   const totals = calculateInventoryByMonth(
     rawMaterials,
     finishedProducts,
-    batchSummaries,
+    finishedProductAverageCosts,
     config,
     financialYear,
     referenceDate,

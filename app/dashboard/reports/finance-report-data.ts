@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchBalanceSheetPageData } from "../finance/balance-sheet-page-data";
+import {
+  fetchBalanceSheetPageData,
+  fetchCashFlowInventoryPurchaseInput,
+} from "../finance/balance-sheet-page-data";
 import { buildAvailableYears } from "../finance/finance-year-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
 import type { AccountsPayableEntry } from "../finance/accounts-payable-utils";
@@ -50,15 +53,20 @@ export async function fetchMonthlyPlReportData(supabase: SupabaseClient) {
 
 export async function fetchMonthlyBalanceSheetReportData(
   supabase: SupabaseClient,
+  tenantId: string,
 ) {
-  return fetchBalanceSheetPageData(supabase);
+  return fetchBalanceSheetPageData(supabase, tenantId);
 }
 
-export async function fetchCashFlowReportData(supabase: SupabaseClient) {
+export async function fetchCashFlowReportData(
+  supabase: SupabaseClient,
+  tenantId: string,
+) {
   const [
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
     { data: manualEntries, error: manualError },
+    inventoryPurchases,
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -71,12 +79,14 @@ export async function fetchCashFlowReportData(supabase: SupabaseClient) {
     supabase.from("manual_financial_entries").select("*").order("period_month", {
       ascending: true,
     }),
+    fetchCashFlowInventoryPurchaseInput(supabase, tenantId),
   ]);
 
   return {
     initialIncomeEntries: incomeEntries ?? [],
     initialExpenseEntries: expenseEntries ?? [],
     initialManualEntries: manualEntries ?? [],
+    initialInventoryPurchases: inventoryPurchases,
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),

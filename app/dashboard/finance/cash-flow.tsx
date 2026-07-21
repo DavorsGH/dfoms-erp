@@ -12,6 +12,7 @@ import {
   filterManualEntriesForYear,
   type CashFlowExpenseEntry,
   type CashFlowIncomeEntry,
+  type CashFlowInventoryPurchaseInput,
   type CashFlowRow,
   type ManualFinancialEntry,
 } from "./cash-flow-utils";
@@ -25,6 +26,7 @@ type CashFlowProps = {
   initialIncomeEntries: CashFlowIncomeEntry[];
   initialExpenseEntries: CashFlowExpenseEntry[];
   initialManualEntries: ManualFinancialEntry[];
+  initialInventoryPurchases: CashFlowInventoryPurchaseInput;
   availableYears: number[];
   fetchError: string | null;
 };
@@ -64,6 +66,7 @@ export default function CashFlow({
   initialIncomeEntries,
   initialExpenseEntries,
   initialManualEntries,
+  initialInventoryPurchases,
   availableYears,
   fetchError,
 }: CashFlowProps) {
@@ -84,10 +87,12 @@ export default function CashFlow({
         initialExpenseEntries,
         manualEntriesForYear,
         selectedYear,
+        initialInventoryPurchases,
       ),
     [
       initialIncomeEntries,
       initialExpenseEntries,
+      initialInventoryPurchases,
       manualEntriesForYear,
       selectedYear,
     ],

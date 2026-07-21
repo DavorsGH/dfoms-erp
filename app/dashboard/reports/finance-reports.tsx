@@ -9,6 +9,7 @@ import { buildCashFlowReport, filterManualEntriesForYear } from "../finance/cash
 import type {
   CashFlowExpenseEntry,
   CashFlowIncomeEntry,
+  CashFlowInventoryPurchaseInput,
   ManualFinancialEntry,
 } from "../finance/cash-flow-utils";
 import { formatPercent } from "../finance/fixed-assets-utils";
@@ -394,12 +395,14 @@ export function CashFlowStatementReport({
   initialIncomeEntries,
   initialExpenseEntries,
   initialManualEntries,
+  initialInventoryPurchases,
   availableYears,
   fetchError,
 }: {
   initialIncomeEntries: CashFlowIncomeEntry[];
   initialExpenseEntries: CashFlowExpenseEntry[];
   initialManualEntries: ManualFinancialEntry[];
+  initialInventoryPurchases: CashFlowInventoryPurchaseInput;
   availableYears: number[];
   fetchError: string | null;
 }) {
@@ -418,8 +421,15 @@ export function CashFlowStatementReport({
         initialExpenseEntries,
         manualEntriesForYear,
         year,
+        initialInventoryPurchases,
       ),
-    [initialIncomeEntries, initialExpenseEntries, manualEntriesForYear, year],
+    [
+      initialIncomeEntries,
+      initialExpenseEntries,
+      initialInventoryPurchases,
+      manualEntriesForYear,
+      year,
+    ],
   );
 
   const rows = useMemo(

@@ -9,6 +9,7 @@ import { formatInventoryMoney, formatInventoryQuantity } from "../inventory/inve
 import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { ProductionBatchRecord } from "../inventory/production-batches-utils";
+import type { FinishedProductAverageCostRow } from "../inventory/inventory-balance-sheet-utils";
 import type { InternalConsumptionRecord } from "../inventory/internal-consumption-utils";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -24,7 +25,6 @@ import {
   PRODUCT_SALE_BUYER_TYPE_LABELS,
   type ProductSaleBuyerTypeFilter,
   type ProductSaleReportRecord,
-  type ProductionBatchCostSummary,
 } from "./inventory-reports-utils";
 import {
   FINANCE_REPORT_PRINT_AREA_ID,
@@ -114,13 +114,13 @@ function DateRangeFilters({
 export function StockOnHandReport({
   initialRawMaterials,
   initialFinishedProducts,
-  initialBatchSummaries,
+  initialAverageCosts,
   lowStockRawMaterialCount,
   fetchError,
 }: {
   initialRawMaterials: RawMaterialRecord[];
   initialFinishedProducts: FinishedProductRecord[];
-  initialBatchSummaries: ProductionBatchCostSummary[];
+  initialAverageCosts: FinishedProductAverageCostRow[];
   lowStockRawMaterialCount: number;
   fetchError: string | null;
 }) {
@@ -131,10 +131,10 @@ export function StockOnHandReport({
       buildStockOnHandReport(
         initialRawMaterials,
         initialFinishedProducts,
-        initialBatchSummaries,
+        initialAverageCosts,
         { lowStockOnly },
       ),
-    [initialBatchSummaries, initialFinishedProducts, initialRawMaterials, lowStockOnly],
+    [initialAverageCosts, initialFinishedProducts, initialRawMaterials, lowStockOnly],
   );
 
   const handleExport = () => {

@@ -31,6 +31,9 @@ async function main() {
   const referenceDate = process.env.VERIFY_REFERENCE_DATE
     ? new Date(process.env.VERIFY_REFERENCE_DATE)
     : new Date();
+  const tenantId =
+    process.env.VERIFY_TENANT_ID ??
+    "00000001-0000-4000-8000-000000000001";
   const financialYear = referenceDate.getFullYear();
   const monthIndex = referenceDate.getMonth();
 
@@ -67,7 +70,7 @@ async function main() {
     supabase.from("payroll_history").select("payroll_month, net_pay"),
     supabase.from("payroll_processing").select("payroll_month, net_pay"),
     supabase.from("month_end_close").select("month, total_net_pay"),
-    fetchInventoryBalanceSheetInput(supabase),
+    fetchInventoryBalanceSheetInput(supabase, tenantId),
   ]);
 
   const cashFlowExpenseEntries =

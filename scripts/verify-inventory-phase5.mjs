@@ -139,7 +139,7 @@ function calculateInventoryByMonth(
   return totals;
 }
 
-async function fetchBalanceSheetInputs(supabase) {
+async function fetchBalanceSheetInputs(supabase, tenantId) {
   const [
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
@@ -180,7 +180,7 @@ async function fetchBalanceSheetInputs(supabase) {
     supabase
       .from("inventory_balance_config")
       .select("go_live_date, opening_inventory_value, created_at")
-      .eq("id", 1)
+      .eq("tenant_id", tenantId)
       .maybeSingle(),
     supabase
       .from("raw_materials")
@@ -318,13 +318,16 @@ async function main() {
   const referenceDate = new Date();
   const financialYear = getFinancialYear(referenceDate);
   const currentMonthIndex = referenceDate.getMonth();
+  const tenantId =
+    process.env.VERIFY_TENANT_ID ??
+    "00000001-0000-4000-8000-000000000001";
 
   console.log("Phase 5 verification — inventory on Balance Sheet\n");
 
   const { data: config, error: configError } = await supabase
     .from("inventory_balance_config")
     .select("go_live_date, opening_inventory_value")
-    .eq("id", 1)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (configError) {
@@ -332,14 +335,14 @@ async function main() {
   }
   if (!config?.go_live_date) {
     throw new Error(
-      "inventory_balance_config is missing. Apply scripts/41_inventory_balance_sheet.sql first.",
+      "inventory_balance_config is missing for this tenant. Set it via Inventory Go-Live settings.",
     );
   }
 
   console.log(`Go-live date: ${config.go_live_date}`);
   console.log(`Opening inventory value: GHS ${Number(config.opening_inventory_value).toFixed(2)}`);
 
-  const inputs = await fetchBalanceSheetInputs(supabase);
+  const inputs = await fetchBalanceSheetInputs(supabase, tenantId);
   const stockOnHand = calculateTotalInventoryValue(
     inputs.inventoryInput.rawMaterials,
     inputs.inventoryInput.finishedProducts,

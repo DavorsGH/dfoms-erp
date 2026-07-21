@@ -8,6 +8,7 @@ import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
 } from "../inventory/finished-products-utils";
+import type { FinishedProductAverageCostRow } from "../inventory/inventory-balance-sheet-utils";
 import type { ProductionBatchRecord } from "../inventory/production-batches-utils";
 import {
   PRODUCTION_BATCH_DETAIL_SELECT,
@@ -46,7 +47,7 @@ export async function fetchStockOnHandReportData(supabase: SupabaseClient) {
   const [
     { data: rawMaterials, error: rawMaterialsError },
     { data: finishedProducts, error: finishedProductsError },
-    { data: batchSummaries, error: batchSummariesError },
+    { data: averageCostRows, error: averageCostsError },
   ] = await Promise.all([
     supabase
       .from("raw_materials")
@@ -56,9 +57,8 @@ export async function fetchStockOnHandReportData(supabase: SupabaseClient) {
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
       .order("product_name", { ascending: true }),
-    supabase
-      .from("production_batches")
-      .select("finished_product_id, total_batch_cost, quantity_produced"),
+    // Combined production_batches + product_purchases weighted average cost.
+    supabase.rpc("get_finished_product_average_costs"),
   ]);
 
   const normalizedRawMaterials =
@@ -67,14 +67,19 @@ export async function fetchStockOnHandReportData(supabase: SupabaseClient) {
   const fetchError =
     rawMaterialsError?.message ??
     finishedProductsError?.message ??
-    batchSummariesError?.message ??
+    averageCostsError?.message ??
     null;
 
   return {
     initialRawMaterials: normalizedRawMaterials,
     initialFinishedProducts:
       (finishedProducts ?? []).map((row) => normalizeFinishedProduct(row)) ?? [],
-    initialBatchSummaries: batchSummaries ?? [],
+    initialAverageCosts: (
+      (averageCostRows as FinishedProductAverageCostRow[] | null) ?? []
+    ).map((row) => ({
+      product_id: row.product_id,
+      average_cost: Number(row.average_cost) || 0,
+    })),
     lowStockRawMaterialCount: countLowStockRawMaterials(normalizedRawMaterials),
     fetchError,
   };

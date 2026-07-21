@@ -206,6 +206,11 @@ export default async function DashboardPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const tenantId = await getCurrentUserTenantId();
+
+  if (!tenantId) {
+    throw new Error("Unable to resolve the current workspace.");
+  }
 
   const { data: incomeEntries, error: incomeError } = await supabase
     .from("income_register")
@@ -263,7 +268,7 @@ export default async function DashboardPage() {
       .select("payroll_month, gross_pay, net_pay")
       .order("payroll_month", { ascending: true }),
     // Inventory input already loads raw_materials; derive low-stock count from it.
-    fetchInventoryBalanceSheetInput(supabase),
+    fetchInventoryBalanceSheetInput(supabase, tenantId),
   ]);
 
   const fetchError =
