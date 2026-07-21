@@ -154,18 +154,18 @@ const styles = StyleSheet.create({
     backgroundColor: C.white,
   },
   cellDescription: {
-    width: "40%",
+    width: "32%",
     padding: 6,
     color: C.textDark,
   },
   cellAmount: {
-    width: "15%",
+    width: "17%",
     padding: 6,
     textAlign: "right",
     color: C.textDark,
   },
   cellAmountAccent: {
-    width: "15%",
+    width: "17%",
     padding: 6,
     textAlign: "right",
     color: C.navy,
@@ -184,6 +184,11 @@ const styles = StyleSheet.create({
   footerText: {
     fontWeight: "bold",
     color: C.navy,
+  },
+  footerAmount: {
+    fontWeight: "bold",
+    color: C.navy,
+    fontSize: 8,
   },
   totalsBlock: {
     marginTop: 8,
@@ -384,16 +389,16 @@ export default function ClientInvoicePdfDocument({
             ])}
             <View style={[styles.tableRow, styles.tableFooterRow]}>
               <Text style={[styles.cellDescription, styles.footerText]}>Subtotal</Text>
-              <Text style={[styles.cellAmount, styles.footerText]}>
+              <Text style={[styles.cellAmount, styles.footerAmount]}>
                 {formatInvoiceMoney(lineColumnTotals.labour)}
               </Text>
-              <Text style={[styles.cellAmount, styles.footerText]}>
+              <Text style={[styles.cellAmount, styles.footerAmount]}>
                 {formatInvoiceMoney(lineColumnTotals.material)}
               </Text>
-              <Text style={[styles.cellAmount, styles.footerText]}>
+              <Text style={[styles.cellAmount, styles.footerAmount]}>
                 {formatInvoiceMoney(lineColumnTotals.discount)}
               </Text>
-              <Text style={[styles.cellAmount, styles.footerText]}>
+              <Text style={[styles.cellAmount, styles.footerAmount]}>
                 {formatInvoiceMoney(lineColumnTotals.total_cost)}
               </Text>
             </View>
