@@ -38,6 +38,9 @@ import {
 import { PosReceiptPanel, type PosReceiptData } from "./pos-receipt";
 
 type PosCheckoutProps = {
+  /** Hidden when the page renders inside the Sales & CRM shell, which already
+   * shows a "POS" section title. */
+  showTitle?: boolean;
   initialClients: ClientEntry[];
   initialProducts: FinishedProductRecord[];
   initialPaymentMethods: string[];
@@ -53,6 +56,7 @@ function todayIsoDate(): string {
 }
 
 export default function PosCheckout({
+  showTitle = true,
   initialClients,
   initialProducts,
   initialPaymentMethods,
@@ -368,8 +372,10 @@ export default function PosCheckout({
   return (
     <div className="min-w-0 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-[#0f2744]">POS</h1>
-        <p className="mt-2 text-sm text-slate-600">
+        {showTitle ? (
+          <h1 className="text-2xl font-semibold text-[#0f2744]">POS</h1>
+        ) : null}
+        <p className={`text-sm text-slate-600 ${showTitle ? "mt-2" : ""}`}>
           Search products, build a cart, and complete a multi-line product sale
           with one shared invoice number.
         </p>

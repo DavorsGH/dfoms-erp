@@ -21,7 +21,6 @@ import {
   getProductPurchaseProductLabel,
   getProductPurchaseSupplierLabel,
   normalizeProductPurchaseRow,
-  PRODUCT_PURCHASE_DELETE_CONFIRM_MESSAGE,
   validateProductPurchaseBody,
   type ProductPurchaseListRow,
   type PurchasedProductOption,
@@ -65,6 +64,9 @@ export default function ProductPurchases({
   const [form, setForm] = useState<FormState>(() => emptyProductPurchaseForm());
   const [loading, setLoading] = useState(false);
   const [deletingPurchaseId, setDeletingPurchaseId] = useState<string | null>(null);
+  const [confirmingPurchaseId, setConfirmingPurchaseId] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -156,34 +158,35 @@ export default function ProductPurchases({
   }
 
   async function handleDelete(purchase: ProductPurchaseListRow) {
-    if (
-      !window.confirm(PRODUCT_PURCHASE_DELETE_CONFIRM_MESSAGE)
-    ) {
-      return;
-    }
-
     setDeletingPurchaseId(purchase.id);
+    setConfirmingPurchaseId(null);
     setError(null);
     setSuccess(null);
 
-    const response = await fetch(`/api/product-purchases/${purchase.id}`, {
-      method: "DELETE",
-    });
+    try {
+      const response = await fetch(`/api/product-purchases/${purchase.id}`, {
+        method: "DELETE",
+      });
 
-    const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
-      | null;
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
 
-    if (!response.ok) {
-      setError(payload?.error ?? "Unable to delete purchase.");
+      if (!response.ok) {
+        setError(payload?.error ?? "Unable to delete purchase.");
+        return;
+      }
+
+      setPurchases((current) =>
+        current.filter((row) => row.id !== purchase.id),
+      );
+      setSuccess("Purchase deleted.");
+      router.refresh();
+    } catch {
+      setError("Unable to delete purchase. Try again.");
+    } finally {
       setDeletingPurchaseId(null);
-      return;
     }
-
-    setPurchases((current) => current.filter((row) => row.id !== purchase.id));
-    setSuccess("Purchase deleted.");
-    setDeletingPurchaseId(null);
-    router.refresh();
   }
 
   return (
@@ -268,16 +271,46 @@ export default function ProductPurchases({
                   <td className="px-4 py-3">{purchase.payment_method}</td>
                   {!readOnly ? (
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(purchase)}
-                        disabled={deletingPurchaseId === purchase.id}
-                        className={deleteButtonClassName}
-                      >
-                        {deletingPurchaseId === purchase.id
-                          ? "Deleting…"
-                          : "Delete"}
-                      </button>
+                      {confirmingPurchaseId === purchase.id ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="whitespace-normal text-sm text-red-700">
+                            Delete this purchase? This cannot be undone.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void handleDelete(purchase)}
+                            disabled={deletingPurchaseId === purchase.id}
+                            className={deleteButtonClassName}
+                          >
+                            {deletingPurchaseId === purchase.id
+                              ? "Deleting…"
+                              : "Yes, delete"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingPurchaseId(null)}
+                            disabled={deletingPurchaseId === purchase.id}
+                            className={secondaryButtonClassName}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError(null);
+                            setSuccess(null);
+                            setConfirmingPurchaseId(purchase.id);
+                          }}
+                          disabled={deletingPurchaseId === purchase.id}
+                          className={deleteButtonClassName}
+                        >
+                          {deletingPurchaseId === purchase.id
+                            ? "Deleting…"
+                            : "Delete"}
+                        </button>
+                      )}
                     </td>
                   ) : null}
                 </tr>

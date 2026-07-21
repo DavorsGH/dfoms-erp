@@ -31,6 +31,11 @@ import {
   isReportPath,
   REPORT_SIDEBAR_LINKS,
 } from "./reports/reports-nav-config";
+import {
+  INVENTORY_SIDEBAR_LINKS,
+  isInventoryGroupActive,
+  isInventoryPath,
+} from "./inventory/inventory-nav-config";
 
 type SidebarProps = {
   userRole: AppRole | null;
@@ -57,6 +62,19 @@ function isActive(pathname: string, href: string) {
 
   if (href === "/dashboard/administration") {
     return isAdministrationPath(pathname);
+  }
+
+  if (href === "/dashboard/inventory") {
+    return isInventoryPath(pathname);
+  }
+
+  if (href === "/dashboard/crm") {
+    // POS is a tab within Sales & CRM even though its route lives at
+    // /dashboard/pos.
+    return (
+      pathname.startsWith("/dashboard/crm") ||
+      pathname.startsWith("/dashboard/pos")
+    );
   }
 
   return pathname.startsWith(href);
@@ -203,6 +221,11 @@ export default function Sidebar({
     isExpanded: administrationExpanded,
     handleToggle: handleAdministrationToggle,
   } = useSidebarExpandableSection(administrationActive);
+  const inventoryActive = isInventoryPath(pathname);
+  const {
+    isExpanded: inventoryExpanded,
+    handleToggle: handleInventoryToggle,
+  } = useSidebarExpandableSection(inventoryActive);
 
   function handleNavigate() {
     onNavigate?.();
@@ -301,6 +324,41 @@ export default function Sidebar({
                   onClick={handleNavigate}
                   className={`block rounded-md px-2 py-1.5 text-xs font-medium leading-snug transition-colors ${
                     categoryActive
+                      ? "bg-white/15 text-white"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </SidebarExpandableNavSection>
+        </div>
+      );
+    }
+
+    if (item.href === "/dashboard/inventory") {
+      return (
+        <div key={item.href}>
+          <SidebarExpandableNavSection
+            label={item.label}
+            isActive={inventoryActive}
+            isExpanded={inventoryExpanded}
+            onToggle={handleInventoryToggle}
+          >
+            {INVENTORY_SIDEBAR_LINKS.map((link) => {
+              const groupActive = isInventoryGroupActive(
+                pathname,
+                link.groupId,
+              );
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={handleNavigate}
+                  className={`block rounded-md px-2 py-1.5 text-xs font-medium leading-snug transition-colors ${
+                    groupActive
                       ? "bg-white/15 text-white"
                       : "text-white/70 hover:bg-white/10 hover:text-white"
                   }`}

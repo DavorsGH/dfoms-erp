@@ -6,12 +6,13 @@ import {
   INVENTORY_SECTION_ROLES,
 } from "@/utils/rbac-access";
 import {
-  PRODUCT_PURCHASE_LIST_SELECT,
-  trimProductPurchaseInput,
-  validateProductPurchaseBody,
-  type ProductPurchaseListRow,
-  type ProductPurchaseWriteBody,
-} from "@/utils/product-purchases-types";
+  PURCHASE_ORDER_LIST_SELECT,
+  normalizePurchaseOrderListRow,
+  trimPurchaseOrderInput,
+  validatePurchaseOrderBody,
+  type PurchaseOrderListRow,
+  type PurchaseOrderWriteBody,
+} from "@/utils/purchase-orders-types";
 import { createClient } from "@/utils/supabase/server";
 
 async function getTenantSupabase() {
@@ -38,10 +39,10 @@ export async function GET() {
 
   const supabase = await getTenantSupabase();
   const { data, error } = await supabase
-    .from("product_purchases")
-    .select(PRODUCT_PURCHASE_LIST_SELECT)
+    .from("purchase_orders")
+    .select(PURCHASE_ORDER_LIST_SELECT)
     .eq("tenant_id", auth.tenantId)
-    .order("purchase_date", { ascending: false })
+    .order("order_date", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -49,7 +50,9 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    product_purchases: ((data ?? []) as unknown as ProductPurchaseListRow[]),
+    purchase_orders: ((data ?? []) as unknown as PurchaseOrderListRow[]).map(
+      (row) => normalizePurchaseOrderListRow(row),
+    ),
   });
 }
 
@@ -71,36 +74,14 @@ export async function POST(request: Request) {
     return tenantRejection;
   }
 
-  const body = rawBody as ProductPurchaseWriteBody;
-  const validationError = validateProductPurchaseBody(body);
+  const body = rawBody as PurchaseOrderWriteBody;
+  const validationError = validatePurchaseOrderBody(body);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
-  const trimmed = trimProductPurchaseInput(body);
+  const trimmed = trimPurchaseOrderInput(body);
   const supabase = await getTenantSupabase();
-
-  const { data: product, error: productError } = await supabase
-    .from("finished_products")
-    .select("id, sourcing_type")
-    .eq("id", trimmed.product_id)
-    .eq("tenant_id", auth.tenantId)
-    .maybeSingle();
-
-  if (productError) {
-    return NextResponse.json({ error: productError.message }, { status: 400 });
-  }
-
-  if (!product) {
-    return NextResponse.json({ error: "Product not found." }, { status: 404 });
-  }
-
-  if (product.sourcing_type !== "purchased") {
-    return NextResponse.json(
-      { error: "Only purchased finished products can be bought through this screen." },
-      { status: 400 },
-    );
-  }
 
   const { data: supplier, error: supplierError } = await supabase
     .from("suppliers")
@@ -124,48 +105,14 @@ export async function POST(request: Request) {
     );
   }
 
-  if (trimmed.po_item_id) {
-    const { data: poItem, error: poItemError } = await supabase
-      .from("purchase_order_items")
-      .select("id, po_id, item_type, finished_product_id")
-      .eq("id", trimmed.po_item_id)
-      .eq("tenant_id", auth.tenantId)
-      .maybeSingle();
-
-    if (poItemError) {
-      return NextResponse.json({ error: poItemError.message }, { status: 400 });
-    }
-
-    if (!poItem || poItem.po_id !== trimmed.po_id) {
-      return NextResponse.json(
-        { error: "Purchase order line not found." },
-        { status: 404 },
-      );
-    }
-
-    if (
-      poItem.item_type !== "finished_product" ||
-      poItem.finished_product_id !== trimmed.product_id
-    ) {
-      return NextResponse.json(
-        { error: "Purchase order line does not match the selected product." },
-        { status: 400 },
-      );
-    }
-  }
-
-  const { data: purchaseId, error: rpcError } = await supabase.rpc(
-    "create_product_purchase",
+  const { data: poId, error: rpcError } = await supabase.rpc(
+    "create_purchase_order",
     {
-      p_purchase_date: trimmed.purchase_date,
-      p_product_id: trimmed.product_id,
-      p_quantity: trimmed.quantity,
-      p_cost_per_unit: trimmed.cost_per_unit,
       p_supplier_id: trimmed.supplier_id,
-      p_payment_method: trimmed.payment_method,
+      p_order_date: trimmed.order_date,
+      p_expected_date: trimmed.expected_date,
       p_notes: trimmed.notes,
-      p_po_id: trimmed.po_id,
-      p_po_item_id: trimmed.po_item_id,
+      p_items: trimmed.items,
     },
   );
 
@@ -173,20 +120,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: rpcError.message }, { status: 400 });
   }
 
-  const resolvedPurchaseId =
-    typeof purchaseId === "string" ? purchaseId : String(purchaseId ?? "");
+  const resolvedPoId = typeof poId === "string" ? poId : String(poId ?? "");
 
-  if (!resolvedPurchaseId) {
+  if (!resolvedPoId) {
     return NextResponse.json(
-      { error: "Purchase was created but no id was returned." },
+      { error: "Purchase order was created but no id was returned." },
       { status: 500 },
     );
   }
 
   const { data, error } = await supabase
-    .from("product_purchases")
-    .select(PRODUCT_PURCHASE_LIST_SELECT)
-    .eq("id", resolvedPurchaseId)
+    .from("purchase_orders")
+    .select(PURCHASE_ORDER_LIST_SELECT)
+    .eq("id", resolvedPoId)
     .eq("tenant_id", auth.tenantId)
     .single();
 
@@ -195,6 +141,8 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    product_purchase: data as unknown as ProductPurchaseListRow,
+    purchase_order: normalizePurchaseOrderListRow(
+      data as unknown as PurchaseOrderListRow,
+    ),
   });
 }

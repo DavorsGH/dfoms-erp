@@ -227,7 +227,9 @@ export function getDashboardVisibility(role: AppRole | null): DashboardVisibilit
 export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
   const items: SidebarNavItem[] = [{ label: "Dashboard", href: "/dashboard" }];
 
-  if (canAccessPosSection(role)) {
+  // POS lives inside Sales & CRM for users who can access that section; only
+  // POS-only roles (e.g. sales_rep) still get a standalone sidebar link.
+  if (canAccessPosSection(role) && !canAccessCrmSection(role)) {
     items.push({ label: "POS", href: "/dashboard/pos" });
   }
 

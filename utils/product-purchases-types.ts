@@ -46,6 +46,8 @@ export type ProductPurchaseWriteBody = {
   cost_per_unit?: number | string;
   payment_method?: string;
   notes?: string | null;
+  po_id?: string | null;
+  po_item_id?: string | null;
 };
 
 export function emptyProductPurchaseForm() {
@@ -113,6 +115,8 @@ export function trimProductPurchaseInput(body: ProductPurchaseWriteBody) {
     cost_per_unit: Number(body.cost_per_unit),
     payment_method: (body.payment_method ?? "").trim(),
     notes: (body.notes ?? "").trim() || null,
+    po_id: (body.po_id ?? "").trim() || null,
+    po_item_id: (body.po_item_id ?? "").trim() || null,
   };
 }
 
@@ -143,6 +147,10 @@ export function validateProductPurchaseBody(
 
   if (!trimmed.payment_method) {
     return "Select a payment method.";
+  }
+
+  if ((trimmed.po_id && !trimmed.po_item_id) || (!trimmed.po_id && trimmed.po_item_id)) {
+    return "Purchase order reference is incomplete.";
   }
 
   return null;

@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { inputClassName } from "../employees/employee-record-utils";
-import RegisterRowActions, {
-  getStripedRowClassName,
-} from "../finance/register-row-actions";
+import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -15,7 +13,6 @@ import {
   emptySupplierForm,
   formatSupplierStatus,
   normalizeSupplier,
-  SUPPLIER_DELETE_CONFIRM_MESSAGE,
   supplierToForm,
   validateSupplierInput,
   type SupplierRow,
@@ -35,6 +32,9 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+const dangerButtonClassName =
+  "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
 function formatCell(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : "—";
@@ -52,6 +52,14 @@ export default function Suppliers({
   const [form, setForm] = useState<FormState>(() => emptySupplierForm());
   const [loading, setLoading] = useState(false);
   const [deletingSupplierId, setDeletingSupplierId] = useState<string | null>(null);
+  const [checkingSupplierId, setCheckingSupplierId] = useState<string | null>(null);
+  const [confirmingSupplierId, setConfirmingSupplierId] = useState<string | null>(
+    null,
+  );
+  const [blockedSupplierMessage, setBlockedSupplierMessage] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -164,73 +172,90 @@ export default function Suppliers({
     router.refresh();
   }
 
-  async function handleDelete(supplier: SupplierRow) {
-    setDeletingSupplierId(supplier.id);
+  async function previewDelete(supplier: SupplierRow) {
+    setCheckingSupplierId(supplier.id);
+    setConfirmingSupplierId(null);
+    setBlockedSupplierMessage(null);
     setError(null);
     setSuccess(null);
 
-    const previewResponse = await fetch(`/api/suppliers/${supplier.id}`, {
-      method: "DELETE",
-    });
+    try {
+      const previewResponse = await fetch(`/api/suppliers/${supplier.id}`, {
+        method: "DELETE",
+      });
 
-    const previewPayload = (await previewResponse.json().catch(() => null)) as
-      | {
-          can_delete?: boolean;
-          error?: string;
-          requires_confirmation?: boolean;
-        }
-      | null;
+      const previewPayload = (await previewResponse.json().catch(() => null)) as
+        | {
+            can_delete?: boolean;
+            error?: string;
+            requires_confirmation?: boolean;
+          }
+        | null;
 
-    if (
-      previewResponse.status === 409 ||
-      previewPayload?.can_delete === false
-    ) {
-      setError(previewPayload?.error ?? "This supplier can't be deleted.");
+      if (
+        previewResponse.status === 409 ||
+        previewPayload?.can_delete === false
+      ) {
+        setBlockedSupplierMessage({
+          id: supplier.id,
+          text: previewPayload?.error ?? "This supplier can't be deleted.",
+        });
+        return;
+      }
+
+      if (
+        !previewResponse.ok ||
+        previewPayload?.can_delete !== true ||
+        !previewPayload.requires_confirmation
+      ) {
+        setError(previewPayload?.error ?? "Unable to preview supplier delete.");
+        return;
+      }
+
+      setConfirmingSupplierId(supplier.id);
+    } catch {
+      setError("Unable to preview supplier delete. Try again.");
+    } finally {
+      setCheckingSupplierId(null);
+    }
+  }
+
+  async function confirmDelete(supplier: SupplierRow) {
+    setDeletingSupplierId(supplier.id);
+    setError(null);
+
+    try {
+      const deleteResponse = await fetch(`/api/suppliers/${supplier.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed: true }),
+      });
+
+      const deletePayload = (await deleteResponse.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+
+      if (!deleteResponse.ok) {
+        setError(deletePayload?.error ?? "Unable to delete supplier.");
+        return;
+      }
+
+      if (editingSupplierId === supplier.id) {
+        closeModal();
+      }
+
+      setSuppliers((current) =>
+        current.filter((row) => row.id !== supplier.id),
+      );
+      setConfirmingSupplierId(null);
+      setBlockedSupplierMessage(null);
+      setSuccess("Supplier deleted.");
+      router.refresh();
+    } catch {
+      setError("Unable to delete supplier. Try again.");
+    } finally {
       setDeletingSupplierId(null);
-      return;
     }
-
-    if (
-      !previewResponse.ok ||
-      previewPayload?.can_delete !== true ||
-      !previewPayload?.requires_confirmation
-    ) {
-      setError(previewPayload?.error ?? "Unable to preview supplier delete.");
-      setDeletingSupplierId(null);
-      return;
-    }
-
-    if (!window.confirm(SUPPLIER_DELETE_CONFIRM_MESSAGE)) {
-      setDeletingSupplierId(null);
-      return;
-    }
-
-    const deleteResponse = await fetch(`/api/suppliers/${supplier.id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmed: true }),
-    });
-
-    const deletePayload = (await deleteResponse.json().catch(() => null)) as
-      | { error?: string }
-      | null;
-
-    if (!deleteResponse.ok) {
-      setError(deletePayload?.error ?? "Unable to delete supplier.");
-      setDeletingSupplierId(null);
-      return;
-    }
-
-    if (editingSupplierId === supplier.id) {
-      closeModal();
-    }
-
-    setSuppliers((current) =>
-      current.filter((row) => row.id !== supplier.id),
-    );
-    setSuccess("Supplier deleted.");
-    setDeletingSupplierId(null);
-    router.refresh();
   }
 
   return (
@@ -310,12 +335,73 @@ export default function Suppliers({
                     </span>
                   </td>
                   {!readOnly ? (
-                    <RegisterRowActions
-                      onEdit={() => openEditModal(supplier)}
-                      onDelete={() => handleDelete(supplier)}
-                      disableEdit={loading || deletingSupplierId === supplier.id}
-                      deleting={deletingSupplierId === supplier.id}
-                    />
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {confirmingSupplierId === supplier.id ? (
+                          <>
+                            <span className="whitespace-normal text-sm text-red-700">
+                              Delete {supplier.name}? This cannot be undone.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void confirmDelete(supplier)}
+                              disabled={deletingSupplierId === supplier.id}
+                              className={dangerButtonClassName}
+                            >
+                              {deletingSupplierId === supplier.id
+                                ? "Deleting…"
+                                : "Yes, delete"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingSupplierId(null)}
+                              disabled={deletingSupplierId === supplier.id}
+                              className={secondaryButtonClassName}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : blockedSupplierMessage?.id === supplier.id ? (
+                          <>
+                            <span className="max-w-md whitespace-normal text-sm text-red-700">
+                              {blockedSupplierMessage.text}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setBlockedSupplierMessage(null)}
+                              className={secondaryButtonClassName}
+                            >
+                              Dismiss
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(supplier)}
+                              disabled={
+                                loading ||
+                                checkingSupplierId === supplier.id ||
+                                deletingSupplierId === supplier.id
+                              }
+                              className={secondaryButtonClassName}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void previewDelete(supplier)}
+                              disabled={checkingSupplierId === supplier.id}
+                              className={dangerButtonClassName}
+                            >
+                              {checkingSupplierId === supplier.id
+                                ? "Checking…"
+                                : "Delete"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   ) : null}
                 </tr>
               ))

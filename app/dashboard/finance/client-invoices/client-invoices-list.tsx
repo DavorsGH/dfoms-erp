@@ -41,36 +41,36 @@ export default function ClientInvoicesList({
   );
   const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   async function handleDelete(invoice: ClientInvoiceListRow) {
-    const confirmed = window.confirm(
-      `Delete invoice ${invoice.invoice_number}? This cannot be undone.`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
+    setConfirmingId(null);
     setDeletingId(invoice.id);
     setError(null);
 
-    const response = await fetch(`/api/client-invoices/${invoice.id}`, {
-      method: "DELETE",
-    });
+    try {
+      const response = await fetch(`/api/client-invoices/${invoice.id}`, {
+        method: "DELETE",
+      });
 
-    const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
-      | null;
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
 
-    if (!response.ok) {
-      setError(payload?.error ?? "Unable to delete invoice.");
+      if (!response.ok) {
+        setError(payload?.error ?? "Unable to delete invoice.");
+        return;
+      }
+
+      setInvoices((current) =>
+        current.filter((entry) => entry.id !== invoice.id),
+      );
+      router.refresh();
+    } catch {
+      setError("Unable to delete invoice. Check your connection and try again.");
+    } finally {
       setDeletingId(null);
-      return;
     }
-
-    setInvoices((current) => current.filter((entry) => entry.id !== invoice.id));
-    setDeletingId(null);
-    router.refresh();
   }
 
   return (
@@ -142,14 +142,39 @@ export default function ClientInvoicesList({
                           >
                             Edit
                           </Link>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(invoice)}
-                            disabled={deletingId === invoice.id}
-                            className={dangerButtonClassName}
-                          >
-                            {deletingId === invoice.id ? "Deleting…" : "Delete"}
-                          </button>
+                          {confirmingId === invoice.id ? (
+                            <span className="inline-flex items-center gap-2">
+                              <span className="text-sm text-red-700">
+                                Delete {invoice.invoice_number}?
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void handleDelete(invoice)}
+                                className={dangerButtonClassName}
+                              >
+                                Yes, delete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmingId(null)}
+                                className={secondaryButtonClassName}
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setError(null);
+                                setConfirmingId(invoice.id);
+                              }}
+                              disabled={deletingId === invoice.id}
+                              className={dangerButtonClassName}
+                            >
+                              {deletingId === invoice.id ? "Deleting…" : "Delete"}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
