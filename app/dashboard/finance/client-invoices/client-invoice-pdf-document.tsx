@@ -188,7 +188,8 @@ const styles = StyleSheet.create({
   footerAmount: {
     fontWeight: "bold",
     color: C.navy,
-    fontSize: 8,
+    fontSize: 9,
+    padding: 3,
   },
   totalsBlock: {
     marginTop: 8,
