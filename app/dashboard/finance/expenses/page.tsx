@@ -32,7 +32,7 @@ export default async function ExpensesPage() {
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
     supabase
       .from("approvers")
-      .select("employee_id, employees(full_name)")
+      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
       .order("employee_id", { ascending: true }),
   ]);
 

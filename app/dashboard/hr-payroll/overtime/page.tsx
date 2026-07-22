@@ -27,7 +27,7 @@ export default async function OvertimePage() {
     supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
     supabase
       .from("approvers")
-      .select("employee_id, employees(full_name)")
+      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
       .order("employee_id", { ascending: true }),
   ]);
 

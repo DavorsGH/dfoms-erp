@@ -30,7 +30,7 @@ export default function LeaveApprovals({
     const { data, error: refreshError } = await supabase
       .from("leave_requests")
       .select(
-        "*, leave_types(type_name), employees(full_name, staff_id)",
+        "*, leave_types(type_name), employees!leave_requests_employee_id_fkey(full_name, staff_id)",
       )
       .eq("status", "Pending")
       .order("submitted_at", { ascending: true });

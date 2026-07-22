@@ -53,7 +53,7 @@ export default function LeaveBalances({
   async function refreshBalances() {
     const { data, error: refreshError } = await supabase
       .from("employee_leave_balances")
-      .select("*, leave_types(type_name), employees(full_name, staff_id)")
+      .select("*, leave_types(type_name), employees!employee_leave_balances_employee_id_fkey(full_name, staff_id)")
       .eq("year", currentYear)
       .order("employee_id");
 

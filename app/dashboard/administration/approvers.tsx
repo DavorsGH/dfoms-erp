@@ -35,7 +35,7 @@ export default function Approvers({
   async function refreshApprovers() {
     const { data, error: refreshError } = await supabase
       .from("approvers")
-      .select("employee_id, employees(full_name)")
+      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
       .order("employee_id", { ascending: true });
 
     if (refreshError) {

@@ -103,7 +103,7 @@ export default function ExpenseRegister({
           .order("name", { ascending: true }),
         client
           .from("approvers")
-          .select("employee_id, employees(full_name)")
+          .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
           .order("employee_id", { ascending: true }),
       ]);
 

@@ -10,7 +10,7 @@ export const CLIENT_INVOICE_HEADER_SELECT =
   "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, authorized_by_name, authorized_by_title, created_at, updated_at" as const;
 
 export const AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT =
-  "auth_uid, employee_id, employees(full_name, position)" as const;
+  "auth_uid, employee_id, employees!user_accounts_employee_id_fkey(full_name, position)" as const;
 
 export const AUTHORIZED_BY_OTHER = "__other__";
 

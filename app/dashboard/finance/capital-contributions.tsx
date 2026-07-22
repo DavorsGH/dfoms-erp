@@ -89,7 +89,7 @@ export default function CapitalContributions({
   async function refreshEntries() {
     const { data, error: refreshError } = await supabase
       .from("capital_contributions")
-      .select("*, employees(full_name)")
+      .select("*, employees!capital_contributions_contributed_by_fkey(full_name)")
       .order("date", { ascending: false });
 
     if (refreshError) {

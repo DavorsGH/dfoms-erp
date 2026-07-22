@@ -15,13 +15,13 @@ export default async function LeaveSettingsPage() {
     supabase
       .from("leave_approver_config")
       .select(
-        "*, user_accounts(email, employees(full_name))",
+        "*, user_accounts(email, employees!user_accounts_employee_id_fkey(full_name))",
       )
       .order("effective_from", { ascending: false })
       .order("created_at", { ascending: false }),
     supabase
       .from("user_accounts")
-      .select("auth_uid, email, employee_id, employees(full_name)")
+      .select("auth_uid, email, employee_id, employees!user_accounts_employee_id_fkey(full_name)")
       .eq("is_active", true)
       .order("email"),
   ]);

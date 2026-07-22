@@ -13,7 +13,7 @@ export default async function CapitalContributionsPage() {
     await Promise.all([
       supabase
         .from("capital_contributions")
-        .select("*, employees(full_name)")
+        .select("*, employees!capital_contributions_contributed_by_fkey(full_name)")
         .order("date", { ascending: false }),
       supabase
         .from("employees")

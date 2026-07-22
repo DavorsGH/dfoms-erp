@@ -28,7 +28,7 @@ export default async function LeaveBalancesPage() {
   ] = await Promise.all([
     supabase
       .from("employee_leave_balances")
-      .select("*, leave_types(type_name), employees(full_name, staff_id)")
+      .select("*, leave_types(type_name), employees!employee_leave_balances_employee_id_fkey(full_name, staff_id)")
       .eq("year", currentYear)
       .order("employee_id"),
     supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),

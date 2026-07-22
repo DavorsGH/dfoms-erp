@@ -14,7 +14,7 @@ export default async function ApproversPage() {
   ] = await Promise.all([
     supabase
       .from("approvers")
-      .select("employee_id, employees(full_name)")
+      .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
       .order("employee_id", { ascending: true }),
     supabase
       .from("employees")

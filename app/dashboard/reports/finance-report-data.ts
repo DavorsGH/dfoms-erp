@@ -163,7 +163,7 @@ export async function fetchCapitalContributionsReportData(
 ) {
   const { data, error } = await supabase
     .from("capital_contributions")
-    .select("id, date, contributed_by, amount, description, notes, employees(full_name)")
+    .select("id, date, contributed_by, amount, description, notes, employees!capital_contributions_contributed_by_fkey(full_name)")
     .order("date", { ascending: true });
 
   return {

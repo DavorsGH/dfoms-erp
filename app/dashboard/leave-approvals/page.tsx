@@ -11,7 +11,7 @@ export default async function LeaveApprovalsPage() {
 
   const { data, error } = await supabase
     .from("leave_requests")
-    .select("*, leave_types(type_name), employees(full_name, staff_id)")
+    .select("*, leave_types(type_name), employees!leave_requests_employee_id_fkey(full_name, staff_id)")
     .eq("status", "Pending")
     .eq("approver_user_account_id", authUid ?? "")
     .order("submitted_at", { ascending: true });
