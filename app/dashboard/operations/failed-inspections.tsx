@@ -28,11 +28,11 @@ import {
   type InspectionChecklistLookup,
 } from "./failed-inspections-utils";
 import {
-  generateNextOperationsId,
   nullableText,
   SEVERITY_OPTIONS,
   truncateText,
 } from "./operations-register-utils";
+import { allocateFailedInspectionIssueNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
 
 type FailedInspectionsProps = {
@@ -114,11 +114,6 @@ export default function FailedInspections({
     setEditingId(null);
     setForm({
       ...emptyForm,
-      issue_no: generateNextOperationsId(
-        "ISS",
-        3,
-        entries.map((entry) => entry.issue_no),
-      ),
       date_identified: toDateInputValue(new Date().toISOString()),
     });
     setShowForm(true);
@@ -221,29 +216,49 @@ export default function FailedInspections({
       date_closed: nullableText(form.date_closed),
     };
 
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("failed_inspections")
-          .update({
-            checklist_id: payload.checklist_id,
-            date_identified: payload.date_identified,
-            client_id: payload.client_id,
-            site_id: payload.site_id,
-            area: payload.area,
-            problem_description: payload.problem_description,
-            severity: payload.severity,
-            assigned_person: payload.assigned_person,
-            target_date: payload.target_date,
-            completed: payload.completed,
-            date_closed: payload.date_closed,
-          })
-          .eq("issue_no", editingId)
-      : await supabase.from("failed_inspections").insert(payload);
+    if (editingId) {
+      const { error: saveError } = await supabase
+        .from("failed_inspections")
+        .update({
+          checklist_id: payload.checklist_id,
+          date_identified: payload.date_identified,
+          client_id: payload.client_id,
+          site_id: payload.site_id,
+          area: payload.area,
+          problem_description: payload.problem_description,
+          severity: payload.severity,
+          assigned_person: payload.assigned_person,
+          target_date: payload.target_date,
+          completed: payload.completed,
+          date_closed: payload.date_closed,
+        })
+        .eq("issue_no", editingId);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateFailedInspectionIssueNo(supabase);
+      if (allocated.error || !allocated.issueNo) {
+        setError(allocated.error ?? "Unable to allocate issue number.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase
+        .from("failed_inspections")
+        .insert({
+          ...payload,
+          issue_no: allocated.issueNo,
+        });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -276,18 +291,19 @@ export default function FailedInspections({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Issue No
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={form.issue_no}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Issue No
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={form.issue_no}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Checklist ID

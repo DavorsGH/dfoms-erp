@@ -18,11 +18,11 @@ import {
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { ClientEntry } from "./clients-utils";
 import {
-  generateNextOperationsId,
   nullableInteger,
   nullableText,
   RISK_LEVEL_OPTIONS,
 } from "./operations-register-utils";
+import { allocateSiteCode } from "./site-code-api";
 import {
   getSiteBuildingZone,
   getSiteClientName,
@@ -105,14 +105,7 @@ export default function Sites({
 
   function openAddForm() {
     setEditingCode(null);
-    setForm({
-      ...emptyForm,
-      site_code: generateNextOperationsId(
-        "SITE",
-        3,
-        sites.map((site) => site.site_code),
-      ),
-    });
+    setForm({ ...emptyForm });
     setShowForm(true);
   }
 
@@ -195,29 +188,47 @@ export default function Sites({
       notes: nullableText(form.notes),
     };
 
-    const { error: saveError } = editingCode
-      ? await supabase
-          .from("sites")
-          .update({
-            client_id: payload.client_id,
-            site_name: payload.site_name,
-            building: payload.building,
-            floor_zone: payload.floor_zone,
-            area_room: payload.area_room,
-            cleaning_frequency: payload.cleaning_frequency,
-            risk_level: payload.risk_level,
-            est_cleaning_time_min: payload.est_cleaning_time_min,
-            assigned_supervisor: payload.assigned_supervisor,
-            access_instructions: payload.access_instructions,
-            notes: payload.notes,
-          })
-          .eq("site_code", editingCode)
-      : await supabase.from("sites").insert(payload);
+    if (editingCode) {
+      const { error: saveError } = await supabase
+        .from("sites")
+        .update({
+          client_id: payload.client_id,
+          site_name: payload.site_name,
+          building: payload.building,
+          floor_zone: payload.floor_zone,
+          area_room: payload.area_room,
+          cleaning_frequency: payload.cleaning_frequency,
+          risk_level: payload.risk_level,
+          est_cleaning_time_min: payload.est_cleaning_time_min,
+          assigned_supervisor: payload.assigned_supervisor,
+          access_instructions: payload.access_instructions,
+          notes: payload.notes,
+        })
+        .eq("site_code", editingCode);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateSiteCode(supabase);
+      if (allocated.error || !allocated.siteCode) {
+        setError(allocated.error ?? "Unable to allocate site code.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase.from("sites").insert({
+        ...payload,
+        site_code: allocated.siteCode,
+      });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -286,18 +297,19 @@ export default function Sites({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Site Code
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={form.site_code}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
+              {editingCode ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Site Code
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={form.site_code}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Client

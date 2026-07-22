@@ -454,6 +454,7 @@ export function calculateMonthlyDepreciationTotals(
   return totals;
 }
 
+/** @deprecated Legacy DF0001 max+1 helper; new assets use generate_next_code('ASSET'). */
 export function generateNextAssetId(existingIds: string[]): string {
   const numbers = existingIds.map((id) => {
     const match = id.match(/^DF(\d+)$/i);

@@ -29,10 +29,10 @@ import {
   COMPLAINT_PRIORITY_OPTIONS,
   COMPLAINT_STATUS_OPTIONS,
   DEFAULT_COMPLAINT_STATUS,
-  generateNextOperationsId,
   nullableText,
   truncateText,
 } from "./operations-register-utils";
+import { allocateComplaintNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
 
 type ComplaintRegisterProps = {
@@ -135,11 +135,6 @@ export default function ComplaintRegister({
     setEditingId(null);
     setForm({
       ...emptyForm,
-      complaint_no: generateNextOperationsId(
-        "CMP",
-        3,
-        entries.map((entry) => entry.complaint_no),
-      ),
       date_received: toDateInputValue(new Date().toISOString()),
       status: DEFAULT_COMPLAINT_STATUS,
     });
@@ -239,31 +234,51 @@ export default function ComplaintRegister({
       notes: nullableText(form.notes),
     };
 
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("complaint_register")
-          .update({
-            date_received: payload.date_received,
-            client_id: payload.client_id,
-            site_id: payload.site_id,
-            area: payload.area,
-            complaint_details: payload.complaint_details,
-            priority: payload.priority,
-            assigned_supervisor: payload.assigned_supervisor,
-            action_taken: payload.action_taken,
-            status: payload.status,
-            resolution_date: payload.resolution_date,
-            customer_satisfaction: payload.customer_satisfaction,
-            repeat_complaint: payload.repeat_complaint,
-            notes: payload.notes,
-          })
-          .eq("complaint_no", editingId)
-      : await supabase.from("complaint_register").insert(payload);
+    if (editingId) {
+      const { error: saveError } = await supabase
+        .from("complaint_register")
+        .update({
+          date_received: payload.date_received,
+          client_id: payload.client_id,
+          site_id: payload.site_id,
+          area: payload.area,
+          complaint_details: payload.complaint_details,
+          priority: payload.priority,
+          assigned_supervisor: payload.assigned_supervisor,
+          action_taken: payload.action_taken,
+          status: payload.status,
+          resolution_date: payload.resolution_date,
+          customer_satisfaction: payload.customer_satisfaction,
+          repeat_complaint: payload.repeat_complaint,
+          notes: payload.notes,
+        })
+        .eq("complaint_no", editingId);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateComplaintNo(supabase);
+      if (allocated.error || !allocated.complaintNo) {
+        setError(allocated.error ?? "Unable to allocate complaint number.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase
+        .from("complaint_register")
+        .insert({
+          ...payload,
+          complaint_no: allocated.complaintNo,
+        });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -349,18 +364,19 @@ export default function ComplaintRegister({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Complaint No
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={form.complaint_no}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Complaint No
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={form.complaint_no}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Date Received

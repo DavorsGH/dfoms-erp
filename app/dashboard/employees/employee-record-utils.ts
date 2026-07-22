@@ -46,7 +46,7 @@ export type EmployeeRecord = {
 };
 
 export const EMPLOYEE_SELECT =
-  "*, department_ref:departments!department(dept_code, department_name), project_ref:projects!contract_project(project_code, project_name)";
+  "*, department_ref:departments!employees_department_fkey(dept_code, department_name), project_ref:projects!contract_project(project_code, project_name)";
 
 export type SiteLookup = {
   id: string;

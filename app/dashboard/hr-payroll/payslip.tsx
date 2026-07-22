@@ -58,7 +58,7 @@ type PayslipLineItem = {
 };
 
 const EMPLOYEE_DETAILS_SELECT =
-  "employee_id, staff_id, full_name, position, employment_type, bank_name, account_number, momo_number, department, department_ref:departments!department(dept_code, department_name)";
+  "employee_id, staff_id, full_name, position, employment_type, bank_name, account_number, momo_number, department, department_ref:departments!employees_department_fkey(dept_code, department_name)";
 
 function sortEmployeeOptions(
   employees: PayslipEmployeeOption[],

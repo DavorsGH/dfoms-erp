@@ -19,7 +19,6 @@ import {
 import { formatDate, inputClassName } from "../hr-payroll/hr-register-utils";
 import {
   CONTRACT_STATUS_OPTIONS,
-  generateNextOperationsId,
   isContractExpired,
   isContractRenewalDue,
   nullableText,
@@ -28,7 +27,10 @@ import {
   DEFAULT_CONTRACT_STATUS,
   type ClientEntry,
 } from "./clients-utils";
-import { allocateContractNumber } from "../crm/customers/customer-contract-api";
+import {
+  allocateClientId,
+  allocateContractNumber,
+} from "../crm/customers/customer-contract-api";
 
 type ClientsProps = {
   initialClients: ClientEntry[];
@@ -102,11 +104,6 @@ export default function Clients({
     setEditingId(null);
     setForm({
       ...emptyForm,
-      client_id: generateNextOperationsId(
-        "CLI",
-        3,
-        clients.map((client) => client.client_id),
-      ),
       contract_status: DEFAULT_CONTRACT_STATUS,
     });
     setShowForm(true);
@@ -225,16 +222,26 @@ export default function Clients({
         return;
       }
     } else {
-      const allocated = await allocateContractNumber(supabase);
-      if (allocated.error || !allocated.contractNumber) {
-        setError(allocated.error ?? "Unable to allocate contract number.");
+      const clientAllocated = await allocateClientId(supabase);
+      if (clientAllocated.error || !clientAllocated.clientId) {
+        setError(clientAllocated.error ?? "Unable to allocate client ID.");
+        setLoading(false);
+        return;
+      }
+
+      const contractAllocated = await allocateContractNumber(supabase);
+      if (contractAllocated.error || !contractAllocated.contractNumber) {
+        setError(
+          contractAllocated.error ?? "Unable to allocate contract number.",
+        );
         setLoading(false);
         return;
       }
 
       const { error: saveError } = await supabase.from("customers").insert({
         ...payload,
-        contract_number: allocated.contractNumber,
+        client_id: clientAllocated.clientId,
+        contract_number: contractAllocated.contractNumber,
       });
 
       if (saveError) {
@@ -291,18 +298,19 @@ export default function Clients({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Client ID
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={form.client_id}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Client ID
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={form.client_id}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Client Name

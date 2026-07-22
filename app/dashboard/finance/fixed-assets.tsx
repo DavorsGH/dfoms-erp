@@ -10,12 +10,12 @@ import {
   formatDate,
   formatGHS,
   formatPercent,
-  generateNextAssetId,
   getAssetCalculations,
   getMonthEndForDate,
   isReducingBalanceMethod,
   type FixedAssetEntry,
 } from "./fixed-assets-utils";
+import { allocateAssetId } from "./asset-id-api";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -123,10 +123,7 @@ export default function FixedAssets({
 
   function openAddForm() {
     setEditingId(null);
-    setForm({
-      ...emptyForm,
-      asset_id: generateNextAssetId(assets.map((asset) => asset.asset_id)),
-    });
+    setForm({ ...emptyForm });
     setShowForm(true);
   }
 
@@ -259,17 +256,49 @@ export default function FixedAssets({
       notes: form.notes || null,
     };
 
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("fixed_assets")
-          .update(payload)
-          .eq("asset_id", editingId)
-      : await supabase.from("fixed_assets").insert(payload);
+    if (editingId) {
+      const { error: saveError } = await supabase
+        .from("fixed_assets")
+        .update({
+          asset_name: payload.asset_name,
+          asset_category: payload.asset_category,
+          purchase_date: payload.purchase_date,
+          original_cost: payload.original_cost,
+          quantity: payload.quantity,
+          total_cost: payload.total_cost,
+          useful_life_years: payload.useful_life_years,
+          depreciation_method: payload.depreciation_method,
+          annual_depreciation: payload.annual_depreciation,
+          accumulated_depreciation: payload.accumulated_depreciation,
+          net_book_value: payload.net_book_value,
+          location: payload.location,
+          notes: payload.notes,
+        })
+        .eq("asset_id", editingId);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateAssetId(supabase);
+      if (allocated.error || !allocated.assetId) {
+        setError(allocated.error ?? "Unable to allocate asset ID.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase.from("fixed_assets").insert({
+        ...payload,
+        asset_id: allocated.assetId,
+      });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -323,14 +352,16 @@ export default function FixedAssets({
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Asset ID
-                </label>
-                <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-[#0f2744]">
-                  {form.asset_id}
-                </p>
-              </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Asset ID
+                  </label>
+                  <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-[#0f2744]">
+                    {form.asset_id}
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Asset Name

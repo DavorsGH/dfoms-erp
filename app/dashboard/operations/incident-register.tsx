@@ -28,10 +28,10 @@ import {
   INCIDENT_STATUS_OPTIONS,
   INCIDENT_TYPE_OPTIONS,
   SEVERITY_OPTIONS,
-  generateNextOperationsId,
   nullableText,
   truncateText,
 } from "./operations-register-utils";
+import { allocateIncidentNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
 
 type IncidentRegisterProps = {
@@ -142,11 +142,6 @@ export default function IncidentRegister({
     setEditingId(null);
     setForm({
       ...emptyForm,
-      incident_no: generateNextOperationsId(
-        "INC-",
-        3,
-        entries.map((entry) => entry.incident_no),
-      ),
       date: toDateInputValue(new Date().toISOString()),
       status: DEFAULT_INCIDENT_STATUS,
     });
@@ -248,32 +243,52 @@ export default function IncidentRegister({
       notes: nullableText(form.notes),
     };
 
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("incident_register")
-          .update({
-            date: payload.date,
-            time: payload.time,
-            client_id: payload.client_id,
-            site_id: payload.site_id,
-            area: payload.area,
-            incident_type: payload.incident_type,
-            description: payload.description,
-            severity: payload.severity,
-            reported_by: payload.reported_by,
-            action_taken: payload.action_taken,
-            status: payload.status,
-            date_resolved: payload.date_resolved,
-            escalated_to_mgmt: payload.escalated_to_mgmt,
-            notes: payload.notes,
-          })
-          .eq("incident_no", editingId)
-      : await supabase.from("incident_register").insert(payload);
+    if (editingId) {
+      const { error: saveError } = await supabase
+        .from("incident_register")
+        .update({
+          date: payload.date,
+          time: payload.time,
+          client_id: payload.client_id,
+          site_id: payload.site_id,
+          area: payload.area,
+          incident_type: payload.incident_type,
+          description: payload.description,
+          severity: payload.severity,
+          reported_by: payload.reported_by,
+          action_taken: payload.action_taken,
+          status: payload.status,
+          date_resolved: payload.date_resolved,
+          escalated_to_mgmt: payload.escalated_to_mgmt,
+          notes: payload.notes,
+        })
+        .eq("incident_no", editingId);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateIncidentNo(supabase);
+      if (allocated.error || !allocated.incidentNo) {
+        setError(allocated.error ?? "Unable to allocate incident number.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase
+        .from("incident_register")
+        .insert({
+          ...payload,
+          incident_no: allocated.incidentNo,
+        });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -359,18 +374,19 @@ export default function IncidentRegister({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Incident No
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={form.incident_no}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Incident No
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={form.incident_no}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Date

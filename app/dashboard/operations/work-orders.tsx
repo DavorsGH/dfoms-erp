@@ -26,12 +26,12 @@ import type { ClientEntry } from "./clients-utils";
 import {
   calculateDurationMinutes,
   derivePassFailFromScore,
-  generateNextOperationsId,
   nullableInteger,
   nullableNumber,
   nullableText,
   PASS_FAIL_OPTIONS,
 } from "./operations-register-utils";
+import { allocateWorkOrderNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
 import {
   getWorkOrderClientName,
@@ -170,11 +170,6 @@ export default function WorkOrders({
     setEditingNo(null);
     setForm({
       ...emptyForm,
-      work_order_no: generateNextOperationsId(
-        "WO",
-        4,
-        workOrders.map((entry) => entry.work_order_no),
-      ),
       date: toDateInputValue(new Date().toISOString()),
     });
     setShowForm(true);
@@ -301,34 +296,52 @@ export default function WorkOrders({
       remarks: nullableText(form.remarks),
     };
 
-    const { error: saveError } = editingNo
-      ? await supabase
-          .from("work_orders")
-          .update({
-            checklist_id: payload.checklist_id,
-            ref_po_no: payload.ref_po_no,
-            date: payload.date,
-            client_id: payload.client_id,
-            site_id: payload.site_id,
-            area: payload.area,
-            service_type: payload.service_type,
-            assigned_cleaner: payload.assigned_cleaner,
-            supervisor: payload.supervisor,
-            start_time: payload.start_time,
-            completion_time: payload.completion_time,
-            duration_min: payload.duration_min,
-            inspection_score_pct: payload.inspection_score_pct,
-            pass_fail: payload.pass_fail,
-            checked_by_sup: payload.checked_by_sup,
-            remarks: payload.remarks,
-          })
-          .eq("work_order_no", editingNo)
-      : await supabase.from("work_orders").insert(payload);
+    if (editingNo) {
+      const { error: saveError } = await supabase
+        .from("work_orders")
+        .update({
+          checklist_id: payload.checklist_id,
+          ref_po_no: payload.ref_po_no,
+          date: payload.date,
+          client_id: payload.client_id,
+          site_id: payload.site_id,
+          area: payload.area,
+          service_type: payload.service_type,
+          assigned_cleaner: payload.assigned_cleaner,
+          supervisor: payload.supervisor,
+          start_time: payload.start_time,
+          completion_time: payload.completion_time,
+          duration_min: payload.duration_min,
+          inspection_score_pct: payload.inspection_score_pct,
+          pass_fail: payload.pass_fail,
+          checked_by_sup: payload.checked_by_sup,
+          remarks: payload.remarks,
+        })
+        .eq("work_order_no", editingNo);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateWorkOrderNo(supabase);
+      if (allocated.error || !allocated.workOrderNo) {
+        setError(allocated.error ?? "Unable to allocate work order number.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase.from("work_orders").insert({
+        ...payload,
+        work_order_no: allocated.workOrderNo,
+      });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -439,18 +452,19 @@ export default function WorkOrders({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Work Order No
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={form.work_order_no}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
+              {editingNo ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Work Order No
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={form.work_order_no}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Date

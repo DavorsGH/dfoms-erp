@@ -30,10 +30,10 @@ import {
 import {
   CORRECTIVE_ACTION_STATUS_OPTIONS,
   DEFAULT_CORRECTIVE_ACTION_STATUS,
-  generateNextOperationsId,
   nullableText,
   truncateText,
 } from "./operations-register-utils";
+import { allocateCorrectiveActionNo } from "./operations-ids-api";
 
 type CorrectiveActionsProps = {
   initialEntries: CorrectiveActionEntry[];
@@ -107,11 +107,6 @@ export default function CorrectiveActions({
     setEditingId(null);
     setForm({
       ...emptyForm,
-      action_no: generateNextOperationsId(
-        "CA",
-        3,
-        entries.map((entry) => entry.action_no),
-      ),
       date_raised: toDateInputValue(new Date().toISOString()),
       status: DEFAULT_CORRECTIVE_ACTION_STATUS,
     });
@@ -214,30 +209,50 @@ export default function CorrectiveActions({
       notes: nullableText(form.notes),
     };
 
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("corrective_actions")
-          .update({
-            related_work_order: payload.related_work_order,
-            related_issue_no: payload.related_issue_no,
-            date_raised: payload.date_raised,
-            client_id: payload.client_id,
-            issue_description: payload.issue_description,
-            responsible_person: payload.responsible_person,
-            target_date: payload.target_date,
-            status: payload.status,
-            completion_date: payload.completion_date,
-            evidence_submitted: payload.evidence_submitted,
-            management_approval: payload.management_approval,
-            notes: payload.notes,
-          })
-          .eq("action_no", editingId)
-      : await supabase.from("corrective_actions").insert(payload);
+    if (editingId) {
+      const { error: saveError } = await supabase
+        .from("corrective_actions")
+        .update({
+          related_work_order: payload.related_work_order,
+          related_issue_no: payload.related_issue_no,
+          date_raised: payload.date_raised,
+          client_id: payload.client_id,
+          issue_description: payload.issue_description,
+          responsible_person: payload.responsible_person,
+          target_date: payload.target_date,
+          status: payload.status,
+          completion_date: payload.completion_date,
+          evidence_submitted: payload.evidence_submitted,
+          management_approval: payload.management_approval,
+          notes: payload.notes,
+        })
+        .eq("action_no", editingId);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateCorrectiveActionNo(supabase);
+      if (allocated.error || !allocated.actionNo) {
+        setError(allocated.error ?? "Unable to allocate corrective action number.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase
+        .from("corrective_actions")
+        .insert({
+          ...payload,
+          action_no: allocated.actionNo,
+        });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -270,18 +285,19 @@ export default function CorrectiveActions({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Action No
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={form.action_no}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Action No
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={form.action_no}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Date Raised
