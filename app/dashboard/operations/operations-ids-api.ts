@@ -5,6 +5,7 @@ export const COMPLAINT_ENTITY_TYPE = "CMP";
 export const CORRECTIVE_ACTION_ENTITY_TYPE = "CA";
 export const FAILED_INSPECTION_ENTITY_TYPE = "ISS";
 export const INCIDENT_ENTITY_TYPE = "INC";
+export const CHECKLIST_ENTITY_TYPE = "CHECKLIST";
 
 async function resolveSessionTenantId(
   supabase: SupabaseClient,
@@ -130,4 +131,16 @@ export async function allocateIncidentNo(
     "generate_next_code returned an empty incident number.",
   );
   return { incidentNo: result.code, error: result.error };
+}
+
+/** inspection_summary.checklist_id — generate_next_code(..., 'CHECKLIST', 4). Create-save only. */
+export async function allocateChecklistId(
+  supabase: SupabaseClient,
+): Promise<{ checklistId: string | null; error: string | null }> {
+  const result = await allocateOperationsCode(
+    supabase,
+    CHECKLIST_ENTITY_TYPE,
+    "generate_next_code returned an empty checklist ID.",
+  );
+  return { checklistId: result.code, error: result.error };
 }

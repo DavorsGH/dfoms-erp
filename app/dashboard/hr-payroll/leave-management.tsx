@@ -22,9 +22,9 @@ import {
 import {
   calculateDaysBetween,
   formatDate,
-  generateNextSequentialId,
   inputClassName,
 } from "./hr-register-utils";
+import { allocateLeaveId } from "./hr-ids-api";
 
 type LeaveManagementProps = {
   initialEntries: LeaveManagementEntry[];
@@ -199,14 +199,16 @@ export default function LeaveManagement({
         return;
       }
     } else {
-      const leaveId = generateNextSequentialId(
-        "LV",
-        entries.map((entry) => entry.leave_id),
-      );
+      const allocated = await allocateLeaveId(supabase);
+      if (allocated.error || !allocated.leaveId) {
+        setError(allocated.error ?? "Unable to allocate leave ID.");
+        setLoading(false);
+        return;
+      }
 
       const { error: saveError } = await supabase
         .from("leave_management")
-        .insert({ leave_id: leaveId, ...payload });
+        .insert({ leave_id: allocated.leaveId, ...payload });
 
       if (saveError) {
         setError(saveError.message);

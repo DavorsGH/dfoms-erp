@@ -11,9 +11,9 @@ import ScrollableTable, {
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
-  generateNextInventoryCode,
   nullableText,
 } from "./inventory-utils";
+import { allocateBatchNumber } from "./inventory-ids-api";
 import {
   calculateBatchPreview,
   normalizeProductionBatch,
@@ -166,14 +166,7 @@ export default function ProductionBatches({
   }
 
   function openAddForm() {
-    setBatchForm({
-      ...emptyBatchForm,
-      batch_number: generateNextInventoryCode(
-        "BATCH-",
-        4,
-        batches.map((batch) => batch.batch_number),
-      ),
-    });
+    setBatchForm({ ...emptyBatchForm });
     setMaterialLines([{ ...emptyMaterialLine }]);
     setShowForm(true);
   }
@@ -261,8 +254,15 @@ export default function ProductionBatches({
       }
     }
 
+    const allocated = await allocateBatchNumber(supabase);
+    if (allocated.error || !allocated.batchNumber) {
+      setError(allocated.error ?? "Unable to allocate batch number.");
+      setLoading(false);
+      return;
+    }
+
     const { error: rpcError } = await supabase.rpc("create_production_batch", {
-      p_batch_number: batchForm.batch_number.trim(),
+      p_batch_number: allocated.batchNumber,
       p_production_date: batchForm.production_date,
       p_finished_product_id: batchForm.finished_product_id,
       p_quantity_produced: quantityProduced,
@@ -312,18 +312,6 @@ export default function ProductionBatches({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Batch Number
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={batchForm.batch_number}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Production Date

@@ -19,8 +19,8 @@ import ScrollableTable, {
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
-  generateNextInventoryCode,
 } from "./inventory-utils";
+import { allocateProductCode } from "./inventory-ids-api";
 import {
   buildFinishedProductSavePayload,
   DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
@@ -91,14 +91,7 @@ export default function FinishedProducts({
 
   function openAddForm() {
     setEditingProductId(null);
-    setForm({
-      ...emptyForm,
-      product_code: generateNextInventoryCode(
-        "FP-",
-        3,
-        products.map((product) => product.product_code),
-      ),
-    });
+    setForm({ ...emptyForm });
     setShowForm(true);
   }
 
@@ -119,26 +112,47 @@ export default function FinishedProducts({
     setLoading(true);
     setError(null);
 
-    const payload = buildFinishedProductSavePayload(form);
+    if (editingProductId) {
+      const payload = buildFinishedProductSavePayload(form);
+      const { error: saveError } = await supabase
+        .from("finished_products")
+        .update({
+          product_name: payload.product_name,
+          unit_of_measure: payload.unit_of_measure,
+          standard_selling_price: payload.standard_selling_price,
+          sourcing_type: payload.sourcing_type,
+          supplier_id: payload.supplier_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editingProductId);
 
-    const { error: saveError } = editingProductId
-      ? await supabase
-          .from("finished_products")
-          .update({
-            product_name: payload.product_name,
-            unit_of_measure: payload.unit_of_measure,
-            standard_selling_price: payload.standard_selling_price,
-            sourcing_type: payload.sourcing_type,
-            supplier_id: payload.supplier_id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", editingProductId)
-      : await supabase.from("finished_products").insert(payload);
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateProductCode(supabase);
+      if (allocated.error || !allocated.productCode) {
+        setError(allocated.error ?? "Unable to allocate product code.");
+        setLoading(false);
+        return;
+      }
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      const payload = buildFinishedProductSavePayload({
+        ...form,
+        product_code: allocated.productCode,
+      });
+
+      const { error: saveError } = await supabase
+        .from("finished_products")
+        .insert(payload);
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -216,18 +230,19 @@ export default function FinishedProducts({
             {editingProductId ? "Edit Finished Product" : "New Finished Product"}
           </h3>
           <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Product Code
-              </label>
-              <input
-                type="text"
-                required
-                readOnly
-                value={form.product_code}
-                className={`${inputClassName} bg-slate-50 text-slate-600`}
-              />
-            </div>
+            {editingProductId ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Product Code
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={form.product_code}
+                  className={`${inputClassName} bg-slate-50 text-slate-600`}
+                />
+              </div>
+            ) : null}
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Product Name

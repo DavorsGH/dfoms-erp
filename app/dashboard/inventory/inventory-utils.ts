@@ -20,23 +20,6 @@ export function formatInventoryMoney(value: number | null | undefined): string {
   })}`;
 }
 
-export function generateNextInventoryCode(
-  prefix: string,
-  padLength: number,
-  existingCodes: string[],
-): string {
-  const maxNumber = existingCodes.reduce((max, code) => {
-    const match = code.match(new RegExp(`^${prefix}(\\d+)$`));
-    if (!match) {
-      return max;
-    }
-
-    return Math.max(max, Number.parseInt(match[1], 10));
-  }, 0);
-
-  return `${prefix}${String(maxNumber + 1).padStart(padLength, "0")}`;
-}
-
 export function nullableNumber(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) {

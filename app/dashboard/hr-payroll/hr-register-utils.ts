@@ -40,19 +40,6 @@ export function formatTime(value: string | null | undefined): string {
   });
 }
 
-export function generateNextSequentialId(
-  prefix: string,
-  existingIds: string[],
-): string {
-  const numbers = existingIds.map((id) => {
-    const match = id.match(new RegExp(`^${prefix}(\\d+)$`, "i"));
-    return match ? Number.parseInt(match[1], 10) : 0;
-  });
-  const maxNumber = numbers.length > 0 ? Math.max(...numbers) : 0;
-
-  return `${prefix}${String(maxNumber + 1).padStart(4, "0")}`;
-}
-
 export function calculateDaysBetween(startDate: string, endDate: string): number {
   if (!startDate || !endDate) {
     return 0;

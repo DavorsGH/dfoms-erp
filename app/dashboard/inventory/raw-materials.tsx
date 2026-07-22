@@ -21,10 +21,10 @@ import ScrollableTable, {
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
-  generateNextInventoryCode,
   nullableNumber,
   nullableText,
 } from "./inventory-utils";
+import { allocateMaterialCode } from "./inventory-ids-api";
 import {
   normalizeRawMaterial,
   normalizeRawMaterialPurchase,
@@ -174,14 +174,7 @@ export default function RawMaterials({
 
   function openAddMaterialForm() {
     setEditingMaterialId(null);
-    setMaterialForm({
-      ...emptyMaterialForm,
-      material_code: generateNextInventoryCode(
-        "RM-",
-        3,
-        materials.map((material) => material.material_code),
-      ),
-    });
+    setMaterialForm({ ...emptyMaterialForm });
     setShowMaterialForm(true);
   }
 
@@ -208,29 +201,42 @@ export default function RawMaterials({
     setLoading(true);
     setError(null);
 
-    const payload = {
-      material_code: materialForm.material_code.trim(),
-      material_name: materialForm.material_name.trim(),
-      unit_of_measure: materialForm.unit_of_measure.trim(),
-      reorder_level: nullableNumber(materialForm.reorder_level),
-    };
+    if (editingMaterialId) {
+      const { error: saveError } = await supabase
+        .from("raw_materials")
+        .update({
+          material_name: materialForm.material_name.trim(),
+          unit_of_measure: materialForm.unit_of_measure.trim(),
+          reorder_level: nullableNumber(materialForm.reorder_level),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editingMaterialId);
 
-    const { error: saveError } = editingMaterialId
-      ? await supabase
-          .from("raw_materials")
-          .update({
-            material_name: payload.material_name,
-            unit_of_measure: payload.unit_of_measure,
-            reorder_level: payload.reorder_level,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", editingMaterialId)
-      : await supabase.from("raw_materials").insert(payload);
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateMaterialCode(supabase);
+      if (allocated.error || !allocated.materialCode) {
+        setError(allocated.error ?? "Unable to allocate material code.");
+        setLoading(false);
+        return;
+      }
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      const { error: saveError } = await supabase.from("raw_materials").insert({
+        material_code: allocated.materialCode,
+        material_name: materialForm.material_name.trim(),
+        unit_of_measure: materialForm.unit_of_measure.trim(),
+        reorder_level: nullableNumber(materialForm.reorder_level),
+      });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeMaterialForm();
@@ -474,18 +480,19 @@ export default function RawMaterials({
               {editingMaterialId ? "Edit Raw Material" : "New Raw Material"}
             </h3>
             <form onSubmit={handleMaterialSubmit} className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Material Code
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly
-                  value={materialForm.material_code}
-                  className={`${inputClassName} bg-slate-50 text-slate-600`}
-                />
-              </div>
+              {editingMaterialId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Material Code
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={materialForm.material_code}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Material Name

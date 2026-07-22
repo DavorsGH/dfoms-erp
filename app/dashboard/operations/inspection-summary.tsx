@@ -32,6 +32,7 @@ import {
   type InspectionSummaryEntry,
   type WorkOrderLookup,
 } from "./inspection-summary-utils";
+import { allocateChecklistId } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
 
 type InspectionSummaryProps = {
@@ -262,7 +263,6 @@ export default function InspectionSummary({
     setError(null);
 
     const payload = {
-      checklist_id: form.checklist_id.trim(),
       inspection_date: form.inspection_date,
       work_order_no: nullableText(form.work_order_no),
       client_id: nullableText(form.client_id),
@@ -276,29 +276,37 @@ export default function InspectionSummary({
       status: nullableText(form.status),
     };
 
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("inspection_summary")
-          .update({
-            inspection_date: payload.inspection_date,
-            work_order_no: payload.work_order_no,
-            client_id: payload.client_id,
-            site_id: payload.site_id,
-            supervisor: payload.supervisor,
-            inspection_score_pct: payload.inspection_score_pct,
-            pass_fail: payload.pass_fail,
-            critical_findings: payload.critical_findings,
-            recommendations: payload.recommendations,
-            next_inspection_date: payload.next_inspection_date,
-            status: payload.status,
-          })
-          .eq("checklist_id", editingId)
-      : await supabase.from("inspection_summary").insert(payload);
+    if (editingId) {
+      const { error: saveError } = await supabase
+        .from("inspection_summary")
+        .update(payload)
+        .eq("checklist_id", editingId);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateChecklistId(supabase);
+      if (allocated.error || !allocated.checklistId) {
+        setError(allocated.error ?? "Unable to allocate checklist ID.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase
+        .from("inspection_summary")
+        .insert({
+          ...payload,
+          checklist_id: allocated.checklistId,
+        });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -409,21 +417,19 @@ export default function InspectionSummary({
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Checklist ID
-                </label>
-                <input
-                  type="text"
-                  required
-                  readOnly={Boolean(editingId)}
-                  value={form.checklist_id}
-                  onChange={(event) =>
-                    updateField("checklist_id", event.target.value)
-                  }
-                  className={`${inputClassName}${editingId ? " bg-slate-50 text-slate-600" : ""}`}
-                />
-              </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Checklist ID
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={form.checklist_id}
+                    className={`${inputClassName} bg-slate-50 text-slate-600`}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Inspection Date

@@ -18,10 +18,10 @@ import {
   calculateLoanOutstanding,
   formatDate,
   formatGHS,
-  generateNextSequentialId,
   getLoanStatus,
   inputClassName,
 } from "./hr-register-utils";
+import { allocateLoanId } from "./hr-ids-api";
 
 type LoanRegisterProps = {
   initialEntries: LoanRegisterEntry[];
@@ -184,14 +184,16 @@ export default function LoanRegister({
         return;
       }
     } else {
-      const loanId = generateNextSequentialId(
-        "LN",
-        entries.map((entry) => entry.loan_id),
-      );
+      const allocated = await allocateLoanId(supabase);
+      if (allocated.error || !allocated.loanId) {
+        setError(allocated.error ?? "Unable to allocate loan ID.");
+        setLoading(false);
+        return;
+      }
 
       const { error: saveError } = await supabase
         .from("loan_register")
-        .insert({ loan_id: loanId, ...payload });
+        .insert({ loan_id: allocated.loanId, ...payload });
 
       if (saveError) {
         setError(saveError.message);
