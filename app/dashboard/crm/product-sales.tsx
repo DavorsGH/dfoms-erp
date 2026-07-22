@@ -40,7 +40,6 @@ type ProductSalesProps = {
 
 const emptyForm = {
   date: "",
-  invoice_no: "",
   client_id: "",
   customer_name: "",
   product_id: "",
@@ -208,7 +207,8 @@ export default function ProductSales({
 
     const { error: rpcError } = await supabase.rpc("create_product_sale", {
       p_date: form.date,
-      p_invoice_no: form.invoice_no,
+      // Blank → create_product_sale allocates via generate_next_code(..., 'PSI', 4).
+      p_invoice_no: null,
       p_client_id: clientId,
       p_customer_name: clientId ? null : otherPayerName,
       p_product_id: form.product_id,
@@ -336,13 +336,9 @@ export default function ProductSales({
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Invoice No.
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={form.invoice_no}
-                  onChange={(e) => updateField("invoice_no", e.target.value)}
-                  className={inputClassName}
-                />
+                <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  Assigned automatically on save
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">

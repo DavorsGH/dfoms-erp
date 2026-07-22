@@ -25,9 +25,7 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import {
   POS_PAYMENT_STATUS_OPTIONS,
-  buildPosInvoiceNumber,
   cartTotal,
-  fetchRecentPosInvoiceNumbers,
   getAvailableStockForProduct,
   getCustomerDisplayName,
   lineSubtotal,
@@ -289,13 +287,9 @@ export default function PosCheckout({
     }
 
     try {
-      const invoiceNo =
-        pendingInvoiceNo ??
-        buildPosInvoiceNumber(await fetchRecentPosInvoiceNumbers(supabase));
-
       const summary = await runPosCheckout(supabase, {
         saleDate: todayIsoDate(),
-        invoiceNo,
+        invoiceNo: pendingInvoiceNo,
         clientId: trimmedClientId,
         customerName: trimmedClientId ? null : trimmedCustomerName,
         paymentMethod: paymentMethod.trim(),
@@ -324,6 +318,12 @@ export default function PosCheckout({
         setError(
           "Checkout stopped because a line item failed. Review the succeeded and failed lines below before retrying the remaining items or handling them manually in Product Sales.",
         );
+        setLoading(false);
+        return;
+      }
+
+      if (!summary.invoiceNo) {
+        setError("Checkout completed but no invoice number was returned from the server.");
         setLoading(false);
         return;
       }
@@ -390,7 +390,7 @@ export default function PosCheckout({
       {checkoutResult ? (
         <section className="space-y-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
           <p className="font-medium">
-            Partial checkout on invoice {checkoutResult.invoiceNo}.{" "}
+            Partial checkout on invoice {checkoutResult.invoiceNo ?? "—"}.{" "}
             {checkoutResult.succeeded.length} line
             {checkoutResult.succeeded.length === 1 ? "" : "s"} posted; checkout
             stopped before the failed line.

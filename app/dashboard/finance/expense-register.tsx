@@ -10,6 +10,7 @@ import {
   formatGHS,
   type ExpenseRegisterEntry,
 } from "./expense-register-utils";
+import { resolveManualExpenseReceiptNo } from "./expense-register-api";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -210,6 +211,18 @@ export default function ExpenseRegister({
     const quantity = form.quantity.trim() === "" ? 1 : Number(form.quantity);
     const amount = calculateAmount(price, quantity);
 
+    let receiptNo = form.receipt_no.trim();
+    if (!editingId) {
+      // Create only: blank → generate_next_code('EXP'); filled → keep vendor paper receipt #.
+      const resolved = await resolveManualExpenseReceiptNo(supabase, form.receipt_no);
+      if (resolved.error || !resolved.receiptNo) {
+        setError(resolved.error ?? "Unable to allocate receipt number.");
+        setLoading(false);
+        return;
+      }
+      receiptNo = resolved.receiptNo;
+    }
+
     const payload = {
       date: form.date,
       expense_category: form.expense_category,
@@ -221,7 +234,7 @@ export default function ExpenseRegister({
       amount,
       payment_method: form.payment_method,
       approved_by: form.approved_by,
-      receipt_no: form.receipt_no,
+      receipt_no: receiptNo,
       payment_status: form.payment_status,
       notes: form.notes || null,
     };
@@ -413,11 +426,21 @@ export default function ExpenseRegister({
                 </label>
                 <input
                   type="text"
-                  required
                   value={form.receipt_no}
                   onChange={(e) => updateField("receipt_no", e.target.value)}
+                  placeholder={
+                    editingId
+                      ? undefined
+                      : "Leave blank to auto-assign, or enter vendor receipt #"
+                  }
                   className={inputClassName}
                 />
+                {!editingId ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Leave blank for an internal code (e.g. DF-EXP-0001), or type
+                    the number printed on the vendor&apos;s paper receipt.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">

@@ -345,8 +345,18 @@ export function formatInvoiceDate(value: string | null | undefined) {
   });
 }
 
+/** @deprecated Legacy INV-YYYY-### format; new invoices use formatGeneratedInvoiceNumber. */
 export function suggestInvoiceNumber(sequence: number, year = new Date().getFullYear()) {
   return `INV-${year}-${String(sequence).padStart(3, "0")}`;
+}
+
+export function formatGeneratedInvoiceNumber(
+  tenantCode: string,
+  entityType: string,
+  sequence: number,
+  padding = 4,
+) {
+  return `${tenantCode}-${entityType}-${String(sequence).padStart(padding, "0")}`;
 }
 
 export function defaultDueDate(fromDate = new Date()) {

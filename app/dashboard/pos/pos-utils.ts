@@ -16,7 +16,8 @@ export type PosCartLine = {
 
 export type PosCheckoutInput = {
   saleDate: string;
-  invoiceNo: string;
+  /** Reuse a partially posted POS receipt number; omit/null to allocate server-side. */
+  invoiceNo?: string | null;
   clientId: string | null;
   customerName: string | null;
   paymentMethod: string;
@@ -39,7 +40,7 @@ export type PosCheckoutLineResult = {
 };
 
 export type PosCheckoutRunSummary = {
-  invoiceNo: string;
+  invoiceNo: string | null;
   succeeded: PosCheckoutLineResult[];
   failed: PosCheckoutLineResult[];
   stoppedEarly: boolean;
@@ -48,6 +49,8 @@ export type PosCheckoutRunSummary = {
 export const POS_PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"] as const;
 
 export const POS_PRINT_AREA_ID = "pos-receipt-print-area";
+
+const POS_INVOICE_ENTITY_TYPE = "POS";
 
 export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -99,23 +102,6 @@ export function getCustomerDisplayName(
   return customerName?.trim() || "—";
 }
 
-export function buildPosInvoiceNumber(existingInvoiceNumbers: string[]): string {
-  const today = new Date();
-  const datePart = today.toISOString().slice(0, 10).replace(/-/g, "");
-  const prefix = `POS-${datePart}-`;
-
-  const maxSequence = existingInvoiceNumbers.reduce((max, invoiceNo) => {
-    if (!invoiceNo.startsWith(prefix)) {
-      return max;
-    }
-
-    const sequence = Number.parseInt(invoiceNo.slice(prefix.length), 10);
-    return Number.isFinite(sequence) ? Math.max(max, sequence) : max;
-  }, 0);
-
-  return `${prefix}${String(maxSequence + 1).padStart(4, "0")}`;
-}
-
 export function buildPosNotes(
   paymentMethod: string,
   userNotes: string | null,
@@ -144,24 +130,22 @@ export function allocateLinePayments(
   });
 }
 
-export async function fetchRecentPosInvoiceNumbers(
+async function fetchIncomeInvoiceNumber(
   supabase: SupabaseClient,
-): Promise<string[]> {
-  const todayPrefix = `POS-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-`;
-
+  incomeId: string,
+): Promise<string | null> {
   const { data, error } = await supabase
     .from("income_register")
     .select("invoice_no")
-    .eq("entry_type", "product_sale")
-    .like("invoice_no", `${todayPrefix}%`);
+    .eq("id", incomeId)
+    .maybeSingle();
 
   if (error) {
     throw error;
   }
 
-  return ((data as { invoice_no: string | null }[] | null) ?? [])
-    .map((row) => row.invoice_no)
-    .filter((value): value is string => Boolean(value));
+  const invoiceNo = (data as { invoice_no?: string | null } | null)?.invoice_no;
+  return invoiceNo?.trim() ? invoiceNo.trim() : null;
 }
 
 export async function runPosCheckout(
@@ -172,6 +156,7 @@ export async function runPosCheckout(
   const failed: PosCheckoutLineResult[] = [];
   const linePayments = allocateLinePayments(input.cartLines, input.amountReceived);
   const notes = buildPosNotes(input.paymentMethod, input.notes);
+  let allocatedInvoiceNo = input.invoiceNo?.trim() || null;
 
   for (const [index, line] of input.cartLines.entries()) {
     const lineTotal = lineSubtotal(line);
@@ -179,7 +164,8 @@ export async function runPosCheckout(
 
     const { data, error } = await supabase.rpc("create_product_sale", {
       p_date: input.saleDate,
-      p_invoice_no: input.invoiceNo,
+      // First line allocates via generate_next_code(..., 'POS', 4); later lines reuse.
+      p_invoice_no: allocatedInvoiceNo,
       p_client_id: input.clientId,
       p_customer_name: input.clientId ? null : input.customerName,
       p_product_id: line.productId,
@@ -190,6 +176,7 @@ export async function runPosCheckout(
       p_due_date: input.dueDate,
       p_description: null,
       p_notes: notes,
+      p_invoice_entity_type: POS_INVOICE_ENTITY_TYPE,
     });
 
     if (error) {
@@ -204,11 +191,16 @@ export async function runPosCheckout(
       });
 
       return {
-        invoiceNo: input.invoiceNo,
+        invoiceNo: allocatedInvoiceNo,
         succeeded,
         failed,
         stoppedEarly: true,
       };
+    }
+
+    const incomeId = (data as string | null) ?? undefined;
+    if (!allocatedInvoiceNo && incomeId) {
+      allocatedInvoiceNo = await fetchIncomeInvoiceNumber(supabase, incomeId);
     }
 
     succeeded.push({
@@ -218,12 +210,12 @@ export async function runPosCheckout(
       unitPrice: line.unitPrice,
       lineTotal,
       success: true,
-      incomeId: (data as string | null) ?? undefined,
+      incomeId,
     });
   }
 
   return {
-    invoiceNo: input.invoiceNo,
+    invoiceNo: allocatedInvoiceNo,
     succeeded,
     failed,
     stoppedEarly: false,

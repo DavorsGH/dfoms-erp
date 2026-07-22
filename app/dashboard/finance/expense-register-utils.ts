@@ -15,6 +15,9 @@ export type ExpenseRegisterEntry = {
   notes: string | null;
 };
 
+/** Manual expense receipts use generate_next_code(..., 'EXP', 4). */
+export const EXPENSE_RECEIPT_ENTITY_TYPE = "EXP";
+
 export function formatGHS(value: number): string {
   return `GHS ${value.toLocaleString("en-GH", {
     minimumFractionDigits: 2,
@@ -32,4 +35,9 @@ export function formatDate(value: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+export function normalizeOptionalReceiptNo(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed ? trimmed : null;
 }

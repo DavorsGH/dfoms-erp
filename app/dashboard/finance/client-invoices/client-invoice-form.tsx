@@ -14,7 +14,6 @@ import {
   formatInvoiceMoney,
   groupLineItemsByCategory,
   resolveAuthorizedByFields,
-  suggestInvoiceNumber,
   type ClientInvoiceAuthorizedSignerOption,
   type ClientInvoiceFormAuthorizedByState,
   type ClientInvoiceFormLineItem,
@@ -32,7 +31,8 @@ type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> &
 type ClientInvoiceFormProps = {
   mode: "create" | "edit";
   invoiceId?: string;
-  nextInvoiceSequence?: number;
+  /** Non-allocating preview of the next server-assigned invoice number (e.g. DF-INV-0001). */
+  nextInvoiceNumberPreview?: string | null;
   existingInvoiceNumber?: string;
   initialCustomers: ClientEntry[];
   initialSites: ClientInvoiceSiteOption[];
@@ -61,7 +61,7 @@ function reindexLineItems(lines: ClientInvoiceFormLineItem[]) {
 export default function ClientInvoiceForm({
   mode,
   invoiceId,
-  nextInvoiceSequence,
+  nextInvoiceNumberPreview,
   existingInvoiceNumber,
   initialCustomers,
   initialSites,
@@ -104,16 +104,8 @@ export default function ClientInvoiceForm({
       return existingInvoiceNumber ?? "";
     }
 
-    if (!nextInvoiceSequence) {
-      return "";
-    }
-
-    const year = form.invoice_date
-      ? new Date(`${form.invoice_date}T00:00:00`).getFullYear()
-      : new Date().getFullYear();
-
-    return suggestInvoiceNumber(nextInvoiceSequence, year);
-  }, [mode, existingInvoiceNumber, nextInvoiceSequence, form.invoice_date]);
+    return nextInvoiceNumberPreview?.trim() || "Assigned on save";
+  }, [mode, existingInvoiceNumber, nextInvoiceNumberPreview]);
 
   function updateLineItem(key: string, patch: Partial<ClientInvoiceFormLineItem>) {
     setForm((current) => ({

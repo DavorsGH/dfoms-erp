@@ -4,6 +4,7 @@ import { requireTenantRoleIn } from "@/utils/admin-auth";
 import {
   createClientInvoice,
   getNextInvoiceSequence,
+  peekNextInvoiceNumber,
 } from "@/utils/client-invoices-api";
 import {
   CLIENT_INVOICE_LIST_SELECT,
@@ -48,18 +49,23 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const { sequence, error: sequenceError } = await getNextInvoiceSequence(
-    supabase,
-    auth.tenantId,
-  );
+  const [{ sequence, error: sequenceError }, peekResult] = await Promise.all([
+    getNextInvoiceSequence(supabase, auth.tenantId),
+    peekNextInvoiceNumber(supabase, auth.tenantId),
+  ]);
 
   if (sequenceError) {
     return NextResponse.json({ error: sequenceError }, { status: 500 });
   }
 
+  if (peekResult.error) {
+    return NextResponse.json({ error: peekResult.error }, { status: 500 });
+  }
+
   return NextResponse.json({
     client_invoices: (data as ClientInvoiceListRow[] | null) ?? [],
     next_invoice_sequence: sequence,
+    next_invoice_number: peekResult.invoiceNumber,
   });
 }
 

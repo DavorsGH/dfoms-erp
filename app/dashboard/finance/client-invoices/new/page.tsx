@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
-import { getNextInvoiceSequence, loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
+import { loadAuthorizedSignerOptions, peekNextInvoiceNumber } from "@/utils/client-invoices-api";
 import {
   defaultDueDate,
   todayIsoDate,
@@ -35,7 +35,7 @@ export default async function NewClientInvoicePage() {
     { data: customers, error: customersError },
     { data: sites, error: sitesError },
     { data: paymentAccounts, error: paymentAccountsError },
-    nextSequenceResult,
+    nextInvoiceNumberResult,
     authorizedSignersResult,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
@@ -49,7 +49,7 @@ export default async function NewClientInvoicePage() {
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .order("account_name", { ascending: true }),
-    getNextInvoiceSequence(supabase, tenantId),
+    peekNextInvoiceNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
   ]);
 
@@ -57,11 +57,9 @@ export default async function NewClientInvoicePage() {
     customersError?.message ??
     sitesError?.message ??
     paymentAccountsError?.message ??
-    nextSequenceResult.error ??
+    nextInvoiceNumberResult.error ??
     authorizedSignersResult.error ??
     null;
-
-  const nextSequence = nextSequenceResult.sequence;
 
   return (
     <div>
@@ -78,7 +76,7 @@ export default async function NewClientInvoicePage() {
       </div>
       <ClientInvoiceForm
         mode="create"
-        nextInvoiceSequence={nextSequence}
+        nextInvoiceNumberPreview={nextInvoiceNumberResult.invoiceNumber}
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}

@@ -4,10 +4,10 @@ import {
   CLIENT_INVOICE_HEADER_SELECT,
   CLIENT_INVOICE_LINE_ITEM_SELECT,
   computeInvoiceTotals,
+  formatGeneratedInvoiceNumber,
   mapAuthorizedSignerOptions,
   normalizeStatus,
   roundMoney,
-  suggestInvoiceNumber,
   toNumber,
   type ClientInvoiceAuthorizedSignerOption,
   type ClientInvoiceHeaderRow,
@@ -20,11 +20,6 @@ type DbClient = SupabaseClient;
 function nullableText(value: string | null | undefined) {
   const trimmed = (value ?? "").trim();
   return trimmed ? trimmed : null;
-}
-
-function invoiceYearFromDate(invoiceDate: string) {
-  const parsed = new Date(`${invoiceDate}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? new Date().getFullYear() : parsed.getFullYear();
 }
 
 function buildHeaderPayload(
@@ -189,6 +184,70 @@ export async function getNextInvoiceSequence(
   };
 }
 
+/** Non-allocating UI peek of the next generate_next_code('INV') value. */
+export async function peekNextInvoiceNumber(
+  supabase: DbClient,
+  tenantId: string,
+) {
+  const [{ data: tenant, error: tenantError }, { data: counter, error: counterError }] =
+    await Promise.all([
+      supabase
+        .from("tenants")
+        .select("tenant_code")
+        .eq("id", tenantId)
+        .maybeSingle(),
+      supabase
+        .from("id_sequences")
+        .select("next_value")
+        .eq("tenant_id", tenantId)
+        .eq("entity_type", "INV")
+        .maybeSingle(),
+    ]);
+
+  if (tenantError) {
+    return { invoiceNumber: null, error: tenantError.message };
+  }
+
+  if (counterError) {
+    return { invoiceNumber: null, error: counterError.message };
+  }
+
+  const tenantCode = (tenant as { tenant_code?: string } | null)?.tenant_code;
+  if (!tenantCode) {
+    return { invoiceNumber: null, error: "Tenant code is not configured." };
+  }
+
+  const lastIssued = toNumber(
+    (counter as { next_value?: number } | null)?.next_value ?? 0,
+  );
+  return {
+    invoiceNumber: formatGeneratedInvoiceNumber(tenantCode, "INV", lastIssued + 1),
+    error: null,
+  };
+}
+
+async function allocateInvoiceNumber(supabase: DbClient, tenantId: string) {
+  const { data, error } = await supabase.rpc("generate_next_code", {
+    p_tenant_id: tenantId,
+    p_entity_type: "INV",
+    p_padding: 4,
+  });
+
+  if (error) {
+    return { invoiceNumber: null, error: error.message };
+  }
+
+  const invoiceNumber = typeof data === "string" ? data.trim() : "";
+  if (!invoiceNumber) {
+    return {
+      invoiceNumber: null,
+      error: "generate_next_code returned an empty invoice number.",
+    };
+  }
+
+  return { invoiceNumber, error: null };
+}
+
 async function syncIncomeRegisterFromClientInvoice(
   supabase: DbClient,
   tenantId: string,
@@ -254,6 +313,20 @@ export async function createClientInvoice(
   tenantId: string,
   body: ClientInvoiceWriteBody,
 ) {
+  // Display/stored invoice_number comes from the shared atomic allocator.
+  // invoice_sequence stays a separate tenant-unique integer (ordering / legacy UNIQUE).
+  const { invoiceNumber, error: allocateError } = await allocateInvoiceNumber(
+    supabase,
+    tenantId,
+  );
+
+  if (allocateError || !invoiceNumber) {
+    return {
+      invoice: null,
+      error: allocateError ?? "Unable to allocate invoice number.",
+    };
+  }
+
   const { sequence, error: sequenceError } = await getNextInvoiceSequence(
     supabase,
     tenantId,
@@ -263,10 +336,6 @@ export async function createClientInvoice(
     return { invoice: null, error: sequenceError };
   }
 
-  const invoiceNumber = suggestInvoiceNumber(
-    sequence,
-    invoiceYearFromDate(body.invoice_date),
-  );
   const headerPayload = buildHeaderPayload(
     tenantId,
     body,
