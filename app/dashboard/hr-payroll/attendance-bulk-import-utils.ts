@@ -338,7 +338,7 @@ function existingEntryKey(date: string, staffId: string): string {
 export function classifyAttendanceImportRows(
   rawRows: RawAttendanceImportRow[],
   employees: HrEmployee[],
-  existingEntries: AttendanceRegisterEntry[],
+  existingEntries: Pick<AttendanceRegisterEntry, "date" | "staff_id">[],
 ): AttendanceImportPreview {
   const existingKeys = new Set(
     existingEntries.map((entry) =>

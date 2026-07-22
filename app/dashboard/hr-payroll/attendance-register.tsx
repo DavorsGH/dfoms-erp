@@ -17,8 +17,12 @@ import {
   type HrEmployee,
 } from "./employee-utils";
 import {
+  ATTENDANCE_MONTH_OPTIONS,
   ATTENDANCE_STATUS_OPTIONS,
   DEFAULT_ATTENDANCE_STATUS,
+  buildAttendanceYearOptions,
+  defaultAttendanceDateForMonth,
+  getAttendanceMonthBounds,
   type AttendanceRegisterEntry,
 } from "./attendance-register-utils";
 import AttendanceBulkImport from "./attendance-bulk-import";
@@ -33,6 +37,8 @@ import {
 type AttendanceRegisterProps = {
   initialEntries: AttendanceRegisterEntry[];
   initialEmployees: HrEmployee[];
+  initialYear: number;
+  initialMonth: number;
   fetchError: string | null;
 };
 
@@ -51,9 +57,13 @@ const emptyForm = {
 export default function AttendanceRegister({
   initialEntries,
   initialEmployees,
+  initialYear,
+  initialMonth,
   fetchError,
 }: AttendanceRegisterProps) {
   const supabase = createClient();
+  const [selectedYear, setSelectedYear] = useState(initialYear);
+  const [selectedMonth, setSelectedMonth] = useState(initialMonth);
   const [entries, setEntries] = useState(initialEntries);
   const [employees, setEmployees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
@@ -61,8 +71,14 @@ export default function AttendanceRegister({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
+  const [loadingEntries, setLoadingEntries] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [bulkImportExisting, setBulkImportExisting] = useState<
+    Pick<AttendanceRegisterEntry, "date" | "staff_id">[]
+  >([]);
   const [error, setError] = useState<string | null>(fetchError);
+
+  const yearOptions = useMemo(() => buildAttendanceYearOptions(), []);
 
   const employeeNameByStaffId = useMemo(() => {
     return new Map(employees.map((employee) => [employee.staff_id, employee.full_name]));
@@ -76,25 +92,50 @@ export default function AttendanceRegister({
     setEmployees(initialEmployees);
   }, [initialEmployees]);
 
-  async function refreshEntries() {
+  async function loadEntriesForPeriod(year: number, month: number) {
+    const { start, end } = getAttendanceMonthBounds(year, month);
+    setLoadingEntries(true);
+
     const { data, error: refreshError } = await supabase
       .from("attendance_register")
       .select("*")
+      .gte("date", start)
+      .lte("date", end)
       .order("date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);
+      setLoadingEntries(false);
       return;
     }
 
     setEntries((data as AttendanceRegisterEntry[] | null) ?? []);
     setError(null);
+    setLoadingEntries(false);
+  }
+
+  async function refreshEntries() {
+    await loadEntriesForPeriod(selectedYear, selectedMonth);
+  }
+
+  function handleMonthChange(month: number) {
+    setSelectedMonth(month);
+    void loadEntriesForPeriod(selectedYear, month);
+  }
+
+  function handleYearChange(year: number) {
+    setSelectedYear(year);
+    void loadEntriesForPeriod(year, selectedMonth);
   }
 
   function openAddForm() {
     setShowBulkImport(false);
     setEditingId(null);
-    setForm({ ...emptyForm, attendance_status: DEFAULT_ATTENDANCE_STATUS });
+    setForm({
+      ...emptyForm,
+      date: defaultAttendanceDateForMonth(selectedYear, selectedMonth),
+      attendance_status: DEFAULT_ATTENDANCE_STATUS,
+    });
     setShowForm(true);
   }
 
@@ -104,15 +145,32 @@ export default function AttendanceRegister({
     setShowForm(false);
   }
 
-  function openBulkImport() {
+  async function openBulkImport() {
     setShowForm(false);
     setEditingId(null);
     setForm(emptyForm);
+    setError(null);
+
+    // Duplicate detection must see all months, not just the filtered view.
+    const { data, error: existingError } = await supabase
+      .from("attendance_register")
+      .select("date, staff_id");
+
+    if (existingError) {
+      setError(existingError.message);
+      return;
+    }
+
+    setBulkImportExisting(
+      (data as Pick<AttendanceRegisterEntry, "date" | "staff_id">[] | null) ??
+        [],
+    );
     setShowBulkImport(true);
   }
 
   function closeBulkImport() {
     setShowBulkImport(false);
+    setBulkImportExisting([]);
   }
 
   function openEditForm(entry: AttendanceRegisterEntry) {
@@ -222,14 +280,64 @@ export default function AttendanceRegister({
 
   return (
     <div className="min-w-0 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-600">
-          Record daily attendance, clock times, and status by staff member.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-[160px]">
+            <label
+              htmlFor="attendance-month"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Month
+            </label>
+            <select
+              id="attendance-month"
+              value={selectedMonth}
+              onChange={(event) =>
+                handleMonthChange(Number(event.target.value))
+              }
+              className={inputClassName}
+            >
+              {ATTENDANCE_MONTH_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[120px]">
+            <label
+              htmlFor="attendance-year"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Year
+            </label>
+            <select
+              id="attendance-year"
+              value={selectedYear}
+              onChange={(event) =>
+                handleYearChange(Number(event.target.value))
+              }
+              className={inputClassName}
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="pb-2 text-sm text-slate-600">
+            {loadingEntries
+              ? "Loading…"
+              : `${entries.length} entr${entries.length === 1 ? "y" : "ies"}`}
+          </p>
+        </div>
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => (showBulkImport ? closeBulkImport() : openBulkImport())}
+            onClick={() =>
+              showBulkImport ? closeBulkImport() : void openBulkImport()
+            }
             className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
           >
             {showBulkImport ? "Cancel Import" : "Bulk Import"}
@@ -253,7 +361,7 @@ export default function AttendanceRegister({
       {showBulkImport ? (
         <AttendanceBulkImport
           employees={employees}
-          existingEntries={entries}
+          existingEntries={bulkImportExisting}
           onClose={closeBulkImport}
           onImported={refreshEntries}
         />
@@ -298,26 +406,13 @@ export default function AttendanceRegister({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Employee Name
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  value={
-                    employeeNameByStaffId.get(form.staff_id) ?? ""
-                  }
-                  className={`${inputClassName} bg-slate-50`}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
                   Employment Type
                 </label>
                 <input
                   type="text"
-                  readOnly
                   value={form.employment_type}
-                  className={`${inputClassName} bg-slate-50`}
+                  onChange={(e) => updateField("employment_type", e.target.value)}
+                  className={inputClassName}
                 />
               </div>
               <div>
@@ -326,9 +421,11 @@ export default function AttendanceRegister({
                 </label>
                 <input
                   type="text"
-                  readOnly
                   value={form.project_assignment}
-                  className={`${inputClassName} bg-slate-50`}
+                  onChange={(e) =>
+                    updateField("project_assignment", e.target.value)
+                  }
+                  className={inputClassName}
                 />
               </div>
               <div>
@@ -359,7 +456,6 @@ export default function AttendanceRegister({
                 </label>
                 <input
                   type="number"
-                  min="0"
                   step="0.01"
                   value={form.hours_worked}
                   onChange={(e) => updateField("hours_worked", e.target.value)}
@@ -372,7 +468,6 @@ export default function AttendanceRegister({
                 </label>
                 <input
                   type="number"
-                  min="0"
                   step="0.01"
                   value={form.overtime_hours}
                   onChange={(e) =>
@@ -446,7 +541,9 @@ export default function AttendanceRegister({
                   colSpan={11}
                   className="px-4 py-8 text-center text-slate-500"
                 >
-                  No attendance entries yet.
+                  {loadingEntries
+                    ? "Loading attendance entries…"
+                    : "No attendance entries for this month."}
                 </td>
               </tr>
             ) : (

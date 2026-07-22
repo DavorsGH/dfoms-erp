@@ -15,7 +15,7 @@ import { inputClassName } from "./hr-register-utils";
 
 type AttendanceBulkImportProps = {
   employees: HrEmployee[];
-  existingEntries: AttendanceRegisterEntry[];
+  existingEntries: Pick<AttendanceRegisterEntry, "date" | "staff_id">[];
   onClose: () => void;
   onImported: () => Promise<void>;
 };
