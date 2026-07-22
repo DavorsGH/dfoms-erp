@@ -25,11 +25,11 @@ import {
   MARITAL_STATUS_OPTIONS,
   SHIFT_OPTIONS,
   formatGHS,
-  generateNextEmployeeId,
   inputClassName,
   textareaClassName,
   type EmployeeRecord,
 } from "./employee-record-utils";
+import { allocateNewEmployeeCodes } from "./employee-ids-api";
 import {
   getDepartmentName,
   getPositionName,
@@ -614,18 +614,10 @@ export default function EmployeesDirectory({
   }
 
   function openAddForm() {
-    const nextEmployeeId = generateNextEmployeeId(
-      employees.map((employee) => employee.employee_id),
-    );
-    const nextNumber = nextEmployeeId.replace(/^EMP/i, "");
-    const nextStaffId = `DF${nextNumber}`;
-
     basicSalaryManualRef.current = false;
     setEditingEmployeeId(null);
     setForm({
       ...emptyForm,
-      employee_id: nextEmployeeId,
-      staff_id: nextStaffId,
       employment_status: DEFAULT_EMPLOYMENT_STATUS,
     });
     setShowForm(true);
@@ -740,21 +732,43 @@ export default function EmployeesDirectory({
     }
 
     setLoading(true);
-    const payload = buildPayload(form);
 
-    const { error: saveError } = editingEmployeeId
-      ? await supabase
-          .from("employees")
-          .update(payload)
-          .eq("employee_id", editingEmployeeId)
-      : await supabase
-          .from("employees")
-          .insert({ employee_id: form.employee_id, ...payload });
+    if (editingEmployeeId) {
+      const payload = buildPayload(form);
+      const { error: saveError } = await supabase
+        .from("employees")
+        .update(payload)
+        .eq("employee_id", editingEmployeeId);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateNewEmployeeCodes(supabase);
+      if (allocated.error || !allocated.employeeId || !allocated.staffId) {
+        setError(allocated.error ?? "Unable to allocate employee IDs.");
+        setLoading(false);
+        return;
+      }
+
+      const payload = buildPayload({
+        ...form,
+        employee_id: allocated.employeeId,
+        staff_id: allocated.staffId,
+      });
+
+      const { error: saveError } = await supabase.from("employees").insert({
+        employee_id: allocated.employeeId,
+        ...payload,
+      });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -926,8 +940,10 @@ export default function EmployeesDirectory({
                     {photoUploading ? "Uploading…" : "Upload Photo"}
                   </button>
                   <p className="text-xs text-slate-500">
-                    JPEG, PNG, or WebP. Saved when you upload and again on
-                    save for new employees.
+                    JPEG, PNG, or WebP.
+                    {editingEmployeeId
+                      ? " Saved when you upload."
+                      : " Available after the employee is saved (IDs are assigned on save)."}
                   </p>
                 </div>
               </div>
@@ -936,7 +952,10 @@ export default function EmployeesDirectory({
                   <input
                     type="text"
                     readOnly
-                    value={form.employee_id}
+                    value={
+                      form.employee_id ||
+                      (editingEmployeeId ? "" : "Assigned on save")
+                    }
                     className={`${inputClassName} bg-slate-50 text-slate-600`}
                   />
                 </Field>
@@ -944,7 +963,10 @@ export default function EmployeesDirectory({
                   <input
                     type="text"
                     readOnly
-                    value={form.staff_id}
+                    value={
+                      form.staff_id ||
+                      (editingEmployeeId ? "" : "Assigned on save")
+                    }
                     className={`${inputClassName} bg-slate-50 text-slate-600`}
                   />
                 </Field>

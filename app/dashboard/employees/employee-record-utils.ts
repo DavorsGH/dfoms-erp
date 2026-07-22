@@ -80,8 +80,17 @@ export const EMPLOYMENT_STATUS_OPTIONS = [
 export const DEFAULT_EMPLOYMENT_STATUS = "Active";
 
 export function parseStaffIdNumber(staffId: string): number {
-  const match = staffId.match(/^DF(\d+)$/i);
-  return match ? Number.parseInt(match[1], 10) : Number.NaN;
+  const legacy = staffId.match(/^DF(\d+)$/i);
+  if (legacy) {
+    return Number.parseInt(legacy[1], 10);
+  }
+
+  const branded = staffId.match(/^[A-Z0-9]{2,5}-STAFF-(\d+)$/i);
+  if (branded) {
+    return Number.parseInt(branded[1], 10);
+  }
+
+  return Number.NaN;
 }
 
 export function compareStaffIds(a: string, b: string): number {
@@ -114,6 +123,7 @@ export function formatDate(value: string | null | undefined): string {
   });
 }
 
+/** @deprecated Legacy EMP0001 max+1 helper; new employees use generate_next_code('EMP'). */
 export function generateNextEmployeeId(existingIds: string[]): string {
   const numbers = existingIds.map((id) => {
     const match = id.match(/^EMP(\d+)$/i);

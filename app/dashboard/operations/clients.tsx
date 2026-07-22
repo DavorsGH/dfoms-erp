@@ -28,6 +28,7 @@ import {
   DEFAULT_CONTRACT_STATUS,
   type ClientEntry,
 } from "./clients-utils";
+import { allocateContractNumber } from "../crm/customers/customer-contract-api";
 
 type ClientsProps = {
   initialClients: ClientEntry[];
@@ -197,32 +198,50 @@ export default function Clients({
       notes: nullableText(form.notes),
     };
 
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("customers")
-          .update({
-            client_name: payload.client_name,
-            contact_person: payload.contact_person,
-            phone: payload.phone,
-            email: payload.email,
-            address: payload.address,
-            gps_location: payload.gps_location,
-            contract_number: payload.contract_number,
-            contract_start: payload.contract_start,
-            contract_end: payload.contract_end,
-            service_frequency: payload.service_frequency,
-            services_provided: payload.services_provided,
-            assigned_supervisor: payload.assigned_supervisor,
-            contract_status: payload.contract_status,
-            notes: payload.notes,
-          })
-          .eq("client_id", editingId)
-      : await supabase.from("customers").insert(payload);
+    if (editingId) {
+      const { error: saveError } = await supabase
+        .from("customers")
+        .update({
+          client_name: payload.client_name,
+          contact_person: payload.contact_person,
+          phone: payload.phone,
+          email: payload.email,
+          address: payload.address,
+          gps_location: payload.gps_location,
+          contract_number: payload.contract_number,
+          contract_start: payload.contract_start,
+          contract_end: payload.contract_end,
+          service_frequency: payload.service_frequency,
+          services_provided: payload.services_provided,
+          assigned_supervisor: payload.assigned_supervisor,
+          contract_status: payload.contract_status,
+          notes: payload.notes,
+        })
+        .eq("client_id", editingId);
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const allocated = await allocateContractNumber(supabase);
+      if (allocated.error || !allocated.contractNumber) {
+        setError(allocated.error ?? "Unable to allocate contract number.");
+        setLoading(false);
+        return;
+      }
+
+      const { error: saveError } = await supabase.from("customers").insert({
+        ...payload,
+        contract_number: allocated.contractNumber,
+      });
+
+      if (saveError) {
+        setError(saveError.message);
+        setLoading(false);
+        return;
+      }
     }
 
     closeForm();
@@ -351,19 +370,21 @@ export default function Clients({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Contract Number
-                </label>
-                <input
-                  type="text"
-                  value={form.contract_number}
-                  onChange={(event) =>
-                    updateField("contract_number", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Contract Number
+                  </label>
+                  <input
+                    type="text"
+                    value={form.contract_number}
+                    onChange={(event) =>
+                      updateField("contract_number", event.target.value)
+                    }
+                    className={inputClassName}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Contract Start
