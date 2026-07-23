@@ -20,7 +20,7 @@ import BillingSettings, {
 } from "../billing-settings";
 
 const BILLING_TIER_SELECT =
-  `${CRM_PRODUCT_SELECT}, price_ghs` as const;
+  `${CRM_PRODUCT_SELECT}, price_ghs, paystack_plan_code` as const;
 
 export default async function BillingSettingsPage() {
   const tenantId = await getCurrentUserTenantId();

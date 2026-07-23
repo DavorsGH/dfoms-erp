@@ -19,6 +19,10 @@ export type CustomerTenantRow = {
   tierName: string | null;
   productId: string | null;
   contactEmail: string | null;
+  billingWaived: boolean;
+  billingWaivedReason: string | null;
+  billingWaivedBy: string | null;
+  billingWaivedAt: string | null;
 };
 
 type TenantRecord = {
@@ -36,6 +40,10 @@ type SubscriptionRecord = {
   subscription_status: CrmSubscriptionStatus;
   trial_end_date: string | null;
   created_at: string;
+  billing_waived: boolean | null;
+  billing_waived_reason: string | null;
+  billing_waived_by: string | null;
+  billing_waived_at: string | null;
   product: { name: string } | { name: string }[] | null;
 };
 
@@ -100,7 +108,7 @@ export async function fetchCustomerTenantRows(
   const { data: subscriptions, error: subscriptionsError } = await admin
     .from("crm_subscriptions")
     .select(
-      "id, linked_tenant_id, customer_id, product_id, subscription_status, trial_end_date, created_at, product:crm_products(name)",
+      "id, linked_tenant_id, customer_id, product_id, subscription_status, trial_end_date, created_at, billing_waived, billing_waived_reason, billing_waived_by, billing_waived_at, product:crm_products(name)",
     )
     .in("linked_tenant_id", tenantIds)
     .order("created_at", { ascending: false });
@@ -159,6 +167,10 @@ export async function fetchCustomerTenantRows(
       tierName,
       productId: subscription?.product_id ?? null,
       contactEmail: customer?.email ?? null,
+      billingWaived: subscription?.billing_waived === true,
+      billingWaivedReason: subscription?.billing_waived_reason ?? null,
+      billingWaivedBy: subscription?.billing_waived_by ?? null,
+      billingWaivedAt: subscription?.billing_waived_at ?? null,
     };
   });
 

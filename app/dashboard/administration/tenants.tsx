@@ -54,6 +54,20 @@ function formatSubscriptionStatus(value: string | null): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatWaiverAt(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+
+  return new Date(value).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function TenantManagement({
   initialRows,
   tierOptions,
@@ -67,6 +81,8 @@ export default function TenantManagement({
     null,
   );
   const [selectedProductId, setSelectedProductId] = useState("");
+  const [waiveTenant, setWaiveTenant] = useState<CustomerTenantRow | null>(null);
+  const [waiveReason, setWaiveReason] = useState("");
 
   useEffect(() => {
     setRows(initialRows);
@@ -129,16 +145,27 @@ export default function TenantManagement({
   }
 
   function openChangeTier(row: CustomerTenantRow) {
+    setWaiveTenant(null);
     setChangeTierTenant(row);
-    setSelectedProductId(
-      row.productId ?? tierOptions[0]?.id ?? "",
-    );
+    setSelectedProductId(row.productId ?? tierOptions[0]?.id ?? "");
     setError(null);
   }
 
   function closeChangeTier() {
     setChangeTierTenant(null);
     setSelectedProductId("");
+  }
+
+  function openWaiveBilling(row: CustomerTenantRow) {
+    setChangeTierTenant(null);
+    setWaiveTenant(row);
+    setWaiveReason(row.billingWaivedReason ?? "");
+    setError(null);
+  }
+
+  function closeWaiveBilling() {
+    setWaiveTenant(null);
+    setWaiveReason("");
   }
 
   async function handleChangeTierSubmit(event: React.FormEvent) {
@@ -177,6 +204,82 @@ export default function TenantManagement({
     }
 
     closeChangeTier();
+    setLoadingTenantId(null);
+    await refreshRows();
+  }
+
+  async function handleWaiveSubmit(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!waiveTenant) {
+      return;
+    }
+
+    const reason = waiveReason.trim();
+    if (!reason) {
+      setError("A reason is required when waiving billing.");
+      return;
+    }
+
+    setLoadingTenantId(waiveTenant.tenantId);
+    setError(null);
+
+    const response = await fetch("/api/admin/tenants/waive-billing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: waiveTenant.tenantId,
+        waived: true,
+        reason,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to waive billing.");
+      setLoadingTenantId(null);
+      return;
+    }
+
+    closeWaiveBilling();
+    setLoadingTenantId(null);
+    await refreshRows();
+  }
+
+  async function handleUnwaive(row: CustomerTenantRow) {
+    if (
+      !window.confirm(
+        `Remove the billing waiver for ${row.companyName}? Normal trial/subscription rules will apply again.`,
+      )
+    ) {
+      return;
+    }
+
+    setLoadingTenantId(row.tenantId);
+    setError(null);
+
+    const response = await fetch("/api/admin/tenants/waive-billing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: row.tenantId,
+        waived: false,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to remove billing waiver.");
+      setLoadingTenantId(null);
+      return;
+    }
+
     setLoadingTenantId(null);
     await refreshRows();
   }
@@ -248,6 +351,52 @@ export default function TenantManagement({
         </section>
       ) : null}
 
+      {waiveTenant ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="mb-2 text-lg font-semibold text-[#0f2744]">
+            Waive Billing — {waiveTenant.companyName}
+          </h3>
+          <p className="mb-4 text-sm text-slate-600">
+            Exempt this tenant from billing. They keep full access as if paid;
+            no charges will be attempted while the waiver is active.
+          </p>
+          <form onSubmit={handleWaiveSubmit} className="max-w-lg space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Reason (required)
+              </label>
+              <textarea
+                required
+                rows={3}
+                value={waiveReason}
+                onChange={(event) => setWaiveReason(event.target.value)}
+                className={inputClassName}
+                placeholder="e.g. Partner comp — Q3 2026"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={loadingTenantId === waiveTenant.tenantId}
+                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loadingTenantId === waiveTenant.tenantId
+                  ? "Saving…"
+                  : "Confirm Waiver"}
+              </button>
+              <button
+                type="button"
+                onClick={closeWaiveBilling}
+                disabled={loadingTenantId === waiveTenant.tenantId}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
       <ScrollableTable>
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
@@ -257,6 +406,7 @@ export default function TenantManagement({
               <th className={scrollableTableThClassName}>Tenant Status</th>
               <th className={scrollableTableThClassName}>Subscription</th>
               <th className={scrollableTableThClassName}>Trial End</th>
+              <th className={scrollableTableThClassName}>Billing Waiver</th>
               <th className={scrollableTableThClassName}>Current Tier</th>
               <th className={scrollableTableThClassName}>Contact Email</th>
               <th className={scrollableTableThClassName}>Actions</th>
@@ -266,7 +416,7 @@ export default function TenantManagement({
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No customer tenants found.
@@ -276,6 +426,7 @@ export default function TenantManagement({
               rows.map((row, index) => {
                 const isLoading = loadingTenantId === row.tenantId;
                 const canChangeTier = Boolean(row.subscriptionId);
+                const canWaive = Boolean(row.subscriptionId);
 
                 return (
                   <tr key={row.tenantId} className={getStripedRowClassName(index)}>
@@ -289,6 +440,24 @@ export default function TenantManagement({
                     </td>
                     <td className="px-4 py-3">
                       {formatTrialEndDate(row.trialEndDate)}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {row.billingWaived ? (
+                        <div className="space-y-1">
+                          <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">
+                            Waived
+                          </span>
+                          <p className="text-slate-700">
+                            {row.billingWaivedReason ?? "—"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            by {row.billingWaivedBy ?? "—"} ·{" "}
+                            {formatWaiverAt(row.billingWaivedAt)}
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">Not waived</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {row.tierName ?? "None selected"}
@@ -323,6 +492,26 @@ export default function TenantManagement({
                             className={primaryActionButtonClassName}
                           >
                             Change Tier
+                          </button>
+                        ) : null}
+                        {canWaive && !row.billingWaived ? (
+                          <button
+                            type="button"
+                            disabled={isLoading}
+                            onClick={() => openWaiveBilling(row)}
+                            className={primaryActionButtonClassName}
+                          >
+                            Waive Billing
+                          </button>
+                        ) : null}
+                        {canWaive && row.billingWaived ? (
+                          <button
+                            type="button"
+                            disabled={isLoading}
+                            onClick={() => handleUnwaive(row)}
+                            className={actionButtonClassName}
+                          >
+                            Un-waive
                           </button>
                         ) : null}
                       </div>

@@ -9,6 +9,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Paystack webhooks — public POST; signature verified inside the route.
+  if (pathname === "/api/webhooks/paystack") {
+    return NextResponse.next();
+  }
+
   // Maintenance mode — blocks all access except heartbeat and the maintenance page itself.
   if (process.env.MAINTENANCE_MODE === "true") {
     if (pathname === "/maintenance") {
@@ -29,6 +34,7 @@ export async function middleware(request: NextRequest) {
     "/login",
     "/signup",
     "/api/signup",
+    "/api/webhooks/paystack",
     "/forgot-password",
     "/reset-password",
     "/verify-email",

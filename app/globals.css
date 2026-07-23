@@ -12,13 +12,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* App UI is light-only. Do not flip body text to near-white under
+   prefers-color-scheme: dark — that washed out headings that inherit
+   color (e.g. billing callback success title on emerald-50). */
 body {
   background: var(--background);
   color: var(--foreground);

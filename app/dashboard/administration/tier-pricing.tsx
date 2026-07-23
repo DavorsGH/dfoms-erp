@@ -91,6 +91,7 @@ export default function TierPricing({
   const router = useRouter();
   const [rows, setRows] = useState(() => sortTierPricingRows(initialRows));
   const [error, setError] = useState<string | null>(fetchError);
+  const [warning, setWarning] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({
     unit_price: "",
@@ -106,6 +107,7 @@ export default function TierPricing({
     setEditingId(row.id);
     setEditForm(toEditForm(row));
     setError(null);
+    setWarning(null);
   }
 
   function cancelEdit() {
@@ -136,6 +138,7 @@ export default function TierPricing({
 
     setSavingId(row.id);
     setError(null);
+    setWarning(null);
 
     const response = await fetch("/api/admin/tenants/update-pricing", {
       method: "POST",
@@ -148,7 +151,7 @@ export default function TierPricing({
     });
 
     const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
+      | { error?: string; warning?: string; success?: boolean }
       | null;
 
     if (!response.ok) {
@@ -166,6 +169,9 @@ export default function TierPricing({
         ),
       ),
     );
+    if (payload?.warning) {
+      setWarning(payload.warning);
+    }
     cancelEdit();
     setSavingId(null);
     router.refresh();
@@ -182,6 +188,12 @@ export default function TierPricing({
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </p>
+      ) : null}
+
+      {warning ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {warning}
         </p>
       ) : null}
 

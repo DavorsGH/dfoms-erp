@@ -5,47 +5,19 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { getTenantStatus } from "@/utils/tenant-management";
-import type { CrmSubscriptionStatus } from "@/utils/tenant-signup";
-
-type SubscriptionRow = {
-  subscription_status: CrmSubscriptionStatus;
-  trial_end_date: string | null;
-};
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function isTrialPeriodActive(trialEndDate: string | null): boolean {
-  if (!trialEndDate) {
-    return false;
-  }
-
-  return todayIsoDate() <= trialEndDate.slice(0, 10);
-}
-
-function subscriptionAllowsAccess(row: SubscriptionRow): boolean {
-  const { subscription_status, trial_end_date } = row;
-
-  if (subscription_status === "active") {
-    return true;
-  }
-
-  if (subscription_status === "trialing") {
-    return isTrialPeriodActive(trial_end_date);
-  }
-
-  return false;
-}
+import {
+  subscriptionAllowsAccess,
+  type SubscriptionAccessRow,
+} from "@/utils/subscription-access";
 
 /** Service-role lookup: crm_subscriptions lives under Davors tenant RLS. */
 export const getLinkedTenantSubscription = cache(
-  async (linkedTenantId: string): Promise<SubscriptionRow | null> => {
+  async (linkedTenantId: string): Promise<SubscriptionAccessRow | null> => {
     const admin = createAdminClient();
 
     const { data, error } = await admin
       .from("crm_subscriptions")
-      .select("subscription_status, trial_end_date")
+      .select("subscription_status, trial_end_date, billing_waived")
       .eq("linked_tenant_id", linkedTenantId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -85,3 +57,5 @@ export async function ensureTrialAccess(): Promise<void> {
     redirect("/trial-expired");
   }
 }
+
+export { subscriptionAllowsAccess };

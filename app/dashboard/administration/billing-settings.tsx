@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   formatBillingCycle,
   formatProductPrice,
-  formatUsdPrice,
 } from "../crm/products/products-utils";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
@@ -32,6 +31,7 @@ export type BillingTierOption = {
   billing_cycle: string | null;
   is_active: boolean | null;
   category: string | null;
+  paystack_plan_code: string | null;
 };
 
 type BillingSettingsProps = {
@@ -105,7 +105,9 @@ export default function BillingSettings({
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [planModalOpen, setPlanModalOpen] = useState(false);
-  const [planNotice, setPlanNotice] = useState<string | null>(null);
+  const [checkoutLoadingId, setCheckoutLoadingId] = useState<string | null>(
+    null,
+  );
 
   const planState = formatBillingPlanState(
     subscription.subscriptionStatus,
@@ -142,13 +144,32 @@ export default function BillingSettings({
     router.refresh();
   }
 
-  function handleTierSelect(tier: BillingTierOption) {
-    setPlanModalOpen(false);
-    setPlanNotice(
-      `Plan change noted for ${tier.name} — our team will follow up.`,
-    );
-    setSuccess(null);
+  async function handleTierSelect(tier: BillingTierOption) {
     setError(null);
+    setSuccess(null);
+    setCheckoutLoadingId(tier.id);
+
+    const response = await fetch("/api/billing/checkout/initialize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: tier.id }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      authorization_url?: string;
+    } | null;
+
+    if (!response.ok || !payload?.authorization_url) {
+      setCheckoutLoadingId(null);
+      setError(
+        payload?.error ??
+          "Unable to start Paystack checkout. Try again or contact support.",
+      );
+      return;
+    }
+
+    window.location.assign(payload.authorization_url);
   }
 
   return (
@@ -167,12 +188,6 @@ export default function BillingSettings({
       {success ? (
         <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           {success}
-        </p>
-      ) : null}
-
-      {planNotice ? (
-        <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          {planNotice}
         </p>
       ) : null}
 
@@ -469,8 +484,8 @@ export default function BillingSettings({
                   Change Plan
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  Select a tier to request a plan change. No charge will be made
-                  until Paystack billing is enabled.
+                  Choose a tier and billing cycle. You will be redirected to
+                  Paystack to complete payment securely.
                 </p>
               </div>
               <button
@@ -490,12 +505,23 @@ export default function BillingSettings({
               ) : (
                 sortedTiers.map((tier) => {
                   const isCurrent = tier.id === subscription.productId;
+                  const isLoading = checkoutLoadingId === tier.id;
+                  const hasPlan =
+                    typeof tier.paystack_plan_code === "string" &&
+                    tier.paystack_plan_code.trim().length > 0;
+                  const hasPrice =
+                    tier.price_ghs != null && Number(tier.price_ghs) > 0;
 
                   return (
                     <button
                       key={tier.id}
                       type="button"
-                      disabled={isCurrent}
+                      disabled={
+                        isCurrent ||
+                        !hasPlan ||
+                        !hasPrice ||
+                        checkoutLoadingId !== null
+                      }
                       onClick={() => handleTierSelect(tier)}
                       className="flex w-full items-start justify-between gap-4 rounded-lg border border-slate-200 px-4 py-3 text-left transition-colors hover:border-[#0f2744] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -504,13 +530,23 @@ export default function BillingSettings({
                         <p className="text-xs text-slate-500">
                           {formatBillingCycle(tier.billing_cycle)}
                         </p>
+                        {!hasPlan ? (
+                          <p className="mt-1 text-xs text-amber-700">
+                            Paystack plan not linked yet
+                          </p>
+                        ) : null}
                       </div>
                       <div className="text-right text-sm text-slate-700">
-                        <p>{formatUsdPrice(tier.unit_price)}</p>
-                        <p>{formatProductPrice(tier.price_ghs)}</p>
+                        <p className="font-medium">
+                          {formatProductPrice(tier.price_ghs)}
+                        </p>
                         {isCurrent ? (
                           <p className="mt-1 text-xs font-medium text-emerald-700">
                             Current plan
+                          </p>
+                        ) : isLoading ? (
+                          <p className="mt-1 text-xs font-medium text-slate-500">
+                            Redirecting…
                           </p>
                         ) : null}
                       </div>

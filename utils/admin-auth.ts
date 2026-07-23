@@ -3,6 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
 type AuthResult = { ok: true } | { ok: false; response: NextResponse };
@@ -67,11 +68,20 @@ export async function requireTenantSuperAdmin(): Promise<TenantSuperAdminResult>
     };
   }
 
-  const { data: account } = await supabase
+  // Service-role lookup — authoritative tenant_id, not subject to caller RLS.
+  const admin = createAdminClient();
+  const { data: account, error } = await admin
     .from("user_accounts")
     .select("role, is_active, tenant_id")
     .eq("auth_uid", user.id)
     .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: error.message }, { status: 500 }),
+    };
+  }
 
   if (
     !account ||
