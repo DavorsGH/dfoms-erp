@@ -117,7 +117,7 @@ async function fetchDutyRosterBundle(supabase: SupabaseClient) {
     supabase
       .from("employees")
       .select(
-        "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!contract_project(project_code, project_name)",
+        "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
       )
       .order("staff_id", { ascending: true }),
     supabase
