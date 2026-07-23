@@ -66,19 +66,33 @@ export async function fetchCashFlowReportData(
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
     { data: manualEntries, error: manualError },
+    { data: fixedAssets, error: fixedAssetsError },
+    { data: capitalContributions, error: capitalError },
     inventoryPurchases,
   ] = await Promise.all([
     supabase
       .from("income_register")
-      .select("date, amount_received")
+      .select("date, amount_received, entry_type, sale_status")
       .order("date", { ascending: true }),
     supabase
       .from("expense_register")
-      .select("date, sub_category, amount, payment_status")
+      .select(
+        "date, sub_category, amount, payment_status, expense_category, description, receipt_no",
+      )
       .order("date", { ascending: true }),
     supabase.from("manual_financial_entries").select("*").order("period_month", {
       ascending: true,
     }),
+    supabase
+      .from("fixed_assets")
+      .select(
+        "original_cost, quantity, useful_life_years, purchase_date, depreciation_method",
+      )
+      .order("asset_id", { ascending: true }),
+    supabase
+      .from("capital_contributions")
+      .select("id, date, contributed_by, amount, description, notes")
+      .order("date", { ascending: true }),
     fetchCashFlowInventoryPurchaseInput(supabase, tenantId),
   ]);
 
@@ -87,15 +101,23 @@ export async function fetchCashFlowReportData(
     initialExpenseEntries: expenseEntries ?? [],
     initialManualEntries: manualEntries ?? [],
     initialInventoryPurchases: inventoryPurchases,
+    initialFixedAssets: fixedAssets ?? [],
+    initialCapitalContributions: capitalContributions ?? [],
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),
-      (manualEntries ?? []).map((entry) => entry.period_month),
+      [
+        ...(manualEntries ?? []).map((entry) => entry.period_month),
+        ...(fixedAssets ?? []).map((entry) => entry.purchase_date),
+        ...(capitalContributions ?? []).map((entry) => entry.date),
+      ],
     ),
     fetchError:
       incomeError?.message ??
       expenseError?.message ??
       manualError?.message ??
+      fixedAssetsError?.message ??
+      capitalError?.message ??
       null,
   };
 }

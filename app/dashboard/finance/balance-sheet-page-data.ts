@@ -216,6 +216,8 @@ export async function fetchBalanceSheetPageData(
     incomeEntries?.map((entry) => ({
       date: entry.date,
       amount_received: entry.amount_received,
+      entry_type: entry.entry_type,
+      sale_status: entry.sale_status,
     })) ?? [];
 
   const cashFlowExpenseEntries =

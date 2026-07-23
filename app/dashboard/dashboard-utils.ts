@@ -294,6 +294,7 @@ function buildMonthSnapshot(input: {
     input.year,
     input.inventoryBalanceSheetInput,
     input.referenceDate,
+    input.manualEntries,
   );
   const balanceCheck = getBalanceCheckForPeriod(balanceSheetReport, monthIndex);
   const cashRow = balanceSheetReport.rows.find((row) => row.key === "cash");
@@ -475,6 +476,7 @@ function buildBalanceSheetReportForYear(
   financialYear: number,
   inventoryBalanceSheetInput: InventoryBalanceSheetInput,
   referenceDate?: Date,
+  manualEntries: ManualFinancialEntry[] = [],
 ) {
   return buildBalanceSheetReport(
     incomeEntries,
@@ -490,6 +492,7 @@ function buildBalanceSheetReportForYear(
       ...inventoryBalanceSheetInput,
       referenceDate,
     },
+    manualEntries,
   );
 }
 
@@ -693,6 +696,7 @@ export function buildDashboardViewModel(input: {
       point.year,
       input.inventoryBalanceSheetInput,
       referenceDate,
+      input.manualEntries,
     );
     const cashAmounts = report.rows.find((row) => row.key === "cash")?.amounts;
 

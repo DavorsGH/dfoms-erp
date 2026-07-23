@@ -119,6 +119,14 @@ export function isAccruedPaymentStatus(
 }
 
 export function isCashOutflowExpense(entry: BalanceSheetCashExpenseEntry): boolean {
+  // Non-Cash inventory moves (COGS / VOID-COGS / Internal Consumption) must
+  // never hit cash — even if a row was incorrectly stored as Paid.
+  if (normalizeStatus(entry.payment_status) === "non-cash") {
+    return false;
+  }
+  if (/^(VOID-)?COGS-/i.test(normalizeText(entry.receipt_no))) {
+    return false;
+  }
   return isPaidStatus(entry.payment_status);
 }
 

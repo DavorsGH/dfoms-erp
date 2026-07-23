@@ -5,16 +5,20 @@ import Link from "next/link";
 import { getDefaultSelectedYear } from "./finance-year-utils";
 import FinancialYearSelector from "./financial-year-selector";
 import { formatGHS } from "./income-register-utils";
+import type { CashFlowExpenseEntry } from "./cash-flow-utils";
+import type {
+  CashFlowIncomeEntry,
+  CashFlowInventoryPurchaseInput,
+  ManualFinancialEntry,
+} from "./cash-flow-utils";
+import type { CapitalContributionEntry } from "./capital-contributions-utils";
+import type { ProfitLossAssetEntry } from "./profit-loss-utils";
 import {
   FULL_YEAR_INDEX,
   MONTH_LABELS,
   buildCashFlowReport,
   filterManualEntriesForYear,
-  type CashFlowExpenseEntry,
-  type CashFlowIncomeEntry,
-  type CashFlowInventoryPurchaseInput,
   type CashFlowRow,
-  type ManualFinancialEntry,
 } from "./cash-flow-utils";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -27,6 +31,8 @@ type CashFlowProps = {
   initialExpenseEntries: CashFlowExpenseEntry[];
   initialManualEntries: ManualFinancialEntry[];
   initialInventoryPurchases: CashFlowInventoryPurchaseInput;
+  initialFixedAssets: ProfitLossAssetEntry[];
+  initialCapitalContributions: CapitalContributionEntry[];
   availableYears: number[];
   fetchError: string | null;
 };
@@ -67,6 +73,8 @@ export default function CashFlow({
   initialExpenseEntries,
   initialManualEntries,
   initialInventoryPurchases,
+  initialFixedAssets,
+  initialCapitalContributions,
   availableYears,
   fetchError,
 }: CashFlowProps) {
@@ -88,10 +96,14 @@ export default function CashFlow({
         manualEntriesForYear,
         selectedYear,
         initialInventoryPurchases,
+        initialFixedAssets,
+        initialCapitalContributions,
       ),
     [
       initialIncomeEntries,
       initialExpenseEntries,
+      initialCapitalContributions,
+      initialFixedAssets,
       initialInventoryPurchases,
       manualEntriesForYear,
       selectedYear,
@@ -107,7 +119,8 @@ export default function CashFlow({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <p className="text-sm text-slate-600">
           Monthly cash flow for financial year {report.financialYear}, calculated
-          live from receipts, paid expenses, and manual entries.
+          live from receipts, paid expenses, fixed-asset purchases, and manual
+          financing/opening entries.
         </p>
         <FinancialYearSelector
           years={availableYears}

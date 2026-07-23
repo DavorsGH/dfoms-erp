@@ -14,7 +14,6 @@ export type ManualEntryFormFieldKey =
   | "bank_loans"
   | "other_long_term_liabilities"
   | "retained_earnings_prior_years"
-  | "purchase_of_fixed_assets"
   | "loan_proceeds"
   | "loan_repayments"
   | "opening_cash_balance"
@@ -72,7 +71,6 @@ export const MANUAL_ENTRY_FIELD_SECTIONS: ManualEntryFieldSection[] = [
   {
     title: "Cash Flow Inputs",
     fields: [
-      { key: "purchase_of_fixed_assets", label: "Purchase of Fixed Assets" },
       { key: "loan_proceeds", label: "Loan Proceeds" },
       { key: "loan_repayments", label: "Loan Repayments" },
       { key: "opening_cash_balance", label: "Opening Cash Balance" },

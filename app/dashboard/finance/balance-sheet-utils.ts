@@ -4,22 +4,16 @@ import {
   type CapitalContributionEntry,
 } from "./capital-contributions-utils";
 import {
-  calculateTotalCost,
-  calculateMonthlyNetBookValueTotals,
-} from "./fixed-assets-utils";
-import {
   calculateAccruedWagesPayableByMonth,
-  isCashOutflowExpense,
   type BalanceSheetCashExpenseEntry,
   type MonthEndCloseNetPayEntry,
   type PayrollHistoryWagesEntry,
 } from "./accrued-wages-utils";
+import { calculateMonthlyNetBookValueTotals } from "./fixed-assets-utils";
 import {
-  addAmountToMonth,
   buildProfitLossReport,
   createEmptyMonthlyTotals,
   FULL_YEAR_INDEX,
-  getEntryMonthIndex,
   sumMonthlyTotals,
   type MonthlyTotals,
   type ProfitLossAssetEntry,
@@ -29,10 +23,14 @@ import {
 import { getCurrentFinancialYear } from "./finance-year-utils";
 import { isActiveIncomeForReporting } from "./income-register-utils";
 import {
+  buildClosingCashByMonth,
+  buildMonthlyCashComponents,
+  resolveJanuaryOpeningCashBalance,
+  type CashMovementManualEntry,
+} from "./cash-movement-utils";
+import {
   calculateInventoryByMonth,
   calculateInventoryOpeningEquityByMonth,
-  calculateProductPurchaseCashOutflowsByMonth,
-  calculateRawMaterialPurchaseCashOutflowsByMonth,
   type FinishedProductAverageCostRow,
   type InventoryBalanceConfig,
   type ProductPurchaseCashEntry,
@@ -42,6 +40,7 @@ import type { FinishedProductRecord } from "../inventory/finished-products-utils
 import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
+export { calculateFixedAssetPurchaseOutflowsByMonth } from "./fixed-assets-utils";
 
 export const BALANCE_TOLERANCE = 0.01;
 
@@ -219,91 +218,6 @@ function calculateRetainedEarningsByMonth(
   return totals;
 }
 
-function calculateCapitalContributionCashInflowsByMonth(
-  contributions: CapitalContributionEntry[],
-  financialYear: number,
-): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-
-  for (const entry of contributions) {
-    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
-    if (monthIndex === null) {
-      continue;
-    }
-
-    addAmountToMonth(totals, monthIndex, Number(entry.amount) || 0);
-  }
-
-  return roundMonthlyTotals(totals);
-}
-
-/** Mirrors cash-flow-utils sumCashReceivedByMonth: sum amount_received by invoice date month. */
-function sumIncomeReceivedByMonth(
-  incomeEntries: BalanceSheetIncomeEntry[],
-  financialYear: number,
-): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-
-  for (const entry of incomeEntries) {
-    if (!isActiveIncomeForReporting(entry)) {
-      continue;
-    }
-
-    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
-    if (monthIndex === null) {
-      continue;
-    }
-
-    addAmountToMonth(totals, monthIndex, Number(entry.amount_received) || 0);
-  }
-
-  return roundMonthlyTotals(totals);
-}
-
-function calculateFixedAssetPurchaseOutflowsByMonth(
-  fixedAssets: ProfitLossAssetEntry[],
-  financialYear: number,
-): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-
-  for (const asset of fixedAssets) {
-    const monthIndex = getEntryMonthIndex(asset.purchase_date, financialYear);
-    if (monthIndex === null) {
-      continue;
-    }
-
-    const totalCost = calculateTotalCost(
-      Number(asset.original_cost) || 0,
-      Number(asset.quantity) || 0,
-    );
-    addAmountToMonth(totals, monthIndex, totalCost);
-  }
-
-  return roundMonthlyTotals(totals);
-}
-
-function calculatePaidExpensesByMonth(
-  expenseEntries: BalanceSheetCashExpenseEntry[],
-  financialYear: number,
-): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-
-  for (const entry of expenseEntries) {
-    if (!isCashOutflowExpense(entry)) {
-      continue;
-    }
-
-    const monthIndex = getEntryMonthIndex(entry.date, financialYear);
-    if (monthIndex === null) {
-      continue;
-    }
-
-    addAmountToMonth(totals, monthIndex, Number(entry.amount) || 0);
-  }
-
-  return roundMonthlyTotals(totals);
-}
-
 function calculateCashAndCashEquivalentsByMonth(
   capitalContributions: CapitalContributionEntry[],
   incomeEntries: BalanceSheetIncomeEntry[],
@@ -312,53 +226,27 @@ function calculateCashAndCashEquivalentsByMonth(
   rawMaterialCashPurchases: RawMaterialPurchaseCashEntry[],
   productCashPurchases: ProductPurchaseCashEntry[],
   inventoryConfig: InventoryBalanceConfig | null,
+  manualEntries: CashMovementManualEntry[],
   financialYear: number,
 ): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-  const contributionInflows = calculateCapitalContributionCashInflowsByMonth(
-    capitalContributions,
+  const components = buildMonthlyCashComponents(
+    {
+      incomeEntries,
+      expenseEntries,
+      capitalContributions,
+      fixedAssets,
+      rawMaterialCashPurchases,
+      productCashPurchases,
+      inventoryConfig,
+      manualEntries,
+    },
     financialYear,
   );
-  const incomeReceivedInflows = sumIncomeReceivedByMonth(
-    incomeEntries,
+  const januaryOpening = resolveJanuaryOpeningCashBalance(
+    manualEntries,
     financialYear,
   );
-  const paidExpenseOutflows = calculatePaidExpensesByMonth(
-    expenseEntries,
-    financialYear,
-  );
-  const fixedAssetPurchases = calculateFixedAssetPurchaseOutflowsByMonth(
-    fixedAssets,
-    financialYear,
-  );
-  const rawMaterialPurchases = calculateRawMaterialPurchaseCashOutflowsByMonth(
-    rawMaterialCashPurchases,
-    inventoryConfig,
-    financialYear,
-  );
-  const productPurchases = calculateProductPurchaseCashOutflowsByMonth(
-    productCashPurchases,
-    inventoryConfig,
-    financialYear,
-  );
-
-  let runningBalance = 0;
-
-  for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
-    runningBalance = roundCurrency(
-      runningBalance +
-        (contributionInflows[monthIndex] ?? 0) +
-        (incomeReceivedInflows[monthIndex] ?? 0) -
-        (paidExpenseOutflows[monthIndex] ?? 0) -
-        (fixedAssetPurchases[monthIndex] ?? 0) -
-        (rawMaterialPurchases[monthIndex] ?? 0) -
-        (productPurchases[monthIndex] ?? 0),
-    );
-    totals[monthIndex] = runningBalance;
-  }
-
-  totals[FULL_YEAR_INDEX] = totals[11];
-  return totals;
+  return buildClosingCashByMonth(components.netMovement, januaryOpening);
 }
 
 export function getBalanceSheetAmountForMonth(
@@ -421,6 +309,7 @@ export function buildBalanceSheetReport(
     cashPurchases: [],
     productCashPurchases: [],
   },
+  manualEntries: CashMovementManualEntry[] = [],
 ): BalanceSheetReport {
   const cash = calculateCashAndCashEquivalentsByMonth(
     capitalContributions,
@@ -430,6 +319,7 @@ export function buildBalanceSheetReport(
     inventoryInput.cashPurchases,
     inventoryInput.productCashPurchases,
     inventoryInput.config,
+    manualEntries,
     financialYear,
   );
   const accountsReceivable = roundMonthlyTotals(

@@ -25,6 +25,7 @@ import type {
   ProfitLossExpenseEntry,
   ProfitLossIncomeEntry,
 } from "./profit-loss-utils";
+import type { CashMovementManualEntry } from "./cash-movement-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -41,6 +42,7 @@ type BalanceSheetProps = {
   initialPayrollHistory: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
+  initialManualEntries?: CashMovementManualEntry[];
   availableYears: number[];
   fetchError: string | null;
 };
@@ -124,6 +126,7 @@ export default function BalanceSheet({
   initialPayrollHistory,
   initialMonthEndCloseNetPay,
   initialInventoryBalanceSheet,
+  initialManualEntries = [],
   availableYears,
   fetchError,
 }: BalanceSheetProps) {
@@ -144,6 +147,7 @@ export default function BalanceSheet({
         initialMonthEndCloseNetPay,
         selectedYear,
         initialInventoryBalanceSheet,
+        initialManualEntries,
       ),
     [
       initialIncomeEntries,
@@ -155,6 +159,7 @@ export default function BalanceSheet({
       initialPayrollHistory,
       initialMonthEndCloseNetPay,
       initialInventoryBalanceSheet,
+      initialManualEntries,
       selectedYear,
     ],
   );

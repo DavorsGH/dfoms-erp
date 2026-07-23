@@ -12,6 +12,7 @@ import type {
   CashFlowInventoryPurchaseInput,
   ManualFinancialEntry,
 } from "../finance/cash-flow-utils";
+import type { CashMovementManualEntry } from "../finance/cash-movement-utils";
 import { formatPercent } from "../finance/fixed-assets-utils";
 import { formatGHS } from "../finance/income-register-utils";
 import {
@@ -295,6 +296,7 @@ export function MonthlyBalanceSheetReport({
   initialPayrollHistory,
   initialMonthEndCloseNetPay,
   initialInventoryBalanceSheet,
+  initialManualEntries = [],
   availableYears,
   fetchError,
 }: {
@@ -307,6 +309,7 @@ export function MonthlyBalanceSheetReport({
   initialPayrollHistory: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
+  initialManualEntries?: CashMovementManualEntry[];
   availableYears: number[];
   fetchError: string | null;
 }) {
@@ -326,6 +329,7 @@ export function MonthlyBalanceSheetReport({
         initialMonthEndCloseNetPay,
         year,
         initialInventoryBalanceSheet,
+        initialManualEntries,
       ),
     [
       initialIncomeEntries,
@@ -337,6 +341,7 @@ export function MonthlyBalanceSheetReport({
       initialPayrollHistory,
       initialMonthEndCloseNetPay,
       initialInventoryBalanceSheet,
+      initialManualEntries,
       year,
     ],
   );
@@ -396,6 +401,8 @@ export function CashFlowStatementReport({
   initialExpenseEntries,
   initialManualEntries,
   initialInventoryPurchases,
+  initialFixedAssets,
+  initialCapitalContributions = [],
   availableYears,
   fetchError,
 }: {
@@ -403,6 +410,8 @@ export function CashFlowStatementReport({
   initialExpenseEntries: CashFlowExpenseEntry[];
   initialManualEntries: ManualFinancialEntry[];
   initialInventoryPurchases: CashFlowInventoryPurchaseInput;
+  initialFixedAssets: ProfitLossAssetEntry[];
+  initialCapitalContributions?: CapitalContributionEntry[];
   availableYears: number[];
   fetchError: string | null;
 }) {
@@ -422,10 +431,14 @@ export function CashFlowStatementReport({
         manualEntriesForYear,
         year,
         initialInventoryPurchases,
+        initialFixedAssets,
+        initialCapitalContributions,
       ),
     [
       initialIncomeEntries,
       initialExpenseEntries,
+      initialCapitalContributions,
+      initialFixedAssets,
       initialInventoryPurchases,
       manualEntriesForYear,
       year,

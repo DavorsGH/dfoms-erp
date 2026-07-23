@@ -427,6 +427,41 @@ export function calculateMonthlyNetBookValueTotals(
   return totals;
 }
 
+/**
+ * Fixed-asset cash purchase outflows by purchase_date month.
+ * Shared by Balance Sheet cash and Cash Flow investing.
+ */
+export function calculateFixedAssetPurchaseOutflowsByMonth(
+  fixedAssets: Array<{
+    original_cost: number;
+    quantity: number;
+    purchase_date: string;
+  }>,
+  financialYear: number,
+): number[] {
+  const totals = Array.from({ length: 13 }, () => 0);
+
+  for (const asset of fixedAssets) {
+    const purchaseDate = String(asset.purchase_date ?? "").slice(0, 10);
+    const match = /^(\d{4})-(\d{2})/.exec(purchaseDate);
+    if (!match) continue;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (year !== financialYear || month < 1 || month > 12) continue;
+
+    const monthIndex = month - 1;
+    const totalCost = calculateTotalCost(
+      Number(asset.original_cost) || 0,
+      Number(asset.quantity) || 0,
+    );
+    const rounded = Math.round(totalCost * 100) / 100;
+    totals[monthIndex] = Math.round((totals[monthIndex] + rounded) * 100) / 100;
+    totals[12] = Math.round((totals[12] + rounded) * 100) / 100;
+  }
+
+  return totals;
+}
+
 export type AssetDepreciationInput = {
   original_cost: number;
   quantity: number;

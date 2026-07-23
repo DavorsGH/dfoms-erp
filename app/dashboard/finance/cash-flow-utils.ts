@@ -1,18 +1,28 @@
 import { getCurrentFinancialYear } from "./finance-year-utils";
 import {
+  isCashOutflowExpense,
+  type BalanceSheetCashExpenseEntry,
+} from "./accrued-wages-utils";
+import type { CapitalContributionEntry } from "./capital-contributions-utils";
+import {
+  buildClosingCashByMonth,
+  buildMonthlyCashComponents,
+  buildOpeningCashDisplayByMonth,
+  resolveJanuaryOpeningCashBalance,
+} from "./cash-movement-utils";
+import {
   addAmountToMonth,
   createEmptyMonthlyTotals,
   FULL_YEAR_INDEX,
   getEntryMonthIndex,
   sumMonthlyTotals,
   type MonthlyTotals,
+  type ProfitLossAssetEntry,
 } from "./profit-loss-utils";
-import {
-  calculateProductPurchaseCashOutflowsByMonth,
-  calculateRawMaterialPurchaseCashOutflowsByMonth,
-  type InventoryBalanceConfig,
-  type ProductPurchaseCashEntry,
-  type RawMaterialPurchaseCashEntry,
+import type {
+  InventoryBalanceConfig,
+  ProductPurchaseCashEntry,
+  RawMaterialPurchaseCashEntry,
 } from "../inventory/inventory-balance-sheet-utils";
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
@@ -22,6 +32,8 @@ export type CashFlowIncomeEntry = {
   date?: string | null;
   period_month?: string | null;
   amount_received: number;
+  entry_type?: string | null;
+  sale_status?: string | null;
 };
 
 export type CashFlowExpenseEntry = {
@@ -29,6 +41,9 @@ export type CashFlowExpenseEntry = {
   sub_category: string;
   amount: number;
   payment_status: string;
+  expense_category?: string;
+  description?: string | null;
+  receipt_no?: string | null;
 };
 
 /**
@@ -56,7 +71,8 @@ export type ManualFinancialEntry = {
   other_long_term_liabilities?: number;
   retained_earnings_prior_years?: number;
   share_capital?: number;
-  purchase_of_fixed_assets: number;
+  /** Deprecated for Cash Flow: FA purchases now come from fixed_assets register. */
+  purchase_of_fixed_assets?: number;
   loan_proceeds: number;
   loan_repayments: number;
   opening_cash_balance: number;
@@ -87,11 +103,6 @@ export function getPeriodMonthParts(
   return { year, month };
 }
 
-function resolveIncomeEntryDate(entry: CashFlowIncomeEntry): string | null {
-  const value = entry.date ?? entry.period_month;
-  return value ? String(value) : null;
-}
-
 export type CashFlowRow = {
   key: string;
   label: string;
@@ -105,43 +116,8 @@ export type CashFlowReport = {
   rows: CashFlowRow[];
 };
 
-function subtractMonthlyTotals(
-  minuend: MonthlyTotals,
-  subtrahend: MonthlyTotals,
-): MonthlyTotals {
-  return minuend.map((value, index) => value - (subtrahend[index] ?? 0));
-}
-
-function addMonthlyTotals(
-  left: MonthlyTotals,
-  right: MonthlyTotals,
-): MonthlyTotals {
-  return left.map((value, index) => value + (right[index] ?? 0));
-}
-
-function isPaidStatus(paymentStatus: string): boolean {
-  return paymentStatus.trim().toLowerCase() === "paid";
-}
-
-function sumCashReceivedByMonth(
-  entries: CashFlowIncomeEntry[],
-  financialYear: number,
-): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-
-  for (const entry of entries) {
-    const monthIndex = getEntryMonthIndex(
-      resolveIncomeEntryDate(entry),
-      financialYear,
-    );
-    if (monthIndex === null) {
-      continue;
-    }
-
-    addAmountToMonth(totals, monthIndex, Number(entry.amount_received) || 0);
-  }
-
-  return totals;
+function negateMonthlyTotals(totals: MonthlyTotals): MonthlyTotals {
+  return totals.map((value) => -value);
 }
 
 function groupPaidExpensesBySubCategory(
@@ -151,7 +127,16 @@ function groupPaidExpensesBySubCategory(
   const grouped = new Map<string, MonthlyTotals>();
 
   for (const entry of entries) {
-    if (!isPaidStatus(entry.payment_status)) {
+    const cashExpense: BalanceSheetCashExpenseEntry = {
+      date: entry.date,
+      expense_category: entry.expense_category ?? "",
+      sub_category: entry.sub_category,
+      amount: entry.amount,
+      payment_status: entry.payment_status,
+      description: entry.description ?? null,
+      receipt_no: entry.receipt_no ?? null,
+    };
+    if (!isCashOutflowExpense(cashExpense)) {
       continue;
     }
 
@@ -176,86 +161,64 @@ function groupPaidExpensesBySubCategory(
     }));
 }
 
-function manualFieldToMonthlyTotals(
-  entries: ManualFinancialEntry[],
-  field: keyof Pick<
-    ManualFinancialEntry,
-    | "purchase_of_fixed_assets"
-    | "loan_proceeds"
-    | "loan_repayments"
-    | "opening_cash_balance"
-    | "other_cash_inflows"
-  >,
-  financialYear: number,
-): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-
-  for (const entry of entries) {
-    const parts = getPeriodMonthParts(entry.period_month);
-    if (!parts || parts.year !== financialYear) {
-      continue;
-    }
-
-    const monthIndex = parts.month - 1;
-    totals[monthIndex] = Number(entry[field]) || 0;
-    totals[FULL_YEAR_INDEX] += Number(entry[field]) || 0;
-  }
-
-  return totals;
-}
-
-function manualFieldToMonthlyTotalsNoSum(
-  entries: ManualFinancialEntry[],
-  field: keyof Pick<
-    ManualFinancialEntry,
-    "opening_cash_balance"
-  >,
-  financialYear: number,
-): MonthlyTotals {
-  const totals = createEmptyMonthlyTotals();
-
-  for (const entry of entries) {
-    const parts = getPeriodMonthParts(entry.period_month);
-    if (!parts || parts.year !== financialYear) {
-      continue;
-    }
-
-    const monthIndex = parts.month - 1;
-    totals[monthIndex] = Number(entry[field]) || 0;
-  }
-
-  return totals;
-}
-
-function setBalanceFullYear(
-  totals: MonthlyTotals,
-  mode: "january" | "december",
-) {
-  totals[FULL_YEAR_INDEX] = mode === "january" ? totals[0] : totals[11];
-}
-
 const EMPTY_INVENTORY_PURCHASE_INPUT: CashFlowInventoryPurchaseInput = {
   rawMaterialCashPurchases: [],
   productCashPurchases: [],
   inventoryConfig: null,
 };
 
+/**
+ * Cash Flow Statement built from the shared cash-movement engine so closing
+ * cash always matches Balance Sheet cash for the same inputs/year.
+ */
 export function buildCashFlowReport(
   incomeEntries: CashFlowIncomeEntry[],
   expenseEntries: CashFlowExpenseEntry[],
   manualEntries: ManualFinancialEntry[],
   financialYear = getCurrentFinancialYear(),
   inventoryPurchases: CashFlowInventoryPurchaseInput = EMPTY_INVENTORY_PURCHASE_INPUT,
+  fixedAssets: ProfitLossAssetEntry[] = [],
+  capitalContributions: CapitalContributionEntry[] = [],
 ): CashFlowReport {
   const rows: CashFlowRow[] = [];
 
-  const cashReceived = sumCashReceivedByMonth(incomeEntries, financialYear);
-  const otherCashInflows = manualFieldToMonthlyTotals(
-    manualEntries,
-    "other_cash_inflows",
+  const expenseForCash: BalanceSheetCashExpenseEntry[] = expenseEntries.map(
+    (entry) => ({
+      date: entry.date,
+      expense_category: entry.expense_category ?? "",
+      sub_category: entry.sub_category,
+      amount: entry.amount,
+      payment_status: entry.payment_status,
+      description: entry.description ?? null,
+      receipt_no: entry.receipt_no ?? null,
+    }),
+  );
+
+  const components = buildMonthlyCashComponents(
+    {
+      incomeEntries,
+      expenseEntries: expenseForCash,
+      capitalContributions,
+      fixedAssets,
+      rawMaterialCashPurchases: inventoryPurchases.rawMaterialCashPurchases,
+      productCashPurchases: inventoryPurchases.productCashPurchases,
+      inventoryConfig: inventoryPurchases.inventoryConfig,
+      manualEntries,
+    },
     financialYear,
   );
-  const totalCashInflows = addMonthlyTotals(cashReceived, otherCashInflows);
+
+  const totalCashInflows = [
+    components.incomeReceived,
+    components.capitalContributions,
+    components.otherCashInflows,
+  ].reduce((acc, part) => {
+    const next = createEmptyMonthlyTotals();
+    for (let i = 0; i < next.length; i += 1) {
+      next[i] = (acc[i] ?? 0) + (part[i] ?? 0);
+    }
+    return next;
+  }, createEmptyMonthlyTotals());
 
   rows.push({
     key: "inflows-section",
@@ -267,13 +230,19 @@ export function buildCashFlowReport(
     {
       key: "cash-received",
       label: "Cash Received from Customers",
-      amounts: cashReceived,
+      amounts: components.incomeReceived,
+      kind: "data",
+    },
+    {
+      key: "capital-contributions",
+      label: "Capital Contributions",
+      amounts: components.capitalContributions,
       kind: "data",
     },
     {
       key: "other-inflows",
       label: "Other Cash Inflows",
-      amounts: otherCashInflows,
+      amounts: components.otherCashInflows,
       kind: "data",
     },
     {
@@ -289,37 +258,26 @@ export function buildCashFlowReport(
     financialYear,
   );
 
-  // Cash inventory purchases: mirrors the Balance Sheet cash calculation
-  // (calculateCashAndCashEquivalentsByMonth), which subtracts the same values.
-  const rawMaterialCashOutflows = calculateRawMaterialPurchaseCashOutflowsByMonth(
-    inventoryPurchases.rawMaterialCashPurchases,
-    inventoryPurchases.inventoryConfig,
-    financialYear,
-  );
-  const productCashOutflows = calculateProductPurchaseCashOutflowsByMonth(
-    inventoryPurchases.productCashPurchases,
-    inventoryPurchases.inventoryConfig,
-    financialYear,
-  );
-
   const inventoryOutflowRows: CashFlowRow[] = [
     {
       key: "outflow-raw-material-cash-purchases",
       label: "Raw Material Purchases (Cash)",
-      amounts: rawMaterialCashOutflows,
+      amounts: components.rawMaterialPurchases,
       kind: "data" as const,
     },
     {
       key: "outflow-product-cash-purchases",
       label: "Product Purchases (Cash)",
-      amounts: productCashOutflows,
+      amounts: components.productPurchases,
       kind: "data" as const,
     },
   ].filter((row) => row.amounts.some((amount) => amount !== 0));
 
-  const totalCashOutflows = sumMonthlyTotals(
-    [...outflowRows, ...inventoryOutflowRows].map((row) => row.amounts),
-  );
+  const totalCashOutflows = sumMonthlyTotals([
+    ...outflowRows.map((row) => row.amounts),
+    components.rawMaterialPurchases,
+    components.productPurchases,
+  ]);
 
   rows.push({
     key: "outflows-section",
@@ -335,12 +293,9 @@ export function buildCashFlowReport(
     kind: "subtotal",
   });
 
-  const purchaseOfFixedAssets = manualFieldToMonthlyTotals(
-    manualEntries,
-    "purchase_of_fixed_assets",
-    financialYear,
-  );
-  const netInvesting = [...purchaseOfFixedAssets];
+  // Investing: display purchases as positive outflow amounts; net investing is negative cash.
+  const purchaseOfFixedAssets = components.fixedAssetPurchases;
+  const netInvesting = negateMonthlyTotals(purchaseOfFixedAssets);
 
   rows.push({
     key: "investing-section",
@@ -363,17 +318,11 @@ export function buildCashFlowReport(
     },
   );
 
-  const loanProceeds = manualFieldToMonthlyTotals(
-    manualEntries,
-    "loan_proceeds",
-    financialYear,
+  const loanProceeds = components.loanProceeds;
+  const loanRepayments = components.loanRepayments;
+  const netFinancing = loanProceeds.map((value, index) =>
+    (value ?? 0) - (loanRepayments[index] ?? 0),
   );
-  const loanRepayments = manualFieldToMonthlyTotals(
-    manualEntries,
-    "loan_repayments",
-    financialYear,
-  );
-  const netFinancing = subtractMonthlyTotals(loanProceeds, loanRepayments);
 
   rows.push({
     key: "financing-section",
@@ -402,23 +351,18 @@ export function buildCashFlowReport(
     },
   );
 
-  const netCashMovement = addMonthlyTotals(
-    subtractMonthlyTotals(totalCashInflows, totalCashOutflows),
-    addMonthlyTotals(netInvesting, netFinancing),
-  );
-
-  const openingCashBalance = manualFieldToMonthlyTotalsNoSum(
+  const januaryOpening = resolveJanuaryOpeningCashBalance(
     manualEntries,
-    "opening_cash_balance",
     financialYear,
   );
-  setBalanceFullYear(openingCashBalance, "january");
-
-  const closingCashBalance = addMonthlyTotals(
-    netCashMovement,
-    openingCashBalance,
+  const closingCashBalance = buildClosingCashByMonth(
+    components.netMovement,
+    januaryOpening,
   );
-  setBalanceFullYear(closingCashBalance, "december");
+  const openingCashBalance = buildOpeningCashDisplayByMonth(
+    closingCashBalance,
+    januaryOpening,
+  );
 
   rows.push({
     key: "net-cash-section",
@@ -430,7 +374,7 @@ export function buildCashFlowReport(
     {
       key: "net-cash-movement",
       label: "NET CASH MOVEMENT",
-      amounts: netCashMovement,
+      amounts: components.netMovement,
       kind: "total",
     },
     {
@@ -456,7 +400,6 @@ export function buildCashFlowReport(
 }
 
 export const emptyManualEntryForm = {
-  purchase_of_fixed_assets: "",
   loan_proceeds: "",
   loan_repayments: "",
   opening_cash_balance: "",
@@ -471,15 +414,16 @@ export function getManualEntryForMonth(
   const targetPeriodMonth = buildPeriodMonth(financialYear, month);
 
   return (
-    entries.find((entry) => entry.period_month.slice(0, 10) === targetPeriodMonth) ??
-    null
+    entries.find(
+      (entry) => entry.period_month.slice(0, 10) === targetPeriodMonth,
+    ) ?? null
   );
 }
 
 export function filterManualEntriesForYear(
   entries: ManualFinancialEntry[],
   financialYear: number,
-): ManualFinancialEntry[] {
+) {
   return entries.filter((entry) => {
     const parts = getPeriodMonthParts(entry.period_month);
     return parts?.year === financialYear;
