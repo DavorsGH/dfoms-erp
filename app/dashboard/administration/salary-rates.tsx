@@ -64,31 +64,25 @@ export default function SalaryRates({
     const client = createClient();
 
     async function loadPositions() {
-      const attempts = [
-        "position_name",
-        "name",
-      ] as const;
+      const { data, error: positionsError } = await client
+        .from("positions")
+        .select("position_title")
+        .order("position_title", { ascending: true });
 
-      for (const nameColumn of attempts) {
-        const { data, error: positionsError } = await client
-          .from("positions")
-          .select(nameColumn)
-          .order(nameColumn, { ascending: true });
-
-        if (positionsError || !data?.length) {
-          continue;
-        }
-
-        setPositions(
-          data
-            .map((row) => String((row as Record<string, string>)[nameColumn]))
-            .filter(Boolean),
-        );
+      if (positionsError || !data?.length) {
         return;
       }
+
+      setPositions(
+        data
+          .map((row) =>
+            String((row as Record<string, string>).position_title ?? "").trim(),
+          )
+          .filter(Boolean),
+      );
     }
 
-    loadPositions();
+    void loadPositions();
   }, [showForm]);
 
   async function refreshRates() {
@@ -192,8 +186,8 @@ export default function SalaryRates({
     setLoading(false);
   }
 
-  const positionOptions = [...new Set([...positions, form.position].filter(Boolean))].sort(
-    (a, b) => a.localeCompare(b),
+  const positionOptions = [...new Set(positions.filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
   );
 
   return (
@@ -228,29 +222,23 @@ export default function SalaryRates({
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Position
                 </label>
-                {positionOptions.length > 0 ? (
-                  <select
-                    required
-                    value={form.position}
-                    onChange={(e) => updateField("position", e.target.value)}
-                    className={inputClassName}
-                  >
-                    <option value="">Select position</option>
-                    {positionOptions.map((position) => (
-                      <option key={position} value={position}>
-                        {position}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    required
-                    value={form.position}
-                    onChange={(e) => updateField("position", e.target.value)}
-                    className={inputClassName}
-                  />
-                )}
+                <select
+                  required
+                  value={form.position}
+                  onChange={(e) => updateField("position", e.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Select position</option>
+                  {form.position &&
+                  !positionOptions.includes(form.position) ? (
+                    <option value={form.position}>{form.position}</option>
+                  ) : null}
+                  {positionOptions.map((position) => (
+                    <option key={position} value={position}>
+                      {position}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">

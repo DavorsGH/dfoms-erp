@@ -1,42 +1,22 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { fetchPositions } from "../../employees/lookup-utils";
 import SalaryRates from "../salary-rates";
 import type { SalaryRateEntry } from "../salary-rates-utils";
-
-async function loadPositionNames(
-  supabase: ReturnType<typeof createClient>,
-): Promise<string[]> {
-  const attempts = ["position_name", "name"] as const;
-
-  for (const nameColumn of attempts) {
-    const { data, error } = await supabase
-      .from("positions")
-      .select(nameColumn)
-      .order(nameColumn, { ascending: true });
-
-    if (error || !data?.length) {
-      continue;
-    }
-
-    return data
-      .map((row) => String((row as Record<string, string>)[nameColumn]))
-      .filter(Boolean);
-  }
-
-  return [];
-}
 
 export default async function SalaryRatesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const [{ data, error }, positions] = await Promise.all([
+  const [{ data, error }, positionLookups] = await Promise.all([
     supabase
       .from("salary_rate_config")
       .select("*")
       .order("effective_date", { ascending: false }),
-    loadPositionNames(supabase),
+    fetchPositions(supabase),
   ]);
+
+  const positions = positionLookups.map((position) => position.name);
 
   return (
     <>

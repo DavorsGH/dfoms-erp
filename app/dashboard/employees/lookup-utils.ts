@@ -68,47 +68,28 @@ async function fetchProjects(
   });
 }
 
-async function fetchPositions(
+export async function fetchPositions(
   supabase: SupabaseClient,
 ): Promise<PositionLookup[]> {
-  const attempts = [
-    { idColumn: "position_id", nameColumn: "position_name" },
-    { idColumn: "position_id", nameColumn: "name" },
-    { idColumn: "code", nameColumn: "name" },
-  ] as const;
-
-  for (const attempt of attempts) {
-    const { data, error } = await supabase
-      .from("positions")
-      .select(`${attempt.idColumn}, ${attempt.nameColumn}`)
-      .order(attempt.nameColumn, { ascending: true });
-
-    if (error || !data?.length) {
-      continue;
-    }
-
-    return data.map((row) => {
-      const record = row as Record<string, string>;
-      return {
-        id: record[attempt.idColumn],
-        name: record[attempt.nameColumn],
-      };
-    });
-  }
-
+  // positions PK / display column is position_title (tenant-scoped via RLS).
   const { data, error } = await supabase
     .from("positions")
-    .select("name")
-    .order("name", { ascending: true });
+    .select("position_title")
+    .order("position_title", { ascending: true });
 
   if (error || !data?.length) {
     return [];
   }
 
-  return (data as NamedLookup[]).map((row) => ({
-    id: row.name,
-    name: row.name,
-  }));
+  return data.map((row) => {
+    const title = String(
+      (row as Record<string, string>).position_title ?? "",
+    ).trim();
+    return {
+      id: title,
+      name: title,
+    };
+  }).filter((position) => position.name.length > 0);
 }
 
 async function fetchNamedLookup(

@@ -55,6 +55,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration/salary-rates",
       },
       {
+        label: "Manage Positions",
+        href: "/dashboard/administration/positions",
+      },
+      {
         label: "Approvers",
         href: "/dashboard/administration/approvers",
       },
