@@ -142,12 +142,12 @@ export const REPORT_NAV_CATEGORIES: ReportNavCategory[] = [
   },
   {
     id: "client-facing",
-    label: "Client-Facing",
+    label: "Customer-Facing",
     baseHref: "/dashboard/reports/client",
-    pageTitle: "Client-Facing Reports",
+    pageTitle: "Customer-Facing Reports",
     items: [
       {
-        label: "Monthly Client Service Report",
+        label: "Monthly Customer Service Report",
         href: "/dashboard/reports/client/monthly-client-service",
       },
     ],

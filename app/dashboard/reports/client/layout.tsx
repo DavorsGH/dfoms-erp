@@ -8,7 +8,7 @@ export default function ClientReportsLayout({
   return (
     <ReportsCategoryLayout
       categoryId="client-facing"
-      pageTitle="Client-Facing Reports"
+      pageTitle="Customer-Facing Reports"
     >
       {children}
     </ReportsCategoryLayout>

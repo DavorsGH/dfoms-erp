@@ -30,6 +30,11 @@ import {
   type ProductSaleEntry,
 } from "./product-sales-utils";
 import ProductSalesBulkImport from "./product-sales-bulk-import";
+import {
+  buildProductSaleReceiptData,
+  ProductSaleReceiptPanel,
+  type ProductSaleReceiptData,
+} from "./product-sale-receipt";
 
 type ProductSalesProps = {
   initialEntries: ProductSaleEntry[];
@@ -75,6 +80,7 @@ export default function ProductSales({
   const [loading, setLoading] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
+  const [receipt, setReceipt] = useState<ProductSaleReceiptData | null>(null);
 
   const calculatedAmount = useMemo(() => {
     const quantity = Number.parseFloat(form.sale_quantity);
@@ -304,6 +310,14 @@ export default function ProductSales({
         </p>
       )}
 
+      {receipt ? (
+        <ProductSaleReceiptPanel
+          receipt={receipt}
+          onPrint={() => window.print()}
+          onClose={() => setReceipt(null)}
+        />
+      ) : null}
+
       {showBulkImport ? (
         <ProductSalesBulkImport
           clients={initialClients}
@@ -342,7 +356,7 @@ export default function ProductSales({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Contract Client
+                  Contract Customer
                 </label>
                 <select
                   value={form.client_id}
@@ -520,7 +534,7 @@ export default function ProductSales({
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
               <th className={scrollableTableThClassName}>Invoice No.</th>
-              <th className={scrollableTableThClassName}>Customer / Client</th>
+              <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Product</th>
               <th className={scrollableTableThClassName}>Quantity</th>
               <th className={scrollableTableThClassName}>Unit Price</th>
@@ -590,8 +604,16 @@ export default function ProductSales({
                         "Product sales cannot be edited after posting. Void the sale instead if it was recorded in error.",
                       )
                     }
+                    onPrint={() =>
+                      setReceipt(
+                        buildProductSaleReceiptData(entry, initialClients),
+                      )
+                    }
                     onVoid={() => void handleVoidSale(entry)}
-                    disableEdit
+                    disableEdit={
+                      voided ||
+                      entry.payment_status.trim().toLowerCase() === "paid"
+                    }
                     disableVoid={voided}
                     voiding={voidingId === entry.id}
                   />

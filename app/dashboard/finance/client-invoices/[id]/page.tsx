@@ -19,7 +19,7 @@ export default async function ViewClientInvoicePage({
         <FinanceNav />
       </div>
       <h2 className="no-print mb-6 text-xl font-semibold text-[#0f2744]">
-        Client Invoice
+        Customer Invoice
       </h2>
       <ClientInvoiceView invoiceId={id} billingSettings={billingSettings} />
     </div>

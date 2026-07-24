@@ -101,7 +101,7 @@ export async function allocateClientId(
   const result = await allocateCode(
     supabase,
     CLIENT_ID_ENTITY_TYPE,
-    "generate_next_code returned an empty client ID.",
+    "generate_next_code returned an empty customer ID.",
   );
   return { clientId: result.code, error: result.error };
 }

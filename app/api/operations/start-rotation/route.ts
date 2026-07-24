@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
   if (!clientId) {
     return NextResponse.json(
-      { error: "Select a client before starting a rotation." },
+      { error: "Select a customer before starting a rotation." },
       { status: 400 },
     );
   }
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Roster configuration has not been set up for this client yet.",
+          "Roster configuration has not been set up for this customer yet.",
       },
       { status: 400 },
     );

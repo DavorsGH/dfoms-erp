@@ -12,7 +12,7 @@ export default function ClientPortalShell({
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">
-        Client Portal
+        Customer Portal
       </h1>
       <ClientPortalNav />
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">

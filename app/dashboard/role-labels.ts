@@ -7,7 +7,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   operations_manager: "Operations",
   supervisor: "Supervisor",
   employee: "Employee",
-  client: "Client",
+  client: "Customer",
   sales_rep: "Sales Rep",
 };
 

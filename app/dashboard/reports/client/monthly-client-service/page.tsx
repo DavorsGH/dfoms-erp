@@ -10,7 +10,7 @@ export default async function MonthlyClientServiceReportPage() {
   const data = await fetchClientServiceReportData(supabase);
 
   return (
-    <ReportsShell sectionTitle="Monthly Client Service Report">
+    <ReportsShell sectionTitle="Monthly Customer Service Report">
       <MonthlyClientServiceReport {...data} />
     </ReportsShell>
   );

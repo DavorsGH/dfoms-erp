@@ -230,7 +230,7 @@ export default function PaymentAccountsSettings({
               Saved Payment Accounts
             </h3>
             <p className="mt-1 text-xs text-slate-500">
-              Company bank and mobile-money profiles used on client invoices.
+              Company bank and mobile-money profiles used on customer invoices.
             </p>
           </div>
           <button
@@ -244,7 +244,7 @@ export default function PaymentAccountsSettings({
 
         {accounts.length === 0 ? (
           <p className="text-sm text-slate-500">
-            No payment accounts yet. Add one to show clients how to pay you.
+            No payment accounts yet. Add one to show customers how to pay you.
           </p>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">

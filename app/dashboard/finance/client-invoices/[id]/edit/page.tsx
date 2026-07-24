@@ -86,7 +86,7 @@ export default async function EditClientInvoicePage({
       <FinanceNav />
       <div className="mb-6 flex items-center justify-between gap-4">
         <h2 className="text-xl font-semibold text-[#0f2744]">
-          Edit Client Invoice {detail.invoice.invoice_number}
+          Edit Customer Invoice {detail.invoice.invoice_number}
         </h2>
         <Link
           href="/dashboard/finance/client-invoices"

@@ -302,14 +302,14 @@ export default function IncidentRegister({
         <div className="grid gap-4 md:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Filter by Client
+              Filter by Customer
             </label>
             <select
               value={filterClient}
               onChange={(event) => setFilterClient(event.target.value)}
               className={inputClassName}
             >
-              <option value="">All clients</option>
+              <option value="">All customers</option>
               {initialClients.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
@@ -428,14 +428,14 @@ export default function IncidentRegister({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Client
+                  Customer
                 </label>
                 <select
                   value={form.client_id}
                   onChange={(event) => updateField("client_id", event.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select client</option>
+                  <option value="">Select customer</option>
                   {initialClients.map((client) => (
                     <option key={client.client_id} value={client.client_id}>
                       {client.client_name}
@@ -454,7 +454,7 @@ export default function IncidentRegister({
                   className={inputClassName}
                 >
                   <option value="">
-                    {form.client_id ? "Select site" : "Select a client first"}
+                    {form.client_id ? "Select site" : "Select a customer first"}
                   </option>
                   {formSiteOptions.map((site) => (
                     <option key={site.site_code} value={site.site_code}>
@@ -619,7 +619,7 @@ export default function IncidentRegister({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Client</th>
+              <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Description</th>
               <th className={scrollableTableThClassName}>Severity</th>

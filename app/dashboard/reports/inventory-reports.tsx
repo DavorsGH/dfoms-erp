@@ -531,7 +531,7 @@ export function ProductSalesReport({
       [
         "Date",
         "Buyer Type",
-        "Client/Customer",
+        "Customer",
         "Product",
         "Quantity",
         "Unit Price",
@@ -617,20 +617,20 @@ export function ProductSalesReport({
               className={inputClassName}
             >
               <option value="all">All</option>
-              <option value="contract_client">Contract Client Only</option>
+              <option value="contract_client">Contract Customer Only</option>
               <option value="retail">Retail Only</option>
             </select>
           </div>
           <div className="min-w-[220px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Client (optional)
+              Customer (optional)
             </label>
             <select
               value={clientId}
               onChange={(event) => setClientId(event.target.value)}
               className={inputClassName}
             >
-              <option value="">All clients</option>
+              <option value="">All customers</option>
               {clientOptions.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
@@ -666,7 +666,7 @@ export function ProductSalesReport({
                 {[
                   "Date",
                   "Buyer Type",
-                  "Client / Customer",
+                  "Customer",
                   "Product",
                   "Quantity",
                   "Unit Price",
@@ -818,7 +818,7 @@ export function InternalConsumptionReport({
   const handleExport = () => {
     downloadCsv(
       "internal-consumption.csv",
-      ["Date", "Client", "Site", "Product", "Quantity", "Reason", "Recorded By"],
+      ["Date", "Customer", "Site", "Product", "Quantity", "Reason", "Recorded By"],
       report.rows.map((row) => [
         row.consumptionDate,
         row.clientName,
@@ -845,7 +845,7 @@ export function InternalConsumptionReport({
           />
           <div className="min-w-[220px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Client (optional)
+              Customer (optional)
             </label>
             <select
               value={clientId}
@@ -855,7 +855,7 @@ export function InternalConsumptionReport({
               }}
               className={inputClassName}
             >
-              <option value="">All clients</option>
+              <option value="">All customers</option>
               {clientOptions.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
@@ -873,7 +873,7 @@ export function InternalConsumptionReport({
               className={inputClassName}
             >
               <option value="">
-                {clientId ? "All sites for client" : "All sites"}
+                {clientId ? "All sites for customer" : "All sites"}
               </option>
               {filteredSiteOptions.map((site) => (
                 <option key={site.site_code} value={site.site_code}>
@@ -931,7 +931,7 @@ export function InternalConsumptionReport({
               <tr>
                 {[
                   "Date",
-                  "Client",
+                  "Customer",
                   "Site",
                   "Product",
                   "Quantity",

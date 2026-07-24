@@ -30,7 +30,7 @@ export const USER_ROLE_OPTIONS: ReadonlyArray<{
   { value: "operations_manager", label: "Operations" },
   { value: "supervisor", label: "Supervisor" },
   { value: "employee", label: "Employee" },
-  { value: "client", label: "Client" },
+  { value: "client", label: "Customer" },
   { value: "sales_rep", label: "Sales Rep" },
 ];
 

@@ -222,7 +222,7 @@ export default function InternalConsumption({
           <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
-                Client/Contract (optional)
+                Customer/Contract (optional)
               </label>
               <select
                 value={form.project_id}
@@ -351,7 +351,7 @@ export default function InternalConsumption({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Client</th>
+              <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Product</th>
               <th className={scrollableTableThClassName}>Quantity</th>

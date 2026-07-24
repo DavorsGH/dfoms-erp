@@ -83,7 +83,7 @@ export default function ClientInvoicesList({
 
       <div className="flex justify-end">
         <Link href="/dashboard/finance/client-invoices/new" className={primaryButtonClassName}>
-          New Client Invoice
+          New Customer Invoice
         </Link>
       </div>
 
@@ -93,7 +93,7 @@ export default function ClientInvoicesList({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 <th className={scrollableTableThClassName}>Invoice #</th>
-                <th className={scrollableTableThClassName}>Client</th>
+                <th className={scrollableTableThClassName}>Customer</th>
                 <th className={scrollableTableThClassName}>Bill To</th>
                 <th className={scrollableTableThClassName}>Date</th>
                 <th className={scrollableTableThClassName}>Due</th>
@@ -106,7 +106,7 @@ export default function ClientInvoicesList({
               {invoices.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
-                    No client invoices yet.
+                    No customer invoices yet.
                   </td>
                 </tr>
               ) : (

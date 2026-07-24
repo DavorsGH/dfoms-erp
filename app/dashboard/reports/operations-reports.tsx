@@ -169,8 +169,8 @@ function ReportClientFilter({
   value,
   onChange,
   includeAllOption = true,
-  allOptionLabel = "All Clients",
-  placeholder = "Select client",
+  allOptionLabel = "All Customers",
+  placeholder = "Select customer",
 }: {
   clients: ClientEntry[];
   value: string;
@@ -184,7 +184,7 @@ function ReportClientFilter({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       className={inputClassName}
-      aria-label="Client filter"
+      aria-label="Customer filter"
     >
       {includeAllOption ? (
         <option value="">{allOptionLabel}</option>
@@ -244,7 +244,7 @@ export function QualityKpiSummaryReport({
     downloadCsv(
       `quality-kpi-summary-${year}-${String(month).padStart(2, "0")}.csv`,
       [
-        "Client",
+        "Customer",
         "Site Name",
         "Inspections",
         "Avg Score %",
@@ -304,7 +304,7 @@ export function QualityKpiSummaryReport({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 {[
-                  "Client",
+                  "Customer",
                   "Site Name",
                   "Inspections",
                   "Avg Score %",
@@ -442,7 +442,7 @@ export function SitePerformanceReport({
     downloadCsv(
       `site-performance-${year}-${String(month).padStart(2, "0")}.csv`,
       [
-        "Client",
+        "Customer",
         "Site Name",
         "Avg Inspection Score %",
         "Open Failed Inspections",
@@ -493,7 +493,7 @@ export function SitePerformanceReport({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 {[
-                  "Client",
+                  "Customer",
                   "Site Name",
                   "Avg Inspection Score %",
                   "Open Failed Inspections",
@@ -554,7 +554,7 @@ export function CorrectiveActionStatusReport({
       "corrective-action-status.csv",
       [
         "Action No",
-        "Client",
+        "Customer",
         "Issue Description",
         "Responsible Person",
         "Target Date",
@@ -602,7 +602,7 @@ export function CorrectiveActionStatusReport({
               <tr>
                 {[
                   "Action No",
-                  "Client",
+                  "Customer",
                   "Issue Description",
                   "Responsible Person",
                   "Target Date",
@@ -772,7 +772,7 @@ export function MonthlyClientServiceReport({
       `client-service-report-${client.client_id}-${year}-${String(month).padStart(2, "0")}.csv`,
       ["Section", "Detail"],
       [
-        ["Client", client.client_name],
+        ["Customer", client.client_name],
         ["Contract Period", report.executiveSummary.contractPeriod],
         [
           "Sites Covered",
@@ -808,7 +808,7 @@ export function MonthlyClientServiceReport({
             value={selectedClientId}
             onChange={setSelectedClientId}
             includeAllOption={false}
-            placeholder="Select client"
+            placeholder="Select customer"
           />
         ) : null}
         <ReportMonthYearSelector
@@ -822,7 +822,7 @@ export function MonthlyClientServiceReport({
 
       {!client ? (
         <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-          Select a client to generate this report.
+          Select a customer to generate this report.
         </p>
       ) : null}
 
@@ -951,7 +951,7 @@ export function MonthlyClientServiceReport({
             </p>
             {report.staffingRows.length === 0 ? (
               <p className="text-sm text-slate-600">
-                No staffing data available for this client&apos;s sites.
+                No staffing data available for this customer&apos;s sites.
               </p>
             ) : (
               <ScrollableTable>
@@ -1102,7 +1102,7 @@ export function MonthlyClientServiceReport({
           </ClientReportSection>
 
           <footer className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
-            Prepared by {companyLegalName} · Confidential client service report
+            Prepared by {companyLegalName} · Confidential customer service report
           </footer>
         </div>
       ) : null}
@@ -1139,7 +1139,7 @@ export function IndividualIncidentReport({
       ["Incident No", report.incidentNo],
       ["Date", report.date],
       ["Time", report.time],
-      ["Client", report.clientName],
+      ["Customer", report.clientName],
       ["Site", report.siteName],
       ["Area", report.area],
       ["Incident Type", report.incidentType],
@@ -1196,7 +1196,7 @@ export function IndividualIncidentReport({
               ["Incident No", report.incidentNo],
               ["Date", formatReportDate(report.date)],
               ["Time", report.time ?? "—"],
-              ["Client", report.clientName],
+              ["Customer", report.clientName],
               ["Site", report.siteName],
               ["Area", report.area],
               ["Incident Type", report.incidentType],
@@ -1265,7 +1265,7 @@ export function MonthlyIncidentSummaryReport({
       [
         "Incident No",
         "Date",
-        "Client",
+        "Customer",
         "Site",
         "Type",
         "Severity",
@@ -1338,7 +1338,7 @@ export function MonthlyIncidentSummaryReport({
                 {[
                   "Incident No",
                   "Date",
-                  "Client",
+                  "Customer",
                   "Site",
                   "Type",
                   "Severity",
@@ -1396,7 +1396,7 @@ export function EscalatedIncidentsReport({
       "escalated-incidents.csv",
       [
         "Date",
-        "Client",
+        "Customer",
         "Site",
         "Type",
         "Description",
@@ -1456,7 +1456,7 @@ export function EscalatedIncidentsReport({
               <tr>
                 {[
                   "Date",
-                  "Client",
+                  "Customer",
                   "Site",
                   "Type",
                   "Description",

@@ -371,14 +371,14 @@ export default function CorrectiveActions({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Client
+                  Customer
                 </label>
                 <select
                   value={form.client_id}
                   onChange={(event) => updateField("client_id", event.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select client</option>
+                  <option value="">Select customer</option>
                   {initialClients.map((client) => (
                     <option key={client.client_id} value={client.client_id}>
                       {client.client_name}
@@ -506,7 +506,7 @@ export default function CorrectiveActions({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date Raised</th>
-              <th className={scrollableTableThClassName}>Client</th>
+              <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Issue Description</th>
               <th className={scrollableTableThClassName}>Responsible Person</th>
               <th className={scrollableTableThClassName}>Target Date</th>

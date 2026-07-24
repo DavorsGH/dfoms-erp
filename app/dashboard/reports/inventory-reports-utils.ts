@@ -81,7 +81,7 @@ export type ProductSaleBuyerTypeFilter = "all" | ProductSaleBuyerType;
 
 export const PRODUCT_SALE_BUYER_TYPE_LABELS: Record<ProductSaleBuyerType, string> =
   {
-    contract_client: "Contract Client",
+    contract_client: "Contract Customer",
     retail: "Retail / Walk-in",
   };
 

@@ -336,7 +336,7 @@ export default function Projects({
               <tr>
                 <th className={scrollableTableThClassName}>Project Code</th>
                 <th className={scrollableTableThClassName}>Contract Name</th>
-                <th className={scrollableTableThClassName}>Client</th>
+                <th className={scrollableTableThClassName}>Customer</th>
                 <th className={scrollableTableThClassName}>Sites</th>
                 <th className={scrollableTableThClassName}>Actions</th>
               </tr>
@@ -415,7 +415,7 @@ export default function Projects({
               <thead className={scrollableTableHeadClassName}>
                 <tr>
                   <th className={scrollableTableThClassName}>Site Name</th>
-                  <th className={scrollableTableThClassName}>Client</th>
+                  <th className={scrollableTableThClassName}>Customer</th>
                   <th className={scrollableTableThClassName}>Building/Zone</th>
                   <th className={scrollableTableThClassName}>Required Staff</th>
                   <th className={scrollableTableThClassName}>Actions</th>

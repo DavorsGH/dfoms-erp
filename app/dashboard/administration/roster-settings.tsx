@@ -124,7 +124,7 @@ export default function RosterSettings({
     event.preventDefault();
 
     if (!selectedClientId) {
-      setError("Select a client before saving roster settings.");
+      setError("Select a customer before saving roster settings.");
       return;
     }
 
@@ -205,14 +205,14 @@ export default function RosterSettings({
         </h3>
         <div className="mb-4 max-w-md">
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Client
+            Customer
           </label>
           <select
             value={selectedClientId}
             onChange={(event) => setSelectedClientId(event.target.value)}
             className={inputClassName}
           >
-            <option value="">Select client</option>
+            <option value="">Select customer</option>
             {initialClients.map((client) => (
               <option key={client.client_id} value={client.client_id}>
                 {client.client_name}
@@ -223,8 +223,8 @@ export default function RosterSettings({
 
         {!selectedClientId ? (
           <p className="text-sm text-slate-600">
-            Select a client to configure their rotation cycle and shift times.
-            New clients do not receive default roster settings automatically.
+            Select a customer to configure their rotation cycle and shift times.
+            New customers do not receive default roster settings automatically.
           </p>
         ) : (
           <form onSubmit={handleConfigSubmit} className="space-y-4">
@@ -335,13 +335,13 @@ export default function RosterSettings({
           </h3>
           <p className="mt-1 text-sm text-slate-600">
             Set the target headcount for each site used on the Duty Roster for
-            the selected client.
+            the selected customer.
           </p>
         </div>
 
         {!selectedClientId ? (
           <p className="text-sm text-slate-600">
-            Select a client above to manage required staff for their facilities.
+            Select a customer above to manage required staff for their facilities.
           </p>
         ) : (
           <ScrollableTable>
@@ -361,7 +361,7 @@ export default function RosterSettings({
                       colSpan={4}
                       className="px-4 py-8 text-center text-sm text-slate-500"
                     >
-                      No linked sites found for this client.
+                      No linked sites found for this customer.
                     </td>
                   </tr>
                 ) : (

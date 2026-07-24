@@ -239,7 +239,7 @@ export default function Customers({
     } else {
       const clientAllocated = await allocateClientId(supabase);
       if (clientAllocated.error || !clientAllocated.clientId) {
-        setError(clientAllocated.error ?? "Unable to allocate client ID.");
+        setError(clientAllocated.error ?? "Unable to allocate customer ID.");
         setLoading(false);
         return;
       }

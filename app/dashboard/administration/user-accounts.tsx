@@ -73,7 +73,7 @@ function deleteConfirmMessage(displayName: string, dependencySummary?: string) {
   const lines = [
     `Permanently delete the login account for ${displayName}?`,
     "",
-    "This will permanently delete this login account. The employee/client record itself will NOT be deleted. This cannot be undone.",
+    "This will permanently delete this login account. The employee/customer record itself will NOT be deleted. This cannot be undone.",
     "",
     "Deactivate is the recommended option for normal offboarding because it can be reversed.",
   ];
@@ -85,7 +85,7 @@ function deleteConfirmMessage(displayName: string, dependencySummary?: string) {
 
 function formatRoleLinks(account: UserAccount, sites: SiteOption[]) {
   if (account.role === "client" && account.client_name) {
-    return `Client: ${account.client_name}`;
+    return `Customer: ${account.client_name}`;
   }
 
   if (account.role === "supervisor" && account.supervisor_site_codes.length > 0) {

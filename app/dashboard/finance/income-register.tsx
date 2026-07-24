@@ -280,7 +280,7 @@ export default function IncomeRegister({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Contract Client
+                  Contract Customer
                 </label>
                 <select
                   value={form.client_id}

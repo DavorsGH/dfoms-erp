@@ -120,7 +120,7 @@ export async function ensureClientAvailable(
     .maybeSingle();
 
   if (!client) {
-    return "Client not found in your workspace";
+    return "Customer not found in your workspace";
   }
 
   let query = admin

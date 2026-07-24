@@ -25,7 +25,7 @@ export default async function ClientsPage() {
   const fetchError = error?.message ?? employeesError?.message ?? null;
 
   return (
-    <OperationsShell sectionTitle="Clients">
+    <OperationsShell sectionTitle="Customers">
       <Clients
         initialClients={(data as ClientEntry[] | null) ?? []}
         initialEmployees={filterActiveEmployees(

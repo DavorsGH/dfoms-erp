@@ -34,7 +34,7 @@ export default async function DashboardPage() {
       return (
         <ClientDashboard
           summary={{
-            clientName: "Client",
+            clientName: "Customer",
             outstandingBalance: 0,
             invoiceCount: 0,
             siteCount: 0,
@@ -45,7 +45,7 @@ export default async function DashboardPage() {
               year: "numeric",
             }),
           }}
-          fetchError="Your user account is not linked to a client record."
+          fetchError="Your user account is not linked to a customer record."
         />
       );
     }
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
       return (
         <ClientDashboard
           summary={{
-            clientName: "Client",
+            clientName: "Customer",
             outstandingBalance: 0,
             invoiceCount: 0,
             siteCount: 0,

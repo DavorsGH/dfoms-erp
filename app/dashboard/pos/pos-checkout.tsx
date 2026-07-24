@@ -581,7 +581,7 @@ export default function PosCheckout({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Contract Client
+              Contract Customer
             </label>
             <select
               value={clientId}

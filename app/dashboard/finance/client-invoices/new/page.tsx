@@ -66,7 +66,7 @@ export default async function NewClientInvoicePage() {
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
       <FinanceNav />
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold text-[#0f2744]">New Client Invoice</h2>
+        <h2 className="text-xl font-semibold text-[#0f2744]">New Customer Invoice</h2>
         <Link
           href="/dashboard/finance/client-invoices"
           className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50"

@@ -27,7 +27,7 @@ export const DEFAULT_CUSTOMER_STATUS = "active";
 export const DEFAULT_CUSTOMER_TYPE = "service_client";
 
 export const CUSTOMER_TYPE_OPTIONS = [
-  { value: "service_client", label: "Service Client" },
+  { value: "service_client", label: "Service Customer" },
   { value: "digital_subscriber", label: "Digital Subscriber" },
   { value: "both", label: "Both" },
 ] as const;

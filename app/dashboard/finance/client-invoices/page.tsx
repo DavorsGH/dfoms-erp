@@ -38,7 +38,7 @@ export default async function ClientInvoicesPage() {
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
       <FinanceNav />
-      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Client Invoices</h2>
+      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Customer Invoices</h2>
       <ClientInvoicesList
         initialInvoices={
           ((data as ClientInvoiceListRow[] | null) ?? []).map(

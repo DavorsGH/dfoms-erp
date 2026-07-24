@@ -339,14 +339,14 @@ export default function FailedInspections({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Client
+                  Customer
                 </label>
                 <select
                   value={form.client_id}
                   onChange={(event) => updateField("client_id", event.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select client</option>
+                  <option value="">Select customer</option>
                   {initialClients.map((client) => (
                     <option key={client.client_id} value={client.client_id}>
                       {client.client_name}
@@ -365,7 +365,7 @@ export default function FailedInspections({
                   className={inputClassName}
                 >
                   <option value="">
-                    {form.client_id ? "Select site" : "Select a client first"}
+                    {form.client_id ? "Select site" : "Select a customer first"}
                   </option>
                   {formSiteOptions.map((site) => (
                     <option key={site.site_code} value={site.site_code}>
@@ -500,7 +500,7 @@ export default function FailedInspections({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date Identified</th>
-              <th className={scrollableTableThClassName}>Client</th>
+              <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Problem Description</th>
               <th className={scrollableTableThClassName}>Severity</th>

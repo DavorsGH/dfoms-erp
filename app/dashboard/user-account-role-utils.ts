@@ -39,7 +39,7 @@ export function validateRoleAssignment(
       break;
     case "client":
       if (!clientId) {
-        errors.client_id = "Client role requires a client record";
+        errors.client_id = "Customer role requires a customer record";
       }
       break;
     case "supervisor":

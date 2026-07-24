@@ -258,7 +258,7 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
   }
 
   if (canAccessClientPortalSection(role)) {
-    items.push({ label: "Client Portal", href: "/dashboard/client-portal" });
+    items.push({ label: "Customer Portal", href: "/dashboard/client-portal" });
   }
 
   if (getAccessibleReportCategoryIds(role).length > 0) {

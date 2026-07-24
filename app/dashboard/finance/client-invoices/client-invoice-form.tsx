@@ -257,15 +257,15 @@ export default function ClientInvoiceForm({
 
       <section className={cardClassName}>
         <div>
-          <h3 className="text-sm font-medium text-slate-700">Client</h3>
+          <h3 className="text-sm font-medium text-slate-700">Customer</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Select the contract client. Bill-to details are pre-filled but editable.
+            Select the contract customer. Bill-to details are pre-filled but editable.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Client *
+              Customer *
             </label>
             <select
               required
@@ -273,7 +273,7 @@ export default function ClientInvoiceForm({
               onChange={(event) => handleClientChange(event.target.value)}
               className={inputClassName}
             >
-              <option value="">Select client</option>
+              <option value="">Select customer</option>
               {initialCustomers.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
@@ -482,7 +482,7 @@ export default function ClientInvoiceForm({
                 className={inputClassName}
               >
                 <option value="">
-                  {form.client_id ? "Add site line…" : "Select client first"}
+                  {form.client_id ? "Add site line…" : "Select customer first"}
                 </option>
                 {clientSites.map((site) => (
                   <option key={site.site_code} value={site.site_code}>

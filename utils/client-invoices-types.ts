@@ -397,7 +397,7 @@ export function normalizeClientInvoiceListRow(row: ClientInvoiceListRow): Client
 
 export function validateClientInvoiceBody(body: ClientInvoiceWriteBody): string | null {
   if (!body.client_id?.trim()) {
-    return "Client is required.";
+    return "Customer is required.";
   }
 
   if (!body.invoice_date?.trim()) {

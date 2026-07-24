@@ -12,7 +12,7 @@ export default async function ClientPortalServiceReportPage() {
     return (
       <ClientPortalShell sectionTitle="My Service Report">
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Your user account is not linked to a client record.
+          Your user account is not linked to a customer record.
         </div>
       </ClientPortalShell>
     );

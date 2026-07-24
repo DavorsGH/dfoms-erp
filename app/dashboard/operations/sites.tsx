@@ -242,14 +242,14 @@ export default function Sites({
         <div className="flex flex-wrap gap-4">
           <div className="min-w-[220px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Filter by Client
+              Filter by Customer
             </label>
             <select
               value={filterClient}
               onChange={(event) => setFilterClient(event.target.value)}
               className={inputClassName}
             >
-              <option value="">All clients</option>
+              <option value="">All customers</option>
               {initialClients.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
@@ -312,14 +312,14 @@ export default function Sites({
               ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Client
+                  Customer
                 </label>
                 <select
                   value={form.client_id}
                   onChange={(event) => updateField("client_id", event.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select client</option>
+                  <option value="">Select customer</option>
                   {initialClients.map((client) => (
                     <option key={client.client_id} value={client.client_id}>
                       {client.client_name}
@@ -486,7 +486,7 @@ export default function Sites({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Site Name</th>
-              <th className={scrollableTableThClassName}>Client</th>
+              <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Building/Zone</th>
               <th className={scrollableTableThClassName}>Cleaning Frequency</th>
               <th className={scrollableTableThClassName}>Risk Level</th>

@@ -62,7 +62,7 @@ function renderRosterRows(rows: DutyRosterViewModel["rows"]) {
           colSpan={6}
           className="px-4 py-8 text-center text-sm text-slate-500"
         >
-          No active employees are assigned to this client&apos;s facilities yet.
+          No active employees are assigned to this customer&apos;s facilities yet.
         </td>
       </tr>
     );
@@ -110,7 +110,7 @@ function UnassignedSitesNotice({
       <p className="font-medium">Unassigned Sites</p>
       <p className="mt-1 text-amber-900">
         The following sites are missing a linked contract project and are
-        excluded from client rosters until assigned in Administration:
+        excluded from customer rosters until assigned in Administration:
       </p>
       <ul className="mt-2 list-disc space-y-1 pl-5">
         {sites.map((site) => (
@@ -296,14 +296,14 @@ export default function DutyRoster({
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-[240px]">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Client
+              Customer
             </label>
-            <select
+              <select
               value={selectedClientId}
               onChange={(event) => setSelectedClientId(event.target.value)}
               className={inputClassName}
             >
-              <option value="">Select client</option>
+              <option value="">Select customer</option>
               {initialClients.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
@@ -317,7 +317,7 @@ export default function DutyRoster({
 
         {!selectedClientId ? (
           <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-            Select a client to view their roster.
+            Select a customer to view their roster.
           </p>
         ) : null}
 
@@ -325,7 +325,7 @@ export default function DutyRoster({
           <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             No roster configuration exists for {selectedClient?.client_name}.
             Add shift pattern and cycle settings in Administration &gt; Roster
-            Settings before viewing this client&apos;s roster.
+            Settings before viewing this customer&apos;s roster.
           </p>
         ) : null}
 

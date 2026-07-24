@@ -172,7 +172,7 @@ export default function RoleAssignmentFields({
             htmlFor={`${idPrefix}-client`}
             className="mb-1 block text-sm font-medium text-slate-700"
           >
-            Client
+            Customer
           </label>
           <select
             id={`${idPrefix}-client`}
@@ -181,7 +181,7 @@ export default function RoleAssignmentFields({
             onChange={(e) => onChange({ ...form, client_id: e.target.value })}
             className={inputClassName}
           >
-            <option value="">Select client</option>
+            <option value="">Select customer</option>
             {availableClients.map((client) => (
               <option key={client.client_id} value={client.client_id}>
                 {client.client_name}

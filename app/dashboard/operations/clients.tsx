@@ -224,7 +224,7 @@ export default function Clients({
     } else {
       const clientAllocated = await allocateClientId(supabase);
       if (clientAllocated.error || !clientAllocated.clientId) {
-        setError(clientAllocated.error ?? "Unable to allocate client ID.");
+        setError(clientAllocated.error ?? "Unable to allocate customer ID.");
         setLoading(false);
         return;
       }
@@ -281,7 +281,7 @@ export default function Clients({
           onClick={() => (showForm ? closeForm() : openAddForm())}
           className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
         >
-          {showForm ? "Cancel" : "Add Client"}
+          {showForm ? "Cancel" : "Add Customer"}
         </button>
       </div>
 
@@ -294,14 +294,14 @@ export default function Clients({
       {showForm ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
-            {editingId ? "Edit Client" : "New Client"}
+            {editingId ? "Edit Customer" : "New Customer"}
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {editingId ? (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Client ID
+                    Customer ID
                   </label>
                   <input
                     type="text"
@@ -313,7 +313,7 @@ export default function Clients({
               ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Client Name
+                  Customer Name
                 </label>
                 <input
                   type="text"
@@ -508,7 +508,7 @@ export default function Clients({
                 disabled={loading}
                 className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? "Saving…" : editingId ? "Save Changes" : "Add Client"}
+                {loading ? "Saving…" : editingId ? "Save Changes" : "Add Customer"}
               </button>
               <button
                 type="button"
@@ -527,7 +527,7 @@ export default function Clients({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Client Name</th>
+              <th className={scrollableTableThClassName}>Customer Name</th>
               <th className={scrollableTableThClassName}>Contact Person</th>
               <th className={scrollableTableThClassName}>Phone</th>
               <th className={scrollableTableThClassName}>Contract Status</th>
@@ -543,7 +543,7 @@ export default function Clients({
                   colSpan={7}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
-                  No clients match the selected filters.
+                  No customers match the selected filters.
                 </td>
               </tr>
             ) : (

@@ -355,7 +355,7 @@ export default function WorkOrders({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Filter by Client
+              Filter by Customer
             </label>
             <select
               value={filterClient}
@@ -365,7 +365,7 @@ export default function WorkOrders({
               }}
               className={inputClassName}
             >
-              <option value="">All clients</option>
+              <option value="">All customers</option>
               {initialClients.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
@@ -503,7 +503,7 @@ export default function WorkOrders({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Client
+                  Customer
                 </label>
                 <select
                   value={form.client_id}
@@ -512,7 +512,7 @@ export default function WorkOrders({
                   }
                   className={inputClassName}
                 >
-                  <option value="">Select client</option>
+                  <option value="">Select customer</option>
                   {initialClients.map((client) => (
                     <option key={client.client_id} value={client.client_id}>
                       {client.client_name}
@@ -531,7 +531,7 @@ export default function WorkOrders({
                   className={inputClassName}
                 >
                   <option value="">
-                    {form.client_id ? "Select site" : "Select a client first"}
+                    {form.client_id ? "Select site" : "Select a customer first"}
                   </option>
                   {formSiteOptions.map((site) => (
                     <option key={site.site_code} value={site.site_code}>
@@ -733,7 +733,7 @@ export default function WorkOrders({
             <tr>
               <th className={scrollableTableThClassName}>Work Order No</th>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Client</th>
+              <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Service Type</th>
               <th className={scrollableTableThClassName}>Assigned Cleaner</th>

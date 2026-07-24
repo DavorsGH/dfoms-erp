@@ -73,7 +73,7 @@ export async function buildClientDashboardSummary(
     null;
 
   if (!client) {
-    return { summary: null, fetchError: fetchError ?? "Client record not found." };
+    return { summary: null, fetchError: fetchError ?? "Customer record not found." };
   }
 
   const invoiceRows = invoices ?? [];

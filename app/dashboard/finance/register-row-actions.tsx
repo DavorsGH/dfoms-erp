@@ -3,6 +3,7 @@ type RegisterRowActionsProps = {
   onDelete?: () => void;
   onArchive?: () => void;
   onVoid?: () => void;
+  onPrint?: () => void;
   deleting?: boolean;
   archiving?: boolean;
   voiding?: boolean;
@@ -12,6 +13,7 @@ type RegisterRowActionsProps = {
   disableVoid?: boolean;
   voidLabel?: string;
   archiveLabel?: string;
+  printLabel?: string;
 };
 
 const editButtonClassName =
@@ -61,6 +63,7 @@ export default function RegisterRowActions({
   onDelete,
   onArchive,
   onVoid,
+  onPrint,
   deleting = false,
   archiving = false,
   voiding = false,
@@ -70,19 +73,29 @@ export default function RegisterRowActions({
   disableVoid = false,
   voidLabel = "Void Sale",
   archiveLabel = "Archive",
+  printLabel = "Print Receipt",
 }: RegisterRowActionsProps) {
   return (
-    <td className="px-4 py-3">
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onEdit}
-          disabled={disableEdit}
-          title={disableEdit ? "This entry cannot be edited" : undefined}
-          className={editButtonClassName}
-        >
-          Edit
-        </button>
+    <td className="px-4 py-3 whitespace-nowrap">
+      <div className="inline-flex flex-nowrap items-center gap-2">
+        {onPrint ? (
+          <button
+            type="button"
+            onClick={onPrint}
+            className={editButtonClassName}
+          >
+            {printLabel}
+          </button>
+        ) : null}
+        {!disableEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className={editButtonClassName}
+          >
+            Edit
+          </button>
+        ) : null}
         {onVoid ? (
           <button
             type="button"
