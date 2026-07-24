@@ -14,6 +14,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Product-sale Paystack callback — public thank-you / verify page for payers.
+  if (pathname.startsWith("/pay/product-sale")) {
+    return NextResponse.next();
+  }
+
   // Maintenance mode — blocks all access except heartbeat and the maintenance page itself.
   if (process.env.MAINTENANCE_MODE === "true") {
     if (pathname === "/maintenance") {
@@ -39,7 +44,11 @@ export async function middleware(request: NextRequest) {
     "/reset-password",
     "/verify-email",
   ]);
-  if (!user && !publicPaths.has(pathname)) {
+  if (
+    !user &&
+    !publicPaths.has(pathname) &&
+    !pathname.startsWith("/pay/product-sale")
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

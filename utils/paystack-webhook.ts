@@ -10,6 +10,10 @@ import {
   type CrmSubscriptionStatus,
 } from "@/utils/tenant-signup";
 import { ERP_SUITE_CATEGORY } from "@/app/dashboard/crm/products/products-utils";
+import {
+  isProductSalePaystackContext,
+  processProductSalePaystackEvent,
+} from "@/utils/paystack-product-sale-webhook";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -941,7 +945,11 @@ export async function processPaystackWebhookEvent(
 
     switch (eventType) {
       case "charge.success":
-        result = await handleChargeSuccess(data);
+        // Product-sale charges also carry metadata.tenant_id — route by context
+        // BEFORE subscription handling to avoid mis-activating ERP Suite subs.
+        result = isProductSalePaystackContext(data)
+          ? await processProductSalePaystackEvent(data)
+          : await handleChargeSuccess(data);
         break;
       case "subscription.create":
         result = await handleSubscriptionCreate(data);

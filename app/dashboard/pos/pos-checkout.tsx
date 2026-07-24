@@ -13,10 +13,7 @@ import {
   formatInventoryQuantity,
 } from "../inventory/inventory-utils";
 import type { ClientEntry } from "../operations/clients-utils";
-import {
-  calculateOutstanding,
-  formatGHS,
-} from "../finance/income-register-utils";
+import { formatGHS } from "../finance/income-register-utils";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -24,7 +21,8 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import {
-  POS_PAYMENT_STATUS_OPTIONS,
+  POS_CHECKOUT_PAYMENT_METHODS,
+  POS_MOMO_PAYMENT_METHOD,
   cartTotal,
   getAvailableStockForProduct,
   getCustomerDisplayName,
@@ -34,6 +32,8 @@ import {
   type PosCheckoutRunSummary,
 } from "./pos-utils";
 import { PosReceiptPanel, type PosReceiptData } from "./pos-receipt";
+import RequestPaymentModal from "./request-payment-modal";
+import { openPaystackInlineWithAccessCode } from "./paystack-inline";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -41,8 +41,25 @@ type PosCheckoutProps = {
   showTitle?: boolean;
   initialClients: ClientEntry[];
   initialProducts: FinishedProductRecord[];
+  /** Kept for API compat; POS checkout uses Cash / Mobile Money only. */
   initialPaymentMethods: string[];
   fetchError: string | null;
+};
+
+type MomoInitializeResponse = {
+  ok?: boolean;
+  error?: string;
+  payment_request_id?: string;
+  reference?: string;
+  access_code?: string;
+  amount_ghs?: number;
+};
+
+type MomoConfirmResponse = {
+  ok?: boolean;
+  error?: string;
+  invoice_no?: string;
+  already_fulfilled?: boolean;
 };
 
 function createCartLineId(): string {
@@ -68,16 +85,15 @@ export default function PosCheckout({
   const [productSearch, setProductSearch] = useState("");
   const [clientId, setClientId] = useState("");
   const [customerName, setCustomerName] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState(
-    initialPaymentMethods[0] ?? "",
-  );
-  const [amountReceived, setAmountReceived] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState<string>(
-    POS_PAYMENT_STATUS_OPTIONS[2],
+  const [paymentMethod, setPaymentMethod] = useState<string>(
+    POS_CHECKOUT_PAYMENT_METHODS[0],
   );
   const [dueDate, setDueDate] = useState(todayIsoDate());
   const [notes, setNotes] = useState("");
+  const [payerEmail, setPayerEmail] = useState("");
+  const [payerPhone, setPayerPhone] = useState("");
   const [loading, setLoading] = useState(false);
+  const [momoWaiting, setMomoWaiting] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [checkoutResult, setCheckoutResult] =
     useState<PosCheckoutRunSummary | null>(null);
@@ -86,6 +102,20 @@ export default function PosCheckout({
     PosCartLine[]
   >([]);
   const [receipt, setReceipt] = useState<PosReceiptData | null>(null);
+  const [showRequestPayment, setShowRequestPayment] = useState(false);
+  /** Snapshot of cart + customer when opening Request Payment (charge-first). */
+  const [requestPaymentDraft, setRequestPaymentDraft] = useState<{
+    cartLines: PosCartLine[];
+    saleDate: string;
+    clientId: string | null;
+    customerName: string | null;
+    notes: string | null;
+    dueDate: string;
+    amountGhs: number;
+    paymentMethod: string;
+  } | null>(null);
+
+  void initialPaymentMethods;
 
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
@@ -101,8 +131,8 @@ export default function PosCheckout({
   }, [productSearch, products]);
 
   const total = useMemo(() => cartTotal(cartLines), [cartLines]);
-  const receivedAmount = Number.parseFloat(amountReceived) || 0;
-  const outstandingPreview = calculateOutstanding(total, receivedAmount);
+  const isMobileMoney = paymentMethod === POS_MOMO_PAYMENT_METHOD;
+  const busy = loading || momoWaiting;
 
   async function refreshProducts() {
     const { data, error: productError } = await supabase
@@ -205,8 +235,9 @@ export default function PosCheckout({
     setCartLines([]);
     setClientId("");
     setCustomerName("");
-    setAmountReceived("");
-    setPaymentStatus(POS_PAYMENT_STATUS_OPTIONS[2]);
+    setPayerEmail("");
+    setPayerPhone("");
+    setPaymentMethod(POS_CHECKOUT_PAYMENT_METHODS[0]);
     setDueDate(todayIsoDate());
     setNotes("");
     setProductSearch("");
@@ -214,7 +245,270 @@ export default function PosCheckout({
     setPendingInvoiceNo(null);
     setAccumulatedReceiptLines([]);
     setReceipt(null);
+    setShowRequestPayment(false);
+    setRequestPaymentDraft(null);
+    setMomoWaiting(false);
     setError(null);
+  }
+
+  function validateCheckoutBasics(): {
+    trimmedClientId: string | null;
+    trimmedCustomerName: string | null;
+  } | null {
+    const trimmedClientId = clientId.trim() || null;
+    const trimmedCustomerName = customerName.trim() || null;
+
+    if (!trimmedClientId && !trimmedCustomerName) {
+      setError("Select a contract client or enter a walk-in / other payer name.");
+      return null;
+    }
+
+    if (cartLines.length === 0) {
+      setError("Add at least one product to the cart.");
+      return null;
+    }
+
+    if (!paymentMethod.trim()) {
+      setError("Select a payment method.");
+      return null;
+    }
+
+    for (const line of cartLines) {
+      if (line.quantity <= 0) {
+        setError("Each cart line must have a quantity greater than zero.");
+        return null;
+      }
+
+      if (line.unitPrice < 0) {
+        setError("Unit prices must be zero or greater.");
+        return null;
+      }
+
+      const product = products.find((item) => item.id === line.productId);
+      if (!product) {
+        setError("A product in the cart is no longer available.");
+        return null;
+      }
+
+      const available = getAvailableStockForProduct(product, cartLines, line.id);
+      if (line.quantity > available) {
+        setError(
+          `Only ${formatInventoryQuantity(available)} ${product.unit_of_measure} of ${product.product_name} available.`,
+        );
+        return null;
+      }
+    }
+
+    return { trimmedClientId, trimmedCustomerName };
+  }
+
+  function showPaidReceipt(input: {
+    invoiceNo: string;
+    customerLabel: string;
+    paymentMethod: string;
+    lines: PosCartLine[];
+    amountReceived: number;
+  }) {
+    const receiptTotal = cartTotal(input.lines);
+    setReceipt({
+      invoiceNo: input.invoiceNo,
+      saleDate: todayIsoDate(),
+      customerLabel: input.customerLabel,
+      paymentMethod: input.paymentMethod,
+      paymentStatus: "Paid",
+      amountReceived: input.amountReceived,
+      cartTotal: receiptTotal,
+      lines: input.lines,
+    });
+    setCheckoutResult(null);
+    setPendingInvoiceNo(null);
+    setAccumulatedReceiptLines([]);
+    setCartLines([]);
+    setShowRequestPayment(false);
+    setRequestPaymentDraft(null);
+  }
+
+  async function completeCashSale(
+    trimmedClientId: string | null,
+    trimmedCustomerName: string | null,
+  ) {
+    const amountReceived = cartTotal(cartLines);
+    const summary = await runPosCheckout(supabase, {
+      saleDate: todayIsoDate(),
+      invoiceNo: pendingInvoiceNo,
+      clientId: trimmedClientId,
+      customerName: trimmedClientId ? null : trimmedCustomerName,
+      paymentMethod: paymentMethod.trim(),
+      amountReceived,
+      paymentStatus: "Paid",
+      dueDate,
+      notes: notes.trim() || null,
+      cartLines,
+    });
+
+    await refreshProducts();
+
+    if (summary.stoppedEarly) {
+      const succeededLineIds = new Set(
+        summary.succeeded.map((line) => line.lineId),
+      );
+      const postedSnapshots = cartLines.filter((line) =>
+        succeededLineIds.has(line.id),
+      );
+      setAccumulatedReceiptLines((current) => [...current, ...postedSnapshots]);
+      setCartLines((current) =>
+        current.filter((line) => !succeededLineIds.has(line.id)),
+      );
+      setPendingInvoiceNo(summary.invoiceNo);
+      setCheckoutResult(summary);
+      setError(
+        "Checkout stopped because a line item failed. Review the succeeded and failed lines below before retrying the remaining items or handling them manually in Product Sales.",
+      );
+      return;
+    }
+
+    if (!summary.invoiceNo) {
+      setError("Checkout completed but no invoice number was returned from the server.");
+      return;
+    }
+
+    const receiptLines = [...accumulatedReceiptLines, ...cartLines];
+    showPaidReceipt({
+      invoiceNo: summary.invoiceNo,
+      customerLabel: getCustomerDisplayName(
+        trimmedClientId,
+        trimmedCustomerName,
+        initialClients,
+      ),
+      paymentMethod: paymentMethod.trim(),
+      lines: receiptLines,
+      amountReceived: cartTotal(receiptLines),
+    });
+  }
+
+  async function completeMobileMoneySale(
+    trimmedClientId: string | null,
+    trimmedCustomerName: string | null,
+  ) {
+    setMomoWaiting(true);
+
+    try {
+      const initResponse = await fetch("/api/sales/paystack/momo/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sale_date: todayIsoDate(),
+          client_id: trimmedClientId,
+          customer_name: trimmedClientId ? null : trimmedCustomerName,
+          notes: notes.trim() || null,
+          due_date: dueDate,
+          delivery_email: payerEmail.trim() || null,
+          cart_lines: cartLines,
+        }),
+      });
+
+      const initPayload = (await initResponse.json()) as MomoInitializeResponse;
+      if (!initResponse.ok || !initPayload.ok) {
+        setError(initPayload.error ?? "Could not start Mobile Money payment.");
+        setMomoWaiting(false);
+        setLoading(false);
+        return;
+      }
+
+      const accessCode = initPayload.access_code?.trim() ?? "";
+      const paymentRequestId = initPayload.payment_request_id?.trim() ?? "";
+      if (!accessCode || !paymentRequestId) {
+        setError("Paystack did not return an access code for Mobile Money.");
+        setMomoWaiting(false);
+        setLoading(false);
+        return;
+      }
+
+      const cartSnapshotForReceipt = [...cartLines];
+      const customerLabel = getCustomerDisplayName(
+        trimmedClientId,
+        trimmedCustomerName,
+        initialClients,
+      );
+
+      await openPaystackInlineWithAccessCode(accessCode, {
+        onSuccess: async (transaction) => {
+          try {
+            const confirmResponse = await fetch(
+              "/api/sales/paystack/momo/confirm",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  payment_request_id: paymentRequestId,
+                  reference: transaction.reference ?? initPayload.reference,
+                }),
+              },
+            );
+            const confirmPayload =
+              (await confirmResponse.json()) as MomoConfirmResponse;
+
+            if (!confirmResponse.ok || !confirmPayload.ok) {
+              setError(
+                confirmPayload.error ??
+                  "Payment succeeded but sale confirmation failed. Retry or check Product Sales.",
+              );
+              setMomoWaiting(false);
+              setLoading(false);
+              return;
+            }
+
+            if (!confirmPayload.invoice_no) {
+              setError("Payment confirmed but no invoice number was returned.");
+              setMomoWaiting(false);
+              setLoading(false);
+              return;
+            }
+
+            await refreshProducts();
+            showPaidReceipt({
+              invoiceNo: confirmPayload.invoice_no,
+              customerLabel,
+              paymentMethod: POS_MOMO_PAYMENT_METHOD,
+              lines: cartSnapshotForReceipt,
+              amountReceived: cartTotal(cartSnapshotForReceipt),
+            });
+          } catch (confirmError) {
+            setError(
+              confirmError instanceof Error
+                ? confirmError.message
+                : "Failed to confirm Mobile Money payment.",
+            );
+          } finally {
+            setMomoWaiting(false);
+            setLoading(false);
+          }
+        },
+        onCancel: () => {
+          setError(
+            "Mobile Money payment was cancelled. Your cart is unchanged — you can retry.",
+          );
+          setMomoWaiting(false);
+          setLoading(false);
+        },
+        onError: (paystackError) => {
+          setError(
+            paystackError.message?.trim() ||
+              "Mobile Money payment failed. Your cart is unchanged — you can retry.",
+          );
+          setMomoWaiting(false);
+          setLoading(false);
+        },
+      });
+    } catch (momoError) {
+      setError(
+        momoError instanceof Error
+          ? momoError.message
+          : "Could not open Mobile Money payment.",
+      );
+      setMomoWaiting(false);
+      setLoading(false);
+    }
   }
 
   async function handleCompleteSale(event: React.FormEvent) {
@@ -223,131 +517,26 @@ export default function PosCheckout({
     setError(null);
     setReceipt(null);
 
-    const trimmedClientId = clientId.trim() || null;
-    const trimmedCustomerName = customerName.trim() || null;
-
-    if (!trimmedClientId && !trimmedCustomerName) {
-      setError("Select a contract client or enter a walk-in / other payer name.");
+    const basics = validateCheckoutBasics();
+    if (!basics) {
       setLoading(false);
       return;
-    }
-
-    if (cartLines.length === 0) {
-      setError("Add at least one product to the cart.");
-      setLoading(false);
-      return;
-    }
-
-    if (!paymentMethod.trim()) {
-      setError("Select a payment method.");
-      setLoading(false);
-      return;
-    }
-
-    if (Number.isNaN(receivedAmount) || receivedAmount < 0) {
-      setError("Amount received must be zero or greater.");
-      setLoading(false);
-      return;
-    }
-
-    if (!paymentStatus) {
-      setError("Select a payment status.");
-      setLoading(false);
-      return;
-    }
-
-    for (const line of cartLines) {
-      if (line.quantity <= 0) {
-        setError("Each cart line must have a quantity greater than zero.");
-        setLoading(false);
-        return;
-      }
-
-      if (line.unitPrice < 0) {
-        setError("Unit prices must be zero or greater.");
-        setLoading(false);
-        return;
-      }
-
-      const product = products.find((item) => item.id === line.productId);
-      if (!product) {
-        setError("A product in the cart is no longer available.");
-        setLoading(false);
-        return;
-      }
-
-      const available = getAvailableStockForProduct(product, cartLines, line.id);
-      if (line.quantity > available) {
-        setError(
-          `Only ${formatInventoryQuantity(available)} ${product.unit_of_measure} of ${product.product_name} available.`,
-        );
-        setLoading(false);
-        return;
-      }
     }
 
     try {
-      const summary = await runPosCheckout(supabase, {
-        saleDate: todayIsoDate(),
-        invoiceNo: pendingInvoiceNo,
-        clientId: trimmedClientId,
-        customerName: trimmedClientId ? null : trimmedCustomerName,
-        paymentMethod: paymentMethod.trim(),
-        amountReceived: receivedAmount,
-        paymentStatus,
-        dueDate,
-        notes: notes.trim() || null,
-        cartLines,
-      });
-
-      await refreshProducts();
-
-      if (summary.stoppedEarly) {
-        const succeededLineIds = new Set(
-          summary.succeeded.map((line) => line.lineId),
+      if (isMobileMoney) {
+        await completeMobileMoneySale(
+          basics.trimmedClientId,
+          basics.trimmedCustomerName,
         );
-        const postedSnapshots = cartLines.filter((line) =>
-          succeededLineIds.has(line.id),
-        );
-        setAccumulatedReceiptLines((current) => [...current, ...postedSnapshots]);
-        setCartLines((current) =>
-          current.filter((line) => !succeededLineIds.has(line.id)),
-        );
-        setPendingInvoiceNo(summary.invoiceNo);
-        setCheckoutResult(summary);
-        setError(
-          "Checkout stopped because a line item failed. Review the succeeded and failed lines below before retrying the remaining items or handling them manually in Product Sales.",
-        );
-        setLoading(false);
+        // loading cleared in MoMo callbacks when popup closes
         return;
       }
 
-      if (!summary.invoiceNo) {
-        setError("Checkout completed but no invoice number was returned from the server.");
-        setLoading(false);
-        return;
-      }
-
-      const receiptLines = [...accumulatedReceiptLines, ...cartLines];
-
-      setReceipt({
-        invoiceNo: summary.invoiceNo,
-        saleDate: todayIsoDate(),
-        customerLabel: getCustomerDisplayName(
-          trimmedClientId,
-          trimmedCustomerName,
-          initialClients,
-        ),
-        paymentMethod: paymentMethod.trim(),
-        paymentStatus,
-        amountReceived: receivedAmount,
-        cartTotal: cartTotal(receiptLines),
-        lines: receiptLines,
-      });
-      setCheckoutResult(null);
-      setPendingInvoiceNo(null);
-      setAccumulatedReceiptLines([]);
-      setCartLines([]);
+      await completeCashSale(
+        basics.trimmedClientId,
+        basics.trimmedCustomerName,
+      );
       setLoading(false);
     } catch (checkoutError) {
       setError(
@@ -355,8 +544,52 @@ export default function PosCheckout({
           ? checkoutError.message
           : "Checkout failed.",
       );
+      setMomoWaiting(false);
       setLoading(false);
     }
+  }
+
+  /**
+   * Charge-first Request Payment link: open modal with cart snapshot.
+   * No sale / stock change until Paystack webhook (or confirm) fulfills.
+   */
+  function handleRequestPaymentLink() {
+    setError(null);
+    setReceipt(null);
+
+    const basics = validateCheckoutBasics();
+    if (!basics) {
+      return;
+    }
+
+    const amountGhs = cartTotal(cartLines);
+    if (amountGhs <= 0) {
+      setError("Cart total must be greater than zero.");
+      return;
+    }
+
+    // Request Payment is independent of Cash/MoMo selection — store as POS
+    // until Paystack reports the actual channel on fulfillment.
+    setRequestPaymentDraft({
+      cartLines: [...cartLines],
+      saleDate: todayIsoDate(),
+      clientId: basics.trimmedClientId,
+      customerName: basics.trimmedClientId
+        ? null
+        : basics.trimmedCustomerName,
+      notes: notes.trim() || null,
+      dueDate,
+      amountGhs,
+      paymentMethod: "POS",
+    });
+    setShowRequestPayment(true);
+  }
+
+  function handleRequestPaymentLinkSent() {
+    setCartLines([]);
+    setCheckoutResult(null);
+    setPendingInvoiceNo(null);
+    setAccumulatedReceiptLines([]);
   }
 
   if (receipt) {
@@ -384,6 +617,12 @@ export default function PosCheckout({
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </p>
+      ) : null}
+
+      {momoWaiting ? (
+        <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          Waiting for Mobile Money confirmation in the Paystack window…
         </p>
       ) : null}
 
@@ -474,7 +713,7 @@ export default function PosCheckout({
                   </div>
                   <button
                     type="button"
-                    disabled={outOfStock || loading}
+                    disabled={outOfStock || busy}
                     onClick={() => addProductToCart(product)}
                     className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -586,9 +825,15 @@ export default function PosCheckout({
             <select
               value={clientId}
               onChange={(event) => {
-                setClientId(event.target.value);
-                if (event.target.value) {
+                const nextClientId = event.target.value;
+                setClientId(nextClientId);
+                if (nextClientId) {
                   setCustomerName("");
+                  const selected = initialClients.find(
+                    (client) => client.client_id === nextClientId,
+                  );
+                  setPayerEmail(selected?.email?.trim() ?? "");
+                  setPayerPhone(selected?.phone?.trim() ?? "");
                 }
               }}
               className={inputClassName}
@@ -616,6 +861,30 @@ export default function PosCheckout({
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
+              Payer Email
+            </label>
+            <input
+              type="email"
+              value={payerEmail}
+              onChange={(event) => setPayerEmail(event.target.value)}
+              placeholder="Optional — for payment link / MoMo"
+              className={inputClassName}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Payer Phone
+            </label>
+            <input
+              type="tel"
+              value={payerPhone}
+              onChange={(event) => setPayerPhone(event.target.value)}
+              placeholder="Optional — e.g. +233…"
+              className={inputClassName}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
               Payment Method
             </label>
             <select
@@ -624,41 +893,9 @@ export default function PosCheckout({
               onChange={(event) => setPaymentMethod(event.target.value)}
               className={inputClassName}
             >
-              <option value="">Select payment method</option>
-              {initialPaymentMethods.map((method) => (
+              {POS_CHECKOUT_PAYMENT_METHODS.map((method) => (
                 <option key={method} value={method}>
                   {method}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Amount Received
-            </label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              required
-              value={amountReceived}
-              onChange={(event) => setAmountReceived(event.target.value)}
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Payment Status
-            </label>
-            <select
-              required
-              value={paymentStatus}
-              onChange={(event) => setPaymentStatus(event.target.value)}
-              className={inputClassName}
-            >
-              {POS_PAYMENT_STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {status}
                 </option>
               ))}
             </select>
@@ -689,20 +926,58 @@ export default function PosCheckout({
         </div>
 
         <p className="text-sm text-slate-600">
-          Outstanding balance:{" "}
-          <span className="font-medium text-[#0f2744]">
-            {formatGHS(outstandingPreview)}
-          </span>
+          {isMobileMoney
+            ? "Mobile Money opens a Paystack popup. Sale and stock update only after payment is confirmed."
+            : "Cash sales are recorded as fully paid for the cart total. Request Payment (link) charges first — no sale or stock change until the customer pays."}
         </p>
 
-        <button
-          type="submit"
-          disabled={loading || cartLines.length === 0}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? "Completing sale…" : "Complete Sale"}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={busy || cartLines.length === 0}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {momoWaiting
+              ? "Waiting for MoMo…"
+              : loading
+                ? isMobileMoney
+                  ? "Opening payment…"
+                  : "Completing sale…"
+                : isMobileMoney
+                  ? "Pay with Mobile Money"
+                  : "Complete Sale"}
+          </button>
+          <button
+            type="button"
+            disabled={busy || cartLines.length === 0}
+            onClick={() => handleRequestPaymentLink()}
+            className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Request Payment (link)
+          </button>
+        </div>
       </form>
+
+      {showRequestPayment && requestPaymentDraft ? (
+        <RequestPaymentModal
+          mode="cart"
+          cartLines={requestPaymentDraft.cartLines}
+          saleDate={requestPaymentDraft.saleDate}
+          clientId={requestPaymentDraft.clientId}
+          customerName={requestPaymentDraft.customerName}
+          notes={requestPaymentDraft.notes}
+          dueDate={requestPaymentDraft.dueDate}
+          paymentMethod={requestPaymentDraft.paymentMethod}
+          defaultAmountGhs={requestPaymentDraft.amountGhs}
+          defaultEmail={payerEmail}
+          defaultPhone={payerPhone}
+          onLinkSent={handleRequestPaymentLinkSent}
+          onClose={() => {
+            setShowRequestPayment(false);
+            setRequestPaymentDraft(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

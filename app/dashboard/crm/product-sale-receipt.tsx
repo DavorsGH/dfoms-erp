@@ -71,6 +71,12 @@ export function ProductSaleReceiptPrintStyles() {
           width: 100%;
           padding: 24px;
           background: white;
+          color: #0f172a;
+        }
+
+        #${PRODUCT_SALE_RECEIPT_PRINT_AREA_ID} td,
+        #${PRODUCT_SALE_RECEIPT_PRINT_AREA_ID} th {
+          color: #0f172a;
         }
 
         .no-print {
@@ -113,7 +119,7 @@ export function ProductSaleReceiptPanel({
 
       <div
         id={PRODUCT_SALE_RECEIPT_PRINT_AREA_ID}
-        className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+        className="rounded-lg border border-slate-200 bg-white p-6 text-slate-900 shadow-sm"
       >
         <ReportCompanyHeader
           title="Product Sale Receipt"
@@ -157,13 +163,15 @@ export function ProductSaleReceiptPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            <tr>
-              <td className="px-4 py-3">{receipt.productLabel}</td>
-              <td className="px-4 py-3 text-right">{receipt.quantityLabel}</td>
-              <td className="px-4 py-3 text-right">
+            <tr className="text-slate-900">
+              <td className="px-4 py-3 text-slate-900">{receipt.productLabel}</td>
+              <td className="px-4 py-3 text-right text-slate-900">
+                {receipt.quantityLabel}
+              </td>
+              <td className="px-4 py-3 text-right text-slate-900">
                 {formatReportCurrency(receipt.unitPrice)}
               </td>
-              <td className="px-4 py-3 text-right">
+              <td className="px-4 py-3 text-right text-slate-900">
                 {formatReportCurrency(receipt.amount)}
               </td>
             </tr>

@@ -24,6 +24,24 @@ function requireSecretKey():
     return { ok: false, error: "PAYSTACK_SECRET_KEY has an unexpected format." };
   }
 
+  // TEMPORARY DEBUG — remove after diagnosing Paystack "Invalid key"
+  // Server-side only (this module imports "server-only"). Never log the full key.
+  {
+    const mode = secretKey.startsWith("sk_live_")
+      ? "sk_live_"
+      : secretKey.startsWith("sk_test_")
+        ? "sk_test_"
+        : "unknown";
+    console.info(
+      "[TEMPORARY DEBUG paystack] PAYSTACK_SECRET_KEY in use:",
+      `prefix=${secretKey.slice(0, 12)}`,
+      `suffix=${secretKey.slice(-4)}`,
+      `length=${secretKey.length}`,
+      `mode=${mode}`,
+      `source=process.env (Next loads .env.[NODE_ENV].local → .env.local → .env.[NODE_ENV] → .env; first-wins; .env.staging.local NOT auto-loaded)`,
+    );
+  }
+
   return { ok: true, secretKey };
 }
 
@@ -93,15 +111,19 @@ export type PaystackInitializeResult =
     }
   | { ok: false; error: string };
 
-/** POST /transaction/initialize — subscription checkout via plan code. */
-export async function initializePaystackTransaction(options: {
-  email: string;
-  planCode: string;
-  amountPesewas: number;
-  callbackUrl: string;
-  currency?: string;
-  metadata?: Record<string, unknown>;
-}): Promise<PaystackInitializeResult> {
+type PaystackInitializePayload = {
+  status?: boolean;
+  message?: string;
+  data?: {
+    authorization_url?: string;
+    access_code?: string;
+    reference?: string;
+  };
+};
+
+async function postPaystackInitialize(
+  body: Record<string, unknown>,
+): Promise<PaystackInitializeResult> {
   const auth = requireSecretKey();
   if (!auth.ok) {
     return auth;
@@ -114,25 +136,12 @@ export async function initializePaystackTransaction(options: {
         Authorization: `Bearer ${auth.secretKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        email: options.email,
-        amount: options.amountPesewas,
-        plan: options.planCode,
-        callback_url: options.callbackUrl,
-        currency: options.currency ?? "GHS",
-        metadata: options.metadata ?? undefined,
-      }),
+      body: JSON.stringify(body),
     });
 
-    const payload = (await response.json().catch(() => null)) as {
-      status?: boolean;
-      message?: string;
-      data?: {
-        authorization_url?: string;
-        access_code?: string;
-        reference?: string;
-      };
-    } | null;
+    const payload = (await response.json().catch(() => null)) as
+      | PaystackInitializePayload
+      | null;
 
     if (!response.ok || payload?.status === false) {
       return {
@@ -172,6 +181,52 @@ export async function initializePaystackTransaction(options: {
   }
 }
 
+/** POST /transaction/initialize — subscription checkout via plan code. */
+export async function initializePaystackTransaction(options: {
+  email: string;
+  planCode: string;
+  amountPesewas: number;
+  callbackUrl: string;
+  currency?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<PaystackInitializeResult> {
+  return postPaystackInitialize({
+    email: options.email,
+    amount: options.amountPesewas,
+    plan: options.planCode,
+    callback_url: options.callbackUrl,
+    currency: options.currency ?? "GHS",
+    metadata: options.metadata ?? undefined,
+  });
+}
+
+/**
+ * POST /transaction/initialize — one-off charge (no plan).
+ * Used for POS / product-sale payment links (card or MoMo).
+ */
+export async function initializePaystackOneOffTransaction(options: {
+  email: string;
+  amountPesewas: number;
+  callbackUrl: string;
+  currency?: string;
+  metadata?: Record<string, unknown>;
+  channels?: string[];
+}): Promise<PaystackInitializeResult> {
+  const body: Record<string, unknown> = {
+    email: options.email,
+    amount: options.amountPesewas,
+    callback_url: options.callbackUrl,
+    currency: options.currency ?? "GHS",
+    metadata: options.metadata ?? undefined,
+  };
+
+  if (options.channels && options.channels.length > 0) {
+    body.channels = options.channels;
+  }
+
+  return postPaystackInitialize(body);
+}
+
 export type PaystackVerifyResult =
   | {
       ok: true;
@@ -183,6 +238,8 @@ export type PaystackVerifyResult =
       gatewayResponse: string | null;
       customerEmail: string | null;
       planCode: string | null;
+      /** Paystack channel used for the charge (card, mobile_money, …). */
+      channel: string | null;
     }
   | { ok: false; error: string };
 
@@ -220,8 +277,10 @@ export async function verifyPaystackTransaction(
         currency?: string;
         paid_at?: string | null;
         gateway_response?: string | null;
+        channel?: string | null;
         customer?: { email?: string | null } | null;
         plan?: { plan_code?: string | null } | string | null;
+        authorization?: { channel?: string | null } | null;
       };
     } | null;
 
@@ -242,6 +301,16 @@ export async function verifyPaystackTransaction(
           ? (plan.plan_code ?? null)
           : null;
 
+    const channel =
+      (typeof payload.data.channel === "string" &&
+      payload.data.channel.trim()
+        ? payload.data.channel.trim()
+        : null) ??
+      (typeof payload.data.authorization?.channel === "string" &&
+      payload.data.authorization.channel.trim()
+        ? payload.data.authorization.channel.trim()
+        : null);
+
     return {
       ok: true,
       status: payload.data.status ?? "unknown",
@@ -252,6 +321,7 @@ export async function verifyPaystackTransaction(
       gatewayResponse: payload.data.gateway_response ?? null,
       customerEmail: payload.data.customer?.email ?? null,
       planCode,
+      channel,
     };
   } catch (error) {
     return {

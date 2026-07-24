@@ -39,6 +39,12 @@ export function PosReceiptPrintStyles() {
           width: 100%;
           padding: 24px;
           background: white;
+          color: #0f172a;
+        }
+
+        #${POS_PRINT_AREA_ID} td,
+        #${POS_PRINT_AREA_ID} th {
+          color: #0f172a;
         }
 
         .no-print {
@@ -53,10 +59,12 @@ export function PosReceiptPanel({
   receipt,
   onPrint,
   onNewSale,
+  onRequestPayment,
 }: {
   receipt: PosReceiptData;
   onPrint: () => void;
   onNewSale: () => void;
+  onRequestPayment?: () => void;
 }) {
   return (
     <div className="space-y-4">
@@ -70,6 +78,15 @@ export function PosReceiptPanel({
         >
           Print Receipt
         </button>
+        {onRequestPayment ? (
+          <button
+            type="button"
+            onClick={onRequestPayment}
+            className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 transition-colors hover:bg-emerald-100"
+          >
+            Request Payment
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onNewSale}
@@ -81,7 +98,7 @@ export function PosReceiptPanel({
 
       <div
         id={POS_PRINT_AREA_ID}
-        className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+        className="rounded-lg border border-slate-200 bg-white p-6 text-slate-900 shadow-sm"
       >
         <ReportCompanyHeader
           title="Point of Sale Receipt"
@@ -126,21 +143,21 @@ export function PosReceiptPanel({
           </thead>
           <tbody className="divide-y divide-slate-200">
             {receipt.lines.map((line) => (
-              <tr key={line.id}>
-                <td className="px-4 py-3">
+              <tr key={line.id} className="text-slate-900">
+                <td className="px-4 py-3 text-slate-900">
                   {line.productCode} — {line.productName}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right text-slate-900">
                   {line.quantity.toLocaleString("en-GB", {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 4,
                   })}{" "}
                   {line.unitOfMeasure}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right text-slate-900">
                   {formatReportCurrency(line.unitPrice)}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right text-slate-900">
                   {formatReportCurrency(lineSubtotal(line))}
                 </td>
               </tr>

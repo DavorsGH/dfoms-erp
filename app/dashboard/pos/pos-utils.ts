@@ -48,6 +48,11 @@ export type PosCheckoutRunSummary = {
 
 export const POS_PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"] as const;
 
+/** Simplified POS methods — Card deferred until physical Terminal hardware. */
+export const POS_CHECKOUT_PAYMENT_METHODS = ["Cash", "Mobile Money"] as const;
+
+export const POS_MOMO_PAYMENT_METHOD = "Mobile Money";
+
 export const POS_PRINT_AREA_ID = "pos-receipt-print-area";
 
 const POS_INVOICE_ENTITY_TYPE = "POS";
