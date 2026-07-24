@@ -20,23 +20,35 @@ export type CustomerEntry = {
 
 export const CUSTOMER_SELECT = "*";
 
-export const DEFAULT_CUSTOMER_STATUS = "Active";
+/** Matches DB check: customers_status_check */
+export const DEFAULT_CUSTOMER_STATUS = "active";
 
-export const DEFAULT_CUSTOMER_TYPE = "Business";
+/** Matches DB check: customers_customer_type_check */
+export const DEFAULT_CUSTOMER_TYPE = "service_client";
 
 export const CUSTOMER_TYPE_OPTIONS = [
-  "Individual",
-  "Business",
-  "Enterprise",
-  "Contract",
+  { value: "service_client", label: "Service Client" },
+  { value: "digital_subscriber", label: "Digital Subscriber" },
+  { value: "both", label: "Both" },
 ] as const;
 
 export const CUSTOMER_STATUS_OPTIONS = [
-  "Active",
-  "Inactive",
-  "Pending",
-  "Suspended",
+  { value: "lead", label: "Lead" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
 ] as const;
+
+export function getCustomerTypeLabel(value: string | null | undefined): string {
+  if (!value) return "—";
+  const match = CUSTOMER_TYPE_OPTIONS.find((option) => option.value === value);
+  return match?.label ?? value;
+}
+
+export function getCustomerStatusLabel(value: string | null | undefined): string {
+  if (!value) return "—";
+  const match = CUSTOMER_STATUS_OPTIONS.find((option) => option.value === value);
+  return match?.label ?? value;
+}
 
 export function getCustomerDisplayName(
   customer: Pick<CustomerEntry, "client_name" | "client_id">,

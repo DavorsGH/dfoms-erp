@@ -22,6 +22,8 @@ import {
   CUSTOMER_TYPE_OPTIONS,
   DEFAULT_CUSTOMER_STATUS,
   DEFAULT_CUSTOMER_TYPE,
+  getCustomerStatusLabel,
+  getCustomerTypeLabel,
   type CustomerEntry,
 } from "./customers-utils";
 import {
@@ -284,8 +286,8 @@ export default function Customers({
             >
               <option value="">All statuses</option>
               {CUSTOMER_STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {status}
+                <option key={status.value} value={status.value}>
+                  {status.label}
                 </option>
               ))}
             </select>
@@ -301,8 +303,8 @@ export default function Customers({
             >
               <option value="">All types</option>
               {CUSTOMER_TYPE_OPTIONS.map((type) => (
-                <option key={type} value={type}>
-                  {type}
+                <option key={type.value} value={type.value}>
+                  {type.label}
                 </option>
               ))}
             </select>
@@ -333,7 +335,7 @@ export default function Customers({
               {editingId ? (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Client ID
+                    Customer ID
                   </label>
                   <input
                     type="text"
@@ -345,7 +347,7 @@ export default function Customers({
               ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Client Name
+                  Customer Name
                 </label>
                 <input
                   type="text"
@@ -404,8 +406,8 @@ export default function Customers({
                   className={inputClassName}
                 >
                   {CUSTOMER_TYPE_OPTIONS.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
+                    <option key={type.value} value={type.value}>
+                      {type.label}
                     </option>
                   ))}
                 </select>
@@ -420,8 +422,8 @@ export default function Customers({
                   className={inputClassName}
                 >
                   {CUSTOMER_STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
+                    <option key={status.value} value={status.value}>
+                      {status.label}
                     </option>
                   ))}
                 </select>
@@ -593,7 +595,7 @@ export default function Customers({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Client Name</th>
+              <th className={scrollableTableThClassName}>Customer Name</th>
               <th className={scrollableTableThClassName}>Contact Person</th>
               <th className={scrollableTableThClassName}>Email</th>
               <th className={scrollableTableThClassName}>Phone</th>
@@ -624,8 +626,12 @@ export default function Customers({
                   <td className="px-4 py-3">{customer.contact_person ?? "—"}</td>
                   <td className="px-4 py-3">{customer.email ?? "—"}</td>
                   <td className="px-4 py-3">{customer.phone ?? "—"}</td>
-                  <td className="px-4 py-3">{customer.customer_type ?? "—"}</td>
-                  <td className="px-4 py-3">{customer.status ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    {getCustomerTypeLabel(customer.customer_type)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {getCustomerStatusLabel(customer.status)}
+                  </td>
                   <RegisterRowActions
                     onEdit={() => openEditForm(customer)}
                     onDelete={() => handleDelete(customer.client_id)}
