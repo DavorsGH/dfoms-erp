@@ -177,7 +177,7 @@ async function main() {
     const entry = normalizeProductSaleEntry(fullSale as ProductSaleEntry);
     const receipt = {
       invoiceNo: entry.invoice_no,
-      customerLabel: getIncomeCustomerDisplayName(entry, [customer]),
+      customerLabel: getIncomeCustomerDisplayName(entry),
       productLabel: getProductSaleProductLabel(entry),
       amount: Number(entry.amount) || 0,
       amountReceived: Number(entry.amount_received) || 0,

@@ -1,6 +1,6 @@
 /**
- * Apply scripts/80_product_sale_payment_request_cart_snapshot.sql to staging.
- * Usage: npx tsx scripts/apply-80-cart-snapshot-staging.ts
+ * Apply scripts/112_product_sale_payment_request_cart_snapshot.sql to staging.
+ * Usage: npx tsx scripts/apply-112-cart-snapshot-staging.ts
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -21,7 +21,7 @@ if (!databaseUrl) {
 
 async function main() {
   const sqlText = readFileSync(
-    resolve(process.cwd(), "scripts/80_product_sale_payment_request_cart_snapshot.sql"),
+    resolve(process.cwd(), "scripts/112_product_sale_payment_request_cart_snapshot.sql"),
     "utf8",
   );
   const client = new pg.Client({
@@ -49,7 +49,7 @@ async function main() {
       JSON.stringify(
         {
           cart_snapshot: cols.rows[0] ?? null,
-          check_constraints: checks.rows.map((r) => r.conname),
+          check_constraints: checks.rows.map((r: Record<string, unknown>) => r.conname),
         },
         null,
         2,

@@ -13,7 +13,11 @@ import {
   type BalanceSheetCashExpenseEntry,
 } from "./accrued-wages-utils";
 import { calculateFixedAssetPurchaseOutflowsByMonth } from "./fixed-assets-utils";
-import { isActiveIncomeForReporting } from "./income-register-utils";
+import {
+  isActiveIncomeForReporting,
+  type IncomeEntryType,
+  type ProductSaleStatus,
+} from "./income-register-utils";
 import {
   addAmountToMonth,
   createEmptyMonthlyTotals,
@@ -49,8 +53,8 @@ function getPeriodMonthParts(
 export type CashMovementIncomeEntry = {
   date?: string | null;
   amount_received: number;
-  entry_type?: string | null;
-  sale_status?: string | null;
+  entry_type?: IncomeEntryType | null;
+  sale_status?: ProductSaleStatus | null;
 };
 
 export type CashMovementManualEntry = {

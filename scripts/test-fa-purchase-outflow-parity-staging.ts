@@ -27,7 +27,8 @@ loadEnvForce(resolve(process.cwd(), ".env.staging.local"));
 async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  assert(url?.includes("wieflwbfdmjtsdnwbfii"), "Refusing non-staging");
+  assert(url, "Missing NEXT_PUBLIC_SUPABASE_URL");
+  assert(url.includes("wieflwbfdmjtsdnwbfii"), "Refusing non-staging");
   assert(key, "Missing service role key");
 
   const admin = createClient(url, key, {

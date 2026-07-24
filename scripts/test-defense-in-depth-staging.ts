@@ -419,7 +419,7 @@ async function main() {
     await sql.end();
 
     assert(fn.rows.length >= 1, "change_leave_approver not found on staging");
-    const def: string = fn.rows[0].def;
+    const def = String(fn.rows[0].def ?? "");
     const checksTenantOnApprover =
       /tenant_id\s*=\s*current_user_tenant_id\(\)/i.test(def) ||
       (/tenant_id/i.test(def) &&

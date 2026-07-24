@@ -81,24 +81,34 @@ async function initializeOneOff(options: {
 }
 
 async function applyProductSalePayment(
-  admin: ReturnType<typeof createClient>,
+  // Staging script: untyped supabase client against tables not yet in generated schema.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: any,
   options: {
     paymentRequestId: string;
     reference: string;
     amountPesewas: number;
   },
 ) {
-  const { data: requestRow, error } = await admin
+  const { data: requestRowRaw, error } = await admin
     .from("product_sale_payment_requests")
     .select("id, tenant_id, invoice_no, income_ids, amount_requested, status")
     .eq("id", options.paymentRequestId)
     .maybeSingle();
-  assert(!error && requestRow, error?.message ?? "request missing");
+  assert(!error && requestRowRaw, error?.message ?? "request missing");
+  const requestRow = requestRowRaw as {
+    id: string;
+    tenant_id: string;
+    invoice_no: string | null;
+    income_ids: string[];
+    amount_requested: number;
+    status: string;
+  };
   if (requestRow.status === "paid") {
     return "already paid";
   }
 
-  const incomeIds = requestRow.income_ids as string[];
+  const incomeIds = requestRow.income_ids;
   const { data: incomeRows, error: incomeError } = await admin
     .from("income_register")
     .select(
@@ -121,7 +131,7 @@ async function applyProductSalePayment(
         amount_received: allocation.nextAmountReceived,
         outstanding_balance: allocation.nextOutstanding,
         payment_status: allocation.nextPaymentStatus,
-      })
+      } as never)
       .eq("id", allocation.id)
       .eq("tenant_id", requestRow.tenant_id);
     assert(!updateError, updateError?.message ?? "income update failed");
@@ -135,7 +145,7 @@ async function applyProductSalePayment(
       paid_at: new Date().toISOString(),
       paystack_reference: options.reference,
       updated_at: new Date().toISOString(),
-    })
+    } as never)
     .eq("id", requestRow.id);
   assert(!markError, markError?.message ?? "mark paid failed");
   return "applied";

@@ -1,4 +1,4 @@
--- Script 80: cart_snapshot for charge-first POS Mobile Money (Paystack Inline).
+-- Script 112: cart_snapshot for charge-first POS Mobile Money (Paystack Inline).
 -- Staging first. Allows payment requests before income_register rows exist.
 
 BEGIN;

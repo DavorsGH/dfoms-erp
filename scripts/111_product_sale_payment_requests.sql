@@ -1,4 +1,4 @@
--- Script 79: Product sale Paystack payment requests (POS Request Payment).
+-- Script 111: Product sale Paystack payment requests (POS Request Payment).
 -- Staging first. Maps Paystack references to POS invoices (multi-line income_register).
 
 BEGIN;

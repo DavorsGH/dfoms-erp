@@ -24,6 +24,10 @@ import type {
   ProductPurchaseCashEntry,
   RawMaterialPurchaseCashEntry,
 } from "../inventory/inventory-balance-sheet-utils";
+import type {
+  IncomeEntryType,
+  ProductSaleStatus,
+} from "./income-register-utils";
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
 export { getCurrentFinancialYear } from "./finance-year-utils";
@@ -32,8 +36,8 @@ export type CashFlowIncomeEntry = {
   date?: string | null;
   period_month?: string | null;
   amount_received: number;
-  entry_type?: string | null;
-  sale_status?: string | null;
+  entry_type?: IncomeEntryType | null;
+  sale_status?: ProductSaleStatus | null;
 };
 
 export type CashFlowExpenseEntry = {

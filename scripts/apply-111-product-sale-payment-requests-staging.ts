@@ -1,6 +1,6 @@
 /**
- * Apply scripts/79_product_sale_payment_requests.sql to staging and verify.
- * Usage: npx tsx scripts/apply-79-product-sale-payment-requests-staging.ts
+ * Apply scripts/111_product_sale_payment_requests.sql to staging and verify.
+ * Usage: npx tsx scripts/apply-111-product-sale-payment-requests-staging.ts
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -22,7 +22,7 @@ if (!databaseUrl) {
 async function main() {
   const sqlPath = resolve(
     process.cwd(),
-    "scripts/79_product_sale_payment_requests.sql",
+    "scripts/111_product_sale_payment_requests.sql",
   );
   const sqlText = readFileSync(sqlPath, "utf8");
 
@@ -70,10 +70,10 @@ async function main() {
       JSON.stringify(
         {
           columns: table.rows.length,
-          column_names: table.rows.map((r) => r.column_name),
+          column_names: table.rows.map((r: Record<string, unknown>) => r.column_name),
           rls_enabled: rls.rows[0]?.rls_enabled ?? false,
-          policies: policies.rows.map((r) => r.polname),
-          triggers: trigger.rows.map((r) => r.tgname),
+          policies: policies.rows.map((r: Record<string, unknown>) => r.polname),
+          triggers: trigger.rows.map((r: Record<string, unknown>) => r.tgname),
         },
         null,
         2,
