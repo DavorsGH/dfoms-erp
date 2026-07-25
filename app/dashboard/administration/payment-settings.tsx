@@ -13,6 +13,8 @@ type AccountDetails = {
   accountLast4: string;
 };
 
+type SettlementAccountType = "bank" | "mobile_money";
+
 type PaymentSettingsProps = {
   initialStatus: PaystackSubaccountStatus;
   hidden: boolean;
@@ -27,22 +29,35 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
-let banksRequest: Promise<Bank[]> | null = null;
+const banksRequests = new Map<SettlementAccountType, Promise<Bank[]>>();
 
-function loadBanks() {
-  banksRequest ??= fetch("/api/billing-settings/paystack-banks").then(
+function loadBanks(accountType: SettlementAccountType) {
+  const existing = banksRequests.get(accountType);
+  if (existing) {
+    return existing;
+  }
+
+  const query =
+    accountType === "mobile_money" ? "?type=mobile_money" : "";
+  const request = fetch(`/api/billing-settings/paystack-banks${query}`).then(
     async (response) => {
       const payload = (await response.json().catch(() => null)) as
         | { banks?: Bank[]; error?: string }
         | null;
       if (!response.ok) {
-        banksRequest = null;
-        throw new Error(payload?.error ?? "Unable to load banks.");
+        banksRequests.delete(accountType);
+        throw new Error(
+          payload?.error ??
+            (accountType === "mobile_money"
+              ? "Unable to load mobile money providers."
+              : "Unable to load banks."),
+        );
       }
       return payload?.banks ?? [];
     },
   );
-  return banksRequest;
+  banksRequests.set(accountType, request);
+  return request;
 }
 
 function statusDisplay(status: PaystackSubaccountStatus) {
@@ -67,12 +82,23 @@ function statusDisplay(status: PaystackSubaccountStatus) {
   };
 }
 
+function accountTypeButtonClassName(selected: boolean) {
+  return [
+    "flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+    selected
+      ? "bg-[#0f2744] text-white"
+      : "bg-white text-slate-700 hover:bg-slate-50",
+  ].join(" ");
+}
+
 export default function PaymentSettings({
   initialStatus,
   hidden,
 }: PaymentSettingsProps) {
   const [status, setStatus] =
     useState<PaystackSubaccountStatus>(initialStatus);
+  const [accountType, setAccountType] =
+    useState<SettlementAccountType>("bank");
   const [banks, setBanks] = useState<Bank[]>([]);
   const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
@@ -93,8 +119,10 @@ export default function PaymentSettings({
 
   useEffect(() => {
     let cancelled = false;
+    setBanksLoading(true);
+    setError(null);
 
-    loadBanks()
+    loadBanks(accountType)
       .then((loadedBanks) => {
         if (!cancelled) {
           setBanks(loadedBanks);
@@ -103,10 +131,13 @@ export default function PaymentSettings({
       })
       .catch((loadError: unknown) => {
         if (!cancelled) {
+          setBanks([]);
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "Unable to load banks.",
+              : accountType === "mobile_money"
+                ? "Unable to load mobile money providers."
+                : "Unable to load banks.",
           );
           setBanksLoading(false);
         }
@@ -115,7 +146,7 @@ export default function PaymentSettings({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [accountType]);
 
   useEffect(() => {
     if (initialStatus !== "active") {
@@ -141,7 +172,7 @@ export default function PaymentSettings({
 
         if (!cancelled && payload?.account) {
           setAccountDetails({
-            bankName: payload.account.bank_name ?? "Bank",
+            bankName: payload.account.bank_name ?? "Settlement account",
             accountLast4: payload.account.account_last4 ?? "",
           });
         }
@@ -189,7 +220,9 @@ export default function PaymentSettings({
 
         if (!response.ok || !payload?.account_name) {
           setResolveError(
-            "Could not verify this account number - please check and try again",
+            accountType === "mobile_money"
+              ? "Could not verify this mobile money number - please check and try again"
+              : "Could not verify this account number - please check and try again",
           );
           return;
         }
@@ -201,7 +234,9 @@ export default function PaymentSettings({
           resolveFailure.name !== "AbortError"
         ) {
           setResolveError(
-            "Could not verify this account number - please check and try again",
+            accountType === "mobile_money"
+              ? "Could not verify this mobile money number - please check and try again"
+              : "Could not verify this account number - please check and try again",
           );
         }
       } finally {
@@ -215,7 +250,23 @@ export default function PaymentSettings({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [accountNumber, bankCode, editing]);
+  }, [accountNumber, accountType, bankCode, editing]);
+
+  function handleAccountTypeChange(nextType: SettlementAccountType) {
+    if (nextType === accountType) {
+      return;
+    }
+
+    setAccountType(nextType);
+    setBankCode("");
+    setAccountNumber("");
+    setAccountName("");
+    setBanks([]);
+    setResolveError(null);
+    setResolving(false);
+    setError(null);
+    setSuccess(null);
+  }
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -246,7 +297,9 @@ export default function PaymentSettings({
 
     const selectedBank = banks.find((bank) => bank.code === bankCode);
     setAccountDetails({
-      bankName: selectedBank?.name ?? "Bank",
+      bankName:
+        selectedBank?.name ??
+        (accountType === "mobile_money" ? "Mobile Money" : "Bank"),
       accountLast4: accountNumber.trim().slice(-4),
     });
     setStatus("active");
@@ -257,6 +310,7 @@ export default function PaymentSettings({
 
   function handleUpdate() {
     setEditing(true);
+    setAccountType("bank");
     setBankCode("");
     setAccountNumber("");
     setAccountName("");
@@ -267,6 +321,9 @@ export default function PaymentSettings({
   }
 
   const statusInfo = statusDisplay(status);
+  const isMobileMoney = accountType === "mobile_money";
+  const providerLabel = isMobileMoney ? "Mobile Money Provider" : "Bank";
+  const numberLabel = isMobileMoney ? "Mobile Money Number" : "Account Number";
 
   return (
     <div hidden={hidden} className="max-w-4xl space-y-6">
@@ -311,7 +368,9 @@ export default function PaymentSettings({
                 {accountDetails.bankName}
               </p>
               <p className="mt-1 text-sm text-slate-600">
-                Account ending in {accountDetails.accountLast4}
+                {accountDetails.accountLast4
+                  ? `Number ending in ${accountDetails.accountLast4}`
+                  : "Settlement number unavailable"}
               </p>
             </div>
           ) : (
@@ -343,11 +402,43 @@ export default function PaymentSettings({
           </div>
 
           <div>
+            <p className="mb-1 block text-sm font-medium text-slate-700">
+              Account Type
+            </p>
+            <div
+              className="inline-flex w-full max-w-md rounded-md border border-slate-300 bg-slate-100 p-1"
+              role="group"
+              aria-label="Account Type"
+            >
+              <button
+                type="button"
+                aria-pressed={accountType === "bank"}
+                onClick={() => handleAccountTypeChange("bank")}
+                disabled={saving}
+                className={accountTypeButtonClassName(accountType === "bank")}
+              >
+                Bank
+              </button>
+              <button
+                type="button"
+                aria-pressed={accountType === "mobile_money"}
+                onClick={() => handleAccountTypeChange("mobile_money")}
+                disabled={saving}
+                className={accountTypeButtonClassName(
+                  accountType === "mobile_money",
+                )}
+              >
+                Mobile Money
+              </button>
+            </div>
+          </div>
+
+          <div>
             <label
               htmlFor="payment_bank"
               className="mb-1 block text-sm font-medium text-slate-700"
             >
-              Bank
+              {providerLabel}
             </label>
             <select
               id="payment_bank"
@@ -362,7 +453,13 @@ export default function PaymentSettings({
               className={inputClassName}
             >
               <option value="">
-                {banksLoading ? "Loading banks…" : "Select a bank"}
+                {banksLoading
+                  ? isMobileMoney
+                    ? "Loading providers…"
+                    : "Loading banks…"
+                  : isMobileMoney
+                    ? "Select a provider"
+                    : "Select a bank"}
               </option>
               {banks.map((bank) => (
                 <option key={bank.code} value={bank.code}>
@@ -377,7 +474,7 @@ export default function PaymentSettings({
               htmlFor="payment_account_number"
               className="mb-1 block text-sm font-medium text-slate-700"
             >
-              Account Number
+              {numberLabel}
             </label>
             <input
               id="payment_account_number"

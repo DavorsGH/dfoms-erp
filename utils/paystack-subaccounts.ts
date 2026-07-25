@@ -21,16 +21,22 @@ type PaystackResponse<T> = {
   data?: T;
 };
 
-let banksCache:
-  | {
-      expiresAt: number;
-      promise: Promise<PaystackResult<PaystackBank[]>>;
-    }
-  | undefined;
+const banksCacheByType = new Map<
+  string,
+  {
+    expiresAt: number;
+    promise: Promise<PaystackResult<PaystackBank[]>>;
+  }
+>();
 
 type PaystackResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+function banksCacheKey(type?: string): string {
+  const normalized = type?.trim() ?? "";
+  return normalized || "default";
+}
 
 function getAuthorizationHeaders():
   | { ok: true; headers: { Authorization: string } }
@@ -88,10 +94,21 @@ async function paystackRequest<T>(
   }
 }
 
-async function fetchPaystackBanks(): Promise<PaystackResult<PaystackBank[]>> {
+async function fetchPaystackBanks(
+  type?: string,
+): Promise<PaystackResult<PaystackBank[]>> {
+  const params = new URLSearchParams({
+    country: "ghana",
+    currency: "GHS",
+  });
+  const normalizedType = type?.trim();
+  if (normalizedType) {
+    params.set("type", normalizedType);
+  }
+
   const result = await paystackRequest<
     Array<{ name?: string; code?: string; active?: boolean }>
-  >("/bank?country=ghana&currency=GHS");
+  >(`/bank?${params.toString()}`);
 
   if (!result.ok) {
     return result;
@@ -115,17 +132,21 @@ async function fetchPaystackBanks(): Promise<PaystackResult<PaystackBank[]>> {
   };
 }
 
-export function listPaystackBanks(): Promise<PaystackResult<PaystackBank[]>> {
+export function listPaystackBanks(
+  type?: string,
+): Promise<PaystackResult<PaystackBank[]>> {
+  const key = banksCacheKey(type);
   const now = Date.now();
-  if (banksCache && banksCache.expiresAt > now) {
-    return banksCache.promise;
+  const cached = banksCacheByType.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
   }
 
-  const promise = fetchPaystackBanks();
-  banksCache = { expiresAt: now + BANKS_TTL_MS, promise };
+  const promise = fetchPaystackBanks(type);
+  banksCacheByType.set(key, { expiresAt: now + BANKS_TTL_MS, promise });
   void promise.then((result) => {
     if (!result.ok) {
-      banksCache = undefined;
+      banksCacheByType.delete(key);
     }
   });
   return promise;

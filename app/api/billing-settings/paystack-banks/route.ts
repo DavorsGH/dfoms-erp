@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import { listPaystackBanks } from "@/utils/paystack-subaccounts";
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
     return auth.response;
   }
 
-  const result = await listPaystackBanks();
+  const type = new URL(request.url).searchParams.get("type")?.trim() || undefined;
+  const result = await listPaystackBanks(type);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 502 });
   }
