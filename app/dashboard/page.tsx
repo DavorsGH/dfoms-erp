@@ -215,7 +215,7 @@ export default async function DashboardPage() {
   const { data: incomeEntries, error: incomeError } = await supabase
     .from("income_register")
     .select(
-      "tenant_id, date, amount, amount_received, outstanding_balance, service_category",
+      "tenant_id, date, amount, amount_received, outstanding_balance, wht_amount, service_category",
     )
     .order("date", { ascending: true });
 

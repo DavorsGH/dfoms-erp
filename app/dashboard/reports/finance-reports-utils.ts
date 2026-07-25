@@ -14,6 +14,7 @@ import {
 import type { IncomeRegisterEntry } from "../finance/income-register-utils";
 import {
   getIncomeCustomerDisplayName,
+  getIncomeEntryOutstanding,
   isActiveIncomeForReporting,
   normalizeIncomeRegisterEntry,
 } from "../finance/income-register-utils";
@@ -135,10 +136,7 @@ function getOutstandingBalance(entry: IncomeRegisterEntry): number {
     return Number(entry.outstanding_balance) || 0;
   }
 
-  return calculateOutstanding(
-    Number(entry.amount) || 0,
-    Number(entry.amount_received) || 0,
-  );
+  return getIncomeEntryOutstanding(entry);
 }
 
 export function getAgingBucket(daysOverdue: number): AgingBucketKey {

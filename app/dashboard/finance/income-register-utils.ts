@@ -33,6 +33,12 @@ export type IncomeRegisterEntry = {
   payment_status: string;
   due_date: string;
   notes: string | null;
+  net_of_tax_amount?: number | null;
+  output_tax_component?: "vat_bundle" | "vfrs" | null;
+  output_vat_amount?: number | null;
+  wht_rate?: number | null;
+  wht_amount?: number | null;
+  tax_inclusive?: boolean | null;
   product_id: string | null;
   sale_quantity: number | null;
   unit_price: number | null;
@@ -49,6 +55,10 @@ export const SERVICE_INCOME_REGISTER_SELECT =
 
 export const RECEIVABLES_INCOME_SELECT = SERVICE_INCOME_REGISTER_SELECT;
 
+function toNullableNumber(value: unknown): number | null {
+  return value == null ? null : Number(value) || 0;
+}
+
 export function normalizeIncomeRegisterEntry(
   raw: IncomeRegisterEntry,
 ): IncomeRegisterEntry {
@@ -57,6 +67,12 @@ export function normalizeIncomeRegisterEntry(
     entry_type: raw.entry_type ?? "service",
     sale_status: raw.sale_status ?? "active",
     service_category: raw.service_category ?? null,
+    net_of_tax_amount: toNullableNumber(raw.net_of_tax_amount),
+    output_tax_component: raw.output_tax_component ?? null,
+    output_vat_amount: toNullableNumber(raw.output_vat_amount),
+    wht_rate: toNullableNumber(raw.wht_rate),
+    wht_amount: toNullableNumber(raw.wht_amount),
+    tax_inclusive: raw.tax_inclusive ?? true,
     sale_quantity:
       raw.sale_quantity == null ? null : Number(raw.sale_quantity) || 0,
     unit_price: raw.unit_price == null ? null : Number(raw.unit_price) || 0,
@@ -132,6 +148,38 @@ export function calculateOutstanding(
   amountReceived: number,
 ): number {
   return amount - amountReceived;
+}
+
+/**
+ * Amount − Amount Received − WHT Amount, clamped at zero.
+ *
+ * WHT the customer withholds is remitted to GRA on our behalf, so it is never
+ * collectable from the customer: an invoice settled net of WHT is fully paid and
+ * must show a zero outstanding balance.
+ */
+export function calculateIncomeOutstanding(
+  amount: number,
+  amountReceived: number,
+  whtAmount: number = 0,
+): number {
+  const outstanding =
+    (Number(amount) || 0) -
+    (Number(amountReceived) || 0) -
+    (Number(whtAmount) || 0);
+
+  return Math.max(0, Math.round(outstanding * 100) / 100);
+}
+
+export function getIncomeEntryOutstanding(entry: {
+  amount: number;
+  amount_received: number;
+  wht_amount?: number | null;
+}): number {
+  return calculateIncomeOutstanding(
+    Number(entry.amount) || 0,
+    Number(entry.amount_received) || 0,
+    Number(entry.wht_amount) || 0,
+  );
 }
 
 export function formatDate(value: string): string {

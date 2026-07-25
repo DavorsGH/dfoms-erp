@@ -170,7 +170,7 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("income_register")
       .select(
-        "date, amount, amount_received, outstanding_balance, service_category, entry_type, sale_status",
+        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status",
       )
       .order("date", { ascending: true }),
     supabase

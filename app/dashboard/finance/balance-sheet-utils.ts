@@ -21,7 +21,10 @@ import {
   type ProfitLossIncomeEntry,
 } from "./profit-loss-utils";
 import { getCurrentFinancialYear } from "./finance-year-utils";
-import { isActiveIncomeForReporting } from "./income-register-utils";
+import {
+  getIncomeEntryOutstanding,
+  isActiveIncomeForReporting,
+} from "./income-register-utils";
 import {
   buildClosingCashByMonth,
   buildMonthlyCashComponents,
@@ -64,6 +67,7 @@ export type BalanceSheetIncomeEntry = {
   amount: number;
   amount_received: number;
   outstanding_balance: number | null;
+  wht_amount?: number | null;
   service_category: string;
   entry_type?: "service" | "product_sale" | null;
   sale_status?: "active" | "voided" | null;
@@ -117,10 +121,7 @@ function getOutstandingBalance(entry: BalanceSheetIncomeEntry): number {
     return Number(entry.outstanding_balance) || 0;
   }
 
-  return Math.max(
-    (Number(entry.amount) || 0) - (Number(entry.amount_received) || 0),
-    0,
-  );
+  return getIncomeEntryOutstanding(entry);
 }
 
 function getPayableBalance(entry: BalanceSheetAccountsPayableEntry): number {

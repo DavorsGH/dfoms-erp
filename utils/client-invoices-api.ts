@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { calculateIncomeOutstanding } from "@/app/dashboard/finance/income-register-utils";
 import {
   AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT,
   CLIENT_INVOICE_HEADER_SELECT,
@@ -270,7 +271,15 @@ async function syncIncomeRegisterFromClientInvoice(
       : invoice.status === "partial"
         ? toNumber(invoice.amount_received)
         : 0;
-  const outstandingBalance = amount - amountReceived;
+  // total_amount_due = subtotal + tax_due, so the Income Register amount is
+  // tax-inclusive and its net-of-tax base is the invoice subtotal.
+  const outputVatAmount = roundMoney(toNumber(invoice.tax_due));
+  const whtAmount = roundMoney(toNumber(invoice.wht_amount));
+  const outstandingBalance = calculateIncomeOutstanding(
+    amount,
+    amountReceived,
+    whtAmount,
+  );
 
   let paymentStatus: string;
   if (invoice.status === "paid") {
@@ -297,6 +306,12 @@ async function syncIncomeRegisterFromClientInvoice(
     amount,
     amount_received: amountReceived,
     outstanding_balance: outstandingBalance,
+    tax_inclusive: true,
+    net_of_tax_amount: roundMoney(amount - outputVatAmount),
+    output_tax_component: outputVatAmount > 0 ? ("vat_bundle" as const) : null,
+    output_vat_amount: outputVatAmount,
+    wht_rate: roundMoney(toNumber(invoice.wht_rate)) || null,
+    wht_amount: whtAmount,
     payment_status: paymentStatus,
     due_date: invoice.due_date ?? invoice.invoice_date,
   };

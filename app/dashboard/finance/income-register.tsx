@@ -1,18 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { ClientEntry } from "../operations/clients-utils";
 import type { ServiceType } from "../service-types";
 import {
-  calculateOutstanding,
+  calculateIncomeOutstanding,
   formatDate,
   formatGHS,
   getIncomeCustomerDisplayName,
+  getIncomeEntryOutstanding,
   SERVICE_INCOME_REGISTER_SELECT,
   normalizeIncomeRegisterEntry,
   type IncomeRegisterEntry,
 } from "./income-register-utils";
+import {
+  computeOutputTax,
+  computeWhtAmount,
+  formatOutputTaxHint,
+  resolveDefaultWhtRate,
+  roundTaxAmount,
+  roundTaxRate,
+  selectTaxRateOptions,
+  type TaxRateCatalogEntry,
+  type TaxSettings,
+} from "./tax-utils";
+import {
+  deleteTaxLedgerEntriesForSource,
+  syncIncomeRegisterTaxLedger,
+} from "./tax-ledger-sync";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -28,10 +44,31 @@ type IncomeRegisterProps = {
   initialEntries: IncomeRegisterEntry[];
   initialServiceTypes: ServiceType[];
   initialClients: ClientEntry[];
+  taxSettings: TaxSettings | null;
+  taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
 };
 
-const emptyForm = {
+type IncomeFormState = {
+  date: string;
+  invoice_no: string;
+  client_id: string;
+  customer_name: string;
+  service_category: string;
+  description: string;
+  amount: string;
+  amount_received: string;
+  wht_rate: string;
+  wht_amount: string;
+  tax_inclusive: boolean;
+  payment_status: string;
+  due_date: string;
+  notes: string;
+};
+
+type IncomeFormTextField = Exclude<keyof IncomeFormState, "tax_inclusive">;
+
+const emptyForm: IncomeFormState = {
   date: "",
   invoice_no: "",
   client_id: "",
@@ -40,6 +77,9 @@ const emptyForm = {
   description: "",
   amount: "",
   amount_received: "",
+  wht_rate: "0",
+  wht_amount: "",
+  tax_inclusive: true,
   payment_status: "",
   due_date: "",
   notes: "",
@@ -47,13 +87,22 @@ const emptyForm = {
 
 const PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"];
 
+// Income Register rows are always services; product sales are captured in CRM.
+const INCOME_REGISTER_ENTRY_TYPE = "service" as const;
+
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
+
+function formatRateValue(rate: number): string {
+  return String(roundTaxRate(rate));
+}
 
 export default function IncomeRegister({
   initialEntries,
   initialServiceTypes,
   initialClients,
+  taxSettings,
+  taxRateCatalog,
   fetchError,
 }: IncomeRegisterProps) {
   const supabase = createClient();
@@ -65,8 +114,30 @@ export default function IncomeRegister({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  // Once the user types a WHT amount we stop overwriting it from Amount × rate.
+  const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+
+  const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
+
+  const whtRateOptions = useMemo(() => {
+    const options = new Map<string, string>([["0", "No WHT (0%)"]]);
+
+    for (const rate of selectTaxRateOptions(taxRateCatalog, "wht")) {
+      options.set(formatRateValue(rate.rate_pct), rate.label);
+    }
+
+    for (const rate of [defaultWhtRate, form.wht_rate]) {
+      if (rate && rate !== "0" && !options.has(rate)) {
+        options.set(rate, `WHT ${rate}%`);
+      }
+    }
+
+    return [...options.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => Number(left.value) - Number(right.value));
+  }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
 
   useEffect(() => {
     if (!showForm) {
@@ -114,18 +185,21 @@ export default function IncomeRegister({
 
   function openAddForm() {
     setEditingId(null);
-    setForm(emptyForm);
+    setWhtAmountEdited(false);
+    setForm({ ...emptyForm, wht_rate: defaultWhtRate });
     setShowForm(true);
   }
 
   function closeForm() {
     setEditingId(null);
+    setWhtAmountEdited(false);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(entry: IncomeRegisterEntry) {
     setEditingId(entry.id);
+    setWhtAmountEdited(false);
     setForm({
       date: toDateInputValue(entry.date),
       invoice_no: entry.invoice_no,
@@ -135,6 +209,9 @@ export default function IncomeRegister({
       description: entry.description ?? "",
       amount: String(entry.amount),
       amount_received: String(entry.amount_received),
+      wht_rate: formatRateValue(entry.wht_rate ?? 0),
+      wht_amount: entry.wht_amount == null ? "" : String(entry.wht_amount),
+      tax_inclusive: entry.tax_inclusive ?? true,
       payment_status: entry.payment_status,
       due_date: toDateInputValue(entry.due_date),
       notes: entry.notes ?? "",
@@ -161,6 +238,19 @@ export default function IncomeRegister({
       return;
     }
 
+    // The income row is gone, so its open tax ledger legs are dropped too.
+    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
+      supabase,
+      "income_register",
+      id,
+    );
+
+    if (ledgerError) {
+      setError(
+        `Entry deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
+      );
+    }
+
     if (editingId === id) {
       closeForm();
     }
@@ -174,9 +264,21 @@ export default function IncomeRegister({
     setLoading(true);
     setError(null);
 
-    const amount = Number(form.amount);
-    const amountReceived = Number(form.amount_received);
-    const outstandingBalance = calculateOutstanding(amount, amountReceived);
+    const amount = Number(form.amount) || 0;
+    const amountReceived = Number(form.amount_received) || 0;
+    const whtRate = Number(form.wht_rate) || 0;
+    const whtAmount = Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0));
+    const outputTax = computeOutputTax({
+      amount,
+      entryType: INCOME_REGISTER_ENTRY_TYPE,
+      taxInclusive: form.tax_inclusive,
+      settings: taxSettings,
+    });
+    const outstandingBalance = calculateIncomeOutstanding(
+      amount,
+      amountReceived,
+      whtAmount,
+    );
     const clientId = form.client_id.trim() || null;
     const otherPayerName = form.customer_name.trim() || null;
 
@@ -191,39 +293,131 @@ export default function IncomeRegister({
       invoice_no: form.invoice_no,
       client_id: clientId,
       customer_name: clientId ? null : otherPayerName,
-      entry_type: "service" as const,
+      entry_type: INCOME_REGISTER_ENTRY_TYPE,
       service_category: form.service_category,
       description: form.description || null,
       amount,
       amount_received: amountReceived,
       outstanding_balance: outstandingBalance,
+      tax_inclusive: form.tax_inclusive,
+      net_of_tax_amount: outputTax.netOfTaxAmount,
+      output_tax_component: outputTax.component,
+      output_vat_amount: outputTax.outputVatAmount,
+      wht_rate: whtRate > 0 ? whtRate : null,
+      wht_amount: whtAmount,
       payment_status: form.payment_status,
       due_date: form.due_date,
       notes: form.notes || null,
     };
 
-    const { error: saveError } = editingId
-      ? await supabase.from("income_register").update(payload).eq("id", editingId)
-      : await supabase.from("income_register").insert(payload);
+    let savedId = editingId;
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+    if (editingId) {
+      const { error: updateError } = await supabase
+        .from("income_register")
+        .update(payload)
+        .eq("id", editingId);
+
+      if (updateError) {
+        setError(updateError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const { data: inserted, error: insertError } = await supabase
+        .from("income_register")
+        .insert(payload)
+        .select("id")
+        .single();
+
+      if (insertError || !inserted) {
+        setError(insertError?.message ?? "Unable to save the income entry.");
+        setLoading(false);
+        return;
+      }
+
+      savedId = (inserted as { id: string }).id;
     }
+
+    const counterpartyName = clientId
+      ? (initialClients.find((client) => client.client_id === clientId)
+          ?.client_name ?? null)
+      : otherPayerName;
+
+    const { error: ledgerError } = await syncIncomeRegisterTaxLedger(supabase, {
+      sourceId: savedId as string,
+      entryDate: form.date,
+      amount,
+      whtRatePct: whtRate > 0 ? whtRate : null,
+      whtAmount,
+      outputTaxComponent: outputTax.component,
+      outputTaxRatePct: outputTax.component ? outputTax.ratePct : null,
+      outputVatAmount: outputTax.outputVatAmount,
+      counterpartyName,
+      notes: form.invoice_no ? `Invoice ${form.invoice_no}` : null,
+    });
 
     closeForm();
     await refreshEntries();
+
+    if (ledgerError) {
+      setError(
+        `Entry saved, but the tax ledger could not be updated: ${ledgerError}`,
+      );
+    }
+
     setLoading(false);
   }
 
-  function updateField(field: keyof typeof emptyForm, value: string) {
+  function updateField(field: IncomeFormTextField, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  const previewOutstanding = calculateOutstanding(
-    Number(form.amount) || 0,
+  function updateAmount(value: string) {
+    setForm((current) => ({
+      ...current,
+      amount: value,
+      wht_amount: whtAmountEdited
+        ? current.wht_amount
+        : formatWhtAmount(value, current.wht_rate),
+    }));
+  }
+
+  function updateWhtRate(value: string) {
+    // Picking a rate is an explicit instruction, so it always re-derives the amount.
+    setWhtAmountEdited(false);
+    setForm((current) => ({
+      ...current,
+      wht_rate: value,
+      wht_amount: formatWhtAmount(current.amount, value),
+    }));
+  }
+
+  function updateWhtAmount(value: string) {
+    setWhtAmountEdited(true);
+    setForm((current) => ({ ...current, wht_amount: value }));
+  }
+
+  const amountValue = Number(form.amount) || 0;
+  const previewWhtAmount = Math.max(
+    0,
+    roundTaxAmount(Number(form.wht_amount) || 0),
+  );
+  const previewOutputTax = computeOutputTax({
+    amount: amountValue,
+    entryType: INCOME_REGISTER_ENTRY_TYPE,
+    taxInclusive: form.tax_inclusive,
+    settings: taxSettings,
+  });
+  const outputTaxHint = formatOutputTaxHint(
+    previewOutputTax,
+    form.tax_inclusive,
+    formatGHS,
+  );
+  const previewOutstanding = calculateIncomeOutstanding(
+    amountValue,
     Number(form.amount_received) || 0,
+    previewWhtAmount,
   );
 
   return (
@@ -338,9 +532,26 @@ export default function IncomeRegister({
                   step="0.01"
                   required
                   value={form.amount}
-                  onChange={(e) => updateField("amount", e.target.value)}
+                  onChange={(e) => updateAmount(e.target.value)}
                   className={inputClassName}
                 />
+                <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={form.tax_inclusive}
+                    onChange={(e) =>
+                      setForm((current) => ({
+                        ...current,
+                        tax_inclusive: e.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+                  />
+                  Amount includes output tax
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  {outputTaxHint ?? "No output tax on this entry."}
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -355,6 +566,39 @@ export default function IncomeRegister({
                   onChange={(e) => updateField("amount_received", e.target.value)}
                   className={inputClassName}
                 />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  WHT Rate
+                </label>
+                <select
+                  value={form.wht_rate}
+                  onChange={(e) => updateWhtRate(e.target.value)}
+                  className={inputClassName}
+                >
+                  {whtRateOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  WHT Amount
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.wht_amount}
+                  onChange={(e) => updateWhtAmount(e.target.value)}
+                  className={inputClassName}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Auto-calculated from Amount × rate. Edit to match the client&apos;s
+                  withholding certificate.
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -414,6 +658,9 @@ export default function IncomeRegister({
               Outstanding Balance:{" "}
               <span className="font-medium text-[#0f2744]">
                 {formatGHS(previewOutstanding)}
+              </span>{" "}
+              <span className="text-xs text-slate-500">
+                (Amount − Amount Received − WHT Amount)
               </span>
             </p>
 
@@ -452,6 +699,7 @@ export default function IncomeRegister({
               <th className={scrollableTableThClassName}>Service Category</th>
               <th className={scrollableTableThClassName}>Amount</th>
               <th className={scrollableTableThClassName}>Amount Received</th>
+              <th className={scrollableTableThClassName}>WHT Amount</th>
               <th className={scrollableTableThClassName}>Outstanding Balance</th>
               <th className={scrollableTableThClassName}>Payment Status</th>
               <th className={scrollableTableThClassName}>Due Date</th>
@@ -462,7 +710,7 @@ export default function IncomeRegister({
             {entries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={11}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No income register entries yet.
@@ -470,10 +718,7 @@ export default function IncomeRegister({
               </tr>
             ) : (
               entries.map((entry, index) => {
-                const outstanding = calculateOutstanding(
-                  entry.amount,
-                  entry.amount_received,
-                );
+                const outstanding = getIncomeEntryOutstanding(entry);
 
                 return (
                   <tr
@@ -489,6 +734,9 @@ export default function IncomeRegister({
                     <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
                     <td className="px-4 py-3">
                       {formatGHS(entry.amount_received)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatGHS(entry.wht_amount ?? 0)}
                     </td>
                     <td className="px-4 py-3">{formatGHS(outstanding)}</td>
                     <td className="px-4 py-3">{entry.payment_status}</td>
@@ -507,4 +755,13 @@ export default function IncomeRegister({
       </ScrollableTable>
     </div>
   );
+}
+
+function formatWhtAmount(amount: string, ratePct: string): string {
+  const rate = Number(ratePct) || 0;
+  if (rate <= 0) {
+    return "";
+  }
+
+  return String(computeWhtAmount(Number(amount) || 0, rate));
 }
