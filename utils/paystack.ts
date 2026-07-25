@@ -24,24 +24,6 @@ function requireSecretKey():
     return { ok: false, error: "PAYSTACK_SECRET_KEY has an unexpected format." };
   }
 
-  // TEMPORARY DEBUG — remove after diagnosing Paystack "Invalid key"
-  // Server-side only (this module imports "server-only"). Never log the full key.
-  {
-    const mode = secretKey.startsWith("sk_live_")
-      ? "sk_live_"
-      : secretKey.startsWith("sk_test_")
-        ? "sk_test_"
-        : "unknown";
-    console.info(
-      "[TEMPORARY DEBUG paystack] PAYSTACK_SECRET_KEY in use:",
-      `prefix=${secretKey.slice(0, 12)}`,
-      `suffix=${secretKey.slice(-4)}`,
-      `length=${secretKey.length}`,
-      `mode=${mode}`,
-      `source=process.env (Next loads .env.[NODE_ENV].local → .env.local → .env.[NODE_ENV] → .env; first-wins; .env.staging.local NOT auto-loaded)`,
-    );
-  }
-
   return { ok: true, secretKey };
 }
 

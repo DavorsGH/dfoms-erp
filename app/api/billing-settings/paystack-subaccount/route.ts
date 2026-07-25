@@ -107,10 +107,11 @@ export async function POST(request: Request) {
   }
 
   if (!resolvedAccount.ok) {
-    return NextResponse.json(
-      { error: "Could not verify this account number - please check and try again" },
-      { status: 422 },
-    );
+    const status =
+      resolvedAccount.httpStatus && resolvedAccount.httpStatus >= 400
+        ? resolvedAccount.httpStatus
+        : 422;
+    return NextResponse.json({ error: resolvedAccount.error }, { status });
   }
 
   const created = await createPaystackSubaccount({

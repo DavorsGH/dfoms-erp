@@ -21,7 +21,9 @@ export async function GET(request: Request) {
 
   const result = await resolvePaystackAccount({ accountNumber, bankCode });
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 422 });
+    const status =
+      result.httpStatus && result.httpStatus >= 400 ? result.httpStatus : 422;
+    return NextResponse.json({ error: result.error }, { status });
   }
 
   return NextResponse.json({ account_name: result.data.accountName });

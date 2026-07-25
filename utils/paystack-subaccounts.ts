@@ -31,7 +31,43 @@ const banksCacheByType = new Map<
 
 type PaystackResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  | { ok: false; error: string; httpStatus?: number };
+
+/** Ghana MoMo provider codes from Paystack List Banks (`type=mobile_money`). */
+export const GHANA_MOMO_BANK_CODES = new Set(["MTN", "VOD", "ATL"]);
+
+/**
+ * Normalize Ghana MoMo numbers for Paystack resolve/subaccount APIs.
+ * Paystack docs use local 10-digit form (e.g. `0551234987`), not `+233…`.
+ */
+export function normalizePaystackGhanaMomoNumber(accountNumber: string): string {
+  const digits = accountNumber.replace(/\D/g, "");
+  if (digits.startsWith("233") && digits.length === 12) {
+    return `0${digits.slice(3)}`;
+  }
+  if (/^\d{9}$/.test(digits)) {
+    return `0${digits}`;
+  }
+  if (digits.startsWith("0") && digits.length === 10) {
+    return digits;
+  }
+  return accountNumber.trim();
+}
+
+export function isGhanaMomoBankCode(bankCode: string): boolean {
+  return GHANA_MOMO_BANK_CODES.has(bankCode.trim().toUpperCase());
+}
+
+function prepareSettlementAccountNumber(
+  accountNumber: string,
+  bankCode: string,
+): string {
+  const trimmed = accountNumber.trim();
+  if (!isGhanaMomoBankCode(bankCode)) {
+    return trimmed;
+  }
+  return normalizePaystackGhanaMomoNumber(trimmed);
+}
 
 function banksCacheKey(type?: string): string {
   const normalized = type?.trim() ?? "";
@@ -77,10 +113,17 @@ async function paystackRequest<T>(
       | null;
 
     if (!response.ok || payload?.status === false || payload?.data === undefined) {
+      const error =
+        payload?.message ?? `Paystack request failed (${response.status}).`;
+      if (response.status >= 400) {
+        console.warn(
+          `[paystack] ${init?.method ?? "GET"} ${path} → HTTP ${response.status}: ${error}`,
+        );
+      }
       return {
         ok: false,
-        error:
-          payload?.message ?? `Paystack request failed (${response.status}).`,
+        error,
+        httpStatus: response.status,
       };
     }
 
@@ -156,8 +199,13 @@ export async function resolvePaystackAccount(options: {
   accountNumber: string;
   bankCode: string;
 }): Promise<PaystackResult<{ accountName: string }>> {
+  const bankCode = options.bankCode.trim();
+  const accountNumber = prepareSettlementAccountNumber(
+    options.accountNumber,
+    bankCode,
+  );
   const result = await paystackRequest<{ account_name?: string }>(
-    `/bank/resolve?account_number=${encodeURIComponent(options.accountNumber)}&bank_code=${encodeURIComponent(options.bankCode)}`,
+    `/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`,
   );
 
   if (!result.ok) {
@@ -177,6 +225,11 @@ export async function createPaystackSubaccount(options: {
   bankCode: string;
   accountNumber: string;
 }): Promise<PaystackResult<{ subaccountCode: string }>> {
+  const bankCode = options.bankCode.trim();
+  const accountNumber = prepareSettlementAccountNumber(
+    options.accountNumber,
+    bankCode,
+  );
   const result = await paystackRequest<{ subaccount_code?: string }>(
     "/subaccount",
     {
@@ -184,8 +237,8 @@ export async function createPaystackSubaccount(options: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         business_name: options.businessName,
-        settlement_bank: options.bankCode,
-        account_number: options.accountNumber,
+        settlement_bank: bankCode,
+        account_number: accountNumber,
         percentage_charge: 0,
       }),
     },

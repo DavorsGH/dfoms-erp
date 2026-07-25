@@ -91,6 +91,29 @@ function accountTypeButtonClassName(selected: boolean) {
   ].join(" ");
 }
 
+/** True when the value looks like a complete Ghana MoMo number (local or +233). */
+function isCompleteGhanaMomoNumber(value: string): boolean {
+  const digits = value.replace(/\D/g, "");
+  return (
+    (digits.startsWith("0") && digits.length === 10) ||
+    (digits.startsWith("233") && digits.length === 12) ||
+    digits.length === 9
+  );
+}
+
+function resolveFailureMessage(
+  accountType: SettlementAccountType,
+  apiError: string | undefined,
+): string {
+  const message = apiError?.trim();
+  if (message) {
+    return message;
+  }
+  return accountType === "mobile_money"
+    ? "Could not verify this mobile money number - please check and try again"
+    : "Could not verify this account number - please check and try again";
+}
+
 export default function PaymentSettings({
   initialStatus,
   hidden,
@@ -202,6 +225,14 @@ export default function PaymentSettings({
       return;
     }
 
+    // Avoid burning Paystack test-mode live-resolve quota on incomplete MoMo input.
+    if (
+      accountType === "mobile_money" &&
+      !isCompleteGhanaMomoNumber(accountNumber)
+    ) {
+      return;
+    }
+
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       setResolving(true);
@@ -215,14 +246,12 @@ export default function PaymentSettings({
           { signal: controller.signal },
         );
         const payload = (await response.json().catch(() => null)) as
-          | { account_name?: string }
+          | { account_name?: string; error?: string }
           | null;
 
         if (!response.ok || !payload?.account_name) {
           setResolveError(
-            accountType === "mobile_money"
-              ? "Could not verify this mobile money number - please check and try again"
-              : "Could not verify this account number - please check and try again",
+            resolveFailureMessage(accountType, payload?.error),
           );
           return;
         }
@@ -233,18 +262,14 @@ export default function PaymentSettings({
           !(resolveFailure instanceof DOMException) ||
           resolveFailure.name !== "AbortError"
         ) {
-          setResolveError(
-            accountType === "mobile_money"
-              ? "Could not verify this mobile money number - please check and try again"
-              : "Could not verify this account number - please check and try again",
-          );
+          setResolveError(resolveFailureMessage(accountType, undefined));
         }
       } finally {
         if (!controller.signal.aborted) {
           setResolving(false);
         }
       }
-    }, 500);
+    }, accountType === "mobile_money" ? 800 : 500);
 
     return () => {
       window.clearTimeout(timeout);
@@ -489,8 +514,17 @@ export default function PaymentSettings({
                 setResolving(false);
               }}
               disabled={saving}
+              placeholder={
+                isMobileMoney ? "e.g. 054XXXXXXX (10 digits)" : undefined
+              }
               className={inputClassName}
             />
+            {isMobileMoney ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Use the Ghana number registered to the wallet (leading 0). Country
+                code 233 is also accepted.
+              </p>
+            ) : null}
           </div>
 
           <div>
