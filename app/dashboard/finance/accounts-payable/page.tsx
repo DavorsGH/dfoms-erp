@@ -2,8 +2,19 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import type { NamedLookup } from "../../lookup-types";
 import AccountsPayable from "../accounts-payable";
-import type { AccountsPayableEntry } from "../accounts-payable-utils";
+import {
+  normalizeAccountsPayableEntry,
+  type AccountsPayableEntry,
+} from "../accounts-payable-utils";
 import FinanceNav from "../finance-nav";
+import {
+  normalizeTaxRateCatalogEntry,
+  normalizeTaxSettings,
+  TAX_RATE_CATALOG_SELECT,
+  TAX_SETTINGS_SELECT,
+  type TaxRateCatalogEntry,
+  type TaxSettings,
+} from "../tax-utils";
 
 export default async function AccountsPayablePage() {
   const cookieStore = await cookies();
@@ -13,6 +24,8 @@ export default async function AccountsPayablePage() {
     { data, error },
     { data: expenseCategories, error: expenseCategoriesError },
     { data: expenseSubcategories, error: expenseSubcategoriesError },
+    { data: taxSettings, error: taxSettingsError },
+    { data: taxRateCatalog, error: taxRateCatalogError },
   ] = await Promise.all([
     supabase
       .from("accounts_payable")
@@ -26,12 +39,20 @@ export default async function AccountsPayablePage() {
       .from("expense_subcategories")
       .select("name")
       .order("name", { ascending: true }),
+    supabase.from("tax_settings").select(TAX_SETTINGS_SELECT).limit(1).maybeSingle(),
+    supabase
+      .from("tax_rate_catalog")
+      .select(TAX_RATE_CATALOG_SELECT)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true }),
   ]);
 
   const fetchError =
     error?.message ??
     expenseCategoriesError?.message ??
     expenseSubcategoriesError?.message ??
+    taxSettingsError?.message ??
+    taxRateCatalogError?.message ??
     null;
 
   return (
@@ -42,10 +63,20 @@ export default async function AccountsPayablePage() {
         Accounts Payable
       </h2>
       <AccountsPayable
-        initialEntries={(data as AccountsPayableEntry[] | null) ?? []}
+        initialEntries={
+          (data as AccountsPayableEntry[] | null)?.map((entry) =>
+            normalizeAccountsPayableEntry(entry),
+          ) ?? []
+        }
         initialExpenseCategories={(expenseCategories as NamedLookup[] | null) ?? []}
         initialExpenseSubcategories={
           (expenseSubcategories as NamedLookup[] | null) ?? []
+        }
+        taxSettings={normalizeTaxSettings(taxSettings as TaxSettings | null)}
+        taxRateCatalog={
+          (taxRateCatalog as TaxRateCatalogEntry[] | null)?.map((entry) =>
+            normalizeTaxRateCatalogEntry(entry),
+          ) ?? []
         }
         fetchError={fetchError}
       />

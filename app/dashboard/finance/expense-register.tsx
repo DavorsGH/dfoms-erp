@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { mapApproverRows } from "../approver-utils";
 import type { Approver, NamedLookup } from "../lookup-types";
@@ -8,9 +8,25 @@ import {
   calculateAmount,
   formatDate,
   formatGHS,
+  getExpenseGrossBeforeWht,
+  normalizeExpenseRegisterEntry,
   type ExpenseRegisterEntry,
 } from "./expense-register-utils";
 import { resolveManualExpenseReceiptNo } from "./expense-register-api";
+import {
+  computePurchaseTaxAmounts,
+  computeWhtAmount,
+  resolveDefaultWhtRate,
+  roundTaxAmount,
+  roundTaxRate,
+  selectTaxRateOptions,
+  type TaxRateCatalogEntry,
+  type TaxSettings,
+} from "./tax-utils";
+import {
+  deleteTaxLedgerEntriesForSource,
+  syncPurchaseTaxLedger,
+} from "./tax-ledger-sync";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -28,10 +44,30 @@ type ExpenseRegisterProps = {
   initialExpenseSubcategories: NamedLookup[];
   initialPaymentMethods: NamedLookup[];
   initialApprovers: Approver[];
+  taxSettings: TaxSettings | null;
+  taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
 };
 
-const emptyForm = {
+type ExpenseFormState = {
+  date: string;
+  expense_category: string;
+  sub_category: string;
+  description: string;
+  vendor: string;
+  price: string;
+  quantity: string;
+  payment_method: string;
+  approved_by: string;
+  receipt_no: string;
+  payment_status: string;
+  wht_rate: string;
+  wht_amount: string;
+  input_vat_amount: string;
+  notes: string;
+};
+
+const emptyForm: ExpenseFormState = {
   date: "",
   expense_category: "",
   sub_category: "",
@@ -43,6 +79,9 @@ const emptyForm = {
   approved_by: "",
   receipt_no: "",
   payment_status: "",
+  wht_rate: "0",
+  wht_amount: "",
+  input_vat_amount: "",
   notes: "",
 };
 
@@ -51,16 +90,33 @@ const PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"];
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
+function formatRateValue(rate: number): string {
+  return String(roundTaxRate(rate));
+}
+
+function formatWhtAmount(gross: string, ratePct: string): string {
+  const rate = Number(ratePct) || 0;
+  if (rate <= 0) {
+    return "";
+  }
+
+  return String(computeWhtAmount(Number(gross) || 0, rate));
+}
+
 export default function ExpenseRegister({
   initialEntries,
   initialExpenseCategories,
   initialExpenseSubcategories,
   initialPaymentMethods,
   initialApprovers,
+  taxSettings,
+  taxRateCatalog,
   fetchError,
 }: ExpenseRegisterProps) {
   const supabase = createClient();
-  const [entries, setEntries] = useState(initialEntries);
+  const [entries, setEntries] = useState(
+    initialEntries.map(normalizeExpenseRegisterEntry),
+  );
   const [expenseCategories, setExpenseCategories] = useState(
     initialExpenseCategories,
   );
@@ -73,8 +129,30 @@ export default function ExpenseRegister({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  // Once the user types a WHT amount we stop overwriting it from Gross × rate.
+  const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+
+  const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
+
+  const whtRateOptions = useMemo(() => {
+    const options = new Map<string, string>([["0", "No WHT (0%)"]]);
+
+    for (const rate of selectTaxRateOptions(taxRateCatalog, "wht")) {
+      options.set(formatRateValue(rate.rate_pct), rate.label);
+    }
+
+    for (const rate of [defaultWhtRate, form.wht_rate]) {
+      if (rate && rate !== "0" && !options.has(rate)) {
+        options.set(rate, `WHT ${rate}%`);
+      }
+    }
+
+    return [...options.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => Number(left.value) - Number(right.value));
+  }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
 
   useEffect(() => {
     if (!showForm) {
@@ -140,24 +218,31 @@ export default function ExpenseRegister({
       return;
     }
 
-    setEntries(data ?? []);
+    setEntries(
+      ((data as ExpenseRegisterEntry[] | null) ?? []).map((entry) =>
+        normalizeExpenseRegisterEntry(entry),
+      ),
+    );
     setError(null);
   }
 
   function openAddForm() {
     setEditingId(null);
-    setForm(emptyForm);
+    setWhtAmountEdited(false);
+    setForm({ ...emptyForm, wht_rate: defaultWhtRate });
     setShowForm(true);
   }
 
   function closeForm() {
     setEditingId(null);
+    setWhtAmountEdited(false);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(entry: ExpenseRegisterEntry) {
     setEditingId(entry.id);
+    setWhtAmountEdited(false);
     setForm({
       date: toDateInputValue(entry.date),
       expense_category: entry.expense_category,
@@ -170,6 +255,12 @@ export default function ExpenseRegister({
       approved_by: entry.approved_by,
       receipt_no: entry.receipt_no,
       payment_status: entry.payment_status,
+      wht_rate: formatRateValue(entry.wht_rate ?? 0),
+      wht_amount: entry.wht_amount == null ? "" : String(entry.wht_amount),
+      input_vat_amount:
+        entry.input_vat_amount == null || entry.input_vat_amount === 0
+          ? ""
+          : String(entry.input_vat_amount),
       notes: entry.notes ?? "",
     });
     setShowForm(true);
@@ -194,6 +285,18 @@ export default function ExpenseRegister({
       return;
     }
 
+    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
+      supabase,
+      "expense_register",
+      id,
+    );
+
+    if (ledgerError) {
+      setError(
+        `Entry deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
+      );
+    }
+
     if (editingId === id) {
       closeForm();
     }
@@ -209,7 +312,19 @@ export default function ExpenseRegister({
 
     const price = Number(form.price);
     const quantity = form.quantity.trim() === "" ? 1 : Number(form.quantity);
-    const amount = calculateAmount(price, quantity);
+    const grossBeforeWht = calculateAmount(price, quantity);
+    const whtRate = Number(form.wht_rate) || 0;
+    const whtAmount = Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0));
+    const inputVatAmount = Math.max(
+      0,
+      roundTaxAmount(Number(form.input_vat_amount) || 0),
+    );
+    const purchaseTax = computePurchaseTaxAmounts({
+      grossBeforeWht,
+      whtRatePct: whtRate,
+      whtAmount,
+      inputVatAmount,
+    });
 
     let receiptNo = form.receipt_no.trim();
     if (!editingId) {
@@ -223,6 +338,7 @@ export default function ExpenseRegister({
       receiptNo = resolved.receiptNo;
     }
 
+    // amount = net paid to supplier (gross − WHT); price×qty remains the gross line.
     const payload = {
       date: form.date,
       expense_category: form.expense_category,
@@ -231,40 +347,138 @@ export default function ExpenseRegister({
       vendor: form.vendor,
       price,
       quantity,
-      amount,
+      amount: purchaseTax.netPaidToSupplier,
       payment_method: form.payment_method,
       approved_by: form.approved_by,
       receipt_no: receiptNo,
       payment_status: form.payment_status,
+      gross_before_wht: purchaseTax.grossBeforeWht,
+      wht_rate: whtRate > 0 ? whtRate : null,
+      wht_amount: purchaseTax.whtAmount,
+      input_vat_amount: purchaseTax.inputVatAmount,
+      net_of_tax_amount: purchaseTax.netOfTaxAmount,
       notes: form.notes || null,
     };
 
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("expense_register")
-          .update(payload)
-          .eq("id", editingId)
-      : await supabase.from("expense_register").insert(payload);
+    let savedId = editingId;
 
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
-      return;
+    if (editingId) {
+      const { error: updateError } = await supabase
+        .from("expense_register")
+        .update(payload)
+        .eq("id", editingId);
+
+      if (updateError) {
+        setError(updateError.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      const { data: inserted, error: insertError } = await supabase
+        .from("expense_register")
+        .insert(payload)
+        .select("id")
+        .single();
+
+      if (insertError || !inserted) {
+        setError(insertError?.message ?? "Unable to save the expense entry.");
+        setLoading(false);
+        return;
+      }
+
+      savedId = (inserted as { id: string }).id;
     }
+
+    const { error: ledgerError } = await syncPurchaseTaxLedger(supabase, {
+      sourceType: "expense_register",
+      sourceId: savedId as string,
+      entryDate: form.date,
+      grossBeforeWht: purchaseTax.grossBeforeWht,
+      whtRatePct: whtRate > 0 ? whtRate : null,
+      whtAmount: purchaseTax.whtAmount,
+      inputTaxComponent: purchaseTax.inputTaxComponent,
+      inputTaxRatePct: null,
+      inputVatAmount: purchaseTax.inputVatAmount,
+      counterpartyName: form.vendor.trim() || null,
+      notes: receiptNo ? `Receipt ${receiptNo}` : null,
+    });
 
     closeForm();
     await refreshEntries();
+
+    if (ledgerError) {
+      setError(
+        `Entry saved, but the tax ledger could not be updated: ${ledgerError}`,
+      );
+    }
+
     setLoading(false);
   }
 
-  function updateField(field: keyof typeof emptyForm, value: string) {
+  function updateField(field: keyof ExpenseFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  const previewAmount = calculateAmount(
+  function currentGrossString(next?: Partial<ExpenseFormState>): string {
+    const price = Number(next?.price ?? form.price) || 0;
+    const quantityRaw = (next?.quantity ?? form.quantity).trim();
+    const quantity = quantityRaw === "" ? 1 : Number(quantityRaw) || 1;
+    return String(calculateAmount(price, quantity));
+  }
+
+  function updatePrice(value: string) {
+    setForm((current) => {
+      const next = { ...current, price: value };
+      const gross = currentGrossString(next);
+      return {
+        ...next,
+        wht_amount: whtAmountEdited
+          ? current.wht_amount
+          : formatWhtAmount(gross, current.wht_rate),
+      };
+    });
+  }
+
+  function updateQuantity(value: string) {
+    setForm((current) => {
+      const next = { ...current, quantity: value };
+      const gross = currentGrossString(next);
+      return {
+        ...next,
+        wht_amount: whtAmountEdited
+          ? current.wht_amount
+          : formatWhtAmount(gross, current.wht_rate),
+      };
+    });
+  }
+
+  function updateWhtRate(value: string) {
+    setWhtAmountEdited(false);
+    setForm((current) => ({
+      ...current,
+      wht_rate: value,
+      wht_amount: formatWhtAmount(currentGrossString(current), value),
+    }));
+  }
+
+  function updateWhtAmount(value: string) {
+    setWhtAmountEdited(true);
+    setForm((current) => ({ ...current, wht_amount: value }));
+  }
+
+  const previewGross = calculateAmount(
     Number(form.price) || 0,
     form.quantity.trim() === "" ? 1 : Number(form.quantity) || 1,
   );
+  const previewPurchaseTax = computePurchaseTaxAmounts({
+    grossBeforeWht: previewGross,
+    whtRatePct: Number(form.wht_rate) || 0,
+    whtAmount: Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0)),
+    inputVatAmount: Math.max(
+      0,
+      roundTaxAmount(Number(form.input_vat_amount) || 0),
+    ),
+  });
 
   return (
     <div className="min-w-0 space-y-6">
@@ -366,9 +580,12 @@ export default function ExpenseRegister({
                   step="0.01"
                   required
                   value={form.price}
-                  onChange={(e) => updateField("price", e.target.value)}
+                  onChange={(e) => updatePrice(e.target.value)}
                   className={inputClassName}
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                  Unit price before WHT (gross line = Price × Quantity).
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -379,10 +596,62 @@ export default function ExpenseRegister({
                   min="1"
                   step="1"
                   value={form.quantity}
-                  onChange={(e) => updateField("quantity", e.target.value)}
+                  onChange={(e) => updateQuantity(e.target.value)}
                   placeholder="1"
                   className={inputClassName}
                 />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  WHT Rate
+                </label>
+                <select
+                  value={form.wht_rate}
+                  onChange={(e) => updateWhtRate(e.target.value)}
+                  className={inputClassName}
+                >
+                  {whtRateOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  WHT Amount
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.wht_amount}
+                  onChange={(e) => updateWhtAmount(e.target.value)}
+                  className={inputClassName}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Auto-calculated from Gross × rate. Edit to match the
+                  withholding certificate. Remitted to GRA as wht_payable.
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Input VAT Amount
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.input_vat_amount}
+                  onChange={(e) =>
+                    updateField("input_vat_amount", e.target.value)
+                  }
+                  className={inputClassName}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Optional — VAT/NHIL/GETFund on this purchase (reclaimable
+                  input credit).
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -486,12 +755,23 @@ export default function ExpenseRegister({
               </div>
             </div>
 
-            <p className="text-sm text-slate-600">
-              Amount:{" "}
-              <span className="font-medium text-[#0f2744]">
-                {formatGHS(previewAmount)}
-              </span>
-            </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+              <p>
+                Gross (before WHT):{" "}
+                <span className="font-medium text-[#0f2744]">
+                  {formatGHS(previewPurchaseTax.grossBeforeWht)}
+                </span>
+              </p>
+              <p>
+                Net paid to supplier:{" "}
+                <span className="font-medium text-[#0f2744]">
+                  {formatGHS(previewPurchaseTax.netPaidToSupplier)}
+                </span>{" "}
+                <span className="text-xs text-slate-500">
+                  (Gross − WHT — cash outflow / amount saved)
+                </span>
+              </p>
+            </div>
 
             <div className="flex gap-3">
               <button
@@ -527,7 +807,9 @@ export default function ExpenseRegister({
                 <th className={scrollableTableThClassName}>Sub-Category</th>
                 <th className={scrollableTableThClassName}>Description</th>
                 <th className={scrollableTableThClassName}>Vendor</th>
-                <th className={scrollableTableThClassName}>Amount</th>
+                <th className={scrollableTableThClassName}>Gross</th>
+                <th className={scrollableTableThClassName}>WHT</th>
+                <th className={scrollableTableThClassName}>Net Paid</th>
                 <th className={scrollableTableThClassName}>Payment Method</th>
                 <th className={scrollableTableThClassName}>Payment Status</th>
                 <th className={scrollableTableThClassName}>Actions</th>
@@ -537,33 +819,41 @@ export default function ExpenseRegister({
               {entries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={11}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No expense register entries yet.
                   </td>
                 </tr>
               ) : (
-                entries.map((entry, index) => (
-                  <tr
-                    key={entry.id}
-                    className={getStripedRowClassName(index)}
-                  >
-                    <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                    <td className="px-4 py-3">{entry.expense_category}</td>
-                    <td className="px-4 py-3">{entry.sub_category}</td>
-                    <td className="px-4 py-3">{entry.description ?? "—"}</td>
-                    <td className="px-4 py-3">{entry.vendor}</td>
-                    <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
-                    <td className="px-4 py-3">{entry.payment_method}</td>
-                    <td className="px-4 py-3">{entry.payment_status}</td>
-                    <RegisterRowActions
-                      onEdit={() => openEditForm(entry)}
-                      onDelete={() => handleDelete(entry.id)}
-                      deleting={deletingId === entry.id}
-                    />
-                  </tr>
-                ))
+                entries.map((entry, index) => {
+                  const gross = getExpenseGrossBeforeWht(entry);
+
+                  return (
+                    <tr
+                      key={entry.id}
+                      className={getStripedRowClassName(index)}
+                    >
+                      <td className="px-4 py-3">{formatDate(entry.date)}</td>
+                      <td className="px-4 py-3">{entry.expense_category}</td>
+                      <td className="px-4 py-3">{entry.sub_category}</td>
+                      <td className="px-4 py-3">{entry.description ?? "—"}</td>
+                      <td className="px-4 py-3">{entry.vendor}</td>
+                      <td className="px-4 py-3">{formatGHS(gross)}</td>
+                      <td className="px-4 py-3">
+                        {formatGHS(entry.wht_amount ?? 0)}
+                      </td>
+                      <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
+                      <td className="px-4 py-3">{entry.payment_method}</td>
+                      <td className="px-4 py-3">{entry.payment_status}</td>
+                      <RegisterRowActions
+                        onEdit={() => openEditForm(entry)}
+                        onDelete={() => handleDelete(entry.id)}
+                        deleting={deletingId === entry.id}
+                      />
+                    </tr>
+                  );
+                })
               )}
             </tbody>
         </table>

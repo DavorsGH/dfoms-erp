@@ -12,9 +12,50 @@ export type AccountsPayableEntry = {
   balance_due: number | null;
   status: string;
   notes: string | null;
+  net_of_tax_amount?: number | null;
+  input_vat_amount?: number | null;
+  wht_rate?: number | null;
+  wht_amount?: number | null;
+  gross_before_wht?: number | null;
 };
 
 export type PayableStatus = "Paid" | "Overdue" | "Outstanding";
+
+function toNullableNumber(value: unknown): number | null {
+  return value == null ? null : Number(value) || 0;
+}
+
+export function normalizeAccountsPayableEntry(
+  raw: AccountsPayableEntry,
+): AccountsPayableEntry {
+  return {
+    ...raw,
+    amount: Number(raw.amount) || 0,
+    amount_paid: Number(raw.amount_paid) || 0,
+    balance_due:
+      raw.balance_due == null ? null : Number(raw.balance_due) || 0,
+    net_of_tax_amount: toNullableNumber(raw.net_of_tax_amount),
+    input_vat_amount: toNullableNumber(raw.input_vat_amount),
+    wht_rate: toNullableNumber(raw.wht_rate),
+    wht_amount: toNullableNumber(raw.wht_amount),
+    gross_before_wht: toNullableNumber(raw.gross_before_wht),
+  };
+}
+
+/**
+ * Invoice gross before WHT for form edit. Prefer gross_before_wht; else amount
+ * (legacy rows stored the gross in amount before tax fields existed).
+ */
+export function getPayableGrossBeforeWht(entry: {
+  gross_before_wht?: number | null;
+  amount: number;
+}): number {
+  if (entry.gross_before_wht != null && entry.gross_before_wht > 0) {
+    return Number(entry.gross_before_wht) || 0;
+  }
+
+  return Number(entry.amount) || 0;
+}
 
 export function formatGHS(value: number): string {
   return `GHS ${value.toLocaleString("en-GH", {

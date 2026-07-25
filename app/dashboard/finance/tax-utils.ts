@@ -187,6 +187,54 @@ export function computeWhtAmount(amount: number, ratePct: number): number {
   return roundTaxAmount(((Number(amount) || 0) * (Number(ratePct) || 0)) / 100);
 }
 
+export type InputTaxComponent = "vat_bundle" | "vfrs";
+
+/**
+ * Supplier-side purchase tax (Expense Register / Accounts Payable).
+ *
+ * `grossBeforeWht` is the supplier invoice total before Davors withholds.
+ * Net paid to the supplier (cash / AP liability to the vendor) is
+ * gross − WHT. Input VAT is optional and reclaimable separately; the P&L
+ * base (`netOfTaxAmount`) is gross − input VAT so reclaimable tax is not
+ * expensed. Purchases use vat_bundle for input credit (VFRS is an output
+ * scheme for goods sellers, not typical purchase input).
+ */
+export type PurchaseTaxBreakdown = {
+  grossBeforeWht: number;
+  whtRatePct: number;
+  whtAmount: number;
+  netPaidToSupplier: number;
+  inputVatAmount: number;
+  netOfTaxAmount: number;
+  inputTaxComponent: InputTaxComponent | null;
+};
+
+export function computePurchaseTaxAmounts(options: {
+  grossBeforeWht: number;
+  whtRatePct: number;
+  whtAmount: number;
+  inputVatAmount: number;
+}): PurchaseTaxBreakdown {
+  const grossBeforeWht = roundTaxAmount(options.grossBeforeWht);
+  const whtRatePct = roundTaxRate(options.whtRatePct);
+  const whtAmount = Math.max(0, roundTaxAmount(options.whtAmount));
+  const inputVatAmount = Math.max(0, roundTaxAmount(options.inputVatAmount));
+  const netPaidToSupplier = roundTaxAmount(grossBeforeWht - whtAmount);
+  const netOfTaxAmount = roundTaxAmount(
+    Math.max(0, grossBeforeWht - inputVatAmount),
+  );
+
+  return {
+    grossBeforeWht,
+    whtRatePct,
+    whtAmount,
+    netPaidToSupplier,
+    inputVatAmount,
+    netOfTaxAmount,
+    inputTaxComponent: inputVatAmount > 0 ? "vat_bundle" : null,
+  };
+}
+
 const OUTPUT_TAX_LABELS: Record<OutputTaxComponent, string> = {
   vat_bundle: "VAT/NHIL/GETFund",
   vfrs: "VFRS",
