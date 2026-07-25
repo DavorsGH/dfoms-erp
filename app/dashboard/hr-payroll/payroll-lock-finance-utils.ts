@@ -157,34 +157,6 @@ function buildExpenseRegisterPayload(
   };
 }
 
-function buildAccountsPayablePayload(
-  period: PayrollLockFinancePeriod,
-  vendorName: string,
-  expenseCategory: string,
-  description: string,
-  amount: number,
-  invoiceSuffix: string,
-  tenantId: string,
-) {
-  const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
-
-  return {
-    tenant_id: tenantId,
-    vendor_name: vendorName,
-    invoice_number: `PAYROLL-${invoiceSuffix}-${periodKey}`,
-    expense_category: expenseCategory,
-    sub_category: "Statutory",
-    description,
-    invoice_date: period.periodEndDate,
-    due_date: period.remittanceDueDate,
-    amount,
-    amount_paid: 0,
-    balance_due: amount,
-    status: "Unpaid",
-    notes: null,
-  };
-}
-
 async function upsertPayrollExpenseRegisterEntry(
   admin: SupabaseClient,
   payload: ReturnType<typeof buildExpenseRegisterPayload>,
@@ -280,37 +252,29 @@ export async function repairPayrollAutoPostedExpenseRegisterEntry(
   return "updated";
 }
 
-async function payableEntryExists(
-  admin: SupabaseClient,
-  period: PayrollLockFinancePeriod,
-  expenseCategory: string,
-  tenantId: string,
-): Promise<boolean> {
-  const { data, error } = await admin
-    .from("accounts_payable")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("expense_category", expenseCategory)
-    .ilike("description", `%${period.monthLabel}%`)
-    .limit(1);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data?.length ?? 0) > 0;
-}
-
 export async function postPayrollLockFinanceEntries(
   admin: SupabaseClient,
   period: PayrollLockFinancePeriod,
   rows: PayrollLockFinanceSourceRow[],
   tenantId: string,
-): Promise<{ insertedExpenses: number; insertedPayables: number; updatedExpenses: number }> {
+): Promise<{
+  insertedExpenses: number;
+  insertedPayables: number;
+  updatedExpenses: number;
+  statutoryLedger: {
+    sourceId: string;
+    inserted: number;
+    updated: number;
+    deleted: number;
+    skippedPaid: number;
+  };
+}> {
+  const { syncPayrollPeriodTaxLedger } = await import(
+    "./payroll-statutory-ledger-sync"
+  );
   const totals = calculatePayrollLockFinanceTotals(rows);
   let insertedExpenses = 0;
   let updatedExpenses = 0;
-  const payableRows = [];
 
   const staffSalariesPayload =
     totals.totalGrossPay > 0
@@ -336,6 +300,9 @@ export async function postPayrollLockFinanceEntries(
     }
   }
 
+  // Employer SSNIT (+ Tier 2) remains a P&L expense accrual. Statutory remittance
+  // liability (PAYE / SSNIT employee / employer Tier 1 / Tier 2) now posts only to
+  // tax_ledger_entries — Option A: stop SSNIT/GRA AP auto-post going forward.
   const employerSsnitPayload =
     totals.totalEmployerSsnitContribution > 0
       ? buildExpenseRegisterPayload(
@@ -360,58 +327,19 @@ export async function postPayrollLockFinanceEntries(
     }
   }
 
-  const ssnitDescription = buildPayrollSsnitPayableDescription(period.monthLabel);
-  if (
-    totals.totalSsnitRemittance > 0 &&
-    !(await payableEntryExists(
-      admin,
-      period,
-      PAYROLL_PAYABLE_CATEGORY_SSNIT,
-      tenantId,
-    ))
-  ) {
-    payableRows.push(
-      buildAccountsPayablePayload(
-        period,
-        "SSNIT",
-        PAYROLL_PAYABLE_CATEGORY_SSNIT,
-        ssnitDescription,
-        totals.totalSsnitRemittance,
-        "SSNIT",
-        tenantId,
-      ),
-    );
-  }
-
-  const payeDescription = buildPayrollPayePayableDescription(period.monthLabel);
-  if (
-    totals.totalPayeTax > 0 &&
-    !(await payableEntryExists(admin, period, PAYROLL_PAYABLE_CATEGORY_PAYE, tenantId))
-  ) {
-    payableRows.push(
-      buildAccountsPayablePayload(
-        period,
-        "GRA",
-        PAYROLL_PAYABLE_CATEGORY_PAYE,
-        payeDescription,
-        totals.totalPayeTax,
-        "GRA",
-        tenantId,
-      ),
-    );
-  }
-
-  if (payableRows.length > 0) {
-    const { error } = await admin.from("accounts_payable").insert(payableRows);
-    if (error) {
-      throw new Error(error.message);
-    }
-  }
+  const statutoryLedger = await syncPayrollPeriodTaxLedger(
+    admin,
+    period,
+    rows,
+    tenantId,
+  );
 
   return {
     insertedExpenses,
     updatedExpenses,
-    insertedPayables: payableRows.length,
+    // Soft-deprecated: no new Statutory - SSNIT / Statutory - PAYE AP rows.
+    insertedPayables: 0,
+    statutoryLedger,
   };
 }
 
@@ -419,7 +347,11 @@ export async function deletePayrollLockFinanceEntries(
   admin: SupabaseClient,
   period: PayrollLockFinancePeriod,
   tenantId: string,
-): Promise<{ deletedExpenses: number; deletedPayables: number }> {
+): Promise<{
+  deletedExpenses: number;
+  deletedPayables: number;
+  deletedStatutoryLedger: number;
+}> {
   const expenseDescription = buildPayrollExpenseAutoDescription(period.monthLabel);
 
   const { data: expenseRows, error: expenseSelectError } = await admin
@@ -444,6 +376,9 @@ export async function deletePayrollLockFinanceEntries(
     }
   }
 
+  // Historical Option-A-era AP rows (Statutory SSNIT/PAYE) may still exist for
+  // periods locked before the remittance SoR moved to tax_ledger_entries. Clear
+  // those on reopen/release only; remitted tax_ledger history is left alone.
   const { data: payableRows, error: payableSelectError } = await admin
     .from("accounts_payable")
     .select("id")
@@ -468,8 +403,18 @@ export async function deletePayrollLockFinanceEntries(
     }
   }
 
+  const { deleteOpenPayrollPeriodTaxLedger } = await import(
+    "./payroll-statutory-ledger-sync"
+  );
+  const deletedStatutoryLedger = await deleteOpenPayrollPeriodTaxLedger(
+    admin,
+    period.payrollMonth,
+    tenantId,
+  );
+
   return {
     deletedExpenses: expenseRows?.length ?? 0,
     deletedPayables: payableRows?.length ?? 0,
+    deletedStatutoryLedger,
   };
 }

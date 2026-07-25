@@ -23,7 +23,7 @@ export default async function TaxLedgerPage() {
       <div>
         <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
         <FinanceNav />
-        <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Tax Ledger</h2>
+        <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Statutory Ledger</h2>
         <p className="text-sm text-red-700">
           Unable to resolve your workspace. Contact support if this persists.
         </p>
@@ -72,7 +72,7 @@ export default async function TaxLedgerPage() {
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
       <FinanceNav />
-      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Tax Ledger</h2>
+      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">Statutory Ledger</h2>
       <TaxLedger
         tenantId={tenantId}
         initialSettings={settings}

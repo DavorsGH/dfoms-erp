@@ -4,16 +4,31 @@ import type { TaxLedgerSourceType } from "./tax-ledger-sync";
 export { formatGHS, formatDate };
 
 export const TAX_LEDGER_SELECT =
-  "id, tenant_id, entry_date, period_month, direction, tax_component, rate_pct, taxable_base, tax_amount, status, source_type, source_id, counterparty_name, notes, created_at, updated_at";
+  "id, tenant_id, entry_date, period_month, direction, tax_component, rate_pct, taxable_base, tax_amount, status, source_type, source_id, counterparty_name, notes, remitted_at, created_at, updated_at";
 
 export type TaxLedgerDirection =
   | "output"
   | "input"
   | "wht_receivable"
   | "wht_payable"
-  | "settlement";
+  | "settlement"
+  | "statutory_payable";
 
-export type TaxLedgerComponent = "vat_bundle" | "vfrs" | "wht";
+export type TaxLedgerComponent =
+  | "vat_bundle"
+  | "vfrs"
+  | "wht"
+  | "paye"
+  | "ssnit_employee"
+  | "ssnit_employer_tier1"
+  | "ssnit_tier2";
+
+export type GraTaxComponent = "vat_bundle" | "vfrs" | "wht";
+export type PayeTaxComponent = "paye";
+export type SsnitTaxComponent =
+  | "ssnit_employee"
+  | "ssnit_employer_tier1"
+  | "ssnit_tier2";
 
 /**
  * Schema CHECK (script 113): open | filed | paid | reversed.
@@ -36,6 +51,7 @@ export type TaxLedgerEntry = {
   source_id: string | null;
   counterparty_name: string | null;
   notes: string | null;
+  remitted_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -48,6 +64,10 @@ export type TaxBalanceSummary = {
   outputTotal: number;
   inputTax: number;
   netVatPosition: number;
+  payePayable: number;
+  ssnitEmployee: number;
+  ssnitEmployerTier1: number;
+  ssnitTier2: number;
 };
 
 export type TaxLedgerFilters = {
@@ -59,8 +79,22 @@ export type TaxLedgerFilters = {
 
 export const REMINDER_WINDOW_DAYS = 7;
 
-/** Closest allowed status for a GRA remittance without a schema change. */
+/** Closest allowed status for a GRA/SSNIT remittance without a schema change. */
 export const REMITTED_STATUS: TaxLedgerStatus = "paid";
+
+export const GRA_TAX_COMPONENTS: GraTaxComponent[] = [
+  "vat_bundle",
+  "vfrs",
+  "wht",
+];
+
+export const PAYE_COMPONENTS: PayeTaxComponent[] = ["paye"];
+
+export const SSNIT_COMPONENTS: SsnitTaxComponent[] = [
+  "ssnit_employee",
+  "ssnit_employer_tier1",
+  "ssnit_tier2",
+];
 
 const DIRECTION_LABELS: Record<TaxLedgerDirection, string> = {
   output: "Output",
@@ -68,12 +102,17 @@ const DIRECTION_LABELS: Record<TaxLedgerDirection, string> = {
   wht_receivable: "WHT Receivable",
   wht_payable: "WHT Payable",
   settlement: "Settlement",
+  statutory_payable: "Statutory Payable",
 };
 
 const COMPONENT_LABELS: Record<TaxLedgerComponent, string> = {
   vat_bundle: "VAT/NHIL/GETFund",
   vfrs: "VFRS",
   wht: "WHT",
+  paye: "PAYE",
+  ssnit_employee: "SSNIT Employee",
+  ssnit_employer_tier1: "SSNIT Employer Tier 1",
+  ssnit_tier2: "Tier 2",
 };
 
 const STATUS_LABELS: Record<TaxLedgerStatus, string> = {
@@ -91,6 +130,7 @@ const SOURCE_LABELS: Record<TaxLedgerSourceType, string> = {
   product_sale: "Product Sale",
   manual: "Manual",
   settlement: "Settlement",
+  payroll_period: "Payroll Period",
 };
 
 export function normalizeTaxLedgerEntry(
@@ -106,6 +146,7 @@ export function normalizeTaxLedgerEntry(
     counterparty_name: raw.counterparty_name ?? null,
     notes: raw.notes ?? null,
     source_id: raw.source_id ?? null,
+    remitted_at: raw.remitted_at?.slice(0, 10) ?? null,
   };
 }
 
@@ -142,6 +183,8 @@ export function getSourceHref(
         : "/dashboard/finance/client-invoices";
     case "product_sale":
       return "/dashboard/finance/product-sales";
+    case "payroll_period":
+      return "/dashboard/hr-payroll/payroll-processing";
     default:
       return null;
   }
@@ -188,6 +231,10 @@ export function emptyBalanceSummary(): TaxBalanceSummary {
     outputTotal: 0,
     inputTax: 0,
     netVatPosition: 0,
+    payePayable: 0,
+    ssnitEmployee: 0,
+    ssnitEmployerTier1: 0,
+    ssnitTier2: 0,
   };
 }
 
@@ -226,6 +273,17 @@ export function summarizeOpenTaxBalances(
         break;
       case "input":
         summary.inputTax += amount;
+        break;
+      case "statutory_payable":
+        if (entry.tax_component === "paye") {
+          summary.payePayable += amount;
+        } else if (entry.tax_component === "ssnit_employee") {
+          summary.ssnitEmployee += amount;
+        } else if (entry.tax_component === "ssnit_employer_tier1") {
+          summary.ssnitEmployerTier1 += amount;
+        } else if (entry.tax_component === "ssnit_tier2") {
+          summary.ssnitTier2 += amount;
+        }
         break;
       default:
         break;
@@ -269,6 +327,14 @@ export function filterTaxLedgerEntries(
   });
 }
 
+export function filterEntriesByComponents(
+  entries: TaxLedgerEntry[],
+  components: readonly TaxLedgerComponent[],
+): TaxLedgerEntry[] {
+  const allowed = new Set(components);
+  return entries.filter((entry) => allowed.has(entry.tax_component));
+}
+
 export function daysUntilDate(
   dateValue: string | null | undefined,
   today = new Date(),
@@ -291,8 +357,15 @@ export function daysUntilDate(
   return Math.round(diffMs / (1000 * 60 * 60 * 24));
 }
 
+export type TaxDueReminderKind =
+  | "vat"
+  | "wht"
+  | "paye"
+  | "ssnit"
+  | "tier2";
+
 export type TaxDueReminder = {
-  kind: "vat" | "wht";
+  kind: TaxDueReminderKind;
   dueDate: string;
   daysUntil: number;
 };
@@ -302,6 +375,9 @@ export function getUpcomingTaxReminders(
     reminder_enabled: boolean;
     next_vat_due_date: string | null;
     next_wht_due_date: string | null;
+    next_paye_due_date?: string | null;
+    next_ssnit_due_date?: string | null;
+    next_tier2_due_date?: string | null;
   } | null,
   today = new Date(),
   windowDays = REMINDER_WINDOW_DAYS,
@@ -312,37 +388,41 @@ export function getUpcomingTaxReminders(
 
   const reminders: TaxDueReminder[] = [];
 
-  const vatDays = daysUntilDate(settings.next_vat_due_date, today);
-  if (
-    settings.next_vat_due_date &&
-    vatDays !== null &&
-    vatDays <= windowDays
-  ) {
-    reminders.push({
-      kind: "vat",
-      dueDate: settings.next_vat_due_date.slice(0, 10),
-      daysUntil: vatDays,
-    });
-  }
+  const candidates: Array<{
+    kind: TaxDueReminderKind;
+    dueDate: string | null | undefined;
+  }> = [
+    { kind: "vat", dueDate: settings.next_vat_due_date },
+    { kind: "wht", dueDate: settings.next_wht_due_date },
+    { kind: "paye", dueDate: settings.next_paye_due_date },
+    { kind: "ssnit", dueDate: settings.next_ssnit_due_date },
+    { kind: "tier2", dueDate: settings.next_tier2_due_date },
+  ];
 
-  const whtDays = daysUntilDate(settings.next_wht_due_date, today);
-  if (
-    settings.next_wht_due_date &&
-    whtDays !== null &&
-    whtDays <= windowDays
-  ) {
-    reminders.push({
-      kind: "wht",
-      dueDate: settings.next_wht_due_date.slice(0, 10),
-      daysUntil: whtDays,
-    });
+  for (const candidate of candidates) {
+    const days = daysUntilDate(candidate.dueDate, today);
+    if (candidate.dueDate && days !== null && days <= windowDays) {
+      reminders.push({
+        kind: candidate.kind,
+        dueDate: candidate.dueDate.slice(0, 10),
+        daysUntil: days,
+      });
+    }
   }
 
   return reminders;
 }
 
+const REMINDER_LABELS: Record<TaxDueReminderKind, string> = {
+  vat: "VAT return",
+  wht: "WHT return",
+  paye: "PAYE remittance",
+  ssnit: "SSNIT Tier 1 remittance",
+  tier2: "Tier 2 remittance",
+};
+
 export function formatReminderMessage(reminder: TaxDueReminder): string {
-  const label = reminder.kind === "vat" ? "VAT return" : "WHT return";
+  const label = REMINDER_LABELS[reminder.kind] ?? reminder.kind;
   const dueLabel = formatDate(reminder.dueDate);
 
   if (reminder.daysUntil < 0) {

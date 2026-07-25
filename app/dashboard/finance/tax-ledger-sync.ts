@@ -17,14 +17,28 @@ export type TaxLedgerSourceType =
   | "accounts_payable"
   | "product_sale"
   | "manual"
-  | "settlement";
+  | "settlement"
+  | "payroll_period";
 
 export type TaxLedgerEntryInsert = {
   tenant_id?: string;
   entry_date: string;
   period_month: string;
-  direction: "output" | "input" | "wht_receivable" | "wht_payable" | "settlement";
-  tax_component: "vat_bundle" | "vfrs" | "wht";
+  direction:
+    | "output"
+    | "input"
+    | "wht_receivable"
+    | "wht_payable"
+    | "settlement"
+    | "statutory_payable";
+  tax_component:
+    | "vat_bundle"
+    | "vfrs"
+    | "wht"
+    | "paye"
+    | "ssnit_employee"
+    | "ssnit_employer_tier1"
+    | "ssnit_tier2";
   rate_pct: number | null;
   taxable_base: number;
   tax_amount: number;

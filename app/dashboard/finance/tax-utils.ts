@@ -8,14 +8,17 @@ export type OutputTaxComponent = "vat_bundle" | "vfrs";
 export const DEFAULT_VAT_BUNDLE_RATE = 20;
 export const DEFAULT_VFRS_RATE = 3;
 export const DEFAULT_WHT_RATE = 7.5;
+export const DEFAULT_PAYE_RETURN_DUE_DAY = 15;
+export const DEFAULT_SSNIT_RETURN_DUE_DAY = 14;
+export const DEFAULT_TIER2_RETURN_DUE_DAY = 14;
 
 /** Slim select for Income / Expense / AP forms (defaults + VAT flag). */
 export const TAX_SETTINGS_SELECT =
   "tenant_id, vat_registered, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate";
 
-/** Full select for the Tax Ledger settings editor. */
+/** Full select for the Statutory Ledger settings editor. */
 export const TAX_SETTINGS_FULL_SELECT =
-  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, reminder_enabled";
+  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled";
 
 export const TAX_RATE_CATALOG_SELECT =
   "id, tenant_id, tax_kind, code, label, rate_pct, is_active, sort_order";
@@ -34,6 +37,12 @@ export type TaxSettings = {
   wht_return_due_day: number | null;
   next_vat_due_date: string | null;
   next_wht_due_date: string | null;
+  paye_return_due_day: number;
+  ssnit_return_due_day: number;
+  tier2_return_due_day: number;
+  next_paye_due_date: string | null;
+  next_ssnit_due_date: string | null;
+  next_tier2_due_date: string | null;
   reminder_enabled: boolean;
 };
 
@@ -69,6 +78,12 @@ export function emptyTaxSettings(tenantId: string): TaxSettings {
     wht_return_due_day: null,
     next_vat_due_date: null,
     next_wht_due_date: null,
+    paye_return_due_day: DEFAULT_PAYE_RETURN_DUE_DAY,
+    ssnit_return_due_day: DEFAULT_SSNIT_RETURN_DUE_DAY,
+    tier2_return_due_day: DEFAULT_TIER2_RETURN_DUE_DAY,
+    next_paye_due_date: null,
+    next_ssnit_due_date: null,
+    next_tier2_due_date: null,
     reminder_enabled: true,
   };
 }
@@ -104,6 +119,14 @@ function normalizeOptionalDate(
   return value.slice(0, 10);
 }
 
+function normalizeRequiredDay(
+  value: number | string | null | undefined,
+  fallback: number,
+): number {
+  const day = normalizeOptionalDay(value);
+  return day ?? fallback;
+}
+
 export function normalizeTaxSettings(
   raw: Partial<TaxSettings> | null | undefined,
 ): TaxSettings | null {
@@ -124,6 +147,21 @@ export function normalizeTaxSettings(
     wht_return_due_day: normalizeOptionalDay(raw.wht_return_due_day),
     next_vat_due_date: normalizeOptionalDate(raw.next_vat_due_date),
     next_wht_due_date: normalizeOptionalDate(raw.next_wht_due_date),
+    paye_return_due_day: normalizeRequiredDay(
+      raw.paye_return_due_day,
+      DEFAULT_PAYE_RETURN_DUE_DAY,
+    ),
+    ssnit_return_due_day: normalizeRequiredDay(
+      raw.ssnit_return_due_day,
+      DEFAULT_SSNIT_RETURN_DUE_DAY,
+    ),
+    tier2_return_due_day: normalizeRequiredDay(
+      raw.tier2_return_due_day,
+      DEFAULT_TIER2_RETURN_DUE_DAY,
+    ),
+    next_paye_due_date: normalizeOptionalDate(raw.next_paye_due_date),
+    next_ssnit_due_date: normalizeOptionalDate(raw.next_ssnit_due_date),
+    next_tier2_due_date: normalizeOptionalDate(raw.next_tier2_due_date),
     reminder_enabled: raw.reminder_enabled ?? true,
   };
 }
