@@ -22,7 +22,19 @@ import BillingSettings, {
 const BILLING_TIER_SELECT =
   `${CRM_PRODUCT_SELECT}, price_ghs, paystack_plan_code` as const;
 
-export default async function BillingSettingsPage() {
+type BillingSettingsPageProps = {
+  searchParams: Promise<{ tab?: string | string[] }>;
+};
+
+export default async function BillingSettingsPage({
+  searchParams,
+}: BillingSettingsPageProps) {
+  const params = await searchParams;
+  // Deep link (?tab=payment) used by POS when a settlement account is required.
+  const initialTab =
+    (Array.isArray(params.tab) ? params.tab[0] : params.tab) === "payment"
+      ? ("payment" as const)
+      : ("billing" as const);
   const tenantId = await getCurrentUserTenantId();
 
   if (!tenantId) {
@@ -99,6 +111,7 @@ export default async function BillingSettingsPage() {
         invoices={(invoicesResult.data as BillingInvoiceRow[] | null) ?? []}
         tierOptions={(tiersResult.data as BillingTierOption[] | null) ?? []}
         fetchError={fetchError}
+        initialTab={initialTab}
       />
     </>
   );

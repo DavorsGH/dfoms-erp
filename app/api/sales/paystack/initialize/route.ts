@@ -20,6 +20,7 @@ import {
   roundGhs,
   type ProductSaleIncomeLine,
 } from "@/utils/product-sale-paystack";
+import { requireActiveSettlementSubaccount } from "@/utils/product-sale-settlement";
 import {
   buildCartSnapshot,
   cartSnapshotTotal,
@@ -168,6 +169,18 @@ export async function POST(request: Request) {
     );
   }
 
+  // Tenant fund routing: Request Payment links collect customer money owed to
+  // the tenant, so every Paystack charge below (cart path AND invoice path)
+  // must route into the tenant's settlement subaccount. BLOCK (never silently
+  // omit the subaccount) if Payment Settings is not active.
+  const settlement = await requireActiveSettlementSubaccount(auth.tenantId);
+  if (!settlement.ok) {
+    return NextResponse.json(
+      { error: settlement.error, code: settlement.code ?? undefined },
+      { status: settlement.status },
+    );
+  }
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const {
@@ -290,6 +303,8 @@ export async function POST(request: Request) {
       callbackUrl,
       currency: "GHS",
       channels: [...REQUEST_PAYMENT_CHANNELS],
+      // Route this charge to the tenant's settlement account (guarded above).
+      subaccountCode: settlement.subaccountCode,
       metadata: {
         context: PRODUCT_SALE_PAYSTACK_CONTEXT,
         tenant_id: auth.tenantId,
@@ -486,6 +501,8 @@ export async function POST(request: Request) {
     callbackUrl,
     currency: "GHS",
     channels: [...REQUEST_PAYMENT_CHANNELS],
+    // Route this charge to the tenant's settlement account (guarded above).
+    subaccountCode: settlement.subaccountCode,
     metadata: {
       context: PRODUCT_SALE_PAYSTACK_CONTEXT,
       tenant_id: auth.tenantId,

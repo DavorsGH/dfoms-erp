@@ -15,6 +15,7 @@ import {
   resolveSiteUrlFromRequest,
   roundGhs,
 } from "@/utils/product-sale-paystack";
+import { requireActiveSettlementSubaccount } from "@/utils/product-sale-settlement";
 import {
   buildCartSnapshot,
   cartSnapshotTotal,
@@ -120,6 +121,17 @@ export async function POST(request: Request) {
     );
   }
 
+  // Tenant fund routing: POS MoMo payments are customer money owed to the
+  // tenant, so we must charge into the tenant's settlement subaccount. BLOCK
+  // (never silently omit the subaccount) if Payment Settings is not active.
+  const settlement = await requireActiveSettlementSubaccount(auth.tenantId);
+  if (!settlement.ok) {
+    return NextResponse.json(
+      { error: settlement.error, code: settlement.code ?? undefined },
+      { status: settlement.status },
+    );
+  }
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const {
@@ -170,6 +182,8 @@ export async function POST(request: Request) {
     callbackUrl,
     currency: "GHS",
     channels: ["mobile_money"],
+    // Route this charge to the tenant's settlement account (guarded above).
+    subaccountCode: settlement.subaccountCode,
     metadata: {
       context: PRODUCT_SALE_PAYSTACK_CONTEXT,
       tenant_id: auth.tenantId,

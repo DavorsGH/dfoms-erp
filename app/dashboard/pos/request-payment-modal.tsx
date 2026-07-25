@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { inputClassName } from "../employees/employee-record-utils";
 import { formatGHS } from "../finance/income-register-utils";
 import {
   isValidEmail,
   normalizeGhanaPhone,
+  PAYMENT_SETTINGS_REQUIRED_CODE,
   roundGhs,
 } from "@/utils/product-sale-paystack";
 import type { PosCartLine } from "./pos-utils";
@@ -43,6 +45,8 @@ export type RequestPaymentModalProps = CartModeProps | InvoiceModeProps;
 type InitializeResponse = {
   ok?: boolean;
   error?: string;
+  /** Machine-readable error code (e.g. payment_settings_required). */
+  code?: string;
   payment_request_id?: string;
   reference?: string;
   authorization_url?: string;
@@ -78,6 +82,9 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
   const [sendSms, setSendSms] = useState(Boolean(defaultPhone.trim()));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** True when the backend blocked payment because the tenant has no active
+   * settlement account — shows a link to Payment Settings. */
+  const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
   const [result, setResult] = useState<InitializeResponse | null>(null);
 
   useEffect(() => {
@@ -92,6 +99,7 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setPaymentSettingsRequired(false);
     setResult(null);
 
     const amountGhs = roundGhs(Number.parseFloat(amount));
@@ -164,6 +172,9 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
         | null;
 
       if (!response.ok || !payload?.authorization_url) {
+        if (payload?.code === PAYMENT_SETTINGS_REQUIRED_CODE) {
+          setPaymentSettingsRequired(true);
+        }
         setError(payload?.error ?? "Failed to create payment link.");
         setLoading(false);
         return;
@@ -214,9 +225,22 @@ export default function RequestPaymentModal(props: RequestPaymentModalProps) {
         </div>
 
         {error ? (
-          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
+          <div className="mt-4 space-y-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p>{error}</p>
+            {paymentSettingsRequired ? (
+              <p>
+                <Link
+                  href="/dashboard/administration/billing?tab=payment"
+                  className="inline-block rounded-md bg-[#0f2744] px-3 py-1.5 font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+                >
+                  Set up Payment Settings
+                </Link>{" "}
+                <span className="text-red-600">
+                  (Administration → Billing Settings → Payment Settings)
+                </span>
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {result?.authorization_url ? (

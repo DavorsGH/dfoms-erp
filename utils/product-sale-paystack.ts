@@ -2,6 +2,16 @@ import { calculateOutstanding } from "@/app/dashboard/finance/income-register-ut
 
 export const PRODUCT_SALE_PAYSTACK_CONTEXT = "product_sale" as const;
 
+/**
+ * Machine-readable error code returned by product-sale Paystack initialize
+ * routes when the tenant has no active settlement subaccount. Client-safe so
+ * the POS UI can detect it and link to Payment Settings.
+ */
+export const PAYMENT_SETTINGS_REQUIRED_CODE = "payment_settings_required" as const;
+
+export const PAYMENT_SETTINGS_REQUIRED_MESSAGE =
+  "Payment Settings required - set up your settlement account before accepting Mobile Money or card payments." as const;
+
 export type ProductSaleIncomeLine = {
   id: string;
   amount: number;
