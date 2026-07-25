@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { deleteTaxLedgerEntriesForSource } from "@/app/dashboard/finance/tax-ledger-sync";
 import {
+  findClientInvoiceIncomeRegisterId,
   loadClientInvoiceDetail,
   updateClientInvoice,
 } from "@/utils/client-invoices-api";
@@ -149,6 +151,15 @@ export async function DELETE(_request: Request, context: RouteContext) {
     );
   }
 
+  // Deleting the invoice cascades to its income_register row (script 84),
+  // which would orphan the tax ledger legs keyed on that income id — so look
+  // the id up first and clear the ledger after the delete succeeds.
+  const { incomeId } = await findClientInvoiceIncomeRegisterId(
+    supabase,
+    auth.tenantId,
+    id,
+  );
+
   const { error } = await supabase
     .from("client_invoices")
     .delete()
@@ -157,6 +168,21 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  if (incomeId) {
+    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
+      supabase,
+      "income_register",
+      incomeId,
+    );
+
+    if (ledgerError) {
+      return NextResponse.json({
+        success: true,
+        warning: `Invoice deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
+      });
+    }
   }
 
   return NextResponse.json({ success: true });

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
+import { deleteTaxLedgerEntriesForSource } from "../finance/tax-ledger-sync";
 import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
@@ -211,21 +213,24 @@ export default function ProductSales({
       return;
     }
 
-    const { error: rpcError } = await supabase.rpc("create_product_sale", {
-      p_date: form.date,
-      // Blank → create_product_sale allocates via generate_next_code(..., 'PSI', 4).
-      p_invoice_no: null,
-      p_client_id: clientId,
-      p_customer_name: clientId ? null : otherPayerName,
-      p_product_id: form.product_id,
-      p_quantity: quantity,
-      p_unit_price: unitPrice,
-      p_amount_received: amountReceived,
-      p_payment_status: form.payment_status,
-      p_due_date: form.due_date,
-      p_description: null,
-      p_notes: form.notes || null,
-    });
+    const { data: createdIncomeId, error: rpcError } = await supabase.rpc(
+      "create_product_sale",
+      {
+        p_date: form.date,
+        // Blank → create_product_sale allocates via generate_next_code(..., 'PSI', 4).
+        p_invoice_no: null,
+        p_client_id: clientId,
+        p_customer_name: clientId ? null : otherPayerName,
+        p_product_id: form.product_id,
+        p_quantity: quantity,
+        p_unit_price: unitPrice,
+        p_amount_received: amountReceived,
+        p_payment_status: form.payment_status,
+        p_due_date: form.due_date,
+        p_description: null,
+        p_notes: form.notes || null,
+      },
+    );
 
     if (rpcError) {
       setError(rpcError.message);
@@ -233,8 +238,22 @@ export default function ProductSales({
       return;
     }
 
+    // VFRS output tax + tax ledger for the new sale. Non-fatal: the sale is
+    // already posted, so a tax sync problem is surfaced as a warning.
+    const { error: taxError } = await syncProductSaleVfrsTax(
+      supabase,
+      typeof createdIncomeId === "string" ? [createdIncomeId] : [],
+    );
+
     closeForm();
     await refreshEntries();
+
+    if (taxError) {
+      setError(
+        `Sale recorded, but the VFRS tax ledger could not be updated: ${taxError}`,
+      );
+    }
+
     setLoading(false);
   }
 
@@ -276,7 +295,21 @@ export default function ProductSales({
       return;
     }
 
+    // A voided sale owes no output tax, so drop its tax ledger legs.
+    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
+      supabase,
+      "income_register",
+      entry.id,
+    );
+
     await refreshEntries();
+
+    if (ledgerError) {
+      setError(
+        `Sale voided, but its tax ledger entries could not be removed: ${ledgerError}`,
+      );
+    }
+
     setVoidingId(null);
   }
 

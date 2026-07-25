@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { ClientEntry } from "../operations/clients-utils";
 import { formatInventoryQuantity } from "../inventory/inventory-utils";
@@ -44,6 +45,8 @@ export type PosCheckoutRunSummary = {
   succeeded: PosCheckoutLineResult[];
   failed: PosCheckoutLineResult[];
   stoppedEarly: boolean;
+  /** Sale lines posted, but VFRS output tax / tax ledger sync failed. */
+  taxSyncWarning?: string | null;
 };
 
 export const POS_PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"] as const;
@@ -200,6 +203,7 @@ export async function runPosCheckout(
         succeeded,
         failed,
         stoppedEarly: true,
+        taxSyncWarning: await applyVfrsToSucceededLines(supabase, succeeded),
       };
     }
 
@@ -224,5 +228,27 @@ export async function runPosCheckout(
     succeeded,
     failed,
     stoppedEarly: false,
+    taxSyncWarning: await applyVfrsToSucceededLines(supabase, succeeded),
   };
+}
+
+/**
+ * VFRS output tax + tax ledger for the lines that did post. Non-fatal: the
+ * sale, stock, and COGS are already committed by create_product_sale, so a
+ * tax sync problem is reported as a warning instead of failing the checkout.
+ */
+async function applyVfrsToSucceededLines(
+  supabase: SupabaseClient,
+  succeeded: PosCheckoutLineResult[],
+): Promise<string | null> {
+  const incomeIds = succeeded
+    .map((line) => line.incomeId)
+    .filter((id): id is string => Boolean(id));
+
+  if (incomeIds.length === 0) {
+    return null;
+  }
+
+  const { error } = await syncProductSaleVfrsTax(supabase, incomeIds);
+  return error;
 }

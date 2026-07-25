@@ -10,6 +10,7 @@ import {
 } from "@/app/dashboard/pos/pos-utils";
 import { verifyPaystackTransaction } from "@/utils/paystack";
 import { roundGhs } from "@/utils/product-sale-paystack";
+import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 
 export type PosCartSnapshot = {
   saleDate: string;
@@ -308,6 +309,19 @@ export async function fulfillPosCartSnapshotPaymentRequest(
   if (!allocatedInvoiceNo) {
     throw new Error(
       "Could not resolve POS invoice number after cart-snapshot sale.",
+    );
+  }
+
+  // VFRS output tax + tax ledger for the sales just created. Non-fatal: the
+  // customer has already paid and the sales are posted, so a tax sync failure
+  // must not fail the fulfillment (it would retrigger webhook retries).
+  const { error: taxSyncError } = await syncProductSaleVfrsTax(
+    admin,
+    incomeIds,
+  );
+  if (taxSyncError) {
+    console.error(
+      `POS fulfillment ${requestRow.id}: VFRS tax sync failed: ${taxSyncError}`,
     );
   }
 

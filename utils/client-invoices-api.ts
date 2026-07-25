@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateIncomeOutstanding } from "@/app/dashboard/finance/income-register-utils";
 import {
+  deleteTaxLedgerEntriesForSource,
+  syncIncomeRegisterTaxLedger,
+} from "@/app/dashboard/finance/tax-ledger-sync";
+import {
   AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT,
   CLIENT_INVOICE_HEADER_SELECT,
   CLIENT_INVOICE_LINE_ITEM_SELECT,
@@ -249,19 +253,67 @@ async function allocateInvoiceNumber(supabase: DbClient, tenantId: string) {
   return { invoiceNumber, error: null };
 }
 
+/**
+ * Income Register row id owned by one client invoice (script 84 link).
+ * The tax ledger keys off this income row (source_type=income_register), so
+ * callers that are about to remove the income row — draft revert or invoice
+ * delete (ON DELETE CASCADE) — look it up first to clear the ledger legs.
+ */
+export async function findClientInvoiceIncomeRegisterId(
+  supabase: DbClient,
+  tenantId: string,
+  invoiceId: string,
+): Promise<{ incomeId: string | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from("income_register")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("client_invoice_id", invoiceId)
+    .maybeSingle();
+
+  if (error) {
+    return { incomeId: null, error: error.message };
+  }
+
+  return { incomeId: (data as { id: string } | null)?.id ?? null, error: null };
+}
+
 async function syncIncomeRegisterFromClientInvoice(
   supabase: DbClient,
   tenantId: string,
   invoice: ClientInvoiceHeaderRow,
 ) {
-  // Draft invoices should have no Income Register entry at all.
+  // Draft invoices should have no Income Register entry (nor tax ledger legs).
   if (invoice.status === "draft") {
+    const { incomeId, error: lookupError } =
+      await findClientInvoiceIncomeRegisterId(supabase, tenantId, invoice.id);
+
+    if (lookupError) {
+      return { error: lookupError };
+    }
+
     const { error } = await supabase
       .from("income_register")
       .delete()
       .eq("tenant_id", tenantId)
       .eq("client_invoice_id", invoice.id);
-    return { error: error?.message ?? null };
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (incomeId) {
+      const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
+        supabase,
+        "income_register",
+        incomeId,
+      );
+      if (ledgerError) {
+        return { error: ledgerError };
+      }
+    }
+
+    return { error: null };
   }
 
   const amount = toNumber(invoice.total_amount_due);
@@ -316,11 +368,36 @@ async function syncIncomeRegisterFromClientInvoice(
     due_date: invoice.due_date ?? invoice.invoice_date,
   };
 
-  const { error } = await supabase
+  const { data: incomeRow, error } = await supabase
     .from("income_register")
-    .upsert(payload, { onConflict: "client_invoice_id" });
+    .upsert(payload, { onConflict: "client_invoice_id" })
+    .select("id")
+    .single();
 
-  return { error: error?.message ?? null };
+  if (error || !incomeRow) {
+    return { error: error?.message ?? "Unable to sync the Income Register row." };
+  }
+
+  // Tax ledger legs keyed on the income row (single source, same as manual
+  // Income Register entries) using the per-invoice rates/amounts — the invoice
+  // wins over tax_settings defaults. Output vat_bundle on the tax-inclusive
+  // total; WHT receivable only when the client actually withholds.
+  const { error: ledgerError } = await syncIncomeRegisterTaxLedger(supabase, {
+    sourceId: (incomeRow as { id: string }).id,
+    entryDate: invoice.invoice_date,
+    amount,
+    whtRatePct: whtAmount > 0 ? roundMoney(toNumber(invoice.wht_rate)) || null : null,
+    whtAmount,
+    outputTaxComponent: outputVatAmount > 0 ? "vat_bundle" : null,
+    outputTaxRatePct:
+      outputVatAmount > 0 ? roundMoney(toNumber(invoice.vat_nhil_getfund_rate)) : null,
+    outputVatAmount,
+    counterpartyName: invoice.bill_to_name,
+    notes: `Invoice ${invoice.invoice_number}`,
+    tenantId,
+  });
+
+  return { error: ledgerError };
 }
 
 export async function createClientInvoice(

@@ -384,6 +384,12 @@ export default function PosCheckout({
       lines: receiptLines,
       amountReceived: cartTotal(receiptLines),
     });
+
+    if (summary.taxSyncWarning) {
+      setError(
+        `Sale recorded, but the VFRS tax ledger could not be updated: ${summary.taxSyncWarning}`,
+      );
+    }
   }
 
   async function completeMobileMoneySale(

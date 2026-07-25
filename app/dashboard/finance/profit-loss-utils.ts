@@ -32,6 +32,9 @@ export type ProfitLossIncomeEntry = {
   amount: number;
   entry_type?: "service" | "product_sale" | null;
   sale_status?: "active" | "voided" | null;
+  /** Prefer for P&L when set — revenue is net of output VAT/VFRS. */
+  net_of_tax_amount?: number | null;
+  output_vat_amount?: number | null;
 };
 
 export type ProfitLossExpenseEntry = {
@@ -39,7 +42,60 @@ export type ProfitLossExpenseEntry = {
   expense_category: string;
   sub_category: string;
   amount: number;
+  /** Prefer for P&L when set — expense is net of reclaimable input VAT. */
+  net_of_tax_amount?: number | null;
+  input_vat_amount?: number | null;
 };
+
+/**
+ * P&L revenue recognition (tax-exclusive):
+ *   prefer net_of_tax_amount
+ *   else amount − output_vat_amount
+ *   else amount
+ * WHT must NOT reduce revenue — customer withholding is a receivable, not a
+ * revenue contra.
+ */
+export function getTaxExclusiveRevenueAmount(entry: {
+  amount: number;
+  net_of_tax_amount?: number | null;
+  output_vat_amount?: number | null;
+}): number {
+  if (entry.net_of_tax_amount != null) {
+    return Number(entry.net_of_tax_amount) || 0;
+  }
+
+  const amount = Number(entry.amount) || 0;
+  if (entry.output_vat_amount != null) {
+    return Math.max(0, amount - (Number(entry.output_vat_amount) || 0));
+  }
+
+  return amount;
+}
+
+/**
+ * P&L expense recognition (tax-exclusive):
+ *   prefer net_of_tax_amount
+ *   else amount − input_vat_amount
+ *   else amount
+ * WHT must NOT reduce expense — supplier withholding is a GRA payable, not an
+ * expense contra.
+ */
+export function getTaxExclusiveExpenseAmount(entry: {
+  amount: number;
+  net_of_tax_amount?: number | null;
+  input_vat_amount?: number | null;
+}): number {
+  if (entry.net_of_tax_amount != null) {
+    return Number(entry.net_of_tax_amount) || 0;
+  }
+
+  const amount = Number(entry.amount) || 0;
+  if (entry.input_vat_amount != null) {
+    return Math.max(0, amount - (Number(entry.input_vat_amount) || 0));
+  }
+
+  return amount;
+}
 
 export type ProfitLossAssetEntry = {
   original_cost: number;
@@ -211,7 +267,7 @@ function groupIncomeByServiceCategory(
 
     const category = resolveProfitLossRevenueCategory(entry);
     const totals = grouped.get(category) ?? createEmptyMonthlyTotals();
-    addAmountToMonth(totals, monthIndex, Number(entry.amount) || 0);
+    addAmountToMonth(totals, monthIndex, getTaxExclusiveRevenueAmount(entry));
     grouped.set(category, totals);
   }
 
@@ -245,7 +301,7 @@ function groupExpensesBySubCategory(
 
     const lineLabel = resolveProfitLossExpenseLineLabel(entry);
     const totals = grouped.get(lineLabel) ?? createEmptyMonthlyTotals();
-    addAmountToMonth(totals, monthIndex, Number(entry.amount) || 0);
+    addAmountToMonth(totals, monthIndex, getTaxExclusiveExpenseAmount(entry));
     grouped.set(lineLabel, totals);
   }
 

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { ClientEntry } from "../operations/clients-utils";
@@ -179,8 +180,24 @@ export default function ProductSalesBulkImport({
       },
     );
 
+    // VFRS output tax + tax ledger for the rows this import just created
+    // (forward-only — pre-existing sales are untouched). Non-fatal.
+    const importedIncomeIds = summary.succeeded
+      .map((row) => row.incomeId)
+      .filter((id): id is string => Boolean(id));
+    const { error: taxError } = await syncProductSaleVfrsTax(
+      supabase,
+      importedIncomeIds,
+    );
+
     setImportSummary(summary);
     setImporting(false);
+
+    if (taxError) {
+      setError(
+        `Sales imported, but the VFRS tax ledger could not be updated: ${taxError}`,
+      );
+    }
 
     if (summary.succeeded.length > 0) {
       await onImported();

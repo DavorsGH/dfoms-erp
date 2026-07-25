@@ -26,6 +26,7 @@ import type { IncomeRegisterEntry } from "../finance/income-register-utils";
 import type {
   BalanceSheetAccountsPayableEntry,
   BalanceSheetIncomeEntry,
+  BalanceSheetTaxLedgerEntry,
 } from "../finance/balance-sheet-utils";
 import type {
   BalanceSheetCashExpenseEntry,
@@ -297,6 +298,7 @@ export function MonthlyBalanceSheetReport({
   initialMonthEndCloseNetPay,
   initialInventoryBalanceSheet,
   initialManualEntries = [],
+  initialTaxLedgerEntries = [],
   availableYears,
   fetchError,
 }: {
@@ -310,6 +312,7 @@ export function MonthlyBalanceSheetReport({
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   initialManualEntries?: CashMovementManualEntry[];
+  initialTaxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
   availableYears: number[];
   fetchError: string | null;
 }) {
@@ -330,6 +333,7 @@ export function MonthlyBalanceSheetReport({
         year,
         initialInventoryBalanceSheet,
         initialManualEntries,
+        initialTaxLedgerEntries,
       ),
     [
       initialIncomeEntries,
@@ -342,6 +346,7 @@ export function MonthlyBalanceSheetReport({
       initialMonthEndCloseNetPay,
       initialInventoryBalanceSheet,
       initialManualEntries,
+      initialTaxLedgerEntries,
       year,
     ],
   );

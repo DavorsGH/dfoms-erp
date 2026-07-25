@@ -41,6 +41,15 @@ import {
 } from "../inventory/inventory-balance-sheet-utils";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
+import {
+  PAYROLL_PAYABLE_CATEGORY_PAYE,
+  PAYROLL_PAYABLE_CATEGORY_SSNIT,
+} from "../hr-payroll/payroll-lock-finance-utils";
+import type {
+  TaxLedgerComponent,
+  TaxLedgerDirection,
+  TaxLedgerStatus,
+} from "./tax-ledger-utils";
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
 export { calculateFixedAssetPurchaseOutflowsByMonth } from "./fixed-assets-utils";
@@ -60,6 +69,10 @@ export type BalanceSheetAccountsPayableEntry = {
   balance_due: number | null;
   amount: number;
   amount_paid: number;
+  /** Used to soft-exclude historical statutory remittance AP (Option A). */
+  vendor_name?: string | null;
+  invoice_number?: string | null;
+  expense_category?: string | null;
 };
 
 export type BalanceSheetIncomeEntry = {
@@ -71,6 +84,20 @@ export type BalanceSheetIncomeEntry = {
   service_category: string;
   entry_type?: "service" | "product_sale" | null;
   sale_status?: "active" | "voided" | null;
+};
+
+/**
+ * Open tax_ledger_entries rows for BS assets/liabilities.
+ * AR already excludes WHT (Amount − Received − WHT); WHT Receivable restores
+ * that asset. Output VAT stays inside AR (gross receivable) while Net VAT
+ * Payable is the matching liability — standard VAT invoice accounting.
+ */
+export type BalanceSheetTaxLedgerEntry = {
+  entry_date: string;
+  direction: TaxLedgerDirection;
+  tax_component: TaxLedgerComponent;
+  tax_amount: number;
+  status: TaxLedgerStatus;
 };
 
 export type BalanceSheetRow = {
@@ -114,6 +141,42 @@ export type BalanceSheetMonthRow = {
 
 function normalizeDate(value: string): string {
   return value.slice(0, 10);
+}
+
+/**
+ * Option A soft-deprecation: tax_ledger_entries is SoR for SSNIT/PAYE remittance.
+ * Exclude historical unpaid Statutory SSNIT/GRA AP so BS does not double-count
+ * the same liability as both AP and open statutory_payable ledger rows.
+ *
+ * Match rule (any one):
+ * - vendor_name is SSNIT or GRA (case-insensitive)
+ * - expense_category is Statutory - SSNIT / Statutory - PAYE
+ * - invoice_number starts with PAYROLL-SSNIT / PAYROLL-PAYE / PAYROLL-GRA
+ */
+export function isStatutoryRemittancePayable(entry: {
+  vendor_name?: string | null;
+  invoice_number?: string | null;
+  expense_category?: string | null;
+}): boolean {
+  const vendor = entry.vendor_name?.trim().toUpperCase() ?? "";
+  if (vendor === "SSNIT" || vendor === "GRA") {
+    return true;
+  }
+
+  const category = entry.expense_category?.trim() ?? "";
+  if (
+    category === PAYROLL_PAYABLE_CATEGORY_SSNIT ||
+    category === PAYROLL_PAYABLE_CATEGORY_PAYE
+  ) {
+    return true;
+  }
+
+  const invoice = entry.invoice_number?.trim().toUpperCase() ?? "";
+  return (
+    invoice.startsWith("PAYROLL-SSNIT") ||
+    invoice.startsWith("PAYROLL-PAYE") ||
+    invoice.startsWith("PAYROLL-GRA")
+  );
 }
 
 function getOutstandingBalance(entry: BalanceSheetIncomeEntry): number {
@@ -169,6 +232,10 @@ function calculateAccountsPayableByMonth(
     const monthEnd = getMonthEndDate(financialYear, month);
 
     totals[month - 1] = payableEntries.reduce((sum, entry) => {
+      if (isStatutoryRemittancePayable(entry)) {
+        return sum;
+      }
+
       const entryDate = normalizeDate(entry.invoice_date);
       if (!entryDate || entryDate > monthEnd) {
         return sum;
@@ -180,6 +247,107 @@ function calculateAccountsPayableByMonth(
 
   totals[FULL_YEAR_INDEX] = totals[11];
   return totals;
+}
+
+type OpenTaxBalancesByMonth = {
+  whtReceivable: MonthlyTotals;
+  whtPayable: MonthlyTotals;
+  netVatPayable: MonthlyTotals;
+  netVatReceivable: MonthlyTotals;
+  payePayable: MonthlyTotals;
+  ssnitPayable: MonthlyTotals;
+};
+
+/**
+ * Point-in-time open tax_ledger balances (status='open', entry_date ≤ month-end).
+ * Net VAT = output (vat_bundle + vfrs) − input; positive → liability, negative → asset.
+ * SSNIT Payable groups employee + employer_tier1 + tier2 (one remittance line).
+ */
+function calculateOpenTaxBalancesByMonth(
+  taxLedgerEntries: BalanceSheetTaxLedgerEntry[],
+  financialYear: number,
+): OpenTaxBalancesByMonth {
+  const whtReceivable = createEmptyMonthlyTotals();
+  const whtPayable = createEmptyMonthlyTotals();
+  const netVatPayable = createEmptyMonthlyTotals();
+  const netVatReceivable = createEmptyMonthlyTotals();
+  const payePayable = createEmptyMonthlyTotals();
+  const ssnitPayable = createEmptyMonthlyTotals();
+
+  for (let month = 1; month <= 12; month += 1) {
+    const monthEnd = getMonthEndDate(financialYear, month);
+    let outputVat = 0;
+    let inputVat = 0;
+    let whtRecv = 0;
+    let whtPay = 0;
+    let paye = 0;
+    let ssnit = 0;
+
+    for (const entry of taxLedgerEntries) {
+      if (entry.status !== "open") {
+        continue;
+      }
+
+      const entryDate = normalizeDate(entry.entry_date);
+      if (!entryDate || entryDate > monthEnd) {
+        continue;
+      }
+
+      const amount = Number(entry.tax_amount) || 0;
+
+      switch (entry.direction) {
+        case "wht_receivable":
+          whtRecv += amount;
+          break;
+        case "wht_payable":
+          whtPay += amount;
+          break;
+        case "output":
+          outputVat += amount;
+          break;
+        case "input":
+          inputVat += amount;
+          break;
+        case "statutory_payable":
+          if (entry.tax_component === "paye") {
+            paye += amount;
+          } else if (
+            entry.tax_component === "ssnit_employee" ||
+            entry.tax_component === "ssnit_employer_tier1" ||
+            entry.tax_component === "ssnit_tier2"
+          ) {
+            ssnit += amount;
+          }
+          break;
+        default:
+          break;
+      }
+    }
+
+    const netVat = roundCurrency(outputVat - inputVat);
+    whtReceivable[month - 1] = roundCurrency(whtRecv);
+    whtPayable[month - 1] = roundCurrency(whtPay);
+    netVatPayable[month - 1] = netVat > 0 ? netVat : 0;
+    netVatReceivable[month - 1] = netVat < 0 ? roundCurrency(-netVat) : 0;
+    payePayable[month - 1] = roundCurrency(paye);
+    ssnitPayable[month - 1] = roundCurrency(ssnit);
+  }
+
+  whtReceivable[FULL_YEAR_INDEX] = whtReceivable[11];
+  whtPayable[FULL_YEAR_INDEX] = whtPayable[11];
+  netVatPayable[FULL_YEAR_INDEX] = netVatPayable[11];
+  netVatReceivable[FULL_YEAR_INDEX] = netVatReceivable[11];
+  payePayable[FULL_YEAR_INDEX] = payePayable[11];
+  ssnitPayable[FULL_YEAR_INDEX] = ssnitPayable[11];
+
+  return {
+    whtReceivable,
+    whtPayable,
+    netVatPayable,
+    netVatReceivable,
+    payePayable,
+    ssnitPayable,
+  };
 }
 
 function calculateFixedAssetsNetByMonth(
@@ -311,6 +479,7 @@ export function buildBalanceSheetReport(
     productCashPurchases: [],
   },
   manualEntries: CashMovementManualEntry[] = [],
+  taxLedgerEntries: BalanceSheetTaxLedgerEntry[] = [],
 ): BalanceSheetReport {
   const cash = calculateCashAndCashEquivalentsByMonth(
     capitalContributions,
@@ -326,6 +495,10 @@ export function buildBalanceSheetReport(
   const accountsReceivable = roundMonthlyTotals(
     calculateAccountsReceivableByMonth(incomeEntries, financialYear),
   );
+  const openTax = calculateOpenTaxBalancesByMonth(
+    taxLedgerEntries,
+    financialYear,
+  );
   const fixedAssetsNet = roundMonthlyTotals(
     calculateFixedAssetsNetByMonth(fixedAssets, financialYear),
   );
@@ -340,7 +513,14 @@ export function buildBalanceSheetReport(
     ),
   );
   const totalAssets = roundMonthlyTotals(
-    sumMonthlyTotals([cash, accountsReceivable, fixedAssetsNet, inventory]),
+    sumMonthlyTotals([
+      cash,
+      accountsReceivable,
+      openTax.whtReceivable,
+      openTax.netVatReceivable,
+      fixedAssetsNet,
+      inventory,
+    ]),
   );
 
   const accountsPayable = roundMonthlyTotals(
@@ -355,7 +535,14 @@ export function buildBalanceSheetReport(
     ),
   );
   const totalLiabilities = roundMonthlyTotals(
-    sumMonthlyTotals([accountsPayable, accruedWagesPayable]),
+    sumMonthlyTotals([
+      accountsPayable,
+      accruedWagesPayable,
+      openTax.whtPayable,
+      openTax.netVatPayable,
+      openTax.payePayable,
+      openTax.ssnitPayable,
+    ]),
   );
 
   const shareCapital = roundMonthlyTotals(
@@ -379,6 +566,10 @@ export function buildBalanceSheetReport(
     sumMonthlyTotals([
       accountsPayable,
       accruedWagesPayable,
+      openTax.whtPayable,
+      openTax.netVatPayable,
+      openTax.payePayable,
+      openTax.ssnitPayable,
       shareCapital,
       retainedEarnings,
       inventoryOpeningEquity,
@@ -404,6 +595,20 @@ export function buildBalanceSheetReport(
       key: "accounts-receivable",
       label: "Accounts Receivable",
       amounts: accountsReceivable,
+      kind: "data",
+      side: "assets",
+    },
+    {
+      key: "wht-receivable",
+      label: "WHT Receivable",
+      amounts: openTax.whtReceivable,
+      kind: "data",
+      side: "assets",
+    },
+    {
+      key: "net-vat-receivable",
+      label: "Net VAT Receivable",
+      amounts: openTax.netVatReceivable,
       kind: "data",
       side: "assets",
     },
@@ -446,6 +651,34 @@ export function buildBalanceSheetReport(
       key: "accrued-wages-payable",
       label: "Accrued Wages Payable",
       amounts: accruedWagesPayable,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "wht-payable",
+      label: "WHT Payable",
+      amounts: openTax.whtPayable,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "net-vat-payable",
+      label: "Net VAT Payable",
+      amounts: openTax.netVatPayable,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "paye-payable",
+      label: "PAYE Payable",
+      amounts: openTax.payePayable,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "ssnit-payable",
+      label: "SSNIT Payable",
+      amounts: openTax.ssnitPayable,
       kind: "data",
       side: "liabilities",
     },

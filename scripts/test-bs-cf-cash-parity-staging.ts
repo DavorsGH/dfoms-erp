@@ -70,11 +70,12 @@ async function main() {
     { data: rawPurchases },
     { data: productPurchases },
     { data: cogsRows, error: cogsError },
+    { data: taxLedger, error: taxError },
   ] = await Promise.all([
     admin
       .from("income_register")
       .select(
-        "date, amount, amount_received, outstanding_balance, service_category, entry_type, sale_status",
+        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status",
       )
       .eq("tenant_id", TENANT)
       .order("date"),
@@ -94,7 +95,9 @@ async function main() {
       .order("asset_id"),
     admin
       .from("accounts_payable")
-      .select("invoice_date, balance_due, amount, amount_paid")
+      .select(
+        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
+      )
       .eq("tenant_id", TENANT),
     admin
       .from("capital_contributions")
@@ -137,6 +140,12 @@ async function main() {
       .or("receipt_no.ilike.COGS-%,receipt_no.ilike.VOID-COGS-%")
       .order("date", { ascending: false })
       .limit(20),
+    admin
+      .from("tax_ledger_entries")
+      .select("entry_date, direction, tax_component, tax_amount, status")
+      .eq("tenant_id", TENANT)
+      .eq("status", "open")
+      .order("entry_date"),
   ]);
 
   for (const [label, err] of [
@@ -147,6 +156,7 @@ async function main() {
     ["capital", capitalError],
     ["manual", manualError],
     ["cogs", cogsError],
+    ["tax", taxError],
   ] as const) {
     if (err) throw new Error(`${label}: ${err.message}`);
   }
@@ -208,6 +218,7 @@ async function main() {
       productCashPurchases: productPurchases ?? [],
     },
     manual ?? [],
+    taxLedger ?? [],
   );
 
   const bsReport = buildBalanceSheetReport(
@@ -229,6 +240,7 @@ async function main() {
       productCashPurchases: productPurchases ?? [],
     },
     manual ?? [],
+    taxLedger ?? [],
   );
 
   const cfIncomeBase = (income ?? []).map((e) => ({

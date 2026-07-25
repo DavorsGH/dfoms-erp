@@ -10,12 +10,33 @@ export type PayrollStatutoryComponent =
   | "ssnit_employer_tier1"
   | "ssnit_tier2";
 
+export type PayrollStatutoryLegAction =
+  | "insert"
+  | "update"
+  | "unchanged"
+  | "skipped_paid"
+  | "delete";
+
+export type PayrollStatutoryLegLog = {
+  tax_component: PayrollStatutoryComponent;
+  tax_amount: number;
+  action: PayrollStatutoryLegAction;
+};
+
 export type PayrollStatutoryLedgerResult = {
   sourceId: string;
   inserted: number;
   updated: number;
   deleted: number;
   skippedPaid: number;
+  unchanged: number;
+  dryRun: boolean;
+  legs: PayrollStatutoryLegLog[];
+};
+
+export type SyncPayrollPeriodTaxLedgerOptions = {
+  /** When true, compute insert/update/delete decisions but do not write. */
+  dryRun?: boolean;
 };
 
 type PayrollStatutorySourceRow = {
@@ -145,7 +166,9 @@ export async function syncPayrollPeriodTaxLedger(
   period: PayrollStatutoryPeriod,
   rows: PayrollStatutorySourceRow[],
   tenantId: string,
+  options?: SyncPayrollPeriodTaxLedgerOptions,
 ): Promise<PayrollStatutoryLedgerResult> {
+  const dryRun = options?.dryRun === true;
   const sourceId = buildPayrollPeriodTaxLedgerSourceId(period.payrollMonth);
   const periodMonth = toPeriodMonth(period.payrollMonth);
   const desired = buildDesiredLegs(rows);
@@ -182,11 +205,18 @@ export async function syncPayrollPeriodTaxLedger(
   let updated = 0;
   let deleted = 0;
   let skippedPaid = 0;
+  let unchanged = 0;
+  const legs: PayrollStatutoryLegLog[] = [];
   const nowIso = new Date().toISOString();
 
   for (const leg of desired) {
     if (paidOrFiled.has(leg.tax_component)) {
       skippedPaid += 1;
+      legs.push({
+        tax_component: leg.tax_component,
+        tax_amount: leg.tax_amount,
+        action: "skipped_paid",
+      });
       continue;
     }
 
@@ -194,53 +224,73 @@ export async function syncPayrollPeriodTaxLedger(
     if (openRow) {
       if (Number(openRow.tax_amount) === leg.tax_amount) {
         openByComponent.delete(leg.tax_component);
+        unchanged += 1;
+        legs.push({
+          tax_component: leg.tax_component,
+          tax_amount: leg.tax_amount,
+          action: "unchanged",
+        });
         continue;
       }
 
-      const { error: updateError } = await admin
-        .from("tax_ledger_entries")
-        .update({
-          entry_date: period.periodEndDate,
-          period_month: periodMonth,
-          taxable_base: leg.tax_amount,
-          tax_amount: leg.tax_amount,
-          counterparty_name: leg.counterparty_name,
-          notes: `Payroll statutory accrual — ${period.monthLabel}`,
-          updated_at: nowIso,
-        })
-        .eq("id", openRow.id)
-        .eq("status", "open");
+      if (!dryRun) {
+        const { error: updateError } = await admin
+          .from("tax_ledger_entries")
+          .update({
+            entry_date: period.periodEndDate,
+            period_month: periodMonth,
+            taxable_base: leg.tax_amount,
+            tax_amount: leg.tax_amount,
+            counterparty_name: leg.counterparty_name,
+            notes: `Payroll statutory accrual — ${period.monthLabel}`,
+            updated_at: nowIso,
+          })
+          .eq("id", openRow.id)
+          .eq("status", "open");
 
-      if (updateError) {
-        throw new Error(updateError.message);
+        if (updateError) {
+          throw new Error(updateError.message);
+        }
       }
 
       updated += 1;
       openByComponent.delete(leg.tax_component);
+      legs.push({
+        tax_component: leg.tax_component,
+        tax_amount: leg.tax_amount,
+        action: "update",
+      });
       continue;
     }
 
-    const { error: insertError } = await admin.from("tax_ledger_entries").insert({
-      tenant_id: tenantId,
-      entry_date: period.periodEndDate,
-      period_month: periodMonth,
-      direction: "statutory_payable",
-      tax_component: leg.tax_component,
-      rate_pct: null,
-      taxable_base: leg.tax_amount,
-      tax_amount: leg.tax_amount,
-      status: "open",
-      source_type: PAYROLL_PERIOD_SOURCE_TYPE,
-      source_id: sourceId,
-      counterparty_name: leg.counterparty_name,
-      notes: `Payroll statutory accrual — ${period.monthLabel}`,
-    });
+    if (!dryRun) {
+      const { error: insertError } = await admin.from("tax_ledger_entries").insert({
+        tenant_id: tenantId,
+        entry_date: period.periodEndDate,
+        period_month: periodMonth,
+        direction: "statutory_payable",
+        tax_component: leg.tax_component,
+        rate_pct: null,
+        taxable_base: leg.tax_amount,
+        tax_amount: leg.tax_amount,
+        status: "open",
+        source_type: PAYROLL_PERIOD_SOURCE_TYPE,
+        source_id: sourceId,
+        counterparty_name: leg.counterparty_name,
+        notes: `Payroll statutory accrual — ${period.monthLabel}`,
+      });
 
-    if (insertError) {
-      throw new Error(insertError.message);
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
     }
 
     inserted += 1;
+    legs.push({
+      tax_component: leg.tax_component,
+      tax_amount: leg.tax_amount,
+      action: "insert",
+    });
   }
 
   // Open legs no longer owed (amount now zero / missing from desired).
@@ -249,20 +299,36 @@ export async function syncPayrollPeriodTaxLedger(
       continue;
     }
 
-    const { error: deleteError } = await admin
-      .from("tax_ledger_entries")
-      .delete()
-      .eq("id", openRow.id)
-      .eq("status", "open");
+    if (!dryRun) {
+      const { error: deleteError } = await admin
+        .from("tax_ledger_entries")
+        .delete()
+        .eq("id", openRow.id)
+        .eq("status", "open");
 
-    if (deleteError) {
-      throw new Error(deleteError.message);
+      if (deleteError) {
+        throw new Error(deleteError.message);
+      }
     }
 
     deleted += 1;
+    legs.push({
+      tax_component: component,
+      tax_amount: Number(openRow.tax_amount) || 0,
+      action: "delete",
+    });
   }
 
-  return { sourceId, inserted, updated, deleted, skippedPaid };
+  return {
+    sourceId,
+    inserted,
+    updated,
+    deleted,
+    skippedPaid,
+    unchanged,
+    dryRun,
+    legs,
+  };
 }
 
 /** Delete open payroll_period legs for a period (reopen / release). Leaves paid. */

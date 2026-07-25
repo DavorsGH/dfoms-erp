@@ -215,14 +215,14 @@ export default async function DashboardPage() {
   const { data: incomeEntries, error: incomeError } = await supabase
     .from("income_register")
     .select(
-      "tenant_id, date, amount, amount_received, outstanding_balance, wht_amount, service_category",
+      "tenant_id, date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
     )
     .order("date", { ascending: true });
 
   const { data: expenseEntries, error: expenseError } = await supabase
     .from("expense_register")
     .select(
-      "tenant_id, date, expense_category, sub_category, amount, payment_status, description, receipt_no",
+      "tenant_id, date, expense_category, sub_category, amount, payment_status, description, receipt_no, net_of_tax_amount, input_vat_amount",
     )
     .order("date", { ascending: true });
 
@@ -234,6 +234,7 @@ export default async function DashboardPage() {
     { data: payrollHistoryRows, error: payrollHistoryError },
     { data: monthEndCloseRecords, error: monthEndCloseError },
     { data: payrollProcessingEntries, error: payrollProcessingError },
+    { data: taxLedgerEntries, error: taxLedgerError },
     inventoryBalanceSheetInput,
   ] = await Promise.all([
     supabase
@@ -246,7 +247,7 @@ export default async function DashboardPage() {
     supabase
       .from("accounts_payable")
       .select(
-        "invoice_date, balance_due, amount, amount_paid, vendor_name, status, description",
+        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category, status, description",
       )
       .order("invoice_date", { ascending: true }),
     supabase
@@ -267,6 +268,11 @@ export default async function DashboardPage() {
       .from("payroll_processing")
       .select("payroll_month, gross_pay, net_pay")
       .order("payroll_month", { ascending: true }),
+    supabase
+      .from("tax_ledger_entries")
+      .select("entry_date, direction, tax_component, tax_amount, status")
+      .eq("status", "open")
+      .order("entry_date", { ascending: true }),
     // Inventory input already loads raw_materials; derive low-stock count from it.
     fetchInventoryBalanceSheetInput(supabase, tenantId),
   ]);
@@ -281,6 +287,7 @@ export default async function DashboardPage() {
     payrollHistoryError?.message ??
     monthEndCloseError?.message ??
     payrollProcessingError?.message ??
+    taxLedgerError?.message ??
     null;
 
   const payrollHistoryWages =
@@ -333,6 +340,10 @@ export default async function DashboardPage() {
         date: entry.date,
         service_category: entry.service_category,
         amount: entry.amount,
+        entry_type: entry.entry_type,
+        sale_status: entry.sale_status,
+        net_of_tax_amount: entry.net_of_tax_amount,
+        output_vat_amount: entry.output_vat_amount,
       })) ?? [],
     balanceSheetIncomeEntries: incomeEntries ?? [],
     expenseEntries:
@@ -346,6 +357,8 @@ export default async function DashboardPage() {
         expense_category: entry.expense_category,
         sub_category: entry.sub_category,
         amount: entry.amount,
+        net_of_tax_amount: entry.net_of_tax_amount,
+        input_vat_amount: entry.input_vat_amount,
       })) ?? [],
     fixedAssets: fixedAssets ?? [],
     payableEntries: payableEntries ?? [],
@@ -372,6 +385,7 @@ export default async function DashboardPage() {
     payrollPayables,
     lowStockRawMaterialCount,
     inventoryBalanceSheetInput,
+    taxLedgerEntries: taxLedgerEntries ?? [],
   });
 
   return (

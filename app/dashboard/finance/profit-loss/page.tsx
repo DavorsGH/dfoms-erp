@@ -15,11 +15,15 @@ export default async function ProfitLossPage() {
   ] = await Promise.all([
     supabase
       .from("income_register")
-      .select("date, service_category, amount, entry_type, sale_status")
+      .select(
+        "date, service_category, amount, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
+      )
       .order("date", { ascending: true }),
     supabase
       .from("expense_register")
-      .select("date, expense_category, sub_category, amount")
+      .select(
+        "date, expense_category, sub_category, amount, net_of_tax_amount, input_vat_amount",
+      )
       .order("date", { ascending: true }),
     supabase
       .from("fixed_assets")

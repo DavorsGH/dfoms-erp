@@ -13,6 +13,7 @@ import {
 import type {
   BalanceSheetAccountsPayableEntry,
   BalanceSheetIncomeEntry,
+  BalanceSheetTaxLedgerEntry,
   InventoryBalanceSheetInput,
 } from "./balance-sheet-utils";
 import type { CashFlowInventoryPurchaseInput } from "./cash-flow-utils";
@@ -45,6 +46,7 @@ export type BalanceSheetPageData = {
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   initialManualEntries: ManualFinancialEntry[];
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
+  initialTaxLedgerEntries: BalanceSheetTaxLedgerEntry[];
   availableYears: number[];
   fetchError: string | null;
 };
@@ -165,18 +167,19 @@ export async function fetchBalanceSheetPageData(
     { data: payrollHistory, error: payrollHistoryError },
     { data: payrollProcessing, error: payrollProcessingError },
     { data: monthEndCloseRecords, error: monthEndCloseError },
+    { data: taxLedgerEntries, error: taxLedgerError },
     inventoryBalanceSheet,
   ] = await Promise.all([
     supabase
       .from("income_register")
       .select(
-        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status",
+        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
       )
       .order("date", { ascending: true }),
     supabase
       .from("expense_register")
       .select(
-        "date, expense_category, sub_category, amount, payment_status, description, receipt_no",
+        "date, expense_category, sub_category, amount, payment_status, description, receipt_no, net_of_tax_amount, input_vat_amount",
       )
       .order("date", { ascending: true }),
     supabase
@@ -187,7 +190,9 @@ export async function fetchBalanceSheetPageData(
       .order("asset_id", { ascending: true }),
     supabase
       .from("accounts_payable")
-      .select("invoice_date, balance_due, amount, amount_paid")
+      .select(
+        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
+      )
       .order("invoice_date", { ascending: true }),
     supabase
       .from("capital_contributions")
@@ -209,6 +214,11 @@ export async function fetchBalanceSheetPageData(
       .from("month_end_close")
       .select("month, total_net_pay")
       .order("month", { ascending: true }),
+    supabase
+      .from("tax_ledger_entries")
+      .select("entry_date, direction, tax_component, tax_amount, status")
+      .eq("status", "open")
+      .order("entry_date", { ascending: true }),
     fetchInventoryBalanceSheetInput(supabase, tenantId),
   ]);
 
@@ -248,6 +258,8 @@ export async function fetchBalanceSheetPageData(
       (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? [],
     initialManualEntries: manualEntries ?? [],
     initialInventoryBalanceSheet: inventoryBalanceSheet,
+    initialTaxLedgerEntries:
+      (taxLedgerEntries as BalanceSheetTaxLedgerEntry[] | null) ?? [],
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),
@@ -256,6 +268,7 @@ export async function fetchBalanceSheetPageData(
         ...(manualEntries ?? []).map((entry) => entry.period_month),
         ...(payableEntries ?? []).map((entry) => entry.invoice_date),
         ...(payrollHistory ?? []).map((entry) => entry.payroll_month),
+        ...(taxLedgerEntries ?? []).map((entry) => entry.entry_date),
       ],
     ),
     fetchError:
@@ -268,6 +281,7 @@ export async function fetchBalanceSheetPageData(
       payrollHistoryError?.message ??
       payrollProcessingError?.message ??
       monthEndCloseError?.message ??
+      taxLedgerError?.message ??
       null,
   };
 }

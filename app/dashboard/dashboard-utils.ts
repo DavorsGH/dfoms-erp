@@ -3,6 +3,7 @@ import {
   getBalanceCheckForPeriod,
   type BalanceSheetAccountsPayableEntry,
   type BalanceSheetIncomeEntry,
+  type BalanceSheetTaxLedgerEntry,
   type InventoryBalanceSheetInput,
 } from "./finance/balance-sheet-utils";
 import type { BalanceSheetCashExpenseEntry } from "./finance/accrued-wages-utils";
@@ -270,6 +271,7 @@ function buildMonthSnapshot(input: {
   payrollHistoryEntries: DashboardPayrollHistoryEntry[];
   payrollPayables: DashboardPayrollPayableEntry[];
   inventoryBalanceSheetInput: InventoryBalanceSheetInput;
+  taxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
   year: number;
   month: number;
   referenceDate?: Date;
@@ -295,6 +297,7 @@ function buildMonthSnapshot(input: {
     input.inventoryBalanceSheetInput,
     input.referenceDate,
     input.manualEntries,
+    input.taxLedgerEntries ?? [],
   );
   const balanceCheck = getBalanceCheckForPeriod(balanceSheetReport, monthIndex);
   const cashRow = balanceSheetReport.rows.find((row) => row.key === "cash");
@@ -477,6 +480,7 @@ function buildBalanceSheetReportForYear(
   inventoryBalanceSheetInput: InventoryBalanceSheetInput,
   referenceDate?: Date,
   manualEntries: ManualFinancialEntry[] = [],
+  taxLedgerEntries: BalanceSheetTaxLedgerEntry[] = [],
 ) {
   return buildBalanceSheetReport(
     incomeEntries,
@@ -493,6 +497,7 @@ function buildBalanceSheetReportForYear(
       referenceDate,
     },
     manualEntries,
+    taxLedgerEntries,
   );
 }
 
@@ -634,6 +639,7 @@ export function buildDashboardViewModel(input: {
   payrollHistoryEntries: DashboardPayrollHistoryEntry[];
   payrollPayables: DashboardPayrollPayableEntry[];
   inventoryBalanceSheetInput: InventoryBalanceSheetInput;
+  taxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
   lowStockRawMaterialCount?: number;
   referenceDate?: Date;
 }): DashboardViewModel {
@@ -697,6 +703,7 @@ export function buildDashboardViewModel(input: {
       input.inventoryBalanceSheetInput,
       referenceDate,
       input.manualEntries,
+      input.taxLedgerEntries ?? [],
     );
     const cashAmounts = report.rows.find((row) => row.key === "cash")?.amounts;
 
