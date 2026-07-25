@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import AdministrationNav from "../administration-nav";
 import LeaveSettings from "../leave-settings";
 import type { LeaveApproverConfig } from "../../self-service/leave-request-utils";
 
@@ -44,10 +43,6 @@ export default async function LeaveSettingsPage() {
 
   return (
     <>
-      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">
-        Administration
-      </h1>
-      <AdministrationNav />
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
         Leave Settings
       </h2>
