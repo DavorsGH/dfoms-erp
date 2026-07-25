@@ -9,18 +9,32 @@ export const DEFAULT_VAT_BUNDLE_RATE = 20;
 export const DEFAULT_VFRS_RATE = 3;
 export const DEFAULT_WHT_RATE = 7.5;
 
+/** Slim select for Income / Expense / AP forms (defaults + VAT flag). */
 export const TAX_SETTINGS_SELECT =
   "tenant_id, vat_registered, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate";
+
+/** Full select for the Tax Ledger settings editor. */
+export const TAX_SETTINGS_FULL_SELECT =
+  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, reminder_enabled";
 
 export const TAX_RATE_CATALOG_SELECT =
   "id, tenant_id, tax_kind, code, label, rate_pct, is_active, sort_order";
 
+export type VatReturnPeriod = "monthly" | "quarterly";
+
 export type TaxSettings = {
   tenant_id: string;
   vat_registered: boolean;
+  gra_tin: string | null;
   default_vat_bundle_rate: number;
   default_vfrs_rate: number;
   default_wht_rate: number;
+  vat_return_period: VatReturnPeriod;
+  vat_return_due_day: number | null;
+  wht_return_due_day: number | null;
+  next_vat_due_date: string | null;
+  next_wht_due_date: string | null;
+  reminder_enabled: boolean;
 };
 
 export type TaxRateCatalogEntry = {
@@ -42,6 +56,54 @@ export function roundTaxRate(value: number): number {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+export function emptyTaxSettings(tenantId: string): TaxSettings {
+  return {
+    tenant_id: tenantId,
+    vat_registered: true,
+    gra_tin: null,
+    default_vat_bundle_rate: DEFAULT_VAT_BUNDLE_RATE,
+    default_vfrs_rate: DEFAULT_VFRS_RATE,
+    default_wht_rate: DEFAULT_WHT_RATE,
+    vat_return_period: "monthly",
+    vat_return_due_day: null,
+    wht_return_due_day: null,
+    next_vat_due_date: null,
+    next_wht_due_date: null,
+    reminder_enabled: true,
+  };
+}
+
+function normalizeVatReturnPeriod(
+  value: string | null | undefined,
+): VatReturnPeriod {
+  return value === "quarterly" ? "quarterly" : "monthly";
+}
+
+function normalizeOptionalDay(
+  value: number | string | null | undefined,
+): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const day = Number(value);
+  if (!Number.isFinite(day) || day < 1 || day > 31) {
+    return null;
+  }
+
+  return Math.trunc(day);
+}
+
+function normalizeOptionalDate(
+  value: string | null | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return value.slice(0, 10);
+}
+
 export function normalizeTaxSettings(
   raw: Partial<TaxSettings> | null | undefined,
 ): TaxSettings | null {
@@ -52,10 +114,17 @@ export function normalizeTaxSettings(
   return {
     tenant_id: raw.tenant_id,
     vat_registered: raw.vat_registered ?? true,
+    gra_tin: raw.gra_tin?.trim() ? raw.gra_tin.trim() : null,
     default_vat_bundle_rate:
       Number(raw.default_vat_bundle_rate) || DEFAULT_VAT_BUNDLE_RATE,
     default_vfrs_rate: Number(raw.default_vfrs_rate) || DEFAULT_VFRS_RATE,
     default_wht_rate: Number(raw.default_wht_rate) || DEFAULT_WHT_RATE,
+    vat_return_period: normalizeVatReturnPeriod(raw.vat_return_period),
+    vat_return_due_day: normalizeOptionalDay(raw.vat_return_due_day),
+    wht_return_due_day: normalizeOptionalDay(raw.wht_return_due_day),
+    next_vat_due_date: normalizeOptionalDate(raw.next_vat_due_date),
+    next_wht_due_date: normalizeOptionalDate(raw.next_wht_due_date),
+    reminder_enabled: raw.reminder_enabled ?? true,
   };
 }
 
