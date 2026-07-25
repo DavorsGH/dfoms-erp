@@ -22,6 +22,7 @@ import {
   type BillingSettingsRow,
 } from "@/utils/billing-settings-types";
 import type { TenantBillingSubscription } from "@/utils/billing-subscription";
+import PaymentSettings from "./payment-settings";
 
 export type BillingTierOption = {
   id: string;
@@ -53,6 +54,13 @@ const primaryButtonClassName =
 
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const tabClassName = (active: boolean) =>
+  `shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+    active
+      ? "bg-[#0f2744] text-white"
+      : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+  }`;
 
 const TIER_RANK: Record<string, number> = {
   Starter: 0,
@@ -108,6 +116,7 @@ export default function BillingSettings({
   const [checkoutLoadingId, setCheckoutLoadingId] = useState<string | null>(
     null,
   );
+  const [activeTab, setActiveTab] = useState<"billing" | "payment">("billing");
 
   const planState = formatBillingPlanState(
     subscription.subscriptionStatus,
@@ -174,6 +183,30 @@ export default function BillingSettings({
 
   return (
     <div className="max-w-4xl space-y-8">
+      <nav className="border-b border-slate-200 pb-4" aria-label="Billing settings">
+        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "billing"}
+            onClick={() => setActiveTab("billing")}
+            className={tabClassName(activeTab === "billing")}
+          >
+            Billing Settings
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "payment"}
+            onClick={() => setActiveTab("payment")}
+            className={tabClassName(activeTab === "payment")}
+          >
+            Payment Settings
+          </button>
+        </div>
+      </nav>
+
+      <div hidden={activeTab !== "billing"} className="space-y-8">
       <p className="text-sm text-slate-600">
         Manage your subscription, invoices, and billing contact details for this
         workspace.
@@ -558,6 +591,12 @@ export default function BillingSettings({
           </div>
         </div>
       ) : null}
+      </div>
+
+      <PaymentSettings
+        initialStatus={billingSettings.paystack_subaccount_status}
+        hidden={activeTab !== "payment"}
+      />
     </div>
   );
 }

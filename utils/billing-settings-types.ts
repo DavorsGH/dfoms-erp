@@ -7,7 +7,11 @@ export type BillingSettingsRow = {
   country_region: string | null;
   address_line1: string | null;
   business_tax_id: string | null;
+  paystack_subaccount_code: string | null;
+  paystack_subaccount_status: PaystackSubaccountStatus;
 };
+
+export type PaystackSubaccountStatus = "not_setup" | "pending" | "active";
 
 export type BillingInvoiceRow = {
   id: string;
@@ -36,7 +40,7 @@ export const BILLING_SETTINGS_HEADER_SELECT =
   "bill_to_name, country_region, address_line1";
 
 export const BILLING_SETTINGS_SELECT =
-  "tenant_id, credit_balance, email_recipient, additional_emails, bill_to_name, country_region, address_line1, business_tax_id";
+  "tenant_id, credit_balance, email_recipient, additional_emails, bill_to_name, country_region, address_line1, business_tax_id, paystack_subaccount_code, paystack_subaccount_status";
 
 export const BILLING_INVOICE_SELECT =
   "id, invoice_date, amount, invoice_number, status";
@@ -51,6 +55,8 @@ export function emptyBillingSettings(tenantId: string): BillingSettingsRow {
     country_region: "",
     address_line1: "",
     business_tax_id: "",
+    paystack_subaccount_code: null,
+    paystack_subaccount_status: "not_setup",
   };
 }
 
