@@ -43,6 +43,8 @@ next-env.d.ts
 # data backups / scratch files - never commit
 dfoms-pre-phase1-backup.sql
 diff-summary.txt
+tsc-exit.txt
+tsc-output.txt
 # local backups / scratch archives - never commit
 backups/
 scripts.zip
