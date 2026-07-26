@@ -89,9 +89,7 @@ export default function PosCheckout({
   const [productSearch, setProductSearch] = useState("");
   const [clientId, setClientId] = useState("");
   const [customerName, setCustomerName] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<string>(
-    POS_CHECKOUT_PAYMENT_METHODS[0],
-  );
+  const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [dueDate, setDueDate] = useState(todayIsoDate());
   const [notes, setNotes] = useState("");
   const [payerEmail, setPayerEmail] = useState("");
@@ -244,7 +242,7 @@ export default function PosCheckout({
     setCustomerName("");
     setPayerEmail("");
     setPayerPhone("");
-    setPaymentMethod(POS_CHECKOUT_PAYMENT_METHODS[0]);
+    setPaymentMethod("");
     setDueDate(todayIsoDate());
     setNotes("");
     setProductSearch("");
@@ -267,7 +265,9 @@ export default function PosCheckout({
     const trimmedCustomerName = customerName.trim() || null;
 
     if (!trimmedClientId && !trimmedCustomerName) {
-      setError("Select a contract client or enter a walk-in / other payer name.");
+      setError(
+        "Select a customer or enter a walk-in / other payer name.",
+      );
       return null;
     }
 
@@ -852,7 +852,7 @@ export default function PosCheckout({
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Contract Customer
+              Customer
             </label>
             <select
               value={clientId}
@@ -870,7 +870,7 @@ export default function PosCheckout({
               }}
               className={inputClassName}
             >
-              <option value="">Select contract client</option>
+              <option value="">Select customer</option>
               {initialClients.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
@@ -886,7 +886,7 @@ export default function PosCheckout({
               type="text"
               value={customerName}
               onChange={(event) => setCustomerName(event.target.value)}
-              placeholder="Optional — for one-off payers not in clients list"
+              placeholder="Optional — for one-off payers not in the customer list"
               disabled={Boolean(clientId)}
               className={`${inputClassName}${clientId ? " bg-slate-50 text-slate-600" : ""}`}
             />
@@ -925,6 +925,7 @@ export default function PosCheckout({
               onChange={(event) => setPaymentMethod(event.target.value)}
               className={inputClassName}
             >
+              <option value="">Select payment method</option>
               {POS_CHECKOUT_PAYMENT_METHODS.map((method) => (
                 <option key={method} value={method}>
                   {method}
@@ -960,7 +961,13 @@ export default function PosCheckout({
         <p className="text-sm text-slate-600">
           {isMobileMoney
             ? "Mobile Money opens a Paystack popup. Sale and stock update only after payment is confirmed."
-            : "Cash sales are recorded as fully paid for the cart total. Request Payment (link) charges first — no sale or stock change until the customer pays."}
+            : paymentMethod.trim()
+              ? "Cash sales are recorded as fully paid for the cart total. Request Payment (link) charges first — no sale or stock change until the customer pays."
+              : "Select a payment method to continue. Cash sales are recorded as fully paid; Request Payment (link) charges first — no sale or stock change until the customer pays."}
+        </p>
+        <p className="text-sm text-slate-600">
+          Mobile Money payments are remitted through Paystack. Paystack charges
+          apply, and remittance to your account may take up to 24 hours.
         </p>
 
         <div className="flex flex-wrap gap-3">
