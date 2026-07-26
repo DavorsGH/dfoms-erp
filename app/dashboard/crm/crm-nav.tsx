@@ -9,6 +9,10 @@ const navItems = [
   { label: "Product Sales", href: "/dashboard/crm/product-sales" },
   { label: "POS", href: "/dashboard/pos" },
   { label: "Sales Log", href: "/dashboard/crm/sales" },
+  {
+    label: "Email & Promotions",
+    href: "/dashboard/crm/email-promotions/templates",
+  },
 ] as const;
 
 export default function CrmNav() {
@@ -18,7 +22,9 @@ export default function CrmNav() {
     <nav className="mb-6 border-b border-slate-200 pb-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
         {navItems.map((item) => {
-          const active = pathname === item.href;
+          const active = pathname.startsWith("/dashboard/crm/email-promotions")
+            ? item.href.startsWith("/dashboard/crm/email-promotions")
+            : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
