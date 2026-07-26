@@ -21,7 +21,6 @@ import {
   type ProfitLossExpenseEntry,
   type ProfitLossIncomeEntry,
 } from "../finance/profit-loss-utils";
-import type { AccountsPayableEntry } from "../finance/accounts-payable-utils";
 import type { IncomeRegisterEntry } from "../finance/income-register-utils";
 import type {
   BalanceSheetAccountsPayableEntry,
@@ -33,6 +32,7 @@ import type {
   MonthEndCloseNetPayEntry,
   PayrollHistoryWagesEntry,
 } from "../finance/accrued-wages-utils";
+import type { TaxLedgerEntry } from "../finance/tax-ledger-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -53,6 +53,7 @@ import {
   type ExpenseReportSourceEntry,
   type FixedAssetScheduleAsset,
   type StatementReportRow,
+  type StatutoryLiabilityDueDates,
 } from "./finance-reports-utils";
 import {
   FINANCE_REPORT_PRINT_AREA_ID,
@@ -640,18 +641,21 @@ export function ArAgingReport({
 }
 
 export function StatutoryLiabilitiesReport({
-  initialPayables,
-  initialManualEntries,
+  initialTaxLedgerEntries,
+  initialDueDates,
   fetchError,
 }: {
-  initialPayables: AccountsPayableEntry[];
-  initialManualEntries: ManualFinancialEntry[];
+  initialTaxLedgerEntries: TaxLedgerEntry[];
+  initialDueDates: StatutoryLiabilityDueDates | null;
   fetchError: string | null;
 }) {
   const report = useMemo(
     () =>
-      buildStatutoryLiabilitiesReport(initialPayables, initialManualEntries),
-    [initialPayables, initialManualEntries],
+      buildStatutoryLiabilitiesReport(
+        initialTaxLedgerEntries,
+        initialDueDates,
+      ),
+    [initialTaxLedgerEntries, initialDueDates],
   );
 
   function exportCsv() {

@@ -1,12 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import {
   fetchBalanceSheetPageData,
   fetchCashFlowInventoryPurchaseInput,
 } from "../finance/balance-sheet-page-data";
 import { buildAvailableYears } from "../finance/finance-year-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
-import type { AccountsPayableEntry } from "../finance/accounts-payable-utils";
-import type { FixedAssetScheduleAsset } from "./finance-reports-utils";
+import {
+  TAX_LEDGER_SELECT,
+  normalizeTaxLedgerEntry,
+  type TaxLedgerEntry,
+} from "../finance/tax-ledger-utils";
+import type {
+  FixedAssetScheduleAsset,
+  StatutoryLiabilityDueDates,
+} from "./finance-reports-utils";
 import {
   RECEIVABLES_INCOME_SELECT,
   normalizeIncomeRegisterEntry,
@@ -144,23 +152,39 @@ export async function fetchArAgingReportData(supabase: SupabaseClient) {
 export async function fetchStatutoryLiabilitiesReportData(
   supabase: SupabaseClient,
 ) {
+  const tenantId = await getCurrentUserTenantId();
+  if (!tenantId) {
+    return {
+      initialTaxLedgerEntries: [],
+      initialDueDates: null,
+      fetchError: "Unable to resolve tenant for Statutory Liabilities Report.",
+    };
+  }
+
   const [
-    { data: payables, error: payableError },
-    { data: manualEntries, error: manualError },
+    { data: entries, error: entriesError },
+    { data: settings, error: settingsError },
   ] = await Promise.all([
     supabase
-      .from("accounts_payable")
-      .select("*")
-      .order("due_date", { ascending: true }),
-    supabase.from("manual_financial_entries").select("*").order("period_month", {
-      ascending: true,
-    }),
+      .from("tax_ledger_entries")
+      .select(TAX_LEDGER_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("entry_date", { ascending: false }),
+    supabase
+      .from("tax_settings")
+      .select(
+        "next_ssnit_due_date, next_tier2_due_date, next_paye_due_date, next_vat_due_date, next_wht_due_date",
+      )
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
   ]);
 
   return {
-    initialPayables: (payables as AccountsPayableEntry[] | null) ?? [],
-    initialManualEntries: manualEntries ?? [],
-    fetchError: payableError?.message ?? manualError?.message ?? null,
+    initialTaxLedgerEntries: ((entries as TaxLedgerEntry[] | null) ?? []).map(
+      normalizeTaxLedgerEntry,
+    ),
+    initialDueDates: (settings as StatutoryLiabilityDueDates | null) ?? null,
+    fetchError: entriesError?.message ?? settingsError?.message ?? null,
   };
 }
 

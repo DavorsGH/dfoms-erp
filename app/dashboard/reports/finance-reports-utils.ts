@@ -1,10 +1,7 @@
 import { calculateDaysOutstanding } from "../finance/accounts-payable-utils";
-import type { AccountsPayableEntry } from "../finance/accounts-payable-utils";
 import { isPaidStatus } from "../finance/accrued-wages-utils";
 import { getMonthEndDate } from "../finance/capital-contributions-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
-import type { ManualFinancialEntry } from "../finance/cash-flow-utils";
-import { formatPeriodMonthLabel } from "../finance/manual-financial-entries-utils";
 import {
   calculateAssetAccumulatedDepreciationAsOf,
   calculateAssetNetBookValueAsOf,
@@ -16,10 +13,14 @@ import {
   getIncomeCustomerDisplayName,
   getIncomeEntryOutstanding,
   isActiveIncomeForReporting,
-  normalizeIncomeRegisterEntry,
 } from "../finance/income-register-utils";
-import { calculateOutstanding } from "../finance/income-register-utils";
 import { getEntryMonthIndex, MONTH_LABELS } from "../finance/profit-loss-utils";
+import {
+  getComponentLabel,
+  summarizeOpenTaxBalances,
+  type TaxLedgerBalanceSource,
+  type TaxLedgerComponent,
+} from "../finance/tax-ledger-utils";
 
 export const REPORT_MONTH_OPTIONS = [
   { value: 1, label: "January" },
@@ -74,6 +75,15 @@ export type StatutoryLiabilityRow = {
   amount: number;
   dueDate: string | null;
   daysUntilDue: number | null;
+};
+
+/** Optional due dates from tax_settings (same reminders as Statutory Ledger). */
+export type StatutoryLiabilityDueDates = {
+  next_ssnit_due_date?: string | null;
+  next_tier2_due_date?: string | null;
+  next_paye_due_date?: string | null;
+  next_vat_due_date?: string | null;
+  next_wht_due_date?: string | null;
 };
 
 export type FixedAssetScheduleRow = {
@@ -220,132 +230,116 @@ export function buildAccountsReceivableAgingReport(
   return { rows, bucketTotals, totalOutstanding };
 }
 
-function getLatestManualEntry(
-  entries: ManualFinancialEntry[],
-): ManualFinancialEntry | null {
-  if (entries.length === 0) {
+function daysUntilDueFromDate(
+  dueDate: string | null | undefined,
+  referenceDate: Date,
+): number | null {
+  if (!dueDate) {
     return null;
   }
-
-  return [...entries].sort((left, right) =>
-    right.period_month.localeCompare(left.period_month),
-  )[0];
+  return -calculateDaysOutstanding(dueDate.slice(0, 10), referenceDate);
 }
 
-function mapVendorToStatutoryGroup(
-  vendorName: string,
-): StatutoryLiabilityGroup | null {
-  const normalized = vendorName.trim().toUpperCase();
-
-  if (normalized === "SSNIT") {
-    return "SSNIT";
+function pushStatutoryRow(
+  rows: StatutoryLiabilityRow[],
+  group: StatutoryLiabilityGroup,
+  description: string,
+  amount: number,
+  dueDate: string | null | undefined,
+  referenceDate: Date,
+) {
+  const rounded = Math.round((Number(amount) || 0) * 100) / 100;
+  if (rounded <= 0) {
+    return;
   }
-
-  if (normalized === "GRA") {
-    return "PAYE";
-  }
-
-  return null;
+  const normalizedDue = dueDate?.slice(0, 10) ?? null;
+  rows.push({
+    group,
+    description,
+    amount: rounded,
+    dueDate: normalizedDue,
+    daysUntilDue: daysUntilDueFromDate(normalizedDue, referenceDate),
+  });
 }
 
+/**
+ * Open statutory remittance liabilities from tax_ledger_entries (status='open').
+ * Uses summarizeOpenTaxBalances — same aggregation as the Statutory Ledger overview.
+ * VAT = net output − input when positive (payable only). AP / MFE sources retired.
+ */
 export function buildStatutoryLiabilitiesReport(
-  payables: AccountsPayableEntry[],
-  manualEntries: ManualFinancialEntry[],
+  taxLedgerEntries: TaxLedgerBalanceSource[],
+  dueDates: StatutoryLiabilityDueDates | null = null,
   referenceDate = new Date(),
 ): {
   rows: StatutoryLiabilityRow[];
   groupTotals: Record<StatutoryLiabilityGroup, number>;
   grandTotal: number;
 } {
+  const summary = summarizeOpenTaxBalances(taxLedgerEntries);
   const rows: StatutoryLiabilityRow[] = [];
 
-  for (const payable of payables) {
-    if (payable.status.trim() !== "Unpaid") {
-      continue;
-    }
+  const ssnitLines: {
+    component: TaxLedgerComponent;
+    amount: number;
+    dueDate: string | null | undefined;
+  }[] = [
+    {
+      component: "ssnit_employee",
+      amount: summary.ssnitEmployee,
+      dueDate: dueDates?.next_ssnit_due_date,
+    },
+    {
+      component: "ssnit_employer_tier1",
+      amount: summary.ssnitEmployerTier1,
+      dueDate: dueDates?.next_ssnit_due_date,
+    },
+    {
+      component: "ssnit_tier2",
+      amount: summary.ssnitTier2,
+      dueDate: dueDates?.next_tier2_due_date,
+    },
+  ];
 
-    const group = mapVendorToStatutoryGroup(payable.vendor_name);
-    if (!group) {
-      continue;
-    }
-
-    const amount =
-      payable.balance_due !== null && payable.balance_due !== undefined
-        ? Number(payable.balance_due) || 0
-        : calculateOutstanding(
-            Number(payable.amount) || 0,
-            Number(payable.amount_paid) || 0,
-          );
-
-    if (amount <= 0) {
-      continue;
-    }
-
-    const daysUntilDue = -calculateDaysOutstanding(
-      payable.due_date,
+  for (const line of ssnitLines) {
+    pushStatutoryRow(
+      rows,
+      "SSNIT",
+      `${getComponentLabel(line.component)} (open)`,
+      line.amount,
+      line.dueDate,
       referenceDate,
     );
-
-    rows.push({
-      group,
-      description:
-        payable.description?.trim() ||
-        `${payable.vendor_name} — ${payable.invoice_number}`,
-      amount,
-      dueDate: payable.due_date,
-      daysUntilDue,
-    });
   }
 
-  const latestManualEntry = getLatestManualEntry(manualEntries);
+  pushStatutoryRow(
+    rows,
+    "PAYE",
+    "PAYE Payable (open)",
+    summary.payePayable,
+    dueDates?.next_paye_due_date,
+    referenceDate,
+  );
 
-  if (latestManualEntry) {
-    const vatAmount = Number(latestManualEntry.vat_payable) || 0;
-    const whtAmount = Number(latestManualEntry.withholding_tax_payable) || 0;
-    const periodLabel = formatPeriodMonthLabel(latestManualEntry.period_month);
+  // Liabilities report: only the payable side of net VAT (matches Balance Sheet).
+  const vatPayable = summary.netVatPosition > 0 ? summary.netVatPosition : 0;
+  pushStatutoryRow(
+    rows,
+    "VAT",
+    "Net VAT Payable (output − input, open)",
+    vatPayable,
+    dueDates?.next_vat_due_date,
+    referenceDate,
+  );
 
-    if (vatAmount > 0) {
-      rows.push({
-        group: "VAT",
-        description: `VAT Payable (${periodLabel})`,
-        amount: vatAmount,
-        dueDate: getMonthEndDate(
-          Number(latestManualEntry.period_month.slice(0, 4)),
-          Number(latestManualEntry.period_month.slice(5, 7)),
-        ),
-        daysUntilDue: latestManualEntry.period_month
-          ? -calculateDaysOutstanding(
-              getMonthEndDate(
-                Number(latestManualEntry.period_month.slice(0, 4)),
-                Number(latestManualEntry.period_month.slice(5, 7)),
-              ),
-              referenceDate,
-            )
-          : null,
-      });
-    }
-
-    if (whtAmount > 0) {
-      rows.push({
-        group: "WHT Payable",
-        description: `Withholding Tax Payable (${periodLabel})`,
-        amount: whtAmount,
-        dueDate: getMonthEndDate(
-          Number(latestManualEntry.period_month.slice(0, 4)),
-          Number(latestManualEntry.period_month.slice(5, 7)),
-        ),
-        daysUntilDue: latestManualEntry.period_month
-          ? -calculateDaysOutstanding(
-              getMonthEndDate(
-                Number(latestManualEntry.period_month.slice(0, 4)),
-                Number(latestManualEntry.period_month.slice(5, 7)),
-              ),
-              referenceDate,
-            )
-          : null,
-      });
-    }
-  }
+  pushStatutoryRow(
+    rows,
+    "WHT Payable",
+    "WHT Payable (open)",
+    summary.whtPayable,
+    dueDates?.next_wht_due_date,
+    referenceDate,
+  );
 
   const groupOrder: StatutoryLiabilityGroup[] = [
     "SSNIT",
@@ -357,7 +351,8 @@ export function buildStatutoryLiabilitiesReport(
   rows.sort(
     (left, right) =>
       groupOrder.indexOf(left.group) - groupOrder.indexOf(right.group) ||
-      (left.dueDate ?? "").localeCompare(right.dueDate ?? ""),
+      (left.dueDate ?? "").localeCompare(right.dueDate ?? "") ||
+      left.description.localeCompare(right.description),
   );
 
   const groupTotals: Record<StatutoryLiabilityGroup, number> = {
