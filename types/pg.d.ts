@@ -3,6 +3,7 @@ declare module "pg" {
     constructor(config?: {
       connectionString?: string | null;
       ssl?: boolean | { rejectUnauthorized?: boolean };
+      connectionTimeoutMillis?: number;
     });
     connect(): Promise<void>;
     query(text: string, values?: unknown[]): Promise<{

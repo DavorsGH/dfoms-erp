@@ -347,7 +347,7 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
             </p>
           </Link>
           <Link
-            href="/dashboard/finance/accounts-payable"
+            href="/dashboard/finance/tax-ledger"
             className="rounded-md border border-slate-200 bg-slate-50 p-4 transition-colors hover:border-[#0f2744]"
           >
             <p className="text-sm text-slate-600">

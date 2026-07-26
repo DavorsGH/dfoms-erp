@@ -243,7 +243,8 @@ export default async function DashboardPage() {
         "original_cost, quantity, useful_life_years, purchase_date, depreciation_method",
       )
       .order("asset_id", { ascending: true }),
-    // One AP query covers balance-sheet totals and payroll liability panel fields.
+    // One AP query covers balance-sheet totals (statutory SSNIT/GRA rows are
+    // excluded in BS utils; remittance SoR is tax_ledger_entries).
     supabase
       .from("accounts_payable")
       .select(
@@ -270,7 +271,9 @@ export default async function DashboardPage() {
       .order("payroll_month", { ascending: true }),
     supabase
       .from("tax_ledger_entries")
-      .select("entry_date, direction, tax_component, tax_amount, status")
+      .select(
+        "entry_date, period_month, direction, tax_component, tax_amount, status",
+      )
       .eq("status", "open")
       .order("entry_date", { ascending: true }),
     // Inventory input already loads raw_materials; derive low-stock count from it.
@@ -299,14 +302,6 @@ export default async function DashboardPage() {
     payrollHistoryRows?.map((entry) => ({
       payroll_month: entry.payroll_month,
       gross_pay: Number(entry.gross_pay) || 0,
-    })) ?? [];
-  const payrollPayables =
-    payableEntries?.map((entry) => ({
-      vendor_name: entry.vendor_name ?? "",
-      status: entry.status ?? null,
-      amount: Number(entry.amount) || 0,
-      invoice_date: entry.invoice_date,
-      description: entry.description ?? null,
     })) ?? [];
   const lowStockRawMaterialCount = countLowStockRawMaterials(
     inventoryBalanceSheetInput.rawMaterials,
@@ -382,7 +377,6 @@ export default async function DashboardPage() {
     monthEndCloseRecords: monthEndCloseRecords ?? [],
     payrollProcessingEntries: payrollProcessingEntries ?? [],
     payrollHistoryEntries,
-    payrollPayables,
     lowStockRawMaterialCount,
     inventoryBalanceSheetInput,
     taxLedgerEntries: taxLedgerEntries ?? [],

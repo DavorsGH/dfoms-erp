@@ -4,6 +4,7 @@ import {
   type CapitalContributionEntry,
 } from "./capital-contributions-utils";
 import {
+  buildNetPayByPayrollMonth,
   calculateAccruedWagesPayableByMonth,
   type BalanceSheetCashExpenseEntry,
   type MonthEndCloseNetPayEntry,
@@ -397,6 +398,7 @@ function calculateCashAndCashEquivalentsByMonth(
   inventoryConfig: InventoryBalanceConfig | null,
   manualEntries: CashMovementManualEntry[],
   financialYear: number,
+  staffSalaryNetByPayrollMonth?: Map<string, number>,
 ): MonthlyTotals {
   const components = buildMonthlyCashComponents(
     {
@@ -408,6 +410,7 @@ function calculateCashAndCashEquivalentsByMonth(
       productCashPurchases,
       inventoryConfig,
       manualEntries,
+      staffSalaryNetByPayrollMonth,
     },
     financialYear,
   );
@@ -481,6 +484,10 @@ export function buildBalanceSheetReport(
   manualEntries: CashMovementManualEntry[] = [],
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[] = [],
 ): BalanceSheetReport {
+  const staffSalaryNetByPayrollMonth = buildNetPayByPayrollMonth(
+    payrollHistory,
+    monthEndCloseNetPay,
+  );
   const cash = calculateCashAndCashEquivalentsByMonth(
     capitalContributions,
     incomeEntries,
@@ -491,6 +498,7 @@ export function buildBalanceSheetReport(
     inventoryInput.config,
     manualEntries,
     financialYear,
+    staffSalaryNetByPayrollMonth,
   );
   const accountsReceivable = roundMonthlyTotals(
     calculateAccountsReceivableByMonth(incomeEntries, financialYear),

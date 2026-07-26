@@ -21,9 +21,12 @@ import {
   TAX_LEDGER_SELECT,
   GRA_TAX_COMPONENTS,
   PAYE_COMPONENTS,
+  REMINDER_WINDOW_DAYS,
   REMITTED_STATUS,
   SSNIT_COMPONENTS,
   appendRemittedNote,
+  buildRemittanceDueDatePatch,
+  daysUntilDate,
   filterEntriesByComponents,
   filterTaxLedgerEntries,
   formatGHS,
@@ -165,20 +168,65 @@ function DueDateCard({
   label,
   dueDay,
   nextDue,
+  onGoToSettings,
 }: {
   label: string;
   dueDay: number | null;
   nextDue: string | null;
+  onGoToSettings: () => void;
 }) {
+  const daysUntil = daysUntilDate(nextDue);
+
+  let nextDueContent: React.ReactNode;
+  if (!nextDue || daysUntil == null) {
+    nextDueContent = (
+      <span className="text-sm">
+        <span className="text-slate-600">Next due: not set — </span>
+        <button
+          type="button"
+          onClick={onGoToSettings}
+          className="font-medium text-[#0f2744] underline underline-offset-2 hover:text-[#18365c]"
+        >
+          Set a due date in Settings
+        </button>
+      </span>
+    );
+  } else if (daysUntil < 0) {
+    const overdue = Math.abs(daysUntil);
+    nextDueContent = (
+      <span className="text-sm font-medium text-red-600">
+        Next due: {formatDate(nextDue)} — {overdue} day
+        {overdue === 1 ? "" : "s"} overdue
+      </span>
+    );
+  } else if (daysUntil === 0) {
+    nextDueContent = (
+      <span className="text-sm font-medium text-amber-700">
+        Next due: {formatDate(nextDue)} — due today
+      </span>
+    );
+  } else if (daysUntil <= REMINDER_WINDOW_DAYS) {
+    nextDueContent = (
+      <span className="text-sm font-medium text-amber-700">
+        Next due: {formatDate(nextDue)} — due in {daysUntil} day
+        {daysUntil === 1 ? "" : "s"}
+      </span>
+    );
+  } else {
+    nextDueContent = (
+      <span className="text-sm text-slate-600">
+        Next due: {formatDate(nextDue)}
+      </span>
+    );
+  }
+
   return (
     <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
       <p className="text-sm font-medium text-slate-700">{label}</p>
       <p className="mt-1 text-sm text-slate-600">
         Due day: {dueDay == null ? "—" : dayOfMonthLabel(dueDay)}
       </p>
-      <p className="text-sm text-slate-600">
-        Next due: {nextDue ? formatDate(nextDue) : "—"}
-      </p>
+      <p>{nextDueContent}</p>
     </div>
   );
 }
@@ -648,10 +696,45 @@ export default function TaxLedger({
       return;
     }
 
+    const remittedIds = new Set(updates.map((entry) => entry.id));
+    const remainingOpen = entries.filter(
+      (entry) => entry.status === "open" && !remittedIds.has(entry.id),
+    );
+    const dueDatePatch = buildRemittanceDueDatePatch(
+      settings,
+      updates.map((entry) => entry.tax_component),
+      remainingOpen,
+    );
+
+    let dueAdvanceNote = "";
+    if (Object.keys(dueDatePatch).length > 0) {
+      const { data: advancedRow, error: advanceError } = await supabase
+        .from("tax_settings")
+        .update(dueDatePatch)
+        .eq("tenant_id", tenantId)
+        .select(TAX_SETTINGS_FULL_SELECT)
+        .single();
+
+      if (advanceError) {
+        setError(
+          `Entries remitted, but due-date advance failed: ${advanceError.message}`,
+        );
+      } else if (advancedRow) {
+        const normalized =
+          normalizeTaxSettings(advancedRow as TaxSettings) ?? settings;
+        setSettings(normalized);
+        setForm(settingsToForm(normalized));
+        const advancedLabels = Object.keys(dueDatePatch)
+          .map((field) => field.replace(/^next_/, "").replace(/_due_date$/, ""))
+          .join(", ");
+        dueAdvanceNote = ` Next due date advanced for ${advancedLabels}.`;
+      }
+    }
+
     setInfoMessage(
       updates.length === 1
-        ? `Marked 1 entry as remitted (${stamp}).`
-        : `Marked ${updates.length} entries as remitted (${stamp}).`,
+        ? `Marked 1 entry as remitted (${stamp}).${dueAdvanceNote}`
+        : `Marked ${updates.length} entries as remitted (${stamp}).${dueAdvanceNote}`,
     );
     await refreshEntries();
     router.refresh();
@@ -883,11 +966,13 @@ export default function TaxLedger({
               label="VAT"
               dueDay={settings.vat_return_due_day}
               nextDue={settings.next_vat_due_date}
+              onGoToSettings={() => setActiveTab("settings")}
             />
             <DueDateCard
               label="WHT"
               dueDay={settings.wht_return_due_day}
               nextDue={settings.next_wht_due_date}
+              onGoToSettings={() => setActiveTab("settings")}
             />
           </>,
           [
@@ -918,6 +1003,7 @@ export default function TaxLedger({
             label="PAYE"
             dueDay={settings.paye_return_due_day}
             nextDue={settings.next_paye_due_date}
+            onGoToSettings={() => setActiveTab("settings")}
           />,
           [{ value: "paye", label: "PAYE" }],
           [{ value: "statutory_payable", label: "Statutory Payable" }],
@@ -943,11 +1029,13 @@ export default function TaxLedger({
               label="SSNIT Tier 1"
               dueDay={settings.ssnit_return_due_day}
               nextDue={settings.next_ssnit_due_date}
+              onGoToSettings={() => setActiveTab("settings")}
             />
             <DueDateCard
               label="Tier 2"
               dueDay={settings.tier2_return_due_day}
               nextDue={settings.next_tier2_due_date}
+              onGoToSettings={() => setActiveTab("settings")}
             />
           </>,
           [

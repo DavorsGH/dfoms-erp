@@ -26,12 +26,15 @@ import {
 } from "./finance/profit-loss-utils";
 import {
   formatPeriodLabel,
-  getPeriodEndDate,
   getPeriodStartDate,
   getPeriodDisplayStatus,
   isMonthClosed,
   type MonthEndCloseRecord,
 } from "./hr-payroll/payroll-period-utils";
+import {
+  sumOpenStatutoryPayrollLiabilities,
+  type TaxLedgerBalanceSource,
+} from "./finance/tax-ledger-utils";
 
 export type DashboardIncomeEntry = {
   date: string;
@@ -51,14 +54,6 @@ export type DashboardPayrollProcessingEntry = {
 export type DashboardPayrollHistoryEntry = {
   payroll_month: string;
   gross_pay: number;
-};
-
-export type DashboardPayrollPayableEntry = {
-  vendor_name: string;
-  status: string | null;
-  amount: number;
-  invoice_date: string;
-  description: string | null;
 };
 
 export type DashboardMonthPoint = {
@@ -269,9 +264,10 @@ function buildMonthSnapshot(input: {
   monthEndCloseRecords: MonthEndCloseRecord[];
   payrollProcessingEntries: DashboardPayrollProcessingEntry[];
   payrollHistoryEntries: DashboardPayrollHistoryEntry[];
-  payrollPayables: DashboardPayrollPayableEntry[];
   inventoryBalanceSheetInput: InventoryBalanceSheetInput;
-  taxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
+  taxLedgerEntries?: Array<
+    BalanceSheetTaxLedgerEntry & Partial<Pick<TaxLedgerBalanceSource, "period_month">>
+  >;
   year: number;
   month: number;
   referenceDate?: Date;
@@ -398,7 +394,7 @@ function buildMonthSnapshot(input: {
         monthEndCloseRecords: input.monthEndCloseRecords,
       }),
       pendingPayrollLiabilities: isMonthClosed(closeRecord)
-        ? sumPendingPayrollLiabilities(input.payrollPayables, payrollMonth)
+        ? sumPendingPayrollLiabilities(input.taxLedgerEntries ?? [], payrollMonth)
         : 0,
       liabilityReferenceLabel: isMonthClosed(closeRecord) ? periodLabel : null,
       payrollNotProcessed,
@@ -553,41 +549,21 @@ function sumPayrollGrossYtd(input: {
 }
 
 function sumPendingPayrollLiabilities(
-  payables: DashboardPayrollPayableEntry[],
+  taxLedgerEntries: Array<
+    BalanceSheetTaxLedgerEntry & Partial<Pick<TaxLedgerBalanceSource, "period_month">>
+  >,
   payrollMonth: string,
 ): number {
-  const periodEnd = getPeriodEndDate(
-    Number(payrollMonth.slice(0, 4)),
-    Number(payrollMonth.slice(5, 7)),
-  );
-  const monthLabel = formatPeriodLabel(
-    Number(payrollMonth.slice(0, 4)),
-    Number(payrollMonth.slice(5, 7)),
-  );
+  const periodKey = payrollMonth.slice(0, 10);
+  const sources: TaxLedgerBalanceSource[] = taxLedgerEntries.map((entry) => ({
+    status: entry.status,
+    period_month: (entry.period_month ?? "").slice(0, 10),
+    tax_amount: Number(entry.tax_amount) || 0,
+    direction: entry.direction,
+    tax_component: entry.tax_component,
+  }));
 
-  return roundCurrency(
-    payables.reduce((sum, payable) => {
-      const vendor = payable.vendor_name?.trim();
-      if (vendor !== "SSNIT" && vendor !== "GRA") {
-        return sum;
-      }
-
-      if ((payable.status ?? "").trim() !== "Unpaid") {
-        return sum;
-      }
-
-      const invoiceDate = payable.invoice_date.slice(0, 10);
-      const description = payable.description ?? "";
-      const matchesMonth =
-        invoiceDate === periodEnd || description.includes(monthLabel);
-
-      if (!matchesMonth) {
-        return sum;
-      }
-
-      return sum + (Number(payable.amount) || 0);
-    }, 0),
-  );
+  return sumOpenStatutoryPayrollLiabilities(sources, periodKey);
 }
 
 function getCurrentMonthCloseRecord(
@@ -637,9 +613,10 @@ export function buildDashboardViewModel(input: {
   monthEndCloseRecords: MonthEndCloseRecord[];
   payrollProcessingEntries: DashboardPayrollProcessingEntry[];
   payrollHistoryEntries: DashboardPayrollHistoryEntry[];
-  payrollPayables: DashboardPayrollPayableEntry[];
   inventoryBalanceSheetInput: InventoryBalanceSheetInput;
-  taxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
+  taxLedgerEntries?: Array<
+    BalanceSheetTaxLedgerEntry & Partial<Pick<TaxLedgerBalanceSource, "period_month">>
+  >;
   lowStockRawMaterialCount?: number;
   referenceDate?: Date;
 }): DashboardViewModel {

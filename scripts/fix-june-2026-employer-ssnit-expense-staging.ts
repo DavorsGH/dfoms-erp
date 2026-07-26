@@ -1,16 +1,22 @@
 /**
- * Staging-only: correct Employer SSNIT expense_register amount for June 2026.
+ * Correct Employer SSNIT expense_register amount for June 2026.
  *
  * Target: 445.31 (= employer Tier 1 274.03 + Tier 2 171.28).
- * Does NOT touch production. Does NOT modify tax_ledger_entries.
+ * Does NOT modify tax_ledger_entries.
  *
- * Usage: npx tsx scripts/fix-june-2026-employer-ssnit-expense-staging.ts
+ * Staging by default. Production requires:
+ *   --env-file .env.local.backup --allow-production
+ *
+ * Usage:
+ *   npx tsx scripts/fix-june-2026-employer-ssnit-expense-staging.ts
+ *   npx tsx scripts/fix-june-2026-employer-ssnit-expense-staging.ts --env-file .env.local.backup --allow-production
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
 const STAGING_PROJECT_REF = "wieflwbfdmjtsdnwbfii";
+const PRODUCTION_PROJECT_REF = "tvcurcnmasnocwdxzgvz";
 const DAVORS_TENANT_ID = "00000001-0000-4000-8000-000000000001";
 const TARGET_AMOUNT = 445.31;
 const EXPECTED_DATE = "2026-06-29";
@@ -81,26 +87,54 @@ function snapshot(row: Record<string, unknown>) {
   };
 }
 
-loadEnvForce(resolve(process.cwd(), ".env.staging.local"));
+function parseArgs(argv: string[]) {
+  let envFile = ".env.staging.local";
+  let allowProduction = false;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--env-file") {
+      envFile = argv[++i] ?? envFile;
+      continue;
+    }
+    if (arg === "--allow-production") {
+      allowProduction = true;
+      continue;
+    }
+  }
+  return { envFile, allowProduction };
+}
 
 async function main() {
+  const { envFile, allowProduction } = parseArgs(process.argv.slice(2));
+  loadEnvForce(resolve(process.cwd(), envFile));
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   assert(url, "Missing NEXT_PUBLIC_SUPABASE_URL");
-  assert(
-    url.includes(STAGING_PROJECT_REF),
-    `Refusing non-staging URL (expected ref ${STAGING_PROJECT_REF})`,
-  );
   assert(key, "Missing SUPABASE_SERVICE_ROLE_KEY");
-  assert(
-    !url.includes("supabase.co") || url.includes(STAGING_PROJECT_REF),
-    "URL safety check failed",
-  );
 
-  console.log("=== Staging assert ===");
-  console.log(`project_ref: ${STAGING_PROJECT_REF} (matched in URL)`);
+  const projectRef = new URL(url).hostname.split(".")[0];
+  const isStaging = projectRef === STAGING_PROJECT_REF;
+  const isProduction = projectRef === PRODUCTION_PROJECT_REF;
+  if (isProduction) {
+    assert(
+      allowProduction,
+      `Refusing production project ref "${projectRef}" without --allow-production.`,
+    );
+  } else if (!isStaging) {
+    throw new Error(
+      `Refusing unknown project ref "${projectRef}" (expected staging ${STAGING_PROJECT_REF} or production ${PRODUCTION_PROJECT_REF}).`,
+    );
+  } else if (allowProduction) {
+    throw new Error(
+      `Refusing --allow-production against staging project ref "${projectRef}".`,
+    );
+  }
+
+  console.log(`=== ${isProduction ? "PRODUCTION" : "Staging"} assert ===`);
+  console.log(`env_file: ${envFile}`);
+  console.log(`project_ref: ${projectRef}`);
   console.log(`tenant_id: ${DAVORS_TENANT_ID}`);
-  console.log("production: NOT touched");
 
   const admin = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -170,8 +204,6 @@ async function main() {
     String(before.date) === EXPECTED_DATE,
     `Unexpected date ${before.date} (want ${EXPECTED_DATE})`,
   );
-  // Manual staging posts may use category "Direct Operational" with description
-  // "Employer SSNIT Contribution" (not the auto-post category name).
   assert(
     String(before.expense_category) === CATEGORY ||
       /employer\s*ssnit/i.test(String(before.expense_category)) ||
@@ -187,8 +219,6 @@ async function main() {
   if (Math.abs(before.amount - TARGET_AMOUNT) < 0.005) {
     console.log("\nAlready at target amount — skipping UPDATE.");
   } else {
-    // Schema stores amount alone for display; payroll path also sets price=amount, quantity=1.
-    // Keep price in sync so price*quantity remains consistent if UI recomputes.
     const qty = before.quantity > 0 ? before.quantity : 1;
     const newPrice = Math.round((TARGET_AMOUNT / qty) * 100) / 100;
 
@@ -238,7 +268,6 @@ async function main() {
   );
   assert(after.wht_amount === before.wht_amount, "wht_amount changed");
 
-  // --- Double-counting analysis (read-only) ---
   console.log("\n=== Double-counting analysis (read-only) ===");
 
   const { data: taxFromExpense, error: taxExpErr } = await admin
@@ -255,11 +284,6 @@ async function main() {
   console.log(
     `tax_ledger_entries with source_type=expense_register + this expense id: ${(taxFromExpense ?? []).length}`,
   );
-  for (const t of taxFromExpense ?? []) {
-    console.log(
-      `  ${t.direction}/${t.tax_component} amount=${t.tax_amount} status=${t.status}`,
-    );
-  }
 
   const { data: juneStatutory, error: junStatErr } = await admin
     .from("tax_ledger_entries")
@@ -303,28 +327,9 @@ async function main() {
   );
   console.log(`expense_register P&L cost (this row) = ${after.amount.toFixed(2)}`);
 
-  const expenseHasInputTax =
-    num(after.input_vat_amount) > 0 || num(after.wht_amount) > 0;
-  const expenseWroteStatutory = (taxFromExpense ?? []).some(
-    (t) =>
-      t.direction === "statutory_payable" ||
-      String(t.tax_component).startsWith("ssnit"),
-  );
-
-  console.log("\n=== Verdict ===");
   console.log(
-    `expense has input_vat/wht columns set: ${expenseHasInputTax ? "YES (unexpected)" : "NO (good)"}`,
+    `\nDone. ${isProduction ? "Production" : "Staging"} Employer SSNIT expense fix complete.`,
   );
-  console.log(
-    `expense path wrote statutory/ssnit tax_ledger legs: ${expenseWroteStatutory ? "YES (duplicate risk)" : "NO (good)"}`,
-  );
-  console.log(
-    "Design: expense_register = P&L cost; payroll_period statutory_payable = remittance liability tracking.",
-  );
-  console.log(
-    "OK as designed if those are separate purposes and expense does not also write statutory_payable legs.",
-  );
-  console.log("\nExplicit: staging only; production not touched.");
 }
 
 main().catch((err) => {

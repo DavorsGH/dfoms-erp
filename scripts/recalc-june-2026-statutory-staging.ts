@@ -1,12 +1,16 @@
 /**
- * Staging-only: recalculate June 2026 Davors payroll_history statutory columns
+ * Recalculate June 2026 Davors payroll_history statutory columns
  * (employee_ssnit, employer_ssnit, tier2, paye_tax) with ERP proration, then
- * re-sync tax_ledger_entries. Does NOT touch basic/gross/net/allowances,
- * expense_register, or production.
+ * re-sync tax_ledger_entries. Does NOT touch basic/gross/net/allowances or
+ * expense_register.
+ *
+ * Staging by default. Production requires:
+ *   --env-file .env.local.backup --allow-production
  *
  * Usage:
  *   npx tsx scripts/recalc-june-2026-statutory-staging.ts --dry-run
  *   npx tsx scripts/recalc-june-2026-statutory-staging.ts
+ *   npx tsx scripts/recalc-june-2026-statutory-staging.ts --env-file .env.local.backup --allow-production
  *
  * Optional:
  *   --tenant-id <uuid>   (default Davors)
@@ -39,9 +43,9 @@ import {
   PAYROLL_PERIOD_SOURCE_TYPE,
   syncPayrollPeriodTaxLedger,
 } from "../app/dashboard/hr-payroll/payroll-statutory-ledger-sync";
-import { resolveDatabaseUrl } from "./resolve-database-url.mjs";
 
 const STAGING_PROJECT_REF = "wieflwbfdmjtsdnwbfii";
+const PRODUCTION_PROJECT_REF = "tvcurcnmasnocwdxzgvz";
 const DAVORS_TENANT_ID = "00000001-0000-4000-8000-000000000001";
 const DEFAULT_PAYROLL_MONTH = "2026-06-01";
 const EXPECTED_WORKING_DAYS = 26;
@@ -120,11 +124,17 @@ function parseArgs(argv: string[]) {
   let payrollMonth = DEFAULT_PAYROLL_MONTH;
   let dryRun = false;
   let envFile = ".env.staging.local";
+  let allowProduction = false;
+  let ledgerOnly = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--dry-run") {
       dryRun = true;
+      continue;
+    }
+    if (arg === "--ledger-only") {
+      ledgerOnly = true;
       continue;
     }
     if (arg === "--tenant-id") {
@@ -147,9 +157,13 @@ function parseArgs(argv: string[]) {
       envFile = argv[++i] ?? envFile;
       continue;
     }
+    if (arg === "--allow-production") {
+      allowProduction = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: npx tsx scripts/recalc-june-2026-statutory-staging.ts [--dry-run] [--tenant-id <uuid>] [--payroll-month YYYY-MM-01]",
+        "Usage: npx tsx scripts/recalc-june-2026-statutory-staging.ts [--dry-run] [--ledger-only] [--tenant-id <uuid>] [--payroll-month YYYY-MM-01] [--env-file <path> --allow-production]",
       );
       process.exit(0);
     }
@@ -160,7 +174,72 @@ function parseArgs(argv: string[]) {
     payrollMonth: payrollMonth.slice(0, 10),
     dryRun,
     envFile,
+    allowProduction,
+    ledgerOnly,
   };
+}
+
+function buildDatabaseUrlCandidates(projectRef: string): string[] {
+  const candidates: string[] = [];
+  const rebuildUrl = (rawUrl: string) => {
+    const parsed = new URL(rawUrl);
+    parsed.password = encodeURIComponent(decodeURIComponent(parsed.password));
+    return parsed.toString();
+  };
+
+  const explicit =
+    process.env.DATABASE_URL ??
+    process.env.SUPABASE_DB_URL ??
+    process.env.POSTGRES_URL;
+  if (explicit) {
+    candidates.push(explicit, rebuildUrl(explicit));
+  }
+
+  const password =
+    process.env.SUPABASE_DB_PASSWORD ?? process.env.DB_PASSWORD ?? null;
+  if (password) {
+    const encoded = encodeURIComponent(password);
+    candidates.push(
+      `postgresql://postgres.${projectRef}:${encoded}@aws-0-eu-north-1.pooler.supabase.com:5432/postgres`,
+      `postgresql://postgres:${encoded}@db.${projectRef}.supabase.co:5432/postgres`,
+    );
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+async function connectPostgres(projectRef: string): Promise<pg.Client> {
+  const candidates = buildDatabaseUrlCandidates(projectRef);
+  assert(
+    candidates.length > 0,
+    "Missing DATABASE_URL / SUPABASE_DB_PASSWORD for locked-row bypass",
+  );
+
+  let lastError: unknown = null;
+  for (const connectionString of candidates) {
+    const client = new pg.Client({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 15000,
+    });
+    try {
+      await client.connect();
+      return client;
+    } catch (error) {
+      lastError = error;
+      try {
+        await client.end();
+      } catch {
+        // ignore disconnect errors from failed auth attempts
+      }
+    }
+  }
+
+  throw new Error(
+    `Unable to connect to Postgres for locked-row bypass (${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    })`,
+  );
 }
 
 function sumStatutory(rows: Array<{ old: StatutoryTotals; neu: StatutoryTotals }>): {
@@ -237,9 +316,8 @@ async function loadTaxConfigs(
 }
 
 async function main() {
-  const { tenantId, payrollMonth, dryRun, envFile } = parseArgs(
-    process.argv.slice(2),
-  );
+  const { tenantId, payrollMonth, dryRun, envFile, allowProduction, ledgerOnly } =
+    parseArgs(process.argv.slice(2));
 
   assert(UUID_RE.test(tenantId), `Invalid --tenant-id: ${tenantId}`);
   assert(
@@ -256,10 +334,22 @@ async function main() {
   assert(key, "Missing SUPABASE_SERVICE_ROLE_KEY");
 
   const projectRef = new URL(url).hostname.split(".")[0];
-  assert(
-    projectRef === STAGING_PROJECT_REF,
-    `Refusing non-staging project ref "${projectRef}" (expected ${STAGING_PROJECT_REF}). Production not touched.`,
-  );
+  const isStaging = projectRef === STAGING_PROJECT_REF;
+  const isProduction = projectRef === PRODUCTION_PROJECT_REF;
+  if (isProduction) {
+    assert(
+      allowProduction,
+      `Refusing production project ref "${projectRef}" without --allow-production.`,
+    );
+  } else if (!isStaging) {
+    throw new Error(
+      `Refusing unknown project ref "${projectRef}" (expected staging ${STAGING_PROJECT_REF} or production ${PRODUCTION_PROJECT_REF}).`,
+    );
+  } else if (allowProduction) {
+    throw new Error(
+      `Refusing --allow-production against staging project ref "${projectRef}".`,
+    );
+  }
 
   const year = Number.parseInt(payrollMonth.slice(0, 4), 10);
   const month = Number.parseInt(payrollMonth.slice(5, 7), 10);
@@ -272,14 +362,18 @@ async function main() {
   const financePeriod = resolvePayrollLockFinancePeriod(payrollMonth);
   assert(financePeriod, `Unable to resolve finance period for ${payrollMonth}`);
 
-  console.log("=== Recalc June 2026 statutory (staging) ===");
+  console.log(
+    `=== Recalc June 2026 statutory (${isProduction ? "PRODUCTION" : "staging"}) ===`,
+  );
   console.log(`Env file: ${envFile}`);
-  console.log(`Project ref: ${projectRef} (staging OK)`);
+  console.log(
+    `Project ref: ${projectRef} (${isProduction ? "PRODUCTION" : "staging"} OK)`,
+  );
   console.log(`Tenant: ${tenantId}`);
   console.log(`Payroll month: ${payrollMonth}`);
   console.log(`Period end: ${financePeriod.periodEndDate}`);
   console.log(`totalWorkingDays: ${period.totalWorkingDays}`);
-  console.log(`Mode: ${dryRun ? "DRY-RUN" : "WRITE"}`);
+  console.log(`Mode: ${dryRun ? "DRY-RUN" : ledgerOnly ? "LEDGER-ONLY" : "WRITE"}`);
   console.log(
     "Scope: payroll_history statutory cols + tax_ledger sync only; expense_register READ-ONLY",
   );
@@ -592,84 +686,123 @@ async function main() {
       "\nDRY-RUN complete — no payroll_history or tax_ledger writes. Re-run without --dry-run to apply.",
     );
     console.log(
-      "Explicit: staging only; production not touched; expense_register not modified.",
+      `Explicit: ${isProduction ? "production" : "staging"} dry-run; expense_register not modified.`,
     );
     return;
   }
 
-  // --- Apply statutory UPDATEs (bypass locked-row trigger via pg, same pattern
-  // as admin_delete_payroll_history_for_month / release-locked-payroll-period.sql) ---
-  console.log("\nApplying payroll_history statutory UPDATEs via Postgres…");
+  if (!ledgerOnly) {
+    // --- Apply statutory UPDATEs (bypass locked-row trigger via pg, same pattern
+    // as admin_delete_payroll_history_for_month / release-locked-payroll-period.sql) ---
+    console.log("\nApplying payroll_history statutory UPDATEs…");
 
-  const databaseUrl = resolveDatabaseUrl();
-  assert(databaseUrl, "Missing DATABASE_URL / DB password for locked-row bypass");
-  assert(
-    databaseUrl.includes(STAGING_PROJECT_REF),
-    "DATABASE_URL project ref mismatch — aborting",
-  );
+    const rpcPayload = historyRows.map((row, index) => ({
+      id: row.id,
+      employee_ssnit: diffs[index].neu.employee_ssnit,
+      employer_ssnit: diffs[index].neu.employer_ssnit,
+      tier2: diffs[index].neu.tier2,
+      paye_tax: diffs[index].neu.paye_tax,
+    }));
 
-  const pgClient = new pg.Client({
-    connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false },
-  });
-  await pgClient.connect();
+    let updated = 0;
+    let appliedVia: "postgres" | "rpc" | null = null;
 
-  let updated = 0;
-  try {
-    await pgClient.query("BEGIN");
-    await pgClient.query(
-      "ALTER TABLE payroll_history DISABLE TRIGGER trg_protect_locked_payroll",
-    );
+    try {
+      const pgClient = await connectPostgres(projectRef);
+      try {
+        await pgClient.query("BEGIN");
+        await pgClient.query(
+          "ALTER TABLE payroll_history DISABLE TRIGGER trg_protect_locked_payroll",
+        );
 
-    for (let i = 0; i < historyRows.length; i += 1) {
-      const row = historyRows[i];
-      const neu = diffs[i].neu;
-      const result = await pgClient.query(
-        `UPDATE payroll_history
-         SET employee_ssnit = $1,
-             employer_ssnit = $2,
-             tier2 = $3,
-             paye_tax = $4
-         WHERE tenant_id = $5::uuid
-           AND id = $6::uuid
-           AND payroll_month = $7::date`,
-        [
-          neu.employee_ssnit,
-          neu.employer_ssnit,
-          neu.tier2,
-          neu.paye_tax,
-          tenantId,
-          row.id,
-          payrollMonth,
-        ],
+        for (let i = 0; i < historyRows.length; i += 1) {
+          const row = historyRows[i];
+          const neu = diffs[i].neu;
+          const result = await pgClient.query(
+            `UPDATE payroll_history
+             SET employee_ssnit = $1,
+                 employer_ssnit = $2,
+                 tier2 = $3,
+                 paye_tax = $4
+             WHERE tenant_id = $5::uuid
+               AND id = $6::uuid
+               AND payroll_month = $7::date`,
+            [
+              neu.employee_ssnit,
+              neu.employer_ssnit,
+              neu.tier2,
+              neu.paye_tax,
+              tenantId,
+              row.id,
+              payrollMonth,
+            ],
+          );
+          if (result.rowCount !== 1) {
+            throw new Error(
+              `UPDATE matched ${result.rowCount} rows for ${anonymizeId(row.id)}`,
+            );
+          }
+          updated += 1;
+        }
+
+        await pgClient.query(
+          "ALTER TABLE payroll_history ENABLE TRIGGER trg_protect_locked_payroll",
+        );
+        await pgClient.query("COMMIT");
+        appliedVia = "postgres";
+      } catch (err) {
+        try {
+          await pgClient.query(
+            "ALTER TABLE payroll_history ENABLE TRIGGER trg_protect_locked_payroll",
+          );
+        } catch {
+          // best-effort re-enable before rollback
+        }
+        await pgClient.query("ROLLBACK");
+        throw err;
+      } finally {
+        await pgClient.end();
+      }
+    } catch (pgError) {
+      console.warn(
+        `Postgres locked-row bypass unavailable (${
+          pgError instanceof Error ? pgError.message : String(pgError)
+        }); trying admin_update_payroll_history_statutory RPC…`,
       );
-      if (result.rowCount !== 1) {
+
+      const { data: rpcUpdated, error: rpcError } = await admin.rpc(
+        "admin_update_payroll_history_statutory",
+        {
+          p_tenant_id: tenantId,
+          p_payroll_month: payrollMonth,
+          p_rows: rpcPayload,
+        },
+      );
+
+      if (rpcError) {
         throw new Error(
-          `UPDATE matched ${result.rowCount} rows for ${anonymizeId(row.id)}`,
+          `Unable to update locked payroll_history via Postgres or RPC (${rpcError.message}). ` +
+            `Apply scripts/fix-june-2026-statutory-production.sql in the production SQL Editor, ` +
+            `or first apply scripts/115_admin_update_payroll_history_statutory.sql then re-run this script.`,
         );
       }
-      updated += 1;
+
+      updated = Number(rpcUpdated) || 0;
+      appliedVia = "rpc";
     }
 
-    await pgClient.query(
-      "ALTER TABLE payroll_history ENABLE TRIGGER trg_protect_locked_payroll",
+    console.log(
+      `Updated ${updated} / ${historyRows.length} payroll_history rows via ${appliedVia}.`,
     );
-    await pgClient.query("COMMIT");
-  } catch (err) {
-    try {
-      await pgClient.query(
-        "ALTER TABLE payroll_history ENABLE TRIGGER trg_protect_locked_payroll",
-      );
-    } catch {
-      // best-effort re-enable before rollback
-    }
-    await pgClient.query("ROLLBACK");
-    throw err;
-  } finally {
-    await pgClient.end();
+    assert(
+      updated === historyRows.length,
+      `Expected ${historyRows.length} updates, got ${updated}`,
+    );
+  } else {
+    console.log(
+      "\nLEDGER-ONLY mode: skipping payroll_history UPDATEs; syncing tax ledger from current history.",
+    );
   }
-
-  console.log(`Updated ${updated} payroll_history rows (statutory cols only).`);
 
   // Reload history for ledger sync
   const { data: refreshed, error: refreshError } = await admin
@@ -827,7 +960,7 @@ async function main() {
 
   console.log("\nDone.");
   console.log(
-    "Explicit: staging only; production not touched; expense_register not modified.",
+    `Explicit: ${isProduction ? "production" : "staging"} write applied; expense_register not modified by this script.`,
   );
 }
 

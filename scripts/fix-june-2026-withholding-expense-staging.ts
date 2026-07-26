@@ -1,12 +1,21 @@
 /**
- * Staging: align June 2026 PAYE / employee-SSNIT "correction" expenses with
+ * Align June 2026 PAYE / employee-SSNIT "correction" expenses with
  * recalculated open tax_ledger statutory amounts so BS balances after step 4.
  *
- * Usage: npx tsx scripts/fix-june-2026-withholding-expense-staging.ts
+ * Staging by default. Production requires:
+ *   --env-file .env.local.backup --allow-production
+ *
+ * Usage:
+ *   npx tsx scripts/fix-june-2026-withholding-expense-staging.ts
+ *   npx tsx scripts/fix-june-2026-withholding-expense-staging.ts --env-file .env.local.backup --allow-production
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
+
+const STAGING_PROJECT_REF = "wieflwbfdmjtsdnwbfii";
+const PRODUCTION_PROJECT_REF = "tvcurcnmasnocwdxzgvz";
+const TENANT = "00000001-0000-4000-8000-000000000001";
 
 function loadEnvForce(filePath: string) {
   for (const line of readFileSync(filePath, "utf8").split(/\r?\n/)) {
@@ -22,18 +31,59 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-loadEnvForce(resolve(process.cwd(), ".env.staging.local"));
+function parseArgs(argv: string[]) {
+  let envFile = ".env.staging.local";
+  let allowProduction = false;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--env-file") {
+      envFile = argv[++i] ?? envFile;
+      continue;
+    }
+    if (arg === "--allow-production") {
+      allowProduction = true;
+      continue;
+    }
+  }
+  return { envFile, allowProduction };
+}
 
 async function main() {
+  const { envFile, allowProduction } = parseArgs(process.argv.slice(2));
+  loadEnvForce(resolve(process.cwd(), envFile));
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  assert(url?.includes("wieflwbfdmjtsdnwbfii"), "Refusing non-staging");
+  assert(url, "Missing NEXT_PUBLIC_SUPABASE_URL");
   assert(key, "Missing service role key");
 
-  const admin = createClient(url!, key!, {
+  const projectRef = new URL(url).hostname.split(".")[0];
+  const isStaging = projectRef === STAGING_PROJECT_REF;
+  const isProduction = projectRef === PRODUCTION_PROJECT_REF;
+  if (isProduction) {
+    assert(
+      allowProduction,
+      `Refusing production project ref "${projectRef}" without --allow-production.`,
+    );
+  } else if (!isStaging) {
+    throw new Error(
+      `Refusing unknown project ref "${projectRef}" (expected staging ${STAGING_PROJECT_REF} or production ${PRODUCTION_PROJECT_REF}).`,
+    );
+  } else if (allowProduction) {
+    throw new Error(
+      `Refusing --allow-production against staging project ref "${projectRef}".`,
+    );
+  }
+
+  console.log(
+    `=== Fix June withholding expenses (${isProduction ? "PRODUCTION" : "staging"}) ===`,
+  );
+  console.log(`env_file: ${envFile}`);
+  console.log(`project_ref: ${projectRef}`);
+
+  const admin = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const TENANT = "00000001-0000-4000-8000-000000000001";
 
   const { data: ledger, error: ledgerError } = await admin
     .from("tax_ledger_entries")
@@ -104,13 +154,21 @@ async function main() {
     JSON.stringify(
       {
         tenant_id: TENANT,
+        project_ref: projectRef,
         before,
         after: { paye, employee_ssnit: employeeSsnit },
-        expense_reduction: Math.round((before.paye + before.employee_ssnit - paye - employeeSsnit) * 100) / 100,
+        expense_reduction:
+          Math.round(
+            (before.paye + before.employee_ssnit - paye - employeeSsnit) * 100,
+          ) / 100,
       },
       null,
       2,
     ),
+  );
+
+  console.log(
+    `\nDone. ${isProduction ? "Production" : "Staging"} withholding expense fix complete.`,
   );
 }
 

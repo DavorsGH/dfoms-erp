@@ -1,8 +1,10 @@
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
-import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import {
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canManagePayrollPeriod } from "@/utils/rbac-access";
 import HrPayrollShell from "../hr-payroll-shell";
@@ -22,10 +24,28 @@ export default async function PayrollProcessingPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const admin = createAdminClient();
+  const tenantId = await getCurrentUserTenantId();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const taxConfigQueries = tenantId
+    ? ([
+        admin
+          .from("ssnit_rate_config")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .order("effective_date", { ascending: false }),
+        admin
+          .from("casual_tax_rate_config")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .order("effective_date", { ascending: false }),
+        admin
+          .from("paye_tax_bands")
+          .select("band_order, lower_bound, upper_bound, rate, effective_date")
+          .eq("tenant_id", tenantId)
+          .order("effective_date", { ascending: false })
+          .order("band_order", { ascending: true }),
+      ] as const)
+    : null;
 
   const [
     { data: processingMonths, error: processingMonthsError },
@@ -35,9 +55,9 @@ export default async function PayrollProcessingPage() {
     { data: attendance, error: attendanceError },
     { data: overtime, error: overtimeError },
     { data: loans, error: loansError },
-    { data: ssnitRows, error: ssnitError },
-    { data: casualRows, error: casualError },
-    { data: payeRows, error: payeError },
+    ssnitResult,
+    casualResult,
+    payeResult,
   ] = await Promise.all([
     supabase.from("payroll_processing").select("payroll_month"),
     supabase.from("payroll_history").select("payroll_month"),
@@ -55,25 +75,22 @@ export default async function PayrollProcessingPage() {
       .from("overtime_register")
       .select("employee_id, date, overtime_amount"),
     supabase.from("loan_register").select("*"),
-    admin
-      .from("ssnit_rate_config")
-      .select("*")
-      .eq("tenant_id", DAVORS_TENANT_ID)
-      .order("effective_date", { ascending: false }),
-    admin
-      .from("casual_tax_rate_config")
-      .select("*")
-      .eq("tenant_id", DAVORS_TENANT_ID)
-      .order("effective_date", { ascending: false }),
-    admin
-      .from("paye_tax_bands")
-      .select("band_order, lower_bound, upper_bound, rate, effective_date")
-      .eq("tenant_id", DAVORS_TENANT_ID)
-      .order("effective_date", { ascending: false })
-      .order("band_order", { ascending: true }),
+    taxConfigQueries?.[0] ?? Promise.resolve({ data: null, error: null }),
+    taxConfigQueries?.[1] ?? Promise.resolve({ data: null, error: null }),
+    taxConfigQueries?.[2] ?? Promise.resolve({ data: null, error: null }),
   ]);
 
+  const ssnitRows = ssnitResult.data;
+  const ssnitError = ssnitResult.error;
+  const casualRows = casualResult.data;
+  const casualError = casualResult.error;
+  const payeRows = payeResult.data;
+  const payeError = payeResult.error;
+
   const fetchError =
+    (!tenantId
+      ? "Unable to resolve tenant for payroll tax configs."
+      : null) ??
     processingMonthsError?.message ??
     historyMonthsError?.message ??
     monthEndCloseError?.message ??

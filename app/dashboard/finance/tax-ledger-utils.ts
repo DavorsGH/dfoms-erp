@@ -70,6 +70,12 @@ export type TaxBalanceSummary = {
   ssnitTier2: number;
 };
 
+/** Minimal fields needed to summarize open tax ledger balances. */
+export type TaxLedgerBalanceSource = Pick<
+  TaxLedgerEntry,
+  "status" | "period_month" | "tax_amount" | "direction" | "tax_component"
+>;
+
 export type TaxLedgerFilters = {
   periodMonth: string;
   taxComponent: string;
@@ -240,7 +246,7 @@ export function emptyBalanceSummary(): TaxBalanceSummary {
 
 /** Sum open ledger amounts. Pass periodMonth to scope to one GRA month bucket. */
 export function summarizeOpenTaxBalances(
-  entries: TaxLedgerEntry[],
+  entries: TaxLedgerBalanceSource[],
   periodMonth?: string | null,
 ): TaxBalanceSummary {
   const summary = emptyBalanceSummary();
@@ -292,6 +298,26 @@ export function summarizeOpenTaxBalances(
 
   summary.netVatPosition = summary.outputTotal - summary.inputTax;
   return summary;
+}
+
+/**
+ * Open PAYE + SSNIT statutory remittance liabilities for a payroll period.
+ * Same components/status rules as the Statutory Ledger overview cards.
+ */
+export function sumOpenStatutoryPayrollLiabilities(
+  entries: TaxLedgerBalanceSource[],
+  periodMonth?: string | null,
+): number {
+  const summary = summarizeOpenTaxBalances(entries, periodMonth);
+  return (
+    Math.round(
+      (summary.payePayable +
+        summary.ssnitEmployee +
+        summary.ssnitEmployerTier1 +
+        summary.ssnitTier2) *
+        100,
+    ) / 100
+  );
 }
 
 export function listPeriodMonths(entries: TaxLedgerEntry[]): string[] {
@@ -461,3 +487,308 @@ export function todayIsoDate(today = new Date()): string {
   const day = String(today.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+/** Due-date card / reminder kinds that map to tax_settings next_*_due_date fields. */
+export type StatutoryDueKind = TaxDueReminderKind;
+
+export const STATUTORY_DUE_KIND_COMPONENTS: Record<
+  StatutoryDueKind,
+  readonly TaxLedgerComponent[]
+> = {
+  vat: ["vat_bundle", "vfrs"],
+  wht: ["wht"],
+  paye: ["paye"],
+  ssnit: ["ssnit_employee", "ssnit_employer_tier1"],
+  tier2: ["ssnit_tier2"],
+};
+
+export const STATUTORY_DUE_KIND_NEXT_FIELD: Record<
+  StatutoryDueKind,
+  | "next_vat_due_date"
+  | "next_wht_due_date"
+  | "next_paye_due_date"
+  | "next_ssnit_due_date"
+  | "next_tier2_due_date"
+> = {
+  vat: "next_vat_due_date",
+  wht: "next_wht_due_date",
+  paye: "next_paye_due_date",
+  ssnit: "next_ssnit_due_date",
+  tier2: "next_tier2_due_date",
+};
+
+export function statutoryDueKindForComponent(
+  component: TaxLedgerComponent,
+): StatutoryDueKind | null {
+  for (const [kind, components] of Object.entries(STATUTORY_DUE_KIND_COMPONENTS) as Array<
+    [StatutoryDueKind, readonly TaxLedgerComponent[]]
+  >) {
+    if (components.includes(component)) {
+      return kind;
+    }
+  }
+  return null;
+}
+
+function daysInCalendarMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** Build YYYY-MM-DD for dueDay in year/month, clamping to month length (e.g. day 31 → Feb 28). */
+export function buildReturnDueDate(
+  year: number,
+  month: number,
+  dueDay: number,
+): string {
+  const day = Math.min(Math.max(1, Math.trunc(dueDay)), daysInCalendarMonth(year, month));
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+function addCalendarMonths(
+  year: number,
+  month: number,
+  step: number,
+): { year: number; month: number } {
+  const absolute = year * 12 + (month - 1) + step;
+  return {
+    year: Math.floor(absolute / 12),
+    month: (absolute % 12) + 1,
+  };
+}
+
+/**
+ * First calendar occurrence of `dueDay` that is strictly after `afterIso` (YYYY-MM-DD).
+ * `monthStep` is 1 for monthly returns, 3 for quarterly VAT.
+ */
+export function firstReturnDueDateAfter(
+  dueDay: number,
+  afterIso: string,
+  monthStep = 1,
+): string {
+  const after = afterIso.slice(0, 10);
+  let year = Number(after.slice(0, 4));
+  let month = Number(after.slice(5, 7));
+
+  // Try due day in the after-date's month first, then step forward.
+  for (let guard = 0; guard < 48; guard += 1) {
+    const candidate = buildReturnDueDate(year, month, dueDay);
+    if (candidate > after) {
+      return candidate;
+    }
+    ({ year, month } = addCalendarMonths(year, month, monthStep));
+  }
+
+  return buildReturnDueDate(year, month, dueDay);
+}
+
+/**
+ * After remitting the obligation stored in `currentNextDue`, roll forward by one
+ * return period (using `dueDay`), then keep rolling until the result is after today.
+ *
+ * Anchors on the current next-due date (not "today") so early remittance still
+ * advances into the following period rather than landing on the same due date.
+ */
+export function advanceDueDateAfterRemittance(
+  currentNextDue: string | null | undefined,
+  dueDay: number | null | undefined,
+  today = new Date(),
+  monthStep = 1,
+): string | null {
+  if (dueDay == null || !Number.isFinite(dueDay) || dueDay < 1 || dueDay > 31) {
+    return null;
+  }
+
+  const todayIso = todayIsoDate(today);
+  const anchor = (currentNextDue ?? todayIso).slice(0, 10);
+  const year = Number(anchor.slice(0, 4));
+  const month = Number(anchor.slice(5, 7));
+  if (!year || !month) {
+    return firstReturnDueDateAfter(dueDay, todayIso, monthStep);
+  }
+
+  let cursor = addCalendarMonths(year, month, monthStep);
+  let candidate = buildReturnDueDate(cursor.year, cursor.month, dueDay);
+
+  while (candidate <= todayIso) {
+    cursor = addCalendarMonths(cursor.year, cursor.month, monthStep);
+    candidate = buildReturnDueDate(cursor.year, cursor.month, dueDay);
+  }
+
+  return candidate;
+}
+
+export function hasOpenEntriesForStatutoryDueKind(
+  entries: Array<Pick<TaxLedgerEntry, "status" | "tax_component">>,
+  kind: StatutoryDueKind,
+): boolean {
+  const components = new Set(STATUTORY_DUE_KIND_COMPONENTS[kind]);
+  return entries.some(
+    (entry) => entry.status === "open" && components.has(entry.tax_component),
+  );
+}
+
+export type TaxDueDateSettingsSlice = {
+  vat_return_period?: "monthly" | "quarterly";
+  vat_return_due_day: number | null;
+  wht_return_due_day: number | null;
+  paye_return_due_day: number;
+  ssnit_return_due_day: number;
+  tier2_return_due_day: number;
+  next_vat_due_date: string | null;
+  next_wht_due_date: string | null;
+  next_paye_due_date: string | null;
+  next_ssnit_due_date: string | null;
+  next_tier2_due_date: string | null;
+};
+
+function dueDayForKind(
+  settings: TaxDueDateSettingsSlice,
+  kind: StatutoryDueKind,
+): number | null {
+  switch (kind) {
+    case "vat":
+      return settings.vat_return_due_day;
+    case "wht":
+      return settings.wht_return_due_day;
+    case "paye":
+      return settings.paye_return_due_day;
+    case "ssnit":
+      return settings.ssnit_return_due_day;
+    case "tier2":
+      return settings.tier2_return_due_day;
+  }
+}
+
+function monthStepForKind(
+  settings: TaxDueDateSettingsSlice,
+  kind: StatutoryDueKind,
+): number {
+  if (kind === "vat" && settings.vat_return_period === "quarterly") {
+    return 3;
+  }
+  return 1;
+}
+
+function nextDueForKind(
+  settings: TaxDueDateSettingsSlice,
+  kind: StatutoryDueKind,
+): string | null {
+  return settings[STATUTORY_DUE_KIND_NEXT_FIELD[kind]];
+}
+
+/**
+ * Auto-advance past next_*_due_date values on page load when:
+ * - the stored date is before today, AND
+ * - there is no open ledger entry for that due kind.
+ *
+ * If open entries remain, keep the past date so the UI correctly shows overdue
+ * for the unmet obligation (e.g. July VAT still open on 10 Aug → stay on 5 Aug).
+ */
+export function buildAutoAdvancedDueDatePatch(
+  settings: TaxDueDateSettingsSlice,
+  entries: Array<Pick<TaxLedgerEntry, "status" | "tax_component">>,
+  today = new Date(),
+): Partial<
+  Pick<
+    TaxDueDateSettingsSlice,
+    | "next_vat_due_date"
+    | "next_wht_due_date"
+    | "next_paye_due_date"
+    | "next_ssnit_due_date"
+    | "next_tier2_due_date"
+  >
+> {
+  const todayIso = todayIsoDate(today);
+  const patch: Partial<TaxDueDateSettingsSlice> = {};
+
+  for (const kind of Object.keys(STATUTORY_DUE_KIND_NEXT_FIELD) as StatutoryDueKind[]) {
+    const current = nextDueForKind(settings, kind);
+    if (!current) {
+      continue;
+    }
+
+    const days = daysUntilDate(current, today);
+    if (days === null || days >= 0) {
+      continue;
+    }
+
+    if (hasOpenEntriesForStatutoryDueKind(entries, kind)) {
+      continue;
+    }
+
+    const dueDay = dueDayForKind(settings, kind);
+    if (dueDay == null) {
+      continue;
+    }
+
+    const advanced = firstReturnDueDateAfter(
+      dueDay,
+      todayIso,
+      monthStepForKind(settings, kind),
+    );
+    if (advanced !== current.slice(0, 10)) {
+      patch[STATUTORY_DUE_KIND_NEXT_FIELD[kind]] = advanced;
+    }
+  }
+
+  return patch;
+}
+
+/**
+ * After remitting ledger rows, advance next_*_due_date for each due kind that
+ * was remitted and no longer has any open ledger entries.
+ */
+export function buildRemittanceDueDatePatch(
+  settings: TaxDueDateSettingsSlice,
+  remittedComponents: TaxLedgerComponent[],
+  remainingOpenEntries: Array<Pick<TaxLedgerEntry, "status" | "tax_component">>,
+  today = new Date(),
+): Partial<
+  Pick<
+    TaxDueDateSettingsSlice,
+    | "next_vat_due_date"
+    | "next_wht_due_date"
+    | "next_paye_due_date"
+    | "next_ssnit_due_date"
+    | "next_tier2_due_date"
+  >
+> {
+  const kinds = new Set<StatutoryDueKind>();
+  for (const component of remittedComponents) {
+    const kind = statutoryDueKindForComponent(component);
+    if (kind) {
+      kinds.add(kind);
+    }
+  }
+
+  const patch: Partial<TaxDueDateSettingsSlice> = {};
+
+  for (const kind of kinds) {
+    if (hasOpenEntriesForStatutoryDueKind(remainingOpenEntries, kind)) {
+      continue;
+    }
+
+    const dueDay = dueDayForKind(settings, kind);
+    const advanced = advanceDueDateAfterRemittance(
+      nextDueForKind(settings, kind),
+      dueDay,
+      today,
+      monthStepForKind(settings, kind),
+    );
+    if (!advanced) {
+      continue;
+    }
+
+    const field = STATUTORY_DUE_KIND_NEXT_FIELD[kind];
+    if (advanced !== (nextDueForKind(settings, kind) ?? "").slice(0, 10)) {
+      patch[field] = advanced;
+    }
+  }
+
+  return patch;
+}
+

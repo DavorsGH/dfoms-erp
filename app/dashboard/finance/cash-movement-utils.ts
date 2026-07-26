@@ -74,6 +74,12 @@ export type CashMovementInputs = {
   productCashPurchases: ProductPurchaseCashEntry[];
   inventoryConfig: InventoryBalanceConfig | null;
   manualEntries: CashMovementManualEntry[];
+  /**
+   * When provided, Paid Staff Salaries / PAYROLL-SAL expenses cash out at
+   * payroll net (once per payroll month), matching Accrued Wages clearing —
+   * not at the gross/statutory-inclusive expense amount.
+   */
+  staffSalaryNetByPayrollMonth?: Map<string, number>;
 };
 
 export type MonthlyCashComponents = {
@@ -181,11 +187,21 @@ function sumCapitalContributionsByMonth(
   return roundMonthlyTotals(totals);
 }
 
+function parsePayrollMonthFromSalReceipt(
+  receiptNo: string | null | undefined,
+): string | null {
+  const match = /PAYROLL-SAL-(\d{4})-(\d{2})/i.exec((receiptNo ?? "").trim());
+  if (!match) return null;
+  return `${match[1]}-${match[2]}-01`;
+}
+
 function sumPaidExpensesByMonth(
   expenseEntries: BalanceSheetCashExpenseEntry[],
   financialYear: number,
+  staffSalaryNetByPayrollMonth?: Map<string, number>,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
+  const countedStaffSalaryPayrollMonths = new Set<string>();
 
   for (const entry of expenseEntries) {
     if (!isCashOutflowExpense(entry)) {
@@ -194,6 +210,22 @@ function sumPaidExpensesByMonth(
 
     const monthIndex = getEntryMonthIndex(entry.date, financialYear);
     if (monthIndex === null) {
+      continue;
+    }
+
+    const payrollMonth = staffSalaryNetByPayrollMonth
+      ? parsePayrollMonthFromSalReceipt(entry.receipt_no)
+      : null;
+    if (payrollMonth && staffSalaryNetByPayrollMonth) {
+      if (countedStaffSalaryPayrollMonths.has(payrollMonth)) {
+        continue;
+      }
+      countedStaffSalaryPayrollMonths.add(payrollMonth);
+      addAmountToMonth(
+        totals,
+        monthIndex,
+        staffSalaryNetByPayrollMonth.get(payrollMonth) ?? 0,
+      );
       continue;
     }
 
@@ -243,6 +275,7 @@ export function buildMonthlyCashComponents(
   const paidExpenses = sumPaidExpensesByMonth(
     inputs.expenseEntries,
     financialYear,
+    inputs.staffSalaryNetByPayrollMonth,
   );
   const loanRepayments = manualFieldToMonthlyTotals(
     inputs.manualEntries,

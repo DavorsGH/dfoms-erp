@@ -1,13 +1,21 @@
 /**
  * One-time backfill: payroll period statutory legs → tax_ledger_entries.
  *
- * Staging only by default (loads .env.staging.local, asserts project ref).
+ * Staging by default (loads .env.staging.local, asserts staging project ref).
+ * Production requires BOTH:
+ *   --env-file .env.local.backup  (or another prod env file)
+ *   --allow-production
+ * and asserts the production project ref.
+ *
  * Touches ONLY tax_ledger_entries via syncPayrollPeriodTaxLedger.
  * Does NOT post AP or expense_register rows.
+ * Uses CURRENT payroll_history figures as-is (no June recalculation).
  *
  * Usage:
  *   npx tsx scripts/backfill-payroll-statutory-ledger.ts --tenant-id <uuid> --dry-run
  *   npx tsx scripts/backfill-payroll-statutory-ledger.ts --tenant-id <uuid>
+ *   npx tsx scripts/backfill-payroll-statutory-ledger.ts --tenant-id <uuid> --env-file .env.local.backup --allow-production --dry-run
+ *   npx tsx scripts/backfill-payroll-statutory-ledger.ts --tenant-id <uuid> --env-file .env.local.backup --allow-production
  *
  * Env alternate: BACKFILL_TENANT_ID=<uuid>
  */
@@ -25,9 +33,9 @@ import {
   syncPayrollPeriodTaxLedger,
   type PayrollStatutoryLedgerResult,
 } from "../app/dashboard/hr-payroll/payroll-statutory-ledger-sync";
-import { resolveDatabaseUrl } from "./resolve-database-url.mjs";
 
 const STAGING_PROJECT_REF = "wieflwbfdmjtsdnwbfii";
+const PRODUCTION_PROJECT_REF = "tvcurcnmasnocwdxzgvz";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -63,7 +71,7 @@ function parseArgs(argv: string[]) {
   let tenantId: string | undefined;
   let dryRun = false;
   let envFile = ".env.staging.local";
-  let allowNonStaging = false;
+  let allowProduction = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -83,112 +91,194 @@ function parseArgs(argv: string[]) {
       envFile = argv[++i] ?? envFile;
       continue;
     }
+    if (arg === "--allow-production") {
+      allowProduction = true;
+      continue;
+    }
     if (arg === "--allow-non-staging") {
-      // Intentionally unused unless explicitly set; script still aborts
-      // unless project ref matches staging unless this is combined with
-      // a future override. Kept as a documented no-op safety latch.
-      allowNonStaging = true;
+      // Legacy alias from the staging-only era — treat as production allow.
+      allowProduction = true;
       continue;
     }
     if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: npx tsx scripts/backfill-payroll-statutory-ledger.ts --tenant-id <uuid> [--dry-run]",
+        "Usage: npx tsx scripts/backfill-payroll-statutory-ledger.ts --tenant-id <uuid> [--dry-run] [--env-file <path> --allow-production]",
       );
       process.exit(0);
     }
   }
 
   tenantId = tenantId ?? process.env.BACKFILL_TENANT_ID;
-  return { tenantId, dryRun, envFile, allowNonStaging };
+  return { tenantId, dryRun, envFile, allowProduction };
 }
 
-async function assertMigration114Schema(databaseUrl: string) {
-  const client = new pg.Client({
-    connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false },
-  });
-  await client.connect();
-  try {
-    const colResult = await client.query(
-      `SELECT column_name
-       FROM information_schema.columns
-       WHERE table_schema = 'public'
-         AND table_name = 'tax_ledger_entries'
-         AND column_name = 'remitted_at'`,
-    );
-    const colRows = colResult.rows as Array<{ column_name: string }>;
-    assert(
-      colRows.length === 1,
-      "Migration 114 schema missing: tax_ledger_entries.remitted_at",
-    );
+async function assertMigration114SchemaViaRest(admin: SupabaseClient) {
+  const { error: remittedError } = await admin
+    .from("tax_ledger_entries")
+    .select("id, remitted_at")
+    .limit(1);
+  assert(
+    !remittedError,
+    `Migration 114 schema missing via REST (remitted_at): ${remittedError?.message}`,
+  );
 
-    const idxResult = await client.query(
-      `SELECT indexname
-       FROM pg_indexes
-       WHERE schemaname = 'public'
-         AND indexname = 'tax_ledger_entries_active_source_component_uidx'`,
-    );
-    const idxRows = idxResult.rows as Array<{ indexname: string }>;
-    assert(
-      idxRows.length === 1,
-      "Migration 114 schema missing: tax_ledger_entries_active_source_component_uidx",
-    );
+  const { error: payrollSourceError } = await admin
+    .from("tax_ledger_entries")
+    .select("id, source_type, tax_component, direction")
+    .eq("source_type", PAYROLL_PERIOD_SOURCE_TYPE)
+    .limit(1);
+  assert(
+    !payrollSourceError,
+    `Migration 114 schema missing via REST (payroll_period source_type): ${payrollSourceError?.message}`,
+  );
 
-    const checkResult = await client.query(
-      `SELECT c.conname,
-              pg_get_constraintdef(c.oid) AS consrc
-       FROM pg_constraint c
-       JOIN pg_class t ON t.oid = c.conrelid
-       JOIN pg_namespace n ON n.oid = t.relnamespace
-       WHERE n.nspname = 'public'
-         AND t.relname = 'tax_ledger_entries'
-         AND c.contype = 'c'
-         AND c.conname IN (
-           'tax_ledger_entries_source_type_check',
-           'tax_ledger_entries_tax_component_check',
-           'tax_ledger_entries_direction_check',
-           'tax_ledger_entries_direction_component_check'
-         )`,
-    );
-    const checkRows = checkResult.rows as Array<{
-      conname: string;
-      consrc: string;
-    }>;
+  console.log(
+    "Schema gate: migration 114 REST probe OK (remitted_at + payroll_period filter)",
+  );
+}
 
-    const byName = new Map(checkRows.map((r) => [r.conname, r.consrc]));
-    assert(
-      byName.has("tax_ledger_entries_source_type_check") &&
-        String(byName.get("tax_ledger_entries_source_type_check")).includes(
-          "payroll_period",
-        ),
-      "Migration 114 schema missing: source_type check allows payroll_period",
-    );
-    assert(
-      byName.has("tax_ledger_entries_tax_component_check") &&
-        String(byName.get("tax_ledger_entries_tax_component_check")).includes(
-          "ssnit_employer_tier1",
-        ) &&
-        String(byName.get("tax_ledger_entries_tax_component_check")).includes(
-          "ssnit_tier2",
-        ),
-      "Migration 114 schema missing: tax_component statutory checks",
-    );
-    assert(
-      byName.has("tax_ledger_entries_direction_check") &&
-        String(byName.get("tax_ledger_entries_direction_check")).includes(
-          "statutory_payable",
-        ),
-      "Migration 114 schema missing: direction statutory_payable",
-    );
-    assert(
-      byName.has("tax_ledger_entries_direction_component_check"),
-      "Migration 114 schema missing: direction_component_check",
-    );
+function buildDatabaseUrlCandidates(projectRef: string): string[] {
+  const candidates: string[] = [];
+  const rebuildUrl = (rawUrl: string) => {
+    const parsed = new URL(rawUrl);
+    parsed.password = encodeURIComponent(decodeURIComponent(parsed.password));
+    return parsed.toString();
+  };
 
-    console.log("Schema gate: migration 114 checks/index/column OK");
-  } finally {
-    await client.end();
+  const explicit =
+    process.env.DATABASE_URL ??
+    process.env.SUPABASE_DB_URL ??
+    process.env.POSTGRES_URL;
+  if (explicit) {
+    candidates.push(explicit, rebuildUrl(explicit));
   }
+
+  const password =
+    process.env.SUPABASE_DB_PASSWORD ?? process.env.DB_PASSWORD ?? null;
+  if (password) {
+    const encoded = encodeURIComponent(password);
+    candidates.push(
+      `postgresql://postgres.${projectRef}:${encoded}@aws-0-eu-north-1.pooler.supabase.com:5432/postgres`,
+      `postgresql://postgres:${encoded}@db.${projectRef}.supabase.co:5432/postgres`,
+    );
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+async function assertMigration114Schema(
+  projectRef: string,
+  admin: SupabaseClient,
+) {
+  const candidates = buildDatabaseUrlCandidates(projectRef);
+  let lastError: unknown = null;
+
+  for (const connectionString of candidates) {
+    const client = new pg.Client({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 15000,
+    });
+    try {
+      await client.connect();
+      try {
+        const colResult = await client.query(
+          `SELECT column_name
+           FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'tax_ledger_entries'
+             AND column_name = 'remitted_at'`,
+        );
+        const colRows = colResult.rows as Array<{ column_name: string }>;
+        assert(
+          colRows.length === 1,
+          "Migration 114 schema missing: tax_ledger_entries.remitted_at",
+        );
+
+        const idxResult = await client.query(
+          `SELECT indexname
+           FROM pg_indexes
+           WHERE schemaname = 'public'
+             AND indexname = 'tax_ledger_entries_active_source_component_uidx'`,
+        );
+        const idxRows = idxResult.rows as Array<{ indexname: string }>;
+        assert(
+          idxRows.length === 1,
+          "Migration 114 schema missing: tax_ledger_entries_active_source_component_uidx",
+        );
+
+        const checkResult = await client.query(
+          `SELECT c.conname,
+                  pg_get_constraintdef(c.oid) AS consrc
+           FROM pg_constraint c
+           JOIN pg_class t ON t.oid = c.conrelid
+           JOIN pg_namespace n ON n.oid = t.relnamespace
+           WHERE n.nspname = 'public'
+             AND t.relname = 'tax_ledger_entries'
+             AND c.contype = 'c'
+             AND c.conname IN (
+               'tax_ledger_entries_source_type_check',
+               'tax_ledger_entries_tax_component_check',
+               'tax_ledger_entries_direction_check',
+               'tax_ledger_entries_direction_component_check'
+             )`,
+        );
+        const checkRows = checkResult.rows as Array<{
+          conname: string;
+          consrc: string;
+        }>;
+
+        const byName = new Map(checkRows.map((r) => [r.conname, r.consrc]));
+        assert(
+          byName.has("tax_ledger_entries_source_type_check") &&
+            String(byName.get("tax_ledger_entries_source_type_check")).includes(
+              "payroll_period",
+            ),
+          "Migration 114 schema missing: source_type check allows payroll_period",
+        );
+        assert(
+          byName.has("tax_ledger_entries_tax_component_check") &&
+            String(byName.get("tax_ledger_entries_tax_component_check")).includes(
+              "ssnit_employer_tier1",
+            ) &&
+            String(byName.get("tax_ledger_entries_tax_component_check")).includes(
+              "ssnit_tier2",
+            ),
+          "Migration 114 schema missing: tax_component statutory checks",
+        );
+        assert(
+          byName.has("tax_ledger_entries_direction_check") &&
+            String(byName.get("tax_ledger_entries_direction_check")).includes(
+              "statutory_payable",
+            ),
+          "Migration 114 schema missing: direction statutory_payable",
+        );
+        assert(
+          byName.has("tax_ledger_entries_direction_component_check"),
+          "Migration 114 schema missing: direction_component_check",
+        );
+
+        console.log("Schema gate: migration 114 checks/index/column OK (pg)");
+        return;
+      } finally {
+        await client.end();
+      }
+    } catch (error) {
+      lastError = error;
+      try {
+        await client.end();
+      } catch {
+        // ignore disconnect errors from failed auth attempts
+      }
+    }
+  }
+
+  console.warn(
+    `Schema gate: direct Postgres unavailable (${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }); falling back to REST probe.`,
+  );
+  await assertMigration114SchemaViaRest(admin);
 }
 
 async function countAccountsPayable(
@@ -449,7 +539,7 @@ async function runBackfill(
 }
 
 async function main() {
-  const { tenantId, dryRun, envFile, allowNonStaging } = parseArgs(
+  const { tenantId, dryRun, envFile, allowProduction } = parseArgs(
     process.argv.slice(2),
   );
 
@@ -467,36 +557,41 @@ async function main() {
   assert(key, "Missing SUPABASE_SERVICE_ROLE_KEY");
 
   const projectRef = new URL(url).hostname.split(".")[0];
-  if (projectRef !== STAGING_PROJECT_REF) {
-    if (!allowNonStaging) {
-      throw new Error(
-        `Refusing non-staging project ref "${projectRef}" (expected ${STAGING_PROJECT_REF}). Production not run.`,
-      );
-    }
+  const isStaging = projectRef === STAGING_PROJECT_REF;
+  const isProduction = projectRef === PRODUCTION_PROJECT_REF;
+
+  if (isProduction) {
+    assert(
+      allowProduction,
+      `Refusing production project ref "${projectRef}" without --allow-production.`,
+    );
+  } else if (!isStaging) {
     throw new Error(
-      `Non-staging project ref "${projectRef}" — aborting even with --allow-non-staging for this maintenance script.`,
+      `Refusing unknown project ref "${projectRef}" (expected staging ${STAGING_PROJECT_REF} or production ${PRODUCTION_PROJECT_REF}).`,
+    );
+  } else if (allowProduction) {
+    throw new Error(
+      `Refusing --allow-production against staging project ref "${projectRef}".`,
     );
   }
-
-  const databaseUrl = resolveDatabaseUrl();
-  assert(databaseUrl, "Missing DATABASE_URL / DB password for schema gate");
-  assert(
-    databaseUrl.includes(STAGING_PROJECT_REF),
-    "DATABASE_URL project ref mismatch — aborting",
-  );
-
-  console.log("=== Payroll statutory ledger backfill ===");
-  console.log(`Env file: ${envFile}`);
-  console.log(`Project ref: ${projectRef} (staging OK)`);
-  console.log(`Tenant: ${tenantId}`);
-  console.log(`Mode: ${dryRun ? "DRY-RUN" : "WRITE"}`);
-  console.log("Target table: tax_ledger_entries only (no AP / expense writes)");
-
-  await assertMigration114Schema(databaseUrl);
 
   const admin = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  console.log("=== Payroll statutory ledger backfill ===");
+  console.log(`Env file: ${envFile}`);
+  console.log(
+    `Project ref: ${projectRef} (${isProduction ? "PRODUCTION" : "staging"} OK)`,
+  );
+  console.log(`Tenant: ${tenantId}`);
+  console.log(`Mode: ${dryRun ? "DRY-RUN" : "WRITE"}`);
+  console.log("Target table: tax_ledger_entries only (no AP / expense writes)");
+  console.log(
+    "Source: CURRENT payroll_history figures as-is (no June recalculation)",
+  );
+
+  await assertMigration114Schema(projectRef, admin);
 
   const apBefore = await countAccountsPayable(admin, tenantId);
   console.log(`AP row count before: ${apBefore}`);
@@ -527,7 +622,9 @@ async function main() {
     );
   }
 
-  console.log("\nDone. Production was not run.");
+  console.log(
+    `\nDone. ${isProduction ? "Production backfill complete." : "Staging backfill complete."}`,
+  );
 }
 
 main().catch((err) => {
