@@ -763,6 +763,25 @@ export default function EmployeesDirectory({
         setLoading(false);
         return;
       }
+
+      // Forward-only: create current-year leave balances from entitlement policy
+      // (Annual=15 / Sick=0 / Unpaid=0 fallback when no policy row).
+      const { error: leaveBalanceError } = await supabase.rpc(
+        "create_employee_leave_balances_for_year",
+        {
+          p_employee_id: allocated.employeeId,
+          p_year: new Date().getFullYear(),
+        },
+      );
+
+      if (leaveBalanceError) {
+        setError(
+          `Employee saved, but leave balances were not created: ${leaveBalanceError.message}`,
+        );
+        setLoading(false);
+        await refreshEmployees();
+        return;
+      }
     }
 
     closeForm();
