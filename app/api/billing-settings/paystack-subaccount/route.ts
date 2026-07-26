@@ -1,9 +1,11 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantSuperAdmin } from "@/utils/admin-auth";
+import { notifyNewPaystackSubaccount } from "@/utils/admin-notifications";
 import {
   createPaystackSubaccount,
   getPaystackSubaccount,
+  listPaystackBanks,
   resolvePaystackAccount,
   updatePaystackSubaccount,
 } from "@/utils/paystack-subaccounts";
@@ -132,6 +134,7 @@ export async function POST(request: Request) {
 
   const existingCode =
     existingBilling?.paystack_subaccount_code?.trim() ?? "";
+  const isNewSubaccount = !existingCode;
   const businessName = tenant.name.trim();
 
   const paystackResult = existingCode
@@ -164,6 +167,27 @@ export async function POST(request: Request) {
 
   if (saveError) {
     return NextResponse.json({ error: saveError.message }, { status: 500 });
+  }
+
+  // Best-effort ops email — never block subaccount creation/save.
+  if (isNewSubaccount) {
+    let bankName = "";
+    try {
+      const banks = await listPaystackBanks();
+      if (banks.ok) {
+        bankName =
+          banks.data.find((bank) => bank.code === bankCode)?.name?.trim() ?? "";
+      }
+    } catch {
+      // Ignore bank lookup failures for the notification.
+    }
+
+    void notifyNewPaystackSubaccount({
+      tenantName: businessName,
+      bankName,
+      accountNumber,
+      subaccountCode,
+    });
   }
 
   return NextResponse.json({

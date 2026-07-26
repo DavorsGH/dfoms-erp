@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { notifyNewTenantSignup } from "@/utils/admin-notifications";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
   addTrialDays,
@@ -226,6 +227,8 @@ export async function POST(request: Request) {
 
   rollbackState.clientId = clientId;
 
+  const trialEndDate = addTrialDays(new Date(), ERP_SUITE_TRIAL_DAYS);
+
   const { data: subscriptionRow, error: subscriptionError } = await admin
     .from("crm_subscriptions")
     .insert({
@@ -233,7 +236,7 @@ export async function POST(request: Request) {
       customer_id: clientId,
       linked_tenant_id: tenantRow.id,
       product_id: null,
-      trial_end_date: addTrialDays(new Date(), ERP_SUITE_TRIAL_DAYS),
+      trial_end_date: trialEndDate,
       subscription_status: ERP_SUITE_SUBSCRIPTION_STATUS,
     })
     .select("id")
@@ -248,6 +251,13 @@ export async function POST(request: Request) {
   }
 
   rollbackState.subscriptionId = subscriptionRow.id;
+
+  // Best-effort ops email — never block signup.
+  void notifyNewTenantSignup({
+    tenantName: companyName,
+    adminEmail,
+    trialEndDate,
+  });
 
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     type: "signup",

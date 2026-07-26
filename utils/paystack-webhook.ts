@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/utils/supabase/admin";
+import { notifySubscriptionConvertedToPaid } from "@/utils/admin-notifications";
 import {
   DAVORS_TENANT_ID,
   ERP_SUITE_CUSTOMER_STATUS,
@@ -107,6 +108,110 @@ function extractPlanCode(data: JsonRecord): string | null {
   }
   const planObj = asRecord(plan);
   return asString(planObj?.plan_code);
+}
+
+function formatGhsAmount(amount: number): string {
+  return `GHS ${amount.toLocaleString("en-GH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+/** Paystack charge amounts are in the smallest currency unit (pesewas for GHS). */
+function extractChargeAmountLabel(data: JsonRecord): string | null {
+  const amount = asNumber(data.amount);
+  if (amount == null) {
+    return null;
+  }
+  return formatGhsAmount(amount / 100);
+}
+
+async function resolveTenantName(tenantId: string | null): Promise<string> {
+  if (!tenantId) {
+    return "Unknown tenant";
+  }
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("tenants")
+    .select("name")
+    .eq("id", tenantId)
+    .maybeSingle();
+  return data?.name?.trim() || "Unknown tenant";
+}
+
+async function resolveProductTierDetails(productId: string | null): Promise<{
+  tierName: string | null;
+  amountLabel: string | null;
+}> {
+  if (!productId) {
+    return { tierName: null, amountLabel: null };
+  }
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("crm_products")
+    .select("name, price_ghs, unit_price, billing_cycle")
+    .eq("id", productId)
+    .maybeSingle();
+
+  if (!data) {
+    return { tierName: null, amountLabel: null };
+  }
+
+  const price =
+    typeof data.price_ghs === "number"
+      ? data.price_ghs
+      : typeof data.unit_price === "number"
+        ? data.unit_price
+        : null;
+  const cycle =
+    typeof data.billing_cycle === "string" && data.billing_cycle.trim()
+      ? ` / ${data.billing_cycle.trim()}`
+      : "";
+
+  return {
+    tierName: data.name?.trim() || null,
+    amountLabel: price != null ? `${formatGhsAmount(price)}${cycle}` : null,
+  };
+}
+
+/**
+ * Best-effort email when a subscription moves into paid/active.
+ * Only for genuine trial→paid (or first activation of a newly created paid row).
+ * Safe if both charge.success and subscription.create fire — second call sees
+ * status already active and skips.
+ */
+async function maybeNotifyPaidConversion(options: {
+  previousStatus: CrmSubscriptionStatus;
+  becameActive: boolean;
+  created: boolean;
+  linkedTenantId: string | null;
+  productId: string | null;
+  chargeAmountLabel?: string | null;
+}): Promise<void> {
+  const convertedFromTrial =
+    options.previousStatus === "trialing" && options.becameActive;
+  const firstPaidActivation = options.created && options.becameActive;
+  if (!convertedFromTrial && !firstPaidActivation) {
+    return;
+  }
+
+  try {
+    const [tenantName, tier] = await Promise.all([
+      resolveTenantName(options.linkedTenantId),
+      resolveProductTierDetails(options.productId),
+    ]);
+
+    void notifySubscriptionConvertedToPaid({
+      tenantName,
+      tierName: tier.tierName,
+      amountLabel: options.chargeAmountLabel ?? tier.amountLabel,
+    });
+  } catch (error) {
+    console.error(
+      "[paystack-webhook] paid-conversion notification failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
 }
 
 function extractCustomer(data: JsonRecord): {
@@ -740,6 +845,7 @@ async function handleChargeSuccess(
 
   warnIfWaived(row, "charge.success");
 
+  const previousStatus = row.subscription_status;
   const patch: Record<string, unknown> = {
     subscription_status: "active" satisfies CrmSubscriptionStatus,
   };
@@ -758,6 +864,15 @@ async function handleChargeSuccess(
   }
 
   await updateSubscription(row.id, patch);
+
+  await maybeNotifyPaidConversion({
+    previousStatus,
+    becameActive: true,
+    created,
+    linkedTenantId: row.linked_tenant_id,
+    productId: productId ?? row.product_id,
+    chargeAmountLabel: extractChargeAmountLabel(data),
+  });
 
   return {
     detail: `charge.success ${created ? "created+activated" : "activated"} subscription ${row.id} (linked_tenant_id=${row.linked_tenant_id}, ref=${reference ?? "n/a"}, next_billing_date=${nextBillingDate ?? "unchanged"}).`,
@@ -819,6 +934,7 @@ async function handleSubscriptionCreate(
 
   warnIfWaived(row, "subscription.create");
 
+  const previousStatus = row.subscription_status;
   const patch: Record<string, unknown> = {
     paystack_subscription_id: subscriptionCode,
   };
@@ -832,11 +948,21 @@ async function handleSubscriptionCreate(
     patch.next_billing_date = nextPaymentDate;
   }
   // If we only had a trial row before, promote on subscription.create as well.
-  if (row.subscription_status === "trialing" || created) {
+  const becomesActive =
+    row.subscription_status === "trialing" || created;
+  if (becomesActive) {
     patch.subscription_status = "active" satisfies CrmSubscriptionStatus;
   }
 
   await updateSubscription(row.id, patch);
+
+  await maybeNotifyPaidConversion({
+    previousStatus,
+    becameActive: becomesActive,
+    created,
+    linkedTenantId: row.linked_tenant_id,
+    productId: productId ?? row.product_id,
+  });
 
   return {
     detail: `subscription.create ${created ? "created and " : ""}stored paystack_subscription_id=${subscriptionCode} on ${row.id}.`,
