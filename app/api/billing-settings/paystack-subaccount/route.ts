@@ -5,6 +5,7 @@ import {
   createPaystackSubaccount,
   getPaystackSubaccount,
   resolvePaystackAccount,
+  updatePaystackSubaccount,
 } from "@/utils/paystack-subaccounts";
 import { createClient } from "@/utils/supabase/server";
 
@@ -114,19 +115,48 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: resolvedAccount.error }, { status });
   }
 
-  const created = await createPaystackSubaccount({
-    businessName: tenant.name.trim(),
-    bankCode,
-    accountNumber,
-  });
-  if (!created.ok) {
-    return NextResponse.json({ error: created.error }, { status: 502 });
+  // Create once; subsequent Save & Verify updates the existing Paystack
+  // subaccount in place so we do not orphan duplicate ACCT_ codes.
+  const { data: existingBilling, error: billingLookupError } = await supabase
+    .from("billing_settings")
+    .select("paystack_subaccount_code")
+    .eq("tenant_id", auth.tenantId)
+    .maybeSingle();
+
+  if (billingLookupError) {
+    return NextResponse.json(
+      { error: billingLookupError.message },
+      { status: 500 },
+    );
   }
+
+  const existingCode =
+    existingBilling?.paystack_subaccount_code?.trim() ?? "";
+  const businessName = tenant.name.trim();
+
+  const paystackResult = existingCode
+    ? await updatePaystackSubaccount({
+        subaccountCode: existingCode,
+        businessName,
+        bankCode,
+        accountNumber,
+      })
+    : await createPaystackSubaccount({
+        businessName,
+        bankCode,
+        accountNumber,
+      });
+
+  if (!paystackResult.ok) {
+    return NextResponse.json({ error: paystackResult.error }, { status: 502 });
+  }
+
+  const subaccountCode = existingCode || paystackResult.data.subaccountCode;
 
   const { error: saveError } = await supabase.from("billing_settings").upsert(
     {
       tenant_id: auth.tenantId,
-      paystack_subaccount_code: created.data.subaccountCode,
+      paystack_subaccount_code: subaccountCode,
       paystack_subaccount_status: "active",
     },
     { onConflict: "tenant_id" },

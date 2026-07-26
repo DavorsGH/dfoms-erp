@@ -256,12 +256,94 @@ export async function createPaystackSubaccount(options: {
   return { ok: true, data: { subaccountCode } };
 }
 
+/**
+ * Update an existing Paystack subaccount in place (PUT /subaccount/:code).
+ * Paystack has no Delete Subaccount API — use `active: false` to deactivate.
+ */
+export async function updatePaystackSubaccount(options: {
+  subaccountCode: string;
+  businessName: string;
+  bankCode: string;
+  accountNumber: string;
+  active?: boolean;
+}): Promise<PaystackResult<{ subaccountCode: string }>> {
+  const subaccountCode = options.subaccountCode.trim();
+  if (!subaccountCode) {
+    return { ok: false, error: "subaccountCode is required." };
+  }
+
+  const bankCode = options.bankCode.trim();
+  const accountNumber = prepareSettlementAccountNumber(
+    options.accountNumber,
+    bankCode,
+  );
+  const body: Record<string, unknown> = {
+    business_name: options.businessName,
+    settlement_bank: bankCode,
+    account_number: accountNumber,
+    percentage_charge: 0,
+  };
+  if (typeof options.active === "boolean") {
+    body.active = options.active;
+  }
+
+  const result = await paystackRequest<{ subaccount_code?: string }>(
+    `/subaccount/${encodeURIComponent(subaccountCode)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+
+  if (!result.ok) {
+    return result;
+  }
+
+  const returnedCode = result.data.subaccount_code?.trim() || subaccountCode;
+  return { ok: true, data: { subaccountCode: returnedCode } };
+}
+
+/** Deactivate a subaccount (Paystack has no delete endpoint). */
+export async function setPaystackSubaccountActive(
+  subaccountCode: string,
+  active: boolean,
+): Promise<PaystackResult<{ subaccountCode: string; active: boolean }>> {
+  const code = subaccountCode.trim();
+  if (!code) {
+    return { ok: false, error: "subaccountCode is required." };
+  }
+
+  const result = await paystackRequest<{
+    subaccount_code?: string;
+    active?: boolean | number;
+  }>(`/subaccount/${encodeURIComponent(code)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ active }),
+  });
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    data: {
+      subaccountCode: result.data.subaccount_code?.trim() || code,
+      active: Boolean(result.data.active ?? active),
+    },
+  };
+}
+
 export async function getPaystackSubaccount(
   subaccountCode: string,
 ): Promise<PaystackResult<PaystackSubaccountDetails>> {
   const result = await paystackRequest<{
     account_number?: string;
     settlement_bank?: string | { name?: string };
+    active?: boolean | number;
+    is_verified?: boolean;
   }>(`/subaccount/${encodeURIComponent(subaccountCode)}`);
 
   if (!result.ok) {
