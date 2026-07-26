@@ -393,6 +393,33 @@ export default function PosCheckout({
       amountReceived: cartTotal(receiptLines),
     });
 
+    // Cash / non-Paystack POS: sale_completed only (no separate payment_received).
+    if (trimmedClientId) {
+      const productSummary = receiptLines
+        .map((line) => `${line.productName} x${line.quantity}`)
+        .join(", ");
+      void fetch("/api/notification-rules/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event_type: "sale_completed",
+          customer_id: trimmedClientId,
+          variables: {
+            customer_name: getCustomerDisplayName(
+              trimmedClientId,
+              trimmedCustomerName,
+              initialClients,
+            ),
+            invoice_no: summary.invoiceNo,
+            amount: String(cartTotal(receiptLines)),
+            product_summary: productSummary,
+          },
+        }),
+      }).catch(() => {
+        /* best-effort */
+      });
+    }
+
     if (summary.taxSyncWarning) {
       setError(
         `Sale recorded, but the VFRS tax ledger could not be updated: ${summary.taxSyncWarning}`,

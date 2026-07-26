@@ -5,6 +5,11 @@ import {
   type CampaignChannel,
 } from "@/utils/campaigns-types";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
+import {
+  escapeHtml,
+  substituteTemplatePlaceholders,
+  templateBodyToEmailHtml,
+} from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
 
 export const CAMPAIGN_SEND_BATCH_SIZE = 50;
@@ -131,18 +136,6 @@ export function buildCustomerVariables(
   return vars;
 }
 
-export function substituteTemplatePlaceholders(
-  template: string,
-  vars: Record<string, string>,
-): string {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key: string) => {
-    if (Object.prototype.hasOwnProperty.call(vars, key)) {
-      return vars[key];
-    }
-    return match;
-  });
-}
-
 export function buildUnsubscribeUrl(token: string): string {
   return `${UNSUBSCRIBE_BASE_URL}/${token}`;
 }
@@ -154,13 +147,7 @@ export function appendEmailUnsubscribeFooter(
   const url = buildUnsubscribeUrl(token);
   const textBody = body.trimEnd();
   const text = `${textBody}\n\nUnsubscribe: ${url}`;
-  const htmlBody = body.includes("<")
-    ? body.trimEnd()
-    : body
-        .trimEnd()
-        .split(/\n/)
-        .map((line) => `<p>${escapeHtml(line) || "&nbsp;"}</p>`)
-        .join("");
+  const htmlBody = templateBodyToEmailHtml(body);
   const html = `${htmlBody}<p style="margin-top:24px;font-size:12px;color:#64748b;">Unsubscribe: <a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>`;
   return { html, text };
 }
@@ -168,14 +155,6 @@ export function appendEmailUnsubscribeFooter(
 export function appendSmsUnsubscribeFooter(body: string, token: string): string {
   const trimmed = body.trimEnd();
   return `${trimmed} Reply STOP or visit portal.davorsfacilities.com/unsubscribe/${token} to opt out`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export async function loadCampaignCustomers(

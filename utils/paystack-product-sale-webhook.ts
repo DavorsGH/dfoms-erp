@@ -201,6 +201,38 @@ export async function processProductSalePaystackEvent(
     throw new Error(markPaidError.message);
   }
 
+  // Payment on an already-created sale (not cart_snapshot create) — payment_received only.
+  const { data: customerLine } = await admin
+    .from("income_register")
+    .select("client_id, customer_name, invoice_no")
+    .eq("tenant_id", requestRow.tenant_id)
+    .in("id", incomeIds)
+    .limit(1)
+    .maybeSingle();
+
+  void import("@/utils/transactional-notification-trigger").then(
+    ({ fireTransactionalNotification }) => {
+      void fireTransactionalNotification(
+        requestRow.tenant_id,
+        "payment_received",
+        customerLine?.client_id ?? null,
+        {
+          customer_name:
+            customerLine?.customer_name?.trim() ||
+            customerLine?.client_id ||
+            "Customer",
+          amount: String(applyAmount),
+          payment_reference: reference ?? requestRow.paystack_reference ?? "",
+          invoice_no:
+            invoiceNo ??
+            customerLine?.invoice_no ??
+            requestRow.invoice_no ??
+            "",
+        },
+      );
+    },
+  );
+
   return {
     detail: `product_sale charge.success applied GHS ${applyAmount.toFixed(2)} to invoice ${invoiceNo ?? requestRow.invoice_no} (${allocations.length} line(s), request ${requestRow.id}, ref=${reference ?? "n/a"}).`,
   };

@@ -349,6 +349,43 @@ export async function fulfillPosCartSnapshotPaymentRequest(
     throw new Error(updateError.message);
   }
 
+  // Best-effort transactional customer notices (never block fulfillment).
+  const customerId = snapshot.clientId?.trim() || null;
+  const amountLabel = String(paidAmount);
+  const productSummary = snapshot.lines
+    .map((line) => `${line.productName} x${line.quantity}`)
+    .join(", ");
+  const customerName =
+    snapshot.customerName?.trim() ||
+    (customerId ? customerId : "Customer");
+
+  void import("@/utils/transactional-notification-trigger").then(
+    ({ fireTransactionalNotification }) => {
+      void fireTransactionalNotification(
+        requestRow.tenant_id,
+        "sale_completed",
+        customerId,
+        {
+          customer_name: customerName,
+          invoice_no: allocatedInvoiceNo,
+          amount: amountLabel,
+          product_summary: productSummary,
+        },
+      );
+      void fireTransactionalNotification(
+        requestRow.tenant_id,
+        "payment_received",
+        customerId,
+        {
+          customer_name: customerName,
+          amount: amountLabel,
+          payment_reference: reference ?? requestRow.paystack_reference ?? "",
+          invoice_no: allocatedInvoiceNo,
+        },
+      );
+    },
+  );
+
   return {
     invoiceNo: allocatedInvoiceNo,
     incomeIds,
