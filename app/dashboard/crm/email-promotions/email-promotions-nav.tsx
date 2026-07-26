@@ -8,7 +8,11 @@ const tabs = [
     label: "Templates",
     href: "/dashboard/crm/email-promotions/templates",
   },
-  // Future: Campaigns, Notification Rules
+  {
+    label: "Campaigns",
+    href: "/dashboard/crm/email-promotions/campaigns",
+  },
+  // Future: Notification Rules
 ] as const;
 
 export default function EmailPromotionsNav() {
