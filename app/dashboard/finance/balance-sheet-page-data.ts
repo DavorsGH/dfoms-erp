@@ -204,11 +204,11 @@ export async function fetchBalanceSheetPageData(
       .order("period_month", { ascending: true }),
     supabase
       .from("payroll_history")
-      .select("payroll_month, net_pay")
+      .select("payroll_month, net_pay, net_only_adjustment")
       .order("payroll_month", { ascending: true }),
     supabase
       .from("payroll_processing")
-      .select("payroll_month, net_pay")
+      .select("payroll_month, net_pay, net_only_adjustment")
       .order("payroll_month", { ascending: true }),
     supabase
       .from("month_end_close")

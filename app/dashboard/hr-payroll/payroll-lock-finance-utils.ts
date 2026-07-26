@@ -21,8 +21,14 @@ export const PAYROLL_PAYABLE_CATEGORY_PAYE = "Statutory - PAYE";
 
 export type PayrollLockFinanceTotals = {
   totalGrossPay: number;
-  /** Staff Salaries expense base: gross + net-only prior-period top-ups. */
+  /**
+   * Staff Salaries P&L expense on lock = current-period gross only.
+   * net_only_adjustment settles prior Accrued Wages Payable (cash/net) and must
+   * NOT be re-expensed here — that would double-count prior-period labor cost.
+   */
   totalStaffSalariesExpense: number;
+  /** Prior-period net top-ups included in net_pay; settle Accrued Wages, not P&L. */
+  totalNetOnlyAdjustment: number;
   totalEmployerSsnitContribution: number;
   totalSsnitRemittance: number;
   totalPayeTax: number;
@@ -103,9 +109,8 @@ export function calculatePayrollLockFinanceTotals(
 
   return {
     totalGrossPay,
-    totalStaffSalariesExpense: roundCurrency(
-      totalGrossPay + totalNetOnlyAdjustment,
-    ),
+    totalStaffSalariesExpense: totalGrossPay,
+    totalNetOnlyAdjustment,
     totalEmployerSsnitContribution: roundCurrency(
       totalEmployerSsnit + totalTier2,
     ),

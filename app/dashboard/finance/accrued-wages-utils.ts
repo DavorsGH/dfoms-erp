@@ -21,6 +21,8 @@ export const STAFF_SALARIES_ACCRUED_STATUS = PAYROLL_EXPENSE_PAYMENT_STATUS_ACCR
 export type PayrollHistoryWagesEntry = {
   payroll_month: string;
   net_pay: number;
+  /** Prior-period net top-up included in net_pay; settles Accrued Wages when locked. */
+  net_only_adjustment?: number | null;
 };
 
 export type MonthEndCloseNetPayEntry = {
@@ -36,7 +38,7 @@ export type StaffSalariesExpenseEntry = {
   payment_status: string;
   description?: string | null;
   receipt_no?: string | null;
-  /** Optional; may carry cash_paid=<amount> for Paid PAYROLL-SAL cash outflow. */
+  /** Optional; may carry cash_paid=<amount> and wages_forfeited=<amount>. */
   notes?: string | null;
 };
 
@@ -75,6 +77,31 @@ function normalizeStatus(value: string | null | undefined): string {
     .replace(/\s+/g, " ")
     .toLowerCase()
     .replace(/\u2013|\u2014/g, "-");
+}
+
+/** Parse `cash_paid=7025.57` (or `cash_paid: 7025.57`) from expense notes. */
+export function parseCashPaidFromExpenseNotes(
+  notes: string | null | undefined,
+): number | null {
+  if (!notes) return null;
+  const match = /cash_paid\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i.exec(notes);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? roundCurrency(value) : null;
+}
+
+/**
+ * Parse `wages_forfeited=88.09` from expense notes.
+ * Portion of unpaid net written off (e.g. inactive staff) — reduces Accrued Wages.
+ */
+export function parseWagesForfeitedFromExpenseNotes(
+  notes: string | null | undefined,
+): number {
+  if (!notes) return 0;
+  const match = /wages_forfeited\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i.exec(notes);
+  if (!match) return 0;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? roundCurrency(value) : 0;
 }
 
 export function isPayrollAutoPostedExpense(
@@ -234,6 +261,37 @@ export function isAccruedStaffSalariesExpense(
   return isAccruedPaymentStatus(entry.payment_status);
 }
 
+/**
+ * Paid PAYROLL-SAL with cash_paid &lt; month net leaves unpaid wages payable.
+ * (Fully paid rows without a shortfall are not accrued.)
+ */
+export function isPartiallyPaidStaffSalariesExpense(
+  entry: StaffSalariesExpenseEntry,
+  monthNetPay: number,
+): boolean {
+  if (!isStaffSalariesExpenseEntry(entry)) {
+    return false;
+  }
+  if (!isPaidStatus(entry.payment_status)) {
+    return false;
+  }
+  if (
+    !isPayrollAutoPostedExpense(entry) &&
+    !parsePayrollMonthFromReceiptNo(entry.receipt_no)
+  ) {
+    return false;
+  }
+
+  const cashPaid = parseCashPaidFromExpenseNotes(entry.notes);
+  if (cashPaid === null) {
+    return false;
+  }
+
+  const forfeited = parseWagesForfeitedFromExpenseNotes(entry.notes);
+  const shortfall = roundCurrency(monthNetPay - cashPaid - forfeited);
+  return shortfall > 0.005;
+}
+
 export function expenseDateToPayrollMonth(date: string): string {
   const normalized = normalizeDate(date);
   const match = /^(\d{4})-(\d{2})/.exec(normalized);
@@ -264,6 +322,25 @@ export function sumNetPayByPayrollMonth(
     totals.set(
       payrollMonth,
       roundCurrency((totals.get(payrollMonth) ?? 0) + (Number(entry.net_pay) || 0)),
+    );
+  }
+
+  return totals;
+}
+
+export function sumNetOnlyAdjustmentByPayrollMonth(
+  entries: PayrollHistoryWagesEntry[],
+): Map<string, number> {
+  const totals = new Map<string, number>();
+
+  for (const entry of entries) {
+    const payrollMonth = normalizePayrollMonthKey(entry.payroll_month);
+    totals.set(
+      payrollMonth,
+      roundCurrency(
+        (totals.get(payrollMonth) ?? 0) +
+          (Number(entry.net_only_adjustment) || 0),
+      ),
     );
   }
 
@@ -326,12 +403,20 @@ export function mergePayrollWagesSources(
     merged.push({
       payroll_month: payrollMonth,
       net_pay: entry.net_pay,
+      net_only_adjustment: entry.net_only_adjustment ?? 0,
     });
   }
 
   return merged;
 }
 
+/**
+ * Accrued Wages Payable:
+ * 1. Fully unpaid Accrued PAYROLL-SAL months → full month net_pay
+ * 2. Paid PAYROLL-SAL with cash_paid &lt; net → shortfall (net − cash_paid − wages_forfeited)
+ * 3. net_only_adjustment on later locked/recognized payroll months settles (2)
+ *    without re-expensing (Staff Salaries on lock = gross only)
+ */
 export function calculateAccruedWagesPayableByMonth(
   payrollHistory: PayrollHistoryWagesEntry[],
   staffSalariesExpenses: StaffSalariesExpenseEntry[],
@@ -343,26 +428,38 @@ export function calculateAccruedWagesPayableByMonth(
     payrollHistory,
     monthEndCloseRecords,
   );
+  const netOnlyByMonth = sumNetOnlyAdjustmentByPayrollMonth(payrollHistory);
 
-  const accruedExpensesByPayrollMonth = new Map<string, StaffSalariesExpenseEntry>();
+  // One expense row per payroll month (prefer auto PAYROLL-SAL receipt).
+  const expenseByPayrollMonth = new Map<string, StaffSalariesExpenseEntry>();
   for (const expense of staffSalariesExpenses) {
-    if (!isAccruedStaffSalariesExpense(expense)) {
+    if (!isStaffSalariesExpenseEntry(expense)) {
       continue;
     }
 
     const payrollMonth = resolveStaffSalariesPayrollMonth(expense);
-    if (!accruedExpensesByPayrollMonth.has(payrollMonth)) {
-      accruedExpensesByPayrollMonth.set(payrollMonth, expense);
+    const existing = expenseByPayrollMonth.get(payrollMonth);
+    if (!existing) {
+      expenseByPayrollMonth.set(payrollMonth, expense);
+      continue;
+    }
+    // Prefer the auto PAYROLL-SAL receipt row when duplicates exist.
+    if (
+      parsePayrollMonthFromReceiptNo(expense.receipt_no) &&
+      !parsePayrollMonthFromReceiptNo(existing.receipt_no)
+    ) {
+      expenseByPayrollMonth.set(payrollMonth, expense);
     }
   }
 
   for (let month = 1; month <= 12; month += 1) {
     const monthEnd = getMonthEndDate(financialYear, month);
-    let accruedWages = 0;
+    let openAccrualNets = 0;
+    let partialShortfalls = 0;
+    let recognizedNetOnly = 0;
     const countedPayrollMonths = new Set<string>();
 
-    for (const [payrollMonth] of accruedExpensesByPayrollMonth) {
-      const expense = accruedExpensesByPayrollMonth.get(payrollMonth)!;
+    for (const [payrollMonth, expense] of expenseByPayrollMonth) {
       const expenseDate = normalizeDate(expense.date);
       if (!expenseDate || expenseDate > monthEnd) {
         continue;
@@ -371,9 +468,9 @@ export function calculateAccruedWagesPayableByMonth(
       if (countedPayrollMonths.has(payrollMonth)) {
         continue;
       }
-
       countedPayrollMonths.add(payrollMonth);
-      accruedWages += roundCurrency(
+
+      const monthNet = roundCurrency(
         netPayByMonth.get(payrollMonth) ??
           resolveNetPayForPayrollMonth(
             payrollMonth,
@@ -381,9 +478,33 @@ export function calculateAccruedWagesPayableByMonth(
             monthEndCloseRecords,
           ),
       );
+      const monthNetOnly = roundCurrency(netOnlyByMonth.get(payrollMonth) ?? 0);
+
+      // Any recognized (posted) payroll month's net_only settles prior shortfalls.
+      recognizedNetOnly = roundCurrency(recognizedNetOnly + monthNetOnly);
+
+      if (isAccruedStaffSalariesExpense(expense)) {
+        openAccrualNets = roundCurrency(openAccrualNets + monthNet);
+        continue;
+      }
+
+      if (isPaidStatus(expense.payment_status)) {
+        const cashPaid = parseCashPaidFromExpenseNotes(expense.notes);
+        if (cashPaid === null) {
+          continue;
+        }
+        const forfeited = parseWagesForfeitedFromExpenseNotes(expense.notes);
+        const shortfall = roundCurrency(monthNet - cashPaid - forfeited);
+        if (shortfall > 0) {
+          partialShortfalls = roundCurrency(partialShortfalls + shortfall);
+        }
+      }
     }
 
-    totals[month - 1] = roundCurrency(accruedWages);
+    const unsettledShortfalls = roundCurrency(
+      Math.max(0, partialShortfalls - recognizedNetOnly),
+    );
+    totals[month - 1] = roundCurrency(openAccrualNets + unsettledShortfalls);
   }
 
   totals[FULL_YEAR_INDEX] = totals[11];

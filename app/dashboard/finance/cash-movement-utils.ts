@@ -10,6 +10,7 @@ import {
 } from "./capital-contributions-utils";
 import {
   isCashOutflowExpense,
+  parseCashPaidFromExpenseNotes,
   type BalanceSheetCashExpenseEntry,
 } from "./accrued-wages-utils";
 import { calculateFixedAssetPurchaseOutflowsByMonth } from "./fixed-assets-utils";
@@ -33,6 +34,11 @@ import {
   type ProductPurchaseCashEntry,
   type RawMaterialPurchaseCashEntry,
 } from "../inventory/inventory-balance-sheet-utils";
+
+export {
+  parseCashPaidFromExpenseNotes,
+  parseWagesForfeitedFromExpenseNotes,
+} from "./accrued-wages-utils";
 
 function buildPeriodMonth(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}-01`;
@@ -192,17 +198,6 @@ function parsePayrollMonthFromSalReceipt(
   const match = /PAYROLL-SAL-(\d{4})-(\d{2})/i.exec((receiptNo ?? "").trim());
   if (!match) return null;
   return `${match[1]}-${match[2]}-01`;
-}
-
-/** Parse `cash_paid=7025.57` (or `cash_paid: 7025.57`) from expense notes. */
-export function parseCashPaidFromExpenseNotes(
-  notes: string | null | undefined,
-): number | null {
-  if (!notes) return null;
-  const match = /cash_paid\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i.exec(notes);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? roundCurrency(value) : null;
 }
 
 function sumPaidExpensesByMonth(
