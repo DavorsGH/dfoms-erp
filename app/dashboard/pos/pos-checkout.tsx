@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
+import { PAYMENT_SETTINGS_REQUIRED_CODE } from "@/utils/product-sale-paystack";
 import { inputClassName } from "../employees/employee-record-utils";
 import {
   FINISHED_PRODUCT_SELECT,
@@ -49,6 +51,8 @@ type PosCheckoutProps = {
 type MomoInitializeResponse = {
   ok?: boolean;
   error?: string;
+  /** Machine-readable error code (e.g. payment_settings_required). */
+  code?: string;
   payment_request_id?: string;
   reference?: string;
   access_code?: string;
@@ -95,6 +99,9 @@ export default function PosCheckout({
   const [loading, setLoading] = useState(false);
   const [momoWaiting, setMomoWaiting] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  /** True when the backend blocked payment because the tenant has no active
+   * settlement account — shows a link to Payment Settings. */
+  const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
   const [checkoutResult, setCheckoutResult] =
     useState<PosCheckoutRunSummary | null>(null);
   const [pendingInvoiceNo, setPendingInvoiceNo] = useState<string | null>(null);
@@ -249,6 +256,7 @@ export default function PosCheckout({
     setRequestPaymentDraft(null);
     setMomoWaiting(false);
     setError(null);
+    setPaymentSettingsRequired(false);
   }
 
   function validateCheckoutBasics(): {
@@ -415,6 +423,9 @@ export default function PosCheckout({
 
       const initPayload = (await initResponse.json()) as MomoInitializeResponse;
       if (!initResponse.ok || !initPayload.ok) {
+        if (initPayload.code === PAYMENT_SETTINGS_REQUIRED_CODE) {
+          setPaymentSettingsRequired(true);
+        }
         setError(initPayload.error ?? "Could not start Mobile Money payment.");
         setMomoWaiting(false);
         setLoading(false);
@@ -521,6 +532,7 @@ export default function PosCheckout({
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setPaymentSettingsRequired(false);
     setReceipt(null);
 
     const basics = validateCheckoutBasics();
@@ -561,6 +573,7 @@ export default function PosCheckout({
    */
   function handleRequestPaymentLink() {
     setError(null);
+    setPaymentSettingsRequired(false);
     setReceipt(null);
 
     const basics = validateCheckoutBasics();
@@ -621,9 +634,22 @@ export default function PosCheckout({
       </div>
 
       {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
+        <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <p>{error}</p>
+          {paymentSettingsRequired ? (
+            <p>
+              <Link
+                href="/dashboard/administration/billing?tab=payment"
+                className="inline-block rounded-md bg-[#0f2744] px-3 py-1.5 font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+              >
+                Set up Payment Settings
+              </Link>{" "}
+              <span className="text-red-600">
+                (Administration → Billing Settings → Payment Settings)
+              </span>
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {momoWaiting ? (

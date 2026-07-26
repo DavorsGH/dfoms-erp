@@ -193,6 +193,15 @@ export async function initializePaystackOneOffTransaction(options: {
   currency?: string;
   metadata?: Record<string, unknown>;
   channels?: string[];
+  /**
+   * Tenant fund routing: the Paystack subaccount code (ACCT_…) of the tenant's
+   * settlement account. POS / product-sale customer payments belong to the
+   * tenant, not the platform, so for that flow this is NOT optional — callers
+   * must resolve the tenant's active subaccount (billing_settings) and block
+   * the charge if it is missing. Paystack settles the split into the
+   * subaccount's bank account automatically.
+   */
+  subaccountCode?: string;
 }): Promise<PaystackInitializeResult> {
   const body: Record<string, unknown> = {
     email: options.email,
@@ -204,6 +213,11 @@ export async function initializePaystackOneOffTransaction(options: {
 
   if (options.channels && options.channels.length > 0) {
     body.channels = options.channels;
+  }
+
+  // Paystack single-split param is `subaccount` (split_code is for multi-split).
+  if (options.subaccountCode?.trim()) {
+    body.subaccount = options.subaccountCode.trim();
   }
 
   return postPaystackInitialize(body);

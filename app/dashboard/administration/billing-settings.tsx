@@ -41,6 +41,8 @@ type BillingSettingsProps = {
   invoices: BillingInvoiceRow[];
   tierOptions: BillingTierOption[];
   fetchError: string | null;
+  /** Initial tab, e.g. from ?tab=payment deep links (POS Payment Settings). */
+  initialTab?: "billing" | "payment";
 };
 
 const inputClassName =
@@ -106,6 +108,7 @@ export default function BillingSettings({
   invoices,
   tierOptions,
   fetchError,
+  initialTab = "billing",
 }: BillingSettingsProps) {
   const router = useRouter();
   const [form, setForm] = useState(() => toFormState(billingSettings));
@@ -116,7 +119,7 @@ export default function BillingSettings({
   const [checkoutLoadingId, setCheckoutLoadingId] = useState<string | null>(
     null,
   );
-  const [activeTab, setActiveTab] = useState<"billing" | "payment">("billing");
+  const [activeTab, setActiveTab] = useState<"billing" | "payment">(initialTab);
 
   const planState = formatBillingPlanState(
     subscription.subscriptionStatus,
