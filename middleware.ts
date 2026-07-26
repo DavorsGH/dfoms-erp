@@ -19,6 +19,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Public email/SMS unsubscribe links (no auth).
+  if (
+    pathname.startsWith("/unsubscribe") ||
+    pathname.startsWith("/api/unsubscribe")
+  ) {
+    return NextResponse.next();
+  }
+
   // Maintenance mode — blocks all access except heartbeat and the maintenance page itself.
   if (process.env.MAINTENANCE_MODE === "true") {
     if (pathname === "/maintenance") {
@@ -47,7 +55,9 @@ export async function middleware(request: NextRequest) {
   if (
     !user &&
     !publicPaths.has(pathname) &&
-    !pathname.startsWith("/pay/product-sale")
+    !pathname.startsWith("/pay/product-sale") &&
+    !pathname.startsWith("/unsubscribe") &&
+    !pathname.startsWith("/api/unsubscribe")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

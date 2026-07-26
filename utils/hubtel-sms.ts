@@ -1,6 +1,8 @@
 import "server-only";
 
-export type SendSmsResult = { ok: true } | { ok: false; error: string };
+export type SendSmsResult =
+  | { ok: true; id: string | null }
+  | { ok: false; error: string };
 
 /**
  * Minimal Hubtel Programmable SMS sender.
@@ -48,15 +50,36 @@ export async function sendHubtelSms(options: {
       }),
     });
 
+    const bodyText = await response.text().catch(() => "");
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
       return {
         ok: false,
-        error: body || `Hubtel SMS failed (${response.status}).`,
+        error: bodyText || `Hubtel SMS failed (${response.status}).`,
       };
     }
 
-    return { ok: true };
+    let id: string | null = null;
+    try {
+      const parsed = JSON.parse(bodyText) as {
+        MessageId?: unknown;
+        messageId?: unknown;
+        Data?: { MessageId?: unknown };
+      };
+      const candidate =
+        parsed.MessageId ??
+        parsed.messageId ??
+        parsed.Data?.MessageId ??
+        null;
+      if (typeof candidate === "string" && candidate.trim()) {
+        id = candidate.trim();
+      } else if (typeof candidate === "number") {
+        id = String(candidate);
+      }
+    } catch {
+      id = null;
+    }
+
+    return { ok: true, id };
   } catch (error) {
     return {
       ok: false,

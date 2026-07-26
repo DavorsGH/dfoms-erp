@@ -1,6 +1,8 @@
 import "server-only";
 
-export type SendEmailResult = { ok: true } | { ok: false; error: string };
+export type SendEmailResult =
+  | { ok: true; id: string | null }
+  | { ok: false; error: string };
 
 /**
  * Minimal Resend sender. Env: RESEND_API_KEY
@@ -38,15 +40,25 @@ export async function sendResendEmail(options: {
       }),
     });
 
+    const bodyText = await response.text().catch(() => "");
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
       return {
         ok: false,
-        error: body || `Resend request failed (${response.status}).`,
+        error: bodyText || `Resend request failed (${response.status}).`,
       };
     }
 
-    return { ok: true };
+    let id: string | null = null;
+    try {
+      const parsed = JSON.parse(bodyText) as { id?: unknown };
+      if (typeof parsed.id === "string" && parsed.id.trim()) {
+        id = parsed.id.trim();
+      }
+    } catch {
+      id = null;
+    }
+
+    return { ok: true, id };
   } catch (error) {
     return {
       ok: false,
