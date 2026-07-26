@@ -51,7 +51,7 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
     label: "HR Settings",
     items: [
       {
-        label: "Salary Rates",
+        label: "Salary Settings",
         href: "/dashboard/administration/salary-rates",
       },
       {

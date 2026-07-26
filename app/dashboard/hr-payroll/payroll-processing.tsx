@@ -36,8 +36,10 @@ import {
   calculateLoanRepaymentForEmployee,
   calculatePayrollRow,
   countAbsencesForStaff,
+  resolvePayrollPolicyCompensation,
   sumOvertimeForEmployee,
   type PayrollAttendanceSource,
+  type PayrollCompensationPolicyConfig,
   type PayrollEmployeeSource,
   type PayrollHistoryRow,
   type PayrollOvertimeSource,
@@ -45,6 +47,7 @@ import {
   type PayrollProcessingRow,
   type PayrollTaxConfigs,
 } from "./payroll-processing-utils";
+import { syncProcessingAllowanceLines } from "./payroll-allowance-lines-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 
 type PayrollProcessingProps = {
@@ -55,6 +58,7 @@ type PayrollProcessingProps = {
   initialOvertime: PayrollOvertimeSource[];
   initialLoans: LoanRegisterEntry[];
   taxConfigs: PayrollTaxConfigs;
+  compensationPolicyConfig: PayrollCompensationPolicyConfig;
   canManagePayrollPeriod: boolean;
   fetchError: string | null;
 };
@@ -100,6 +104,7 @@ export default function PayrollProcessing({
   initialOvertime,
   initialLoans,
   taxConfigs,
+  compensationPolicyConfig,
   canManagePayrollPeriod,
   fetchError,
 }: PayrollProcessingProps) {
@@ -240,12 +245,24 @@ export default function PayrollProcessing({
     };
   }
 
+  function policyForEmployee(
+    employee: PayrollEmployeeSource,
+    period: SelectedPayrollPeriod,
+  ) {
+    return resolvePayrollPolicyCompensation(
+      employee,
+      compensationPolicyConfig,
+      new Date(getPeriodEndDate(period.year, period.month)),
+    );
+  }
+
   function recalculateWorkspaceRow(
     row: PayrollProcessingRow,
     employee: PayrollEmployeeSource,
     period: SelectedPayrollPeriod,
     manualOverrides: Partial<PayrollManualInputs> = {},
   ): WorkspaceRow {
+    const policy = policyForEmployee(employee, period);
     const calculated = calculatePayrollRow(
       employee,
       period,
@@ -255,6 +272,7 @@ export default function PayrollProcessing({
         ...buildManualInputsFromRow(row, period.totalWorkingDays),
         ...manualOverrides,
       },
+      policy,
     );
 
     return toWorkspaceRow(
@@ -265,6 +283,25 @@ export default function PayrollProcessing({
       },
       employee,
     );
+  }
+
+  async function persistAllowanceLines(
+    period: SelectedPayrollPeriod,
+    employee: PayrollEmployeeSource,
+  ) {
+    const policy = policyForEmployee(employee, period);
+    if (!policy) {
+      return;
+    }
+    const result = await syncProcessingAllowanceLines(
+      supabase,
+      period.payrollMonth,
+      employee.employee_id,
+      policy.allowance_lines,
+    );
+    if (result.error) {
+      setError(result.error);
+    }
   }
 
   const periodOptions = useMemo(() => {
@@ -426,6 +463,7 @@ export default function PayrollProcessing({
             welfare_deduction: 0,
             other_deductions: 0,
           },
+          policyForEmployee(employee, period),
         );
 
         return buildProcessingPayload(period.payrollMonth, employee, calculated);
@@ -442,6 +480,11 @@ export default function PayrollProcessing({
       if (insertError) {
         throw new Error(insertError.message);
       }
+    }
+
+    // Refresh processing allowance lines for all employees in this open period.
+    for (const employee of employeesForPeriod) {
+      await persistAllowanceLines(period, employee);
     }
 
     setKnownPayrollMonths((current) =>
@@ -585,6 +628,7 @@ export default function PayrollProcessing({
         ...buildManualInputsFromRow(row, currentPeriod.totalWorkingDays),
         ...updates,
       },
+      policyForEmployee(employee, currentPeriod),
     );
 
     const payload = buildProcessingPayload(
@@ -602,6 +646,8 @@ export default function PayrollProcessing({
       setError(saveError.message);
       return;
     }
+
+    await persistAllowanceLines(currentPeriod, employee);
 
     const updatedRow = recalculateWorkspaceRow(row, employee, currentPeriod, updates);
     setRows((current) =>
@@ -881,6 +927,7 @@ export default function PayrollProcessing({
         taxConfigs,
         getRowSources(employee, currentPeriod),
         buildManualInputsFromRow(row, currentPeriod.totalWorkingDays),
+        policyForEmployee(employee, currentPeriod),
       );
 
       return {

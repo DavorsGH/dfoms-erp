@@ -3,7 +3,15 @@ import {
   mapPayeBandFromRecord,
   normalizeEffectiveDateKey,
   type PayeTaxBand,
+  type SalaryRateConfig,
 } from "../employees/pay-estimate-utils";
+import {
+  mapAllowancesToLegacyColumns,
+  resolveEmployeeCompensation,
+  type AllowanceTypeRow,
+  type CompensationPolicyRow,
+  type ResolvedAllowanceLine,
+} from "../administration/compensation-policy-utils";
 import { calculateLoanOutstanding } from "./hr-register-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 import {
@@ -56,6 +64,8 @@ export type PayrollEmployeeSource = {
   employment_status: string | null;
   date_hired: string | null;
   appointment_end_date: string | null;
+  position: string | null;
+  shift: string | null;
   basic_salary: number | null;
   housing_allowance: number | null;
   transport_allowance: number | null;
@@ -63,6 +73,54 @@ export type PayrollEmployeeSource = {
   department: string | null;
   contract_project: string | null;
 };
+
+/** Optional live policy resolution for Open payroll (script 117). */
+export type PayrollPolicyCompensation = {
+  basic_salary: number;
+  housing_allowance: number;
+  transport_allowance: number;
+  other_allowances: number;
+  /** Full allowance list for payroll_allowance_lines (not just legacy 3). */
+  allowance_lines: ResolvedAllowanceLine[];
+};
+
+export type PayrollCompensationPolicyConfig = {
+  salaryRates: SalaryRateConfig[];
+  allowanceTypes: AllowanceTypeRow[];
+  compensationPolicies: CompensationPolicyRow[];
+};
+
+export function resolvePayrollPolicyCompensation(
+  employee: Pick<
+    PayrollEmployeeSource,
+    "position" | "employment_type" | "shift"
+  >,
+  config: PayrollCompensationPolicyConfig | null | undefined,
+  asOf?: Date,
+): PayrollPolicyCompensation | null {
+  if (!config) {
+    return null;
+  }
+
+  const resolved = resolveEmployeeCompensation(
+    config.salaryRates,
+    config.compensationPolicies,
+    config.allowanceTypes,
+    employee.position,
+    employee.employment_type,
+    employee.shift,
+    asOf,
+  );
+  const legacy = mapAllowancesToLegacyColumns(resolved.allowances);
+
+  return {
+    basic_salary: resolved.basic_salary,
+    housing_allowance: legacy.housing_allowance,
+    transport_allowance: legacy.transport_allowance,
+    other_allowances: legacy.other_allowances,
+    allowance_lines: resolved.allowances,
+  };
+}
 
 export type PayrollAttendanceSource = {
   staff_id: string;
@@ -361,11 +419,20 @@ export function calculatePayrollRow(
     loanRepayment: number;
   },
   manual: Partial<PayrollManualInputs> = {},
+  policyCompensation: PayrollPolicyCompensation | null = null,
 ): PayrollCalculatedRow {
-  const basicSalary = Number(employee.basic_salary) || 0;
-  const housingAllowance = Number(employee.housing_allowance) || 0;
-  const transportAllowance = Number(employee.transport_allowance) || 0;
-  const otherAllowances = Number(employee.other_allowances) || 0;
+  const basicSalary = policyCompensation
+    ? Number(policyCompensation.basic_salary) || 0
+    : Number(employee.basic_salary) || 0;
+  const housingAllowance = policyCompensation
+    ? Number(policyCompensation.housing_allowance) || 0
+    : Number(employee.housing_allowance) || 0;
+  const transportAllowance = policyCompensation
+    ? Number(policyCompensation.transport_allowance) || 0
+    : Number(employee.transport_allowance) || 0;
+  const otherAllowances = policyCompensation
+    ? Number(policyCompensation.other_allowances) || 0
+    : Number(employee.other_allowances) || 0;
   const totalWorkingDays = period.totalWorkingDays;
   const dailyRate =
     totalWorkingDays > 0 ? basicSalary / totalWorkingDays : 0;
@@ -383,11 +450,17 @@ export function calculatePayrollRow(
   const welfareDeduction = Number(manual.welfare_deduction) || 0;
   const otherDeductions = Number(manual.other_deductions) || 0;
 
+  // Prefer sum of live allowance lines when policy-driven (includes Night Diff etc.)
+  const allowanceTotal = policyCompensation
+    ? policyCompensation.allowance_lines.reduce(
+        (sum, line) => sum + (Number(line.amount) || 0),
+        0,
+      )
+    : housingAllowance + transportAllowance + otherAllowances;
+
   const grossPay = roundMoney(
     periodPayBasic +
-      housingAllowance +
-      transportAllowance +
-      otherAllowances +
+      allowanceTotal +
       overtimeAmount +
       bonuses +
       arrears,

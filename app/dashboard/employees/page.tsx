@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import {
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
   canEditEmployees,
@@ -20,11 +23,15 @@ import {
 export default async function EmployeesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const tenantId = await getCurrentUserTenantId();
 
   const [{ data, error }, lookups, payConfig] = await Promise.all([
-    supabase.from("employees").select(EMPLOYEE_SELECT).order("staff_id", { ascending: true }),
+    supabase
+      .from("employees")
+      .select(EMPLOYEE_SELECT)
+      .order("staff_id", { ascending: true }),
     loadEmployeeLookups(supabase),
-    loadEmployeePayConfig(supabase),
+    loadEmployeePayConfig(supabase, tenantId),
   ]);
 
   const role = (await getCurrentUserRole()) as AppRole | null;

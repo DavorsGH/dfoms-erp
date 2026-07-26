@@ -211,6 +211,9 @@ export default function Payslip({
     [],
   );
   const [payrollRow, setPayrollRow] = useState<PayrollHistoryRow | null>(null);
+  const [allowanceLines, setAllowanceLines] = useState<
+    { allowance_name: string; allowance_code: string; amount: number }[]
+  >([]);
   const [employeeDetails, setEmployeeDetails] =
     useState<PayslipEmployeeDetails | null>(null);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
@@ -283,6 +286,7 @@ export default function Payslip({
     async (payrollMonth: string, employeeId: string) => {
       if (!payrollMonth || !employeeId) {
         setPayrollRow(null);
+        setAllowanceLines([]);
         setEmployeeDetails(null);
         return;
       }
@@ -293,6 +297,7 @@ export default function Payslip({
       const [
         { data: historyRow, error: historyError },
         { data: employeeRow, error: employeeError },
+        { data: allowanceRows, error: allowanceError },
       ] = await Promise.all([
         supabase
           .from("payroll_history")
@@ -305,14 +310,33 @@ export default function Payslip({
           .select(EMPLOYEE_DETAILS_SELECT)
           .eq("employee_id", employeeId)
           .maybeSingle(),
+        supabase
+          .from("payroll_allowance_lines")
+          .select("allowance_name, allowance_code, amount")
+          .eq("stage", "history")
+          .eq("payroll_month", payrollMonth)
+          .eq("employee_id", employeeId)
+          .order("allowance_code", { ascending: true }),
       ]);
 
       if (historyError || employeeError) {
         setLoadError(historyError?.message ?? employeeError?.message ?? null);
         setPayrollRow(null);
+        setAllowanceLines([]);
         setEmployeeDetails(null);
         setLoadingPayslip(false);
         return;
+      }
+
+      // allowanceError is soft — older locked months may predate the table usage
+      if (allowanceError) {
+        setAllowanceLines([]);
+      } else {
+        setAllowanceLines(
+          ((allowanceRows as
+            | { allowance_name: string; allowance_code: string; amount: number }[]
+            | null) ?? []),
+        );
       }
 
       setPayrollRow((historyRow as PayrollHistoryRow | null) ?? null);
@@ -341,6 +365,7 @@ export default function Payslip({
       setSelectedEmployeeId("");
     }
     setPayrollRow(null);
+    setAllowanceLines([]);
     setEmployeeDetails(null);
   }, [selectedMonth, scopedEmployeeId]);
 
@@ -386,18 +411,26 @@ export default function Payslip({
           ? `${formatGHS(dailyRate)} daily rate × ${daysToPay} day${daysToPay === 1 ? "" : "s"} to pay`
           : undefined,
       },
-      {
-        label: "Housing Allowance",
-        amount: Number(payrollRow.housing_allowance) || 0,
-      },
-      {
-        label: "Transport Allowance",
-        amount: Number(payrollRow.transport_allowance) || 0,
-      },
-      {
-        label: "Other Allowances",
-        amount: Number(payrollRow.other_allowances) || 0,
-      },
+      ...(allowanceLines.length > 0
+        ? allowanceLines.map((line) => ({
+            label: line.allowance_name || line.allowance_code,
+            amount: Number(line.amount) || 0,
+          }))
+        : [
+            // Legacy locked months (pre–script 117): fixed columns
+            {
+              label: "Housing Allowance",
+              amount: Number(payrollRow.housing_allowance) || 0,
+            },
+            {
+              label: "Transport Allowance",
+              amount: Number(payrollRow.transport_allowance) || 0,
+            },
+            {
+              label: "Other Allowances",
+              amount: Number(payrollRow.other_allowances) || 0,
+            },
+          ]),
       {
         label: "Overtime",
         amount: Number(payrollRow.overtime_amount) || 0,
@@ -411,7 +444,7 @@ export default function Payslip({
         amount: Number(payrollRow.arrears) || 0,
       },
     ];
-  }, [payrollRow, totalWorkingDays]);
+  }, [payrollRow, totalWorkingDays, allowanceLines]);
 
   const deductionsItems = useMemo((): PayslipLineItem[] => {
     if (!payrollRow) {

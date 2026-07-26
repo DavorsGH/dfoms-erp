@@ -13,4 +13,11 @@ export const SALARY_RATE_EMPLOYMENT_TYPES = [
   "Full-Time",
 ] as const;
 
-export const SALARY_RATE_SHIFTS = ["Full Day", "Morning", "Afternoon"] as const;
+/** Includes Night / Rotating for Global Salary Settings (script 117). */
+export const SALARY_RATE_SHIFTS = [
+  "Full Day",
+  "Morning",
+  "Afternoon",
+  "Night",
+  "Rotating",
+] as const;

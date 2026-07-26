@@ -98,8 +98,8 @@ CREATE POLICY allowance_types_super_admin_full_access
   ON public.allowance_types
   FOR ALL
   TO authenticated
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
+  USING (tenant_matches(tenant_id) AND is_super_admin())
+  WITH CHECK (tenant_matches(tenant_id) AND is_super_admin());
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.allowance_types TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.allowance_types TO service_role;
@@ -187,8 +187,8 @@ CREATE POLICY compensation_policy_super_admin_full_access
   ON public.compensation_policy
   FOR ALL
   TO authenticated
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
+  USING (tenant_matches(tenant_id) AND is_super_admin())
+  WITH CHECK (tenant_matches(tenant_id) AND is_super_admin());
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.compensation_policy TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.compensation_policy TO service_role;
@@ -300,8 +300,8 @@ CREATE POLICY payroll_allowance_lines_super_admin_full_access
   ON public.payroll_allowance_lines
   FOR ALL
   TO authenticated
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
+  USING (tenant_matches(tenant_id) AND is_super_admin())
+  WITH CHECK (tenant_matches(tenant_id) AND is_super_admin());
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.payroll_allowance_lines TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.payroll_allowance_lines TO service_role;

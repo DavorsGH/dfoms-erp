@@ -19,6 +19,11 @@ import {
 } from "../payroll-processing-utils";
 import type { MonthEndCloseRecord } from "../payroll-period-utils";
 import type { LoanRegisterEntry } from "../loan-register-utils";
+import type {
+  AllowanceTypeRow,
+  CompensationPolicyRow,
+} from "../../administration/compensation-policy-utils";
+import type { SalaryRateConfig } from "../../employees/pay-estimate-utils";
 
 export default async function PayrollProcessingPage() {
   const cookieStore = await cookies();
@@ -55,6 +60,9 @@ export default async function PayrollProcessingPage() {
     { data: attendance, error: attendanceError },
     { data: overtime, error: overtimeError },
     { data: loans, error: loansError },
+    { data: salaryRates },
+    { data: allowanceTypes },
+    { data: compensationPolicies },
     ssnitResult,
     casualResult,
     payeResult,
@@ -65,7 +73,7 @@ export default async function PayrollProcessingPage() {
     supabase
       .from("employees")
       .select(
-        "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project",
+        "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project",
       )
       .order("staff_id", { ascending: true }),
     supabase
@@ -75,6 +83,20 @@ export default async function PayrollProcessingPage() {
       .from("overtime_register")
       .select("employee_id, date, overtime_amount"),
     supabase.from("loan_register").select("*"),
+    supabase
+      .from("salary_rate_config")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("effective_date", { ascending: false }),
+    supabase
+      .from("allowance_types")
+      .select("id, code, name, is_active, sort_order")
+      .eq("tenant_id", tenantId)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("compensation_policy")
+      .select("*")
+      .eq("tenant_id", tenantId),
     taxConfigQueries?.[0] ?? Promise.resolve({ data: null, error: null }),
     taxConfigQueries?.[1] ?? Promise.resolve({ data: null, error: null }),
     taxConfigQueries?.[2] ?? Promise.resolve({ data: null, error: null }),
@@ -138,6 +160,12 @@ export default async function PayrollProcessingPage() {
           payeBands: mapPayrollPayeBandRows(
             (payeRows as Record<string, unknown>[] | null) ?? [],
           ),
+        }}
+        compensationPolicyConfig={{
+          salaryRates: (salaryRates as SalaryRateConfig[] | null) ?? [],
+          allowanceTypes: (allowanceTypes as AllowanceTypeRow[] | null) ?? [],
+          compensationPolicies:
+            (compensationPolicies as CompensationPolicyRow[] | null) ?? [],
         }}
         canManagePayrollPeriod={canManagePayrollPeriod(
           (await getCurrentUserRole()) as AppRole | null,

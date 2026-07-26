@@ -147,6 +147,8 @@ export type EmployeeLookups = {
 
 export type EmployeePayConfig = {
   salaryRates: SalaryRateConfig[];
+  allowanceTypes: import("../administration/compensation-policy-utils").AllowanceTypeRow[];
+  compensationPolicies: import("../administration/compensation-policy-utils").CompensationPolicyRow[];
   ssnitConfig: SsnitRateConfig | null;
   casualTaxConfig: CasualTaxRateConfig | null;
   payeBands: PayeTaxBand[];
@@ -174,17 +176,40 @@ export async function loadEmployeeLookups(
 
 export async function loadEmployeePayConfig(
   supabase: SupabaseClient,
+  tenantId?: string | null,
 ): Promise<EmployeePayConfig> {
+  let salaryRatesQuery = supabase
+    .from("salary_rate_config")
+    .select("*")
+    .order("effective_date", { ascending: false });
+  let allowanceTypesQuery = supabase
+    .from("allowance_types")
+    .select("id, code, name, is_active, sort_order")
+    .order("sort_order", { ascending: true });
+  let compensationPoliciesQuery = supabase
+    .from("compensation_policy")
+    .select("*");
+
+  if (tenantId) {
+    salaryRatesQuery = salaryRatesQuery.eq("tenant_id", tenantId);
+    allowanceTypesQuery = allowanceTypesQuery.eq("tenant_id", tenantId);
+    compensationPoliciesQuery = compensationPoliciesQuery.eq(
+      "tenant_id",
+      tenantId,
+    );
+  }
+
   const [
     { data: salaryRates, error: salaryRatesError },
+    { data: allowanceTypes },
+    { data: compensationPolicies },
     { data: ssnitRows, error: ssnitError },
     { data: casualRows, error: casualError },
     { data: payeRows, error: payeError },
   ] = await Promise.all([
-    supabase
-      .from("salary_rate_config")
-      .select("*")
-      .order("effective_date", { ascending: false }),
+    salaryRatesQuery,
+    allowanceTypesQuery,
+    compensationPoliciesQuery,
     supabase.from("ssnit_rate_config").select("*").limit(1),
     supabase.from("casual_tax_rate_config").select("*").limit(1),
     supabase
@@ -199,6 +224,11 @@ export async function loadEmployeePayConfig(
 
   return {
     salaryRates: (salaryRates as SalaryRateConfig[] | null) ?? [],
+    allowanceTypes:
+      (allowanceTypes as EmployeePayConfig["allowanceTypes"] | null) ?? [],
+    compensationPolicies:
+      (compensationPolicies as EmployeePayConfig["compensationPolicies"] | null) ??
+      [],
     ssnitConfig: mapSsnitConfigRow(
       (ssnitRows?.[0] as Record<string, unknown> | undefined) ?? null,
     ),

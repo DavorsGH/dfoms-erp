@@ -23,6 +23,7 @@ import {
   processingRowToHistoryPayload,
   type PayrollProcessingRow,
 } from "@/app/dashboard/hr-payroll/payroll-processing-utils";
+import { promoteAllowanceLinesToHistory } from "@/app/dashboard/hr-payroll/payroll-allowance-lines-utils";
 
 type LockPeriodBody = {
   payrollMonth?: string;
@@ -188,6 +189,18 @@ export async function POST(request: Request) {
 
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 400 });
+  }
+
+  const allowancePromote = await promoteAllowanceLinesToHistory(
+    admin,
+    tenantId,
+    payrollMonth,
+  );
+  if (allowancePromote.error) {
+    return NextResponse.json(
+      { error: allowancePromote.error },
+      { status: 400 },
+    );
   }
 
   const monthEndPayload = {

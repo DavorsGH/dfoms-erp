@@ -69,7 +69,14 @@ export const EMPLOYMENT_TYPE_OPTIONS = [
   "Full-Time",
 ] as const;
 
-export const SHIFT_OPTIONS = ["Full Day", "Morning", "Afternoon"] as const;
+/** Morning/Afternoon/Full Day drive Duty Roster; Night/Rotating are pay-policy shifts. */
+export const SHIFT_OPTIONS = [
+  "Full Day",
+  "Morning",
+  "Afternoon",
+  "Night",
+  "Rotating",
+] as const;
 
 export const EMPLOYMENT_STATUS_OPTIONS = [
   "Active",

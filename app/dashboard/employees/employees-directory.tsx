@@ -42,9 +42,12 @@ import {
 import {
   calculateEstimatedNetMonthlyPay,
   calculateGrossMonthlyPay,
-  findMatchingSalaryRate,
   type PayEstimateConfig,
 } from "./pay-estimate-utils";
+import {
+  mapAllowancesToLegacyColumns,
+  resolveEmployeeCompensation,
+} from "../administration/compensation-policy-utils";
 
 type EmployeesDirectoryProps = {
   initialEmployees: EmployeeRecord[];
@@ -177,7 +180,24 @@ function employeeToForm(employee: EmployeeRecord) {
   };
 }
 
-function buildPayload(form: typeof emptyForm) {
+function buildPayload(
+  form: typeof emptyForm,
+  resolved?: ReturnType<typeof resolveEmployeeCompensation>,
+) {
+  const legacy = resolved
+    ? mapAllowancesToLegacyColumns(resolved.allowances)
+    : {
+        housing_allowance: form.housing_allowance
+          ? Number(form.housing_allowance)
+          : 0,
+        transport_allowance: form.transport_allowance
+          ? Number(form.transport_allowance)
+          : 0,
+        other_allowances: form.other_allowances
+          ? Number(form.other_allowances)
+          : 0,
+      };
+
   return {
     staff_id: form.staff_id,
     full_name: form.full_name,
@@ -204,38 +224,20 @@ function buildPayload(form: typeof emptyForm) {
     contract_project: form.contract_project || null,
     shift: form.shift || null,
     assigned_site_id: form.assigned_site_id || null,
-    basic_salary: form.basic_salary ? Number(form.basic_salary) : 0,
-    housing_allowance: form.housing_allowance
-      ? Number(form.housing_allowance)
-      : 0,
-    transport_allowance: form.transport_allowance
-      ? Number(form.transport_allowance)
-      : 0,
-    other_allowances: form.other_allowances
-      ? Number(form.other_allowances)
-      : 0,
+    basic_salary: resolved
+      ? resolved.basic_salary
+      : form.basic_salary
+        ? Number(form.basic_salary)
+        : 0,
+    housing_allowance: legacy.housing_allowance,
+    transport_allowance: legacy.transport_allowance,
+    other_allowances: legacy.other_allowances,
     emergency_contact_name: form.emergency_contact_name || null,
     emergency_contact_address: form.emergency_contact_address || null,
     emergency_contact_phone: form.emergency_contact_phone || null,
     emergency_contact_relationship: form.emergency_contact_relationship || null,
     data_notes: form.data_notes || null,
     photo_url: form.photo_url || null,
-  };
-}
-
-function getPayInputsFromForm(form: typeof emptyForm) {
-  return {
-    employment_type: form.employment_type || null,
-    basic_salary: form.basic_salary ? Number(form.basic_salary) : null,
-    housing_allowance: form.housing_allowance
-      ? Number(form.housing_allowance)
-      : null,
-    transport_allowance: form.transport_allowance
-      ? Number(form.transport_allowance)
-      : null,
-    other_allowances: form.other_allowances
-      ? Number(form.other_allowances)
-      : null,
   };
 }
 
@@ -334,7 +336,6 @@ export default function EmployeesDirectory({
   const supabase = createClient();
   const formRef = useRef<HTMLElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const basicSalaryManualRef = useRef(false);
   const [employees, setEmployees] = useState(initialEmployees);
   const [lookups] = useState(initialLookups);
   const [payConfig] = useState(initialPayConfig);
@@ -552,47 +553,48 @@ export default function EmployeesDirectory({
     setSortDirection("asc");
   }
 
-  const previewGrossPay = useMemo(
-    () => calculateGrossMonthlyPay(getPayInputsFromForm(form)),
-    [form],
+  const resolvedCompensation = useMemo(
+    () =>
+      resolveEmployeeCompensation(
+        payConfig.salaryRates,
+        payConfig.compensationPolicies,
+        payConfig.allowanceTypes,
+        form.position,
+        form.employment_type,
+        form.shift,
+      ),
+    [
+      payConfig.salaryRates,
+      payConfig.compensationPolicies,
+      payConfig.allowanceTypes,
+      form.position,
+      form.employment_type,
+      form.shift,
+    ],
   );
+
+  const previewGrossPay = resolvedCompensation.gross_monthly;
 
   const previewEstimatedNetPay = useMemo(
     () =>
       calculateEstimatedNetMonthlyPay(
-        getPayInputsFromForm(form),
+        {
+          employment_type: form.employment_type || null,
+          basic_salary: resolvedCompensation.basic_salary,
+          housing_allowance: mapAllowancesToLegacyColumns(
+            resolvedCompensation.allowances,
+          ).housing_allowance,
+          transport_allowance: mapAllowancesToLegacyColumns(
+            resolvedCompensation.allowances,
+          ).transport_allowance,
+          other_allowances: mapAllowancesToLegacyColumns(
+            resolvedCompensation.allowances,
+          ).other_allowances,
+        },
         payEstimateConfig,
       ),
-    [form, payEstimateConfig],
+    [form.employment_type, resolvedCompensation, payEstimateConfig],
   );
-
-  useEffect(() => {
-    if (!showForm || basicSalaryManualRef.current) {
-      return;
-    }
-
-    const matchedSalary = findMatchingSalaryRate(
-      payConfig.salaryRates,
-      form.position,
-      form.employment_type,
-      form.shift,
-    );
-
-    if (matchedSalary === null) {
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      basic_salary: String(matchedSalary),
-    }));
-  }, [
-    form.position,
-    form.employment_type,
-    form.shift,
-    payConfig.salaryRates,
-    showForm,
-  ]);
 
   async function refreshEmployees() {
     const { data, error: refreshError } = await supabase
@@ -614,7 +616,6 @@ export default function EmployeesDirectory({
   }
 
   function openAddForm() {
-    basicSalaryManualRef.current = false;
     setEditingEmployeeId(null);
     setForm({
       ...emptyForm,
@@ -625,14 +626,12 @@ export default function EmployeesDirectory({
   }
 
   function closeForm() {
-    basicSalaryManualRef.current = false;
     setEditingEmployeeId(null);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEmployeeForm(employee: EmployeeRecord) {
-    basicSalaryManualRef.current = false;
     setEditingEmployeeId(employee.employee_id);
     setForm(employeeToForm(employee));
     setShowForm(true);
@@ -640,14 +639,6 @@ export default function EmployeesDirectory({
   }
 
   function updateField(field: keyof typeof emptyForm, value: string) {
-    if (field === "basic_salary") {
-      basicSalaryManualRef.current = true;
-    }
-
-    if (field === "position" || field === "employment_type" || field === "shift") {
-      basicSalaryManualRef.current = false;
-    }
-
     setForm((current) => ({ ...current, [field]: value }));
   }
 
@@ -734,7 +725,7 @@ export default function EmployeesDirectory({
     setLoading(true);
 
     if (editingEmployeeId) {
-      const payload = buildPayload(form);
+      const payload = buildPayload(form, resolvedCompensation);
       const { error: saveError } = await supabase
         .from("employees")
         .update(payload)
@@ -753,11 +744,14 @@ export default function EmployeesDirectory({
         return;
       }
 
-      const payload = buildPayload({
-        ...form,
-        employee_id: allocated.employeeId,
-        staff_id: allocated.staffId,
-      });
+      const payload = buildPayload(
+        {
+          ...form,
+          employee_id: allocated.employeeId,
+          staff_id: allocated.staffId,
+        },
+        resolvedCompensation,
+      );
 
       const { error: saveError } = await supabase.from("employees").insert({
         employee_id: allocated.employeeId,
@@ -1255,55 +1249,48 @@ export default function EmployeesDirectory({
             {canViewSalary ? (
             <div className="space-y-4">
               <SectionHeading title="Compensation (GHS)" />
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <Field label="Basic Salary">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.basic_salary}
-                    onChange={(e) =>
-                      updateField("basic_salary", e.target.value)
-                    }
-                    className={inputClassName}
-                  />
-                </Field>
-                <Field label="Housing Allowance">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.housing_allowance}
-                    onChange={(e) =>
-                      updateField("housing_allowance", e.target.value)
-                    }
-                    className={inputClassName}
-                  />
-                </Field>
-                <Field label="Transport Allowance">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.transport_allowance}
-                    onChange={(e) =>
-                      updateField("transport_allowance", e.target.value)
-                    }
-                    className={inputClassName}
-                  />
-                </Field>
-                <Field label="Other Allowances">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.other_allowances}
-                    onChange={(e) =>
-                      updateField("other_allowances", e.target.value)
-                    }
-                    className={inputClassName}
-                  />
-                </Field>
+              <p className="text-sm text-slate-600">
+                Read-only from Salary Settings policy (Position × Employment
+                Type × Shift). Edit amounts under Administration → Salary
+                Settings.
+              </p>
+              {resolvedCompensation.missing_basic ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  No basic salary rate configured for this Position/Type/Shift
+                  — showing GHS 0.00 for basic until Salary Settings → Basic
+                  Salary Rates has a matching row.
+                </p>
+              ) : null}
+              {resolvedCompensation.missing_allowances ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  No allowance amounts configured yet for this
+                  Position/Type/Shift — showing GHS 0.00 for all allowances
+                  until Salary Settings → Allowance Matrix is filled in for
+                  this combination.
+                </p>
+              ) : null}
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Basic Salary
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-[#0f2744]">
+                    {formatGHS(resolvedCompensation.basic_salary)}
+                  </p>
+                </div>
+                {resolvedCompensation.allowances.map((line) => (
+                  <div
+                    key={line.allowance_type_id}
+                    className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"
+                  >
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      {line.allowance_name}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-[#0f2744]">
+                      {formatGHS(line.amount)}
+                    </p>
+                  </div>
+                ))}
               </div>
               <div className="space-y-1 text-sm text-slate-600">
                 <p>

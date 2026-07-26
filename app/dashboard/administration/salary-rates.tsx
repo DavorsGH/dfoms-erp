@@ -194,7 +194,8 @@ export default function SalaryRates({
     <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-600">
-          Configure basic salary rates by position, employment type, and shift.
+          Configure basic salary rates by position, employment type, and shift
+          (Morning, Afternoon, Full Day, Night, Rotating).
         </p>
         <button
           type="button"
