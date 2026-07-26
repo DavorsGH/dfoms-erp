@@ -36,6 +36,8 @@ export type StaffSalariesExpenseEntry = {
   payment_status: string;
   description?: string | null;
   receipt_no?: string | null;
+  /** Optional; may carry cash_paid=<amount> for Paid PAYROLL-SAL cash outflow. */
+  notes?: string | null;
 };
 
 export type BalanceSheetCashExpenseEntry = StaffSalariesExpenseEntry;

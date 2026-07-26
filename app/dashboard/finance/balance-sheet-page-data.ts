@@ -179,7 +179,7 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("expense_register")
       .select(
-        "date, expense_category, sub_category, amount, payment_status, description, receipt_no, net_of_tax_amount, input_vat_amount",
+        "date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
       )
       .order("date", { ascending: true }),
     supabase
@@ -239,6 +239,7 @@ export async function fetchBalanceSheetPageData(
       payment_status: entry.payment_status,
       description: entry.description ?? null,
       receipt_no: entry.receipt_no ?? null,
+      notes: entry.notes ?? null,
     })) ?? [];
 
   return {

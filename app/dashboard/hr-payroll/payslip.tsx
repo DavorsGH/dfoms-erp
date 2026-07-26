@@ -690,6 +690,22 @@ export default function Payslip({
             subtotalAmount={Number(payrollRow.total_deductions) || 0}
           />
 
+          {Number(payrollRow.net_only_adjustment) > 0 ? (
+            <div className="mb-4 rounded-md border border-slate-200 bg-white px-6 py-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-slate-700">
+                  Net-only adjustment (June correction)
+                </span>
+                <span className="font-semibold text-[#0f2744]">
+                  {formatGHS(payrollRow.net_only_adjustment)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Prior-period catch-up; not subject to additional PAYE/SSNIT.
+              </p>
+            </div>
+          ) : null}
+
           <div className="mb-8 rounded-md bg-[#0f2744] px-6 py-4 text-white">
             <div className="flex items-center justify-between">
               <span className="text-lg font-semibold">Net Pay</span>

@@ -21,6 +21,8 @@ export const PAYROLL_PAYABLE_CATEGORY_PAYE = "Statutory - PAYE";
 
 export type PayrollLockFinanceTotals = {
   totalGrossPay: number;
+  /** Staff Salaries expense base: gross + net-only prior-period top-ups. */
+  totalStaffSalariesExpense: number;
   totalEmployerSsnitContribution: number;
   totalSsnitRemittance: number;
   totalPayeTax: number;
@@ -51,6 +53,7 @@ function sumNumericField(
 export type PayrollLockFinanceSourceRow = Pick<
   PayrollProcessingRow,
   | "gross_pay"
+  | "net_only_adjustment"
   | "employee_ssnit"
   | "employer_ssnit"
   | "tier2"
@@ -93,12 +96,16 @@ export function calculatePayrollLockFinanceTotals(
   rows: PayrollLockFinanceSourceRow[],
 ): PayrollLockFinanceTotals {
   const totalGrossPay = sumNumericField(rows, "gross_pay");
+  const totalNetOnlyAdjustment = sumNumericField(rows, "net_only_adjustment");
   const totalEmployeeSsnit = sumNumericField(rows, "employee_ssnit");
   const totalEmployerSsnit = sumNumericField(rows, "employer_ssnit");
   const totalTier2 = sumNumericField(rows, "tier2");
 
   return {
     totalGrossPay,
+    totalStaffSalariesExpense: roundCurrency(
+      totalGrossPay + totalNetOnlyAdjustment,
+    ),
     totalEmployerSsnitContribution: roundCurrency(
       totalEmployerSsnit + totalTier2,
     ),
@@ -277,11 +284,11 @@ export async function postPayrollLockFinanceEntries(
   let updatedExpenses = 0;
 
   const staffSalariesPayload =
-    totals.totalGrossPay > 0
+    totals.totalStaffSalariesExpense > 0
       ? buildExpenseRegisterPayload(
           period,
           PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES,
-          totals.totalGrossPay,
+          totals.totalStaffSalariesExpense,
           "Payroll",
           "SAL",
           tenantId,

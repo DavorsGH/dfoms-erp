@@ -75,9 +75,8 @@ export type CashMovementInputs = {
   inventoryConfig: InventoryBalanceConfig | null;
   manualEntries: CashMovementManualEntry[];
   /**
-   * When provided, Paid Staff Salaries / PAYROLL-SAL expenses cash out at
-   * payroll net (once per payroll month), matching Accrued Wages clearing —
-   * not at the gross/statutory-inclusive expense amount.
+   * Fallback for Paid PAYROLL-SAL cash when notes lack cash_paid=<amount>.
+   * Prefer actual bank cash_paid from expense notes over this map.
    */
   staffSalaryNetByPayrollMonth?: Map<string, number>;
 };
@@ -195,6 +194,17 @@ function parsePayrollMonthFromSalReceipt(
   return `${match[1]}-${match[2]}-01`;
 }
 
+/** Parse `cash_paid=7025.57` (or `cash_paid: 7025.57`) from expense notes. */
+export function parseCashPaidFromExpenseNotes(
+  notes: string | null | undefined,
+): number | null {
+  if (!notes) return null;
+  const match = /cash_paid\s*[=:]\s*([0-9]+(?:\.[0-9]+)?)/i.exec(notes);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? roundCurrency(value) : null;
+}
+
 function sumPaidExpensesByMonth(
   expenseEntries: BalanceSheetCashExpenseEntry[],
   financialYear: number,
@@ -213,18 +223,18 @@ function sumPaidExpensesByMonth(
       continue;
     }
 
-    const payrollMonth = staffSalaryNetByPayrollMonth
-      ? parsePayrollMonthFromSalReceipt(entry.receipt_no)
-      : null;
-    if (payrollMonth && staffSalaryNetByPayrollMonth) {
+    const payrollMonth = parsePayrollMonthFromSalReceipt(entry.receipt_no);
+    if (payrollMonth) {
       if (countedStaffSalaryPayrollMonths.has(payrollMonth)) {
         continue;
       }
       countedStaffSalaryPayrollMonths.add(payrollMonth);
+      const cashPaid = parseCashPaidFromExpenseNotes(entry.notes);
+      const fallbackNet = staffSalaryNetByPayrollMonth?.get(payrollMonth);
       addAmountToMonth(
         totals,
         monthIndex,
-        staffSalaryNetByPayrollMonth.get(payrollMonth) ?? 0,
+        cashPaid ?? fallbackNet ?? (Number(entry.amount) || 0),
       );
       continue;
     }

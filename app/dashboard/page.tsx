@@ -222,7 +222,7 @@ export default async function DashboardPage() {
   const { data: expenseEntries, error: expenseError } = await supabase
     .from("expense_register")
     .select(
-      "tenant_id, date, expense_category, sub_category, amount, payment_status, description, receipt_no, net_of_tax_amount, input_vat_amount",
+      "tenant_id, date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
     )
     .order("date", { ascending: true });
 
@@ -322,6 +322,7 @@ export default async function DashboardPage() {
       payment_status: entry.payment_status,
       description: entry.description ?? null,
       receipt_no: entry.receipt_no ?? null,
+      notes: (entry as { notes?: string | null }).notes ?? null,
     })) ?? [];
 
   const dashboardData = buildDashboardViewModel({

@@ -30,6 +30,7 @@ export type PayrollProcessingRow = {
   loan_repayment: number | null;
   bonuses: number | null;
   arrears: number | null;
+  net_only_adjustment: number | null;
   salary_advance: number | null;
   welfare_deduction: number | null;
   other_deductions: number | null;
@@ -106,6 +107,8 @@ export type PayrollManualInputs = {
   days_to_pay: number;
   bonuses: number;
   arrears: number;
+  /** Prior-period net top-up; added after tax, excluded from PAYE/SSNIT. */
+  net_only_adjustment: number;
   salary_advance: number;
   welfare_deduction: number;
   other_deductions: number;
@@ -258,6 +261,7 @@ export function buildManualInputsFromRow(
     | "days_to_pay"
     | "bonuses"
     | "arrears"
+    | "net_only_adjustment"
     | "salary_advance"
     | "welfare_deduction"
     | "other_deductions"
@@ -271,6 +275,7 @@ export function buildManualInputsFromRow(
         : Number(row.days_to_pay) || 0,
     bonuses: Number(row.bonuses) || 0,
     arrears: Number(row.arrears) || 0,
+    net_only_adjustment: Number(row.net_only_adjustment) || 0,
     salary_advance: Number(row.salary_advance) || 0,
     welfare_deduction: Number(row.welfare_deduction) || 0,
     other_deductions: Number(row.other_deductions) || 0,
@@ -373,6 +378,7 @@ export function calculatePayrollRow(
   const loanRepayment = sources.loanRepayment;
   const bonuses = Number(manual.bonuses) || 0;
   const arrears = Number(manual.arrears) || 0;
+  const netOnlyAdjustment = Math.max(0, Number(manual.net_only_adjustment) || 0);
   const salaryAdvance = Number(manual.salary_advance) || 0;
   const welfareDeduction = Number(manual.welfare_deduction) || 0;
   const otherDeductions = Number(manual.other_deductions) || 0;
@@ -439,7 +445,9 @@ export function calculatePayrollRow(
       absenceDeduction,
   );
 
-  const netPay = roundMoney(Math.max(grossPay - totalDeductions, 0));
+  const netPay = roundMoney(
+    Math.max(grossPay - totalDeductions, 0) + netOnlyAdjustment,
+  );
 
   return {
     basic_salary: basicSalary,
@@ -453,6 +461,7 @@ export function calculatePayrollRow(
     loan_repayment: roundMoney(loanRepayment),
     bonuses,
     arrears,
+    net_only_adjustment: roundMoney(netOnlyAdjustment),
     salary_advance: salaryAdvance,
     welfare_deduction: welfareDeduction,
     other_deductions: otherDeductions,
@@ -490,6 +499,7 @@ export function processingRowToHistoryPayload(
     overtime_amount: row.overtime_amount,
     bonuses: row.bonuses,
     arrears: row.arrears,
+    net_only_adjustment: row.net_only_adjustment,
     gross_pay: row.gross_pay,
     employee_ssnit: row.employee_ssnit,
     employer_ssnit: row.employer_ssnit,
@@ -541,6 +551,7 @@ export function historyRowToProcessingPayload(
     loan_repayment: row.loan_repayment,
     bonuses: row.bonuses,
     arrears: row.arrears,
+    net_only_adjustment: row.net_only_adjustment,
     salary_advance: row.salary_advance,
     welfare_deduction: row.welfare_deduction,
     other_deductions: row.other_deductions,
@@ -576,6 +587,7 @@ export function buildProcessingPayload(
     loan_repayment: calculated.loan_repayment,
     bonuses: calculated.bonuses,
     arrears: calculated.arrears,
+    net_only_adjustment: calculated.net_only_adjustment,
     salary_advance: calculated.salary_advance,
     welfare_deduction: calculated.welfare_deduction,
     other_deductions: calculated.other_deductions,

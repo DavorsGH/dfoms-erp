@@ -857,6 +857,9 @@ async function main() {
   const historyTotals = calculatePayrollLockFinanceTotals(
     refreshedRows.map((r) => ({
       gross_pay: num(r.gross_pay as number | null),
+      net_only_adjustment: num(
+        (r as { net_only_adjustment?: number | null }).net_only_adjustment ?? 0,
+      ),
       employee_ssnit: num(r.employee_ssnit as number | null),
       employer_ssnit: num(r.employer_ssnit as number | null),
       tier2: num(r.tier2 as number | null),
