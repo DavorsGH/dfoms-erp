@@ -808,7 +808,7 @@ async function main() {
   const { data: refreshed, error: refreshError } = await admin
     .from("payroll_history")
     .select(
-      "gross_pay, employee_ssnit, employer_ssnit, tier2, paye_tax",
+      "employee_id, gross_pay, net_only_adjustment, absence_deduction, loan_repayment, salary_advance, welfare_deduction, other_deductions, employee_ssnit, employer_ssnit, tier2, paye_tax",
     )
     .eq("tenant_id", tenantId)
     .eq("payroll_month", payrollMonth);
@@ -856,9 +856,25 @@ async function main() {
 
   const historyTotals = calculatePayrollLockFinanceTotals(
     refreshedRows.map((r) => ({
+      employee_id: String(r.employee_id ?? ""),
       gross_pay: num(r.gross_pay as number | null),
       net_only_adjustment: num(
         (r as { net_only_adjustment?: number | null }).net_only_adjustment ?? 0,
+      ),
+      absence_deduction: num(
+        (r as { absence_deduction?: number | null }).absence_deduction ?? 0,
+      ),
+      loan_repayment: num(
+        (r as { loan_repayment?: number | null }).loan_repayment ?? 0,
+      ),
+      salary_advance: num(
+        (r as { salary_advance?: number | null }).salary_advance ?? 0,
+      ),
+      welfare_deduction: num(
+        (r as { welfare_deduction?: number | null }).welfare_deduction ?? 0,
+      ),
+      other_deductions: num(
+        (r as { other_deductions?: number | null }).other_deductions ?? 0,
       ),
       employee_ssnit: num(r.employee_ssnit as number | null),
       employer_ssnit: num(r.employer_ssnit as number | null),

@@ -215,7 +215,7 @@ async function main() {
   const { data: julyFull } = await admin
     .from("payroll_processing")
     .select(
-      "gross_pay, net_only_adjustment, employee_ssnit, employer_ssnit, tier2, paye_tax, net_pay",
+      "employee_id, gross_pay, net_only_adjustment, absence_deduction, loan_repayment, salary_advance, welfare_deduction, other_deductions, employee_ssnit, employer_ssnit, tier2, paye_tax, net_pay",
     )
     .eq("tenant_id", TENANT)
     .eq("payroll_month", "2026-07-01");
