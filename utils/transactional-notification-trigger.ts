@@ -127,8 +127,37 @@ export async function fireTransactionalNotification(
       ...variables,
     };
 
-    const sendEmail = channel === "email" || channel === "both";
-    const sendSms = channel === "sms" || channel === "both";
+    const wantsSms = channel === "sms" || channel === "both";
+    let smsCreditAvailable = false;
+
+    if (wantsSms) {
+      const { data: debitOk, error: debitError } = await admin.rpc(
+        "debit_sms_credit",
+        { p_tenant_id: tenantId },
+      );
+
+      if (debitError) {
+        console.error(
+          `[transactional-notification] debit_sms_credit failed (${eventType}):`,
+          debitError.message,
+        );
+      } else {
+        smsCreditAvailable = debitOk === true;
+      }
+
+      if (!smsCreditAvailable) {
+        console.warn(
+          `[transactional-notification] ${eventType}: no SMS credits for tenant ${tenantId}; falling back to email when needed.`,
+        );
+      }
+    }
+
+    // Email always for email/both; also for sms-only when debit failed (fallback).
+    const sendEmail =
+      channel === "email" ||
+      channel === "both" ||
+      (channel === "sms" && !smsCreditAvailable);
+    const sendSms = smsCreditAvailable;
 
     if (sendEmail) {
       const to = (customer.email ?? "").trim();
