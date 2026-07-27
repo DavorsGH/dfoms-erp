@@ -48,6 +48,7 @@ import {
   mapAllowancesToLegacyColumns,
   resolveEmployeeCompensation,
 } from "../administration/compensation-policy-utils";
+import { isActiveEmployee } from "../hr-payroll/employee-utils";
 
 type EmployeesDirectoryProps = {
   initialEmployees: EmployeeRecord[];
@@ -388,6 +389,27 @@ export default function EmployeesDirectory({
     }
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [employees, form.position, lookups.positions]);
+
+  // Match Work Orders: active employees only; exclude self when editing.
+  const supervisorOptions = useMemo(() => {
+    return employees
+      .filter((employee) => isActiveEmployee(employee))
+      .filter((employee) => employee.employee_id !== editingEmployeeId)
+      .slice()
+      .sort((left, right) => compareStaffIds(left.staff_id, right.staff_id));
+  }, [editingEmployeeId, employees]);
+
+  const selectedSupervisorMissing = Boolean(
+    form.supervisor &&
+      !supervisorOptions.some(
+        (employee) => employee.employee_id === form.supervisor,
+      ),
+  );
+
+  const selectedSupervisorFallback = selectedSupervisorMissing
+    ? employees.find((employee) => employee.employee_id === form.supervisor) ??
+      null
+    : null;
 
   const positionFilterOptions = useMemo(
     () =>
@@ -1164,12 +1186,31 @@ export default function EmployeesDirectory({
                   </select>
                 </Field>
                 <Field label="Supervisor">
-                  <input
-                    type="text"
+                  <select
                     value={form.supervisor}
                     onChange={(e) => updateField("supervisor", e.target.value)}
                     className={inputClassName}
-                  />
+                  >
+                    <option value="">Select supervisor</option>
+                    {selectedSupervisorFallback ? (
+                      <option value={selectedSupervisorFallback.employee_id}>
+                        {selectedSupervisorFallback.staff_id} —{" "}
+                        {selectedSupervisorFallback.full_name}
+                      </option>
+                    ) : selectedSupervisorMissing ? (
+                      <option value={form.supervisor}>
+                        {form.supervisor}
+                      </option>
+                    ) : null}
+                    {supervisorOptions.map((employee) => (
+                      <option
+                        key={employee.employee_id}
+                        value={employee.employee_id}
+                      >
+                        {employee.staff_id} — {employee.full_name}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Employment Type">
                   <select
