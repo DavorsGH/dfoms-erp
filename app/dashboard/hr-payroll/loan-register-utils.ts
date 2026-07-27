@@ -1,5 +1,6 @@
 export type LoanRegisterEntry = {
   loan_id: string;
+  tenant_id?: string;
   employee_id: string;
   loan_amount: number;
   date_issued: string;

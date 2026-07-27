@@ -110,7 +110,17 @@ export async function POST(request: Request) {
 
   let financeResult;
   try {
-    financeResult = await deletePayrollLockFinanceEntries(admin, financePeriod, tenantId);
+    financeResult = await deletePayrollLockFinanceEntries(
+      admin,
+      financePeriod,
+      tenantId,
+      {
+        loanRepaymentRows: rows.map((row) => ({
+          employee_id: row.employee_id,
+          loan_repayment: row.loan_repayment,
+        })),
+      },
+    );
   } catch (financeError) {
     const message =
       financeError instanceof Error

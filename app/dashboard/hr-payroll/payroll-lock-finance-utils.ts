@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { calculateLoanOutstanding } from "./hr-register-utils";
 import {
   formatPeriodLabel,
   getPeriodEndDate,
@@ -19,6 +20,14 @@ export const PAYROLL_EXPENSE_PAYMENT_METHOD_ACCRUAL = "Accrual";
 export const PAYROLL_PAYABLE_CATEGORY_SSNIT = "Statutory - SSNIT";
 export const PAYROLL_PAYABLE_CATEGORY_PAYE = "Statutory - PAYE";
 
+/** Non-cash P&L income for payroll deductions that reduce net but are not liabilities. */
+export const PAYROLL_INCOME_CATEGORY_OTHER = "Other Income";
+export const PAYROLL_INCOME_RECEIPT_SUFFIX = "DEDSAV";
+export const PAYROLL_INCOME_CUSTOMER_NAME = "Payroll";
+export const PAYROLL_INCOME_PAYMENT_STATUS = "Unpaid";
+export const PAYROLL_INCOME_DED_SAVINGS_DESCRIPTION_SUFFIX =
+  " - Deduction Savings (absence/loan/advance/welfare/other)";
+
 export type PayrollLockFinanceTotals = {
   totalGrossPay: number;
   /**
@@ -29,6 +38,11 @@ export type PayrollLockFinanceTotals = {
   totalStaffSalariesExpense: number;
   /** Prior-period net top-ups included in net_pay; settle Accrued Wages, not P&L. */
   totalNetOnlyAdjustment: number;
+  /**
+   * Sum of absence + loan + advance + welfare + other deductions.
+   * Posted as Other Income (deduction savings) so BS stays in balance vs net pay.
+   */
+  totalDeductionSavings: number;
   totalEmployerSsnitContribution: number;
   totalSsnitRemittance: number;
   totalPayeTax: number;
@@ -58,13 +72,28 @@ function sumNumericField(
 
 export type PayrollLockFinanceSourceRow = Pick<
   PayrollProcessingRow,
+  | "employee_id"
   | "gross_pay"
   | "net_only_adjustment"
+  | "absence_deduction"
+  | "loan_repayment"
+  | "salary_advance"
+  | "welfare_deduction"
+  | "other_deductions"
   | "employee_ssnit"
   | "employer_ssnit"
   | "tier2"
   | "paye_tax"
 >;
+
+type LoanRegisterBalanceRow = {
+  loan_id: string;
+  employee_id: string;
+  loan_amount: number;
+  monthly_deduction: number | null;
+  total_repaid_to_date: number | null;
+  outstanding_balance: number | null;
+};
 
 export function resolvePayrollLockFinancePeriod(
   payrollMonth: string,
@@ -98,6 +127,30 @@ export function resolvePayrollLockFinancePeriod(
   };
 }
 
+export function calculatePayrollDeductionSavingsTotal(
+  rows: Pick<
+    PayrollLockFinanceSourceRow,
+    | "absence_deduction"
+    | "loan_repayment"
+    | "salary_advance"
+    | "welfare_deduction"
+    | "other_deductions"
+  >[],
+): number {
+  return roundCurrency(
+    rows.reduce(
+      (sum, row) =>
+        sum +
+        (Number(row.absence_deduction) || 0) +
+        (Number(row.loan_repayment) || 0) +
+        (Number(row.salary_advance) || 0) +
+        (Number(row.welfare_deduction) || 0) +
+        (Number(row.other_deductions) || 0),
+      0,
+    ),
+  );
+}
+
 export function calculatePayrollLockFinanceTotals(
   rows: PayrollLockFinanceSourceRow[],
 ): PayrollLockFinanceTotals {
@@ -111,6 +164,7 @@ export function calculatePayrollLockFinanceTotals(
     totalGrossPay,
     totalStaffSalariesExpense: totalGrossPay,
     totalNetOnlyAdjustment,
+    totalDeductionSavings: calculatePayrollDeductionSavingsTotal(rows),
     totalEmployerSsnitContribution: roundCurrency(
       totalEmployerSsnit + totalTier2,
     ),
@@ -123,6 +177,16 @@ export function calculatePayrollLockFinanceTotals(
 
 export function buildPayrollExpenseAutoDescription(monthLabel: string): string {
   return `${PAYROLL_EXPENSE_AUTO_DESCRIPTION_PREFIX} ${monthLabel}`;
+}
+
+export function buildPayrollDeductionSavingsDescription(
+  monthLabel: string,
+): string {
+  return `${buildPayrollExpenseAutoDescription(monthLabel)}${PAYROLL_INCOME_DED_SAVINGS_DESCRIPTION_SUFFIX}`;
+}
+
+export function buildPayrollDeductionSavingsInvoiceNo(periodKey: string): string {
+  return buildPayrollExpenseReceiptNo(PAYROLL_INCOME_RECEIPT_SUFFIX, periodKey);
 }
 
 export function buildPayrollSsnitPayableDescription(monthLabel: string): string {
@@ -264,6 +328,440 @@ export async function repairPayrollAutoPostedExpenseRegisterEntry(
   return "updated";
 }
 
+function buildDeductionSavingsIncomePayload(
+  period: PayrollLockFinancePeriod,
+  amount: number,
+  tenantId: string,
+) {
+  const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
+
+  return {
+    tenant_id: tenantId,
+    date: period.periodEndDate,
+    due_date: period.periodEndDate,
+    invoice_no: buildPayrollDeductionSavingsInvoiceNo(periodKey),
+    customer_name: PAYROLL_INCOME_CUSTOMER_NAME,
+    client_id: null,
+    entry_type: "service" as const,
+    service_category: PAYROLL_INCOME_CATEGORY_OTHER,
+    description: buildPayrollDeductionSavingsDescription(period.monthLabel),
+    amount,
+    amount_received: 0,
+    // Non-cash P&L income — keep AR at zero (same pattern as forfeited-wage income).
+    outstanding_balance: 0,
+    payment_status: PAYROLL_INCOME_PAYMENT_STATUS,
+    notes:
+      "Non-cash payroll deduction savings (absence/loan/advance/welfare/other); auto-posted on payroll lock.",
+    tax_inclusive: true,
+    net_of_tax_amount: amount,
+    output_vat_amount: 0,
+    output_tax_component: null,
+    wht_rate: null,
+    wht_amount: 0,
+  };
+}
+
+async function upsertPayrollDeductionSavingsIncomeEntry(
+  admin: SupabaseClient,
+  payload: ReturnType<typeof buildDeductionSavingsIncomePayload>,
+): Promise<"inserted" | "updated" | "unchanged"> {
+  const { data: existing, error: selectError } = await admin
+    .from("income_register")
+    .select("id, amount, service_category, description")
+    .eq("tenant_id", payload.tenant_id)
+    .eq("invoice_no", payload.invoice_no)
+    .maybeSingle();
+
+  if (selectError) {
+    throw new Error(selectError.message);
+  }
+
+  if (existing) {
+    const needsUpdate =
+      Number(existing.amount) !== Number(payload.amount) ||
+      existing.service_category !== payload.service_category ||
+      existing.description !== payload.description;
+
+    if (!needsUpdate) {
+      return "unchanged";
+    }
+
+    const { error: updateError } = await admin
+      .from("income_register")
+      .update({
+        date: payload.date,
+        due_date: payload.due_date,
+        customer_name: payload.customer_name,
+        service_category: payload.service_category,
+        description: payload.description,
+        amount: payload.amount,
+        amount_received: payload.amount_received,
+        outstanding_balance: payload.outstanding_balance,
+        payment_status: payload.payment_status,
+        notes: payload.notes,
+        net_of_tax_amount: payload.net_of_tax_amount,
+        output_vat_amount: payload.output_vat_amount,
+        wht_amount: payload.wht_amount,
+      })
+      .eq("id", existing.id);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    return "updated";
+  }
+
+  const { error: insertError } = await admin
+    .from("income_register")
+    .insert(payload);
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  return "inserted";
+}
+
+/**
+ * Deterministic per-loan allocation of a payroll-period repayment total.
+ * Matches calculateLoanRepaymentForEmployee economics (cap at monthly_deduction
+ * and outstanding), ordered by loan_id so apply and reverse stay aligned.
+ */
+export function allocatePayrollLoanRepaymentAcrossLoans(
+  loans: LoanRegisterBalanceRow[],
+  repaymentAmount: number,
+): { loanId: string; amount: number }[] {
+  let remaining = roundCurrency(Math.max(0, Number(repaymentAmount) || 0));
+  if (remaining <= 0) {
+    return [];
+  }
+
+  const allocations: { loanId: string; amount: number }[] = [];
+  const sorted = [...loans].sort((a, b) => a.loan_id.localeCompare(b.loan_id));
+
+  for (const loan of sorted) {
+    if (remaining <= 0) {
+      break;
+    }
+
+    const outstanding =
+      loan.outstanding_balance ??
+      calculateLoanOutstanding(
+        Number(loan.loan_amount) || 0,
+        Number(loan.total_repaid_to_date) || 0,
+      );
+
+    if (outstanding <= 0.01) {
+      continue;
+    }
+
+    const monthly = Math.max(0, Number(loan.monthly_deduction) || 0);
+    const applyAmount = roundCurrency(
+      Math.min(monthly, outstanding, remaining),
+    );
+
+    if (applyAmount <= 0) {
+      continue;
+    }
+
+    allocations.push({ loanId: loan.loan_id, amount: applyAmount });
+    remaining = roundCurrency(remaining - applyAmount);
+  }
+
+  // If payroll loan_repayment exceeds the monthly-cap sum (manual override),
+  // apply the remainder FIFO against remaining outstanding.
+  if (remaining > 0.009) {
+    for (const loan of sorted) {
+      if (remaining <= 0) {
+        break;
+      }
+
+      const already =
+        allocations.find((item) => item.loanId === loan.loan_id)?.amount ?? 0;
+      const outstanding =
+        (loan.outstanding_balance ??
+          calculateLoanOutstanding(
+            Number(loan.loan_amount) || 0,
+            Number(loan.total_repaid_to_date) || 0,
+          )) - already;
+
+      if (outstanding <= 0.01) {
+        continue;
+      }
+
+      const applyAmount = roundCurrency(Math.min(outstanding, remaining));
+      if (applyAmount <= 0) {
+        continue;
+      }
+
+      const existing = allocations.find((item) => item.loanId === loan.loan_id);
+      if (existing) {
+        existing.amount = roundCurrency(existing.amount + applyAmount);
+      } else {
+        allocations.push({ loanId: loan.loan_id, amount: applyAmount });
+      }
+      remaining = roundCurrency(remaining - applyAmount);
+    }
+  }
+
+  return allocations.filter((item) => item.amount > 0);
+}
+
+/**
+ * Reverse allocation uses the same loan_id order and monthly_deduction caps,
+ * capped by total_repaid_to_date (post-lock balances).
+ */
+export function allocatePayrollLoanRepaymentReversalAcrossLoans(
+  loans: LoanRegisterBalanceRow[],
+  repaymentAmount: number,
+): { loanId: string; amount: number }[] {
+  let remaining = roundCurrency(Math.max(0, Number(repaymentAmount) || 0));
+  if (remaining <= 0) {
+    return [];
+  }
+
+  const allocations: { loanId: string; amount: number }[] = [];
+  const sorted = [...loans].sort((a, b) => a.loan_id.localeCompare(b.loan_id));
+
+  for (const loan of sorted) {
+    if (remaining <= 0) {
+      break;
+    }
+
+    const repaid = Math.max(0, Number(loan.total_repaid_to_date) || 0);
+    if (repaid <= 0.01) {
+      continue;
+    }
+
+    const monthly = Math.max(0, Number(loan.monthly_deduction) || 0);
+    const reverseAmount = roundCurrency(Math.min(monthly, repaid, remaining));
+
+    if (reverseAmount <= 0) {
+      continue;
+    }
+
+    allocations.push({ loanId: loan.loan_id, amount: reverseAmount });
+    remaining = roundCurrency(remaining - reverseAmount);
+  }
+
+  if (remaining > 0.009) {
+    for (const loan of sorted) {
+      if (remaining <= 0) {
+        break;
+      }
+
+      const already =
+        allocations.find((item) => item.loanId === loan.loan_id)?.amount ?? 0;
+      const repaid =
+        Math.max(0, Number(loan.total_repaid_to_date) || 0) - already;
+      if (repaid <= 0.01) {
+        continue;
+      }
+
+      const reverseAmount = roundCurrency(Math.min(repaid, remaining));
+      if (reverseAmount <= 0) {
+        continue;
+      }
+
+      const existing = allocations.find((item) => item.loanId === loan.loan_id);
+      if (existing) {
+        existing.amount = roundCurrency(existing.amount + reverseAmount);
+      } else {
+        allocations.push({ loanId: loan.loan_id, amount: reverseAmount });
+      }
+      remaining = roundCurrency(remaining - reverseAmount);
+    }
+  }
+
+  return allocations.filter((item) => item.amount > 0);
+}
+
+export async function applyPayrollLoanRepaymentsOnLock(
+  admin: SupabaseClient,
+  rows: Pick<PayrollLockFinanceSourceRow, "employee_id" | "loan_repayment">[],
+  tenantId: string,
+): Promise<{ updatedLoans: number }> {
+  const repaymentsByEmployee = new Map<string, number>();
+
+  for (const row of rows) {
+    const employeeId = row.employee_id?.trim();
+    const repayment = roundCurrency(Number(row.loan_repayment) || 0);
+    if (!employeeId || repayment <= 0) {
+      continue;
+    }
+    repaymentsByEmployee.set(
+      employeeId,
+      roundCurrency((repaymentsByEmployee.get(employeeId) ?? 0) + repayment),
+    );
+  }
+
+  if (repaymentsByEmployee.size === 0) {
+    return { updatedLoans: 0 };
+  }
+
+  const employeeIds = [...repaymentsByEmployee.keys()];
+  const { data: loanRows, error: loanError } = await admin
+    .from("loan_register")
+    .select(
+      "loan_id, employee_id, loan_amount, monthly_deduction, total_repaid_to_date, outstanding_balance",
+    )
+    .eq("tenant_id", tenantId)
+    .in("employee_id", employeeIds);
+
+  if (loanError) {
+    throw new Error(loanError.message);
+  }
+
+  const loans = (loanRows as LoanRegisterBalanceRow[] | null) ?? [];
+  let updatedLoans = 0;
+
+  for (const [employeeId, repayment] of repaymentsByEmployee) {
+    const employeeLoans = loans.filter((loan) => loan.employee_id === employeeId);
+    const allocations = allocatePayrollLoanRepaymentAcrossLoans(
+      employeeLoans,
+      repayment,
+    );
+
+    for (const allocation of allocations) {
+      const loan = employeeLoans.find((item) => item.loan_id === allocation.loanId);
+      if (!loan) {
+        continue;
+      }
+
+      const nextRepaid = roundCurrency(
+        (Number(loan.total_repaid_to_date) || 0) + allocation.amount,
+      );
+      const nextOutstanding = calculateLoanOutstanding(
+        Number(loan.loan_amount) || 0,
+        nextRepaid,
+      );
+
+      const { error: updateError } = await admin
+        .from("loan_register")
+        .update({
+          total_repaid_to_date: nextRepaid,
+          outstanding_balance: nextOutstanding,
+        })
+        .eq("loan_id", loan.loan_id)
+        .eq("tenant_id", tenantId);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+
+      loan.total_repaid_to_date = nextRepaid;
+      loan.outstanding_balance = nextOutstanding;
+      updatedLoans += 1;
+    }
+  }
+
+  return { updatedLoans };
+}
+
+export async function reversePayrollLoanRepaymentsOnUnlock(
+  admin: SupabaseClient,
+  payrollMonth: string,
+  tenantId: string,
+  loanRepaymentRows?: Pick<
+    PayrollLockFinanceSourceRow,
+    "employee_id" | "loan_repayment"
+  >[],
+): Promise<{ reversedLoans: number }> {
+  let sourceRows = loanRepaymentRows;
+
+  if (!sourceRows) {
+    const { data: historyRows, error: historyError } = await admin
+      .from("payroll_history")
+      .select("employee_id, loan_repayment")
+      .eq("tenant_id", tenantId)
+      .eq("payroll_month", payrollMonth.slice(0, 10));
+
+    if (historyError) {
+      throw new Error(historyError.message);
+    }
+
+    sourceRows = (historyRows as
+      | Pick<PayrollLockFinanceSourceRow, "employee_id" | "loan_repayment">[]
+      | null) ?? [];
+  }
+
+  const repaymentsByEmployee = new Map<string, number>();
+  for (const row of sourceRows) {
+    const employeeId = String(row.employee_id ?? "").trim();
+    const repayment = roundCurrency(Number(row.loan_repayment) || 0);
+    if (!employeeId || repayment <= 0) {
+      continue;
+    }
+    repaymentsByEmployee.set(
+      employeeId,
+      roundCurrency((repaymentsByEmployee.get(employeeId) ?? 0) + repayment),
+    );
+  }
+
+  if (repaymentsByEmployee.size === 0) {
+    return { reversedLoans: 0 };
+  }
+
+  const employeeIds = [...repaymentsByEmployee.keys()];
+  const { data: loanRows, error: loanError } = await admin
+    .from("loan_register")
+    .select(
+      "loan_id, employee_id, loan_amount, monthly_deduction, total_repaid_to_date, outstanding_balance",
+    )
+    .eq("tenant_id", tenantId)
+    .in("employee_id", employeeIds);
+
+  if (loanError) {
+    throw new Error(loanError.message);
+  }
+
+  const loans = (loanRows as LoanRegisterBalanceRow[] | null) ?? [];
+  let reversedLoans = 0;
+
+  for (const [employeeId, repayment] of repaymentsByEmployee) {
+    const employeeLoans = loans.filter((loan) => loan.employee_id === employeeId);
+    const allocations = allocatePayrollLoanRepaymentReversalAcrossLoans(
+      employeeLoans,
+      repayment,
+    );
+
+    for (const allocation of allocations) {
+      const loan = employeeLoans.find((item) => item.loan_id === allocation.loanId);
+      if (!loan) {
+        continue;
+      }
+
+      const nextRepaid = roundCurrency(
+        Math.max(0, (Number(loan.total_repaid_to_date) || 0) - allocation.amount),
+      );
+      const nextOutstanding = calculateLoanOutstanding(
+        Number(loan.loan_amount) || 0,
+        nextRepaid,
+      );
+
+      const { error: updateError } = await admin
+        .from("loan_register")
+        .update({
+          total_repaid_to_date: nextRepaid,
+          outstanding_balance: nextOutstanding,
+        })
+        .eq("loan_id", loan.loan_id)
+        .eq("tenant_id", tenantId);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+
+      loan.total_repaid_to_date = nextRepaid;
+      loan.outstanding_balance = nextOutstanding;
+      reversedLoans += 1;
+    }
+  }
+
+  return { reversedLoans };
+}
+
 export async function postPayrollLockFinanceEntries(
   admin: SupabaseClient,
   period: PayrollLockFinancePeriod,
@@ -273,6 +771,9 @@ export async function postPayrollLockFinanceEntries(
   insertedExpenses: number;
   insertedPayables: number;
   updatedExpenses: number;
+  insertedIncome: number;
+  updatedIncome: number;
+  updatedLoans: number;
   statutoryLedger: {
     sourceId: string;
     inserted: number;
@@ -287,6 +788,8 @@ export async function postPayrollLockFinanceEntries(
   const totals = calculatePayrollLockFinanceTotals(rows);
   let insertedExpenses = 0;
   let updatedExpenses = 0;
+  let insertedIncome = 0;
+  let updatedIncome = 0;
 
   const staffSalariesPayload =
     totals.totalStaffSalariesExpense > 0
@@ -339,6 +842,31 @@ export async function postPayrollLockFinanceEntries(
     }
   }
 
+  // Deduction savings income restores BS balance for net-reducing deductions that
+  // are not statutory remittance liabilities. net_only_adjustment is intentionally
+  // excluded (settles prior Accrued Wages elsewhere).
+  if (totals.totalDeductionSavings > 0) {
+    const incomeResult = await upsertPayrollDeductionSavingsIncomeEntry(
+      admin,
+      buildDeductionSavingsIncomePayload(
+        period,
+        totals.totalDeductionSavings,
+        tenantId,
+      ),
+    );
+    if (incomeResult === "inserted") {
+      insertedIncome += 1;
+    } else if (incomeResult === "updated") {
+      updatedIncome += 1;
+    }
+  }
+
+  const { updatedLoans } = await applyPayrollLoanRepaymentsOnLock(
+    admin,
+    rows,
+    tenantId,
+  );
+
   const statutoryLedger = await syncPayrollPeriodTaxLedger(
     admin,
     period,
@@ -349,6 +877,9 @@ export async function postPayrollLockFinanceEntries(
   return {
     insertedExpenses,
     updatedExpenses,
+    insertedIncome,
+    updatedIncome,
+    updatedLoans,
     // Soft-deprecated: no new Statutory - SSNIT / Statutory - PAYE AP rows.
     insertedPayables: 0,
     statutoryLedger,
@@ -359,12 +890,31 @@ export async function deletePayrollLockFinanceEntries(
   admin: SupabaseClient,
   period: PayrollLockFinancePeriod,
   tenantId: string,
+  options?: {
+    loanRepaymentRows?: Pick<
+      PayrollLockFinanceSourceRow,
+      "employee_id" | "loan_repayment"
+    >[];
+  },
 ): Promise<{
   deletedExpenses: number;
+  deletedIncome: number;
   deletedPayables: number;
   deletedStatutoryLedger: number;
+  reversedLoans: number;
 }> {
+  // Reverse loan balances using caller-supplied rows when available (reopen/
+  // release already loaded history). Fall back to payroll_history query.
+  const { reversedLoans } = await reversePayrollLoanRepaymentsOnUnlock(
+    admin,
+    period.payrollMonth,
+    tenantId,
+    options?.loanRepaymentRows,
+  );
+
   const expenseDescription = buildPayrollExpenseAutoDescription(period.monthLabel);
+  const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
+  const deductionInvoiceNo = buildPayrollDeductionSavingsInvoiceNo(periodKey);
 
   const { data: expenseRows, error: expenseSelectError } = await admin
     .from("expense_register")
@@ -385,6 +935,46 @@ export async function deletePayrollLockFinanceEntries(
 
     if (expenseDeleteError) {
       throw new Error(expenseDeleteError.message);
+    }
+  }
+
+  const { data: incomeByInvoice, error: incomeInvoiceError } = await admin
+    .from("income_register")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("invoice_no", deductionInvoiceNo);
+
+  if (incomeInvoiceError) {
+    throw new Error(incomeInvoiceError.message);
+  }
+
+  const { data: incomeByDescription, error: incomeDescError } = await admin
+    .from("income_register")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .ilike("description", `%${expenseDescription}%`);
+
+  if (incomeDescError) {
+    throw new Error(incomeDescError.message);
+  }
+
+  const incomeIds = [
+    ...new Set(
+      [...(incomeByInvoice ?? []), ...(incomeByDescription ?? [])].map(
+        (row) => row.id as string,
+      ),
+    ),
+  ];
+
+  if (incomeIds.length > 0) {
+    const { error: incomeDeleteError } = await admin
+      .from("income_register")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .in("id", incomeIds);
+
+    if (incomeDeleteError) {
+      throw new Error(incomeDeleteError.message);
     }
   }
 
@@ -426,7 +1016,9 @@ export async function deletePayrollLockFinanceEntries(
 
   return {
     deletedExpenses: expenseRows?.length ?? 0,
+    deletedIncome: incomeIds.length,
     deletedPayables: payableRows?.length ?? 0,
     deletedStatutoryLedger,
+    reversedLoans,
   };
 }
