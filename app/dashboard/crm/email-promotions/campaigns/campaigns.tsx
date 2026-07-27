@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getStripedRowClassName } from "../../../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -18,9 +18,38 @@ import {
   type NormalizedCampaignRow,
 } from "@/utils/campaigns-types";
 import {
+  channelIncludesEmail,
+  channelIncludesSms,
   formatChannelLabel,
   type MessageTemplateRow,
 } from "@/utils/message-templates-types";
+import { substituteTemplatePlaceholders } from "@/utils/message-template-render";
+
+type CampaignRecipientDetail = {
+  id: string;
+  customer_id: string;
+  channel: string;
+  status: string;
+  sent_at: string | null;
+  error: string | null;
+  customer_name: string;
+  email: string | null;
+  phone: string | null;
+};
+
+type CampaignTemplateDetail = {
+  name: string;
+  subject: string | null;
+  body_email: string | null;
+  body_sms: string | null;
+  channel: string;
+};
+
+type CampaignDetailPayload = {
+  recipients: CampaignRecipientDetail[];
+  template: CampaignTemplateDetail | null;
+  error?: string;
+};
 
 type CampaignsProps = {
   tenantId: string;
@@ -110,6 +139,34 @@ function statusBadgeTone(
   return "amber";
 }
 
+function recipientStatusBadgeTone(
+  status: string,
+): "emerald" | "red" | "amber" | "slate" | "violet" {
+  if (status === "sent" || status === "delivered") return "emerald";
+  if (status === "failed" || status === "bounced") return "red";
+  if (status === "skipped_opted_out") return "amber";
+  if (status === "pending") return "violet";
+  return "slate";
+}
+
+function formatRecipientStatus(status: string): string {
+  if (status === "skipped_opted_out") return "Opted Out";
+  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatSentAt(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function audienceFromForm(form: FormState): CampaignAudienceFilter {
   if (form.audienceType === "customer_type") {
     return { type: "customer_type", value: form.customerType };
@@ -141,6 +198,90 @@ function formFromCampaign(row: NormalizedCampaignRow): FormState {
   };
 }
 
+function CampaignMessagePreview({
+  template,
+  campaignChannel,
+}: {
+  template: CampaignTemplateDetail;
+  campaignChannel: CampaignChannel;
+}) {
+  // Render with sample placeholder values so the user sees the template shape.
+  const sampleVars: Record<string, string> = {
+    customer_name: "Customer Name",
+    email: "customer@example.com",
+    phone: "0000000000",
+    contact_person: "Contact Person",
+    client_id: "CLI000",
+  };
+
+  const showEmail =
+    campaignChannel !== "sms" && channelIncludesEmail(template.channel);
+  const showSms =
+    campaignChannel !== "email" && channelIncludesSms(template.channel);
+
+  const resolvedSubject = template.subject
+    ? substituteTemplatePlaceholders(template.subject, sampleVars)
+    : null;
+  const resolvedEmailBody = template.body_email
+    ? substituteTemplatePlaceholders(template.body_email, sampleVars)
+    : null;
+  const resolvedSmsBody = template.body_sms
+    ? substituteTemplatePlaceholders(template.body_sms, sampleVars)
+    : null;
+
+  return (
+    <div>
+      <h5 className="mb-2 text-sm font-semibold text-[#0f2744]">Message</h5>
+      <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+        {showEmail ? (
+          <div className="space-y-1">
+            {resolvedSubject ? (
+              <p className="text-sm">
+                <span className="font-medium text-slate-700">Subject: </span>
+                <span className="text-slate-900">{resolvedSubject}</span>
+              </p>
+            ) : null}
+            {resolvedEmailBody ? (
+              <div className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-800 whitespace-pre-wrap">
+                {resolvedEmailBody}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 italic">
+                No email body content.
+              </p>
+            )}
+          </div>
+        ) : null}
+        {showSms ? (
+          <div className="space-y-1">
+            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+              SMS
+            </p>
+            {resolvedSmsBody ? (
+              <div className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-800 whitespace-pre-wrap">
+                {resolvedSmsBody}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 italic">
+                No SMS body content.
+              </p>
+            )}
+          </div>
+        ) : null}
+        {!showEmail && !showSms ? (
+          <p className="text-sm text-slate-500 italic">
+            No message content available for this channel.
+          </p>
+        ) : null}
+        <p className="text-xs text-slate-400">
+          Variables like {"{{customer_name}}"} are shown with placeholder
+          values.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function Campaigns({
   tenantId,
   initialCampaigns,
@@ -162,6 +303,40 @@ export default function Campaigns({
   const [sendStatusMessage, setSendStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [statusFilter, setStatusFilter] = useState("");
+
+  // View Campaign detail: recipients + resolved message.
+  const [viewDetail, setViewDetail] = useState<CampaignDetailPayload | null>(
+    null,
+  );
+  const [viewDetailLoading, setViewDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (!viewOnly || !editingId) {
+      setViewDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+    setViewDetailLoading(true);
+
+    fetch(`/api/campaigns/${editingId}/recipients`)
+      .then((response) => response.json())
+      .then((payload: CampaignDetailPayload) => {
+        if (cancelled) return;
+        setViewDetail(payload);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setViewDetail({ recipients: [], template: null, error: "Failed to load campaign details." });
+      })
+      .finally(() => {
+        if (!cancelled) setViewDetailLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewOnly, editingId]);
 
   const editingCampaign = useMemo(
     () => (editingId ? campaigns.find((row) => row.id === editingId) ?? null : null),
@@ -573,13 +748,107 @@ export default function Campaigns({
                   >
                     {AUDIENCE_CUSTOMER_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
-                        {option.label}
+                        {option.value === "both"
+                          ? "Service Customer + Digital Subscriber (tagged both)"
+                          : option.label}
                       </option>
                     ))}
                   </select>
                 </div>
               ) : null}
             </div>
+
+            {/* ── View-only: Recipients table + Message preview ── */}
+            {viewOnly && editingCampaign ? (
+              <div className="space-y-5">
+                {/* Recipients */}
+                <div>
+                  <h5 className="mb-2 text-sm font-semibold text-[#0f2744]">
+                    Recipients
+                  </h5>
+                  {viewDetailLoading ? (
+                    <p className="text-sm text-slate-500">Loading recipients…</p>
+                  ) : viewDetail?.error ? (
+                    <p className="text-sm text-red-600">{viewDetail.error}</p>
+                  ) : isDraftStatus(editingCampaign.status) &&
+                    (!viewDetail?.recipients ||
+                      viewDetail.recipients.length === 0) ? (
+                    <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                      Recipients will be shown once this campaign is sent.
+                    </p>
+                  ) : viewDetail?.recipients &&
+                    viewDetail.recipients.length > 0 ? (
+                    <div className="max-h-64 overflow-auto rounded-md border border-slate-200">
+                      <table className="min-w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-slate-100 text-xs font-medium uppercase tracking-wider text-slate-600">
+                          <tr>
+                            <th className="px-3 py-2">Customer</th>
+                            <th className="px-3 py-2">
+                              {editingCampaign.channel === "sms"
+                                ? "Phone"
+                                : "Email"}
+                            </th>
+                            <th className="px-3 py-2">Channel</th>
+                            <th className="px-3 py-2">Status</th>
+                            <th className="px-3 py-2">Sent At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {viewDetail.recipients.map((r, i) => (
+                            <tr
+                              key={r.id}
+                              className={
+                                i % 2 === 1 ? "bg-slate-50" : "bg-white"
+                              }
+                            >
+                              <td className="px-3 py-2 font-medium text-slate-900">
+                                {r.customer_name}
+                              </td>
+                              <td className="px-3 py-2 text-slate-700">
+                                {r.channel === "sms"
+                                  ? r.phone ?? "—"
+                                  : r.email ?? "—"}
+                              </td>
+                              <td className="px-3 py-2">
+                                <Badge
+                                  label={formatChannelLabel(r.channel)}
+                                  tone={channelBadgeTone(r.channel)}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Badge
+                                  label={formatRecipientStatus(r.status)}
+                                  tone={recipientStatusBadgeTone(r.status)}
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-slate-600">
+                                {formatSentAt(r.sent_at)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                      No recipients recorded.
+                    </p>
+                  )}
+                </div>
+
+                {/* Message Preview */}
+                {viewDetail?.template ? (
+                  <CampaignMessagePreview
+                    template={viewDetail.template}
+                    campaignChannel={editingCampaign.channel}
+                  />
+                ) : viewDetailLoading ? null : (
+                  <p className="text-sm text-slate-500">
+                    Template content not available.
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-3">
               {!viewOnly ? (
@@ -640,6 +909,7 @@ export default function Campaigns({
                 {viewOnly ? "Close" : "Cancel"}
               </button>
             </div>
+
           </form>
         </section>
       ) : null}
