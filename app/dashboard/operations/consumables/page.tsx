@@ -4,7 +4,7 @@ import {
   HR_EMPLOYEE_SELECT,
   filterActiveEmployees,
   type HrEmployee,
-} from "../hr-payroll/employee-utils";
+} from "../../hr-payroll/employee-utils";
 import ConsumablesRegister from "../consumables";
 import {
   CONSUMABLES_SELECT,
