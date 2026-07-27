@@ -53,6 +53,10 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
         href: "/dashboard/hr-payroll/exit-management",
       },
       {
+        label: "Equipment Register",
+        href: "/dashboard/hr-payroll/equipment",
+      },
+      {
         label: "Staff ID Cards",
         href: "/dashboard/hr-payroll/staff-id-cards",
       },
