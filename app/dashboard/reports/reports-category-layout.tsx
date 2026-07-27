@@ -1,26 +1,32 @@
 import { redirect } from "next/navigation";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { getCurrentUserRole } from "@/utils/dashboard-auth";
-import {
-  canAccessReportCategory,
-} from "@/utils/rbac-access";
+import { canAccessReportCategory } from "@/utils/rbac-access";
+import { requireFeatureAccess } from "@/utils/tier-access";
 import ReportsCategoryNav from "./reports-category-nav";
 
 type ReportsCategoryLayoutProps = {
   categoryId: string;
   pageTitle: string;
+  /** When set, blocks the category unless the tenant plan includes this feature. */
+  featureKey?: string;
   children: React.ReactNode;
 };
 
 export default async function ReportsCategoryLayout({
   categoryId,
   pageTitle,
+  featureKey,
   children,
 }: ReportsCategoryLayoutProps) {
   const role = (await getCurrentUserRole()) as AppRole | null;
 
   if (!canAccessReportCategory(role, categoryId)) {
     redirect("/dashboard");
+  }
+
+  if (featureKey) {
+    await requireFeatureAccess(featureKey);
   }
 
   return (

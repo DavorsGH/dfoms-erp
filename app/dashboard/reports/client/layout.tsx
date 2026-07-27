@@ -9,6 +9,7 @@ export default function ClientReportsLayout({
     <ReportsCategoryLayout
       categoryId="client-facing"
       pageTitle="Customer-Facing Reports"
+      featureKey="operations"
     >
       {children}
     </ReportsCategoryLayout>

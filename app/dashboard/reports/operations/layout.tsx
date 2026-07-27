@@ -6,7 +6,11 @@ export default function OperationsReportsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ReportsCategoryLayout categoryId="operations" pageTitle="Operations Reports">
+    <ReportsCategoryLayout
+      categoryId="operations"
+      pageTitle="Operations Reports"
+      featureKey="operations"
+    >
       {children}
     </ReportsCategoryLayout>
   );
