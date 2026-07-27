@@ -8,6 +8,7 @@ const navItems = [
   { label: "Roster History", href: "/dashboard/operations/roster-history" },
   { label: "Customers", href: "/dashboard/operations/clients" },
   { label: "Sites", href: "/dashboard/operations/sites" },
+  { label: "Consumables", href: "/dashboard/operations/consumables" },
   { label: "Work Orders", href: "/dashboard/operations/work-orders" },
   {
     label: "Inspection Summary",
