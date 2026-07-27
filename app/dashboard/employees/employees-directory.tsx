@@ -49,6 +49,46 @@ import {
   resolveEmployeeCompensation,
 } from "../administration/compensation-policy-utils";
 import { isActiveEmployee } from "../hr-payroll/employee-utils";
+import {
+  buildEmploymentHistoryInsert,
+  EMPLOYMENT_HISTORY_SELECT,
+  hasTrackedEmploymentChange,
+  normalizeHistoryText,
+  snapshotFromEmployee,
+  snapshotFromPayload,
+  type EmploymentHistoryEntry,
+} from "./employment-history-utils";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+async function resolveChangedByLabel(
+  supabase: SupabaseClient,
+): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return "Unknown user";
+  }
+
+  const { data } = await supabase
+    .from("user_accounts")
+    .select("email")
+    .eq("auth_uid", user.id)
+    .maybeSingle();
+
+  const accountEmail = (data as { email?: string | null } | null)?.email?.trim();
+  if (accountEmail) {
+    return accountEmail;
+  }
+
+  const authEmail = user.email?.trim();
+  if (authEmail) {
+    return authEmail;
+  }
+
+  return "Unknown user";
+}
 
 type EmployeesDirectoryProps = {
   initialEmployees: EmployeeRecord[];
@@ -350,6 +390,11 @@ export default function EmployeesDirectory({
     null,
   );
   const [form, setForm] = useState(emptyForm);
+  const [changeReason, setChangeReason] = useState("");
+  const [employmentHistory, setEmploymentHistory] = useState<
+    EmploymentHistoryEntry[]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
@@ -595,6 +640,37 @@ export default function EmployeesDirectory({
     ],
   );
 
+  const editingEmployee = useMemo(
+    () =>
+      editingEmployeeId
+        ? employees.find((employee) => employee.employee_id === editingEmployeeId) ??
+          null
+        : null,
+    [editingEmployeeId, employees],
+  );
+
+  const pendingPayloadSnapshot = useMemo(
+    () =>
+      snapshotFromPayload(
+        buildPayload(form, resolvedCompensation) as ReturnType<
+          typeof buildPayload
+        >,
+      ),
+    [form, resolvedCompensation],
+  );
+
+  const trackedFieldsDirty = useMemo(() => {
+    if (!editingEmployee) {
+      return false;
+    }
+    return hasTrackedEmploymentChange(
+      snapshotFromEmployee(editingEmployee),
+      pendingPayloadSnapshot,
+    );
+  }, [editingEmployee, pendingPayloadSnapshot]);
+
+  const showChangeReasonField = !editingEmployeeId || trackedFieldsDirty;
+
   const previewGrossPay = resolvedCompensation.gross_monthly;
 
   const previewEstimatedNetPay = useMemo(
@@ -637,12 +713,34 @@ export default function EmployeesDirectory({
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  async function loadEmploymentHistory(employeeId: string) {
+    setHistoryLoading(true);
+    const { data, error: historyError } = await supabase
+      .from("employee_employment_history")
+      .select(EMPLOYMENT_HISTORY_SELECT)
+      .eq("employee_id", employeeId)
+      .order("changed_at", { ascending: false })
+      .order("effective_date", { ascending: false });
+
+    if (historyError) {
+      setError(historyError.message);
+      setEmploymentHistory([]);
+      setHistoryLoading(false);
+      return;
+    }
+
+    setEmploymentHistory((data as EmploymentHistoryEntry[] | null) ?? []);
+    setHistoryLoading(false);
+  }
+
   function openAddForm() {
     setEditingEmployeeId(null);
     setForm({
       ...emptyForm,
       employment_status: DEFAULT_EMPLOYMENT_STATUS,
     });
+    setChangeReason("");
+    setEmploymentHistory([]);
     setShowForm(true);
     scrollToForm();
   }
@@ -650,14 +748,18 @@ export default function EmployeesDirectory({
   function closeForm() {
     setEditingEmployeeId(null);
     setForm(emptyForm);
+    setChangeReason("");
+    setEmploymentHistory([]);
     setShowForm(false);
   }
 
   function openEmployeeForm(employee: EmployeeRecord) {
     setEditingEmployeeId(employee.employee_id);
     setForm(employeeToForm(employee));
+    setChangeReason("");
     setShowForm(true);
     scrollToForm();
+    void loadEmploymentHistory(employee.employee_id);
   }
 
   function updateField(field: keyof typeof emptyForm, value: string) {
@@ -746,8 +848,19 @@ export default function EmployeesDirectory({
 
     setLoading(true);
 
+    const changedBy = await resolveChangedByLabel(supabase);
+    const reasonText = normalizeHistoryText(changeReason);
+
     if (editingEmployeeId) {
+      const prior =
+        employees.find((employee) => employee.employee_id === editingEmployeeId) ??
+        null;
       const payload = buildPayload(form, resolvedCompensation);
+      const afterSnapshot = snapshotFromPayload(payload);
+      const shouldWriteHistory =
+        prior !== null &&
+        hasTrackedEmploymentChange(snapshotFromEmployee(prior), afterSnapshot);
+
       const { error: saveError } = await supabase
         .from("employees")
         .update(payload)
@@ -757,6 +870,28 @@ export default function EmployeesDirectory({
         setError(saveError.message);
         setLoading(false);
         return;
+      }
+
+      if (shouldWriteHistory) {
+        const { error: historyError } = await supabase
+          .from("employee_employment_history")
+          .insert(
+            buildEmploymentHistoryInsert({
+              employeeId: editingEmployeeId,
+              snapshot: afterSnapshot,
+              changeReason: reasonText,
+              changedBy,
+            }),
+          );
+
+        if (historyError) {
+          setError(
+            `Employee saved, but employment history was not recorded: ${historyError.message}`,
+          );
+          setLoading(false);
+          await refreshEmployees();
+          return;
+        }
       }
     } else {
       const allocated = await allocateNewEmployeeCodes(supabase);
@@ -799,6 +934,26 @@ export default function EmployeesDirectory({
       if (leaveBalanceError) {
         setError(
           `Employee saved, but leave balances were not created: ${leaveBalanceError.message}`,
+        );
+        setLoading(false);
+        await refreshEmployees();
+        return;
+      }
+
+      const { error: historyError } = await supabase
+        .from("employee_employment_history")
+        .insert(
+          buildEmploymentHistoryInsert({
+            employeeId: allocated.employeeId,
+            snapshot: snapshotFromPayload(payload),
+            changeReason: reasonText ?? "Employee created",
+            changedBy,
+          }),
+        );
+
+      if (historyError) {
+        setError(
+          `Employee saved, but employment history was not recorded: ${historyError.message}`,
         );
         setLoading(false);
         await refreshEmployees();
@@ -1431,6 +1586,138 @@ export default function EmployeesDirectory({
                   />
                 </Field>
               </div>
+
+            {showChangeReasonField ? (
+              <div className="space-y-4">
+                <SectionHeading title="Employment Change" />
+                <Field label="Reason for change">
+                  <textarea
+                    rows={2}
+                    value={changeReason}
+                    onChange={(e) => setChangeReason(e.target.value)}
+                    className={textareaClassName}
+                    placeholder={
+                      editingEmployeeId
+                        ? "Optional — why this employment change is being made…"
+                        : 'Optional — blank defaults to "Employee created"'
+                    }
+                  />
+                </Field>
+                {editingEmployeeId && trackedFieldsDirty ? (
+                  <p className="text-xs text-slate-500">
+                    A tracked employment field has changed. Saving will add one
+                    employment history row.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {editingEmployeeId ? (
+              <div className="space-y-4">
+                <SectionHeading title="Employment History" />
+                <p className="text-sm text-slate-600">
+                  Read-only record of position, department, shift, status, and
+                  compensation changes.
+                </p>
+                {historyLoading ? (
+                  <p className="text-sm text-slate-500">Loading history…</p>
+                ) : (
+                  <ScrollableTable>
+                    <table className={scrollableTableClassName}>
+                      <thead className={scrollableTableHeadClassName}>
+                        <tr>
+                          <th className={scrollableTableThClassName}>
+                            Effective
+                          </th>
+                          <th className={scrollableTableThClassName}>
+                            Position
+                          </th>
+                          <th className={scrollableTableThClassName}>
+                            Department
+                          </th>
+                          <th className={scrollableTableThClassName}>Shift</th>
+                          <th className={scrollableTableThClassName}>Type</th>
+                          <th className={scrollableTableThClassName}>
+                            Basic
+                          </th>
+                          <th className={scrollableTableThClassName}>
+                            Allowances
+                          </th>
+                          <th className={scrollableTableThClassName}>
+                            Status
+                          </th>
+                          <th className={scrollableTableThClassName}>
+                            Reason
+                          </th>
+                          <th className={scrollableTableThClassName}>
+                            Changed By
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {employmentHistory.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={10}
+                              className="px-4 py-6 text-center text-slate-500"
+                            >
+                              No employment history yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          employmentHistory.map((entry, index) => (
+                            <tr
+                              key={entry.history_id}
+                              className={getStripedRowClassName(index)}
+                            >
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {entry.effective_date
+                                  ? toDateInputValue(entry.effective_date)
+                                  : "—"}
+                              </td>
+                              <td className="px-4 py-3">
+                                {entry.position ?? "—"}
+                              </td>
+                              <td className="px-4 py-3">
+                                {getDepartmentName(
+                                  departmentNameMap,
+                                  entry.department,
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {entry.shift ?? "—"}
+                              </td>
+                              <td className="px-4 py-3">
+                                {entry.employment_type}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {formatGHS(entry.basic_salary)}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {formatGHS(
+                                  Number(entry.housing_allowance || 0) +
+                                    Number(entry.transport_allowance || 0) +
+                                    Number(entry.other_allowances || 0),
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {entry.employee_status}
+                              </td>
+                              <td className="max-w-[12rem] truncate px-4 py-3">
+                                {entry.change_reason ?? "—"}
+                              </td>
+                              <td className="max-w-[10rem] truncate px-4 py-3">
+                                {entry.changed_by ?? "—"}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </ScrollableTable>
+                )}
+              </div>
+            ) : null}
 
             <div className="flex gap-3">
               {canEditEmployees ? (
