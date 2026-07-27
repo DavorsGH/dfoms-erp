@@ -45,6 +45,10 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
       { label: "Overtime", href: "/dashboard/hr-payroll/overtime" },
       { label: "Loans", href: "/dashboard/hr-payroll/loans" },
       {
+        label: "Disciplinary",
+        href: "/dashboard/hr-payroll/disciplinary",
+      },
+      {
         label: "Staff ID Cards",
         href: "/dashboard/hr-payroll/staff-id-cards",
       },
