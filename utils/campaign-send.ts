@@ -162,12 +162,16 @@ export async function loadCampaignCustomers(
   tenantId: string,
   audience: CampaignAudienceFilter,
 ): Promise<CampaignCustomer[]> {
+  // DB stores lowercase status (lead/active/inactive) and coded customer_type
+  // (service_client/digital_subscriber/both) — never UI display labels.
+  // "all" = every active customer for the tenant (matches countAudienceRecipients).
   let query = supabase
     .from("customers")
     .select(
       "client_id, client_name, contact_person, phone, email, address, customer_type, status",
     )
-    .eq("tenant_id", tenantId);
+    .eq("tenant_id", tenantId)
+    .eq("status", "active");
 
   if (audience.type === "customer_type") {
     query = query.eq("customer_type", audience.value);
