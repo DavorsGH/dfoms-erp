@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EmployeeRecord } from "./employee-record-utils";
 import {
+  buildManualInputsFromRow,
   calculateLoanRepaymentForEmployee,
   calculatePayrollRow,
   countAbsencesForStaff,
@@ -29,9 +30,13 @@ import {
 export type DirectoryNetPayContext = {
   period: SelectedPayrollPeriod;
   periodLabel: string;
-  /** employee_id → net pay for the current calendar payroll period */
+  /** employee_id → live-recalculated net pay for the current calendar payroll period */
   netPayByEmployeeId: Record<string, number>;
-  /** How many employees used a stored payroll_processing row vs fresh calc */
+  /**
+   * fromProcessingRow = had a payroll_processing row; manuals taken from it,
+   * amounts recalculated with current Salary Settings (never stored net_pay).
+   * fromFreshCalculation = no row yet; defaults used.
+   */
   stats: {
     fromProcessingRow: number;
     fromFreshCalculation: number;
@@ -92,45 +97,56 @@ export function buildDirectoryNetPayByEmployee(
   let fromFreshCalculation = 0;
 
   for (const employee of employees) {
-    const existing = processingByEmployee.get(employee.employee_id);
-    if (existing) {
-      // Exact parity with the stored Payroll Processing row (includes manual
-      // edits already reflected in net_pay: days_to_pay, arrears, etc.).
-      netPayByEmployeeId[employee.employee_id] = Number(existing.net_pay) || 0;
-      fromProcessingRow += 1;
-      continue;
-    }
-
-    // No processing row yet for this open period — fresh default calculation
-    // (same pure function Payroll Processing uses on generate/sync).
     const source = toPayrollEmployeeSource(employee);
     const policy = resolvePayrollPolicyCompensation(
       source,
       compensationPolicyConfig,
       asOf,
     );
+    const sources = {
+      absenceCount: countAbsencesForStaff(
+        attendance,
+        source.staff_id,
+        period.year,
+        period.month,
+      ),
+      overtimeAmount: sumOvertimeForEmployee(
+        overtime,
+        source.employee_id,
+        period.year,
+        period.month,
+      ),
+      loanRepayment: calculateLoanRepaymentForEmployee(
+        loans,
+        source.employee_id,
+      ),
+    };
+
+    const existing = processingByEmployee.get(employee.employee_id);
+    if (existing) {
+      // Same path as Payroll Processing recalculateWorkspaceRow:
+      // live Salary Settings + live attendance/OT/loans + manuals from the row.
+      // Never read stored net_pay — policy changes must show immediately.
+      const calculated = calculatePayrollRow(
+        source,
+        period,
+        taxConfigs,
+        sources,
+        buildManualInputsFromRow(existing, period.totalWorkingDays),
+        policy,
+      );
+      netPayByEmployeeId[employee.employee_id] = calculated.net_pay;
+      fromProcessingRow += 1;
+      continue;
+    }
+
+    // No processing row yet for this open period — fresh default calculation
+    // (same pure function Payroll Processing uses on generate/sync).
     const calculated = calculatePayrollRow(
       source,
       period,
       taxConfigs,
-      {
-        absenceCount: countAbsencesForStaff(
-          attendance,
-          source.staff_id,
-          period.year,
-          period.month,
-        ),
-        overtimeAmount: sumOvertimeForEmployee(
-          overtime,
-          source.employee_id,
-          period.year,
-          period.month,
-        ),
-        loanRepayment: calculateLoanRepaymentForEmployee(
-          loans,
-          source.employee_id,
-        ),
-      },
+      sources,
       {
         days_to_pay: resolveDefaultDaysToPay(source, period),
         bonuses: 0,
