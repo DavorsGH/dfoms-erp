@@ -26,6 +26,7 @@ import {
   payrollMonthToPeriodKey,
   PAYROLL_STATUS_LOCKED,
   PAYROLL_STATUS_PARTIALLY_LOCKED,
+  resolveDefaultDaysToPay,
   resolveSelectedPeriod,
   type MonthEndCloseRecord,
   type SelectedPayrollPeriod,
@@ -51,6 +52,7 @@ import { syncProcessingAllowanceLines } from "./payroll-allowance-lines-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 
 type PayrollProcessingProps = {
+  tenantId: string | null;
   initialPayrollMonths: string[];
   initialMonthEndClose: MonthEndCloseRecord[];
   initialEmployees: PayrollEmployeeSource[];
@@ -97,6 +99,7 @@ function toWorkspaceRow(
 }
 
 export default function PayrollProcessing({
+  tenantId,
   initialPayrollMonths,
   initialMonthEndClose,
   initialEmployees,
@@ -455,7 +458,7 @@ export default function PayrollProcessing({
           taxConfigs,
           { absenceCount, overtimeAmount, loanRepayment },
           {
-            days_to_pay: period.totalWorkingDays,
+            days_to_pay: resolveDefaultDaysToPay(employee, period),
             bonuses: 0,
             arrears: 0,
             net_only_adjustment: 0,
@@ -470,12 +473,23 @@ export default function PayrollProcessing({
       });
 
     if (rowsToInsert.length > 0) {
+      if (!tenantId) {
+        throw new Error(
+          "Unable to sync payroll rows: tenant could not be resolved.",
+        );
+      }
+
       const { error: insertError } = await supabase
         .from("payroll_processing")
-        .upsert(rowsToInsert, {
-          onConflict: "payroll_month,employee_id",
-          ignoreDuplicates: true,
-        });
+        .upsert(
+          rowsToInsert.map((row) => ({ ...row, tenant_id: tenantId })),
+          {
+            // Live unique is (tenant_id, payroll_month, employee_id) — not the
+            // legacy (payroll_month, employee_id) pair.
+            onConflict: "tenant_id,payroll_month,employee_id",
+            ignoreDuplicates: true,
+          },
+        );
 
       if (insertError) {
         throw new Error(insertError.message);

@@ -37,6 +37,59 @@ export function countMondayToSaturdayDays(
   return count;
 }
 
+/** Inclusive Mon–Sat count between two YYYY-MM-DD dates (local noon to avoid DST edges). */
+export function countMondayToSaturdayDaysBetween(
+  startDate: string,
+  endDate: string,
+): number {
+  const start = startDate.slice(0, 10);
+  const end = endDate.slice(0, 10);
+  if (!start || !end || start > end) {
+    return 0;
+  }
+
+  let count = 0;
+  const cursor = new Date(`${start}T12:00:00`);
+  const last = new Date(`${end}T12:00:00`).getTime();
+
+  while (cursor.getTime() <= last) {
+    const weekday = cursor.getDay();
+    if (weekday >= 1 && weekday <= 6) {
+      count += 1;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return count;
+}
+
+/**
+ * Default days_to_pay for a new payroll row: Mon–Sat days in the period,
+ * clipped to date_hired / appointment_end_date when those fall mid-period.
+ */
+export function resolveDefaultDaysToPay(
+  employee: {
+    date_hired?: string | null;
+    appointment_end_date?: string | null;
+  },
+  period: Pick<SelectedPayrollPeriod, "year" | "month" | "totalWorkingDays">,
+): number {
+  const periodStart = getPeriodStartDate(period.year, period.month);
+  const periodEnd = getPeriodEndDate(period.year, period.month);
+  const hired = employee.date_hired?.slice(0, 10) || null;
+  const ended = employee.appointment_end_date?.slice(0, 10) || null;
+
+  const payStart = hired && hired > periodStart ? hired : periodStart;
+  const payEnd = ended && ended < periodEnd ? ended : periodEnd;
+  const days = countMondayToSaturdayDaysBetween(payStart, payEnd);
+
+  if (days > 0) {
+    return days;
+  }
+
+  return period.totalWorkingDays > 0 ? period.totalWorkingDays : 0;
+}
+
 export function getPeriodEndDate(year: number, month: number): string {
   const lastDay = new Date(year, month, 0).getDate();
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;

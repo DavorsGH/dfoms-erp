@@ -128,6 +128,7 @@ export default async function PayrollProcessingPage() {
   return (
     <HrPayrollShell sectionTitle="Payroll Processing">
       <PayrollProcessing
+        tenantId={tenantId}
         initialPayrollMonths={[
           ...new Set(
             [
