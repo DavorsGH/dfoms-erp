@@ -41,12 +41,12 @@ import {
 } from "./lookup-utils";
 import {
   calculateEstimatedNetMonthlyPay,
-  calculateGrossMonthlyPay,
   type PayEstimateConfig,
 } from "./pay-estimate-utils";
 import {
   mapAllowancesToLegacyColumns,
   resolveEmployeeCompensation,
+  type ResolvedCompensation,
 } from "../administration/compensation-policy-utils";
 import { isActiveEmployee } from "../hr-payroll/employee-utils";
 import {
@@ -285,14 +285,21 @@ function buildPayload(
   };
 }
 
-function getPayInputsFromEmployee(employee: EmployeeRecord) {
-  return {
-    employment_type: employee.employment_type,
-    basic_salary: employee.basic_salary,
-    housing_allowance: employee.housing_allowance,
-    transport_allowance: employee.transport_allowance,
-    other_allowances: employee.other_allowances,
-  };
+function resolveDirectoryListCompensation(
+  employee: Pick<
+    EmployeeRecord,
+    "position" | "employment_type" | "shift"
+  >,
+  payConfig: EmployeePayConfig,
+): ResolvedCompensation {
+  return resolveEmployeeCompensation(
+    payConfig.salaryRates,
+    payConfig.compensationPolicies,
+    payConfig.allowanceTypes,
+    employee.position,
+    employee.employment_type,
+    employee.shift,
+  );
 }
 
 type SortColumn =
@@ -389,6 +396,18 @@ export default function EmployeesDirectory({
   const [lookups] = useState(initialLookups);
   const [payConfig] = useState(initialPayConfig);
   const [netPayByEmployeeId] = useState(initialNetPayByEmployeeId);
+
+  /** Live Salary Settings resolution for list columns (not stamped employee fields). */
+  const listCompensationByEmployeeId = useMemo(() => {
+    const map: Record<string, ResolvedCompensation> = {};
+    for (const employee of employees) {
+      map[employee.employee_id] = resolveDirectoryListCompensation(
+        employee,
+        payConfig,
+      );
+    }
+    return map;
+  }, [employees, payConfig]);
   const [departmentNameMap] = useState(initialDepartmentNameMap);
   const [projectNameMap] = useState(initialProjectNameMap);
   const [showForm, setShowForm] = useState(false);
@@ -583,12 +602,14 @@ export default function EmployeesDirectory({
           break;
         case "basic_salary":
           comparison =
-            (Number(left.basic_salary) || 0) - (Number(right.basic_salary) || 0);
+            (listCompensationByEmployeeId[left.employee_id]?.basic_salary ?? 0) -
+            (listCompensationByEmployeeId[right.employee_id]?.basic_salary ?? 0);
           break;
         case "gross_monthly_pay":
           comparison =
-            calculateGrossMonthlyPay(getPayInputsFromEmployee(left)) -
-            calculateGrossMonthlyPay(getPayInputsFromEmployee(right));
+            (listCompensationByEmployeeId[left.employee_id]?.gross_monthly ?? 0) -
+            (listCompensationByEmployeeId[right.employee_id]?.gross_monthly ??
+              0);
           break;
         case "current_net_pay":
           comparison =
@@ -604,6 +625,7 @@ export default function EmployeesDirectory({
   }, [
     departmentNameMap,
     filteredEmployees,
+    listCompensationByEmployeeId,
     lookups.positions,
     netPayByEmployeeId,
     projectNameMap,
@@ -1844,9 +1866,8 @@ export default function EmployeesDirectory({
               </tr>
             ) : (
               displayEmployees.map((employee, index) => {
-                const grossPay = calculateGrossMonthlyPay(
-                  getPayInputsFromEmployee(employee),
-                );
+                const listPay =
+                  listCompensationByEmployeeId[employee.employee_id];
                 const currentNetPay = netPayByEmployeeId[employee.employee_id];
 
                 return (
@@ -1890,9 +1911,11 @@ export default function EmployeesDirectory({
                     {canViewSalary ? (
                     <>
                     <td className="px-4 py-3">
-                      {formatGHS(employee.basic_salary)}
+                      {formatGHS(listPay?.basic_salary ?? 0)}
                     </td>
-                    <td className="px-4 py-3">{formatGHS(grossPay)}</td>
+                    <td className="px-4 py-3">
+                      {formatGHS(listPay?.gross_monthly ?? 0)}
+                    </td>
                     <td
                       className="px-4 py-3"
                       title={
