@@ -94,6 +94,9 @@ type EmployeesDirectoryProps = {
   initialEmployees: EmployeeRecord[];
   initialLookups: EmployeeLookups;
   initialPayConfig: EmployeePayConfig;
+  /** Current open payroll period net pay (server-computed). */
+  netPayByEmployeeId: Record<string, number>;
+  netPayPeriodLabel: string;
   departmentNameMap: Map<string, string>;
   projectNameMap: Map<string, string>;
   fetchError: string | null;
@@ -302,7 +305,7 @@ type SortColumn =
   | "employment_status"
   | "basic_salary"
   | "gross_monthly_pay"
-  | "estimated_net_pay";
+  | "current_net_pay";
 
 type SortDirection = "asc" | "desc";
 
@@ -339,20 +342,23 @@ function SortableHeader({
   sortColumn,
   sortDirection,
   onSort,
+  title,
 }: {
   label: string;
   column: SortColumn;
   sortColumn: SortColumn;
   sortDirection: SortDirection;
   onSort: (column: SortColumn) => void;
+  title?: string;
 }) {
   const active = sortColumn === column;
 
   return (
-    <th className={scrollableTableThClassName}>
+    <th className={scrollableTableThClassName} title={title}>
       <button
         type="button"
         onClick={() => onSort(column)}
+        title={title}
         className="flex w-full items-center gap-1 text-left font-medium text-white transition-opacity hover:opacity-90"
       >
         <span>{label}</span>
@@ -368,6 +374,8 @@ export default function EmployeesDirectory({
   initialEmployees,
   initialLookups,
   initialPayConfig,
+  netPayByEmployeeId: initialNetPayByEmployeeId,
+  netPayPeriodLabel,
   departmentNameMap: initialDepartmentNameMap,
   projectNameMap: initialProjectNameMap,
   fetchError,
@@ -380,6 +388,7 @@ export default function EmployeesDirectory({
   const [employees, setEmployees] = useState(initialEmployees);
   const [lookups] = useState(initialLookups);
   const [payConfig] = useState(initialPayConfig);
+  const [netPayByEmployeeId] = useState(initialNetPayByEmployeeId);
   const [departmentNameMap] = useState(initialDepartmentNameMap);
   const [projectNameMap] = useState(initialProjectNameMap);
   const [showForm, setShowForm] = useState(false);
@@ -581,16 +590,10 @@ export default function EmployeesDirectory({
             calculateGrossMonthlyPay(getPayInputsFromEmployee(left)) -
             calculateGrossMonthlyPay(getPayInputsFromEmployee(right));
           break;
-        case "estimated_net_pay":
+        case "current_net_pay":
           comparison =
-            calculateEstimatedNetMonthlyPay(
-              getPayInputsFromEmployee(left),
-              payEstimateConfig,
-            ) -
-            calculateEstimatedNetMonthlyPay(
-              getPayInputsFromEmployee(right),
-              payEstimateConfig,
-            );
+            (netPayByEmployeeId[left.employee_id] ?? Number.NEGATIVE_INFINITY) -
+            (netPayByEmployeeId[right.employee_id] ?? Number.NEGATIVE_INFINITY);
           break;
       }
 
@@ -602,7 +605,7 @@ export default function EmployeesDirectory({
     departmentNameMap,
     filteredEmployees,
     lookups.positions,
-    payEstimateConfig,
+    netPayByEmployeeId,
     projectNameMap,
     sortColumn,
     sortDirection,
@@ -1817,11 +1820,12 @@ export default function EmployeesDirectory({
                 onSort={handleSort}
               />
               <SortableHeader
-                label="Estimated Net Monthly Pay"
-                column="estimated_net_pay"
+                label="Current Net Pay"
+                column="current_net_pay"
                 sortColumn={sortColumn}
                 sortDirection={sortDirection}
                 onSort={handleSort}
+                title={`Net pay for ${netPayPeriodLabel} (current payroll period)`}
               />
               </>
               ) : null}
@@ -1843,10 +1847,7 @@ export default function EmployeesDirectory({
                 const grossPay = calculateGrossMonthlyPay(
                   getPayInputsFromEmployee(employee),
                 );
-                const estimatedNetPay = calculateEstimatedNetMonthlyPay(
-                  getPayInputsFromEmployee(employee),
-                  payEstimateConfig,
-                );
+                const currentNetPay = netPayByEmployeeId[employee.employee_id];
 
                 return (
                   <tr
@@ -1892,7 +1893,16 @@ export default function EmployeesDirectory({
                       {formatGHS(employee.basic_salary)}
                     </td>
                     <td className="px-4 py-3">{formatGHS(grossPay)}</td>
-                    <td className="px-4 py-3">{formatGHS(estimatedNetPay)}</td>
+                    <td
+                      className="px-4 py-3"
+                      title={
+                        currentNetPay == null
+                          ? undefined
+                          : `Net pay for ${netPayPeriodLabel}`
+                      }
+                    >
+                      {currentNetPay == null ? "—" : formatGHS(currentNetPay)}
+                    </td>
                     </>
                     ) : null}
                     <EmployeeRowActions

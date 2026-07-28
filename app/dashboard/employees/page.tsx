@@ -19,6 +19,7 @@ import {
   loadEmployeeLookups,
   loadEmployeePayConfig,
 } from "./lookup-utils";
+import { loadDirectoryNetPayContext } from "./directory-net-pay-utils";
 
 export default async function EmployeesPage() {
   const cookieStore = await cookies();
@@ -34,14 +35,23 @@ export default async function EmployeesPage() {
     loadEmployeePayConfig(supabase, tenantId),
   ]);
 
+  const employees = (data as EmployeeRecord[] | null) ?? [];
+  const netPayContext = await loadDirectoryNetPayContext(
+    supabase,
+    tenantId,
+    employees,
+  );
+
   const role = (await getCurrentUserRole()) as AppRole | null;
 
   return (
     <HrPayrollShell sectionTitle="Employee Directory">
       <EmployeesDirectory
-        initialEmployees={(data as EmployeeRecord[] | null) ?? []}
+        initialEmployees={employees}
         initialLookups={lookups}
         initialPayConfig={payConfig}
+        netPayByEmployeeId={netPayContext.netPayByEmployeeId}
+        netPayPeriodLabel={netPayContext.periodLabel}
         departmentNameMap={buildDepartmentNameMap(lookups.departments)}
         projectNameMap={buildProjectNameMap(lookups.projects)}
         fetchError={error?.message ?? null}
