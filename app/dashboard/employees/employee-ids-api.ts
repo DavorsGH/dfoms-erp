@@ -3,6 +3,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const EMPLOYEE_ID_ENTITY_TYPE = "EMP";
 export const STAFF_ID_ENTITY_TYPE = "STAFF";
 
+/**
+ * staff_id is plain {tenant_code}#### (e.g. DF0027).
+ * Converts branded generate_next_code('STAFF') output DF-STAFF-0027 → DF0027.
+ * No-op when already plain (or after DB migration 124 is applied).
+ */
+export function toPlainStaffId(code: string): string {
+  const trimmed = code.trim();
+  const branded = /^([A-Z0-9]{2,5})-STAFF-(\d+)$/i.exec(trimmed);
+  if (branded) {
+    return `${branded[1].toUpperCase()}${branded[2]}`;
+  }
+  return trimmed;
+}
+
 async function resolveSessionTenantId(
   supabase: SupabaseClient,
 ): Promise<{ tenantId: string | null; error: string | null }> {
@@ -111,7 +125,7 @@ export async function allocateNewEmployeeCodes(
 
   return {
     employeeId: employeeResult.code,
-    staffId: staffResult.code,
+    staffId: toPlainStaffId(staffResult.code),
     error: null,
   };
 }

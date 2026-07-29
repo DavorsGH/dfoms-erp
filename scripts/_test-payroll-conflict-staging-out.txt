@@ -1,0 +1,24 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+July 2026 totalWorkingDays=27, hire 2026-07-15 days_to_pay=15
+onConflict payroll_month,employee_id => OK id=f17df18a-e933-48f3-b811-b0d903e2e0bb
+onConflict tenant_id,payroll_month,employee_id => ERROR 42P10: there is no unique or exclusion constraint matching the ON CONFLICT specification
+WARN: staging still has legacy UNIQUE(payroll_month, employee_id) only.
+Apply scripts/125_payroll_processing_tenant_unique.sql on staging (SQL Editor)
+Production already has the tenant-scoped unique (confirmed separately).
+Created test employee {
+  employee_id: 'TEMP-1785196177589',
+  staff_id: 'T177589',
+  date_hired: '2099-07-15',
+  employment_status: 'Active'
+}
+TEST_MONTH totalWorkingDays=27, mid-hire days_to_pay=15
+Falling back to legacy onConflict for pre-migration staging...
+PASS: 22 employees in payroll table; mid-hire days_to_pay=15
+Cleanup done

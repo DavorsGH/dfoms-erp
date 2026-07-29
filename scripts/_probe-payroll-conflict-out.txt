@@ -1,0 +1,24 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+envFile .env.local.backup
+URL https://tvcurcnmasnocwdxzgvz.supabase.co
+DF0026: {
+  employee_id: 'DF-EMP-0004',
+  staff_id: 'DF0026',
+  date_hired: '2026-07-15',
+  employment_status: 'Active',
+  full_name: 'Juan Agbo'
+}
+July processing count: 21 undefined
+Active employees: 22
+onConflict="payroll_month,employee_id" => ERROR: there is no unique or exclusion constraint matching the ON CONFLICT specification / 42P10
+onConflict="tenant_id,payroll_month,employee_id" => OK id=ce2d80f1-22cd-4a52-9577-480f7c99e162
+onConflict="tenant_id,employee_id,payroll_month" => OK id=undefined
+cleanup deleted 1 ok
+pg_indexes via API: Could not find the table 'public.pg_indexes' in the schema cache

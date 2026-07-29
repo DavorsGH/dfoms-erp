@@ -4,6 +4,14 @@ export type SendSmsResult =
   | { ok: true; id: string | null }
   | { ok: false; error: string };
 
+type HubtelSendResponse = {
+  status?: unknown;
+  statusDescription?: unknown;
+  MessageId?: unknown;
+  messageId?: unknown;
+  Data?: { MessageId?: unknown };
+};
+
 /**
  * Minimal Hubtel Programmable SMS sender.
  * Env: HUBTEL_CLIENT_ID, HUBTEL_CLIENT_SECRET, HUBTEL_SMS_FROM
@@ -37,7 +45,7 @@ export async function sendHubtelSms(options: {
   const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
   try {
-    const response = await fetch("https://smsc.hubtel.com/v1/messages/send", {
+    const response = await fetch("https://sms.hubtel.com/v1/messages/send", {
       method: "POST",
       headers: {
         Authorization: `Basic ${auth}`,
@@ -51,32 +59,51 @@ export async function sendHubtelSms(options: {
     });
 
     const bodyText = await response.text().catch(() => "");
-    if (!response.ok) {
+
+    let parsed: HubtelSendResponse | null = null;
+    try {
+      parsed = JSON.parse(bodyText) as HubtelSendResponse;
+    } catch {
+      parsed = null;
+    }
+
+    const hubtelStatus =
+      typeof parsed?.status === "number"
+        ? parsed.status
+        : typeof parsed?.status === "string" &&
+            /^\d+$/.test(parsed.status.trim())
+          ? Number(parsed.status.trim())
+          : null;
+
+    const statusDescription =
+      typeof parsed?.statusDescription === "string" &&
+      parsed.statusDescription.trim()
+        ? parsed.statusDescription.trim()
+        : null;
+
+    // Hubtel can return HTTP 2xx with body status !== 0 (e.g. 100 invalid request).
+    const httpOk = response.status === 200 || response.status === 201;
+    if (!httpOk || hubtelStatus !== 0) {
       return {
         ok: false,
-        error: bodyText || `Hubtel SMS failed (${response.status}).`,
+        error:
+          statusDescription ||
+          bodyText ||
+          `Hubtel SMS failed (HTTP ${response.status}, status=${hubtelStatus ?? "n/a"}).`,
       };
     }
 
+    const candidate =
+      parsed?.MessageId ??
+      parsed?.messageId ??
+      parsed?.Data?.MessageId ??
+      null;
+
     let id: string | null = null;
-    try {
-      const parsed = JSON.parse(bodyText) as {
-        MessageId?: unknown;
-        messageId?: unknown;
-        Data?: { MessageId?: unknown };
-      };
-      const candidate =
-        parsed.MessageId ??
-        parsed.messageId ??
-        parsed.Data?.MessageId ??
-        null;
-      if (typeof candidate === "string" && candidate.trim()) {
-        id = candidate.trim();
-      } else if (typeof candidate === "number") {
-        id = String(candidate);
-      }
-    } catch {
-      id = null;
+    if (typeof candidate === "string" && candidate.trim()) {
+      id = candidate.trim();
+    } else if (typeof candidate === "number") {
+      id = String(candidate);
     }
 
     return { ok: true, id };

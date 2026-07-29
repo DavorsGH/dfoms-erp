@@ -9,18 +9,48 @@ import {
 } from "../hr-payroll/hr-register-utils";
 import type { LeaveManagementEntry } from "../hr-payroll/leave-management-utils";
 import type { LoanRegisterEntry } from "../hr-payroll/loan-register-utils";
-import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
+import {
+  buildManualInputsFromRow,
+  calculateLoanRepaymentForEmployee,
+  calculatePayrollRow,
+  countAbsencesForStaff,
+  resolvePayrollPolicyCompensation,
+  sumOvertimeForEmployee,
+  type PayrollAttendanceSource,
+  type PayrollCompensationPolicyConfig,
+  type PayrollEmployeeSource,
+  type PayrollOvertimeSource,
+  type PayrollProcessingRow,
+  type PayrollTaxConfigs,
+} from "../hr-payroll/payroll-processing-utils";
 import {
   formatPeriodLabel,
+  getPeriodEndDate,
   getPeriodStartDate,
   isDateInPayrollMonth,
   isMonthClosed,
+  resolveSelectedPeriod,
   type MonthEndCloseRecord,
 } from "../hr-payroll/payroll-period-utils";
 import { formatReportPeriodLabel } from "./finance-reports-utils";
 
 export type HrReportEmployee = HrEmployee & {
   position?: string | null;
+  shift?: string | null;
+  department?: string | null;
+  basic_salary?: number | null;
+  housing_allowance?: number | null;
+  transport_allowance?: number | null;
+  other_allowances?: number | null;
+};
+
+/** Batch inputs for open-period live recalculation (display-only). */
+export type PayrollSummaryLiveContext = {
+  attendance: PayrollAttendanceSource[];
+  overtime: PayrollOvertimeSource[];
+  loans: LoanRegisterEntry[];
+  taxConfigs: PayrollTaxConfigs;
+  compensationPolicyConfig: PayrollCompensationPolicyConfig;
 };
 
 export type PayrollSummaryRow = {
@@ -170,6 +200,104 @@ export function resolvePayrollSummarySource(
   };
 }
 
+function toPayrollEmployeeSource(
+  employee: HrReportEmployee,
+): PayrollEmployeeSource {
+  return {
+    employee_id: employee.employee_id,
+    staff_id: employee.staff_id,
+    full_name: employee.full_name,
+    employment_type: employee.employment_type,
+    employment_status: employee.employment_status ?? null,
+    date_hired: employee.date_hired ?? null,
+    appointment_end_date: employee.appointment_end_date ?? null,
+    position: employee.position ?? null,
+    shift: employee.shift ?? null,
+    basic_salary: employee.basic_salary ?? null,
+    housing_allowance: employee.housing_allowance ?? null,
+    transport_allowance: employee.transport_allowance ?? null,
+    other_allowances: employee.other_allowances ?? null,
+    department: employee.department ?? null,
+    contract_project: employee.contract_project,
+  };
+}
+
+function summaryRowFromStoredPayroll(
+  row: PayrollProcessingRow,
+  employee: HrReportEmployee | undefined,
+): PayrollSummaryRow {
+  const employerSsnitCost = roundMoney(
+    (Number(row.employer_ssnit) || 0) + (Number(row.tier2) || 0),
+  );
+
+  return {
+    staffId: employee?.staff_id ?? row.employee_id,
+    fullName: employee?.full_name ?? row.employee_id,
+    basicSalary: roundMoney(Number(row.basic_salary) || 0),
+    grossPay: roundMoney(Number(row.gross_pay) || 0),
+    employeeSsnit: roundMoney(Number(row.employee_ssnit) || 0),
+    payeTax: roundMoney(Number(row.paye_tax) || 0),
+    loanRepayment: roundMoney(Number(row.loan_repayment) || 0),
+    totalDeductions: roundMoney(Number(row.total_deductions) || 0),
+    netPay: roundMoney(Number(row.net_pay) || 0),
+    employerSsnitCost,
+  };
+}
+
+function summaryRowFromLivePayroll(
+  row: PayrollProcessingRow,
+  employee: HrReportEmployee,
+  period: ReturnType<typeof resolveSelectedPeriod>,
+  liveContext: PayrollSummaryLiveContext,
+): PayrollSummaryRow {
+  const source = toPayrollEmployeeSource(employee);
+  const policy = resolvePayrollPolicyCompensation(
+    source,
+    liveContext.compensationPolicyConfig,
+    new Date(getPeriodEndDate(period.year, period.month)),
+  );
+  const calculated = calculatePayrollRow(
+    source,
+    period,
+    liveContext.taxConfigs,
+    {
+      absenceCount: countAbsencesForStaff(
+        liveContext.attendance,
+        source.staff_id,
+        period.year,
+        period.month,
+      ),
+      overtimeAmount: sumOvertimeForEmployee(
+        liveContext.overtime,
+        source.employee_id,
+        period.year,
+        period.month,
+      ),
+      loanRepayment: calculateLoanRepaymentForEmployee(
+        liveContext.loans,
+        source.employee_id,
+      ),
+    },
+    buildManualInputsFromRow(row, period.totalWorkingDays),
+    policy,
+  );
+
+  return {
+    staffId: employee.staff_id,
+    fullName: employee.full_name,
+    basicSalary: roundMoney(calculated.basic_salary),
+    grossPay: roundMoney(calculated.gross_pay),
+    employeeSsnit: roundMoney(calculated.employee_ssnit),
+    payeTax: roundMoney(calculated.paye_tax),
+    loanRepayment: roundMoney(calculated.loan_repayment),
+    totalDeductions: roundMoney(calculated.total_deductions),
+    netPay: roundMoney(calculated.net_pay),
+    employerSsnitCost: roundMoney(
+      calculated.employer_ssnit + calculated.tier2,
+    ),
+  };
+}
+
 export function buildMonthlyPayrollSummaryReport(
   year: number,
   month: number,
@@ -177,6 +305,7 @@ export function buildMonthlyPayrollSummaryReport(
   monthEndCloseRecords: MonthEndCloseRecord[],
   payrollHistory: PayrollProcessingRow[],
   payrollProcessing: PayrollProcessingRow[],
+  liveContext: PayrollSummaryLiveContext | null = null,
 ): PayrollSummaryReport {
   const { rows: payrollRows, isDraft } = resolvePayrollSummarySource(
     year,
@@ -186,26 +315,17 @@ export function buildMonthlyPayrollSummaryReport(
     payrollProcessing,
   );
   const employeeMap = getEmployeeMap(employees);
+  const period = resolveSelectedPeriod(year, month);
+  const useLiveRecalc = isDraft && liveContext != null;
 
   const rows = payrollRows
     .map((row) => {
       const employee = employeeMap.get(row.employee_id);
-      const employerSsnitCost = roundMoney(
-        (Number(row.employer_ssnit) || 0) + (Number(row.tier2) || 0),
-      );
-
-      return {
-        staffId: employee?.staff_id ?? row.employee_id,
-        fullName: employee?.full_name ?? row.employee_id,
-        basicSalary: roundMoney(Number(row.basic_salary) || 0),
-        grossPay: roundMoney(Number(row.gross_pay) || 0),
-        employeeSsnit: roundMoney(Number(row.employee_ssnit) || 0),
-        payeTax: roundMoney(Number(row.paye_tax) || 0),
-        loanRepayment: roundMoney(Number(row.loan_repayment) || 0),
-        totalDeductions: roundMoney(Number(row.total_deductions) || 0),
-        netPay: roundMoney(Number(row.net_pay) || 0),
-        employerSsnitCost,
-      };
+      if (useLiveRecalc && employee) {
+        return summaryRowFromLivePayroll(row, employee, period, liveContext);
+      }
+      // Locked history (or missing employee for open month): stored snapshot fields.
+      return summaryRowFromStoredPayroll(row, employee);
     })
     .sort((left, right) => left.staffId.localeCompare(right.staffId));
 

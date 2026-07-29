@@ -1,0 +1,171 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm 
+help npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+=== inventory_balance_config ===
+{
+  go_live_date: '2026-01-01',
+  opening_inventory_value: 0,
+  created_at: '2026-07-14T11:50:24.50935+00:00'
+}
+
+=== raw_materials ===
+
+=== finished_products ===
+{
+  name: 'Soda Water',
+  id: 'b870c0dd-8a2d-4178-9048-62997bef42a1',
+  stock: 19,
+  avgCost: 2,
+  value: 38
+}
+
+=== finishedProductAverageCosts ===
+[
+  {
+    product_id: 'b870c0dd-8a2d-4178-9048-62997bef42a1',
+    average_cost: 2
+  }
+]
+
+live calculateTotalInventoryValue = 38
+calculateInventoryByMonth[0..6,FY]: [
+  38, 38, 38, 38,
+  38, 38, 38,  0
+]
+calculateInventoryOpeningEquityByMonth[0..6,FY]: [
+  0, 0, 0, 0,
+  0, 0, 0, 0
+]
+
+=== product_purchases ===
+[]
+
+=== raw_material_purchases ===
+[]
+
+finished_products raw count: 1
+[
+  {
+    "id": "b870c0dd-8a2d-4178-9048-62997bef42a1",
+    "product_code": "CAANT-FP-0001",
+    "product_name": "Soda Water",
+    "unit_of_measure": "liters",
+    "current_stock": 19,
+    "standard_selling_price": 5,
+    "created_at": "2026-07-24T14:05:20.285706+00:00",
+    "updated_at": "2026-07-24T14:18:44.933455+00:00",
+    "is_archived": false,
+    "tenant_id": "12df4ee6-3fd1-459f-8d5c-792b5d5b3821",
+    "sourcing_type": "purchased",
+    "supplier_id": "979379af-dc2a-473a-8608-b63665bd67f8"
+  }
+]
+
+=== Live gaps ===
+May {
+  totalAssets: 38,
+  totalLiabilitiesAndEquity: 0,
+  difference: 38,
+  isBalanced: false
+}
+June {
+  totalAssets: 24603.21,
+  totalLiabilitiesAndEquity: 24565.21,
+  difference: 38,
+  isBalanced: false
+}
+July {
+  totalAssets: 60237.43,
+  totalLiabilitiesAndEquity: 60239.43,
+  difference: -2,
+  isBalanced: false
+}
+
+=== July line contribution (signed: assets +, L/E -) ===
+assets	cash	-40	signed_to_gap=-40
+assets	accounts-receivable	54013.91	signed_to_gap=54013.91
+assets	fixed-assets-net	6225.52	signed_to_gap=6225.52
+assets	inventory	38	signed_to_gap=38
+liabilities	accrued-wages-payable	543.03	signed_to_gap=-543.03
+liabilities	net-vat-payable	6001.54	signed_to_gap=-6001.54
+liabilities	paye-payable	275.03	signed_to_gap=-275.03
+liabilities	ssnit-payable	649.6	signed_to_gap=-649.6
+equity	share-capital	30033.92	signed_to_gap=-30033.92
+equity	retained-earnings	22736.31	signed_to_gap=-22736.31
+rebuild gap -2
+
+=== Gap bridge JuneΓåÆJuly (how each line changed the gap) ===
+cash: ╬ö=-40 effect_on_gap=-40 (assets)
+accounts-receivable: ╬ö=36009.27 effect_on_gap=36009.27 (assets)
+fixed-assets-net: ╬ö=-335.05 effect_on_gap=-335.05 (assets)
+net-vat-payable: ╬ö=6001.54 effect_on_gap=-6001.54 (liabilities)
+share-capital: ╬ö=5579.4 effect_on_gap=-5579.4 (equity)
+retained-earnings: ╬ö=24093.28 effect_on_gap=-24093.28 (equity)
+sum effects -40 actual ╬ögap -40
+
+=== If inventory asset forced to 0 ===
+June no-inv {
+  totalAssets: 24565.21,
+  totalLiabilitiesAndEquity: 24565.21,
+  difference: 0,
+  isBalanced: true
+}
+July no-inv {
+  totalAssets: 60199.43,
+  totalLiabilitiesAndEquity: 60239.43,
+  difference: -40,
+  isBalanced: false
+}
+
+=== If opening_inventory_value=38 ===
+opening equity months [
+  38, 0, 0, 0,
+   0, 0, 0
+]
+Jan {
+  totalAssets: 38,
+  totalLiabilitiesAndEquity: 38,
+  difference: 0,
+  isBalanced: true
+} openEqAmt 38
+May {
+  totalAssets: 38,
+  totalLiabilitiesAndEquity: 0,
+  difference: 38,
+  isBalanced: false
+} openEqAmt 0
+June {
+  totalAssets: 24603.21,
+  totalLiabilitiesAndEquity: 24565.21,
+  difference: 38,
+  isBalanced: false
+} openEqAmt 0
+July {
+  totalAssets: 60237.43,
+  totalLiabilitiesAndEquity: 60239.43,
+  difference: -2,
+  isBalanced: false
+} openEqAmt 0
+
+=== Amounts exactly 2.00 or -2 ===
+expense Garbage Bag 200 liters   (50pcs per bag) quantity 2 2026-06-09
+expense Hand Gloves   (50 pieces per box) quantity 2 2026-06-09
+expense Nose Mask quantity 2 2026-06-12
+FA Funnel (small) 2 6 2026-07-18
+
+=== Values with >2 decimal raw (string) near payroll/tax ===
+July cash -40
+July RE 22736.31
+July FA 6225.52
+July AW 543.03
+
+=== Cash June vs July ===
+cash[5] 0
+cash[6] -40
+
+share-capital months [ 0, 0, 0, 0, 0, 24454.52, 30033.92 ]

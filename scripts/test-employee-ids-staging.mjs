@@ -68,13 +68,18 @@ async function createEmployee(tenantId, expectedEmpPrefix, expectedStaffPrefix) 
   );
   if (empErr || !empCode) throw new Error(empErr?.message ?? "EMP allocate failed");
 
-  const { data: staffCode, error: staffErr } = await supabase.rpc(
+  const { data: staffCodeRaw, error: staffErr } = await supabase.rpc(
     "generate_next_code",
     { p_tenant_id: tenantId, p_entity_type: "STAFF", p_padding: 4 },
   );
-  if (staffErr || !staffCode) {
+  if (staffErr || !staffCodeRaw) {
     throw new Error(staffErr?.message ?? "STAFF allocate failed");
   }
+  // Mirror employee-ids-api.toPlainStaffId (app create path)
+  const branded = /^([A-Z0-9]{2,5})-STAFF-(\d+)$/i.exec(String(staffCodeRaw).trim());
+  const staffCode = branded
+    ? `${branded[1].toUpperCase()}${branded[2]}`
+    : String(staffCodeRaw).trim();
 
   assert(
     new RegExp(`^${expectedEmpPrefix}\\d{4}$`).test(empCode),
@@ -82,7 +87,7 @@ async function createEmployee(tenantId, expectedEmpPrefix, expectedStaffPrefix) 
   );
   assert(
     new RegExp(`^${expectedStaffPrefix}\\d{4}$`).test(staffCode),
-    `Expected ${expectedStaffPrefix}####, got ${staffCode}`,
+    `Expected ${expectedStaffPrefix}####, got ${staffCode} (raw ${staffCodeRaw})`,
   );
 
   const payload = {
@@ -116,19 +121,23 @@ const beforeDavors = await snapshotEmployees(DAVORS);
 const beforeCaanta = await snapshotEmployees(CAANTA);
 console.log("Prior employees — Davors:", beforeDavors.length, "Caanta:", beforeCaanta.length);
 
-const davors = await createEmployee(DAVORS, "DF-EMP-", "DF-STAFF-");
+const davors = await createEmployee(DAVORS, "DF-EMP-", "DF");
 console.log("PASS Davors created:", davors.employee_id, davors.staff_id);
 
-const caanta = await createEmployee(CAANTA, "CAN-EMP-", "CAN-STAFF-");
+const caanta = await createEmployee(CAANTA, "CAN-EMP-", "CAN");
 console.log("PASS Caanta created:", caanta.employee_id, caanta.staff_id);
 
 assert(
-  !davors.staff_id.startsWith("DF0") && davors.staff_id.includes("STAFF"),
-  "Davors staff_id should be branded STAFF format, not legacy DF####",
+  /^DF\d{4}$/.test(davors.staff_id) && !davors.staff_id.includes("STAFF"),
+  "Davors staff_id should be plain DF#### (no -STAFF- segment)",
 );
 assert(
-  caanta.staff_id.startsWith("CAN-STAFF-"),
-  "Caanta must not get DF staff_id prefix",
+  /^CAN\d{4}$/.test(caanta.staff_id) && !caanta.staff_id.includes("STAFF"),
+  "Caanta staff_id should be plain CAN#### (no -STAFF- segment)",
+);
+assert(
+  /^DF-EMP-\d{4}$/.test(davors.employee_id),
+  "Davors employee_id must remain DF-EMP-####",
 );
 
 // Prior rows unchanged

@@ -28,6 +28,7 @@ import {
   formatContractExpiryLabel,
   formatHeadcountPeriodLabel,
   type HrReportEmployee,
+  type PayrollSummaryLiveContext,
 } from "./hr-reports-utils";
 import {
   FINANCE_REPORT_PRINT_AREA_ID,
@@ -102,8 +103,9 @@ function ReportPanel({
 function DraftBanner() {
   return (
     <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-      DRAFT — This period is not yet locked. Figures are taken from open
-      Payroll Processing and may change before lock.
+      DRAFT — This period is not yet locked. Figures are live-recalculated from
+      current Salary Settings using open Payroll Processing manuals (days to
+      pay, arrears, etc.) and may still change before lock.
     </div>
   );
 }
@@ -113,6 +115,7 @@ export function MonthlyPayrollSummaryReport({
   initialPayrollHistory,
   initialPayrollProcessing,
   initialMonthEndCloseRecords,
+  initialLiveContext,
   availableYears,
   fetchError,
 }: {
@@ -120,6 +123,7 @@ export function MonthlyPayrollSummaryReport({
   initialPayrollHistory: PayrollProcessingRow[];
   initialPayrollProcessing: PayrollProcessingRow[];
   initialMonthEndCloseRecords: MonthEndCloseRecord[];
+  initialLiveContext: PayrollSummaryLiveContext;
   availableYears: number[];
   fetchError: string | null;
 }) {
@@ -135,6 +139,7 @@ export function MonthlyPayrollSummaryReport({
         initialMonthEndCloseRecords,
         initialPayrollHistory,
         initialPayrollProcessing,
+        initialLiveContext,
       ),
     [
       year,
@@ -143,6 +148,7 @@ export function MonthlyPayrollSummaryReport({
       initialMonthEndCloseRecords,
       initialPayrollHistory,
       initialPayrollProcessing,
+      initialLiveContext,
     ],
   );
 

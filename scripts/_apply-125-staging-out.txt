@@ -1,0 +1,45 @@
+﻿node : C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source 
+Code\dfoms-erp-app\node_modules\pg-protocol\dist\parser.js:305
+At C:\Users\HP\AppData\Local\Temp\ps-script-f3949146-24f0-4490-b99c-dfddd7efdd96.ps1:108 char:1
++ node scripts/apply-125-staging.mjs 2>&1 | Out-File -FilePath scripts/ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\HP\One...t\parser.js:305:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+        : new messages_1.DatabaseError(messageValue, LATEINIT_LENGTH, name);
+          ^
+
+error: password authentication failed for user "postgres"
+    at parseErrorMessage (C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source 
+Code\dfoms-erp-app\node_modules\pg-protocol\dist\parser.js:305:11)
+    at Parser.handlePacket (C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source 
+Code\dfoms-erp-app\node_modules\pg-protocol\dist\parser.js:143:27)
+    at Parser.parse (C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source 
+Code\dfoms-erp-app\node_modules\pg-protocol\dist\parser.js:37:38)
+    at TLSSocket.<anonymous> (C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source 
+Code\dfoms-erp-app\node_modules\pg-protocol\dist\index.js:12:42)
+    at TLSSocket.emit (node:events:509:20)
+    at addChunk (node:internal/streams/readable:568:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)
+    at Readable.push (node:internal/streams/readable:399:5)
+    at TLSWrap.onStreamRead (node:internal/stream_base_commons:189:23) {
+  length: 71,
+  severity: 'FATAL',
+  code: '28P01',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: undefined,
+  line: undefined,
+  routine: undefined
+}
+
+Node.js v26.5.0
