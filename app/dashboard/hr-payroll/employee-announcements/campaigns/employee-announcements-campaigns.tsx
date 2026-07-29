@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   EMPLOYMENT_TYPE_OPTIONS,
   SHIFT_OPTIONS,
@@ -12,7 +12,6 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../../../scrollable-table";
 import {
-  AUDIENCE_TYPE_OPTIONS,
   EMPLOYEE_ANNOUNCEMENT_CHANNELS,
   EMPLOYEE_ANNOUNCEMENT_STATUSES,
   formatAnnouncementChannelLabel,
@@ -29,6 +28,7 @@ import {
   formatChannelLabel,
   type EmployeeMessageTemplateRow,
 } from "@/utils/employee-message-templates-types";
+import { substituteTemplatePlaceholders } from "@/utils/message-template-render";
 
 export type AnnouncementEmployeeOption = {
   employee_id: string;
@@ -51,7 +51,7 @@ type EmployeeAnnouncementsCampaignsProps = {
 };
 
 type ContentMode = "template" | "adhoc";
-type AudienceType = EmployeeAnnouncementAudienceFilter["type"];
+type AudienceMode = "all" | "filtered";
 
 type FormState = {
   name: string;
@@ -60,12 +60,38 @@ type FormState = {
   subject: string;
   body: string;
   channels: EmployeeAnnouncementChannel[];
-  audienceType: AudienceType;
-  positionValue: string;
-  shiftValue: string;
-  employmentTypeValue: string;
+  audienceMode: AudienceMode;
+  positions: string[];
+  shifts: string[];
+  employmentTypes: string[];
   individualIds: string[];
+  individualSearch: string;
   lockedTemplateName: string | null;
+};
+
+type AnnouncementRecipientDetail = {
+  id: string;
+  employee_id: string;
+  channel: string;
+  status: string;
+  sent_at: string | null;
+  error_detail: string | null;
+  employee_name: string;
+  staff_id: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+type AnnouncementDetailPayload = {
+  recipients: AnnouncementRecipientDetail[];
+  content: {
+    template_name: string | null;
+    subject: string | null;
+    body: string;
+    channels: string[];
+  } | null;
+  sample_variables: Record<string, string> | null;
+  error?: string;
 };
 
 const emptyForm: FormState = {
@@ -75,11 +101,12 @@ const emptyForm: FormState = {
   subject: "",
   body: "",
   channels: ["email"],
-  audienceType: "all",
-  positionValue: "",
-  shiftValue: "",
-  employmentTypeValue: "",
+  audienceMode: "all",
+  positions: [],
+  shifts: [],
+  employmentTypes: [],
   individualIds: [],
+  individualSearch: "",
   lockedTemplateName: null,
 };
 
@@ -96,6 +123,23 @@ function formatCreatedAt(value: string): string {
     month: "short",
     year: "numeric",
   });
+}
+
+function formatSentAt(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatRecipientStatus(status: string): string {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function Badge({
@@ -133,26 +177,42 @@ function statusBadgeTone(
   return "amber";
 }
 
+function channelBadgeTone(
+  channel: string,
+): "blue" | "emerald" | "violet" | "slate" {
+  if (channel === "sms") return "emerald";
+  if (channel === "email") return "blue";
+  if (channel === "in_app") return "violet";
+  return "slate";
+}
+
+function recipientStatusBadgeTone(
+  status: string,
+): "emerald" | "red" | "amber" | "slate" {
+  if (status === "sent") return "emerald";
+  if (status === "failed") return "red";
+  if (status.startsWith("skipped_")) return "amber";
+  return "slate";
+}
+
+function toggleListValue(list: string[], value: string): string[] {
+  if (list.includes(value)) {
+    return list.filter((item) => item !== value);
+  }
+  return [...list, value];
+}
+
 function audienceFromForm(form: FormState): EmployeeAnnouncementAudienceFilter {
-  if (form.audienceType === "position") {
-    return { type: "position", value: form.positionValue.trim() };
+  if (form.audienceMode === "all") {
+    return { type: "all" };
   }
-  if (form.audienceType === "shift") {
-    return { type: "shift", value: form.shiftValue };
-  }
-  if (form.audienceType === "employment_type") {
-    return { type: "employment_type", value: form.employmentTypeValue };
-  }
-  if (form.audienceType === "individual") {
-    return {
-      type: "individual",
-      value:
-        form.individualIds.length === 1
-          ? form.individualIds[0]!
-          : form.individualIds,
-    };
-  }
-  return { type: "all" };
+  return {
+    type: "filtered",
+    positions: form.positions,
+    shifts: form.shifts,
+    employment_types: form.employmentTypes,
+    employee_ids: form.individualIds,
+  };
 }
 
 function formFromAnnouncement(
@@ -170,33 +230,18 @@ function formFromAnnouncement(
     lockedTemplateName: row.employee_message_templates?.name ?? null,
   };
 
-  if (filter.type === "position") {
+  if (filter.type === "filtered") {
     return {
       ...base,
-      audienceType: "position",
-      positionValue: filter.value,
+      audienceMode: "filtered",
+      positions: filter.positions,
+      shifts: filter.shifts,
+      employmentTypes: filter.employment_types,
+      individualIds: filter.employee_ids,
     };
   }
-  if (filter.type === "shift") {
-    return { ...base, audienceType: "shift", shiftValue: filter.value };
-  }
-  if (filter.type === "employment_type") {
-    return {
-      ...base,
-      audienceType: "employment_type",
-      employmentTypeValue: filter.value,
-    };
-  }
-  if (filter.type === "individual") {
-    return {
-      ...base,
-      audienceType: "individual",
-      individualIds: Array.isArray(filter.value)
-        ? filter.value
-        : [filter.value],
-    };
-  }
-  return { ...base, audienceType: "all" };
+
+  return { ...base, audienceMode: "all" };
 }
 
 function toggleChannel(
@@ -208,6 +253,60 @@ function toggleChannel(
   }
   return EMPLOYEE_ANNOUNCEMENT_CHANNELS.filter(
     (item) => item === channel || current.includes(item),
+  );
+}
+
+function AnnouncementMessagePreview({
+  content,
+  sampleVariables,
+}: {
+  content: NonNullable<AnnouncementDetailPayload["content"]>;
+  sampleVariables: Record<string, string> | null;
+}) {
+  const vars = sampleVariables ?? {
+    employee_name: "Employee Name",
+    staff_id: "DF0000",
+    employee_id: "EMP0000",
+  };
+
+  const resolvedSubject = content.subject
+    ? substituteTemplatePlaceholders(content.subject, vars)
+    : null;
+  const resolvedBody = content.body
+    ? substituteTemplatePlaceholders(content.body, vars)
+    : "";
+
+  return (
+    <div>
+      <h5 className="mb-2 text-sm font-semibold text-[#0f2744]">Message</h5>
+      <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+        {content.template_name ? (
+          <p className="text-xs text-slate-500">
+            Template: {content.template_name}
+          </p>
+        ) : null}
+        {resolvedSubject ? (
+          <p className="text-sm">
+            <span className="font-medium text-slate-700">Subject: </span>
+            <span className="text-slate-900">{resolvedSubject}</span>
+          </p>
+        ) : null}
+        {resolvedBody ? (
+          <div className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-800 whitespace-pre-wrap">
+            {resolvedBody}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500 italic">No message body.</p>
+        )}
+        <p className="text-xs text-slate-400">
+          Placeholders resolved using{" "}
+          {sampleVariables
+            ? "a real recipient from this send"
+            : "sample values (no recipients yet)"}
+          .
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -236,6 +335,43 @@ export default function EmployeeAnnouncementsCampaigns({
   );
   const [error, setError] = useState<string | null>(fetchError);
   const [statusFilter, setStatusFilter] = useState("");
+  const [viewDetail, setViewDetail] = useState<AnnouncementDetailPayload | null>(
+    null,
+  );
+  const [viewDetailLoading, setViewDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (!viewOnly || !editingId) {
+      setViewDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+    setViewDetailLoading(true);
+
+    fetch(`/api/employee-announcements/${editingId}/recipients`)
+      .then((response) => response.json())
+      .then((payload: AnnouncementDetailPayload) => {
+        if (cancelled) return;
+        setViewDetail(payload);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setViewDetail({
+          recipients: [],
+          content: null,
+          sample_variables: null,
+          error: "Failed to load announcement details.",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setViewDetailLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewOnly, editingId]);
 
   const editingAnnouncement = useMemo(
     () =>
@@ -252,6 +388,26 @@ export default function EmployeeAnnouncementsCampaigns({
 
   const showSubjectField =
     form.contentMode === "adhoc" && form.channels.includes("email");
+
+  const individualSearchMatches = useMemo(() => {
+    const q = form.individualSearch.trim().toLowerCase();
+    if (!q) return [];
+    return employees
+      .filter((employee) => {
+        if (form.individualIds.includes(employee.employee_id)) return false;
+        const hay = `${employee.full_name} ${employee.staff_id} ${employee.employee_id}`.toLowerCase();
+        return hay.includes(q);
+      })
+      .slice(0, 8);
+  }, [employees, form.individualIds, form.individualSearch]);
+
+  const selectedIndividuals = useMemo(
+    () =>
+      form.individualIds
+        .map((id) => employees.find((e) => e.employee_id === id))
+        .filter(Boolean) as AnnouncementEmployeeOption[],
+    [employees, form.individualIds],
+  );
 
   async function refreshAnnouncements() {
     const params = new URLSearchParams();
@@ -703,147 +859,323 @@ export default function EmployeeAnnouncementsCampaigns({
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Audience
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-slate-700">Audience</p>
+              <div className="flex flex-wrap gap-4">
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="radio"
+                    name="audienceMode"
+                    disabled={viewOnly}
+                    checked={form.audienceMode === "all"}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        audienceMode: "all",
+                        positions: [],
+                        shifts: [],
+                        employmentTypes: [],
+                        individualIds: [],
+                        individualSearch: "",
+                      }))
+                    }
+                  />
+                  All employees
                 </label>
-                <select
-                  disabled={viewOnly}
-                  value={form.audienceType}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      audienceType: event.target.value as AudienceType,
-                    }))
-                  }
-                  className={inputClassName}
-                >
-                  {AUDIENCE_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="radio"
+                    name="audienceMode"
+                    disabled={viewOnly}
+                    checked={form.audienceMode === "filtered"}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        audienceMode: "filtered",
+                      }))
+                    }
+                  />
+                  Filtered (union of criteria + named people)
+                </label>
               </div>
 
-              {form.audienceType === "position" ? (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Position
-                  </label>
-                  <select
-                    required
-                    disabled={viewOnly}
-                    value={form.positionValue}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        positionValue: event.target.value,
-                      }))
-                    }
-                    className={inputClassName}
-                  >
-                    <option value="">Select position</option>
-                    {positions.map((position) => (
-                      <option key={position.id} value={position.name}>
-                        {position.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-
-              {form.audienceType === "shift" ? (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Shift
-                  </label>
-                  <select
-                    required
-                    disabled={viewOnly}
-                    value={form.shiftValue}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        shiftValue: event.target.value,
-                      }))
-                    }
-                    className={inputClassName}
-                  >
-                    <option value="">Select shift</option>
-                    {SHIFT_OPTIONS.map((shift) => (
-                      <option key={shift} value={shift}>
-                        {shift}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-
-              {form.audienceType === "employment_type" ? (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Employment type
-                  </label>
-                  <select
-                    required
-                    disabled={viewOnly}
-                    value={form.employmentTypeValue}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        employmentTypeValue: event.target.value,
-                      }))
-                    }
-                    className={inputClassName}
-                  >
-                    <option value="">Select type</option>
-                    {EMPLOYMENT_TYPE_OPTIONS.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-
-              {form.audienceType === "individual" ? (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Employees
-                  </label>
-                  <select
-                    multiple
-                    required
-                    disabled={viewOnly}
-                    value={form.individualIds}
-                    onChange={(event) => {
-                      const selected = Array.from(
-                        event.target.selectedOptions,
-                      ).map((option) => option.value);
-                      setForm((current) => ({
-                        ...current,
-                        individualIds: selected,
-                      }));
-                    }}
-                    className={`${inputClassName} min-h-36`}
-                  >
-                    {employees.map((employee) => (
-                      <option
-                        key={employee.employee_id}
-                        value={employee.employee_id}
-                      >
-                        {employee.staff_id} — {employee.full_name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Hold Ctrl/Cmd to select multiple employees.
+              {form.audienceMode === "filtered" ? (
+                <div className="space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs text-slate-500">
+                    Recipients are the union of everyone matching any selected
+                    position, shift, or employment type, plus anyone added by
+                    name — duplicates are removed automatically.
                   </p>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <fieldset>
+                      <legend className="mb-2 text-sm font-medium text-slate-700">
+                        Positions
+                      </legend>
+                      <div className="max-h-40 space-y-1 overflow-auto rounded border border-slate-200 bg-white p-2">
+                        {positions.length === 0 ? (
+                          <p className="text-xs text-slate-500">
+                            No positions configured.
+                          </p>
+                        ) : (
+                          positions.map((position) => (
+                            <label
+                              key={position.id}
+                              className="flex items-center gap-2 text-sm text-slate-700"
+                            >
+                              <input
+                                type="checkbox"
+                                disabled={viewOnly}
+                                checked={form.positions.includes(position.name)}
+                                onChange={() =>
+                                  setForm((current) => ({
+                                    ...current,
+                                    positions: toggleListValue(
+                                      current.positions,
+                                      position.name,
+                                    ),
+                                  }))
+                                }
+                              />
+                              {position.name}
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </fieldset>
+
+                    <fieldset>
+                      <legend className="mb-2 text-sm font-medium text-slate-700">
+                        Shifts
+                      </legend>
+                      <div className="max-h-40 space-y-1 overflow-auto rounded border border-slate-200 bg-white p-2">
+                        {SHIFT_OPTIONS.map((shift) => (
+                          <label
+                            key={shift}
+                            className="flex items-center gap-2 text-sm text-slate-700"
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={viewOnly}
+                              checked={form.shifts.includes(shift)}
+                              onChange={() =>
+                                setForm((current) => ({
+                                  ...current,
+                                  shifts: toggleListValue(
+                                    current.shifts,
+                                    shift,
+                                  ),
+                                }))
+                              }
+                            />
+                            {shift}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+
+                    <fieldset>
+                      <legend className="mb-2 text-sm font-medium text-slate-700">
+                        Employment types
+                      </legend>
+                      <div className="max-h-40 space-y-1 overflow-auto rounded border border-slate-200 bg-white p-2">
+                        {EMPLOYMENT_TYPE_OPTIONS.map((type) => (
+                          <label
+                            key={type}
+                            className="flex items-center gap-2 text-sm text-slate-700"
+                          >
+                            <input
+                              type="checkbox"
+                              disabled={viewOnly}
+                              checked={form.employmentTypes.includes(type)}
+                              onChange={() =>
+                                setForm((current) => ({
+                                  ...current,
+                                  employmentTypes: toggleListValue(
+                                    current.employmentTypes,
+                                    type,
+                                  ),
+                                }))
+                              }
+                            />
+                            {type}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Named individuals
+                    </label>
+                    {!viewOnly ? (
+                      <div className="space-y-2">
+                        <input
+                          value={form.individualSearch}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              individualSearch: event.target.value,
+                            }))
+                          }
+                          className={inputClassName}
+                          placeholder="Search by name or staff ID…"
+                        />
+                        {individualSearchMatches.length > 0 ? (
+                          <ul className="rounded border border-slate-200 bg-white">
+                            {individualSearchMatches.map((employee) => (
+                              <li key={employee.employee_id}>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                  onClick={() =>
+                                    setForm((current) => ({
+                                      ...current,
+                                      individualIds: [
+                                        ...current.individualIds,
+                                        employee.employee_id,
+                                      ],
+                                      individualSearch: "",
+                                    }))
+                                  }
+                                >
+                                  <span className="font-medium text-slate-900">
+                                    {employee.full_name}
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    {employee.staff_id}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {selectedIndividuals.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {selectedIndividuals.map((employee) => (
+                          <span
+                            key={employee.employee_id}
+                            className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-800 ring-1 ring-slate-200"
+                          >
+                            {employee.full_name}
+                            {!viewOnly ? (
+                              <button
+                                type="button"
+                                className="ml-1 text-slate-500 hover:text-red-600"
+                                onClick={() =>
+                                  setForm((current) => ({
+                                    ...current,
+                                    individualIds: current.individualIds.filter(
+                                      (id) => id !== employee.employee_id,
+                                    ),
+                                  }))
+                                }
+                                aria-label={`Remove ${employee.full_name}`}
+                              >
+                                ×
+                              </button>
+                            ) : null}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">
+                        No named individuals added.
+                      </p>
+                    )}
+                  </div>
                 </div>
               ) : null}
             </div>
+
+            {viewOnly && editingAnnouncement ? (
+              <div className="space-y-5 border-t border-slate-200 pt-4">
+                <div>
+                  <h5 className="mb-2 text-sm font-semibold text-[#0f2744]">
+                    Recipients
+                  </h5>
+                  {viewDetailLoading ? (
+                    <p className="text-sm text-slate-500">Loading recipients…</p>
+                  ) : viewDetail?.error ? (
+                    <p className="text-sm text-red-600">{viewDetail.error}</p>
+                  ) : isDraftStatus(editingAnnouncement.status) &&
+                    (!viewDetail?.recipients ||
+                      viewDetail.recipients.length === 0) ? (
+                    <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                      Recipients will be shown once this announcement is sent.
+                    </p>
+                  ) : viewDetail?.recipients &&
+                    viewDetail.recipients.length > 0 ? (
+                    <div className="max-h-64 overflow-auto rounded-md border border-slate-200">
+                      <table className="min-w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-slate-100 text-xs font-medium uppercase tracking-wider text-slate-600">
+                          <tr>
+                            <th className="px-3 py-2">Employee</th>
+                            <th className="px-3 py-2">Channel</th>
+                            <th className="px-3 py-2">Status</th>
+                            <th className="px-3 py-2">Sent At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {viewDetail.recipients.map((r, i) => (
+                            <tr
+                              key={r.id}
+                              className={
+                                i % 2 === 1 ? "bg-slate-50" : "bg-white"
+                              }
+                            >
+                              <td className="px-3 py-2 font-medium text-slate-900">
+                                {r.employee_name}
+                                {r.staff_id ? (
+                                  <span className="ml-2 text-xs font-normal text-slate-500">
+                                    {r.staff_id}
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="px-3 py-2">
+                                <Badge
+                                  label={formatAnnouncementChannelLabel(
+                                    r.channel,
+                                  )}
+                                  tone={channelBadgeTone(r.channel)}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Badge
+                                  label={formatRecipientStatus(r.status)}
+                                  tone={recipientStatusBadgeTone(r.status)}
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-slate-600">
+                                {formatSentAt(r.sent_at)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                      No recipients recorded.
+                    </p>
+                  )}
+                </div>
+
+                {viewDetail?.content ? (
+                  <AnnouncementMessagePreview
+                    content={viewDetail.content}
+                    sampleVariables={viewDetail.sample_variables}
+                  />
+                ) : viewDetailLoading ? null : (
+                  <p className="text-sm text-slate-500">
+                    Message content not available.
+                  </p>
+                )}
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-3">
               {!viewOnly ? (
@@ -884,12 +1216,16 @@ export default function EmployeeAnnouncementsCampaigns({
                     : "Continue Sending"}
                 </button>
               ) : null}
-              {viewOnly && editingAnnouncement ? (
+              {viewOnly && editingAnnouncement?.status === "sent" ? (
                 <p className="text-sm text-slate-600">
-                  Status:{" "}
-                  {formatAnnouncementStatusLabel(editingAnnouncement.status)}.
-                  Draft announcements can be edited or deleted; others are
-                  view-only.
+                  Sent — {editingAnnouncement.total_recipients} recipient
+                  {editingAnnouncement.total_recipients === 1 ? "" : "s"}{" "}
+                  recorded.
+                </p>
+              ) : null}
+              {viewOnly && editingAnnouncement?.status === "sending" ? (
+                <p className="text-sm text-slate-600">
+                  Sending in progress. Use Continue Sending for the next batch.
                 </p>
               ) : null}
               <button

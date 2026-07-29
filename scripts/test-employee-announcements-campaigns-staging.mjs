@@ -119,8 +119,58 @@ const { data: anyEmployee, error: empError } = await admin
 assert(!empError, empError?.message);
 assert(anyEmployee?.employee_id, "need at least one staging employee for individual filter");
 audiences.push({ type: "individual", value: anyEmployee.employee_id });
+audiences.push({
+  type: "filtered",
+  positions: ["Cleaner"],
+  shifts: ["Morning"],
+  employment_types: [],
+  employee_ids: [anyEmployee.employee_id],
+});
 
 const codes = [];
+
+// Persist filtered OR-union audience and re-read.
+{
+  const code = await nextCode();
+  codes.push(code);
+  const filter = {
+    type: "filtered",
+    positions: ["Cleaner"],
+    shifts: ["Morning"],
+    employment_types: ["Full-Time"],
+    employee_ids: [anyEmployee.employee_id],
+  };
+  const { data, error } = await admin
+    .from("employee_announcements")
+    .insert({
+      tenant_id: DAVORS,
+      announcement_code: code,
+      name: `Smoke Filtered Audience ${stamp}`,
+      template_id: null,
+      channels: ["in_app"],
+      subject: null,
+      body: "Filtered union body",
+      audience_filter: filter,
+      status: "draft",
+      total_recipients: 0,
+    })
+    .select("id, audience_filter")
+    .single();
+  assert(!error, `filtered announcement failed: ${error?.message}`);
+  assert(data.audience_filter?.type === "filtered", "filtered type persisted");
+  assert(
+    Array.isArray(data.audience_filter.positions) &&
+      data.audience_filter.positions.includes("Cleaner"),
+    "positions persisted",
+  );
+  assert(
+    Array.isArray(data.audience_filter.employee_ids) &&
+      data.audience_filter.employee_ids.includes(anyEmployee.employee_id),
+    "employee_ids persisted",
+  );
+  createdIds.push(data.id);
+  console.log("OK created filtered OR-union audience announcement");
+}
 
 // 1) Template-based draft
 {

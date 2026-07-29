@@ -124,8 +124,10 @@ CREATE TABLE IF NOT EXISTS public.employee_announcements (
 
 COMMENT ON TABLE public.employee_announcements IS
   'Internal employee announcement sends. Channels may combine email, sms, and in_app. '
-  'audience_filter jsonb: { "type": "all"|"position"|"shift"|"employment_type"|"individual", '
-  '"value": string|string[] }.';
+  'audience_filter jsonb: { "type": "all" } or '
+  '{ "type": "filtered", "positions": string[], "shifts": string[], '
+  '"employment_types": string[], "employee_ids": string[] } (OR-union). '
+  'Legacy single-criterion shapes are still accepted on read.';
 
 COMMENT ON COLUMN public.employee_announcements.announcement_code IS
   'Auto-generated via generate_next_code(tenant_id, ''ANNC'', 4) on save (app-side).';

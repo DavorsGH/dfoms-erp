@@ -403,6 +403,111 @@ async function main() {
       console.log(`OK ${type} audience includes expected employee`);
     }
 
+    // Filtered OR-union: positionA ∪ named email-only employee (deduped)
+    {
+      const { normalizeAudienceFilter } = await import(
+        "../utils/employee-announcements-types"
+      );
+      const legacy = normalizeAudienceFilter({
+        type: "individual",
+        value: [emailOnlyEmpId],
+      });
+      assert(
+        legacy?.type === "filtered" &&
+          legacy.employee_ids.includes(emailOnlyEmpId),
+        "legacy individual must map to filtered.employee_ids",
+      );
+      console.log("OK legacy individual → filtered mapping");
+
+      const unionFilter = {
+        type: "filtered" as const,
+        positions: positionA ? [positionA] : [],
+        shifts: [] as string[],
+        employment_types: [] as string[],
+        employee_ids: [emailOnlyEmpId],
+      };
+      const unionLoaded = await loadAnnouncementEmployees(
+        admin as SupabaseClient,
+        DAVORS,
+        unionFilter,
+      );
+      const unionIds = new Set(unionLoaded.map((e) => e.employee_id));
+      assert(unionIds.has(emailOnlyEmpId), "union must include named individual");
+      if (positionA) {
+        assert(unionIds.has(fullEmpId), "union must include position match");
+        assert(unionIds.has(posEmpId), "union must include position-only emp");
+      }
+      assert(
+        unionIds.size === unionLoaded.length,
+        "union load must be de-duplicated",
+      );
+
+      const unionCode = await nextCode();
+      const { data: unionAnn, error: unionErr } = await admin
+        .from("employee_announcements")
+        .insert({
+          tenant_id: DAVORS,
+          announcement_code: unionCode,
+          name: `Filtered Union Smoke ${stamp}`,
+          template_id: null,
+          channels: ["in_app"],
+          subject: null,
+          body: "Union body for {{employee_name}} ({{staff_id}})",
+          audience_filter: unionFilter,
+          status: "draft",
+          total_recipients: 0,
+        })
+        .select("id")
+        .single();
+      assert(!unionErr && unionAnn, unionErr?.message ?? "union ann missing");
+      cleanup.announcementIds.push(unionAnn.id);
+
+      const unionSend = await runAnnouncementSend(admin as SupabaseClient, {
+        tenantId: DAVORS,
+        announcementId: unionAnn.id,
+      });
+      assert(unionSend.status === "sent", unionSend.message);
+
+      const { data: unionRecipients } = await admin
+        .from("employee_announcement_recipients")
+        .select(
+          "id, employee_id, channel, status, sent_at, error_detail",
+        )
+        .eq("announcement_id", unionAnn.id)
+        .eq("tenant_id", DAVORS);
+      const sentEmpIds = new Set(
+        (unionRecipients ?? []).map((r) => r.employee_id),
+      );
+      assert(sentEmpIds.has(emailOnlyEmpId), "union send includes named emp");
+      for (const id of sentEmpIds) {
+        assert(unionIds.has(id), `unexpected recipient ${id} outside union`);
+      }
+
+      // Recipients payload shape (mirrors View modal API)
+      const { data: empRows } = await admin
+        .from("employees")
+        .select("employee_id, full_name, staff_id")
+        .eq("tenant_id", DAVORS)
+        .in("employee_id", [...sentEmpIds]);
+      assert(
+        (empRows ?? []).length === sentEmpIds.size,
+        "employee join for view modal",
+      );
+      const sample = empRows?.[0];
+      assert(sample?.full_name, "sample employee name for message preview");
+      const previewBody = `Union body for {{employee_name}} ({{staff_id}})`.replace(
+        "{{employee_name}}",
+        sample!.full_name,
+      ).replace("{{staff_id}}", sample!.staff_id);
+      assert(
+        previewBody.includes(sample!.full_name),
+        "message preview substitution",
+      );
+      console.log(
+        `OK filtered OR-union send (${sentEmpIds.size} employees) + view preview sample`,
+      );
+    }
+
     console.log("\nALL STAGING SEND CHECKS PASSED");
   } finally {
     for (const id of cleanup.notificationIds) {

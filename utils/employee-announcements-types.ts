@@ -18,28 +18,24 @@ export type EmployeeAnnouncementChannel =
   (typeof EMPLOYEE_ANNOUNCEMENT_CHANNELS)[number];
 
 export type EmployeeAnnouncementAudienceAll = { type: "all" };
-export type EmployeeAnnouncementAudienceByPosition = {
-  type: "position";
-  value: string;
+
+/** Mixed OR-union audience: criteria arrays + explicit employee IDs. */
+export type EmployeeAnnouncementAudienceFiltered = {
+  type: "filtered";
+  positions: string[];
+  shifts: string[];
+  employment_types: string[];
+  employee_ids: string[];
 };
-export type EmployeeAnnouncementAudienceByShift = {
-  type: "shift";
-  value: string;
-};
-export type EmployeeAnnouncementAudienceByEmploymentType = {
-  type: "employment_type";
-  value: string;
-};
-export type EmployeeAnnouncementAudienceByIndividual = {
-  type: "individual";
-  value: string | string[];
-};
+
+/**
+ * Canonical stored shape. Legacy single-criterion shapes
+ * (`position` / `shift` / `employment_type` / `individual`) are accepted on
+ * read and normalized into `filtered`.
+ */
 export type EmployeeAnnouncementAudienceFilter =
   | EmployeeAnnouncementAudienceAll
-  | EmployeeAnnouncementAudienceByPosition
-  | EmployeeAnnouncementAudienceByShift
-  | EmployeeAnnouncementAudienceByEmploymentType
-  | EmployeeAnnouncementAudienceByIndividual;
+  | EmployeeAnnouncementAudienceFiltered;
 
 export type EmployeeAnnouncementTemplateJoin = {
   name: string;
@@ -89,14 +85,6 @@ export type EmployeeAnnouncementInput = {
 export const EMPLOYEE_ANNOUNCEMENT_SELECT =
   "id, tenant_id, announcement_code, name, template_id, channels, subject, body, audience_filter, status, total_recipients, created_by, created_at, sent_at, employee_message_templates(name, channel, is_active)" as const;
 
-export const AUDIENCE_TYPE_OPTIONS = [
-  { value: "all", label: "All Employees" },
-  { value: "position", label: "By Position" },
-  { value: "shift", label: "By Shift" },
-  { value: "employment_type", label: "By Employment Type" },
-  { value: "individual", label: "Individual Employees" },
-] as const;
-
 export function isDraftStatus(status: string): boolean {
   return status === "draft";
 }
@@ -116,16 +104,41 @@ export function formatChannelsLabel(channels: string[]): string {
   return channels.map(formatAnnouncementChannelLabel).join(", ");
 }
 
-function normalizeAudienceValueList(value: unknown): string[] {
+function normalizeStringList(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value
-      .map((item) => (typeof item === "string" ? item.trim() : ""))
-      .filter(Boolean);
+    const unique = new Set<string>();
+    for (const item of value) {
+      if (typeof item === "string" && item.trim()) {
+        unique.add(item.trim());
+      }
+    }
+    return [...unique];
   }
   if (typeof value === "string" && value.trim()) {
     return [value.trim()];
   }
   return [];
+}
+
+export function emptyFilteredAudience(): EmployeeAnnouncementAudienceFiltered {
+  return {
+    type: "filtered",
+    positions: [],
+    shifts: [],
+    employment_types: [],
+    employee_ids: [],
+  };
+}
+
+export function filteredAudienceHasCriteria(
+  filter: EmployeeAnnouncementAudienceFiltered,
+): boolean {
+  return (
+    filter.positions.length > 0 ||
+    filter.shifts.length > 0 ||
+    filter.employment_types.length > 0 ||
+    filter.employee_ids.length > 0
+  );
 }
 
 export function normalizeAudienceFilter(
@@ -142,24 +155,43 @@ export function normalizeAudienceFilter(
     return { type: "all" };
   }
 
-  if (type === "position" || type === "shift" || type === "employment_type") {
-    const single =
-      typeof record.value === "string" ? record.value.trim() : "";
-    if (!single) {
+  if (type === "filtered") {
+    const filtered: EmployeeAnnouncementAudienceFiltered = {
+      type: "filtered",
+      positions: normalizeStringList(record.positions),
+      shifts: normalizeStringList(record.shifts),
+      employment_types: normalizeStringList(record.employment_types),
+      employee_ids: normalizeStringList(record.employee_ids),
+    };
+    if (!filteredAudienceHasCriteria(filtered)) {
       return null;
     }
-    return { type, value: single };
+    return filtered;
+  }
+
+  // Legacy single-criterion shapes → filtered.
+  if (type === "position") {
+    const positions = normalizeStringList(record.value);
+    if (positions.length === 0) return null;
+    return { ...emptyFilteredAudience(), positions };
+  }
+
+  if (type === "shift") {
+    const shifts = normalizeStringList(record.value);
+    if (shifts.length === 0) return null;
+    return { ...emptyFilteredAudience(), shifts };
+  }
+
+  if (type === "employment_type") {
+    const employment_types = normalizeStringList(record.value);
+    if (employment_types.length === 0) return null;
+    return { ...emptyFilteredAudience(), employment_types };
   }
 
   if (type === "individual") {
-    const ids = normalizeAudienceValueList(record.value);
-    if (ids.length === 0) {
-      return null;
-    }
-    return {
-      type: "individual",
-      value: ids.length === 1 ? ids[0]! : ids,
-    };
+    const employee_ids = normalizeStringList(record.value);
+    if (employee_ids.length === 0) return null;
+    return { ...emptyFilteredAudience(), employee_ids };
   }
 
   return null;
@@ -171,20 +203,38 @@ export function formatAudienceLabel(
   if (filter.type === "all") {
     return "All Employees";
   }
-  if (filter.type === "position") {
-    return `Position: ${filter.value}`;
+
+  const parts: string[] = [];
+  if (filter.positions.length > 0) {
+    parts.push(
+      filter.positions.length === 1
+        ? `Position: ${filter.positions[0]}`
+        : `Positions: ${filter.positions.length}`,
+    );
   }
-  if (filter.type === "shift") {
-    return `Shift: ${filter.value}`;
+  if (filter.shifts.length > 0) {
+    parts.push(
+      filter.shifts.length === 1
+        ? `Shift: ${filter.shifts[0]}`
+        : `Shifts: ${filter.shifts.length}`,
+    );
   }
-  if (filter.type === "employment_type") {
-    return `Employment type: ${filter.value}`;
+  if (filter.employment_types.length > 0) {
+    parts.push(
+      filter.employment_types.length === 1
+        ? `Employment type: ${filter.employment_types[0]}`
+        : `Employment types: ${filter.employment_types.length}`,
+    );
   }
-  const ids = Array.isArray(filter.value) ? filter.value : [filter.value];
-  if (ids.length === 1) {
-    return `Individual: 1 employee`;
+  if (filter.employee_ids.length > 0) {
+    parts.push(
+      filter.employee_ids.length === 1
+        ? `Individual: 1 employee`
+        : `Individuals: ${filter.employee_ids.length}`,
+    );
   }
-  return `Individual: ${ids.length} employees`;
+
+  return parts.length > 0 ? parts.join(" · ") : "Filtered audience";
 }
 
 export function normalizeChannels(value: unknown): EmployeeAnnouncementChannel[] {
@@ -240,7 +290,7 @@ export function validateEmployeeAnnouncementInput(
     body.audience_filter ?? { type: "all" },
   );
   if (!audience) {
-    return "Audience must be All Employees, or a valid position, shift, employment type, or individual selection.";
+    return "Audience must be All Employees, or at least one position, shift, employment type, or named individual.";
   }
 
   return null;
@@ -302,11 +352,12 @@ export function normalizeEmployeeAnnouncementRow(
   };
 }
 
+/** Explicit employee IDs from a filtered audience (empty for `all`). */
 export function audienceEmployeeIds(
   filter: EmployeeAnnouncementAudienceFilter,
 ): string[] {
-  if (filter.type !== "individual") {
+  if (filter.type !== "filtered") {
     return [];
   }
-  return Array.isArray(filter.value) ? filter.value : [filter.value];
+  return filter.employee_ids;
 }

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  audienceEmployeeIds,
+  normalizeAudienceFilter,
   type EmployeeAnnouncementAudienceFilter,
 } from "@/utils/employee-announcements-types";
 
@@ -28,80 +28,151 @@ function applyActiveEmployeeFilter<T extends { or: (filters: string) => T }>(
   );
 }
 
-function applyAudienceFilter<
-  T extends {
-    eq: (column: string, value: string) => T;
-    in: (column: string, values: string[]) => T;
-  },
->(query: T, audience: EmployeeAnnouncementAudienceFilter): T | null {
-  if (audience.type === "position") {
-    return query.eq("position", audience.value);
+function mergeEmployees(
+  into: Map<string, AnnouncementEmployee>,
+  rows: AnnouncementEmployee[],
+) {
+  for (const row of rows) {
+    into.set(row.employee_id, row);
   }
-  if (audience.type === "shift") {
-    return query.eq("shift", audience.value);
+}
+
+async function fetchActiveEmployeesByColumn(
+  supabase: SupabaseClient,
+  tenantId: string,
+  column: "position" | "shift" | "employment_type" | "employee_id",
+  values: string[],
+): Promise<AnnouncementEmployee[]> {
+  if (values.length === 0) return [];
+
+  let query = supabase
+    .from("employees")
+    .select(ANNOUNCEMENT_EMPLOYEE_SELECT)
+    .eq("tenant_id", tenantId)
+    .in(column, values);
+
+  query = applyActiveEmployeeFilter(query);
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(error.message);
   }
-  if (audience.type === "employment_type") {
-    return query.eq("employment_type", audience.value);
+  return (data as AnnouncementEmployee[] | null) ?? [];
+}
+
+function coerceAudience(
+  audience: EmployeeAnnouncementAudienceFilter | unknown,
+): EmployeeAnnouncementAudienceFilter {
+  return (
+    normalizeAudienceFilter(audience) ??
+    (audience as EmployeeAnnouncementAudienceFilter)
+  );
+}
+
+/**
+ * Resolve audience employees.
+ * `filtered` = OR-union of positions ∪ shifts ∪ employment_types ∪ employee_ids,
+ * de-duplicated by employee_id. Legacy shapes are normalized first.
+ */
+export async function loadAnnouncementEmployees(
+  supabase: SupabaseClient,
+  tenantId: string,
+  audienceInput: EmployeeAnnouncementAudienceFilter | unknown,
+): Promise<AnnouncementEmployee[]> {
+  const audience = coerceAudience(audienceInput);
+
+  if (audience.type === "all") {
+    let query = supabase
+      .from("employees")
+      .select(ANNOUNCEMENT_EMPLOYEE_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("full_name", { ascending: true });
+    query = applyActiveEmployeeFilter(query);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return (data as AnnouncementEmployee[] | null) ?? [];
   }
-  if (audience.type === "individual") {
-    const ids = audienceEmployeeIds(audience);
-    if (ids.length === 0) {
-      return null;
-    }
-    return query.in("employee_id", ids);
+
+  if (audience.type !== "filtered") {
+    return [];
   }
-  return query;
+
+  const byId = new Map<string, AnnouncementEmployee>();
+
+  const [byPosition, byShift, byEmploymentType, byIndividual] =
+    await Promise.all([
+      fetchActiveEmployeesByColumn(
+        supabase,
+        tenantId,
+        "position",
+        audience.positions,
+      ),
+      fetchActiveEmployeesByColumn(
+        supabase,
+        tenantId,
+        "shift",
+        audience.shifts,
+      ),
+      fetchActiveEmployeesByColumn(
+        supabase,
+        tenantId,
+        "employment_type",
+        audience.employment_types,
+      ),
+      fetchActiveEmployeesByColumn(
+        supabase,
+        tenantId,
+        "employee_id",
+        audience.employee_ids,
+      ),
+    ]);
+
+  mergeEmployees(byId, byPosition);
+  mergeEmployees(byId, byShift);
+  mergeEmployees(byId, byEmploymentType);
+  mergeEmployees(byId, byIndividual);
+
+  return [...byId.values()].sort((a, b) =>
+    a.full_name.localeCompare(b.full_name, undefined, { sensitivity: "base" }),
+  );
 }
 
 export async function countEmployeeAudienceRecipients(
   supabase: SupabaseClient,
   tenantId: string,
-  audience: EmployeeAnnouncementAudienceFilter,
+  audienceInput: EmployeeAnnouncementAudienceFilter | unknown,
 ): Promise<number> {
-  let query = supabase
-    .from("employees")
-    .select("employee_id", { count: "exact", head: true })
-    .eq("tenant_id", tenantId);
+  const audience = coerceAudience(audienceInput);
 
-  query = applyActiveEmployeeFilter(query);
-  const filtered = applyAudienceFilter(query, audience);
-  if (!filtered) {
-    return 0;
+  if (audience.type === "all") {
+    let query = supabase
+      .from("employees")
+      .select("employee_id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId);
+    query = applyActiveEmployeeFilter(query);
+    const { count, error } = await query;
+    if (error) {
+      console.error(
+        "[employee-announcements] audience count failed:",
+        error.message,
+      );
+      return 0;
+    }
+    return count ?? 0;
   }
 
-  const { count, error } = await filtered;
-  if (error) {
+  try {
+    const employees = await loadAnnouncementEmployees(
+      supabase,
+      tenantId,
+      audience,
+    );
+    return employees.length;
+  } catch (error) {
     console.error(
       "[employee-announcements] audience count failed:",
-      error.message,
+      error instanceof Error ? error.message : error,
     );
     return 0;
   }
-
-  return count ?? 0;
-}
-
-export async function loadAnnouncementEmployees(
-  supabase: SupabaseClient,
-  tenantId: string,
-  audience: EmployeeAnnouncementAudienceFilter,
-): Promise<AnnouncementEmployee[]> {
-  let query = supabase
-    .from("employees")
-    .select(ANNOUNCEMENT_EMPLOYEE_SELECT)
-    .eq("tenant_id", tenantId)
-    .order("full_name", { ascending: true });
-
-  query = applyActiveEmployeeFilter(query);
-  const filtered = applyAudienceFilter(query, audience);
-  if (!filtered) {
-    return [];
-  }
-
-  const { data, error } = await filtered;
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data as AnnouncementEmployee[] | null) ?? [];
 }
