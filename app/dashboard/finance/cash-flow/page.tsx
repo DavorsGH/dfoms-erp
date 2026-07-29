@@ -10,8 +10,8 @@ import type {
 import {
   fetchPayrollLiveRecalcBundle,
   mergePayrollWagesWithLiveOpenMonths,
-} from "../hr-payroll/payroll-live-recalc-utils";
-import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
+} from "../../hr-payroll/payroll-live-recalc-utils";
+import type { PayrollProcessingRow } from "../../hr-payroll/payroll-processing-utils";
 import FinanceNav from "../finance-nav";
 import CashFlow from "../cash-flow";
 

@@ -14,6 +14,7 @@ import type {
 } from "../finance/cash-flow-utils";
 import {
   buildNetPayByPayrollMonth,
+  type BalanceSheetCashExpenseEntry,
   type MonthEndCloseNetPayEntry,
   type PayrollHistoryWagesEntry,
 } from "../finance/accrued-wages-utils";
@@ -32,11 +33,6 @@ import type {
   BalanceSheetIncomeEntry,
   BalanceSheetTaxLedgerEntry,
 } from "../finance/balance-sheet-utils";
-import type {
-  BalanceSheetCashExpenseEntry,
-  MonthEndCloseNetPayEntry,
-  PayrollHistoryWagesEntry,
-} from "../finance/accrued-wages-utils";
 import type { TaxLedgerEntry } from "../finance/tax-ledger-utils";
 import ScrollableTable, {
   scrollableTableClassName,
