@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireAuthenticated } from "@/utils/admin-auth";
+import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import {
   EMPLOYEE_NOTIFICATION_SELECT,
   normalizeEmployeeNotificationRow,
@@ -19,6 +20,11 @@ export async function PATCH(_request: Request, context: RouteContext) {
     return auth.response;
   }
 
+  const tenantId = await getCurrentUserTenantId();
+  if (!tenantId || !auth.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { id } = await context.params;
   if (!id?.trim()) {
     return NextResponse.json(
@@ -30,10 +36,13 @@ export async function PATCH(_request: Request, context: RouteContext) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  // RLS remains primary; app-level filters are defense-in-depth.
   const { data: existing, error: fetchError } = await supabase
     .from("employee_notifications")
     .select("id, read_at")
     .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .eq("recipient_user_id", auth.userId)
     .maybeSingle();
 
   if (fetchError) {
@@ -48,6 +57,8 @@ export async function PATCH(_request: Request, context: RouteContext) {
       .from("employee_notifications")
       .select(EMPLOYEE_NOTIFICATION_SELECT)
       .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .eq("recipient_user_id", auth.userId)
       .maybeSingle();
 
     return NextResponse.json({
@@ -62,6 +73,8 @@ export async function PATCH(_request: Request, context: RouteContext) {
     .from("employee_notifications")
     .update({ read_at: now })
     .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .eq("recipient_user_id", auth.userId)
     .select(EMPLOYEE_NOTIFICATION_SELECT)
     .single();
 

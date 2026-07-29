@@ -20,7 +20,11 @@ import { buildDashboardViewModel } from "./dashboard-utils";
 import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
 import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
-import { mergePayrollWagesSources } from "./finance/accrued-wages-utils";
+import {
+  fetchPayrollLiveRecalcBundle,
+  mergePayrollWagesWithLiveOpenMonths,
+} from "./hr-payroll/payroll-live-recalc-utils";
+import type { PayrollProcessingRow } from "./hr-payroll/payroll-processing-utils";
 import { countLowStockRawMaterials } from "./reports/inventory-reports-utils";
 import { fetchInventoryBalanceSheetInput } from "./finance/balance-sheet-page-data";
 
@@ -236,6 +240,7 @@ export default async function DashboardPage() {
     { data: payrollProcessingEntries, error: payrollProcessingError },
     { data: taxLedgerEntries, error: taxLedgerError },
     inventoryBalanceSheetInput,
+    livePayrollBundle,
   ] = await Promise.all([
     supabase
       .from("fixed_assets")
@@ -265,9 +270,10 @@ export default async function DashboardPage() {
       .select("payroll_month, net_pay, gross_pay")
       .order("payroll_month", { ascending: true }),
     supabase.from("month_end_close").select("*").order("month", { ascending: false }),
+    // Full processing rows for display-only live open-month recalc (never written back).
     supabase
       .from("payroll_processing")
-      .select("payroll_month, gross_pay, net_pay")
+      .select("*")
       .order("payroll_month", { ascending: true }),
     supabase
       .from("tax_ledger_entries")
@@ -279,6 +285,7 @@ export default async function DashboardPage() {
       .order("entry_date", { ascending: true }),
     // Inventory input already loads raw_materials; derive low-stock count from it.
     fetchInventoryBalanceSheetInput(supabase, tenantId),
+    fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
   ]);
 
   const fetchError =
@@ -292,6 +299,7 @@ export default async function DashboardPage() {
     monthEndCloseError?.message ??
     payrollProcessingError?.message ??
     taxLedgerError?.message ??
+    livePayrollBundle.error ??
     null;
 
   const payrollHistoryWages =
@@ -363,12 +371,11 @@ export default async function DashboardPage() {
       (capitalContributions as CapitalContributionEntry[] | null) ?? [],
     cashFlowIncomeEntries,
     cashFlowExpenseEntries,
-    payrollHistoryWages: mergePayrollWagesSources(
+    payrollHistoryWages: mergePayrollWagesWithLiveOpenMonths(
       payrollHistoryWages,
-      (payrollProcessingEntries ?? []).map((entry) => ({
-        payroll_month: entry.payroll_month,
-        net_pay: Number(entry.net_pay) || 0,
-      })),
+      (payrollProcessingEntries as PayrollProcessingRow[] | null) ?? [],
+      livePayrollBundle.employees,
+      livePayrollBundle.liveContext,
     ),
     monthEndCloseNetPay:
       monthEndCloseRecords?.map((record) => ({
@@ -377,7 +384,12 @@ export default async function DashboardPage() {
       })) ?? [],
     manualEntries: manualEntries ?? [],
     monthEndCloseRecords: monthEndCloseRecords ?? [],
-    payrollProcessingEntries: payrollProcessingEntries ?? [],
+    // Cost-trend chart uses stamped processing gross (not Accrued Wages).
+    payrollProcessingEntries:
+      payrollProcessingEntries?.map((entry) => ({
+        payroll_month: entry.payroll_month,
+        gross_pay: Number(entry.gross_pay) || 0,
+      })) ?? [],
     payrollHistoryEntries,
     lowStockRawMaterialCount,
     inventoryBalanceSheetInput,

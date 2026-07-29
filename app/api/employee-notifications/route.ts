@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireAuthenticated } from "@/utils/admin-auth";
+import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import {
   EMPLOYEE_NOTIFICATION_SELECT,
   normalizeEmployeeNotificationRow,
@@ -17,6 +18,11 @@ export async function GET(request: Request) {
     return auth.response;
   }
 
+  const tenantId = await getCurrentUserTenantId();
+  if (!tenantId || !auth.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { searchParams } = new URL(request.url);
   const rawLimit = Number(searchParams.get("limit") ?? DEFAULT_LIMIT);
   const limit = Math.min(
@@ -29,16 +35,20 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  // RLS already restricts to recipient_user_id = auth.uid().
+  // RLS remains primary; app-level filters are defense-in-depth.
   const [listResult, unreadResult] = await Promise.all([
     supabase
       .from("employee_notifications")
       .select(EMPLOYEE_NOTIFICATION_SELECT)
+      .eq("tenant_id", tenantId)
+      .eq("recipient_user_id", auth.userId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1),
     supabase
       .from("employee_notifications")
       .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("recipient_user_id", auth.userId)
       .is("read_at", null),
   ]);
 

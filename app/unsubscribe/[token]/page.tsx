@@ -40,7 +40,8 @@ export default async function UnsubscribePage({ params }: PageProps) {
               sms_opt_in: false,
               updated_at: now,
             })
-            .eq("id", pref.id);
+            .eq("id", pref.id)
+            .eq("tenant_id", pref.tenant_id);
         }
 
         ok = true;
