@@ -66,6 +66,16 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
       },
     ],
   },
+  {
+    id: "employee-announcements",
+    label: "Employee Announcements",
+    items: [
+      {
+        label: "Employee Announcements",
+        href: "/dashboard/hr-payroll/employee-announcements/templates",
+      },
+    ],
+  },
 ] as const;
 
 export function isHrManagementPath(pathname: string): boolean {
@@ -75,8 +85,23 @@ export function isHrManagementPath(pathname: string): boolean {
   );
 }
 
+const EMPLOYEE_ANNOUNCEMENTS_PREFIX =
+  "/dashboard/hr-payroll/employee-announcements";
+
 function isHrNavItemActive(pathname: string, href: string): boolean {
-  return pathname === href;
+  if (pathname === href) {
+    return true;
+  }
+
+  // Nested Email & Promotions–style section: one HR nav item covers all sub-routes.
+  if (
+    href.startsWith(EMPLOYEE_ANNOUNCEMENTS_PREFIX) &&
+    pathname.startsWith(EMPLOYEE_ANNOUNCEMENTS_PREFIX)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export function getActiveHrManagementGroup(
@@ -118,5 +143,5 @@ export function isHrManagementGroupActive(
     return false;
   }
 
-  return group.items.some((item) => pathname === item.href);
+  return group.items.some((item) => isHrNavItemActive(pathname, item.href));
 }

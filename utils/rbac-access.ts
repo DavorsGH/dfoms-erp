@@ -74,6 +74,12 @@ export const PAYROLL_PERIOD_MANAGE_ROLES: readonly AppRole[] = [
   "hr",
 ];
 
+/** HR/admin roles for employee announcement templates and campaigns. */
+export const EMPLOYEE_ANNOUNCEMENTS_ROLES: readonly AppRole[] = [
+  "super_admin",
+  "hr",
+];
+
 export const START_ROTATION_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",

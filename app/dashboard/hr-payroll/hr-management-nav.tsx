@@ -19,7 +19,14 @@ export default function HrManagementNav() {
     <nav className="mb-6 border-b border-slate-200 pb-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
         {activeGroup.items.map((item) => {
-          const active = pathname === item.href;
+          const active =
+            pathname === item.href ||
+            (item.href.startsWith(
+              "/dashboard/hr-payroll/employee-announcements",
+            ) &&
+              pathname.startsWith(
+                "/dashboard/hr-payroll/employee-announcements",
+              ));
 
           return (
             <Link
