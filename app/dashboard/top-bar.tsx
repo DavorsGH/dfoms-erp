@@ -1,5 +1,6 @@
 "use client";
 
+import NotificationBell from "./notification-bell";
 import UserAccountMenu from "./user-account-menu";
 
 type TopBarProps = {
@@ -48,11 +49,14 @@ export default function TopBar({
 
       <div className="hidden md:block" aria-hidden />
 
-      <UserAccountMenu
-        userLabel={userLabel}
-        userPhotoUrl={userPhotoUrl}
-        userFullName={userFullName}
-      />
+      <div className="flex items-center gap-1 md:gap-2">
+        <NotificationBell />
+        <UserAccountMenu
+          userLabel={userLabel}
+          userPhotoUrl={userPhotoUrl}
+          userFullName={userFullName}
+        />
+      </div>
     </header>
   );
 }
