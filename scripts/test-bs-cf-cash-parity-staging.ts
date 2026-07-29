@@ -7,9 +7,18 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
-import { buildBalanceSheetReport } from "../app/dashboard/finance/balance-sheet-utils";
+import {
+  buildBalanceSheetReport,
+  getBalanceCheckForPeriod,
+} from "../app/dashboard/finance/balance-sheet-utils";
 import { buildCashFlowReport } from "../app/dashboard/finance/cash-flow-utils";
+import {
+  fetchPayrollLiveRecalcBundle,
+  mergePayrollWagesWithLiveOpenMonths,
+} from "../app/dashboard/hr-payroll/payroll-live-recalc-utils";
+import type { PayrollProcessingRow } from "../app/dashboard/hr-payroll/payroll-processing-utils";
 import type { InventoryBalanceConfig } from "../app/dashboard/inventory/inventory-balance-sheet-utils";
+import type { PayrollHistoryWagesEntry } from "../app/dashboard/finance/accrued-wages-utils";
 
 function loadEnvForce(filePath: string) {
   for (const line of readFileSync(filePath, "utf8").split(/\r?\n/)) {
@@ -23,6 +32,39 @@ function loadEnvForce(filePath: string) {
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+/** Prefer app select; fall back when staging has not applied 116 yet. */
+async function fetchPayrollHistoryWages(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: any,
+  tenantId: string,
+): Promise<PayrollHistoryWagesEntry[]> {
+  const preferred = await admin
+    .from("payroll_history")
+    .select("payroll_month, net_pay, net_only_adjustment")
+    .eq("tenant_id", tenantId);
+  if (!preferred.error) {
+    return (preferred.data as PayrollHistoryWagesEntry[] | null) ?? [];
+  }
+  if (!String(preferred.error.message).includes("net_only_adjustment")) {
+    throw new Error(`payroll_history: ${preferred.error.message}`);
+  }
+  console.warn(
+    "WARN: payroll_history.net_only_adjustment missing — apply scripts/116_payroll_net_only_adjustment.sql; using net_pay only",
+  );
+  const fallback = await admin
+    .from("payroll_history")
+    .select("payroll_month, net_pay")
+    .eq("tenant_id", tenantId);
+  if (fallback.error) throw new Error(`payroll_history: ${fallback.error.message}`);
+  return ((fallback.data as Array<{ payroll_month: string; net_pay: number }> | null) ?? []).map(
+    (row) => ({
+      payroll_month: row.payroll_month,
+      net_pay: row.net_pay,
+      net_only_adjustment: 0,
+    }),
+  );
 }
 
 const MONTH_LABELS = [
@@ -63,7 +105,6 @@ async function main() {
     { data: payables, error: apError },
     { data: capital, error: capitalError },
     { data: manual, error: manualError },
-    { data: payrollHistory },
     { data: payrollProcessing },
     { data: monthEndClose },
     { data: invConfig },
@@ -71,18 +112,19 @@ async function main() {
     { data: productPurchases },
     { data: cogsRows, error: cogsError },
     { data: taxLedger, error: taxError },
+    livePayrollBundle,
   ] = await Promise.all([
     admin
       .from("income_register")
       .select(
-        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status",
+        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
       )
       .eq("tenant_id", TENANT)
       .order("date"),
     admin
       .from("expense_register")
       .select(
-        "date, expense_category, sub_category, amount, payment_status, description, receipt_no",
+        "date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
       )
       .eq("tenant_id", TENANT)
       .order("date"),
@@ -109,12 +151,8 @@ async function main() {
       .eq("tenant_id", TENANT)
       .order("period_month"),
     admin
-      .from("payroll_history")
-      .select("payroll_month, net_pay")
-      .eq("tenant_id", TENANT),
-    admin
       .from("payroll_processing")
-      .select("payroll_month, net_pay")
+      .select("*")
       .eq("tenant_id", TENANT),
     admin
       .from("month_end_close")
@@ -146,7 +184,10 @@ async function main() {
       .eq("tenant_id", TENANT)
       .eq("status", "open")
       .order("entry_date"),
+    fetchPayrollLiveRecalcBundle(admin, { tenantId: TENANT }),
   ]);
+
+  const payrollHistory = await fetchPayrollHistoryWages(admin, TENANT);
 
   for (const [label, err] of [
     ["income", incomeError],
@@ -177,12 +218,19 @@ async function main() {
     payment_status: entry.payment_status,
     description: entry.description ?? null,
     receipt_no: entry.receipt_no ?? null,
+    notes: entry.notes ?? null,
   }));
 
-  const payrollMerged = [
-    ...(payrollHistory ?? []),
-    ...(payrollProcessing ?? []),
-  ];
+  if (livePayrollBundle.error) {
+    throw new Error(`live payroll bundle: ${livePayrollBundle.error}`);
+  }
+
+  const payrollMerged = mergePayrollWagesWithLiveOpenMonths(
+    payrollHistory,
+    (payrollProcessing as PayrollProcessingRow[] | null) ?? [],
+    livePayrollBundle.employees,
+    livePayrollBundle.liveContext,
+  );
 
   // Staging currently has no live voided product sales. Inject a large voided
   // sale into July so we still prove void rows are excluded identically on BS+CF.
@@ -335,6 +383,27 @@ async function main() {
     }
   }
 
+  const balanceChecks: Array<{
+    month: string;
+    isBalanced: boolean;
+    difference: number;
+    totalAssets: number;
+    totalLiabilitiesAndEquity: number;
+  }> = [];
+  const unbalanced: typeof balanceChecks = [];
+  for (let i = 0; i < 12; i += 1) {
+    const check = getBalanceCheckForPeriod(bsReport, i);
+    const row = {
+      month: MONTH_LABELS[i],
+      isBalanced: check.isBalanced,
+      difference: check.difference,
+      totalAssets: check.totalAssets,
+      totalLiabilitiesAndEquity: check.totalLiabilitiesAndEquity,
+    };
+    balanceChecks.push(row);
+    if (!check.isBalanced) unbalanced.push(row);
+  }
+
   const cogsStatusCounts: Record<string, number> = {};
   for (const row of cogsRows ?? []) {
     const kind = String(row.receipt_no).startsWith("VOID-COGS")
@@ -369,6 +438,8 @@ async function main() {
         paid_cogs_rows: paidCogs.length,
         comparison,
         mismatches,
+        balance_checks: balanceChecks,
+        unbalanced_months: unbalanced,
         full_year: { bs: bsCash[12], cf: cfClosing[12] },
       },
       null,
@@ -389,9 +460,13 @@ async function main() {
     paidCogs.length === 0,
     `COGS/VOID-COGS still Paid: ${JSON.stringify(paidCogs)}`,
   );
+  assert(
+    unbalanced.length === 0,
+    `BS not balanced: ${JSON.stringify(unbalanced)}`,
+  );
 
   console.log(
-    "PASS: BS cash === CF closing for all months; void probe excluded; FA months present; no Paid COGS rows",
+    "PASS: BS cash === CF closing for all months; BS balanced 0..11; void probe excluded; FA months present; no Paid COGS rows",
   );
 }
 

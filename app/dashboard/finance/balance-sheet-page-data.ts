@@ -6,9 +6,9 @@ import type {
   ManualFinancialEntry,
 } from "./cash-flow-utils";
 import {
-  mergePayrollWagesSources,
   type BalanceSheetCashExpenseEntry,
   type MonthEndCloseNetPayEntry,
+  type PayrollHistoryWagesEntry,
 } from "./accrued-wages-utils";
 import type {
   BalanceSheetAccountsPayableEntry,
@@ -33,6 +33,11 @@ import {
   RAW_MATERIAL_SELECT,
   normalizeRawMaterial,
 } from "../inventory/raw-materials-utils";
+import {
+  fetchPayrollLiveRecalcBundle,
+  mergePayrollWagesWithLiveOpenMonths,
+} from "../hr-payroll/payroll-live-recalc-utils";
+import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
 
 export type BalanceSheetPageData = {
   initialIncomeEntries: BalanceSheetIncomeEntry[];
@@ -42,7 +47,7 @@ export type BalanceSheetPageData = {
   initialCapitalContributions: CapitalContributionEntry[];
   initialCashFlowIncomeEntries: CashFlowIncomeEntry[];
   initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
-  initialPayrollHistory: Array<{ payroll_month: string; net_pay: number }>;
+  initialPayrollHistory: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   initialManualEntries: ManualFinancialEntry[];
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
@@ -169,6 +174,7 @@ export async function fetchBalanceSheetPageData(
     { data: monthEndCloseRecords, error: monthEndCloseError },
     { data: taxLedgerEntries, error: taxLedgerError },
     inventoryBalanceSheet,
+    livePayrollBundle,
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -206,9 +212,11 @@ export async function fetchBalanceSheetPageData(
       .from("payroll_history")
       .select("payroll_month, net_pay, net_only_adjustment")
       .order("payroll_month", { ascending: true }),
+    // Full processing rows: open-month Accrued Wages live-recalc needs manuals.
+    // Display-only — never written back from this report path.
     supabase
       .from("payroll_processing")
-      .select("payroll_month, net_pay, net_only_adjustment")
+      .select("*")
       .order("payroll_month", { ascending: true }),
     supabase
       .from("month_end_close")
@@ -220,6 +228,7 @@ export async function fetchBalanceSheetPageData(
       .eq("status", "open")
       .order("entry_date", { ascending: true }),
     fetchInventoryBalanceSheetInput(supabase, tenantId),
+    fetchPayrollLiveRecalcBundle(supabase),
   ]);
 
   const cashFlowIncomeEntries =
@@ -251,9 +260,11 @@ export async function fetchBalanceSheetPageData(
       (capitalContributions as CapitalContributionEntry[] | null) ?? [],
     initialCashFlowIncomeEntries: cashFlowIncomeEntries,
     initialCashFlowExpenseEntries: cashFlowExpenseEntries,
-    initialPayrollHistory: mergePayrollWagesSources(
-      payrollHistory ?? [],
-      payrollProcessing ?? [],
+    initialPayrollHistory: mergePayrollWagesWithLiveOpenMonths(
+      (payrollHistory as PayrollHistoryWagesEntry[] | null) ?? [],
+      (payrollProcessing as PayrollProcessingRow[] | null) ?? [],
+      livePayrollBundle.employees,
+      livePayrollBundle.liveContext,
     ),
     initialMonthEndCloseNetPay:
       (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? [],
@@ -283,6 +294,7 @@ export async function fetchBalanceSheetPageData(
       payrollProcessingError?.message ??
       monthEndCloseError?.message ??
       taxLedgerError?.message ??
+      livePayrollBundle.error ??
       null,
   };
 }
