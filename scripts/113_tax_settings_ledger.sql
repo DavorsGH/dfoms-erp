@@ -88,8 +88,8 @@ CREATE POLICY tax_settings_super_admin_full_access
   ON public.tax_settings
   FOR ALL
   TO authenticated
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
+  USING (tenant_matches(tenant_id) AND is_super_admin())
+  WITH CHECK (tenant_matches(tenant_id) AND is_super_admin());
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tax_settings TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tax_settings TO service_role;
@@ -172,8 +172,8 @@ CREATE POLICY tax_rate_catalog_super_admin_full_access
   ON public.tax_rate_catalog
   FOR ALL
   TO authenticated
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
+  USING (tenant_matches(tenant_id) AND is_super_admin())
+  WITH CHECK (tenant_matches(tenant_id) AND is_super_admin());
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tax_rate_catalog TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tax_rate_catalog TO service_role;
@@ -302,8 +302,8 @@ CREATE POLICY tax_ledger_entries_super_admin_full_access
   ON public.tax_ledger_entries
   FOR ALL
   TO authenticated
-  USING (is_super_admin())
-  WITH CHECK (is_super_admin());
+  USING (tenant_matches(tenant_id) AND is_super_admin())
+  WITH CHECK (tenant_matches(tenant_id) AND is_super_admin());
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tax_ledger_entries TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tax_ledger_entries TO service_role;

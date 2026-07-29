@@ -274,6 +274,7 @@ export default async function DashboardPage() {
       .select(
         "entry_date, period_month, direction, tax_component, tax_amount, status",
       )
+      .eq("tenant_id", tenantId)
       .eq("status", "open")
       .order("entry_date", { ascending: true }),
     // Inventory input already loads raw_materials; derive low-stock count from it.

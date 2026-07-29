@@ -551,6 +551,7 @@ export default function TaxLedger({
     const { data, error: refreshError } = await supabase
       .from("tax_ledger_entries")
       .select(TAX_LEDGER_SELECT)
+      .eq("tenant_id", tenantId)
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false });
 
@@ -686,6 +687,7 @@ export default function TaxLedger({
             updated_at: nowIso,
           })
           .eq("id", entry.id)
+          .eq("tenant_id", tenantId)
           .eq("status", "open"),
       ),
     );

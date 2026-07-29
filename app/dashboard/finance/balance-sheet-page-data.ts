@@ -225,6 +225,7 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("tax_ledger_entries")
       .select("entry_date, direction, tax_component, tax_amount, status")
+      .eq("tenant_id", tenantId)
       .eq("status", "open")
       .order("entry_date", { ascending: true }),
     fetchInventoryBalanceSheetInput(supabase, tenantId),
