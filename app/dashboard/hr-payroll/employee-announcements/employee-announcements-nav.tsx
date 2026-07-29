@@ -8,6 +8,10 @@ const tabs = [
     label: "Templates",
     href: "/dashboard/hr-payroll/employee-announcements/templates",
   },
+  {
+    label: "Campaigns",
+    href: "/dashboard/hr-payroll/employee-announcements/campaigns",
+  },
 ] as const;
 
 export default function EmployeeAnnouncementsNav() {
