@@ -6,6 +6,7 @@ import {
   templateBodyToEmailHtml,
 } from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
+import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
   TRANSACTIONAL_EVENT_TYPES,
@@ -131,20 +132,7 @@ export async function fireTransactionalNotification(
     let smsCreditAvailable = false;
 
     if (wantsSms) {
-      const { data: debitOk, error: debitError } = await admin.rpc(
-        "debit_sms_credit",
-        { p_tenant_id: tenantId },
-      );
-
-      if (debitError) {
-        console.error(
-          `[transactional-notification] debit_sms_credit failed (${eventType}):`,
-          debitError.message,
-        );
-      } else {
-        smsCreditAvailable = debitOk === true;
-      }
-
+      smsCreditAvailable = await tryDebitSmsCredit(tenantId);
       if (!smsCreditAvailable) {
         console.warn(
           `[transactional-notification] ${eventType}: no SMS credits for tenant ${tenantId}; falling back to email when needed.`,

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { assertTenantHasFeature } from "@/utils/tier-access";
 import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
 import {
   CAMPAIGN_SELECT,
@@ -100,6 +101,10 @@ export async function PUT(request: Request, context: RouteContext) {
   const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
   if (!auth.ok) {
     return auth.response;
+  }
+  const feature = await assertTenantHasFeature(auth.tenantId, "email_promotions");
+  if (!feature.ok) {
+    return feature.response;
   }
 
   const { id } = await context.params;
@@ -205,6 +210,10 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
   if (!auth.ok) {
     return auth.response;
+  }
+  const feature = await assertTenantHasFeature(auth.tenantId, "email_promotions");
+  if (!feature.ok) {
+    return feature.response;
   }
 
   const { id } = await context.params;

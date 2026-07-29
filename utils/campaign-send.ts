@@ -11,6 +11,7 @@ import {
   templateBodyToEmailHtml,
 } from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
+import { tryDebitSmsCredit } from "@/utils/sms-credit";
 
 export const CAMPAIGN_SEND_BATCH_SIZE = 50;
 
@@ -23,7 +24,8 @@ export type CampaignRecipientStatus =
   | "pending"
   | "sent"
   | "failed"
-  | "skipped_opted_out";
+  | "skipped_opted_out"
+  | "skipped_no_credit";
 
 export type CampaignCustomer = {
   client_id: string;
@@ -83,6 +85,7 @@ export type SendBatchResult = {
   sent: number;
   failed: number;
   skippedOptedOut: number;
+  skippedNoCredit: number;
   pendingRemaining: number;
   totalRecipients: number;
   message: string;
@@ -573,6 +576,20 @@ export async function processCampaignSendBatch(
         continue;
       }
 
+      const creditOk = await tryDebitSmsCredit(options.tenantId);
+      if (!creditOk) {
+        await supabase
+          .from("campaign_recipients")
+          .update({
+            status: "skipped_no_credit",
+            error: "No SMS credits.",
+            sent_at: null,
+          })
+          .eq("id", recipient.id)
+          .eq("tenant_id", options.tenantId);
+        continue;
+      }
+
       const result = await sendHubtelSms({ to, content });
       if (result.ok) {
         await supabase
@@ -626,11 +643,17 @@ export async function processCampaignSendBatch(
     campaign.id,
     "skipped_opted_out",
   );
+  const skippedNoCredit = await countRecipientsByStatus(
+    supabase,
+    options.tenantId,
+    campaign.id,
+    "skipped_no_credit",
+  );
   const totalTracked = await countRecipientsByStatus(
     supabase,
     options.tenantId,
     campaign.id,
-    ["sent", "failed", "skipped_opted_out"],
+    ["sent", "failed", "skipped_opted_out", "skipped_no_credit"],
   );
 
   let status = campaign.status;
@@ -658,12 +681,15 @@ export async function processCampaignSendBatch(
       "sent",
       "failed",
       "skipped_opted_out",
+      "skipped_no_credit",
     ])) ;
   const grandTotal = processedTotal + pendingRemaining;
 
   let message: string;
   if (status === "sent") {
-    message = `Sent — ${totalRecipients} recipients (${skippedOptedOut} skipped, opted out).`;
+    message =
+      `Sent — ${totalRecipients} recipients ` +
+      `(${skippedOptedOut} opted out, ${skippedNoCredit} no SMS credit).`;
   } else {
     message = `Sending… ${processedTotal} of ${grandTotal} processed — click Continue Sending for the next batch (${pendingRemaining} pending).`;
   }
@@ -675,6 +701,7 @@ export async function processCampaignSendBatch(
     sent,
     failed,
     skippedOptedOut,
+    skippedNoCredit,
     pendingRemaining,
     totalRecipients: status === "sent" ? totalRecipients : grandTotal,
     message,

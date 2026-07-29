@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { assertTenantHasFeature } from "@/utils/tier-access";
 import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
 import {
   CAMPAIGN_CODE_ENTITY_TYPE,
@@ -122,6 +123,10 @@ export async function GET(request: Request) {
   if (!auth.ok) {
     return auth.response;
   }
+  const feature = await assertTenantHasFeature(auth.tenantId, "email_promotions");
+  if (!feature.ok) {
+    return feature.response;
+  }
 
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get("status")?.trim() ?? "";
@@ -153,6 +158,10 @@ export async function POST(request: Request) {
   const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
   if (!auth.ok) {
     return auth.response;
+  }
+  const feature = await assertTenantHasFeature(auth.tenantId, "email_promotions");
+  if (!feature.ok) {
+    return feature.response;
   }
 
   let rawBody: unknown;

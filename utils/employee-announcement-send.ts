@@ -15,6 +15,7 @@ import {
   templateBodyToEmailHtml,
 } from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
+import { tryDebitSmsCredit } from "@/utils/sms-credit";
 
 export const ANNOUNCEMENT_SEND_BATCH_SIZE = 50;
 
@@ -22,7 +23,8 @@ export type AnnouncementRecipientStatus =
   | "sent"
   | "failed"
   | "skipped_no_contact"
-  | "skipped_no_login";
+  | "skipped_no_login"
+  | "skipped_no_credit";
 
 export type AnnouncementMessageContent = {
   subject: string | null;
@@ -59,6 +61,7 @@ export type SendBatchResult = {
   failed: number;
   skippedNoContact: number;
   skippedNoLogin: number;
+  skippedNoCredit: number;
   pendingRemaining: number;
   totalRecipients: number;
   message: string;
@@ -538,6 +541,19 @@ export async function processAnnouncementSendBatch(
           continue;
         }
 
+        const creditOk = await tryDebitSmsCredit(options.tenantId);
+        if (!creditOk) {
+          await supabase.from("employee_announcement_recipients").insert({
+            tenant_id: options.tenantId,
+            announcement_id: announcement.id,
+            employee_id: employee.employee_id,
+            channel: "sms",
+            status: "skipped_no_credit",
+            error_detail: "No SMS credits.",
+          });
+          continue;
+        }
+
         const result = await sendHubtelSms({ to, content: resolvedBody });
         if (result.ok) {
           await supabase.from("employee_announcement_recipients").insert({
@@ -639,6 +655,12 @@ export async function processAnnouncementSendBatch(
     announcement.id,
     "skipped_no_login",
   );
+  const skippedNoCredit = await countRecipientsByStatus(
+    supabase,
+    options.tenantId,
+    announcement.id,
+    "skipped_no_credit",
+  );
   const processedTotal = await countRecipientsByStatus(
     supabase,
     options.tenantId,
@@ -669,7 +691,8 @@ export async function processAnnouncementSendBatch(
   if (status === "sent") {
     message =
       `Sent — ${totalRecipients} delivery rows ` +
-      `(${skippedNoContact} no contact, ${skippedNoLogin} no login).`;
+      `(${skippedNoContact} no contact, ${skippedNoLogin} no login, ` +
+      `${skippedNoCredit} no SMS credit).`;
   } else {
     message =
       `Sending… ${processedTotal} of ${grandTotal} processed — ` +
@@ -684,6 +707,7 @@ export async function processAnnouncementSendBatch(
     failed,
     skippedNoContact,
     skippedNoLogin,
+    skippedNoCredit,
     pendingRemaining,
     totalRecipients: status === "sent" ? totalRecipients : grandTotal,
     message,

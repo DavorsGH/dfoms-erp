@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { assertTenantHasFeature } from "@/utils/tier-access";
 import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 
@@ -12,6 +13,10 @@ export async function GET(_request: Request, context: RouteContext) {
   const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
   if (!auth.ok) {
     return auth.response;
+  }
+  const feature = await assertTenantHasFeature(auth.tenantId, "email_promotions");
+  if (!feature.ok) {
+    return feature.response;
   }
 
   const { id } = await context.params;

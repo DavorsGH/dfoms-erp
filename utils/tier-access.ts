@@ -2,6 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 
@@ -54,13 +55,14 @@ export const tenantHasFeature = cache(
 
 /**
  * Blocks dashboard section access when the tenant's plan does not include
- * featureKey. Redirects to the in-shell upgrade page. Skipped when tenant_id
- * cannot be resolved (same allow-through as ensureTrialAccess for null tenant).
+ * featureKey. Redirects to the in-shell upgrade page.
+ *
+ * Fail-closed: missing tenant_id redirects to login (previously allowed through).
  */
 export async function requireFeatureAccess(featureKey: string): Promise<void> {
   const tenantId = await getCurrentUserTenantId();
   if (!tenantId) {
-    return;
+    redirect("/login");
   }
 
   const allowed = await tenantHasFeature(tenantId, featureKey);
@@ -69,4 +71,36 @@ export async function requireFeatureAccess(featureKey: string): Promise<void> {
       `/dashboard/upgrade-required?feature=${encodeURIComponent(featureKey)}`,
     );
   }
+}
+
+/**
+ * API-route equivalent of requireFeatureAccess. Fail-closed on null tenant.
+ * Call after role auth; returns 403 JSON when the plan lacks the feature.
+ */
+export async function assertTenantHasFeature(
+  tenantId: string | null | undefined,
+  featureKey: string,
+): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+  if (!tenantId?.trim()) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  const allowed = await tenantHasFeature(tenantId, featureKey);
+  if (!allowed) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "This feature requires a plan upgrade.",
+          feature: featureKey,
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return { ok: true };
 }

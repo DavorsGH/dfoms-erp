@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { assertTenantHasFeature } from "@/utils/tier-access";
 import { defaultChannelFromTemplate } from "@/utils/transactional-notification-types";
 import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
@@ -30,6 +31,10 @@ export async function GET() {
   if (!auth.ok) {
     return auth.response;
   }
+  const feature = await assertTenantHasFeature(auth.tenantId, "email_promotions");
+  if (!feature.ok) {
+    return feature.response;
+  }
 
   const supabase = await getTenantSupabase();
   const { data, error } = await supabase
@@ -55,6 +60,10 @@ export async function PUT(request: Request) {
   const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
   if (!auth.ok) {
     return auth.response;
+  }
+  const feature = await assertTenantHasFeature(auth.tenantId, "email_promotions");
+  if (!feature.ok) {
+    return feature.response;
   }
 
   let rawBody: unknown;
