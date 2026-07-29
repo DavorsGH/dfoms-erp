@@ -229,6 +229,11 @@ export default function EmployeeAnnouncementsCampaigns({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [sendStatusMessage, setSendStatusMessage] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(fetchError);
   const [statusFilter, setStatusFilter] = useState("");
 
@@ -381,22 +386,107 @@ export default function EmployeeAnnouncementsCampaigns({
     setDeletingId(null);
   }
 
+  async function executeSend(announcementId: string) {
+    setSendingId(announcementId);
+    setError(null);
+    setSendStatusMessage(null);
+
+    const response = await fetch(
+      `/api/employee-announcements/${announcementId}/send`,
+      { method: "POST" },
+    );
+    const payload = (await response.json()) as {
+      result?: {
+        status: string;
+        message: string;
+        pendingRemaining: number;
+        sent: number;
+        failed: number;
+        skippedNoContact: number;
+        skippedNoLogin: number;
+        totalRecipients: number;
+      };
+      error?: string;
+    };
+
+    if (!response.ok) {
+      setError(payload.error ?? "Failed to send announcement.");
+      setSendingId(null);
+      return;
+    }
+
+    setSendStatusMessage(payload.result?.message ?? "Send batch completed.");
+    await refreshAnnouncements();
+    setSendingId(null);
+  }
+
+  async function confirmAndSendDraft(row: NormalizedEmployeeAnnouncementRow) {
+    setPreviewLoadingId(row.id);
+    setError(null);
+
+    const previewResponse = await fetch(
+      `/api/employee-announcements/${row.id}/audience-preview`,
+    );
+    const previewPayload = (await previewResponse.json()) as {
+      preview?: {
+        employeeCount: number;
+        pendingCount: number;
+        skippedNoContactCount: number;
+        skippedNoLoginCount: number;
+      };
+      error?: string;
+    };
+
+    setPreviewLoadingId(null);
+
+    if (!previewResponse.ok || !previewPayload.preview) {
+      setError(previewPayload.error ?? "Failed to preview audience.");
+      return;
+    }
+
+    const preview = previewPayload.preview;
+    const confirmed = window.confirm(
+      `Send announcement “${row.name}”?\n\n` +
+        `Employees in audience: ${preview.employeeCount}\n` +
+        `Eligible deliveries: ${preview.pendingCount}\n` +
+        `No contact (email/phone): ${preview.skippedNoContactCount}\n` +
+        `No login (in-app): ${preview.skippedNoLoginCount}\n\n` +
+        `Sends are processed in batches of up to 50. Continue?`,
+    );
+
+    if (!confirmed) return;
+    await executeSend(row.id);
+  }
+
+  async function continueSending(row: NormalizedEmployeeAnnouncementRow) {
+    await executeSend(row.id);
+  }
+
   const formTitle = viewOnly
     ? "View Announcement"
     : editingId
       ? "Edit Announcement"
       : "New Announcement";
 
-  const canShowDisabledSend =
+  const canSendDraft =
     Boolean(editingAnnouncement) &&
     isDraftStatus(editingAnnouncement!.status) &&
     !viewOnly;
+  const canContinueSending =
+    Boolean(editingAnnouncement) &&
+    editingAnnouncement!.status === "sending";
 
   return (
     <div className="min-w-0 space-y-6">
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </p>
+      ) : null}
+
+      {sendStatusMessage ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {sendStatusMessage}
         </p>
       ) : null}
 
@@ -765,14 +855,33 @@ export default function EmployeeAnnouncementsCampaigns({
                   {loading ? "Saving…" : "Save Draft"}
                 </button>
               ) : null}
-              {canShowDisabledSend ? (
+              {canSendDraft && editingAnnouncement ? (
                 <button
                   type="button"
-                  disabled
-                  title="Send will be enabled in the next step"
-                  className="cursor-not-allowed rounded-md bg-emerald-700/50 px-5 py-2 text-sm font-medium text-white opacity-60"
+                  disabled={
+                    sendingId === editingAnnouncement.id ||
+                    previewLoadingId === editingAnnouncement.id
+                  }
+                  onClick={() => void confirmAndSendDraft(editingAnnouncement)}
+                  className="rounded-md bg-emerald-700 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
                 >
-                  Send
+                  {previewLoadingId === editingAnnouncement.id
+                    ? "Counting audience…"
+                    : sendingId === editingAnnouncement.id
+                      ? "Sending…"
+                      : "Send"}
+                </button>
+              ) : null}
+              {canContinueSending && editingAnnouncement ? (
+                <button
+                  type="button"
+                  disabled={sendingId === editingAnnouncement.id}
+                  onClick={() => void continueSending(editingAnnouncement)}
+                  className="rounded-md bg-violet-700 px-5 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-50"
+                >
+                  {sendingId === editingAnnouncement.id
+                    ? "Sending…"
+                    : "Continue Sending"}
                 </button>
               ) : null}
               {viewOnly && editingAnnouncement ? (
@@ -823,6 +932,7 @@ export default function EmployeeAnnouncementsCampaigns({
               ) : (
                 filteredAnnouncements.map((row, index) => {
                   const draft = isDraftStatus(row.status);
+                  const sending = row.status === "sending";
 
                   return (
                     <tr key={row.id} className={getStripedRowClassName(index)}>
@@ -857,18 +967,28 @@ export default function EmployeeAnnouncementsCampaigns({
                               <button
                                 type="button"
                                 onClick={() => openEditForm(row)}
-                                disabled={deletingId === row.id}
+                                disabled={
+                                  deletingId === row.id || sendingId === row.id
+                                }
                                 className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Edit
                               </button>
                               <button
                                 type="button"
-                                disabled
-                                title="Send will be enabled in the next step"
-                                className="cursor-not-allowed rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800/50 opacity-60"
+                                disabled={
+                                  sendingId === row.id ||
+                                  previewLoadingId === row.id ||
+                                  deletingId === row.id
+                                }
+                                onClick={() => void confirmAndSendDraft(row)}
+                                className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                               >
-                                Send
+                                {previewLoadingId === row.id
+                                  ? "…"
+                                  : sendingId === row.id
+                                    ? "Sending…"
+                                    : "Send"}
                               </button>
                               <button
                                 type="button"
@@ -877,6 +997,26 @@ export default function EmployeeAnnouncementsCampaigns({
                                 className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {deletingId === row.id ? "Deleting…" : "Delete"}
+                              </button>
+                            </>
+                          ) : sending ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openViewForm(row)}
+                                className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                              >
+                                View
+                              </button>
+                              <button
+                                type="button"
+                                disabled={sendingId === row.id}
+                                onClick={() => void continueSending(row)}
+                                className="rounded-md border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-900 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {sendingId === row.id
+                                  ? "Sending…"
+                                  : "Continue Sending"}
                               </button>
                             </>
                           ) : (
@@ -900,8 +1040,8 @@ export default function EmployeeAnnouncementsCampaigns({
       </section>
 
       <p className="text-xs text-slate-500">
-        Tip: only draft announcements can be edited or deleted. Send will be
-        enabled in a later step.
+        Tip: only draft announcements can be edited or deleted. Sends run in
+        batches of up to 50 — use Continue Sending when status is Sending.
       </p>
     </div>
   );

@@ -13,7 +13,7 @@ export default function EmployeeAnnouncementsShell({
     <div>
       <p className="mb-4 text-sm text-slate-600">
         Internal email, SMS, and in-app announcement templates and campaigns.
-        Sending and the notification bell will follow in later steps.
+        The notification bell / inbox UI will follow in a later step.
       </p>
       <EmployeeAnnouncementsNav />
       <h3 className="mb-6 text-lg font-semibold text-[#0f2744]">{sectionTitle}</h3>
