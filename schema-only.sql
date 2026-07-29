@@ -1,6 +1,12 @@
 --
 -- PostgreSQL database dump
 --
+-- NOTE: This dump is partially refreshed for multi-tenant PK/unique constraints
+-- from scripts 76/98 (employees and related composite keys). It is still not a
+-- full live dump — prefer scripts/*.sql migrations for current DDL. The
+-- tenant-safe get_finished_product_average_costs(p_tenant_id) lives in
+-- scripts/130_finished_product_average_costs_tenant.sql.
+--
 
 \restrict QmIQoaKLbyCc5XlDUyF43QHlyedqX3dIX5NxdCaoq25EN7eN9rZdJY79yPRwuNB
 
@@ -2046,6 +2052,38 @@ CREATE FUNCTION public.get_duty_roster_employee_display() RETURNS TABLE(employee
     OR can_access_employee_record(e.assigned_site_id)
     OR e.employee_id = current_user_employee_id()
   ORDER BY e.staff_id ASC;
+$$;
+
+
+--
+-- Name: get_finished_product_average_costs(uuid); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.get_finished_product_average_costs(p_tenant_id uuid) RETURNS TABLE(product_id uuid, average_cost numeric)
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT
+    combined.product_id,
+    COALESCE(
+      ROUND(SUM(combined.total_cost) / NULLIF(SUM(combined.qty), 0), 4),
+      0
+    ) AS average_cost
+  FROM (
+    SELECT
+      finished_product_id AS product_id,
+      total_batch_cost AS total_cost,
+      quantity_produced AS qty
+    FROM production_batches
+    WHERE tenant_id = p_tenant_id
+    UNION ALL
+    SELECT
+      product_id,
+      total_cost,
+      quantity AS qty
+    FROM product_purchases
+    WHERE tenant_id = p_tenant_id
+  ) combined
+  GROUP BY combined.product_id;
 $$;
 
 
@@ -5433,7 +5471,8 @@ CREATE TABLE public.complaint_register (
     resolution_date date,
     customer_satisfaction text,
     repeat_complaint boolean DEFAULT false,
-    notes text
+    notes text,
+    tenant_id uuid NOT NULL
 );
 
 
@@ -5485,7 +5524,8 @@ CREATE TABLE public.corrective_actions (
     completion_date date,
     evidence_submitted boolean DEFAULT false,
     management_approval boolean DEFAULT false,
-    notes text
+    notes text,
+    tenant_id uuid NOT NULL
 );
 
 
@@ -5562,7 +5602,8 @@ CREATE TABLE public.employees (
     emergency_contact_relationship text,
     data_notes text,
     assigned_site_id text,
-    photo_url text
+    photo_url text,
+    tenant_id uuid NOT NULL
 );
 
 
@@ -5748,7 +5789,8 @@ CREATE TABLE public.failed_inspections (
     assigned_person text,
     target_date date,
     completed boolean DEFAULT false,
-    date_closed date
+    date_closed date,
+    tenant_id uuid NOT NULL
 );
 
 
@@ -5788,7 +5830,8 @@ CREATE TABLE public.fixed_assets (
     accumulated_depreciation numeric(12,2) DEFAULT 0,
     net_book_value numeric(12,2),
     location text,
-    notes text
+    notes text,
+    tenant_id uuid NOT NULL
 );
 
 
@@ -5811,7 +5854,8 @@ CREATE TABLE public.incident_register (
     status text DEFAULT 'Open'::text,
     date_resolved date,
     escalated_to_mgmt boolean DEFAULT false,
-    notes text
+    notes text,
+    tenant_id uuid NOT NULL
 );
 
 
@@ -6595,7 +6639,8 @@ CREATE TABLE public.work_orders (
     inspection_score_pct numeric(5,2),
     pass_fail text,
     checked_by_sup boolean DEFAULT false,
-    remarks text
+    remarks text,
+    tenant_id uuid NOT NULL
 );
 
 
@@ -7160,7 +7205,7 @@ ALTER TABLE ONLY public.complaint_priority_options
 --
 
 ALTER TABLE ONLY public.complaint_register
-    ADD CONSTRAINT complaint_register_pkey PRIMARY KEY (complaint_no);
+    ADD CONSTRAINT complaint_register_pkey PRIMARY KEY (tenant_id, complaint_no);
 
 
 --
@@ -7184,7 +7229,7 @@ ALTER TABLE ONLY public.contract_status_options
 --
 
 ALTER TABLE ONLY public.corrective_actions
-    ADD CONSTRAINT corrective_actions_pkey PRIMARY KEY (action_no);
+    ADD CONSTRAINT corrective_actions_pkey PRIMARY KEY (tenant_id, action_no);
 
 
 --
@@ -7238,9 +7283,11 @@ ALTER TABLE ONLY public.employee_leave_balances
 --
 -- Name: employees employees_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
+-- Refreshed for live composite PK (script 98). schema-only.sql is otherwise
+-- a stale dump; prefer migrations under scripts/ for current DDL.
 
 ALTER TABLE ONLY public.employees
-    ADD CONSTRAINT employees_pkey PRIMARY KEY (employee_id);
+    ADD CONSTRAINT employees_pkey PRIMARY KEY (tenant_id, employee_id);
 
 
 --
@@ -7248,7 +7295,7 @@ ALTER TABLE ONLY public.employees
 --
 
 ALTER TABLE ONLY public.employees
-    ADD CONSTRAINT employees_staff_id_key UNIQUE (staff_id);
+    ADD CONSTRAINT employees_staff_id_key UNIQUE (tenant_id, staff_id);
 
 
 --
@@ -7304,7 +7351,7 @@ ALTER TABLE ONLY public.expense_subcategories
 --
 
 ALTER TABLE ONLY public.failed_inspections
-    ADD CONSTRAINT failed_inspections_pkey PRIMARY KEY (issue_no);
+    ADD CONSTRAINT failed_inspections_pkey PRIMARY KEY (tenant_id, issue_no);
 
 
 --
@@ -7328,7 +7375,7 @@ ALTER TABLE ONLY public.finished_products
 --
 
 ALTER TABLE ONLY public.fixed_assets
-    ADD CONSTRAINT fixed_assets_pkey PRIMARY KEY (asset_id);
+    ADD CONSTRAINT fixed_assets_pkey PRIMARY KEY (tenant_id, asset_id);
 
 
 --
@@ -7336,7 +7383,7 @@ ALTER TABLE ONLY public.fixed_assets
 --
 
 ALTER TABLE ONLY public.incident_register
-    ADD CONSTRAINT incident_register_pkey PRIMARY KEY (incident_no);
+    ADD CONSTRAINT incident_register_pkey PRIMARY KEY (tenant_id, incident_no);
 
 
 --
@@ -7784,7 +7831,7 @@ ALTER TABLE ONLY public.user_accounts
 --
 
 ALTER TABLE ONLY public.work_orders
-    ADD CONSTRAINT work_orders_pkey PRIMARY KEY (work_order_no);
+    ADD CONSTRAINT work_orders_pkey PRIMARY KEY (tenant_id, work_order_no);
 
 
 --

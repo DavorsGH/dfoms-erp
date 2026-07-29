@@ -19,6 +19,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import { isPaidStatus } from "../finance/accrued-wages-utils";
 import {
   buildVoidProductSaleConfirmMessage,
   calculateOutstanding,
@@ -644,8 +645,7 @@ export default function ProductSales({
                     }
                     onVoid={() => void handleVoidSale(entry)}
                     disableEdit={
-                      voided ||
-                      entry.payment_status.trim().toLowerCase() === "paid"
+                      voided || isPaidStatus(entry.payment_status)
                     }
                     disableVoid={voided}
                     voiding={voidingId === entry.id}

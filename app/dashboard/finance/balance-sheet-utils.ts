@@ -23,8 +23,8 @@ import {
 } from "./profit-loss-utils";
 import { getCurrentFinancialYear } from "./finance-year-utils";
 import {
-  getIncomeEntryOutstanding,
   isActiveIncomeForReporting,
+  resolveIncomeOutstandingBalance,
 } from "./income-register-utils";
 import {
   buildClosingCashByMonth,
@@ -181,11 +181,7 @@ export function isStatutoryRemittancePayable(entry: {
 }
 
 function getOutstandingBalance(entry: BalanceSheetIncomeEntry): number {
-  if (entry.outstanding_balance !== null && entry.outstanding_balance !== undefined) {
-    return Number(entry.outstanding_balance) || 0;
-  }
-
-  return getIncomeEntryOutstanding(entry);
+  return resolveIncomeOutstandingBalance(entry);
 }
 
 function getPayableBalance(entry: BalanceSheetAccountsPayableEntry): number {

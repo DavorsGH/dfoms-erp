@@ -1,4 +1,7 @@
-import { calculateOutstanding } from "@/app/dashboard/finance/income-register-utils";
+import {
+  calculateIncomeOutstanding,
+  resolveIncomeOutstandingBalance,
+} from "@/app/dashboard/finance/income-register-utils";
 
 export const PRODUCT_SALE_PAYSTACK_CONTEXT = "product_sale" as const;
 
@@ -20,6 +23,7 @@ export type ProductSaleIncomeLine = {
   payment_status: string;
   sale_status: string | null;
   notes: string | null;
+  wht_amount?: number | null;
 };
 
 export function roundGhs(value: number): number {
@@ -27,17 +31,12 @@ export function roundGhs(value: number): number {
 }
 
 export function lineOutstanding(line: ProductSaleIncomeLine): number {
-  const fromColumns = calculateOutstanding(
-    Number(line.amount) || 0,
-    Number(line.amount_received) || 0,
-  );
-  if (
-    line.outstanding_balance != null &&
-    Number.isFinite(Number(line.outstanding_balance))
-  ) {
-    return Math.max(0, roundGhs(Number(line.outstanding_balance)));
-  }
-  return Math.max(0, roundGhs(fromColumns));
+  return resolveIncomeOutstandingBalance({
+    amount: Number(line.amount) || 0,
+    amount_received: Number(line.amount_received) || 0,
+    wht_amount: line.wht_amount,
+    outstanding_balance: line.outstanding_balance,
+  });
 }
 
 export function invoiceOutstanding(lines: ProductSaleIncomeLine[]): number {
@@ -144,11 +143,18 @@ export function allocatePaymentAcrossLines(
   return lines.map((line) => {
     const amount = roundGhs(Number(line.amount) || 0);
     const already = roundGhs(Number(line.amount_received) || 0);
-    const outstanding = Math.max(0, roundGhs(amount - already));
+    const wht = roundGhs(Number(line.wht_amount) || 0);
+    // Allocate from live columns (not stamped balance) so a stale stamp
+    // cannot under/over-apply a payment.
+    const outstanding = calculateIncomeOutstanding(amount, already, wht);
     const applied = roundGhs(Math.min(outstanding, remaining));
     remaining = roundGhs(remaining - applied);
     const nextAmountReceived = roundGhs(already + applied);
-    const nextOutstanding = Math.max(0, roundGhs(amount - nextAmountReceived));
+    const nextOutstanding = calculateIncomeOutstanding(
+      amount,
+      nextAmountReceived,
+      wht,
+    );
 
     let nextPaymentStatus = line.payment_status;
     if (nextOutstanding <= 0 && amount > 0) {

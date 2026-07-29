@@ -11,8 +11,8 @@ import {
 import type { IncomeRegisterEntry } from "../finance/income-register-utils";
 import {
   getIncomeCustomerDisplayName,
-  getIncomeEntryOutstanding,
   isActiveIncomeForReporting,
+  resolveIncomeOutstandingBalance,
 } from "../finance/income-register-utils";
 import { getEntryMonthIndex, MONTH_LABELS } from "../finance/profit-loss-utils";
 import {
@@ -142,11 +142,7 @@ export function extractStatementRowsForMonth<
 }
 
 function getOutstandingBalance(entry: IncomeRegisterEntry): number {
-  if (entry.outstanding_balance !== null && entry.outstanding_balance !== undefined) {
-    return Number(entry.outstanding_balance) || 0;
-  }
-
-  return getIncomeEntryOutstanding(entry);
+  return resolveIncomeOutstandingBalance(entry);
 }
 
 export function getAgingBucket(daysOverdue: number): AgingBucketKey {

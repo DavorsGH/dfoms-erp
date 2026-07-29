@@ -63,7 +63,11 @@ async function fetchLegacyInventoryBalanceSheetInput(
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
       .order("product_name", { ascending: true }),
-    supabase.rpc("get_finished_product_average_costs"),
+    // Avg-cost RPC is tenant-safe (script 130). Legacy path still omits
+    // tenant filters on stock/purchase tables to reproduce the old leak.
+    supabase.rpc("get_finished_product_average_costs", {
+      p_tenant_id: tenantId,
+    }),
     supabase
       .from("raw_material_purchases")
       .select("purchase_date, total_cost, payment_method, created_at"),

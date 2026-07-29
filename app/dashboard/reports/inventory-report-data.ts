@@ -43,7 +43,10 @@ export async function fetchLowStockRawMaterialCount(supabase: SupabaseClient) {
   };
 }
 
-export async function fetchStockOnHandReportData(supabase: SupabaseClient) {
+export async function fetchStockOnHandReportData(
+  supabase: SupabaseClient,
+  tenantId: string,
+) {
   const [
     { data: rawMaterials, error: rawMaterialsError },
     { data: finishedProducts, error: finishedProductsError },
@@ -58,18 +61,15 @@ export async function fetchStockOnHandReportData(supabase: SupabaseClient) {
       .select(FINISHED_PRODUCT_SELECT)
       .order("product_name", { ascending: true }),
     // Combined production_batches + product_purchases weighted average cost.
-    // RPC is not tenant-scoped — callers that need tenant isolation must filter
-    // product ids after loading tenant-scoped finished_products.
-    supabase.rpc("get_finished_product_average_costs"),
+    supabase.rpc("get_finished_product_average_costs", {
+      p_tenant_id: tenantId,
+    }),
   ]);
 
   const normalizedRawMaterials =
     (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)) ?? [];
   const normalizedFinishedProducts =
     (finishedProducts ?? []).map((row) => normalizeFinishedProduct(row)) ?? [];
-  const tenantProductIds = new Set(
-    normalizedFinishedProducts.map((product) => product.id),
-  );
 
   const fetchError =
     rawMaterialsError?.message ??
@@ -82,12 +82,10 @@ export async function fetchStockOnHandReportData(supabase: SupabaseClient) {
     initialFinishedProducts: normalizedFinishedProducts,
     initialAverageCosts: (
       (averageCostRows as FinishedProductAverageCostRow[] | null) ?? []
-    )
-      .filter((row) => tenantProductIds.has(row.product_id))
-      .map((row) => ({
-        product_id: row.product_id,
-        average_cost: Number(row.average_cost) || 0,
-      })),
+    ).map((row) => ({
+      product_id: row.product_id,
+      average_cost: Number(row.average_cost) || 0,
+    })),
     lowStockRawMaterialCount: countLowStockRawMaterials(normalizedRawMaterials),
     fetchError,
   };

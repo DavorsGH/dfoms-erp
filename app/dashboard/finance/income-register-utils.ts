@@ -152,8 +152,9 @@ export function formatGHS(value: number): string {
 export function calculateOutstanding(
   amount: number,
   amountReceived: number,
+  whtAmount: number = 0,
 ): number {
-  return amount - amountReceived;
+  return calculateIncomeOutstanding(amount, amountReceived, whtAmount);
 }
 
 /**
@@ -186,6 +187,30 @@ export function getIncomeEntryOutstanding(entry: {
     Number(entry.amount_received) || 0,
     Number(entry.wht_amount) || 0,
   );
+}
+
+/**
+ * Prefer a stamped outstanding_balance when present (clamped); otherwise
+ * recompute via calculateIncomeOutstanding. Single path for BS, aging, and
+ * Paystack line totals.
+ */
+export function resolveIncomeOutstandingBalance(entry: {
+  amount: number;
+  amount_received: number;
+  wht_amount?: number | null;
+  outstanding_balance?: number | null;
+}): number {
+  if (
+    entry.outstanding_balance !== null &&
+    entry.outstanding_balance !== undefined
+  ) {
+    return Math.max(
+      0,
+      Math.round((Number(entry.outstanding_balance) || 0) * 100) / 100,
+    );
+  }
+
+  return getIncomeEntryOutstanding(entry);
 }
 
 export function formatDate(value: string): string {

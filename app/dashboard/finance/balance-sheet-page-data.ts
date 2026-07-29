@@ -84,9 +84,10 @@ export async function fetchInventoryBalanceSheetInput(
       .eq("tenant_id", tenantId)
       .order("product_name", { ascending: true }),
     // Combined production_batches + product_purchases weighted average cost
-    // per finished product, computed server-side.
-    // RPC is not tenant-scoped — filter to this tenant's product ids below.
-    supabase.rpc("get_finished_product_average_costs"),
+    // per finished product, computed server-side and scoped to this tenant.
+    supabase.rpc("get_finished_product_average_costs", {
+      p_tenant_id: tenantId,
+    }),
     supabase
       .from("raw_material_purchases")
       .select("purchase_date, total_cost, payment_method, created_at")
@@ -108,9 +109,6 @@ export async function fetchInventoryBalanceSheetInput(
   const normalizedFinishedProducts = (finishedProducts ?? []).map((row) =>
     normalizeFinishedProduct(row),
   );
-  const tenantProductIds = new Set(
-    normalizedFinishedProducts.map((product) => product.id),
-  );
 
   return {
     config,
@@ -118,12 +116,10 @@ export async function fetchInventoryBalanceSheetInput(
     finishedProducts: normalizedFinishedProducts,
     finishedProductAverageCosts: (
       (averageCostRows as FinishedProductAverageCostRow[] | null) ?? []
-    )
-      .filter((row) => tenantProductIds.has(row.product_id))
-      .map((row) => ({
-        product_id: row.product_id,
-        average_cost: Number(row.average_cost) || 0,
-      })),
+    ).map((row) => ({
+      product_id: row.product_id,
+      average_cost: Number(row.average_cost) || 0,
+    })),
     cashPurchases: cashPurchases ?? [],
     productCashPurchases: productCashPurchases ?? [],
   };
