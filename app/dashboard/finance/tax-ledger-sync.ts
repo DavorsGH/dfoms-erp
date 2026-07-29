@@ -144,6 +144,26 @@ export async function syncIncomeRegisterTaxLedger(
   supabase: SupabaseClient,
   input: IncomeTaxLedgerInput,
 ): Promise<{ error: string | null }> {
+  // Defense in depth: never write tax legs for non-cash system adjustments.
+  const { data: sourceRow, error: sourceError } = await supabase
+    .from("income_register")
+    .select("is_system_adjustment")
+    .eq("id", input.sourceId)
+    .maybeSingle();
+
+  if (sourceError) {
+    return { error: sourceError.message };
+  }
+
+  if (sourceRow?.is_system_adjustment) {
+    const { error: deleteError } = await deleteTaxLedgerEntriesForSource(
+      supabase,
+      "income_register",
+      input.sourceId,
+    );
+    return { error: deleteError };
+  }
+
   const { error: deleteError } = await deleteTaxLedgerEntriesForSource(
     supabase,
     "income_register",

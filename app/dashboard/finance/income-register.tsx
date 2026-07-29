@@ -198,6 +198,12 @@ export default function IncomeRegister({
   }
 
   function openEditForm(entry: IncomeRegisterEntry) {
+    if (entry.is_system_adjustment) {
+      setError(
+        "This is a system non-cash adjustment (payroll / forfeit). It cannot be edited in the Income Register — editing would re-apply VAT/WHT and AR.",
+      );
+      return;
+    }
     setEditingId(entry.id);
     setWhtAmountEdited(false);
     setForm({
@@ -220,6 +226,13 @@ export default function IncomeRegister({
   }
 
   async function handleDelete(id: string) {
+    const target = entries.find((entry) => entry.id === id);
+    if (target?.is_system_adjustment) {
+      setError(
+        "System non-cash adjustments cannot be deleted from the Income Register. Reverse them via payroll unlock / the originating correction script.",
+      );
+      return;
+    }
     if (!confirmDeleteEntry()) {
       return;
     }
@@ -263,6 +276,17 @@ export default function IncomeRegister({
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (editingId) {
+      const editing = entries.find((entry) => entry.id === editingId);
+      if (editing?.is_system_adjustment) {
+        setError(
+          "System non-cash adjustments cannot be saved from the Income Register.",
+        );
+        setLoading(false);
+        return;
+      }
+    }
 
     const amount = Number(form.amount) || 0;
     const amountReceived = Number(form.amount_received) || 0;
@@ -730,7 +754,14 @@ export default function IncomeRegister({
                     <td className="px-4 py-3">
                       {getIncomeCustomerDisplayName(entry, initialClients)}
                     </td>
-                    <td className="px-4 py-3">{entry.service_category ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      {entry.service_category ?? "—"}
+                      {entry.is_system_adjustment ? (
+                        <span className="ml-2 text-xs font-medium text-slate-500">
+                          (system adj)
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
                     <td className="px-4 py-3">
                       {formatGHS(entry.amount_received)}
@@ -745,6 +776,8 @@ export default function IncomeRegister({
                       onEdit={() => openEditForm(entry)}
                       onDelete={() => handleDelete(entry.id)}
                       deleting={deletingId === entry.id}
+                      disableEdit={Boolean(entry.is_system_adjustment)}
+                      disableDelete={Boolean(entry.is_system_adjustment)}
                     />
                   </tr>
                 );

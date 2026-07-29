@@ -39,6 +39,11 @@ export type IncomeRegisterEntry = {
   wht_rate?: number | null;
   wht_amount?: number | null;
   tax_inclusive?: boolean | null;
+  /**
+   * Non-cash system P&L adjustment (payroll DEDSAV, forfeited-wage ADJ, …).
+   * Must not carry AR outstanding or VAT/WHT tax_ledger legs.
+   */
+  is_system_adjustment?: boolean | null;
   product_id: string | null;
   sale_quantity: number | null;
   unit_price: number | null;
@@ -73,6 +78,7 @@ export function normalizeIncomeRegisterEntry(
     wht_rate: toNullableNumber(raw.wht_rate),
     wht_amount: toNullableNumber(raw.wht_amount),
     tax_inclusive: raw.tax_inclusive ?? true,
+    is_system_adjustment: Boolean(raw.is_system_adjustment),
     sale_quantity:
       raw.sale_quantity == null ? null : Number(raw.sale_quantity) || 0,
     unit_price: raw.unit_price == null ? null : Number(raw.unit_price) || 0,

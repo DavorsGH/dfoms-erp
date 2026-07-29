@@ -358,6 +358,8 @@ function buildDeductionSavingsIncomePayload(
     output_tax_component: null,
     wht_rate: null,
     wht_amount: 0,
+    // Explicit flag: Income Register UI + DB trigger must not apply VAT/WHT/AR.
+    is_system_adjustment: true,
   };
 }
 
@@ -401,7 +403,11 @@ async function upsertPayrollDeductionSavingsIncomeEntry(
         notes: payload.notes,
         net_of_tax_amount: payload.net_of_tax_amount,
         output_vat_amount: payload.output_vat_amount,
+        output_tax_component: payload.output_tax_component,
+        wht_rate: payload.wht_rate,
         wht_amount: payload.wht_amount,
+        tax_inclusive: payload.tax_inclusive,
+        is_system_adjustment: payload.is_system_adjustment,
       })
       .eq("id", existing.id);
 
