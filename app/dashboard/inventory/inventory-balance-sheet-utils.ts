@@ -70,6 +70,9 @@ export function isCashPaymentMethod(
  * Row shape returned by the get_finished_product_average_costs() database
  * function: combined production_batches + product_purchases weighted average
  * cost per finished product.
+ *
+ * Not tenant-scoped — callers must filter to the current tenant's product ids
+ * (the RPC rejects p_tenant_id and returns all tenants under service role).
  */
 export type FinishedProductAverageCostRow = {
   product_id: string;

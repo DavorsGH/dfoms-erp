@@ -12,6 +12,11 @@ import type {
   CashFlowInventoryPurchaseInput,
   ManualFinancialEntry,
 } from "../finance/cash-flow-utils";
+import {
+  buildNetPayByPayrollMonth,
+  type MonthEndCloseNetPayEntry,
+  type PayrollHistoryWagesEntry,
+} from "../finance/accrued-wages-utils";
 import type { CashMovementManualEntry } from "../finance/cash-movement-utils";
 import { formatPercent } from "../finance/fixed-assets-utils";
 import { formatGHS } from "../finance/income-register-utils";
@@ -409,6 +414,8 @@ export function CashFlowStatementReport({
   initialInventoryPurchases,
   initialFixedAssets,
   initialCapitalContributions = [],
+  initialPayrollHistory = [],
+  initialMonthEndCloseNetPay = [],
   availableYears,
   fetchError,
 }: {
@@ -418,6 +425,8 @@ export function CashFlowStatementReport({
   initialInventoryPurchases: CashFlowInventoryPurchaseInput;
   initialFixedAssets: ProfitLossAssetEntry[];
   initialCapitalContributions?: CapitalContributionEntry[];
+  initialPayrollHistory?: PayrollHistoryWagesEntry[];
+  initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
   availableYears: number[];
   fetchError: string | null;
 }) {
@@ -427,6 +436,15 @@ export function CashFlowStatementReport({
   const manualEntriesForYear = useMemo(
     () => filterManualEntriesForYear(initialManualEntries, year),
     [initialManualEntries, year],
+  );
+
+  const staffSalaryNetByPayrollMonth = useMemo(
+    () =>
+      buildNetPayByPayrollMonth(
+        initialPayrollHistory,
+        initialMonthEndCloseNetPay,
+      ),
+    [initialPayrollHistory, initialMonthEndCloseNetPay],
   );
 
   const report = useMemo(
@@ -439,6 +457,7 @@ export function CashFlowStatementReport({
         initialInventoryPurchases,
         initialFixedAssets,
         initialCapitalContributions,
+        staffSalaryNetByPayrollMonth,
       ),
     [
       initialIncomeEntries,
@@ -446,6 +465,7 @@ export function CashFlowStatementReport({
       initialCapitalContributions,
       initialFixedAssets,
       initialInventoryPurchases,
+      staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       year,
     ],

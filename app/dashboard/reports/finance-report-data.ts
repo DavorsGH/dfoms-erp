@@ -6,6 +6,15 @@ import {
 } from "../finance/balance-sheet-page-data";
 import { buildAvailableYears } from "../finance/finance-year-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
+import type {
+  MonthEndCloseNetPayEntry,
+  PayrollHistoryWagesEntry,
+} from "../finance/accrued-wages-utils";
+import {
+  fetchPayrollLiveRecalcBundle,
+  mergePayrollWagesWithLiveOpenMonths,
+} from "../hr-payroll/payroll-live-recalc-utils";
+import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
 import {
   TAX_LEDGER_SELECT,
   normalizeTaxLedgerEntry,
@@ -80,7 +89,11 @@ export async function fetchCashFlowReportData(
     { data: manualEntries, error: manualError },
     { data: fixedAssets, error: fixedAssetsError },
     { data: capitalContributions, error: capitalError },
+    { data: payrollHistory, error: payrollHistoryError },
+    { data: payrollProcessing, error: payrollProcessingError },
+    { data: monthEndCloseRecords, error: monthEndCloseError },
     inventoryPurchases,
+    livePayrollBundle,
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -89,7 +102,7 @@ export async function fetchCashFlowReportData(
     supabase
       .from("expense_register")
       .select(
-        "date, sub_category, amount, payment_status, expense_category, description, receipt_no",
+        "date, sub_category, amount, payment_status, expense_category, description, receipt_no, notes",
       )
       .order("date", { ascending: true }),
     supabase.from("manual_financial_entries").select("*").order("period_month", {
@@ -105,7 +118,21 @@ export async function fetchCashFlowReportData(
       .from("capital_contributions")
       .select("id, date, contributed_by, amount, description, notes")
       .order("date", { ascending: true }),
+    // Display-only — never written back from this report path.
+    supabase
+      .from("payroll_history")
+      .select("payroll_month, net_pay")
+      .order("payroll_month", { ascending: true }),
+    supabase
+      .from("payroll_processing")
+      .select("*")
+      .order("payroll_month", { ascending: true }),
+    supabase
+      .from("month_end_close")
+      .select("month, total_net_pay")
+      .order("month", { ascending: true }),
     fetchCashFlowInventoryPurchaseInput(supabase, tenantId),
+    fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
   ]);
 
   return {
@@ -115,6 +142,14 @@ export async function fetchCashFlowReportData(
     initialInventoryPurchases: inventoryPurchases,
     initialFixedAssets: fixedAssets ?? [],
     initialCapitalContributions: capitalContributions ?? [],
+    initialPayrollHistory: mergePayrollWagesWithLiveOpenMonths(
+      (payrollHistory as PayrollHistoryWagesEntry[] | null) ?? [],
+      (payrollProcessing as PayrollProcessingRow[] | null) ?? [],
+      livePayrollBundle.employees,
+      livePayrollBundle.liveContext,
+    ),
+    initialMonthEndCloseNetPay:
+      (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? [],
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),
@@ -130,6 +165,10 @@ export async function fetchCashFlowReportData(
       manualError?.message ??
       fixedAssetsError?.message ??
       capitalError?.message ??
+      payrollHistoryError?.message ??
+      payrollProcessingError?.message ??
+      monthEndCloseError?.message ??
+      livePayrollBundle.error ??
       null,
   };
 }

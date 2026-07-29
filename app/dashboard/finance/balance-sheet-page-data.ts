@@ -76,20 +76,25 @@ export async function fetchInventoryBalanceSheetInput(
     supabase
       .from("raw_materials")
       .select(RAW_MATERIAL_SELECT)
+      .eq("tenant_id", tenantId)
       .order("material_name", { ascending: true }),
     supabase
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
+      .eq("tenant_id", tenantId)
       .order("product_name", { ascending: true }),
     // Combined production_batches + product_purchases weighted average cost
     // per finished product, computed server-side.
+    // RPC is not tenant-scoped — filter to this tenant's product ids below.
     supabase.rpc("get_finished_product_average_costs"),
     supabase
       .from("raw_material_purchases")
-      .select("purchase_date, total_cost, payment_method, created_at"),
+      .select("purchase_date, total_cost, payment_method, created_at")
+      .eq("tenant_id", tenantId),
     supabase
       .from("product_purchases")
-      .select("purchase_date, total_cost, payment_method, created_at"),
+      .select("purchase_date, total_cost, payment_method, created_at")
+      .eq("tenant_id", tenantId),
   ]);
 
   const config = configRows
@@ -100,18 +105,25 @@ export async function fetchInventoryBalanceSheetInput(
       } satisfies InventoryBalanceConfig)
     : null;
 
+  const normalizedFinishedProducts = (finishedProducts ?? []).map((row) =>
+    normalizeFinishedProduct(row),
+  );
+  const tenantProductIds = new Set(
+    normalizedFinishedProducts.map((product) => product.id),
+  );
+
   return {
     config,
     rawMaterials: (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)),
-    finishedProducts: (finishedProducts ?? []).map((row) =>
-      normalizeFinishedProduct(row),
-    ),
+    finishedProducts: normalizedFinishedProducts,
     finishedProductAverageCosts: (
       (averageCostRows as FinishedProductAverageCostRow[] | null) ?? []
-    ).map((row) => ({
-      product_id: row.product_id,
-      average_cost: Number(row.average_cost) || 0,
-    })),
+    )
+      .filter((row) => tenantProductIds.has(row.product_id))
+      .map((row) => ({
+        product_id: row.product_id,
+        average_cost: Number(row.average_cost) || 0,
+      })),
     cashPurchases: cashPurchases ?? [],
     productCashPurchases: productCashPurchases ?? [],
   };
@@ -138,10 +150,12 @@ export async function fetchCashFlowInventoryPurchaseInput(
       .maybeSingle(),
     supabase
       .from("raw_material_purchases")
-      .select("purchase_date, total_cost, payment_method, created_at"),
+      .select("purchase_date, total_cost, payment_method, created_at")
+      .eq("tenant_id", tenantId),
     supabase
       .from("product_purchases")
-      .select("purchase_date, total_cost, payment_method, created_at"),
+      .select("purchase_date, total_cost, payment_method, created_at")
+      .eq("tenant_id", tenantId),
   ]);
 
   return {

@@ -14,6 +14,11 @@ import type {
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type { ProfitLossAssetEntry } from "./profit-loss-utils";
 import {
+  buildNetPayByPayrollMonth,
+  type MonthEndCloseNetPayEntry,
+  type PayrollHistoryWagesEntry,
+} from "./accrued-wages-utils";
+import {
   FULL_YEAR_INDEX,
   MONTH_LABELS,
   buildCashFlowReport,
@@ -33,6 +38,9 @@ type CashFlowProps = {
   initialInventoryPurchases: CashFlowInventoryPurchaseInput;
   initialFixedAssets: ProfitLossAssetEntry[];
   initialCapitalContributions: CapitalContributionEntry[];
+  /** Same payroll inputs Balance Sheet uses to build the staff-salary net map. */
+  initialPayrollHistory?: PayrollHistoryWagesEntry[];
+  initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
   availableYears: number[];
   fetchError: string | null;
 };
@@ -75,6 +83,8 @@ export default function CashFlow({
   initialInventoryPurchases,
   initialFixedAssets,
   initialCapitalContributions,
+  initialPayrollHistory = [],
+  initialMonthEndCloseNetPay = [],
   availableYears,
   fetchError,
 }: CashFlowProps) {
@@ -88,6 +98,15 @@ export default function CashFlow({
     [manualEntries, selectedYear],
   );
 
+  const staffSalaryNetByPayrollMonth = useMemo(
+    () =>
+      buildNetPayByPayrollMonth(
+        initialPayrollHistory,
+        initialMonthEndCloseNetPay,
+      ),
+    [initialPayrollHistory, initialMonthEndCloseNetPay],
+  );
+
   const report = useMemo(
     () =>
       buildCashFlowReport(
@@ -98,6 +117,7 @@ export default function CashFlow({
         initialInventoryPurchases,
         initialFixedAssets,
         initialCapitalContributions,
+        staffSalaryNetByPayrollMonth,
       ),
     [
       initialIncomeEntries,
@@ -105,6 +125,7 @@ export default function CashFlow({
       initialCapitalContributions,
       initialFixedAssets,
       initialInventoryPurchases,
+      staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       selectedYear,
     ],

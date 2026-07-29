@@ -48,6 +48,8 @@ export type CashFlowExpenseEntry = {
   expense_category?: string;
   description?: string | null;
   receipt_no?: string | null;
+  /** Required for Paid PAYROLL-SAL cash_paid=… parsing (parity with Balance Sheet). */
+  notes?: string | null;
 };
 
 /**
@@ -139,6 +141,7 @@ function groupPaidExpensesBySubCategory(
       payment_status: entry.payment_status,
       description: entry.description ?? null,
       receipt_no: entry.receipt_no ?? null,
+      notes: entry.notes ?? null,
     };
     if (!isCashOutflowExpense(cashExpense)) {
       continue;
@@ -183,6 +186,11 @@ export function buildCashFlowReport(
   inventoryPurchases: CashFlowInventoryPurchaseInput = EMPTY_INVENTORY_PURCHASE_INPUT,
   fixedAssets: ProfitLossAssetEntry[] = [],
   capitalContributions: CapitalContributionEntry[] = [],
+  /**
+   * Fallback for Paid PAYROLL-SAL when expense notes lack cash_paid=<amount>.
+   * Same map Balance Sheet passes into buildMonthlyCashComponents.
+   */
+  staffSalaryNetByPayrollMonth?: Map<string, number>,
 ): CashFlowReport {
   const rows: CashFlowRow[] = [];
 
@@ -195,6 +203,7 @@ export function buildCashFlowReport(
       payment_status: entry.payment_status,
       description: entry.description ?? null,
       receipt_no: entry.receipt_no ?? null,
+      notes: entry.notes ?? null,
     }),
   );
 
@@ -208,6 +217,7 @@ export function buildCashFlowReport(
       productCashPurchases: inventoryPurchases.productCashPurchases,
       inventoryConfig: inventoryPurchases.inventoryConfig,
       manualEntries,
+      staffSalaryNetByPayrollMonth,
     },
     financialYear,
   );
