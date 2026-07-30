@@ -3,8 +3,8 @@
 import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
 import PasswordInput from "@/components/password-input";
+import { loginWithPassword } from "./actions";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -12,20 +12,16 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const result = await loginWithPassword(email, password);
 
-    if (error) {
-      setError(error.message);
+    if (!result.ok) {
+      setError(result.error);
       setLoading(false);
       return;
     }
