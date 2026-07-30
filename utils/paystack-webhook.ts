@@ -15,6 +15,7 @@ import {
   isProductSalePaystackContext,
   processProductSalePaystackEvent,
 } from "@/utils/paystack-product-sale-webhook";
+import { verifyPaystackTransaction } from "@/utils/paystack";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -92,22 +93,82 @@ function addBillingCycle(
 }
 
 function metadataObject(data: JsonRecord): JsonRecord {
-  const meta = asRecord(data.metadata);
+  let meta: JsonRecord | null = null;
+  const raw = data.metadata;
+
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("{")) {
+      try {
+        meta = asRecord(JSON.parse(trimmed));
+      } catch {
+        meta = null;
+      }
+    }
+  } else {
+    meta = asRecord(raw);
+  }
+
   if (!meta) {
     return {};
   }
 
-  // Paystack sometimes nests custom fields; flatten known keys from top-level meta.
+  // Paystack dashboard custom_fields: lift variable_name → value onto the object
+  // so metadata.product_id / tenant_id resolve even when only custom_fields exist.
+  const customFields = meta.custom_fields;
+  if (Array.isArray(customFields)) {
+    const lifted: JsonRecord = { ...meta };
+    for (const field of customFields) {
+      const row = asRecord(field);
+      if (!row) {
+        continue;
+      }
+      const key = asString(row.variable_name);
+      if (!key || lifted[key] != null) {
+        continue;
+      }
+      if (typeof row.value === "string" || typeof row.value === "number") {
+        lifted[key] = String(row.value);
+      }
+    }
+    return lifted;
+  }
+
   return meta;
 }
 
+/**
+ * Paystack places the plan in different shapes depending on event type:
+ * - charge.success often has empty `plan: {}` but may include `plan_object`
+ * - subscription.create usually has a full `plan` object with `plan_code`
+ * - verify API returns `plan_object.plan_code`
+ */
 function extractPlanCode(data: JsonRecord): string | null {
-  const plan = data.plan;
-  if (typeof plan === "string") {
-    return asString(plan);
+  const candidates: unknown[] = [
+    data.plan_code,
+    data.plan,
+    data.plan_object,
+    asRecord(data.subscription)?.plan,
+    asRecord(data.subscription)?.plan_object,
+    metadataObject(data).plan_code,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      const code = asString(candidate);
+      if (code) {
+        return code;
+      }
+      continue;
+    }
+    const planObj = asRecord(candidate);
+    const code = asString(planObj?.plan_code);
+    if (code) {
+      return code;
+    }
   }
-  const planObj = asRecord(plan);
-  return asString(planObj?.plan_code);
+
+  return null;
 }
 
 function formatGhsAmount(amount: number): string {
@@ -397,6 +458,25 @@ async function findProductIdByPlanCode(planCode: string): Promise<string | null>
   }
 
   return data?.id ?? null;
+}
+
+/**
+ * Resolve the CRM product for a paid plan. Prefer Paystack plan_code (what was
+ * actually charged) over checkout metadata.product_id so upgrades always land
+ * on the newly purchased tier even when metadata is missing/stale.
+ */
+async function resolvePurchasedProductId(options: {
+  planCode: string | null;
+  metadataProductId: string | null;
+}): Promise<string | null> {
+  if (options.planCode) {
+    const fromPlan = await findProductIdByPlanCode(options.planCode);
+    if (fromPlan) {
+      return fromPlan;
+    }
+  }
+
+  return options.metadataProductId;
 }
 
 async function findSubscriptionByEmailAndPlan(options: {
@@ -786,7 +866,7 @@ async function handleChargeSuccess(
   const meta = metadataObject(data);
   const metadataTenantId = asString(meta.tenant_id);
   const metadataProductId = asString(meta.product_id);
-  const planCode = extractPlanCode(data);
+  let planCode = extractPlanCode(data);
   const { email, customerCode } = extractCustomer(data);
   const subscriptionCode = extractSubscriptionCode(data);
   const reference = asString(data.reference);
@@ -800,9 +880,25 @@ async function handleChargeSuccess(
     };
   }
 
-  let productId = metadataProductId;
-  if (!productId && planCode) {
-    productId = await findProductIdByPlanCode(planCode);
+  // charge.success often ships `plan: {}`; verify fills plan_object.plan_code.
+  if (!planCode && reference) {
+    const verified = await verifyPaystackTransaction(reference);
+    if (verified.ok && verified.planCode) {
+      planCode = asString(verified.planCode);
+    }
+  }
+
+  const productId = await resolvePurchasedProductId({
+    planCode,
+    metadataProductId,
+  });
+
+  if (!productId) {
+    console.warn(
+      `[paystack-webhook] charge.success ${reference ?? "(no ref)"} — could not resolve product_id ` +
+        `(plan_code=${planCode ?? "n/a"}, metadata.product_id=${metadataProductId ?? "n/a"}). ` +
+        `Activating subscription without changing product_id.`,
+    );
   }
 
   const nextBillingDate = await resolveNextBillingDate({
@@ -875,7 +971,7 @@ async function handleChargeSuccess(
   });
 
   return {
-    detail: `charge.success ${created ? "created+activated" : "activated"} subscription ${row.id} (linked_tenant_id=${row.linked_tenant_id}, ref=${reference ?? "n/a"}, next_billing_date=${nextBillingDate ?? "unchanged"}).`,
+    detail: `charge.success ${created ? "created+activated" : "activated"} subscription ${row.id} (linked_tenant_id=${row.linked_tenant_id}, product_id=${productId ?? row.product_id ?? "unchanged"}, ref=${reference ?? "n/a"}, next_billing_date=${nextBillingDate ?? "unchanged"}).`,
   };
 }
 
@@ -895,9 +991,17 @@ async function handleSubscriptionCreate(
   const meta = metadataObject(data);
   const nextPaymentDate = extractNextPaymentDate(data);
   const metadataTenantId = asString(meta.tenant_id);
-  let productId = asString(meta.product_id);
-  if (!productId && planCode) {
-    productId = await findProductIdByPlanCode(planCode);
+  const metadataProductId = asString(meta.product_id);
+  const productId = await resolvePurchasedProductId({
+    planCode,
+    metadataProductId,
+  });
+
+  if (!productId) {
+    console.warn(
+      `[paystack-webhook] subscription.create ${subscriptionCode} — could not resolve product_id ` +
+        `(plan_code=${planCode ?? "n/a"}, metadata.product_id=${metadataProductId ?? "n/a"}).`,
+    );
   }
 
   let row = await resolveSubscription({
@@ -965,7 +1069,7 @@ async function handleSubscriptionCreate(
   });
 
   return {
-    detail: `subscription.create ${created ? "created and " : ""}stored paystack_subscription_id=${subscriptionCode} on ${row.id}.`,
+    detail: `subscription.create ${created ? "created and " : ""}stored paystack_subscription_id=${subscriptionCode} on ${row.id} (product_id=${productId ?? row.product_id ?? "unchanged"}).`,
   };
 }
 

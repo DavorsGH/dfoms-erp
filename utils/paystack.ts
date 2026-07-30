@@ -276,6 +276,7 @@ export async function verifyPaystackTransaction(
         channel?: string | null;
         customer?: { email?: string | null } | null;
         plan?: { plan_code?: string | null } | string | null;
+        plan_object?: { plan_code?: string | null } | string | null;
         authorization?: { channel?: string | null } | null;
       };
     } | null;
@@ -289,13 +290,18 @@ export async function verifyPaystackTransaction(
       };
     }
 
-    const plan = payload.data.plan;
-    const planCode =
-      typeof plan === "string"
-        ? plan
-        : plan && typeof plan === "object"
-          ? (plan.plan_code ?? null)
-          : null;
+    const planCandidates = [payload.data.plan, payload.data.plan_object];
+    let planCode: string | null = null;
+    for (const plan of planCandidates) {
+      if (typeof plan === "string" && plan.trim()) {
+        planCode = plan.trim();
+        break;
+      }
+      if (plan && typeof plan === "object" && plan.plan_code?.trim()) {
+        planCode = plan.plan_code.trim();
+        break;
+      }
+    }
 
     const channel =
       (typeof payload.data.channel === "string" &&
