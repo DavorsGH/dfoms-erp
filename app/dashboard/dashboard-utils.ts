@@ -35,6 +35,10 @@ import {
   sumOpenStatutoryPayrollLiabilities,
   type TaxLedgerBalanceSource,
 } from "./finance/tax-ledger-utils";
+import type {
+  SpendingAnalysisExpenseRow,
+  SpendingAnalysisIncomeRow,
+} from "./dashboard-spending-analysis-utils";
 
 export type DashboardIncomeEntry = {
   date: string;
@@ -116,6 +120,8 @@ export type DashboardViewModel = {
   cashTrend: DashboardCashTrendPoint[];
   payrollTrend: DashboardPayrollTrendPoint[];
   lowStockRawMaterialCount: number;
+  spendingAnalysisIncome: SpendingAnalysisIncomeRow[];
+  spendingAnalysisExpenses: SpendingAnalysisExpenseRow[];
 };
 
 export type DashboardProfitTrendPoint = {
@@ -717,6 +723,8 @@ export function buildDashboardViewModel(input: {
     cashTrend,
     payrollTrend,
     lowStockRawMaterialCount: input.lowStockRawMaterialCount ?? 0,
+    spendingAnalysisIncome: [],
+    spendingAnalysisExpenses: [],
   };
 }
 

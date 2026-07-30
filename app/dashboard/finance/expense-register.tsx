@@ -32,6 +32,13 @@ import RegisterRowActions, {
   getStripedRowClassName,
   toDateInputValue,
 } from "./register-row-actions";
+import {
+  RegisterColumnFilterHeader,
+  RegisterFilteredTotal,
+  collectDistinctColumnValues,
+  columnValuePassesFilter,
+  type RegisterColumnFilterValue,
+} from "./register-column-filter";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -117,6 +124,12 @@ export default function ExpenseRegister({
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeExpenseRegisterEntry),
   );
+  const [categoryFilter, setCategoryFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [subCategoryFilter, setSubCategoryFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [descriptionFilter, setDescriptionFilter] =
+    useState<RegisterColumnFilterValue>(null);
   const [expenseCategories, setExpenseCategories] = useState(
     initialExpenseCategories,
   );
@@ -153,6 +166,67 @@ export default function ExpenseRegister({
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => Number(left.value) - Number(right.value));
   }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
+
+  const categoryOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
+              columnValuePassesFilter(entry.description, descriptionFilter),
+          )
+          .map((entry) => entry.expense_category),
+      ),
+    [entries, subCategoryFilter, descriptionFilter],
+  );
+
+  const subCategoryOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              columnValuePassesFilter(entry.expense_category, categoryFilter) &&
+              columnValuePassesFilter(entry.description, descriptionFilter),
+          )
+          .map((entry) => entry.sub_category),
+      ),
+    [entries, categoryFilter, descriptionFilter],
+  );
+
+  const descriptionOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              columnValuePassesFilter(entry.expense_category, categoryFilter) &&
+              columnValuePassesFilter(entry.sub_category, subCategoryFilter),
+          )
+          .map((entry) => entry.description),
+      ),
+    [entries, categoryFilter, subCategoryFilter],
+  );
+
+  const visibleEntries = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          columnValuePassesFilter(entry.expense_category, categoryFilter) &&
+          columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
+          columnValuePassesFilter(entry.description, descriptionFilter),
+      ),
+    [entries, categoryFilter, subCategoryFilter, descriptionFilter],
+  );
+
+  const visibleNetPaidTotal = useMemo(() => {
+    let total = 0;
+    for (const entry of visibleEntries) {
+      total += Number(entry.amount) || 0;
+    }
+    return Math.round(total * 100) / 100;
+  }, [visibleEntries]);
 
   useEffect(() => {
     if (!showForm) {
@@ -803,9 +877,30 @@ export default function ExpenseRegister({
           <thead className={scrollableTableHeadClassName}>
               <tr>
                 <th className={scrollableTableThClassName}>Date</th>
-                <th className={scrollableTableThClassName}>Expense Category</th>
-                <th className={scrollableTableThClassName}>Sub-Category</th>
-                <th className={scrollableTableThClassName}>Description</th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Expense Category"
+                    options={categoryOptions}
+                    applied={categoryFilter}
+                    onApply={setCategoryFilter}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Sub-Category"
+                    options={subCategoryOptions}
+                    applied={subCategoryFilter}
+                    onApply={setSubCategoryFilter}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Description"
+                    options={descriptionOptions}
+                    applied={descriptionFilter}
+                    onApply={setDescriptionFilter}
+                  />
+                </th>
                 <th className={scrollableTableThClassName}>Vendor</th>
                 <th className={scrollableTableThClassName}>Gross</th>
                 <th className={scrollableTableThClassName}>WHT</th>
@@ -825,8 +920,17 @@ export default function ExpenseRegister({
                     No expense register entries yet.
                   </td>
                 </tr>
+              ) : visibleEntries.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={11}
+                    className="px-4 py-8 text-center text-slate-500"
+                  >
+                    No entries match the current filters.
+                  </td>
+                </tr>
               ) : (
-                entries.map((entry, index) => {
+                visibleEntries.map((entry, index) => {
                   const gross = getExpenseGrossBeforeWht(entry);
 
                   return (
@@ -858,6 +962,13 @@ export default function ExpenseRegister({
             </tbody>
         </table>
       </ScrollableTable>
+
+      <RegisterFilteredTotal
+        label="Net Paid total"
+        total={visibleNetPaidTotal}
+        visibleCount={visibleEntries.length}
+        totalCount={entries.length}
+      />
     </div>
   );
 }

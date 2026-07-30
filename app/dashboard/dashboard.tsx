@@ -18,6 +18,7 @@ import { inputClassName } from "./employees/employee-record-utils";
 import { formatGHS } from "./finance/income-register-utils";
 import type { DashboardViewModel } from "./dashboard-utils";
 import type { DashboardVisibility } from "@/utils/rbac-access";
+import DashboardSpendingAnalysis from "./dashboard-spending-analysis";
 
 type DashboardProps = {
   data: DashboardViewModel;
@@ -253,6 +254,13 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           tone={summary.balanceCheck.isBalanced ? "success" : "danger"}
         />
       </div>
+      ) : null}
+
+      {visibility.showFinancialSummary ? (
+        <DashboardSpendingAnalysis
+          incomeEntries={data.spendingAnalysisIncome}
+          expenseEntries={data.spendingAnalysisExpenses}
+        />
       ) : null}
 
       {visibility.showFinancialCharts ? (

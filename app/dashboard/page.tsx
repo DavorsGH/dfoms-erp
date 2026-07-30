@@ -17,6 +17,10 @@ import { buildOperationsDashboardSummary } from "./operations-dashboard-utils";
 import OperationsDashboard from "./operations-dashboard";
 import Dashboard from "./dashboard";
 import { buildDashboardViewModel } from "./dashboard-utils";
+import {
+  toSpendingAnalysisExpenseRows,
+  toSpendingAnalysisIncomeRows,
+} from "./dashboard-spending-analysis-utils";
 import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
 import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
@@ -219,7 +223,7 @@ export default async function DashboardPage() {
   const { data: incomeEntries, error: incomeError } = await supabase
     .from("income_register")
     .select(
-      "tenant_id, date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
+      "tenant_id, date, amount, amount_received, outstanding_balance, wht_amount, service_category, description, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
     )
     .order("date", { ascending: true });
 
@@ -398,7 +402,15 @@ export default async function DashboardPage() {
 
   return (
     <Dashboard
-      data={dashboardData}
+      data={{
+        ...dashboardData,
+        spendingAnalysisIncome: toSpendingAnalysisIncomeRows(
+          incomeEntries ?? [],
+        ),
+        spendingAnalysisExpenses: toSpendingAnalysisExpenseRows(
+          expenseEntries ?? [],
+        ),
+      }}
       fetchError={fetchError}
       visibility={getDashboardVisibility(role)}
     />

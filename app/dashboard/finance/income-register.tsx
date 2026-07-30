@@ -34,6 +34,13 @@ import RegisterRowActions, {
   getStripedRowClassName,
   toDateInputValue,
 } from "./register-row-actions";
+import {
+  RegisterColumnFilterHeader,
+  RegisterFilteredTotal,
+  collectDistinctColumnValues,
+  columnValuePassesFilter,
+  type RegisterColumnFilterValue,
+} from "./register-column-filter";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -109,6 +116,10 @@ export default function IncomeRegister({
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeIncomeRegisterEntry),
   );
+  const [serviceCategoryFilter, setServiceCategoryFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [customerNameFilter, setCustomerNameFilter] =
+    useState<RegisterColumnFilterValue>(null);
   const [serviceTypes, setServiceTypes] = useState(initialServiceTypes);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -138,6 +149,62 @@ export default function IncomeRegister({
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => Number(left.value) - Number(right.value));
   }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
+
+  const serviceCategoryOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter((entry) =>
+            columnValuePassesFilter(
+              getIncomeCustomerDisplayName(entry, initialClients),
+              customerNameFilter,
+            ),
+          )
+          .map((entry) => entry.service_category),
+      ),
+    [entries, customerNameFilter, initialClients],
+  );
+
+  const customerNameOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter((entry) =>
+            columnValuePassesFilter(
+              entry.service_category,
+              serviceCategoryFilter,
+            ),
+          )
+          .map((entry) =>
+            getIncomeCustomerDisplayName(entry, initialClients),
+          ),
+      ),
+    [entries, serviceCategoryFilter, initialClients],
+  );
+
+  const visibleEntries = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          columnValuePassesFilter(
+            entry.service_category,
+            serviceCategoryFilter,
+          ) &&
+          columnValuePassesFilter(
+            getIncomeCustomerDisplayName(entry, initialClients),
+            customerNameFilter,
+          ),
+      ),
+    [entries, serviceCategoryFilter, customerNameFilter, initialClients],
+  );
+
+  const visibleAmountTotal = useMemo(() => {
+    let total = 0;
+    for (const entry of visibleEntries) {
+      total += Number(entry.amount) || 0;
+    }
+    return Math.round(total * 100) / 100;
+  }, [visibleEntries]);
 
   useEffect(() => {
     if (!showForm) {
@@ -719,8 +786,22 @@ export default function IncomeRegister({
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
               <th className={scrollableTableThClassName}>Invoice No.</th>
-              <th className={scrollableTableThClassName}>Customer Name</th>
-              <th className={scrollableTableThClassName}>Service Category</th>
+              <th className={scrollableTableThClassName}>
+                <RegisterColumnFilterHeader
+                  label="Customer Name"
+                  options={customerNameOptions}
+                  applied={customerNameFilter}
+                  onApply={setCustomerNameFilter}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <RegisterColumnFilterHeader
+                  label="Service Category"
+                  options={serviceCategoryOptions}
+                  applied={serviceCategoryFilter}
+                  onApply={setServiceCategoryFilter}
+                />
+              </th>
               <th className={scrollableTableThClassName}>Amount</th>
               <th className={scrollableTableThClassName}>Amount Received</th>
               <th className={scrollableTableThClassName}>WHT Amount</th>
@@ -740,8 +821,17 @@ export default function IncomeRegister({
                   No income register entries yet.
                 </td>
               </tr>
+            ) : visibleEntries.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={11}
+                  className="px-4 py-8 text-center text-slate-500"
+                >
+                  No entries match the current filters.
+                </td>
+              </tr>
             ) : (
-              entries.map((entry, index) => {
+              visibleEntries.map((entry, index) => {
                 const outstanding = getIncomeEntryOutstanding(entry);
 
                 return (
@@ -786,6 +876,13 @@ export default function IncomeRegister({
           </tbody>
         </table>
       </ScrollableTable>
+
+      <RegisterFilteredTotal
+        label="Amount total"
+        total={visibleAmountTotal}
+        visibleCount={visibleEntries.length}
+        totalCount={entries.length}
+      />
     </div>
   );
 }
