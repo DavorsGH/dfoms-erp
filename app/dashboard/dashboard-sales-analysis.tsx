@@ -2,100 +2,48 @@
 
 import { useMemo, useState } from "react";
 import { inputClassName } from "./employees/employee-record-utils";
-import { formatGHS } from "./finance/income-register-utils";
 import {
-  buildTopExpenseAnalysis,
-  buildTopIncomeAnalysis,
+  AnalysisRankedList,
+} from "./dashboard-spending-analysis";
+import {
   collectAnalysisMonthKeys,
   collectAnalysisYearKeys,
   formatAnalysisMonthLabel,
-  type SpendingAnalysisExpenseRow,
-  type SpendingAnalysisGrouping,
-  type SpendingAnalysisIncomeRow,
-  type SpendingAnalysisPeriodMode,
-  type SpendingAnalysisRankedItem,
 } from "./dashboard-spending-analysis-utils";
+import {
+  buildTopSalesAnalysis,
+  type SalesAnalysisGrouping,
+  type SalesAnalysisPeriodMode,
+  type SalesAnalysisRow,
+} from "./dashboard-sales-analysis-utils";
 
-type DashboardSpendingAnalysisProps = {
-  incomeEntries: SpendingAnalysisIncomeRow[];
-  expenseEntries: SpendingAnalysisExpenseRow[];
+type DashboardSalesAnalysisProps = {
+  salesEntries: SalesAnalysisRow[];
 };
 
-export function AnalysisRankedList({
-  title,
-  items,
-  emptyLabel,
-}: {
-  title: string;
-  items: SpendingAnalysisRankedItem[];
-  emptyLabel: string;
-}) {
-  return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-      <h3 className="text-sm font-semibold text-[#0f2744]">{title}</h3>
-      {items.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">{emptyLabel}</p>
-      ) : (
-        <ol className="mt-3 space-y-2">
-          {items.map((item, index) => (
-            <li
-              key={`${item.label}-${index}`}
-              className="flex items-start justify-between gap-3 text-sm"
-            >
-              <span className="min-w-0 text-slate-700">
-                <span className="mr-2 font-medium text-slate-500">
-                  {index + 1}.
-                </span>
-                <span className="break-words">{item.label}</span>
-              </span>
-              <span className="shrink-0 font-medium tabular-nums text-slate-900">
-                {formatGHS(item.amount)}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-}
-
-export default function DashboardSpendingAnalysis({
-  incomeEntries,
-  expenseEntries,
-}: DashboardSpendingAnalysisProps) {
+export default function DashboardSalesAnalysis({
+  salesEntries,
+}: DashboardSalesAnalysisProps) {
   const monthKeys = useMemo(
-    () => collectAnalysisMonthKeys(incomeEntries, expenseEntries),
-    [incomeEntries, expenseEntries],
+    () => collectAnalysisMonthKeys(salesEntries),
+    [salesEntries],
   );
   const yearKeys = useMemo(
-    () => collectAnalysisYearKeys(incomeEntries, expenseEntries),
-    [incomeEntries, expenseEntries],
+    () => collectAnalysisYearKeys(salesEntries),
+    [salesEntries],
   );
 
   const [periodMode, setPeriodMode] =
-    useState<SpendingAnalysisPeriodMode>("month");
+    useState<SalesAnalysisPeriodMode>("month");
   const [monthKey, setMonthKey] = useState(monthKeys[0] ?? "");
   const [yearKey, setYearKey] = useState(yearKeys[0] ?? "");
-  const [grouping, setGrouping] =
-    useState<SpendingAnalysisGrouping>("category");
+  const [grouping, setGrouping] = useState<SalesAnalysisGrouping>("product");
 
   const periodKey = periodMode === "month" ? monthKey : yearKey;
 
-  const topExpenses = useMemo(
-    () =>
-      buildTopExpenseAnalysis(
-        expenseEntries,
-        periodMode,
-        periodKey,
-        grouping,
-      ),
-    [expenseEntries, periodMode, periodKey, grouping],
-  );
-
-  const topIncome = useMemo(
-    () =>
-      buildTopIncomeAnalysis(incomeEntries, periodMode, periodKey, grouping),
-    [incomeEntries, periodMode, periodKey, grouping],
+  const topSales = useMemo(
+    () => buildTopSalesAnalysis(salesEntries, periodMode, periodKey, grouping),
+    [salesEntries, periodMode, periodKey, grouping],
   );
 
   const periodLabel =
@@ -104,17 +52,17 @@ export default function DashboardSpendingAnalysis({
       : yearKey || "—";
 
   const groupingLabel =
-    grouping === "category" ? "By Category" : "By Individual Item";
+    grouping === "product" ? "By Product" : "By Customer";
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-[#0f2744]">
-            Top Spending / Earning Analysis
+            Top Sales Analysis
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Ranked from Income and Expense Register totals for {periodLabel} (
+            Ranked from Product Sales and Sales Log totals for {periodLabel} (
             {groupingLabel}).
           </p>
         </div>
@@ -151,13 +99,13 @@ export default function DashboardSpendingAnalysis({
           {periodMode === "month" ? (
             <div className="min-w-[180px]">
               <label
-                htmlFor="spending-analysis-month"
+                htmlFor="sales-analysis-month"
                 className="mb-1 block text-sm font-medium text-slate-700"
               >
                 Month
               </label>
               <select
-                id="spending-analysis-month"
+                id="sales-analysis-month"
                 value={monthKey}
                 onChange={(event) => setMonthKey(event.target.value)}
                 className={inputClassName}
@@ -172,13 +120,13 @@ export default function DashboardSpendingAnalysis({
           ) : (
             <div className="min-w-[120px]">
               <label
-                htmlFor="spending-analysis-year"
+                htmlFor="sales-analysis-year"
                 className="mb-1 block text-sm font-medium text-slate-700"
               >
                 Year
               </label>
               <select
-                id="spending-analysis-year"
+                id="sales-analysis-year"
                 value={yearKey}
                 onChange={(event) => setYearKey(event.target.value)}
                 className={inputClassName}
@@ -198,42 +146,35 @@ export default function DashboardSpendingAnalysis({
               <button
                 type="button"
                 className={`rounded px-3 py-1.5 text-sm font-medium ${
-                  grouping === "category"
+                  grouping === "product"
                     ? "bg-[#0f2744] text-white"
                     : "text-slate-700 hover:bg-slate-50"
                 }`}
-                onClick={() => setGrouping("category")}
+                onClick={() => setGrouping("product")}
               >
-                By Category
+                By Product
               </button>
               <button
                 type="button"
                 className={`rounded px-3 py-1.5 text-sm font-medium ${
-                  grouping === "item"
+                  grouping === "customer"
                     ? "bg-[#0f2744] text-white"
                     : "text-slate-700 hover:bg-slate-50"
                 }`}
-                onClick={() => setGrouping("item")}
+                onClick={() => setGrouping("customer")}
               >
-                By Individual Item
+                By Customer
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <AnalysisRankedList
-          title="Top 10 Expenses"
-          items={topExpenses}
-          emptyLabel="No expense entries in this period."
-        />
-        <AnalysisRankedList
-          title="Top 10 Income sources"
-          items={topIncome}
-          emptyLabel="No income entries in this period."
-        />
-      </div>
+      <AnalysisRankedList
+        title="Top 10 Sales"
+        items={topSales}
+        emptyLabel="No sales in this period."
+      />
     </section>
   );
 }

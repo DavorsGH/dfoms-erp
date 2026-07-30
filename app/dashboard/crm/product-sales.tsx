@@ -14,6 +14,13 @@ import type { ClientEntry } from "../operations/clients-utils";
 import RegisterRowActions, {
   getStripedRowClassName,
 } from "../finance/register-row-actions";
+import {
+  RegisterColumnFilterHeader,
+  RegisterFilteredTotal,
+  collectDistinctColumnValues,
+  columnValuePassesFilter,
+  type RegisterColumnFilterValue,
+} from "../finance/register-column-filter";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -38,6 +45,10 @@ import {
   ProductSaleReceiptPanel,
   type ProductSaleReceiptData,
 } from "./product-sale-receipt";
+
+function productSaleStatusLabel(entry: ProductSaleEntry): string {
+  return isProductSaleVoided(entry) ? "Voided" : "Active";
+}
 
 type ProductSalesProps = {
   initialEntries: ProductSaleEntry[];
@@ -74,6 +85,14 @@ export default function ProductSales({
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeProductSaleEntry),
   );
+  const [customerFilter, setCustomerFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [productFilter, setProductFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [paymentStatusFilter, setPaymentStatusFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [statusFilter, setStatusFilter] =
+    useState<RegisterColumnFilterValue>(null);
   const [finishedProducts, setFinishedProducts] = useState(
     initialFinishedProducts.map(normalizeFinishedProduct),
   );
@@ -99,6 +118,161 @@ export default function ProductSales({
     calculatedAmount,
     Number(form.amount_received) || 0,
   );
+
+  const customerOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              columnValuePassesFilter(
+                getProductSaleProductLabel(entry),
+                productFilter,
+              ) &&
+              columnValuePassesFilter(
+                entry.payment_status,
+                paymentStatusFilter,
+              ) &&
+              columnValuePassesFilter(
+                productSaleStatusLabel(entry),
+                statusFilter,
+              ),
+          )
+          .map((entry) =>
+            getIncomeCustomerDisplayName(entry, initialClients),
+          ),
+      ),
+    [
+      entries,
+      productFilter,
+      paymentStatusFilter,
+      statusFilter,
+      initialClients,
+    ],
+  );
+
+  const productOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              columnValuePassesFilter(
+                getIncomeCustomerDisplayName(entry, initialClients),
+                customerFilter,
+              ) &&
+              columnValuePassesFilter(
+                entry.payment_status,
+                paymentStatusFilter,
+              ) &&
+              columnValuePassesFilter(
+                productSaleStatusLabel(entry),
+                statusFilter,
+              ),
+          )
+          .map((entry) => getProductSaleProductLabel(entry)),
+      ),
+    [
+      entries,
+      customerFilter,
+      paymentStatusFilter,
+      statusFilter,
+      initialClients,
+    ],
+  );
+
+  const paymentStatusOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              columnValuePassesFilter(
+                getIncomeCustomerDisplayName(entry, initialClients),
+                customerFilter,
+              ) &&
+              columnValuePassesFilter(
+                getProductSaleProductLabel(entry),
+                productFilter,
+              ) &&
+              columnValuePassesFilter(
+                productSaleStatusLabel(entry),
+                statusFilter,
+              ),
+          )
+          .map((entry) => entry.payment_status),
+      ),
+    [entries, customerFilter, productFilter, statusFilter, initialClients],
+  );
+
+  const statusOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              columnValuePassesFilter(
+                getIncomeCustomerDisplayName(entry, initialClients),
+                customerFilter,
+              ) &&
+              columnValuePassesFilter(
+                getProductSaleProductLabel(entry),
+                productFilter,
+              ) &&
+              columnValuePassesFilter(
+                entry.payment_status,
+                paymentStatusFilter,
+              ),
+          )
+          .map((entry) => productSaleStatusLabel(entry)),
+      ),
+    [
+      entries,
+      customerFilter,
+      productFilter,
+      paymentStatusFilter,
+      initialClients,
+    ],
+  );
+
+  const visibleEntries = useMemo(
+    () =>
+      entries.filter(
+        (entry) =>
+          columnValuePassesFilter(
+            getIncomeCustomerDisplayName(entry, initialClients),
+            customerFilter,
+          ) &&
+          columnValuePassesFilter(
+            getProductSaleProductLabel(entry),
+            productFilter,
+          ) &&
+          columnValuePassesFilter(
+            entry.payment_status,
+            paymentStatusFilter,
+          ) &&
+          columnValuePassesFilter(
+            productSaleStatusLabel(entry),
+            statusFilter,
+          ),
+      ),
+    [
+      entries,
+      customerFilter,
+      productFilter,
+      paymentStatusFilter,
+      statusFilter,
+      initialClients,
+    ],
+  );
+
+  const visibleAmountTotal = useMemo(() => {
+    let total = 0;
+    for (const entry of visibleEntries) {
+      total += Number(entry.amount) || 0;
+    }
+    return Math.round(total * 100) / 100;
+  }, [visibleEntries]);
 
   useEffect(() => {
     if (!showForm) {
@@ -568,14 +742,42 @@ export default function ProductSales({
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
               <th className={scrollableTableThClassName}>Invoice No.</th>
-              <th className={scrollableTableThClassName}>Customer</th>
-              <th className={scrollableTableThClassName}>Product</th>
+              <th className={scrollableTableThClassName}>
+                <RegisterColumnFilterHeader
+                  label="Customer"
+                  options={customerOptions}
+                  applied={customerFilter}
+                  onApply={setCustomerFilter}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <RegisterColumnFilterHeader
+                  label="Product"
+                  options={productOptions}
+                  applied={productFilter}
+                  onApply={setProductFilter}
+                />
+              </th>
               <th className={scrollableTableThClassName}>Quantity</th>
               <th className={scrollableTableThClassName}>Unit Price</th>
               <th className={scrollableTableThClassName}>Amount</th>
               <th className={scrollableTableThClassName}>Amount Received</th>
-              <th className={scrollableTableThClassName}>Payment Status</th>
-              <th className={scrollableTableThClassName}>Status</th>
+              <th className={scrollableTableThClassName}>
+                <RegisterColumnFilterHeader
+                  label="Payment Status"
+                  options={paymentStatusOptions}
+                  applied={paymentStatusFilter}
+                  onApply={setPaymentStatusFilter}
+                />
+              </th>
+              <th className={scrollableTableThClassName}>
+                <RegisterColumnFilterHeader
+                  label="Status"
+                  options={statusOptions}
+                  applied={statusFilter}
+                  onApply={setStatusFilter}
+                />
+              </th>
               <th className={scrollableTableThClassName}>Due Date</th>
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
@@ -590,8 +792,17 @@ export default function ProductSales({
                   No product sales recorded yet.
                 </td>
               </tr>
+            ) : visibleEntries.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={12}
+                  className="px-4 py-8 text-center text-slate-500"
+                >
+                  No entries match the current filters.
+                </td>
+              </tr>
             ) : (
-              entries.map((entry, index) => {
+              visibleEntries.map((entry, index) => {
                 const voided = isProductSaleVoided(entry);
 
                 return (
@@ -657,6 +868,13 @@ export default function ProductSales({
           </tbody>
         </table>
       </ScrollableTable>
+
+      <RegisterFilteredTotal
+        label="Amount total"
+        total={visibleAmountTotal}
+        visibleCount={visibleEntries.length}
+        totalCount={entries.length}
+      />
     </div>
   );
 }

@@ -39,6 +39,7 @@ import type {
   SpendingAnalysisExpenseRow,
   SpendingAnalysisIncomeRow,
 } from "./dashboard-spending-analysis-utils";
+import type { SalesAnalysisRow } from "./dashboard-sales-analysis-utils";
 
 export type DashboardIncomeEntry = {
   date: string;
@@ -122,6 +123,7 @@ export type DashboardViewModel = {
   lowStockRawMaterialCount: number;
   spendingAnalysisIncome: SpendingAnalysisIncomeRow[];
   spendingAnalysisExpenses: SpendingAnalysisExpenseRow[];
+  salesAnalysisEntries: SalesAnalysisRow[];
 };
 
 export type DashboardProfitTrendPoint = {
@@ -725,6 +727,7 @@ export function buildDashboardViewModel(input: {
     lowStockRawMaterialCount: input.lowStockRawMaterialCount ?? 0,
     spendingAnalysisIncome: [],
     spendingAnalysisExpenses: [],
+    salesAnalysisEntries: [],
   };
 }
 

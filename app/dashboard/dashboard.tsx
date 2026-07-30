@@ -19,6 +19,7 @@ import { formatGHS } from "./finance/income-register-utils";
 import type { DashboardViewModel } from "./dashboard-utils";
 import type { DashboardVisibility } from "@/utils/rbac-access";
 import DashboardSpendingAnalysis from "./dashboard-spending-analysis";
+import DashboardSalesAnalysis from "./dashboard-sales-analysis";
 
 type DashboardProps = {
   data: DashboardViewModel;
@@ -261,6 +262,10 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           incomeEntries={data.spendingAnalysisIncome}
           expenseEntries={data.spendingAnalysisExpenses}
         />
+      ) : null}
+
+      {visibility.showFinancialSummary ? (
+        <DashboardSalesAnalysis salesEntries={data.salesAnalysisEntries} />
       ) : null}
 
       {visibility.showFinancialCharts ? (

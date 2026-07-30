@@ -21,6 +21,15 @@ import {
   toSpendingAnalysisExpenseRows,
   toSpendingAnalysisIncomeRows,
 } from "./dashboard-spending-analysis-utils";
+import { toSalesAnalysisRows } from "./dashboard-sales-analysis-utils";
+import type { ProductSaleEntry } from "./crm/product-sales-utils";
+import {
+  CRM_PRODUCT_SALE_SELECT,
+  CRM_WEBHOOK_SALE_SELECT,
+  mergeSalesLogEntries,
+  normalizeProductSaleForLog,
+  normalizeWebhookSale,
+} from "./crm/sales/sales-utils";
 import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
 import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
@@ -243,6 +252,8 @@ export default async function DashboardPage() {
     { data: monthEndCloseRecords, error: monthEndCloseError },
     { data: payrollProcessingEntries, error: payrollProcessingError },
     { data: taxLedgerEntries, error: taxLedgerError },
+    { data: productSaleRows, error: productSaleError },
+    { data: webhookSaleRows, error: webhookSaleError },
     inventoryBalanceSheetInput,
     livePayrollBundle,
   ] = await Promise.all([
@@ -287,6 +298,16 @@ export default async function DashboardPage() {
       .eq("tenant_id", tenantId)
       .eq("status", "open")
       .order("entry_date", { ascending: true }),
+    // Same Product Sales / Sales Log sources as CRM tabs (RLS tenant-scoped).
+    supabase
+      .from("income_register")
+      .select(CRM_PRODUCT_SALE_SELECT)
+      .eq("entry_type", "product_sale")
+      .order("date", { ascending: false }),
+    supabase
+      .from("crm_sales")
+      .select(CRM_WEBHOOK_SALE_SELECT)
+      .order("sale_date", { ascending: false }),
     // Inventory input already loads raw_materials; derive low-stock count from it.
     fetchInventoryBalanceSheetInput(supabase, tenantId),
     fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
@@ -303,6 +324,8 @@ export default async function DashboardPage() {
     monthEndCloseError?.message ??
     payrollProcessingError?.message ??
     taxLedgerError?.message ??
+    productSaleError?.message ??
+    webhookSaleError?.message ??
     livePayrollBundle.error ??
     null;
 
@@ -337,6 +360,16 @@ export default async function DashboardPage() {
       receipt_no: entry.receipt_no ?? null,
       notes: (entry as { notes?: string | null }).notes ?? null,
     })) ?? [];
+
+  const salesAnalysisEntries = toSalesAnalysisRows(
+    mergeSalesLogEntries(
+      ((productSaleRows as ProductSaleEntry[] | null) ?? []).map((row) =>
+        normalizeProductSaleForLog(row),
+      ),
+      ((webhookSaleRows as Parameters<typeof normalizeWebhookSale>[0][] | null) ??
+        []).map((row) => normalizeWebhookSale(row)),
+    ),
+  );
 
   const dashboardData = buildDashboardViewModel({
     incomeEntries:
@@ -410,6 +443,7 @@ export default async function DashboardPage() {
         spendingAnalysisExpenses: toSpendingAnalysisExpenseRows(
           expenseEntries ?? [],
         ),
+        salesAnalysisEntries,
       }}
       fetchError={fetchError}
       visibility={getDashboardVisibility(role)}

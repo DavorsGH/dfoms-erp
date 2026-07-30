@@ -43,7 +43,7 @@ export function entryInAnalysisPeriod(
   return normalized.slice(0, 4) === periodKey;
 }
 
-function aggregateTop(
+export function aggregateTop(
   rows: Array<{ label: string; amount: number }>,
   limit = 10,
 ): SpendingAnalysisRankedItem[] {
@@ -106,13 +106,10 @@ export function buildTopIncomeAnalysis(
   );
 }
 
-export function collectAnalysisMonthKeys(
-  income: SpendingAnalysisIncomeRow[],
-  expenses: SpendingAnalysisExpenseRow[],
-): string[] {
+export function collectAnalysisMonthKeysFromDates(dates: string[]): string[] {
   const keys = new Set<string>();
-  for (const entry of [...income, ...expenses]) {
-    const month = normalizeDate(entry.date).slice(0, 7);
+  for (const date of dates) {
+    const month = normalizeDate(date).slice(0, 7);
     if (/^\d{4}-\d{2}$/.test(month)) {
       keys.add(month);
     }
@@ -126,13 +123,10 @@ export function collectAnalysisMonthKeys(
   return [...keys].sort((left, right) => right.localeCompare(left));
 }
 
-export function collectAnalysisYearKeys(
-  income: SpendingAnalysisIncomeRow[],
-  expenses: SpendingAnalysisExpenseRow[],
-): string[] {
+export function collectAnalysisYearKeysFromDates(dates: string[]): string[] {
   const keys = new Set<string>();
-  for (const entry of [...income, ...expenses]) {
-    const year = normalizeDate(entry.date).slice(0, 4);
+  for (const date of dates) {
+    const year = normalizeDate(date).slice(0, 4);
     if (/^\d{4}$/.test(year)) {
       keys.add(year);
     }
@@ -140,6 +134,22 @@ export function collectAnalysisYearKeys(
 
   keys.add(String(new Date().getFullYear()));
   return [...keys].sort((left, right) => right.localeCompare(left));
+}
+
+export function collectAnalysisMonthKeys(
+  ...sources: Array<Array<{ date: string }>>
+): string[] {
+  return collectAnalysisMonthKeysFromDates(
+    sources.flatMap((entries) => entries.map((entry) => entry.date)),
+  );
+}
+
+export function collectAnalysisYearKeys(
+  ...sources: Array<Array<{ date: string }>>
+): string[] {
+  return collectAnalysisYearKeysFromDates(
+    sources.flatMap((entries) => entries.map((entry) => entry.date)),
+  );
 }
 
 export function formatAnalysisMonthLabel(monthKey: string): string {
