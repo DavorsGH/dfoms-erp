@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const navItems = [
   { label: "Landlords", href: "/dashboard/real-estate/landlords" },
+  { label: "Properties", href: "/dashboard/real-estate/properties" },
 ] as const;
 
 export default function RealEstateNav() {
