@@ -9,8 +9,35 @@ export type PropertyListRow = {
   propertyType: PropertyType;
   city: string;
   unitCount: number;
+  occupancyStatus: PropertyOccupancyStatus;
   createdAt: string;
 };
+
+export type PropertyOccupancyStatus =
+  | "No Units"
+  | "Vacant"
+  | "Fully Occupied"
+  | "Partially Occupied";
+
+export function computePropertyOccupancyStatus(
+  unitStatuses: Array<string | null | undefined>,
+): PropertyOccupancyStatus {
+  if (unitStatuses.length === 0) {
+    return "No Units";
+  }
+
+  const allVacant = unitStatuses.every((status) => status === "vacant");
+  if (allVacant) {
+    return "Vacant";
+  }
+
+  const allOccupied = unitStatuses.every((status) => status === "occupied");
+  if (allOccupied) {
+    return "Fully Occupied";
+  }
+
+  return "Partially Occupied";
+}
 
 export type PropertyRecord = {
   propertyId: string;

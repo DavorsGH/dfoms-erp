@@ -8,7 +8,9 @@ import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
 type AuthResult = { ok: true } | { ok: false; response: NextResponse };
 
-export type SuperAdminResult = AuthResult;
+export type SuperAdminResult =
+  | { ok: true; userId: string }
+  | { ok: false; response: NextResponse };
 
 export type TenantSuperAdminResult =
   | { ok: true; tenantId: string }
@@ -50,7 +52,38 @@ export async function requireRoleIn(roles: readonly string[]): Promise<AuthResul
 }
 
 export async function requireSuperAdmin(): Promise<SuperAdminResult> {
-  return requireRoleIn(["super_admin"]);
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  const { data: account } = await supabase
+    .from("user_accounts")
+    .select("role, is_active")
+    .eq("auth_uid", user.id)
+    .maybeSingle();
+
+  if (
+    !account ||
+    account.is_active === false ||
+    account.role !== "super_admin"
+  ) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  return { ok: true, userId: user.id };
 }
 
 export async function requireTenantSuperAdmin(): Promise<TenantSuperAdminResult> {
@@ -169,7 +202,7 @@ export async function requireDavorsPlatformSuperAdmin(): Promise<SuperAdminResul
     };
   }
 
-  return { ok: true };
+  return { ok: true, userId: user.id };
 }
 
 export async function requireAuthenticated(): Promise<

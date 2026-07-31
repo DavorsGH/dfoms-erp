@@ -344,6 +344,7 @@ export default function Properties({
                   <th className={scrollableTableThClassName}>Property Type</th>
                   <th className={scrollableTableThClassName}>City</th>
                   <th className={scrollableTableThClassName}>Unit Count</th>
+                  <th className={scrollableTableThClassName}>Status</th>
                   <th className={scrollableTableThClassName}>Created Date</th>
                   <th className={scrollableTableThClassName}>Actions</th>
                 </tr>
@@ -352,7 +353,7 @@ export default function Properties({
                 {rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-8 text-center text-sm text-slate-500"
                     >
                       No properties yet for this landlord.
@@ -380,6 +381,9 @@ export default function Properties({
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {row.unitCount}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-700">
+                        {row.occupancyStatus}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatPropertyDate(row.createdAt)}

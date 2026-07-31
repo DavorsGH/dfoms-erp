@@ -6,6 +6,7 @@ import {
   isPropertyType,
   isUnitStatus,
   normalizePhotoUrls,
+  computePropertyOccupancyStatus,
   type PropertyDetail,
   type PropertyListRow,
   type PropertyRecord,
@@ -160,7 +161,7 @@ export async function fetchPropertiesForLandlord(
         .order("created_at", { ascending: false }),
       admin
         .from("property_units")
-        .select("property_id")
+        .select("property_id, status")
         .eq("tenant_id", landlord.tenantId),
     ]);
 
@@ -171,12 +172,14 @@ export async function fetchPropertiesForLandlord(
     return { rows: [], fetchError: unitsError.message };
   }
 
-  const unitCountByProperty = new Map<string, number>();
-  for (const row of (units as Array<{ property_id: string }> | null) ?? []) {
-    unitCountByProperty.set(
-      row.property_id,
-      (unitCountByProperty.get(row.property_id) ?? 0) + 1,
-    );
+  const unitStatusesByProperty = new Map<string, string[]>();
+  for (const row of (units as Array<{
+    property_id: string;
+    status: string;
+  }> | null) ?? []) {
+    const current = unitStatusesByProperty.get(row.property_id) ?? [];
+    current.push(row.status);
+    unitStatusesByProperty.set(row.property_id, current);
   }
 
   const rows: PropertyListRow[] = [];
@@ -185,13 +188,16 @@ export async function fetchPropertiesForLandlord(
     if (!mapped) {
       continue;
     }
+    const unitStatuses =
+      unitStatusesByProperty.get(mapped.propertyId) ?? [];
     rows.push({
       propertyId: mapped.propertyId,
       tenantId: mapped.tenantId,
       name: mapped.name,
       propertyType: mapped.propertyType,
       city: mapped.city,
-      unitCount: unitCountByProperty.get(mapped.propertyId) ?? 0,
+      unitCount: unitStatuses.length,
+      occupancyStatus: computePropertyOccupancyStatus(unitStatuses),
       createdAt: mapped.createdAt,
     });
   }
