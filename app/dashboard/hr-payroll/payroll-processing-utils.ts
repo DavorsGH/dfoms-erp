@@ -72,6 +72,11 @@ export type PayrollEmployeeSource = {
   other_allowances: number | null;
   department: string | null;
   contract_project: string | null;
+  /** Optional — loaded on Payroll Processing for display-only Payment Method. */
+  payment_method?: "cash" | "momo" | "bank" | null;
+  bank_name?: string | null;
+  account_number?: string | null;
+  momo_number?: string | null;
 };
 
 /** Optional live policy resolution for Open payroll (script 117). */
@@ -189,6 +194,53 @@ export type PayrollCalculatedRow = PayrollManualInputs & {
   total_deductions: number;
   net_pay: number;
 };
+
+/**
+ * Display-only payroll payment method.
+ * Prefer employees.payment_method when set; otherwise infer from banking fields
+ * (bank_name/account_number → "Bank", else momo_number, else "—").
+ */
+export function formatPayrollPaymentMethodDisplay(
+  employee:
+    | Pick<
+        PayrollEmployeeSource,
+        "payment_method" | "bank_name" | "account_number" | "momo_number"
+      >
+    | null
+    | undefined,
+): string {
+  if (!employee) {
+    return "—";
+  }
+
+  const method = employee.payment_method ?? null;
+  const momoNumber = employee.momo_number?.trim() ?? "";
+
+  if (method === "cash") {
+    return "Cash";
+  }
+
+  if (method === "momo") {
+    return momoNumber || "—";
+  }
+
+  if (method === "bank") {
+    return "Bank";
+  }
+
+  const bankName = employee.bank_name?.trim() ?? "";
+  const accountNumber = employee.account_number?.trim() ?? "";
+
+  if (bankName || accountNumber) {
+    return "Bank";
+  }
+
+  if (momoNumber) {
+    return momoNumber;
+  }
+
+  return "—";
+}
 
 function normalizeRate(rate: number): number {
   if (!Number.isFinite(rate)) {

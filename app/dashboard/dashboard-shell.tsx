@@ -12,6 +12,7 @@ type DashboardShellProps = {
   userRole: AppRole | null;
   showLeaveApprovals: boolean;
   showPlatformSettings: boolean;
+  showRealEstate: boolean;
   tenantBranding: TenantBranding;
   userLabel: string;
   userPhotoUrl?: string | null;
@@ -23,6 +24,7 @@ export default function DashboardShell({
   userRole,
   showLeaveApprovals,
   showPlatformSettings,
+  showRealEstate,
   tenantBranding,
   userLabel,
   userPhotoUrl,
@@ -55,6 +57,7 @@ export default function DashboardShell({
           userRole={userRole}
           showLeaveApprovals={showLeaveApprovals}
           showPlatformSettings={showPlatformSettings}
+          showRealEstate={showRealEstate}
           tenantBranding={tenantBranding}
         />
       </div>
@@ -72,6 +75,7 @@ export default function DashboardShell({
               userRole={userRole}
               showLeaveApprovals={showLeaveApprovals}
               showPlatformSettings={showPlatformSettings}
+              showRealEstate={showRealEstate}
               tenantBranding={tenantBranding}
               onNavigate={closeMobileNav}
               onClose={closeMobileNav}

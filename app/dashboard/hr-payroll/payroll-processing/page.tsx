@@ -73,7 +73,7 @@ export default async function PayrollProcessingPage() {
     supabase
       .from("employees")
       .select(
-        "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project",
+        "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project, payment_method, bank_name, account_number, momo_number",
       )
       .order("staff_id", { ascending: true }),
     supabase

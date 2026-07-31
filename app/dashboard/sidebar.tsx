@@ -41,6 +41,7 @@ type SidebarProps = {
   userRole: AppRole | null;
   showLeaveApprovals?: boolean;
   showPlatformSettings?: boolean;
+  showRealEstate?: boolean;
   tenantBranding: TenantBranding;
   mobile?: boolean;
   onNavigate?: () => void;
@@ -177,6 +178,7 @@ export default function Sidebar({
   userRole,
   showLeaveApprovals = false,
   showPlatformSettings = false,
+  showRealEstate = false,
   tenantBranding,
   mobile = false,
   onNavigate,
@@ -194,6 +196,27 @@ export default function Sidebar({
       label: "Leave Approvals",
       href: "/dashboard/leave-approvals",
     });
+  }
+
+  if (showRealEstate) {
+    const operationsIndex = navItems.findIndex(
+      (item) => item.href === "/dashboard/operations",
+    );
+    const hrIndex = navItems.findIndex(
+      (item) => item.href === "/dashboard/hr-payroll",
+    );
+    const realEstateItem = {
+      label: "Real Estate",
+      href: "/dashboard/real-estate",
+    };
+    // Keep Real Estate between Operations and HR Management when those exist.
+    const insertAt =
+      operationsIndex >= 0
+        ? operationsIndex + 1
+        : hrIndex >= 0
+          ? hrIndex
+          : navItems.length;
+    navItems.splice(insertAt, 0, realEstateItem);
   }
 
   const reportLinks = REPORT_SIDEBAR_LINKS.filter((link) =>

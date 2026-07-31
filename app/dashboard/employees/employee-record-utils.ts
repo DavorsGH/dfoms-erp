@@ -12,6 +12,7 @@ export type EmployeeRecord = {
   ghana_card_number: string | null;
   ssnit_number: string | null;
   tin_number: string | null;
+  payment_method: "cash" | "momo" | "bank" | null;
   bank_name: string | null;
   account_number: string | null;
   momo_number: string | null;
@@ -85,6 +86,15 @@ export const EMPLOYMENT_STATUS_OPTIONS = [
 ] as const;
 
 export const DEFAULT_EMPLOYMENT_STATUS = "Active";
+
+export const PAYMENT_METHOD_OPTIONS = [
+  { value: "cash", label: "Cash" },
+  { value: "momo", label: "Mobile Money" },
+  { value: "bank", label: "Bank" },
+] as const;
+
+export type EmployeePaymentMethod =
+  (typeof PAYMENT_METHOD_OPTIONS)[number]["value"];
 
 export function parseStaffIdNumber(staffId: string): number {
   const legacy = staffId.match(/^DF(\d+)$/i);

@@ -37,6 +37,7 @@ import {
   calculateLoanRepaymentForEmployee,
   calculatePayrollRow,
   countAbsencesForStaff,
+  formatPayrollPaymentMethodDisplay,
   resolvePayrollPolicyCompensation,
   sumOvertimeForEmployee,
   type PayrollAttendanceSource,
@@ -1287,6 +1288,7 @@ export default function PayrollProcessing({
               <th className={scrollableTableThClassName}>Loan Repayment</th>
               <th className={scrollableTableThClassName}>Total Deductions</th>
               <th className={scrollableTableThClassName}>Net Pay</th>
+              <th className={scrollableTableThClassName}>Payment Method</th>
               {!isPeriodClosed ? (
                 <th className={scrollableTableThClassName}>Adjustments</th>
               ) : null}
@@ -1296,7 +1298,7 @@ export default function PayrollProcessing({
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={isPeriodClosed ? 12 : 13}
+                  colSpan={isPeriodClosed ? 13 : 14}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   {isPeriodClosed
@@ -1347,6 +1349,11 @@ export default function PayrollProcessing({
                       {formatGHS(row.total_deductions)}
                     </td>
                     <td className="px-4 py-3">{formatGHS(row.net_pay)}</td>
+                    <td className="px-4 py-3">
+                      {formatPayrollPaymentMethodDisplay(
+                        employeeMap.get(row.employee_id),
+                      )}
+                    </td>
                     {!isPeriodClosed ? (
                       <td className="px-4 py-3">
                         <button
@@ -1376,7 +1383,7 @@ export default function PayrollProcessing({
                 return [
                   mainRow,
                   <tr key={`${row.id}-adjustments`} className="bg-slate-50">
-                    <td colSpan={13} className="px-4 py-4">
+                    <td colSpan={14} className="px-4 py-4">
                       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                         {(
                           [

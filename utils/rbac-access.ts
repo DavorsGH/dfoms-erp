@@ -247,16 +247,16 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
     items.push({ label: "Sales & CRM", href: "/dashboard/crm" });
   }
 
-  if (canAccessHrManagementSection(role)) {
-    items.push({ label: "HR Management", href: "/dashboard/hr-payroll" });
+  if (canAccessInventorySection(role)) {
+    items.push({ label: "Inventory", href: "/dashboard/inventory" });
   }
 
   if (canAccessOperationsSection(role)) {
     items.push({ label: "Operations", href: "/dashboard/operations" });
   }
 
-  if (canAccessInventorySection(role)) {
-    items.push({ label: "Inventory", href: "/dashboard/inventory" });
+  if (canAccessHrManagementSection(role)) {
+    items.push({ label: "HR Management", href: "/dashboard/hr-payroll" });
   }
 
   if (canAccessSelfServiceSection(role)) {

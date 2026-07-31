@@ -23,6 +23,7 @@ import {
   EMPLOYMENT_TYPE_OPTIONS,
   GENDER_OPTIONS,
   MARITAL_STATUS_OPTIONS,
+  PAYMENT_METHOD_OPTIONS,
   SHIFT_OPTIONS,
   formatGHS,
   inputClassName,
@@ -118,6 +119,7 @@ const emptyForm = {
   ghana_card_number: "",
   ssnit_number: "",
   tin_number: "",
+  payment_method: "",
   bank_name: "",
   account_number: "",
   momo_number: "",
@@ -185,6 +187,7 @@ function employeeToForm(employee: EmployeeRecord) {
     ghana_card_number: employee.ghana_card_number ?? "",
     ssnit_number: employee.ssnit_number ?? "",
     tin_number: employee.tin_number ?? "",
+    payment_method: employee.payment_method ?? "",
     bank_name: employee.bank_name ?? "",
     account_number: employee.account_number ?? "",
     momo_number: employee.momo_number ?? "",
@@ -255,6 +258,7 @@ function buildPayload(
     ghana_card_number: form.ghana_card_number || null,
     ssnit_number: form.ssnit_number || null,
     tin_number: form.tin_number || null,
+    payment_method: form.payment_method || null,
     bank_name: form.bank_name || null,
     account_number: form.account_number || null,
     momo_number: form.momo_number || null,
@@ -1294,32 +1298,60 @@ export default function EmployeesDirectory({
                     className={inputClassName}
                   />
                 </Field>
-                <Field label="Bank Name">
-                  <input
-                    type="text"
-                    value={form.bank_name}
-                    onChange={(e) => updateField("bank_name", e.target.value)}
-                    className={inputClassName}
-                  />
-                </Field>
-                <Field label="Account Number">
-                  <input
-                    type="text"
-                    value={form.account_number}
+                <Field label="Payment Method">
+                  <select
+                    value={form.payment_method}
                     onChange={(e) =>
-                      updateField("account_number", e.target.value)
+                      updateField("payment_method", e.target.value)
                     }
                     className={inputClassName}
-                  />
+                  >
+                    <option value="">Select payment method</option>
+                    {PAYMENT_METHOD_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
-                <Field label="Mobile Money Number">
-                  <input
-                    type="text"
-                    value={form.momo_number}
-                    onChange={(e) => updateField("momo_number", e.target.value)}
-                    className={inputClassName}
-                  />
-                </Field>
+                {form.payment_method === "bank" ||
+                form.payment_method === "" ? (
+                  <>
+                    <Field label="Bank Name">
+                      <input
+                        type="text"
+                        value={form.bank_name}
+                        onChange={(e) =>
+                          updateField("bank_name", e.target.value)
+                        }
+                        className={inputClassName}
+                      />
+                    </Field>
+                    <Field label="Account Number">
+                      <input
+                        type="text"
+                        value={form.account_number}
+                        onChange={(e) =>
+                          updateField("account_number", e.target.value)
+                        }
+                        className={inputClassName}
+                      />
+                    </Field>
+                  </>
+                ) : null}
+                {form.payment_method === "momo" ||
+                form.payment_method === "" ? (
+                  <Field label="Mobile Money Number">
+                    <input
+                      type="text"
+                      value={form.momo_number}
+                      onChange={(e) =>
+                        updateField("momo_number", e.target.value)
+                      }
+                      className={inputClassName}
+                    />
+                  </Field>
+                ) : null}
               </div>
             </div>
 

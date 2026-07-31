@@ -24,11 +24,14 @@ export default async function DashboardLayout({
       getCurrentTenantBranding(),
     ]);
 
+  const showRealEstate = showPlatformSettings;
+
   return (
     <DashboardShell
       userRole={userRole as AppRole | null}
       showLeaveApprovals={showLeaveApprovals}
       showPlatformSettings={showPlatformSettings}
+      showRealEstate={showRealEstate}
       tenantBranding={tenantBranding}
       userLabel={displayInfo.label}
       userPhotoUrl={displayInfo.photoUrl}
