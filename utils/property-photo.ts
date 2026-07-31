@@ -26,7 +26,8 @@ export type RealEstatePhotoEntity =
   | "property"
   | "unit"
   | "maintenance"
-  | "inspection";
+  | "inspection"
+  | "expense";
 
 export function getPropertyPhotoStoragePath(
   tenantId: string,
@@ -39,8 +40,8 @@ export function getPropertyPhotoStoragePath(
 }
 
 /**
- * Uploads a real-estate photo into the existing tenant-logos bucket
- * (property, unit, maintenance, or inspection — same public-image pattern as logos).
+ * Uploads a real-estate photo/receipt into the existing tenant-logos bucket
+ * (property, unit, maintenance, inspection, or expense).
  */
 export async function uploadPropertyPhoto(
   supabase: SupabaseClient,
