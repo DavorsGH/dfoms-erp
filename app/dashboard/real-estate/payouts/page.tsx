@@ -5,7 +5,10 @@ import {
   fetchLandlordPayoutContext,
   fetchPayoutsForLandlord,
 } from "@/utils/payout-management";
-import type { LandlordType } from "../landlords-utils";
+import {
+  filterDavorsManagedLandlords,
+  type LandlordType,
+} from "../landlords-utils";
 import RealEstateShell from "../real-estate-shell";
 import Payouts from "../payouts";
 
@@ -15,11 +18,17 @@ type PayoutsPageProps = {
 
 export default async function PayoutsPage({ searchParams }: PayoutsPageProps) {
   const { landlord: landlordParam } = await searchParams;
-  const selectedLandlordId = landlordParam?.trim() || null;
+  const requestedLandlordId = landlordParam?.trim() || null;
 
   const admin = createAdminClient();
-  const { rows: landlords, fetchError: landlordsError } =
+  const { rows: allLandlords, fetchError: landlordsError } =
     await fetchLandlordListRows(admin);
+  const landlords = filterDavorsManagedLandlords(allLandlords);
+  const selectedLandlordId =
+    requestedLandlordId &&
+    landlords.some((row) => row.tenantId === requestedLandlordId)
+      ? requestedLandlordId
+      : null;
 
   let payoutRows = [] as Awaited<
     ReturnType<typeof fetchPayoutsForLandlord>

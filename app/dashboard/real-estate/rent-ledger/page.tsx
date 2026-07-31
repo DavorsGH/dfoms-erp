@@ -4,6 +4,7 @@ import {
   fetchLandlordTypeForTenant,
   fetchRentLedgerForLandlord,
 } from "@/utils/rent-ledger-management";
+import { filterDavorsManagedLandlords } from "../landlords-utils";
 import RealEstateShell from "../real-estate-shell";
 import RentLedger from "../rent-ledger";
 
@@ -15,11 +16,17 @@ export default async function RentLedgerPage({
   searchParams,
 }: RentLedgerPageProps) {
   const { landlord: landlordParam } = await searchParams;
-  const selectedLandlordId = landlordParam?.trim() || null;
+  const requestedLandlordId = landlordParam?.trim() || null;
 
   const admin = createAdminClient();
-  const { rows: landlords, fetchError: landlordsError } =
+  const { rows: allLandlords, fetchError: landlordsError } =
     await fetchLandlordListRows(admin);
+  const landlords = filterDavorsManagedLandlords(allLandlords);
+  const selectedLandlordId =
+    requestedLandlordId &&
+    landlords.some((row) => row.tenantId === requestedLandlordId)
+      ? requestedLandlordId
+      : null;
 
   let ledgerRows = [] as Awaited<
     ReturnType<typeof fetchRentLedgerForLandlord>

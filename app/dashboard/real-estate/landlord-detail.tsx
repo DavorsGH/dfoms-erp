@@ -57,6 +57,9 @@ export default function LandlordDetailView({
   const [paystackSubaccountCode, setPaystackSubaccountCode] = useState(
     initialDetail.paystackSubaccountCode ?? "",
   );
+  const [showConvertForm, setShowConvertForm] = useState(false);
+  const [convertFeePercent, setConvertFeePercent] = useState("");
+  const [converting, setConverting] = useState(false);
 
   useEffect(() => {
     setDetail(initialDetail);
@@ -67,10 +70,13 @@ export default function LandlordDetailView({
         : "",
     );
     setPaystackSubaccountCode(initialDetail.paystackSubaccountCode ?? "");
+    setShowConvertForm(false);
+    setConvertFeePercent("");
   }, [initialDetail]);
 
   const showManagementFee = landlordType === "davors_managed";
   const isPending = detail.approvalStatus === "pending";
+  const canConvertToDavorsManaged = detail.landlordType === "platform_only";
 
   async function saveEditableFields() {
     setLoading(true);
@@ -154,6 +160,52 @@ export default function LandlordDetailView({
       status === "approved" ? "Landlord approved." : "Landlord rejected.",
     );
     setLoading(false);
+    router.refresh();
+  }
+
+  async function convertToDavorsManaged(event: React.FormEvent) {
+    event.preventDefault();
+    setConverting(true);
+    setError(null);
+    setSuccess(null);
+
+    const fee = Number(convertFeePercent);
+    if (!Number.isFinite(fee) || fee < 0 || convertFeePercent.trim() === "") {
+      setError("Enter a management fee percent for this landlord.");
+      setConverting(false);
+      return;
+    }
+
+    const response = await fetch(
+      "/api/admin/landlords/convert-to-davors-managed",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: detail.tenantId,
+          management_fee_percent: fee,
+        }),
+      },
+    );
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+
+    if (!response.ok) {
+      setError(
+        payload?.error ?? "Unable to convert landlord to Davors-managed.",
+      );
+      setConverting(false);
+      return;
+    }
+
+    setShowConvertForm(false);
+    setConvertFeePercent("");
+    setConverting(false);
+    setSuccess(
+      "Landlord converted to Davors-managed. They will now appear in managed property pickers.",
+    );
     router.refresh();
   }
 
@@ -424,6 +476,87 @@ export default function LandlordDetailView({
             <p className="text-sm text-slate-500">
               No landlord subscription record found for this tenant.
             </p>
+          )}
+        </section>
+      ) : null}
+
+      {canConvertToDavorsManaged ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="mb-2 text-base font-semibold text-[#0f2744]">
+            Convert to Davors-Managed
+          </h3>
+          <p className="mb-4 text-sm text-slate-600">
+            Move this platform-only landlord onto Davors-managed operations with
+            a management fee. Platform subscription billing will be cancelled.
+          </p>
+
+          {!showConvertForm ? (
+            <button
+              type="button"
+              className={primaryButtonClassName}
+              disabled={loading || converting}
+              onClick={() => {
+                setShowConvertForm(true);
+                setConvertFeePercent("");
+                setError(null);
+                setSuccess(null);
+              }}
+            >
+              Convert to Davors-Managed
+            </button>
+          ) : (
+            <form onSubmit={convertToDavorsManaged} className="space-y-4">
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                This only affects rent collected going forward. Existing rent
+                history, payments, and payouts stay exactly as they are — no
+                retroactive escrow entries or fee deductions will be created.
+              </div>
+
+              <div className="max-w-xs">
+                <label
+                  htmlFor="convert-management-fee"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Management fee percent
+                </label>
+                <input
+                  id="convert-management-fee"
+                  required
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={convertFeePercent}
+                  onChange={(event) => setConvertFeePercent(event.target.value)}
+                  className={inputClassName}
+                  placeholder="e.g. 10"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Enter the rate for this landlord (for example 10 for 10%). No
+                  default is applied.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  className={primaryButtonClassName}
+                  disabled={converting || loading}
+                >
+                  {converting ? "Converting…" : "Confirm conversion"}
+                </button>
+                <button
+                  type="button"
+                  className={secondaryButtonClassName}
+                  disabled={converting}
+                  onClick={() => {
+                    setShowConvertForm(false);
+                    setConvertFeePercent("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           )}
         </section>
       ) : null}

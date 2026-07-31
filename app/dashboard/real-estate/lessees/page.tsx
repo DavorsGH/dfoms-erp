@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLandlordListRows } from "@/utils/landlord-management";
 import { fetchLesseesForLandlord } from "@/utils/lessee-management";
+import { filterDavorsManagedLandlords } from "../landlords-utils";
 import RealEstateShell from "../real-estate-shell";
 import Lessees from "../lessees";
 
@@ -10,11 +11,17 @@ type LesseesPageProps = {
 
 export default async function LesseesPage({ searchParams }: LesseesPageProps) {
   const { landlord: landlordParam } = await searchParams;
-  const selectedLandlordId = landlordParam?.trim() || null;
+  const requestedLandlordId = landlordParam?.trim() || null;
 
   const admin = createAdminClient();
-  const { rows: landlords, fetchError: landlordsError } =
+  const { rows: allLandlords, fetchError: landlordsError } =
     await fetchLandlordListRows(admin);
+  const landlords = filterDavorsManagedLandlords(allLandlords);
+  const selectedLandlordId =
+    requestedLandlordId &&
+    landlords.some((row) => row.tenantId === requestedLandlordId)
+      ? requestedLandlordId
+      : null;
 
   let lesseeRows = [] as Awaited<
     ReturnType<typeof fetchLesseesForLandlord>

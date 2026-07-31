@@ -16,6 +16,13 @@ export type LandlordListRow = {
   createdAt: string;
 };
 
+/** Staff pickers on Properties/Tenants/Leases/etc. — not the Landlords admin list. */
+export function filterDavorsManagedLandlords(
+  rows: LandlordListRow[],
+): LandlordListRow[] {
+  return rows.filter((row) => row.landlordType === "davors_managed");
+}
+
 export type LandlordSubscriptionDetails = {
   tier: LandlordSubscriptionTier | null;
   status: LandlordSubscriptionStatus | null;

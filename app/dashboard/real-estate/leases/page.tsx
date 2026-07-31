@@ -5,6 +5,7 @@ import {
   fetchLesseeOptionsForLandlord,
   fetchVacantUnitsForLandlord,
 } from "@/utils/lease-management";
+import { filterDavorsManagedLandlords } from "../landlords-utils";
 import RealEstateShell from "../real-estate-shell";
 import Leases from "../leases";
 
@@ -14,11 +15,17 @@ type LeasesPageProps = {
 
 export default async function LeasesPage({ searchParams }: LeasesPageProps) {
   const { landlord: landlordParam } = await searchParams;
-  const selectedLandlordId = landlordParam?.trim() || null;
+  const requestedLandlordId = landlordParam?.trim() || null;
 
   const admin = createAdminClient();
-  const { rows: landlords, fetchError: landlordsError } =
+  const { rows: allLandlords, fetchError: landlordsError } =
     await fetchLandlordListRows(admin);
+  const landlords = filterDavorsManagedLandlords(allLandlords);
+  const selectedLandlordId =
+    requestedLandlordId &&
+    landlords.some((row) => row.tenantId === requestedLandlordId)
+      ? requestedLandlordId
+      : null;
 
   let leaseRows = [] as Awaited<
     ReturnType<typeof fetchLeasesForLandlord>
