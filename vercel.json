@@ -1,3 +1,9 @@
 {
-  "regions": ["arn1"]
+  "regions": ["arn1"],
+  "crons": [
+    {
+      "path": "/api/cron/generate-rent-ledger",
+      "schedule": "0 0 1 * *"
+    }
+  ]
 }

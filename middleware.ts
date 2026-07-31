@@ -9,6 +9,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Vercel Cron jobs — authenticated inside each route via CRON_SECRET.
+  if (pathname.startsWith("/api/cron/")) {
+    return NextResponse.next();
+  }
+
   // Paystack webhooks — public POST; signature verified inside the route.
   if (pathname === "/api/webhooks/paystack") {
     return NextResponse.next();
@@ -57,7 +62,8 @@ export async function middleware(request: NextRequest) {
     !publicPaths.has(pathname) &&
     !pathname.startsWith("/pay/product-sale") &&
     !pathname.startsWith("/unsubscribe") &&
-    !pathname.startsWith("/api/unsubscribe")
+    !pathname.startsWith("/api/unsubscribe") &&
+    !pathname.startsWith("/api/cron/")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
