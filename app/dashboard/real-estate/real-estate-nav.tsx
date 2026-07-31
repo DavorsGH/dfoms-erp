@@ -9,6 +9,7 @@ const navItems = [
   { label: "Tenants", href: "/dashboard/real-estate/lessees" },
   { label: "Leases", href: "/dashboard/real-estate/leases" },
   { label: "Rent Ledger", href: "/dashboard/real-estate/rent-ledger" },
+  { label: "Payouts", href: "/dashboard/real-estate/payouts" },
 ] as const;
 
 export default function RealEstateNav() {
