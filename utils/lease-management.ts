@@ -1,0 +1,405 @@
+import "server-only";
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { assertRealEstateLandlordTenant } from "@/utils/property-management";
+import {
+  isDepositStatus,
+  isLateFeeType,
+  isLeaseStatus,
+  isRentChangeStatus,
+  type DepositStatus,
+  type LateFeeType,
+  type LeaseDetail,
+  type LeaseListRow,
+  type LeaseStatus,
+  type LesseeOption,
+  type RentChangeStatus,
+  type SecurityDepositRecord,
+  type VacantUnitOption,
+} from "@/app/dashboard/real-estate/leases-utils";
+
+export type {
+  LeaseDetail,
+  LeaseListRow,
+  LesseeOption,
+  VacantUnitOption,
+} from "@/app/dashboard/real-estate/leases-utils";
+
+type LeaseRow = {
+  tenant_id: string;
+  lease_id: string;
+  unit_id: string;
+  lessee_id: string;
+  start_date: string;
+  end_date: string;
+  rent_amount_ghs: number | string;
+  pending_rent_amount_ghs: number | string | null;
+  rent_change_status: string | null;
+  escalation_percent: number | string | null;
+  escalation_frequency_months: number | null;
+  late_fee_enabled: boolean;
+  late_fee_type: string | null;
+  late_fee_amount: number | string | null;
+  status: string;
+  terminated_at: string | null;
+  termination_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DepositRow = {
+  tenant_id: string;
+  deposit_id: string;
+  lease_id: string;
+  amount_ghs: number | string;
+  status: string;
+  amount_returned_ghs: number | string | null;
+  date_collected: string;
+  date_resolved: string | null;
+  resolution_notes: string | null;
+};
+
+function toNumber(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function mapDeposit(row: DepositRow): SecurityDepositRecord | null {
+  if (!isDepositStatus(row.status)) {
+    return null;
+  }
+
+  return {
+    depositId: row.deposit_id,
+    tenantId: row.tenant_id,
+    leaseId: row.lease_id,
+    amountGhs: toNumber(row.amount_ghs) ?? 0,
+    status: row.status as DepositStatus,
+    amountReturnedGhs: toNumber(row.amount_returned_ghs),
+    dateCollected: row.date_collected,
+    dateResolved: row.date_resolved,
+    resolutionNotes: row.resolution_notes,
+  };
+}
+
+export async function fetchVacantUnitsForLandlord(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<{ units: VacantUnitOption[]; fetchError: string | null }> {
+  const landlord = await assertRealEstateLandlordTenant(admin, tenantId);
+  if (!landlord.ok) {
+    return { units: [], fetchError: landlord.error };
+  }
+
+  const [
+    { data: units, error: unitsError },
+    { data: properties, error: propertiesError },
+  ] = await Promise.all([
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id, base_rent_ghs")
+      .eq("tenant_id", landlord.tenantId)
+      .eq("status", "vacant")
+      .order("unit_number", { ascending: true }),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", landlord.tenantId),
+  ]);
+
+  if (unitsError) {
+    return { units: [], fetchError: unitsError.message };
+  }
+  if (propertiesError) {
+    return { units: [], fetchError: propertiesError.message };
+  }
+
+  const propertyNameById = new Map(
+    ((properties as Array<{ property_id: string; name: string }> | null) ?? []).map(
+      (row) => [row.property_id, row.name],
+    ),
+  );
+
+  const options: VacantUnitOption[] = (
+    (units as Array<{
+      unit_id: string;
+      unit_number: string;
+      property_id: string;
+      base_rent_ghs: number | string;
+    }> | null) ?? []
+  ).map((row) => ({
+    unitId: row.unit_id,
+    unitNumber: row.unit_number,
+    propertyId: row.property_id,
+    propertyName: propertyNameById.get(row.property_id) ?? "Property",
+    baseRentGhs: toNumber(row.base_rent_ghs) ?? 0,
+  }));
+
+  return { units: options, fetchError: null };
+}
+
+export async function fetchLesseeOptionsForLandlord(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<{ lessees: LesseeOption[]; fetchError: string | null }> {
+  const landlord = await assertRealEstateLandlordTenant(admin, tenantId);
+  if (!landlord.ok) {
+    return { lessees: [], fetchError: landlord.error };
+  }
+
+  const { data, error } = await admin
+    .from("lessees")
+    .select("lessee_id, full_name, phone, email, status")
+    .eq("tenant_id", landlord.tenantId)
+    .order("full_name", { ascending: true });
+
+  if (error) {
+    return { lessees: [], fetchError: error.message };
+  }
+
+  const lessees: LesseeOption[] = (
+    (data as Array<{
+      lessee_id: string;
+      full_name: string;
+      phone: string;
+      email: string | null;
+      status: string;
+    }> | null) ?? []
+  ).map((row) => ({
+    lesseeId: row.lessee_id,
+    fullName: row.full_name,
+    phone: row.phone,
+    email: row.email,
+    status: row.status,
+  }));
+
+  return { lessees, fetchError: null };
+}
+
+export async function fetchLeasesForLandlord(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<{ rows: LeaseListRow[]; fetchError: string | null }> {
+  const landlord = await assertRealEstateLandlordTenant(admin, tenantId);
+  if (!landlord.ok) {
+    return { rows: [], fetchError: landlord.error };
+  }
+
+  const [
+    { data: leases, error: leasesError },
+    { data: units, error: unitsError },
+    { data: properties, error: propertiesError },
+    { data: lessees, error: lesseesError },
+  ] = await Promise.all([
+    admin
+      .from("leases")
+      .select(
+        "tenant_id, lease_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, status, created_at",
+      )
+      .eq("tenant_id", landlord.tenantId)
+      .order("created_at", { ascending: false }),
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id")
+      .eq("tenant_id", landlord.tenantId),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", landlord.tenantId),
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name")
+      .eq("tenant_id", landlord.tenantId),
+  ]);
+
+  if (leasesError) {
+    return { rows: [], fetchError: leasesError.message };
+  }
+  if (unitsError) {
+    return { rows: [], fetchError: unitsError.message };
+  }
+  if (propertiesError) {
+    return { rows: [], fetchError: propertiesError.message };
+  }
+  if (lesseesError) {
+    return { rows: [], fetchError: lesseesError.message };
+  }
+
+  const propertyNameById = new Map(
+    ((properties as Array<{ property_id: string; name: string }> | null) ?? []).map(
+      (row) => [row.property_id, row.name],
+    ),
+  );
+  const unitById = new Map(
+    (
+      (units as Array<{
+        unit_id: string;
+        unit_number: string;
+        property_id: string;
+      }> | null) ?? []
+    ).map((row) => [row.unit_id, row]),
+  );
+  const lesseeNameById = new Map(
+    ((lessees as Array<{ lessee_id: string; full_name: string }> | null) ?? []).map(
+      (row) => [row.lessee_id, row.full_name],
+    ),
+  );
+
+  const rows: LeaseListRow[] = [];
+  for (const row of (leases as LeaseRow[] | null) ?? []) {
+    if (!isLeaseStatus(row.status)) {
+      continue;
+    }
+    const unit = unitById.get(row.unit_id);
+    rows.push({
+      leaseId: row.lease_id,
+      tenantId: row.tenant_id,
+      unitId: row.unit_id,
+      unitNumber: unit?.unit_number ?? "—",
+      propertyName: unit
+        ? (propertyNameById.get(unit.property_id) ?? "—")
+        : "—",
+      lesseeId: row.lessee_id,
+      lesseeName: lesseeNameById.get(row.lessee_id) ?? "—",
+      startDate: row.start_date,
+      endDate: row.end_date,
+      rentAmountGhs: toNumber(row.rent_amount_ghs) ?? 0,
+      status: row.status as LeaseStatus,
+    });
+  }
+
+  return { rows, fetchError: null };
+}
+
+export async function fetchLeaseDetail(
+  admin: SupabaseClient,
+  tenantId: string,
+  leaseId: string,
+): Promise<{ detail: LeaseDetail | null; fetchError: string | null }> {
+  const landlord = await assertRealEstateLandlordTenant(admin, tenantId);
+  if (!landlord.ok) {
+    return { detail: null, fetchError: landlord.error };
+  }
+
+  const trimmedLeaseId = leaseId.trim();
+  if (!trimmedLeaseId) {
+    return { detail: null, fetchError: "lease_id is required" };
+  }
+
+  const { data: lease, error: leaseError } = await admin
+    .from("leases")
+    .select("*")
+    .eq("tenant_id", landlord.tenantId)
+    .eq("lease_id", trimmedLeaseId)
+    .maybeSingle();
+
+  if (leaseError) {
+    return { detail: null, fetchError: leaseError.message };
+  }
+  if (!lease) {
+    return { detail: null, fetchError: null };
+  }
+
+  const leaseRow = lease as LeaseRow;
+  if (!isLeaseStatus(leaseRow.status)) {
+    return { detail: null, fetchError: "Invalid lease status on record." };
+  }
+
+  const [
+    { data: unit, error: unitError },
+    { data: lessee, error: lesseeError },
+    { data: deposits, error: depositsError },
+  ] = await Promise.all([
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id")
+      .eq("tenant_id", landlord.tenantId)
+      .eq("unit_id", leaseRow.unit_id)
+      .maybeSingle(),
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name, phone, email")
+      .eq("tenant_id", landlord.tenantId)
+      .eq("lessee_id", leaseRow.lessee_id)
+      .maybeSingle(),
+    admin
+      .from("security_deposits")
+      .select("*")
+      .eq("tenant_id", landlord.tenantId)
+      .eq("lease_id", trimmedLeaseId)
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
+
+  if (unitError) {
+    return { detail: null, fetchError: unitError.message };
+  }
+  if (lesseeError) {
+    return { detail: null, fetchError: lesseeError.message };
+  }
+  if (depositsError) {
+    return { detail: null, fetchError: depositsError.message };
+  }
+
+  let propertyName = "—";
+  if (unit?.property_id) {
+    const { data: property } = await admin
+      .from("properties")
+      .select("name")
+      .eq("tenant_id", landlord.tenantId)
+      .eq("property_id", unit.property_id)
+      .maybeSingle();
+    propertyName = (property?.name as string | undefined) ?? "—";
+  }
+
+  const depositRow = ((deposits as DepositRow[] | null) ?? [])[0] ?? null;
+  const deposit = depositRow ? mapDeposit(depositRow) : null;
+
+  let rentChangeStatus: RentChangeStatus | null = null;
+  if (
+    leaseRow.rent_change_status &&
+    isRentChangeStatus(leaseRow.rent_change_status)
+  ) {
+    rentChangeStatus = leaseRow.rent_change_status;
+  }
+
+  let lateFeeType: LateFeeType | null = null;
+  if (leaseRow.late_fee_type && isLateFeeType(leaseRow.late_fee_type)) {
+    lateFeeType = leaseRow.late_fee_type;
+  }
+
+  return {
+    detail: {
+      leaseId: leaseRow.lease_id,
+      tenantId: leaseRow.tenant_id,
+      landlordName: landlord.name,
+      unitId: leaseRow.unit_id,
+      unitNumber: (unit?.unit_number as string | undefined) ?? "—",
+      propertyName,
+      lesseeId: leaseRow.lessee_id,
+      lesseeName: (lessee?.full_name as string | undefined) ?? "—",
+      lesseePhone: (lessee?.phone as string | undefined) ?? "—",
+      lesseeEmail: (lessee?.email as string | null | undefined) ?? null,
+      startDate: leaseRow.start_date,
+      endDate: leaseRow.end_date,
+      rentAmountGhs: toNumber(leaseRow.rent_amount_ghs) ?? 0,
+      pendingRentAmountGhs: toNumber(leaseRow.pending_rent_amount_ghs),
+      rentChangeStatus,
+      escalationPercent: toNumber(leaseRow.escalation_percent),
+      escalationFrequencyMonths: leaseRow.escalation_frequency_months,
+      lateFeeEnabled: Boolean(leaseRow.late_fee_enabled),
+      lateFeeType,
+      lateFeeAmount: toNumber(leaseRow.late_fee_amount),
+      status: leaseRow.status,
+      terminatedAt: leaseRow.terminated_at,
+      terminationReason: leaseRow.termination_reason,
+      createdAt: leaseRow.created_at,
+      updatedAt: leaseRow.updated_at,
+      deposit,
+    },
+    fetchError: null,
+  };
+}

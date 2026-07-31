@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { label: "Landlords", href: "/dashboard/real-estate/landlords" },
   { label: "Properties", href: "/dashboard/real-estate/properties" },
+  { label: "Tenants", href: "/dashboard/real-estate/lessees" },
+  { label: "Leases", href: "/dashboard/real-estate/leases" },
 ] as const;
 
 export default function RealEstateNav() {
