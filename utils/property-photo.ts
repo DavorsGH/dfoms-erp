@@ -22,7 +22,11 @@ function extensionForFile(file: File): string {
   return "jpg";
 }
 
-export type RealEstatePhotoEntity = "property" | "unit" | "maintenance";
+export type RealEstatePhotoEntity =
+  | "property"
+  | "unit"
+  | "maintenance"
+  | "inspection";
 
 export function getPropertyPhotoStoragePath(
   tenantId: string,
@@ -35,8 +39,8 @@ export function getPropertyPhotoStoragePath(
 }
 
 /**
- * Uploads a property/unit/maintenance photo into the existing tenant-logos bucket
- * (same public-image pattern as workspace logos).
+ * Uploads a real-estate photo into the existing tenant-logos bucket
+ * (property, unit, maintenance, or inspection — same public-image pattern as logos).
  */
 export async function uploadPropertyPhoto(
   supabase: SupabaseClient,

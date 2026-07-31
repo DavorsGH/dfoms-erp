@@ -1,86 +1,59 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assertRealEstateLandlordTenant } from "@/utils/property-management";
+import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
 import {
-  isLandlordApprovalStatus,
-  isMaintenanceReportedBy,
-  isMaintenanceStatus,
+  isInspectionType,
+  normalizeInspectionChecklist,
   normalizePhotoUrls,
-  type ActiveLeaseOption,
-  type MaintenanceLandlordApprovalStatus,
-  type MaintenanceListRow,
-  type MaintenanceReportedBy,
-  type MaintenanceStatus,
-} from "@/app/dashboard/real-estate/maintenance-utils";
+  type InspectionLeaseOption,
+  type InspectionListRow,
+  type InspectionType,
+} from "@/app/dashboard/real-estate/inspections-utils";
 
-export type { ActiveLeaseOption, MaintenanceListRow } from "@/app/dashboard/real-estate/maintenance-utils";
+export type {
+  InspectionLeaseOption,
+  InspectionListRow,
+} from "@/app/dashboard/real-estate/inspections-utils";
 
-type MaintenanceRequestRow = {
+/** Leases eligible for inspections: active, or ended within the last 90 days. */
+const RECENTLY_ENDED_DAYS = 90;
+
+type InspectionRow = {
   tenant_id: string;
-  request_id: string;
+  inspection_id: string;
   lease_id: string;
-  reported_by: string;
-  description: string;
-  status: string;
-  cost_ghs: number | string | null;
-  landlord_approval_status: string;
-  date_reported: string;
-  date_resolved: string | null;
+  inspection_type: string;
+  inspection_date: string;
+  conducted_by: string | null;
+  checklist: unknown;
   photo_urls: unknown;
+  notes: string | null;
 };
 
-function toNumber(value: number | string | null | undefined): number | null {
-  if (value == null || value === "") {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+function isRecentlyEnded(
+  endDate: string | null | undefined,
+  terminatedAt: string | null | undefined,
+  cutoffIsoDate: string,
+): boolean {
+  const candidates = [endDate, terminatedAt]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.slice(0, 10));
+  return candidates.some((value) => value >= cutoffIsoDate);
 }
 
-export async function assertDavorsManagedLandlord(
+export async function fetchInspectionLeaseOptionsForLandlord(
   admin: SupabaseClient,
   tenantId: string,
-): Promise<
-  | { ok: true; tenantId: string; name: string }
-  | { ok: false; error: string; status: number }
-> {
-  const landlord = await assertRealEstateLandlordTenant(admin, tenantId);
-  if (!landlord.ok) {
-    return landlord;
-  }
-
-  const { data, error } = await admin
-    .from("landlords")
-    .select("tenant_id, landlord_type")
-    .eq("tenant_id", landlord.tenantId)
-    .maybeSingle();
-
-  if (error) {
-    return { ok: false, error: error.message, status: 400 };
-  }
-  if (!data) {
-    return { ok: false, error: "Landlord record not found.", status: 404 };
-  }
-  if (data.landlord_type !== "davors_managed") {
-    return {
-      ok: false,
-      error: "This action is only available for Davors-managed landlords.",
-      status: 400,
-    };
-  }
-
-  return { ok: true, tenantId: landlord.tenantId, name: landlord.name };
-}
-
-export async function fetchActiveLeaseOptionsForLandlord(
-  admin: SupabaseClient,
-  tenantId: string,
-): Promise<{ leases: ActiveLeaseOption[]; fetchError: string | null }> {
+): Promise<{ leases: InspectionLeaseOption[]; fetchError: string | null }> {
   const landlord = await assertDavorsManagedLandlord(admin, tenantId);
   if (!landlord.ok) {
     return { leases: [], fetchError: landlord.error };
   }
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - RECENTLY_ENDED_DAYS);
+  const cutoffIsoDate = cutoff.toISOString().slice(0, 10);
 
   const [
     { data: leases, error: leasesError },
@@ -90,9 +63,10 @@ export async function fetchActiveLeaseOptionsForLandlord(
   ] = await Promise.all([
     admin
       .from("leases")
-      .select("lease_id, unit_id, lessee_id")
+      .select(
+        "lease_id, unit_id, lessee_id, status, end_date, terminated_at, created_at",
+      )
       .eq("tenant_id", landlord.tenantId)
-      .eq("status", "active")
       .order("created_at", { ascending: false }),
     admin
       .from("property_units")
@@ -141,51 +115,64 @@ export async function fetchActiveLeaseOptionsForLandlord(
     ),
   );
 
-  const options: ActiveLeaseOption[] = (
-    (leases as Array<{
-      lease_id: string;
-      unit_id: string;
-      lessee_id: string;
-    }> | null) ?? []
-  ).map((row) => {
+  const options: InspectionLeaseOption[] = [];
+  for (const row of (leases as Array<{
+    lease_id: string;
+    unit_id: string;
+    lessee_id: string;
+    status: string;
+    end_date: string | null;
+    terminated_at: string | null;
+  }> | null) ?? []) {
+    const isActive = row.status === "active";
+    const isEnded =
+      row.status === "terminated_early" || row.status === "expired";
+    if (
+      !isActive &&
+      !(isEnded && isRecentlyEnded(row.end_date, row.terminated_at, cutoffIsoDate))
+    ) {
+      continue;
+    }
+
     const unit = unitById.get(row.unit_id);
     const propertyName = unit
       ? (propertyNameById.get(unit.property_id) ?? "—")
       : "—";
     const unitNumber = unit?.unit_number ?? "—";
     const lesseeName = lesseeNameById.get(row.lessee_id) ?? "—";
-    return {
+    const statusLabel = isActive ? "Active" : "Ended";
+    options.push({
       leaseId: row.lease_id,
-      label: `${lesseeName} · ${propertyName} / Unit ${unitNumber}`,
-    };
-  });
+      label: `${lesseeName} · ${propertyName} / Unit ${unitNumber} (${statusLabel})`,
+    });
+  }
 
   return { leases: options, fetchError: null };
 }
 
-export async function fetchMaintenanceRequestsForLandlord(
+export async function fetchInspectionsForLandlord(
   admin: SupabaseClient,
   tenantId: string,
-): Promise<{ rows: MaintenanceListRow[]; fetchError: string | null }> {
+): Promise<{ rows: InspectionListRow[]; fetchError: string | null }> {
   const landlord = await assertDavorsManagedLandlord(admin, tenantId);
   if (!landlord.ok) {
     return { rows: [], fetchError: landlord.error };
   }
 
   const [
-    { data: requests, error: requestsError },
+    { data: inspections, error: inspectionsError },
     { data: leases, error: leasesError },
     { data: units, error: unitsError },
     { data: properties, error: propertiesError },
     { data: lessees, error: lesseesError },
   ] = await Promise.all([
     admin
-      .from("maintenance_requests")
+      .from("inspections")
       .select(
-        "tenant_id, request_id, lease_id, reported_by, description, status, cost_ghs, landlord_approval_status, date_reported, date_resolved, photo_urls",
+        "tenant_id, inspection_id, lease_id, inspection_type, inspection_date, conducted_by, checklist, photo_urls, notes",
       )
       .eq("tenant_id", landlord.tenantId)
-      .order("date_reported", { ascending: false }),
+      .order("inspection_date", { ascending: false }),
     admin
       .from("leases")
       .select("lease_id, unit_id, lessee_id")
@@ -204,8 +191,8 @@ export async function fetchMaintenanceRequestsForLandlord(
       .eq("tenant_id", landlord.tenantId),
   ]);
 
-  if (requestsError) {
-    return { rows: [], fetchError: requestsError.message };
+  if (inspectionsError) {
+    return { rows: [], fetchError: inspectionsError.message };
   }
   if (leasesError) {
     return { rows: [], fetchError: leasesError.message };
@@ -249,15 +236,9 @@ export async function fetchMaintenanceRequestsForLandlord(
     ).map((row) => [row.lease_id, row]),
   );
 
-  const rows: MaintenanceListRow[] = [];
-  for (const row of (requests as MaintenanceRequestRow[] | null) ?? []) {
-    if (!isMaintenanceStatus(row.status)) {
-      continue;
-    }
-    if (!isLandlordApprovalStatus(row.landlord_approval_status)) {
-      continue;
-    }
-    if (!isMaintenanceReportedBy(row.reported_by)) {
+  const rows: InspectionListRow[] = [];
+  for (const row of (inspections as InspectionRow[] | null) ?? []) {
+    if (!isInspectionType(row.inspection_type)) {
       continue;
     }
 
@@ -269,21 +250,18 @@ export async function fetchMaintenanceRequestsForLandlord(
     const unitNumber = unit?.unit_number ?? "—";
 
     rows.push({
-      requestId: row.request_id,
+      inspectionId: row.inspection_id,
       tenantId: row.tenant_id,
       leaseId: row.lease_id,
       lesseeName: lease
         ? (lesseeNameById.get(lease.lessee_id) ?? "—")
         : "—",
       unitLabel: `${propertyName} / Unit ${unitNumber}`,
-      description: row.description,
-      status: row.status as MaintenanceStatus,
-      costGhs: toNumber(row.cost_ghs),
-      landlordApprovalStatus:
-        row.landlord_approval_status as MaintenanceLandlordApprovalStatus,
-      dateReported: row.date_reported,
-      dateResolved: row.date_resolved,
-      reportedBy: row.reported_by as MaintenanceReportedBy,
+      inspectionType: row.inspection_type as InspectionType,
+      inspectionDate: row.inspection_date,
+      conductedBy: row.conducted_by,
+      notes: row.notes,
+      checklist: normalizeInspectionChecklist(row.checklist),
       photoUrls: normalizePhotoUrls(row.photo_urls),
     });
   }
