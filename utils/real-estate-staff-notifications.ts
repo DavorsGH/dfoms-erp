@@ -4,6 +4,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { sendResendEmail } from "@/utils/resend-email";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
+import { createShortLinkUrl } from "@/utils/short-links";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import {
   formatRentMoney,
@@ -42,6 +43,50 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** Same base-URL convention as portal invite / signup emails. */
+function siteBaseUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    "https://portal.davorsfacilities.com"
+  );
+}
+
+function staffDashboardUrl(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return `${siteBaseUrl().replace(/\/$/, "")}${normalized}`;
+}
+
+/**
+ * SMS-only: store absolute deep-link in short_links and return `{site}/s/{code}`.
+ * Falls back to the full URL if insert fails so the SMS still delivers a usable link.
+ */
+async function smsDeepLinkUrl(absoluteDeepLink: string): Promise<string> {
+  try {
+    return await createShortLinkUrl(absoluteDeepLink);
+  } catch (error) {
+    console.error(
+      "[real-estate-staff-notifications] short-link create failed; using full URL:",
+      error instanceof Error ? error.message : error,
+    );
+    return absoluteDeepLink;
+  }
+}
+
+function landlordFilteredPath(
+  section: "complaints" | "maintenance" | "rent-ledger",
+  landlordTenantId: string,
+): string {
+  return `/dashboard/real-estate/${section}?landlord=${encodeURIComponent(landlordTenantId)}`;
+}
+
+function leaseDetailPath(landlordTenantId: string, leaseId: string): string {
+  return `/dashboard/real-estate/leases/${encodeURIComponent(landlordTenantId)}/${encodeURIComponent(leaseId)}`;
+}
+
+function landlordDetailPath(landlordTenantId: string): string {
+  return `/dashboard/real-estate/landlords/${encodeURIComponent(landlordTenantId)}`;
 }
 
 async function loadDavorsStaffAuthUids(): Promise<string[]> {
@@ -354,7 +399,11 @@ async function dispatchStaffNotification(
   await Promise.all(tasks);
 }
 
-function buildEmailShell(heading: string, lines: Array<[string, string]>): {
+function buildEmailShell(
+  heading: string,
+  lines: Array<[string, string]>,
+  deepLink: string,
+): {
   html: string;
   text: string;
 } {
@@ -362,6 +411,8 @@ function buildEmailShell(heading: string, lines: Array<[string, string]>): {
     heading,
     "",
     ...lines.map(([label, value]) => `${label}: ${value}`),
+    "",
+    `Open: ${deepLink}`,
   ].join("\n");
 
   const html = `
@@ -374,9 +425,20 @@ function buildEmailShell(heading: string, lines: Array<[string, string]>): {
         )
         .join("\n      ")}
     </ul>
+    <p><a href="${escapeHtml(deepLink)}">Open in dashboard</a></p>
   `.trim();
 
   return { html, text };
+}
+
+function formatLandlordTypeLabel(landlordType: string): string {
+  if (landlordType === "davors_managed") {
+    return "Davors managed";
+  }
+  if (landlordType === "platform_only") {
+    return "Platform only";
+  }
+  return landlordType;
 }
 
 /** EVENT 1 — portal repair / maintenance request submitted. */
@@ -404,26 +466,31 @@ export async function notifyStaffNewRepairRequest(options: {
         ? `Yes (proposed ${formatRentMoney(options.proposedCostGhs)})`
         : "Yes"
       : "No";
+    const deepLink = staffDashboardUrl(
+      landlordFilteredPath("maintenance", options.landlordTenantId),
+    );
+    const smsLink = await smsDeepLinkUrl(deepLink);
 
     const title = "New repair request";
     const body = [
       `${ctx.lesseeName} submitted a repair request.`,
       `Property: ${ctx.propertyName} / Unit ${ctx.unitNumber}`,
-      `Request ID: ${options.requestId}`,
       `Self-fix: ${selfFixLabel}`,
       descPreview,
+      deepLink,
     ].join("\n");
 
-    const { html, text } = buildEmailShell(title, [
-      ["Tenant", ctx.lesseeName],
-      ["Property", ctx.propertyName],
-      ["Unit", ctx.unitNumber],
-      ["Request ID", options.requestId],
-      ["Self-fix", selfFixLabel],
-      ["Description", descPreview],
-      ["Landlord tenant ID", options.landlordTenantId],
-      ["Landlord type", recipients.landlordType ?? "—"],
-    ]);
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Tenant", ctx.lesseeName],
+        ["Property", ctx.propertyName],
+        ["Unit", ctx.unitNumber],
+        ["Self-fix", selfFixLabel],
+        ["Description", descPreview],
+      ],
+      deepLink,
+    );
 
     await dispatchStaffNotification({
       title,
@@ -431,7 +498,7 @@ export async function notifyStaffNewRepairRequest(options: {
       emailSubject: `Real Estate: New repair request — ${ctx.lesseeName}`,
       emailHtml: html,
       emailText: text,
-      smsContent: `Davors RE: New repair request from ${ctx.lesseeName} at ${ctx.propertyName} unit ${ctx.unitNumber}. ID ${options.requestId.slice(0, 8)}.`,
+      smsContent: `Davors RE: Repair from ${ctx.lesseeName}, ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
       context: `repair:${options.requestId}`,
       recipients,
     });
@@ -460,30 +527,29 @@ export async function notifyStaffNewComplaint(options: {
       }),
     ]);
     const lesseeName = options.lesseeName?.trim() || ctx.lesseeName;
-    const descPreview =
-      options.description.length > 120
-        ? `${options.description.slice(0, 117)}…`
-        : options.description;
+    const deepLink = staffDashboardUrl(
+      landlordFilteredPath("complaints", options.landlordTenantId),
+    );
+    const smsLink = await smsDeepLinkUrl(deepLink);
 
     const title = "New tenant complaint";
     const body = [
       `${lesseeName} submitted a complaint.`,
       `Subject: ${options.subject}`,
       `Property: ${ctx.propertyName} / Unit ${ctx.unitNumber}`,
-      `Complaint ID: ${options.complaintId}`,
-      descPreview,
+      deepLink,
     ].join("\n");
 
-    const { html, text } = buildEmailShell(title, [
-      ["Tenant", lesseeName],
-      ["Subject", options.subject],
-      ["Property", ctx.propertyName],
-      ["Unit", ctx.unitNumber],
-      ["Complaint ID", options.complaintId],
-      ["Description", descPreview],
-      ["Landlord tenant ID", options.landlordTenantId],
-      ["Landlord type", recipients.landlordType ?? "—"],
-    ]);
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Tenant", lesseeName],
+        ["Subject", options.subject],
+        ["Property", ctx.propertyName],
+        ["Unit", ctx.unitNumber],
+      ],
+      deepLink,
+    );
 
     await dispatchStaffNotification({
       title,
@@ -491,7 +557,7 @@ export async function notifyStaffNewComplaint(options: {
       emailSubject: `Real Estate: New complaint — ${options.subject}`,
       emailHtml: html,
       emailText: text,
-      smsContent: `Davors RE: New complaint from ${lesseeName}: ${options.subject}. ID ${options.complaintId.slice(0, 8)}.`,
+      smsContent: `Davors RE: Complaint from ${lesseeName}: ${options.subject}. ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
       context: `complaint:${options.complaintId}`,
       recipients,
     });
@@ -528,29 +594,32 @@ export async function notifyStaffRentPaymentReceived(options: {
       options.periodStart,
       options.periodEnd,
     );
+    const deepLink = staffDashboardUrl(
+      landlordFilteredPath("rent-ledger", options.landlordTenantId),
+    );
+    const smsLink = await smsDeepLinkUrl(deepLink);
 
     const title = "Rent payment received";
     const body = [
-      `${lesseeName} paid ${amountLabel} via Paystack.`,
+      `${lesseeName} paid ${amountLabel}.`,
       `Period: ${periodLabel}`,
       `Property: ${ctx.propertyName} / Unit ${ctx.unitNumber}`,
       `Method: ${options.paymentMethod}`,
-      `Entry: ${options.entryId}`,
-      `Ref: ${options.reference}`,
+      deepLink,
     ].join("\n");
 
-    const { html, text } = buildEmailShell(title, [
-      ["Tenant", lesseeName],
-      ["Amount", amountLabel],
-      ["Period", periodLabel],
-      ["Property", ctx.propertyName],
-      ["Unit", ctx.unitNumber],
-      ["Method", options.paymentMethod],
-      ["Entry ID", options.entryId],
-      ["Paystack ref", options.reference],
-      ["Landlord tenant ID", options.landlordTenantId],
-      ["Landlord type", recipients.landlordType ?? "—"],
-    ]);
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Tenant", lesseeName],
+        ["Amount", amountLabel],
+        ["Period", periodLabel],
+        ["Property", ctx.propertyName],
+        ["Unit", ctx.unitNumber],
+        ["Method", options.paymentMethod],
+      ],
+      deepLink,
+    );
 
     await dispatchStaffNotification({
       title,
@@ -558,7 +627,7 @@ export async function notifyStaffRentPaymentReceived(options: {
       emailSubject: `Real Estate: Rent received — ${lesseeName} (${amountLabel})`,
       emailHtml: html,
       emailText: text,
-      smsContent: `Davors RE: Rent ${amountLabel} received from ${lesseeName} (${periodLabel}) via ${options.paymentMethod}.`,
+      smsContent: `Davors RE: Rent ${amountLabel} from ${lesseeName} (${periodLabel}). ${smsLink}`,
       context: `rent-paystack:${options.reference}`,
       recipients,
     });
@@ -586,26 +655,29 @@ export async function notifyStaffEarlyTerminationRequest(options: {
     ]);
     const lesseeName = options.lesseeName?.trim() || ctx.lesseeName;
     const reasonLabel = options.reason?.trim() || "(no reason provided)";
+    const deepLink = staffDashboardUrl(
+      leaseDetailPath(options.landlordTenantId, options.leaseId),
+    );
+    const smsLink = await smsDeepLinkUrl(deepLink);
 
     const title = "Early termination request";
     const body = [
       `${lesseeName} requested early lease termination.`,
       `Property: ${ctx.propertyName} / Unit ${ctx.unitNumber}`,
-      `Lease ID: ${options.leaseId}`,
       `Reason: ${reasonLabel}`,
-      "Status: pending_staff_approval",
+      deepLink,
     ].join("\n");
 
-    const { html, text } = buildEmailShell(title, [
-      ["Tenant", lesseeName],
-      ["Property", ctx.propertyName],
-      ["Unit", ctx.unitNumber],
-      ["Lease ID", options.leaseId],
-      ["Reason", reasonLabel],
-      ["Status", "pending_staff_approval"],
-      ["Landlord tenant ID", options.landlordTenantId],
-      ["Landlord type", recipients.landlordType ?? "—"],
-    ]);
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Tenant", lesseeName],
+        ["Property", ctx.propertyName],
+        ["Unit", ctx.unitNumber],
+        ["Reason", reasonLabel],
+      ],
+      deepLink,
+    );
 
     await dispatchStaffNotification({
       title,
@@ -613,7 +685,7 @@ export async function notifyStaffEarlyTerminationRequest(options: {
       emailSubject: `Real Estate: Early termination request — ${lesseeName}`,
       emailHtml: html,
       emailText: text,
-      smsContent: `Davors RE: Early termination request from ${lesseeName} at ${ctx.propertyName} unit ${ctx.unitNumber}.`,
+      smsContent: `Davors RE: Early termination from ${lesseeName}, ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
       context: `termination:${options.leaseId}`,
       recipients,
     });
@@ -647,20 +719,28 @@ export async function notifyStaffLandlordPendingApproval(options: {
       landlordTenantId: options.landlordTenantId,
       forceDavors: true,
     });
+    const typeLabel = formatLandlordTypeLabel(options.landlordType);
+    const deepLink = staffDashboardUrl(
+      landlordDetailPath(options.landlordTenantId),
+    );
+    const smsLink = await smsDeepLinkUrl(deepLink);
 
     const title = "Landlord pending approval";
     const body = [
       `${landlordName} was added and is pending approval.`,
-      `Type: ${options.landlordType}`,
-      `Tenant ID: ${options.landlordTenantId}`,
+      `Type: ${typeLabel}`,
+      deepLink,
     ].join("\n");
 
-    const { html, text } = buildEmailShell(title, [
-      ["Landlord", landlordName],
-      ["Type", options.landlordType],
-      ["Tenant ID", options.landlordTenantId],
-      ["Approval status", "pending"],
-    ]);
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Landlord", landlordName],
+        ["Type", typeLabel],
+        ["Status", "Pending approval"],
+      ],
+      deepLink,
+    );
 
     await dispatchStaffNotification({
       title,
@@ -668,7 +748,7 @@ export async function notifyStaffLandlordPendingApproval(options: {
       emailSubject: `Real Estate: Landlord pending approval — ${landlordName}`,
       emailHtml: html,
       emailText: text,
-      smsContent: `Davors RE: Landlord "${landlordName}" pending approval (${options.landlordType}).`,
+      smsContent: `Davors RE: Landlord "${landlordName}" pending approval (${typeLabel}). ${smsLink}`,
       context: `landlord-pending:${options.landlordTenantId}`,
       recipients,
     });

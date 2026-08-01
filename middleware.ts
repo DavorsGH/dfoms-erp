@@ -1,5 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { getSafeNext } from "@/utils/safe-redirect";
 import { createClient } from "@/utils/supabase/middleware";
+
+/** Redirect to a validated relative path+query (pathname + search). */
+function redirectToRelativePath(request: NextRequest, relativePath: string) {
+  const target = new URL(relativePath, request.nextUrl.origin);
+  const url = request.nextUrl.clone();
+  url.pathname = target.pathname;
+  url.search = target.search;
+  url.hash = "";
+  return NextResponse.redirect(url);
+}
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -29,6 +40,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/unsubscribe") ||
     pathname.startsWith("/api/unsubscribe")
   ) {
+    return NextResponse.next();
+  }
+
+  // Internal SMS short-link redirects (no auth; route 302s to destination).
+  if (pathname.startsWith("/s/")) {
     return NextResponse.next();
   }
 
@@ -75,10 +91,17 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/pay/product-sale") &&
     !pathname.startsWith("/unsubscribe") &&
     !pathname.startsWith("/api/unsubscribe") &&
+    !pathname.startsWith("/s/") &&
     !pathname.startsWith("/api/cron/")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = isPortalPath ? "/portal/login" : "/login";
+    // Preserve destination for staff login only (portal keeps its own default).
+    url.search = "";
+    if (!isPortalPath) {
+      const returnPath = `${pathname}${request.nextUrl.search}`;
+      url.searchParams.set("next", returnPath);
+    }
     return NextResponse.redirect(url);
   }
 
@@ -144,9 +167,14 @@ export async function middleware(request: NextRequest) {
     !isLesseePortalUser &&
     (pathname === "/" || pathname === "/login" || pathname === "/signup")
   ) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    const nextParam =
+      pathname === "/login"
+        ? request.nextUrl.searchParams.get("next")
+        : null;
+    return redirectToRelativePath(
+      request,
+      getSafeNext(nextParam, "/dashboard"),
+    );
   }
 
   // Non-lessee sessions cannot use the tenant portal dashboard.

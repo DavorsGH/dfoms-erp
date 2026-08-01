@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PasswordInput from "@/components/password-input";
+import { getSafeNext } from "@/utils/safe-redirect";
 import { loginWithPassword } from "./actions";
 
 export default function LoginPage() {
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,7 +28,8 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
+    const destination = getSafeNext(searchParams.get("next"), "/dashboard");
+    router.push(destination);
     router.refresh();
   }
 
