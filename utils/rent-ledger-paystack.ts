@@ -17,6 +17,7 @@ import {
   type RentVerificationStatus,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
+import { notifyStaffRentPaymentReceived } from "@/utils/real-estate-staff-notifications";
 
 export const RENT_LEDGER_PAYSTACK_CONTEXT = "rent_ledger" as const;
 
@@ -574,6 +575,27 @@ export async function fulfillRentLedgerPaystackPayment(
     } catch (error) {
       console.error(
         "[rent-ledger-paystack] notification failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  // Staff ops alert — only on fresh fulfillment (idempotent path returns earlier).
+  if (!options.skipNotify) {
+    try {
+      await notifyStaffRentPaymentReceived({
+        landlordTenantId: entry.tenant_id,
+        leaseId: entry.lease_id,
+        entryId: entry.entry_id,
+        amountGhs: applied,
+        periodStart: entry.period_start,
+        periodEnd: entry.period_end,
+        paymentMethod,
+        reference,
+      });
+    } catch (error) {
+      console.error(
+        "[rent-ledger-paystack] staff notification failed:",
         error instanceof Error ? error.message : error,
       );
     }

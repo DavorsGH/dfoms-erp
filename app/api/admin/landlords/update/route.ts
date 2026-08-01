@@ -3,12 +3,16 @@ import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
+import { notifyStaffLandlordPendingApproval } from "@/utils/real-estate-staff-notifications";
 
 type UpdateLandlordBody = {
   tenant_id?: string;
   landlord_type?: LandlordType;
   management_fee_percent?: number | null;
   paystack_subaccount_code?: string | null;
+  notification_phone?: string | null;
+  /** Reuses tenants.email — notification email for platform_only landlords. */
+  notification_email?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -64,6 +68,23 @@ export async function POST(request: Request) {
       ? body.paystack_subaccount_code.trim() || null
       : null;
 
+  const notificationPhone =
+    typeof body.notification_phone === "string"
+      ? body.notification_phone.trim() || null
+      : null;
+
+  let notificationEmail: string | null | undefined;
+  if (typeof body.notification_email === "string") {
+    const trimmed = body.notification_email.trim();
+    if (trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return NextResponse.json(
+        { error: "notification_email must be a valid email address." },
+        { status: 400 },
+      );
+    }
+    notificationEmail = trimmed || null;
+  }
+
   const admin = createAdminClient();
 
   const { data: tenant, error: tenantError } = await admin
@@ -98,8 +119,26 @@ export async function POST(request: Request) {
     management_fee_percent:
       landlordType === "davors_managed" ? managementFeePercent : null,
     paystack_subaccount_code: paystackSubaccountCode,
+    notification_phone: notificationPhone,
     updated_at: new Date().toISOString(),
   };
+
+  if (notificationEmail !== undefined) {
+    const { error: tenantUpdateError } = await admin
+      .from("tenants")
+      .update({
+        email: notificationEmail,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", tenantId);
+
+    if (tenantUpdateError) {
+      return NextResponse.json(
+        { error: tenantUpdateError.message },
+        { status: 400 },
+      );
+    }
+  }
 
   if (existing) {
     const { error: updateError } = await admin
@@ -122,6 +161,11 @@ export async function POST(request: Request) {
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 400 });
     }
+
+    await notifyStaffLandlordPendingApproval({
+      landlordTenantId: tenantId,
+      landlordType,
+    });
   }
 
   return NextResponse.json({ success: true });

@@ -42,6 +42,7 @@ type LandlordRow = {
   approval_status: LandlordApprovalStatus | null;
   management_fee_percent: number | null;
   paystack_subaccount_code: string | null;
+  notification_phone: string | null;
   sms_credit_balance: number | null;
   created_at: string | null;
   updated_at: string | null;
@@ -231,6 +232,7 @@ export async function fetchLandlordDetail(
       approvalStatus: landlordRow?.approval_status ?? null,
       managementFeePercent: landlordRow?.management_fee_percent ?? null,
       paystackSubaccountCode: landlordRow?.paystack_subaccount_code ?? null,
+      notificationPhone: landlordRow?.notification_phone ?? null,
       smsCreditBalance: landlordRow?.sms_credit_balance ?? null,
       landlordCreatedAt: landlordRow?.created_at ?? null,
       landlordUpdatedAt: landlordRow?.updated_at ?? null,

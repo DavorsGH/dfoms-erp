@@ -51,6 +51,8 @@ export type LandlordDetail = {
   approvalStatus: LandlordApprovalStatus | null;
   managementFeePercent: number | null;
   paystackSubaccountCode: string | null;
+  /** SMS recipient for platform_only Real Estate ops alerts. */
+  notificationPhone: string | null;
   smsCreditBalance: number | null;
   landlordCreatedAt: string | null;
   landlordUpdatedAt: string | null;

@@ -131,7 +131,9 @@ export default function WorkspaceSettings({
     <div className="max-w-lg space-y-8">
       <p className="text-sm text-slate-600">
         Customize how your workspace appears in the sidebar, reports, payslips,
-        and other printed documents.
+        and other printed documents. Phone and email are also used for Real
+        Estate staff SMS and email alerts (Davors-managed properties and new
+        landlord signups).
       </p>
 
       {error ? (
@@ -184,7 +186,7 @@ export default function WorkspaceSettings({
             htmlFor="workspace_phone"
             className="mb-1 block text-sm font-medium text-slate-700"
           >
-            Phone
+            Notification phone
           </label>
           <input
             id="workspace_phone"
@@ -192,14 +194,18 @@ export default function WorkspaceSettings({
             value={workspacePhone}
             onChange={(event) => setWorkspacePhone(event.target.value)}
             className={inputClassName}
+            placeholder="e.g. 0241234567"
           />
+          <p className="mt-1 text-xs text-slate-500">
+            Ghana mobile number for Real Estate ops SMS alerts.
+          </p>
         </div>
         <div>
           <label
             htmlFor="workspace_email"
             className="mb-1 block text-sm font-medium text-slate-700"
           >
-            Email
+            Notification email
           </label>
           <input
             id="workspace_email"
@@ -208,6 +214,10 @@ export default function WorkspaceSettings({
             onChange={(event) => setWorkspaceEmail(event.target.value)}
             className={inputClassName}
           />
+          <p className="mt-1 text-xs text-slate-500">
+            Email recipient for Real Estate ops alerts (same field as workspace
+            contact email).
+          </p>
         </div>
         <button
           type="submit"

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
+import { notifyStaffEarlyTerminationRequest } from "@/utils/real-estate-staff-notifications";
 
 type RequestBody = {
   reason?: string | null;
@@ -72,6 +73,13 @@ export async function POST(request: Request) {
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
+
+  await notifyStaffEarlyTerminationRequest({
+    landlordTenantId: session.tenantId,
+    leaseId: lease.lease_id,
+    reason,
+    lesseeName: session.fullName,
+  });
 
   return NextResponse.json({
     success: true,

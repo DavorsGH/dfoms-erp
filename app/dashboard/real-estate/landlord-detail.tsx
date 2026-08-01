@@ -57,6 +57,12 @@ export default function LandlordDetailView({
   const [paystackSubaccountCode, setPaystackSubaccountCode] = useState(
     initialDetail.paystackSubaccountCode ?? "",
   );
+  const [notificationPhone, setNotificationPhone] = useState(
+    initialDetail.notificationPhone ?? "",
+  );
+  const [notificationEmail, setNotificationEmail] = useState(
+    initialDetail.email ?? "",
+  );
   const [showConvertForm, setShowConvertForm] = useState(false);
   const [convertFeePercent, setConvertFeePercent] = useState("");
   const [converting, setConverting] = useState(false);
@@ -70,6 +76,8 @@ export default function LandlordDetailView({
         : "",
     );
     setPaystackSubaccountCode(initialDetail.paystackSubaccountCode ?? "");
+    setNotificationPhone(initialDetail.notificationPhone ?? "");
+    setNotificationEmail(initialDetail.email ?? "");
     setShowConvertForm(false);
     setConvertFeePercent("");
   }, [initialDetail]);
@@ -85,6 +93,13 @@ export default function LandlordDetailView({
 
     if (!landlordType) {
       setError("Landlord type is required.");
+      setLoading(false);
+      return;
+    }
+
+    const trimmedEmail = notificationEmail.trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Enter a valid notification email address.");
       setLoading(false);
       return;
     }
@@ -108,6 +123,8 @@ export default function LandlordDetailView({
         landlord_type: landlordType,
         management_fee_percent: feeValue,
         paystack_subaccount_code: paystackSubaccountCode.trim() || null,
+        notification_phone: notificationPhone.trim() || null,
+        notification_email: trimmedEmail || null,
       }),
     });
 
@@ -275,6 +292,9 @@ export default function LandlordDetailView({
               Email
             </dt>
             <dd className="mt-1 text-sm text-slate-900">{detail.email ?? "—"}</dd>
+            <p className="mt-1 text-xs text-slate-500">
+              Editable below as notification email.
+            </p>
           </div>
           <div>
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -386,6 +406,45 @@ export default function LandlordDetailView({
               placeholder="ACCT_…"
             />
           </div>
+
+          <div>
+            <label
+              htmlFor="notification-phone"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Notification phone
+            </label>
+            <input
+              id="notification-phone"
+              type="text"
+              value={notificationPhone}
+              onChange={(event) => setNotificationPhone(event.target.value)}
+              className={inputClassName}
+              placeholder="e.g. 0241234567"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Used for Real Estate ops SMS when this landlord is Platform Only.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="notification-email"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Notification email
+            </label>
+            <input
+              id="notification-email"
+              type="email"
+              value={notificationEmail}
+              onChange={(event) => setNotificationEmail(event.target.value)}
+              className={inputClassName}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Reuses the tenant email. Used for ops alerts when Platform Only.
+            </p>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -409,6 +468,8 @@ export default function LandlordDetailView({
                   : "",
               );
               setPaystackSubaccountCode(detail.paystackSubaccountCode ?? "");
+              setNotificationPhone(detail.notificationPhone ?? "");
+              setNotificationEmail(detail.email ?? "");
               setError(null);
               setSuccess(null);
             }}

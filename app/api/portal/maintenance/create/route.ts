@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
+import { notifyStaffNewRepairRequest } from "@/utils/real-estate-staff-notifications";
 
 type CreateBody = {
   description?: string;
@@ -106,6 +107,15 @@ export async function POST(request: Request) {
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 400 });
   }
+
+  await notifyStaffNewRepairRequest({
+    landlordTenantId: session.tenantId,
+    leaseId: lease.lease_id,
+    requestId,
+    description,
+    tenantSelfFix: selfFix,
+    proposedCostGhs: proposedCost,
+  });
 
   return NextResponse.json({
     success: true,
