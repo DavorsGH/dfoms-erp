@@ -30,6 +30,7 @@ type LesseeRow = {
   phone: string;
   status: string;
   private_notes: string | null;
+  photo_url?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -126,7 +127,7 @@ export async function fetchLesseeDetail(
   const { data: lessee, error: lesseeError } = await admin
     .from("lessees")
     .select(
-      "tenant_id, lessee_id, full_name, email, phone, status, private_notes, created_at, updated_at",
+      "tenant_id, lessee_id, full_name, email, phone, status, private_notes, photo_url, created_at, updated_at",
     )
     .eq("tenant_id", landlord.tenantId)
     .eq("lessee_id", trimmedLesseeId)
@@ -309,6 +310,7 @@ export async function fetchLesseeDetail(
       privateNotes: lesseeRow.private_notes,
       createdAt: lesseeRow.created_at,
       updatedAt: lesseeRow.updated_at,
+      photoUrl: lesseeRow.photo_url?.trim() || null,
       propertyHeroPhotoUrl,
       propertyHeroPropertyId,
       propertyHeroPropertyName,

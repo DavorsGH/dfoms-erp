@@ -11,6 +11,7 @@ const navItems = [
   { label: "Rent Ledger", href: "/dashboard/real-estate/rent-ledger" },
   { label: "Payouts", href: "/dashboard/real-estate/payouts" },
   { label: "Maintenance", href: "/dashboard/real-estate/maintenance" },
+  { label: "Complaints", href: "/dashboard/real-estate/complaints" },
   { label: "Inspections", href: "/dashboard/real-estate/inspections" },
   { label: "Expenses", href: "/dashboard/real-estate/expenses" },
 ] as const;

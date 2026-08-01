@@ -522,6 +522,7 @@ async function processActiveLease(args: {
     period_end: periodEnd,
     amount_due_ghs: amountDue,
     amount_paid_ghs: 0,
+    credit_ghs: 0,
     status: "pending",
     verification_status: "not_required",
     notes: noteParts.length > 0 ? noteParts.join(" ") : null,

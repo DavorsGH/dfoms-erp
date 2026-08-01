@@ -69,6 +69,7 @@ export default function LesseeDetailView({
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState(initialDetail.fullName);
   const [phone, setPhone] = useState(initialDetail.phone);
@@ -88,6 +89,41 @@ export default function LesseeDetailView({
     setError(fetchError);
     setEditing(false);
   }, [initialDetail, fetchError]);
+
+  async function handleProfilePhotoUpload(file: File) {
+    setUploadingPhoto(true);
+    setError(null);
+    setSuccess(null);
+
+    const formData = new FormData();
+    formData.set("tenant_id", detail.tenantId);
+    formData.set("lessee_id", detail.lesseeId);
+    formData.set("file", file);
+
+    const response = await fetch("/api/admin/lessees/upload-photo", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      photo_url?: string;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to upload profile photo.");
+      setUploadingPhoto(false);
+      return;
+    }
+
+    const nextUrl = payload?.photo_url ?? null;
+    if (nextUrl) {
+      setDetail((current) => ({ ...current, photoUrl: nextUrl }));
+    }
+    setSuccess("Profile photo updated.");
+    setUploadingPhoto(false);
+    router.refresh();
+  }
 
   const backHref = `/dashboard/real-estate/lessees?landlord=${encodeURIComponent(detail.tenantId)}`;
   const rentLedgerHref = `/dashboard/real-estate/rent-ledger?landlord=${encodeURIComponent(detail.tenantId)}`;
@@ -175,141 +211,192 @@ export default function LesseeDetailView({
               ) : null}
             </div>
 
-            {!editing ? (
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Full name
-                  </dt>
-                  <dd className="mt-1 text-sm text-slate-900">
-                    {detail.fullName}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Status
-                  </dt>
-                  <dd className="mt-1 text-sm text-slate-900">
-                    {formatLesseeStatus(detail.status)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Phone
-                  </dt>
-                  <dd className="mt-1 text-sm text-slate-900">{detail.phone}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Email
-                  </dt>
-                  <dd className="mt-1 text-sm text-slate-900">
-                    {detail.email ?? "—"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Created
-                  </dt>
-                  <dd className="mt-1 text-sm text-slate-900">
-                    {formatLesseeDate(detail.createdAt)}
-                  </dd>
-                </div>
-              </dl>
-            ) : (
-              <form onSubmit={(event) => void handleSave(event)} className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                      Full name
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      value={fullName}
-                      onChange={(event) => setFullName(event.target.value)}
-                      className={inputClassName}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div className="shrink-0">
+                {detail.photoUrl ? (
+                  <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={detail.photoUrl}
+                      alt={`${detail.fullName} profile`}
+                      className="h-28 w-28 object-cover"
                     />
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                      Status
-                    </label>
-                    <select
-                      value={status}
-                      onChange={(event) =>
-                        setStatus(event.target.value as LesseeStatus)
-                      }
-                      className={inputClassName}
-                    >
-                      {LESSEE_STATUS_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                ) : (
+                  <div className="flex h-28 w-28 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-center text-xs text-slate-500">
+                    No photo
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                      Phone
+                )}
+                {editing ? (
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-slate-600">
+                      {detail.photoUrl ? "Change photo" : "Upload photo"}
                     </label>
                     <input
-                      required
-                      type="text"
-                      value={phone}
-                      onChange={(event) => setPhone(event.target.value)}
-                      className={inputClassName}
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      disabled={uploadingPhoto || saving}
+                      className="mt-1 block w-full max-w-[7rem] text-xs text-slate-700"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) {
+                          void handleProfilePhotoUpload(file);
+                        }
+                      }}
                     />
+                    {uploadingPhoto ? (
+                      <p className="mt-1 text-xs text-slate-500">Uploading…</p>
+                    ) : null}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      className={inputClassName}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Private / Internal Notes
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={privateNotes}
-                    onChange={(event) => setPrivateNotes(event.target.value)}
-                    className={textareaClassName}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className={primaryButtonClassName}
+                ) : null}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                {!editing ? (
+                  <dl className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Full name
+                      </dt>
+                      <dd className="mt-1 text-sm text-slate-900">
+                        {detail.fullName}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Status
+                      </dt>
+                      <dd className="mt-1 text-sm text-slate-900">
+                        {formatLesseeStatus(detail.status)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Phone
+                      </dt>
+                      <dd className="mt-1 text-sm text-slate-900">
+                        {detail.phone}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Email
+                      </dt>
+                      <dd className="mt-1 text-sm text-slate-900">
+                        {detail.email ?? "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Created
+                      </dt>
+                      <dd className="mt-1 text-sm text-slate-900">
+                        {formatLesseeDate(detail.createdAt)}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <form
+                    onSubmit={(event) => void handleSave(event)}
+                    className="space-y-4"
                   >
-                    {saving ? "Saving…" : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      setEditing(false);
-                      setFullName(detail.fullName);
-                      setPhone(detail.phone);
-                      setEmail(detail.email ?? "");
-                      setStatus(detail.status);
-                      setPrivateNotes(detail.privateNotes ?? "");
-                    }}
-                    className={secondaryButtonClassName}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">
+                          Full name
+                        </label>
+                        <input
+                          required
+                          type="text"
+                          value={fullName}
+                          onChange={(event) => setFullName(event.target.value)}
+                          className={inputClassName}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">
+                          Status
+                        </label>
+                        <select
+                          value={status}
+                          onChange={(event) =>
+                            setStatus(event.target.value as LesseeStatus)
+                          }
+                          className={inputClassName}
+                        >
+                          {LESSEE_STATUS_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">
+                          Phone
+                        </label>
+                        <input
+                          required
+                          type="text"
+                          value={phone}
+                          onChange={(event) => setPhone(event.target.value)}
+                          className={inputClassName}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(event) => setEmail(event.target.value)}
+                          className={inputClassName}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Private / Internal Notes
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={privateNotes}
+                        onChange={(event) =>
+                          setPrivateNotes(event.target.value)
+                        }
+                        className={textareaClassName}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="submit"
+                        disabled={saving || uploadingPhoto}
+                        className={primaryButtonClassName}
+                      >
+                        {saving ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving || uploadingPhoto}
+                        onClick={() => {
+                          setEditing(false);
+                          setFullName(detail.fullName);
+                          setPhone(detail.phone);
+                          setEmail(detail.email ?? "");
+                          setStatus(detail.status);
+                          setPrivateNotes(detail.privateNotes ?? "");
+                        }}
+                        className={secondaryButtonClassName}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
 
             {!editing && detail.privateNotes?.trim() ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">

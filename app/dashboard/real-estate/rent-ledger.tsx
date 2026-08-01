@@ -493,7 +493,12 @@ export default function RentLedger({
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatRentMoney(
-                          Math.max(row.amountDueGhs - row.amountPaidGhs, 0),
+                          Math.max(
+                            row.amountDueGhs -
+                              row.amountPaidGhs -
+                              (row.creditGhs ?? 0),
+                            0,
+                          ),
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">

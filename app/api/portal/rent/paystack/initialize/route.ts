@@ -11,6 +11,7 @@ import {
 } from "@/utils/product-sale-paystack";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { RENT_LEDGER_PAYSTACK_CONTEXT } from "@/utils/rent-ledger-paystack";
+import { rentOutstandingGhs } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
 
 export const runtime = "nodejs";
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
   const { data: entry, error: entryError } = await admin
     .from("rent_ledger")
     .select(
-      "entry_id, tenant_id, lease_id, amount_due_ghs, amount_paid_ghs, status, period_start, period_end",
+      "entry_id, tenant_id, lease_id, amount_due_ghs, amount_paid_ghs, credit_ghs, status, period_start, period_end",
     )
     .eq("tenant_id", session.tenantId)
     .eq("entry_id", entryId)
@@ -95,7 +96,8 @@ export async function POST(request: Request) {
 
   const amountDue = roundMoney(Number(entry.amount_due_ghs) || 0);
   const amountPaid = roundMoney(Number(entry.amount_paid_ghs) || 0);
-  const outstanding = roundMoney(Math.max(0, amountDue - amountPaid));
+  const creditGhs = roundMoney(Number(entry.credit_ghs) || 0);
+  const outstanding = rentOutstandingGhs(amountDue, amountPaid, creditGhs);
   if (outstanding <= 0) {
     return NextResponse.json(
       { error: "Nothing outstanding on this rent entry." },

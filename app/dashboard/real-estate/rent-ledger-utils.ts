@@ -19,6 +19,7 @@ export type RentLedgerListRow = {
   periodEnd: string;
   amountDueGhs: number;
   amountPaidGhs: number;
+  creditGhs: number;
   status: RentLedgerStatus;
   paymentMethod: string | null;
   paymentDate: string | null;
@@ -153,12 +154,27 @@ export function resolveRentStatusAfterPayment(
   amountDueGhs: number,
   amountPaidGhs: number,
   currentStatus: RentLedgerStatus,
+  creditGhs: number = 0,
 ): RentLedgerStatus {
-  if (amountPaidGhs >= amountDueGhs) {
+  const covered =
+    Math.round((amountPaidGhs + creditGhs + Number.EPSILON) * 100) / 100;
+  if (covered >= amountDueGhs) {
     return "paid";
   }
-  if (amountPaidGhs > 0) {
+  if (amountPaidGhs > 0 || creditGhs > 0) {
     return "partial";
   }
   return currentStatus === "overdue" ? "overdue" : "pending";
+}
+
+/** Outstanding after payments and approved credits (e.g. self-fix). */
+export function rentOutstandingGhs(
+  amountDueGhs: number,
+  amountPaidGhs: number,
+  creditGhs: number = 0,
+): number {
+  const due = Number(amountDueGhs) || 0;
+  const paid = Number(amountPaidGhs) || 0;
+  const credit = Number(creditGhs) || 0;
+  return Math.round((Math.max(0, due - paid - credit) + Number.EPSILON) * 100) / 100;
 }

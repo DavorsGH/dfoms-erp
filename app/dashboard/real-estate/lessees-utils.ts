@@ -50,6 +50,8 @@ export type LesseeDetail = {
   privateNotes: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Profile photo of the lessee (person), not the property. */
+  photoUrl: string | null;
   /** Primary/first property photo for the active lease’s property (or null). */
   propertyHeroPhotoUrl: string | null;
   propertyHeroPropertyId: string | null;

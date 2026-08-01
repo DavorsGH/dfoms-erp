@@ -87,7 +87,7 @@ export async function POST(request: Request) {
   const { data: entry, error: entryError } = await admin
     .from("rent_ledger")
     .select(
-      "entry_id, amount_due_ghs, amount_paid_ghs, status, notes, verification_status",
+      "entry_id, amount_due_ghs, amount_paid_ghs, credit_ghs, status, notes, verification_status",
     )
     .eq("tenant_id", landlord.tenantId)
     .eq("entry_id", entryId)
@@ -118,11 +118,13 @@ export async function POST(request: Request) {
 
   const amountDue = roundMoney(Number(entry.amount_due_ghs) || 0);
   const existingPaid = roundMoney(Number(entry.amount_paid_ghs) || 0);
+  const creditGhs = roundMoney(Number(entry.credit_ghs) || 0);
   const nextPaid = roundMoney(existingPaid + paymentAmount);
   const nextStatus = resolveRentStatusAfterPayment(
     amountDue,
     nextPaid,
     entry.status as RentLedgerStatus,
+    creditGhs,
   );
   const verificationStatus =
     resolveManualPaymentVerificationStatus(landlordType);

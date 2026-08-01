@@ -277,14 +277,17 @@ export default function Maintenance({
   }
 
   async function handleLandlordDecision(decision: "approve" | "reject") {
-    if (!selectedLandlordId || !expandedRequestId) {
+    if (!selectedLandlordId || !expandedRequestId || !expandedRow) {
       return;
     }
 
+    const selfFix = expandedRow.tenantSelfFix;
     const confirmMessage =
       decision === "approve"
-        ? "Approve this cost on behalf of the landlord? This will deduct the amount from their escrow balance."
-        : "Reject this maintenance cost on behalf of the landlord? No escrow change will be made.";
+        ? selfFix
+          ? "Approve this tenant self-fix cost? The amount will be credited against their next rent (no escrow deduction)."
+          : "Approve this cost on behalf of the landlord? This will deduct the amount from their escrow balance."
+        : "Reject this maintenance request? No financial change will be made.";
 
     if (!window.confirm(confirmMessage)) {
       return;
@@ -545,6 +548,7 @@ export default function Maintenance({
                 <tr>
                   <th className={scrollableTableThClassName}>Tenant</th>
                   <th className={scrollableTableThClassName}>Unit</th>
+                  <th className={scrollableTableThClassName}>Source</th>
                   <th className={scrollableTableThClassName}>Description</th>
                   <th className={scrollableTableThClassName}>Cost</th>
                   <th className={scrollableTableThClassName}>Status</th>
@@ -559,7 +563,7 @@ export default function Maintenance({
                 {filteredRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       className="px-4 py-6 text-center text-sm text-slate-500"
                     >
                       No maintenance requests for this landlord
@@ -578,11 +582,17 @@ export default function Maintenance({
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {row.unitLabel}
                       </td>
+                      <td className="px-4 py-3 text-sm text-slate-700">
+                        {row.reportedBy === "tenant" ? "Tenant" : "Staff"}
+                        {row.tenantSelfFix ? " · Self-fix" : ""}
+                      </td>
                       <td className="max-w-xs px-4 py-3 text-sm text-slate-700">
                         <span className="line-clamp-2">{row.description}</span>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-900">
-                        {formatMaintenanceMoney(row.costGhs)}
+                        {row.tenantSelfFix && row.proposedCostGhs != null
+                          ? formatMaintenanceMoney(row.proposedCostGhs)
+                          : formatMaintenanceMoney(row.costGhs)}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatMaintenanceStatus(row.status)}
@@ -624,7 +634,9 @@ export default function Maintenance({
                   Request detail
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  {expandedRow.lesseeName} · {expandedRow.unitLabel}
+                  {expandedRow.lesseeName} · {expandedRow.unitLabel} · Source:{" "}
+                  {expandedRow.reportedBy === "tenant" ? "Tenant" : "Staff"}
+                  {expandedRow.tenantSelfFix ? " (self-fix)" : ""}
                 </p>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
                   {expandedRow.description}
@@ -739,13 +751,26 @@ export default function Maintenance({
               </form>
 
               {expandedRow.landlordApprovalStatus === "pending" &&
-              expandedRow.costGhs != null ? (
+              (expandedRow.tenantSelfFix
+                ? expandedRow.proposedCostGhs != null
+                : expandedRow.costGhs != null) ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
                   <p className="mb-3 text-sm text-amber-950">
-                    Landlord approval is pending for{" "}
-                    {formatMaintenanceMoney(expandedRow.costGhs)}. Approving
-                    deducts this amount from escrow (same as a management fee
-                    deduction). Rejecting has no financial effect.
+                    {expandedRow.tenantSelfFix ? (
+                      <>
+                        Tenant self-fix pending for{" "}
+                        {formatMaintenanceMoney(expandedRow.proposedCostGhs)}.
+                        Approving credits this amount against the tenant&apos;s
+                        next rent period (no escrow deduction).
+                      </>
+                    ) : (
+                      <>
+                        Landlord approval is pending for{" "}
+                        {formatMaintenanceMoney(expandedRow.costGhs)}. Approving
+                        deducts this amount from escrow. Rejecting has no
+                        financial effect.
+                      </>
+                    )}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -754,7 +779,9 @@ export default function Maintenance({
                       disabled={loading}
                       onClick={() => handleLandlordDecision("approve")}
                     >
-                      Approve (deduct from escrow)
+                      {expandedRow.tenantSelfFix
+                        ? "Approve (credit next rent)"
+                        : "Approve (deduct from escrow)"}
                     </button>
                     <button
                       type="button"

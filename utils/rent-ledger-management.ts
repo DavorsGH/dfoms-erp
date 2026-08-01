@@ -21,6 +21,7 @@ type LedgerRow = {
   period_end: string;
   amount_due_ghs: number | string;
   amount_paid_ghs: number | string;
+  credit_ghs?: number | string | null;
   payment_method: string | null;
   payment_date: string | null;
   status: string;
@@ -72,7 +73,7 @@ export async function fetchRentLedgerForLandlord(
   const { data: ledger, error: ledgerError } = await admin
     .from("rent_ledger")
     .select(
-      "tenant_id, entry_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, payment_method, payment_date, status, verification_status, notes",
+      "tenant_id, entry_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_method, payment_date, status, verification_status, notes",
     )
     .eq("tenant_id", landlord.tenantId)
     .order("period_start", { ascending: false });
@@ -184,6 +185,7 @@ export async function fetchRentLedgerForLandlord(
       periodEnd: row.period_end,
       amountDueGhs: toNumber(row.amount_due_ghs),
       amountPaidGhs: toNumber(row.amount_paid_ghs),
+      creditGhs: toNumber(row.credit_ghs),
       status: row.status as RentLedgerStatus,
       paymentMethod: row.payment_method,
       paymentDate: row.payment_date,

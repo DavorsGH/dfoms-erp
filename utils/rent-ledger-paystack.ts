@@ -12,6 +12,7 @@ import {
   formatRentPeriod,
   resolvePaystackPaymentVerificationStatus,
   resolveRentStatusAfterPayment,
+  rentOutstandingGhs,
   type RentLedgerStatus,
   type RentVerificationStatus,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
@@ -115,6 +116,7 @@ type RentEntryRow = {
   period_end: string;
   amount_due_ghs: number | string;
   amount_paid_ghs: number | string;
+  credit_ghs?: number | string | null;
   status: string;
   payment_method: string | null;
   payment_date: string | null;
@@ -135,7 +137,7 @@ async function loadRentEntry(
     let query = admin
       .from("rent_ledger")
       .select(
-        "entry_id, tenant_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, status, payment_method, payment_date, verification_status, paystack_reference, notes",
+        "entry_id, tenant_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, status, payment_method, payment_date, verification_status, paystack_reference, notes",
       )
       .eq("entry_id", options.entryId);
     if (options.tenantId) {
@@ -152,7 +154,7 @@ async function loadRentEntry(
     let query = admin
       .from("rent_ledger")
       .select(
-        "entry_id, tenant_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, status, payment_method, payment_date, verification_status, paystack_reference, notes",
+        "entry_id, tenant_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, status, payment_method, payment_date, verification_status, paystack_reference, notes",
       )
       .eq("paystack_reference", options.reference)
       .order("updated_at", { ascending: false })
@@ -436,10 +438,12 @@ export async function fulfillRentLedgerPaystackPayment(
   if (existingNotes.includes(marker)) {
     const amountDue = roundGhs(Number(entry.amount_due_ghs) || 0);
     const amountPaid = roundGhs(Number(entry.amount_paid_ghs) || 0);
+    const creditGhs = roundGhs(Number(entry.credit_ghs) || 0);
     const status = resolveRentStatusAfterPayment(
       amountDue,
       amountPaid,
       (entry.status as RentLedgerStatus) || "pending",
+      creditGhs,
     );
     const { balanceGhs } = await fetchEscrowBalanceForLandlord(
       admin,
@@ -476,7 +480,8 @@ export async function fulfillRentLedgerPaystackPayment(
 
   const amountDue = roundGhs(Number(entry.amount_due_ghs) || 0);
   const existingPaid = roundGhs(Number(entry.amount_paid_ghs) || 0);
-  const outstanding = roundGhs(Math.max(0, amountDue - existingPaid));
+  const creditGhs = roundGhs(Number(entry.credit_ghs) || 0);
+  const outstanding = rentOutstandingGhs(amountDue, existingPaid, creditGhs);
   const paidAmount =
     options.paidAmountGhs != null && Number.isFinite(options.paidAmountGhs)
       ? roundGhs(options.paidAmountGhs)
@@ -499,6 +504,7 @@ export async function fulfillRentLedgerPaystackPayment(
     amountDue,
     nextPaid,
     (entry.status as RentLedgerStatus) || "pending",
+    creditGhs,
   );
   const verificationStatus = resolvePaystackRentVerificationStatus();
   const paymentMethod = paymentMethodLabelFromPaystackChannel(options.channel);

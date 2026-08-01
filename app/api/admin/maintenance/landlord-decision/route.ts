@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
+import {
+  applySelfFixRentCredit,
+  notifyMaintenanceLandlordDecision,
+} from "@/utils/maintenance-self-fix";
 import { roundPayoutMoney } from "@/app/dashboard/real-estate/payouts-utils";
 
 type DecisionBody = {
@@ -50,7 +54,7 @@ export async function POST(request: Request) {
   const { data: existing, error: existingError } = await admin
     .from("maintenance_requests")
     .select(
-      "request_id, cost_ghs, landlord_approval_status",
+      "request_id, lease_id, description, cost_ghs, landlord_approval_status, tenant_self_fix, proposed_cost_ghs, rent_credit_entry_id, reported_by",
     )
     .eq("tenant_id", landlord.tenantId)
     .eq("request_id", requestId)
@@ -76,6 +80,23 @@ export async function POST(request: Request) {
   }
 
   const nowIso = new Date().toISOString();
+  const selfFix = Boolean(existing.tenant_self_fix);
+
+  const { data: lease } = await admin
+    .from("leases")
+    .select("lessee_id")
+    .eq("tenant_id", landlord.tenantId)
+    .eq("lease_id", existing.lease_id)
+    .maybeSingle();
+
+  const { data: lessee } = lease?.lessee_id
+    ? await admin
+        .from("lessees")
+        .select("full_name, email")
+        .eq("tenant_id", landlord.tenantId)
+        .eq("lessee_id", lease.lessee_id)
+        .maybeSingle()
+    : { data: null };
 
   if (decision === "reject") {
     const { error: updateError } = await admin
@@ -91,12 +112,106 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: updateError.message }, { status: 400 });
     }
 
+    await notifyMaintenanceLandlordDecision({
+      email: lessee?.email,
+      fullName: lessee?.full_name ?? "Tenant",
+      approved: false,
+      selfFix,
+      amountGhs: null,
+      description: existing.description,
+    });
+
     return NextResponse.json({
       success: true,
       landlord_approval_status: "rejected",
     });
   }
 
+  // --- Approve ---
+  if (selfFix) {
+    const proposed = Number(existing.proposed_cost_ghs);
+    if (
+      !Number.isFinite(proposed) ||
+      proposed < 0 ||
+      existing.proposed_cost_ghs == null
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "proposed_cost_ghs must be set before approving a self-fix request.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (existing.rent_credit_entry_id) {
+      return NextResponse.json(
+        { error: "Self-fix rent credit was already applied for this request." },
+        { status: 400 },
+      );
+    }
+
+    const roundedCost = roundPayoutMoney(proposed);
+
+    let creditResult: {
+      entryId: string;
+      creditGhs: number;
+      status: string;
+    };
+    try {
+      creditResult = await applySelfFixRentCredit(admin, {
+        tenantId: landlord.tenantId,
+        leaseId: existing.lease_id,
+        requestId,
+        amountGhs: roundedCost,
+      });
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to apply self-fix rent credit.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const { error: updateError } = await admin
+      .from("maintenance_requests")
+      .update({
+        landlord_approval_status: "approved",
+        cost_ghs: roundedCost,
+        rent_credit_entry_id: creditResult.entryId,
+        updated_at: nowIso,
+      })
+      .eq("tenant_id", landlord.tenantId)
+      .eq("request_id", requestId);
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 400 });
+    }
+
+    await notifyMaintenanceLandlordDecision({
+      email: lessee?.email,
+      fullName: lessee?.full_name ?? "Tenant",
+      approved: true,
+      selfFix: true,
+      amountGhs: roundedCost,
+      description: existing.description,
+    });
+
+    return NextResponse.json({
+      success: true,
+      landlord_approval_status: "approved",
+      self_fix: true,
+      rent_credit_entry_id: creditResult.entryId,
+      credit_ghs: creditResult.creditGhs,
+      // No escrow for self-fix.
+    });
+  }
+
+  // Non-self-fix: existing escrow fee_deduction path
   const costGhs = Number(existing.cost_ghs);
   if (!Number.isFinite(costGhs) || costGhs < 0 || existing.cost_ghs == null) {
     return NextResponse.json(
@@ -154,7 +269,6 @@ export async function POST(request: Request) {
   });
 
   if (escrowError) {
-    // Approval already saved; surface escrow failure clearly.
     return NextResponse.json(
       {
         error: `Landlord approval saved, but escrow deduction failed: ${escrowError.message}`,
@@ -162,6 +276,15 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  await notifyMaintenanceLandlordDecision({
+    email: lessee?.email,
+    fullName: lessee?.full_name ?? "Tenant",
+    approved: true,
+    selfFix: false,
+    amountGhs: roundedCost,
+    description: existing.description,
+  });
 
   return NextResponse.json({
     success: true,

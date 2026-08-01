@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { formatRentLedgerStatus } from "@/app/dashboard/real-estate/rent-ledger-utils";
+import { formatRentLedgerStatus, rentOutstandingGhs } from "@/app/dashboard/real-estate/rent-ledger-utils";
 
 export type PortalLesseeSession = {
   authUserId: string;
@@ -133,7 +133,7 @@ async function loadDashboardWithClient(
     client
       .from("rent_ledger")
       .select(
-        "entry_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs",
+        "entry_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs",
       )
       .eq("tenant_id", session.tenantId)
       .eq("lease_id", lease.lease_id)
@@ -160,6 +160,7 @@ async function loadDashboardWithClient(
       status: string;
       amount_due_ghs: number | string;
       amount_paid_ghs: number | string;
+      credit_ghs?: number | string | null;
     }> | null) ?? [];
 
   const rentRow = ledgerRows[0] ?? null;
@@ -175,7 +176,8 @@ async function loadDashboardWithClient(
     }
     const amountDue = Number(row.amount_due_ghs) || 0;
     const amountPaid = Number(row.amount_paid_ghs) || 0;
-    const outstanding = Math.round((amountDue - amountPaid + Number.EPSILON) * 100) / 100;
+    const creditGhs = Number(row.credit_ghs) || 0;
+    const outstanding = rentOutstandingGhs(amountDue, amountPaid, creditGhs);
     if (outstanding <= 0) {
       continue;
     }

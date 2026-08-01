@@ -23,6 +23,9 @@ export type MaintenanceListRow = {
   dateReported: string;
   dateResolved: string | null;
   reportedBy: MaintenanceReportedBy;
+  tenantSelfFix: boolean;
+  proposedCostGhs: number | null;
+  rentCreditEntryId: string | null;
   photoUrls: string[];
 };
 

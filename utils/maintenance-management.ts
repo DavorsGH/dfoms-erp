@@ -28,6 +28,9 @@ type MaintenanceRequestRow = {
   date_reported: string;
   date_resolved: string | null;
   photo_urls: unknown;
+  tenant_self_fix?: boolean | null;
+  proposed_cost_ghs?: number | string | null;
+  rent_credit_entry_id?: string | null;
 };
 
 function toNumber(value: number | string | null | undefined): number | null {
@@ -182,7 +185,7 @@ export async function fetchMaintenanceRequestsForLandlord(
     admin
       .from("maintenance_requests")
       .select(
-        "tenant_id, request_id, lease_id, reported_by, description, status, cost_ghs, landlord_approval_status, date_reported, date_resolved, photo_urls",
+        "tenant_id, request_id, lease_id, reported_by, description, status, cost_ghs, landlord_approval_status, date_reported, date_resolved, photo_urls, tenant_self_fix, proposed_cost_ghs, rent_credit_entry_id",
       )
       .eq("tenant_id", landlord.tenantId)
       .order("date_reported", { ascending: false }),
@@ -284,6 +287,81 @@ export async function fetchMaintenanceRequestsForLandlord(
       dateReported: row.date_reported,
       dateResolved: row.date_resolved,
       reportedBy: row.reported_by as MaintenanceReportedBy,
+      tenantSelfFix: Boolean(row.tenant_self_fix),
+      proposedCostGhs: toNumber(row.proposed_cost_ghs),
+      rentCreditEntryId: row.rent_credit_entry_id?.trim() || null,
+      photoUrls: normalizePhotoUrls(row.photo_urls),
+    });
+  }
+
+  return { rows, fetchError: null };
+}
+
+export async function fetchMaintenanceRequestsForLessee(
+  admin: SupabaseClient,
+  tenantId: string,
+  lesseeId: string,
+): Promise<{ rows: MaintenanceListRow[]; fetchError: string | null }> {
+  const { data: leases, error: leasesError } = await admin
+    .from("leases")
+    .select("lease_id")
+    .eq("tenant_id", tenantId)
+    .eq("lessee_id", lesseeId);
+
+  if (leasesError) {
+    return { rows: [], fetchError: leasesError.message };
+  }
+
+  const leaseIds = (
+    (leases as Array<{ lease_id: string }> | null) ?? []
+  ).map((row) => row.lease_id);
+
+  if (leaseIds.length === 0) {
+    return { rows: [], fetchError: null };
+  }
+
+  const { data: requests, error: requestsError } = await admin
+    .from("maintenance_requests")
+    .select(
+      "tenant_id, request_id, lease_id, reported_by, description, status, cost_ghs, landlord_approval_status, date_reported, date_resolved, photo_urls, tenant_self_fix, proposed_cost_ghs, rent_credit_entry_id",
+    )
+    .eq("tenant_id", tenantId)
+    .in("lease_id", leaseIds)
+    .order("date_reported", { ascending: false });
+
+  if (requestsError) {
+    return { rows: [], fetchError: requestsError.message };
+  }
+
+  const rows: MaintenanceListRow[] = [];
+  for (const row of (requests as MaintenanceRequestRow[] | null) ?? []) {
+    if (!isMaintenanceStatus(row.status)) {
+      continue;
+    }
+    if (!isLandlordApprovalStatus(row.landlord_approval_status)) {
+      continue;
+    }
+    if (!isMaintenanceReportedBy(row.reported_by)) {
+      continue;
+    }
+
+    rows.push({
+      requestId: row.request_id,
+      tenantId: row.tenant_id,
+      leaseId: row.lease_id,
+      lesseeName: "—",
+      unitLabel: "—",
+      description: row.description,
+      status: row.status as MaintenanceStatus,
+      costGhs: toNumber(row.cost_ghs),
+      landlordApprovalStatus:
+        row.landlord_approval_status as MaintenanceLandlordApprovalStatus,
+      dateReported: row.date_reported,
+      dateResolved: row.date_resolved,
+      reportedBy: row.reported_by as MaintenanceReportedBy,
+      tenantSelfFix: Boolean(row.tenant_self_fix),
+      proposedCostGhs: toNumber(row.proposed_cost_ghs),
+      rentCreditEntryId: row.rent_credit_entry_id?.trim() || null,
       photoUrls: normalizePhotoUrls(row.photo_urls),
     });
   }
