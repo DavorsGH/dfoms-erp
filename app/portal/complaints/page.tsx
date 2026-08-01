@@ -6,6 +6,10 @@ import {
   formatLesseeComplaintDate,
   formatLesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
+import {
+  portalSectionClassName,
+  portalSectionTitleClassName,
+} from "../portal-ui";
 import PortalShell from "../portal-shell";
 import PortalComplaintForm from "./complaint-form";
 
@@ -26,16 +30,14 @@ export default async function PortalComplaintsPage() {
     <PortalShell fullName={session.fullName}>
       <PortalComplaintForm />
 
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-[#0f2744]">
-          Your complaints
-        </h2>
+      <section className={portalSectionClassName}>
+        <h2 className={portalSectionTitleClassName}>Your complaints</h2>
         {fetchError ? (
           <p className="mt-3 text-sm text-red-700">{fetchError}</p>
         ) : rows.length === 0 ? (
           <p className="mt-3 text-sm text-slate-600">No complaints yet.</p>
         ) : (
-          <ul className="mt-4 divide-y divide-slate-100">
+          <ul className="mt-4 divide-y divide-slate-200">
             {rows.map((row) => (
               <li key={row.complaintId} className="py-3">
                 <p className="text-sm font-medium text-slate-900">

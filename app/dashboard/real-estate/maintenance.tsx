@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -506,25 +507,14 @@ export default function Maintenance({
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="maintenance-photos"
-                    className="mb-1 block text-sm font-medium text-slate-700"
-                  >
+                  <p className="mb-1 text-sm font-medium text-slate-700">
                     Photos (optional)
-                  </label>
-                  <input
-                    id="maintenance-photos"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                  </p>
+                  <ImageFileUploadButton
+                    inputId="maintenance-photos"
+                    files={photoFiles}
+                    onChange={setPhotoFiles}
                     multiple
-                    className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700"
-                    onChange={(event) =>
-                      setPhotoFiles(
-                        event.target.files
-                          ? Array.from(event.target.files)
-                          : [],
-                      )
-                    }
                   />
                 </div>
               </div>
@@ -697,25 +687,14 @@ export default function Maintenance({
                     </div>
                   )}
                   <div>
-                    <label
-                      htmlFor="maintenance-detail-photos"
-                      className="mb-1 block text-sm font-medium text-slate-700"
-                    >
+                    <p className="mb-1 text-sm font-medium text-slate-700">
                       Add photos
-                    </label>
-                    <input
-                      id="maintenance-detail-photos"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
+                    </p>
+                    <ImageFileUploadButton
+                      inputId="maintenance-detail-photos"
+                      files={detailPhotoFiles}
+                      onChange={setDetailPhotoFiles}
                       multiple
-                      className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700"
-                      onChange={(event) =>
-                        setDetailPhotoFiles(
-                          event.target.files
-                            ? Array.from(event.target.files)
-                            : [],
-                        )
-                      }
                     />
                   </div>
                 </div>

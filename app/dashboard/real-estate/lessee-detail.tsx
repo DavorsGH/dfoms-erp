@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -228,26 +229,30 @@ export default function LesseeDetailView({
                   </div>
                 )}
                 {editing ? (
-                  <div className="mt-2">
-                    <label className="block text-xs font-medium text-slate-600">
+                  <div className="mt-2 space-y-1">
+                    <p className="text-xs font-medium text-slate-600">
                       {detail.photoUrl ? "Change photo" : "Upload photo"}
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png,image/webp"
-                      disabled={uploadingPhoto || saving}
-                      className="mt-1 block w-full max-w-[7rem] text-xs text-slate-700"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
+                    </p>
+                    <ImageFileUploadButton
+                      files={[]}
+                      onChange={(next) => {
+                        const file = next[0];
                         if (file) {
                           void handleProfilePhotoUpload(file);
                         }
                       }}
+                      multiple={false}
+                      disabled={uploadingPhoto || saving}
+                      addLabel={
+                        uploadingPhoto
+                          ? "Uploading…"
+                          : detail.photoUrl
+                            ? "Change photo"
+                            : "Add photos"
+                      }
+                      showClear={false}
+                      resetInputAfterSelect
                     />
-                    {uploadingPhoto ? (
-                      <p className="mt-1 text-xs text-slate-500">Uploading…</p>
-                    ) : null}
                   </div>
                 ) : null}
               </div>

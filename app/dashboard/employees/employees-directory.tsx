@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { uploadEmployeePhoto } from "@/utils/employee-photo";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
 import EmployeePhotoAvatar from "../employee-photo-avatar";
 import {
   confirmDeleteEntry,
@@ -401,7 +402,6 @@ export default function EmployeesDirectory({
 }: EmployeesDirectoryProps) {
   const supabase = createClient();
   const formRef = useRef<HTMLElement>(null);
-  const photoInputRef = useRef<HTMLInputElement>(null);
   const [employees, setEmployees] = useState(initialEmployees);
   const [lookups] = useState(initialLookups);
   const [payConfig] = useState(initialPayConfig);
@@ -825,11 +825,8 @@ export default function EmployeesDirectory({
     });
   }
 
-  async function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file || !form.employee_id) {
+  async function handlePhotoUpload(file: File) {
+    if (!form.employee_id) {
       return;
     }
 
@@ -1173,27 +1170,25 @@ export default function EmployeesDirectory({
                   <p className="text-sm font-medium text-slate-700">
                     Passport Photo
                   </p>
-                  <input
-                    ref={photoInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                    onChange={handlePhotoUpload}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => photoInputRef.current?.click()}
+                  <ImageFileUploadButton
+                    files={[]}
+                    onChange={(next) => {
+                      const file = next[0];
+                      if (file) {
+                        void handlePhotoUpload(file);
+                      }
+                    }}
+                    multiple={false}
                     disabled={photoUploading || !form.employee_id}
-                    className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {photoUploading ? "Uploading…" : "Upload Photo"}
-                  </button>
-                  <p className="text-xs text-slate-500">
-                    JPEG, PNG, or WebP.
-                    {editingEmployeeId
-                      ? " Saved when you upload."
-                      : " Available after the employee is saved (IDs are assigned on save)."}
-                  </p>
+                    addLabel={photoUploading ? "Uploading…" : "Add photos"}
+                    showClear={false}
+                    resetInputAfterSelect
+                    emptyHint={
+                      editingEmployeeId
+                        ? "JPEG, PNG, or WebP. Saved when you upload."
+                        : "JPEG, PNG, or WebP. Available after the employee is saved (IDs are assigned on save)."
+                    }
+                  />
                 </div>
               </div>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

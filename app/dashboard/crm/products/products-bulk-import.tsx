@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { inputClassName } from "../../hr-payroll/hr-register-utils";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
 import type { CrmProductEntry } from "./products-utils";
 import {
   classifyProductImportRows,
@@ -11,6 +11,9 @@ import {
   type ClassifiedProductImportRow,
   type ProductImportPreview,
 } from "./products-bulk-import-utils";
+
+const IMPORT_ACCEPT =
+  ".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv";
 
 type ProductsBulkImportProps = {
   existingProducts: CrmProductEntry[];
@@ -60,25 +63,24 @@ export default function ProductsBulkImport({
   onImported,
 }: ProductsBulkImportProps) {
   const supabase = createClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<ProductImportPreview | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  async function handleFileSelected(files: File[]) {
+    const file = files[0];
+    setSelectedFiles(files);
 
     if (!file) {
+      setPreview(null);
       return;
     }
 
     setParsing(true);
     setError(null);
     setPreview(null);
-    setFileName(file.name);
 
     try {
       const rawRows = await readProductImportFile(file);
@@ -94,7 +96,7 @@ export default function ProductsBulkImport({
           ? parseError.message
           : "Failed to read the import file.",
       );
-      setFileName(null);
+      setSelectedFiles([]);
     } finally {
       setParsing(false);
     }
@@ -150,16 +152,16 @@ export default function ProductsBulkImport({
 
       <div className="space-y-4">
         <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-            onChange={handleFileChange}
-            className={inputClassName}
+          <ImageFileUploadButton
+            files={selectedFiles}
+            onChange={(next) => void handleFileSelected(next)}
+            multiple={false}
+            disabled={importing || parsing}
+            accept={IMPORT_ACCEPT}
+            addLabel="Choose file"
+            changeLabel="Change file"
+            emptyHint="CSV or Excel (.xlsx)."
           />
-          {fileName ? (
-            <p className="mt-2 text-sm text-slate-600">Selected file: {fileName}</p>
-          ) : null}
         </div>
 
         {parsing ? (
@@ -204,14 +206,6 @@ export default function ProductsBulkImport({
                 {importing
                   ? "Importing…"
                   : `Confirm Import (${preview.ready.length})`}
-              </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={importing}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Choose Another File
               </button>
             </div>
           </div>

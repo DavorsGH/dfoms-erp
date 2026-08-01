@@ -5,6 +5,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import PasswordInput from "@/components/password-input";
+import {
+  portalAuthCardClassName,
+  portalAuthInputClassName,
+  portalAuthPrimaryButtonClassName,
+  portalLabelClassName,
+} from "../portal-ui";
 import { portalLoginWithPassword } from "./actions";
 
 export default function PortalLoginPage() {
@@ -33,7 +39,7 @@ export default function PortalLoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#0F2744] px-4">
-      <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
+      <div className={portalAuthCardClassName}>
         <div className="mb-4 flex justify-center">
           <Image
             src="/icons/apple-touch-icon-180x180.png"
@@ -44,19 +50,16 @@ export default function PortalLoginPage() {
             priority
           />
         </div>
-        <h1 className="mb-2 text-center text-2xl font-semibold text-zinc-900">
+        <h1 className="mb-2 text-center text-2xl font-semibold text-[#0f2744]">
           Tenant Portal
         </h1>
-        <p className="mb-6 text-center text-sm text-zinc-600">
+        <p className="mb-6 text-center text-sm text-slate-600">
           Sign in to view your lease and rent status.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label
-              htmlFor="email"
-              className="mb-1 block text-sm font-medium text-zinc-700"
-            >
+            <label htmlFor="email" className={portalLabelClassName}>
               Email
             </label>
             <input
@@ -65,16 +68,13 @@ export default function PortalLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+              className={portalAuthInputClassName}
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="mb-1 block text-sm font-medium text-zinc-700"
-            >
+            <label htmlFor="password" className={portalLabelClassName}>
               Password
             </label>
             <PasswordInput
@@ -82,25 +82,28 @@ export default function PortalLoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+              className={portalAuthInputClassName}
               placeholder="••••••••"
             />
           </div>
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className={portalAuthPrimaryButtonClassName}
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-zinc-500">
+        <p className="mt-6 text-center text-xs text-slate-500">
           Staff users should use the{" "}
-          <Link href="/login" className="underline hover:text-zinc-700">
+          <Link
+            href="/login"
+            className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+          >
             ERP login
           </Link>
           .

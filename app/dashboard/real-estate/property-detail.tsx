@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
 import {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -54,8 +55,6 @@ function PhotoGallery({
   onUpload: (file: File) => void;
   onRemove: (url: string) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-3">
@@ -84,29 +83,20 @@ function PhotoGallery({
           ))
         )}
       </div>
-      <div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (file) {
-              onUpload(file);
-            }
-          }}
-        />
-        <button
-          type="button"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-          className={secondaryButtonClassName}
-        >
-          {uploading ? "Uploading…" : "Add Photo"}
-        </button>
-      </div>
+      <ImageFileUploadButton
+        files={[]}
+        onChange={(next) => {
+          const file = next[0];
+          if (file) {
+            onUpload(file);
+          }
+        }}
+        multiple={false}
+        disabled={uploading}
+        addLabel={uploading ? "Uploading…" : "Add photos"}
+        showClear={false}
+        resetInputAfterSelect
+      />
     </div>
   );
 }
@@ -788,24 +778,24 @@ export default function PropertyDetailView({
                         >
                           Edit
                         </button>
-                        <label className="cursor-pointer text-[#0f2744] hover:underline">
-                          {uploadingUnitId === unit.unitId
-                            ? "Uploading…"
-                            : "Add Photo"}
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp"
-                            className="hidden"
-                            disabled={uploadingUnitId === unit.unitId}
-                            onChange={(event) => {
-                              const file = event.target.files?.[0];
-                              event.target.value = "";
-                              if (file) {
-                                void handleUnitPhotoUpload(unit, file);
-                              }
-                            }}
-                          />
-                        </label>
+                        <ImageFileUploadButton
+                          files={[]}
+                          onChange={(next) => {
+                            const file = next[0];
+                            if (file) {
+                              void handleUnitPhotoUpload(unit, file);
+                            }
+                          }}
+                          multiple={false}
+                          disabled={uploadingUnitId === unit.unitId}
+                          addLabel={
+                            uploadingUnitId === unit.unitId
+                              ? "Uploading…"
+                              : "Add photos"
+                          }
+                          showClear={false}
+                          resetInputAfterSelect
+                        />
                         <button
                           type="button"
                           disabled={deletingUnitId === unit.unitId}

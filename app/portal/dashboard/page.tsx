@@ -3,6 +3,11 @@ import {
   fetchPortalDashboardData,
   getPortalLesseeSession,
 } from "@/utils/lessee-portal-auth";
+import {
+  portalErrorBannerClassName,
+  portalSectionClassName,
+  portalSectionTitleClassName,
+} from "../portal-ui";
 import PortalShell from "../portal-shell";
 import PayRentButton from "./pay-rent-button";
 import RequestEarlyTerminationButton from "./request-early-termination-button";
@@ -36,26 +41,20 @@ export default async function PortalDashboardPage() {
 
   return (
     <PortalShell fullName={session.fullName}>
-      {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
-        </div>
-      ) : null}
+      {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
 
       {!data ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <section className={portalSectionClassName}>
           <p className="text-sm text-slate-600">
             No active lease was found for your account. Contact your property
             manager if this looks wrong.
           </p>
-        </div>
+        </section>
       ) : (
         <>
-          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0f2744]">
-              Your unit
-            </h2>
-            <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+          <section className={portalSectionClassName}>
+            <h2 className={portalSectionTitleClassName}>Your unit</h2>
+            <dl className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   Property
@@ -75,11 +74,9 @@ export default async function PortalDashboardPage() {
             </dl>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0f2744]">
-              Active lease
-            </h2>
-            <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+          <section className={portalSectionClassName}>
+            <h2 className={portalSectionTitleClassName}>Active lease</h2>
+            <dl className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   Monthly rent
@@ -123,11 +120,9 @@ export default async function PortalDashboardPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-base font-semibold text-[#0f2744]">
-              Current rent status
-            </h2>
-            <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+          <section className={portalSectionClassName}>
+            <h2 className={portalSectionTitleClassName}>Current rent status</h2>
+            <dl className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
                 <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                   Status

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -621,20 +622,16 @@ export default function Expenses({
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="expense-receipt"
-                    className="mb-1 block text-sm font-medium text-slate-700"
-                  >
+                  <p className="mb-1 text-sm font-medium text-slate-700">
                     Receipt (optional)
-                  </label>
-                  <input
-                    id="expense-receipt"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700"
-                    onChange={(event) =>
-                      setReceiptFile(event.target.files?.[0] ?? null)
-                    }
+                  </p>
+                  <ImageFileUploadButton
+                    inputId="expense-receipt"
+                    files={receiptFile ? [receiptFile] : []}
+                    onChange={(next) => setReceiptFile(next[0] ?? null)}
+                    multiple={false}
+                    addLabel="Add receipt"
+                    changeLabel="Change receipt"
                   />
                 </div>
                 <div className="md:col-span-2">
@@ -847,20 +844,16 @@ export default function Expenses({
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="edit-expense-receipt"
-                    className="mb-1 block text-sm font-medium text-slate-700"
-                  >
+                  <p className="mb-1 text-sm font-medium text-slate-700">
                     Replace receipt
-                  </label>
-                  <input
-                    id="edit-expense-receipt"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700"
-                    onChange={(event) =>
-                      setEditReceiptFile(event.target.files?.[0] ?? null)
-                    }
+                  </p>
+                  <ImageFileUploadButton
+                    inputId="edit-expense-receipt"
+                    files={editReceiptFile ? [editReceiptFile] : []}
+                    onChange={(next) => setEditReceiptFile(next[0] ?? null)}
+                    multiple={false}
+                    addLabel="Add receipt"
+                    changeLabel="Change receipt"
                   />
                 </div>
                 <div className="md:col-span-2">

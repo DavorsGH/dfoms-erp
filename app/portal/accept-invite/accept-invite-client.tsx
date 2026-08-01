@@ -5,6 +5,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PasswordInput from "@/components/password-input";
+import {
+  portalAuthCardClassName,
+  portalAuthInputClassName,
+  portalAuthPrimaryButtonClassName,
+  portalLabelClassName,
+} from "../portal-ui";
 
 export default function AcceptInvitePage() {
   const [password, setPassword] = useState("");
@@ -68,7 +74,7 @@ export default function AcceptInvitePage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#0F2744] px-4">
-      <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
+      <div className={portalAuthCardClassName}>
         <div className="mb-4 flex justify-center">
           <Image
             src="/icons/apple-touch-icon-180x180.png"
@@ -79,38 +85,35 @@ export default function AcceptInvitePage() {
             priority
           />
         </div>
-        <h1 className="mb-2 text-center text-2xl font-semibold text-zinc-900">
+        <h1 className="mb-2 text-center text-2xl font-semibold text-[#0f2744]">
           Accept Tenant Invite
         </h1>
-        <p className="mb-6 text-center text-sm text-zinc-600">
+        <p className="mb-6 text-center text-sm text-slate-600">
           Set a password to access your Davors Tenant Portal.
         </p>
 
         {success ? (
-          <p className="text-center text-sm text-zinc-700">
+          <p className="text-center text-sm text-slate-700">
             Account created. Redirecting to login…
           </p>
         ) : error && !ready ? (
           <div className="space-y-4 text-center">
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-red-700">{error}</p>
             <Link
               href="/portal/login"
-              className="inline-block text-sm font-medium text-zinc-900 underline hover:text-zinc-700"
+              className="inline-block text-sm font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
             >
               Go to Tenant Portal login
             </Link>
           </div>
         ) : !ready ? (
-          <p className="text-center text-sm text-zinc-600">
+          <p className="text-center text-sm text-slate-600">
             Checking invite link…
           </p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="password"
-                className="mb-1 block text-sm font-medium text-zinc-700"
-              >
+              <label htmlFor="password" className={portalLabelClassName}>
                 Password
               </label>
               <PasswordInput
@@ -118,15 +121,12 @@ export default function AcceptInvitePage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+                className={portalAuthInputClassName}
                 placeholder="••••••••"
               />
             </div>
             <div>
-              <label
-                htmlFor="confirmPassword"
-                className="mb-1 block text-sm font-medium text-zinc-700"
-              >
+              <label htmlFor="confirmPassword" className={portalLabelClassName}>
                 Confirm Password
               </label>
               <PasswordInput
@@ -134,15 +134,15 @@ export default function AcceptInvitePage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+                className={portalAuthInputClassName}
                 placeholder="••••••••"
               />
             </div>
-            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+            {error ? <p className="text-sm text-red-700">{error}</p> : null}
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className={portalAuthPrimaryButtonClassName}
             >
               {loading ? "Creating account…" : "Create account"}
             </button>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
-import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { ClientEntry } from "../operations/clients-utils";
 import {
   classifyProductSaleImportRows,
@@ -16,6 +16,9 @@ import {
   type ProductSaleImportPreview,
   type ProductSaleImportRunSummary,
 } from "./product-sales-bulk-import-utils";
+
+const IMPORT_ACCEPT =
+  ".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv";
 
 type ProductSalesBulkImportProps = {
   clients: ClientEntry[];
@@ -111,20 +114,20 @@ export default function ProductSalesBulkImport({
   onImported,
 }: ProductSalesBulkImportProps) {
   const supabase = createClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<ProductSaleImportPreview | null>(null);
   const [importSummary, setImportSummary] =
     useState<ProductSaleImportRunSummary | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  async function handleFileSelected(files: File[]) {
+    const file = files[0];
+    setSelectedFiles(files);
 
     if (!file) {
+      setPreview(null);
       return;
     }
 
@@ -132,7 +135,6 @@ export default function ProductSalesBulkImport({
     setError(null);
     setPreview(null);
     setImportSummary(null);
-    setFileName(file.name);
 
     try {
       const rawRows = await readProductSaleImportFile(file);
@@ -150,7 +152,7 @@ export default function ProductSalesBulkImport({
           ? parseError.message
           : "Failed to read the import file.",
       );
-      setFileName(null);
+      setSelectedFiles([]);
     } finally {
       setParsing(false);
     }
@@ -229,17 +231,16 @@ export default function ProductSalesBulkImport({
 
       <div className="space-y-4">
         <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-            onChange={handleFileChange}
-            className={inputClassName}
-            disabled={importing}
+          <ImageFileUploadButton
+            files={selectedFiles}
+            onChange={(next) => void handleFileSelected(next)}
+            multiple={false}
+            disabled={importing || parsing}
+            accept={IMPORT_ACCEPT}
+            addLabel="Choose file"
+            changeLabel="Change file"
+            emptyHint="CSV or Excel (.xlsx)."
           />
-          {fileName ? (
-            <p className="mt-2 text-sm text-slate-600">Selected file: {fileName}</p>
-          ) : null}
         </div>
 
         {parsing ? (
@@ -278,14 +279,6 @@ export default function ProductSalesBulkImport({
                   ? "Importing…"
                   : `Confirm Import (${preview.ready.length})`}
               </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={importing}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Choose Another File
-              </button>
             </div>
           </div>
         ) : null}
@@ -297,7 +290,7 @@ export default function ProductSalesBulkImport({
               onClick={() => {
                 setPreview(null);
                 setImportSummary(null);
-                setFileName(null);
+                setSelectedFiles([]);
                 setError(null);
               }}
               className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"

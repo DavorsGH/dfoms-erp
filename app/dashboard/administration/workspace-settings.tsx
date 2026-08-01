@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
 import { DEFAULT_WORKSPACE_LOGO } from "@/utils/tenant-branding-types";
 import { uploadTenantLogo } from "@/utils/tenant-logo";
 
@@ -30,7 +31,6 @@ export default function WorkspaceSettings({
 }: WorkspaceSettingsProps) {
   const router = useRouter();
   const supabase = createClient();
-  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [workspaceName, setWorkspaceName] = useState(initialName);
   const [workspaceAddress, setWorkspaceAddress] = useState(initialAddress ?? "");
@@ -90,14 +90,7 @@ export default function WorkspaceSettings({
     router.refresh();
   }
 
-  async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) {
-      return;
-    }
-
+  async function handleLogoUpload(file: File) {
     setUploadingLogo(true);
     setError(null);
     setSuccess(null);
@@ -229,7 +222,7 @@ export default function WorkspaceSettings({
         <div>
           <p className="text-sm font-medium text-slate-700">Workspace logo</p>
           <p className="mt-1 text-xs text-slate-500">
-            JPEG, PNG, or WebP. Shown in the sidebar and on company documents.
+            Shown in the sidebar and on company documents.
           </p>
         </div>
 
@@ -240,23 +233,20 @@ export default function WorkspaceSettings({
             alt="Workspace logo preview"
             className="h-20 w-20 shrink-0 rounded-sm border border-slate-200 object-cover bg-white"
           />
-          <div className="space-y-2">
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleLogoUpload}
-            />
-            <button
-              type="button"
-              onClick={() => logoInputRef.current?.click()}
-              disabled={uploadingLogo}
-              className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {uploadingLogo ? "Uploading…" : "Upload logo"}
-            </button>
-          </div>
+          <ImageFileUploadButton
+            files={[]}
+            onChange={(next) => {
+              const file = next[0];
+              if (file) {
+                void handleLogoUpload(file);
+              }
+            }}
+            multiple={false}
+            disabled={uploadingLogo}
+            addLabel={uploadingLogo ? "Uploading…" : "Add photos"}
+            showClear={false}
+            resetInputAfterSelect
+          />
         </div>
       </section>
     </div>

@@ -12,6 +12,10 @@ import {
   formatLesseeComplaintDate,
   formatLesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
+import {
+  portalSectionClassName,
+  portalSectionTitleClassName,
+} from "../portal-ui";
 import PortalShell from "../portal-shell";
 
 type IssueItem = {
@@ -75,8 +79,8 @@ export default async function PortalIssuesPage() {
 
   return (
     <PortalShell fullName={session.fullName}>
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-[#0f2744]">My Issues</h2>
+      <section className={portalSectionClassName}>
+        <h2 className={portalSectionTitleClassName}>My Issues</h2>
         <p className="mt-1 text-sm text-slate-600">
           Your repair requests and complaints in one place.
         </p>
@@ -88,11 +92,11 @@ export default async function PortalIssuesPage() {
             No issues yet. Submit a repair or complaint from the portal menu.
           </p>
         ) : (
-          <ul className="mt-4 divide-y divide-slate-100">
+          <ul className="mt-4 divide-y divide-slate-200">
             {items.map((item) => (
               <li key={item.id} className="py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-600">
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-600">
                     {item.kind === "repair" ? "Repair" : "Complaint"}
                   </span>
                   <span className="text-xs text-slate-500">{item.dateLabel}</span>

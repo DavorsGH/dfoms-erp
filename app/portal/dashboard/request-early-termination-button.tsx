@@ -2,6 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+  portalLabelClassName,
+  portalPrimaryButtonClassName,
+  portalSecondaryButtonClassName,
+  portalTextareaClassName,
+} from "../portal-ui";
 
 type RequestEarlyTerminationButtonProps = {
   alreadyPending: boolean;
@@ -75,7 +81,7 @@ export default function RequestEarlyTerminationButton({
             setError(null);
             setSuccess(null);
           }}
-          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className={portalSecondaryButtonClassName}
         >
           Request Early Termination
         </button>
@@ -94,7 +100,7 @@ export default function RequestEarlyTerminationButton({
           <div>
             <label
               htmlFor="termination-reason"
-              className="mb-1 block text-sm font-medium text-slate-700"
+              className={portalLabelClassName}
             >
               Reason (optional)
             </label>
@@ -103,7 +109,7 @@ export default function RequestEarlyTerminationButton({
               rows={3}
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]"
+              className={portalTextareaClassName}
               placeholder="Optional note for your property manager"
             />
           </div>
@@ -111,7 +117,7 @@ export default function RequestEarlyTerminationButton({
             <button
               type="submit"
               disabled={loading}
-              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#163559] disabled:opacity-60"
+              className={portalPrimaryButtonClassName}
             >
               {loading ? "Submitting…" : "Submit request"}
             </button>
@@ -119,7 +125,7 @@ export default function RequestEarlyTerminationButton({
               type="button"
               disabled={loading}
               onClick={() => setOpen(false)}
-              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className={portalSecondaryButtonClassName}
             >
               Cancel
             </button>

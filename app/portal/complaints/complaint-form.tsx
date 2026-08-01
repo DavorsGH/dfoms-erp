@@ -2,15 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-const textareaClassName =
-  "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
-
-const inputClassName =
-  "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
-
-const primaryButtonClassName =
-  "rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50";
+import {
+  portalErrorBannerClassName,
+  portalInputClassName,
+  portalLabelClassName,
+  portalPrimaryButtonClassName,
+  portalSectionClassName,
+  portalSectionTitleClassName,
+  portalSuccessBannerClassName,
+  portalTextareaClassName,
+} from "../portal-ui";
 
 export default function PortalComplaintForm() {
   const router = useRouter();
@@ -50,29 +51,22 @@ export default function PortalComplaintForm() {
   return (
     <form
       onSubmit={(event) => void handleSubmit(event)}
-      className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+      className={`${portalSectionClassName} space-y-4`}
     >
-      <h2 className="text-base font-semibold text-[#0f2744]">
-        Submit a complaint
-      </h2>
+      <h2 className={portalSectionTitleClassName}>Submit a complaint</h2>
 
-      {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          {error}
-        </div>
-      ) : null}
+      {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
       {success ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {success}
-        </div>
+        <div className={portalSuccessBannerClassName}>{success}</div>
       ) : null}
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-600">
+        <label className={portalLabelClassName} htmlFor="complaint-subject">
           Subject
         </label>
         <input
-          className={inputClassName}
+          id="complaint-subject"
+          className={portalInputClassName}
           required
           value={subject}
           onChange={(event) => setSubject(event.target.value)}
@@ -80,11 +74,12 @@ export default function PortalComplaintForm() {
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-600">
+        <label className={portalLabelClassName} htmlFor="complaint-description">
           Description
         </label>
         <textarea
-          className={textareaClassName}
+          id="complaint-description"
+          className={portalTextareaClassName}
           rows={4}
           required
           value={description}
@@ -94,7 +89,7 @@ export default function PortalComplaintForm() {
 
       <button
         type="submit"
-        className={primaryButtonClassName}
+        className={portalPrimaryButtonClassName}
         disabled={loading}
       >
         {loading ? "Submitting…" : "Submit complaint"}
