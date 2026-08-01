@@ -140,6 +140,15 @@ export function resolveManualPaymentVerificationStatus(
     : "not_required";
 }
 
+/**
+ * Paystack Inline (verify/webhook confirmed) is trusted immediately for both
+ * landlord types. Manual davors_managed cash/transfer still uses
+ * pending_verification via resolveManualPaymentVerificationStatus.
+ */
+export function resolvePaystackPaymentVerificationStatus(): RentVerificationStatus {
+  return "not_required";
+}
+
 export function resolveRentStatusAfterPayment(
   amountDueGhs: number,
   amountPaidGhs: number,

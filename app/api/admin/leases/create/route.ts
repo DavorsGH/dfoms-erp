@@ -314,10 +314,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: depositError.message }, { status: 400 });
   }
 
+  // Best-effort tenant portal invite (do not fail lease creation on email errors).
+  let portalInvite:
+    | { status: "sent" }
+    | { status: "skipped"; reason: string }
+    | { status: "failed"; error: string }
+    | undefined;
+  try {
+    const { createAndSendLesseePortalInvite } = await import(
+      "@/utils/lessee-portal-invite"
+    );
+    const inviteResult = await createAndSendLesseePortalInvite(admin, {
+      tenantId: landlord.tenantId,
+      lesseeId,
+    });
+    if (inviteResult.ok) {
+      portalInvite =
+        inviteResult.status === "sent"
+          ? { status: "sent" }
+          : { status: "skipped", reason: inviteResult.reason };
+    } else {
+      portalInvite = { status: "failed", error: inviteResult.error };
+    }
+  } catch (error) {
+    portalInvite = {
+      status: "failed",
+      error: error instanceof Error ? error.message : "Invite failed.",
+    };
+  }
+
   return NextResponse.json({
     success: true,
     lease_id: leaseId,
     deposit_id: depositId,
     lessee_id: lesseeId,
+    portal_invite: portalInvite,
   });
 }

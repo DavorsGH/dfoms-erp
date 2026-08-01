@@ -97,6 +97,55 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: paymentsError }, { status: 400 });
   }
 
+  // Paystack portal collections already write escrow_ledger rows. Deduct those
+  // amounts so payout generate does not double-count into escrow.
+  const paymentEntryIds = payments.map((payment) => payment.entry_id);
+  const alreadyEscrowedByEntry = new Map<string, number>();
+  if (paymentEntryIds.length > 0 && context.landlordType === "davors_managed") {
+    const { data: existingCollections, error: existingEscrowError } =
+      await admin
+        .from("escrow_ledger")
+        .select("related_rent_ledger_id, amount_ghs")
+        .eq("tenant_id", context.tenantId)
+        .eq("entry_type", "collection")
+        .in("related_rent_ledger_id", paymentEntryIds);
+
+    if (existingEscrowError) {
+      return NextResponse.json(
+        { error: existingEscrowError.message },
+        { status: 400 },
+      );
+    }
+
+    for (const row of (existingCollections as Array<{
+      related_rent_ledger_id: string | null;
+      amount_ghs: number | string;
+    }> | null) ?? []) {
+      const relatedId = row.related_rent_ledger_id;
+      if (!relatedId) {
+        continue;
+      }
+      const prior = alreadyEscrowedByEntry.get(relatedId) ?? 0;
+      alreadyEscrowedByEntry.set(
+        relatedId,
+        roundPayoutMoney(prior + (Number(row.amount_ghs) || 0)),
+      );
+    }
+  }
+
+  const paymentsNeedingEscrow = payments
+    .map((payment) => {
+      const paid = roundPayoutMoney(Number(payment.amount_paid_ghs) || 0);
+      const already = alreadyEscrowedByEntry.get(payment.entry_id) ?? 0;
+      const remaining = roundPayoutMoney(Math.max(0, paid - already));
+      return {
+        ...payment,
+        amount_paid_ghs: remaining,
+      };
+    })
+    .filter((payment) => Number(payment.amount_paid_ghs) > 0);
+
+  // Gross for the statement still reflects all rent paid in the period.
   const grossAmountGhs = sumPaymentAmounts(payments);
   if (grossAmountGhs <= 0) {
     return NextResponse.json(
@@ -209,7 +258,7 @@ export async function POST(request: Request) {
     created_at: string;
   }> = [];
 
-  for (const payment of payments) {
+  for (const payment of paymentsNeedingEscrow) {
     const amount = roundPayoutMoney(Number(payment.amount_paid_ghs) || 0);
     runningBalance = roundPayoutMoney(runningBalance + amount);
     escrowRows.push({

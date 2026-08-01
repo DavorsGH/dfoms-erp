@@ -15,6 +15,10 @@ import {
   isProductSalePaystackContext,
   processProductSalePaystackEvent,
 } from "@/utils/paystack-product-sale-webhook";
+import {
+  isRentLedgerPaystackContext,
+  processRentLedgerPaystackEvent,
+} from "@/utils/rent-ledger-paystack";
 import { verifyPaystackTransaction } from "@/utils/paystack";
 
 type JsonRecord = Record<string, unknown>;
@@ -1175,11 +1179,16 @@ export async function processPaystackWebhookEvent(
 
     switch (eventType) {
       case "charge.success":
-        // Product-sale charges also carry metadata.tenant_id — route by context
-        // BEFORE subscription handling to avoid mis-activating ERP Suite subs.
-        result = isProductSalePaystackContext(data)
-          ? await processProductSalePaystackEvent(data)
-          : await handleChargeSuccess(data);
+        // Product-sale / rent-ledger charges also carry metadata.tenant_id —
+        // route by context BEFORE subscription handling to avoid mis-activating
+        // ERP Suite subs.
+        if (isProductSalePaystackContext(data)) {
+          result = await processProductSalePaystackEvent(data);
+        } else if (isRentLedgerPaystackContext(data)) {
+          result = await processRentLedgerPaystackEvent(data);
+        } else {
+          result = await handleChargeSuccess(data);
+        }
         break;
       case "subscription.create":
         result = await handleSubscriptionCreate(data);

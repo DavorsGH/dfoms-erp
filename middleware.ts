@@ -32,6 +32,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Tenant portal invite acceptance API — public; validates token in-route.
+  if (pathname === "/api/portal/accept-invite") {
+    return NextResponse.next();
+  }
+
   // Maintenance mode — blocks all access except heartbeat and the maintenance page itself.
   if (process.env.MAINTENANCE_MODE === "true") {
     if (pathname === "/maintenance") {
@@ -47,6 +52,10 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const isPortalPath = pathname.startsWith("/portal");
+  const isPortalPublicPath =
+    pathname === "/portal/login" || pathname === "/portal/accept-invite";
+
   const publicPaths = new Set([
     "/",
     "/login",
@@ -56,7 +65,10 @@ export async function middleware(request: NextRequest) {
     "/forgot-password",
     "/reset-password",
     "/verify-email",
+    "/portal/login",
+    "/portal/accept-invite",
   ]);
+
   if (
     !user &&
     !publicPaths.has(pathname) &&
@@ -66,11 +78,11 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/api/cron/")
   ) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = isPortalPath ? "/portal/login" : "/login";
     return NextResponse.redirect(url);
   }
 
-  if (user && pathname !== "/login") {
+  if (user && pathname !== "/login" && !isPortalPublicPath) {
     const { data: account } = await supabase
       .from("user_accounts")
       .select("is_active")
@@ -85,7 +97,60 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (user && (pathname === "/" || pathname === "/login" || pathname === "/signup")) {
+  let isLesseePortalUser = false;
+  if (
+    user &&
+    (pathname === "/" ||
+      pathname === "/login" ||
+      pathname === "/signup" ||
+      isPortalPublicPath ||
+      (isPortalPath && !isPortalPublicPath))
+  ) {
+    // Prefer auth metadata stamped at invite accept; fall back to lessees row.
+    if (user.user_metadata?.portal === "lessee") {
+      isLesseePortalUser = true;
+    } else {
+      const { data: lessee } = await supabase
+        .from("lessees")
+        .select("lessee_id")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      isLesseePortalUser = Boolean(lessee);
+    }
+  }
+
+  // Authenticated lessees use /portal/*, not staff /dashboard.
+  if (
+    user &&
+    isLesseePortalUser &&
+    (pathname === "/" ||
+      pathname === "/login" ||
+      pathname === "/signup" ||
+      pathname.startsWith("/dashboard"))
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/portal/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  if (user && isPortalPublicPath && isLesseePortalUser) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/portal/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  if (
+    user &&
+    !isLesseePortalUser &&
+    (pathname === "/" || pathname === "/login" || pathname === "/signup")
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  // Non-lessee sessions cannot use the tenant portal dashboard.
+  if (user && isPortalPath && !isPortalPublicPath && !isLesseePortalUser) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
