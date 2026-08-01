@@ -7,6 +7,7 @@ import {
   isLateFeeType,
   isLeaseStatus,
   isRentChangeStatus,
+  isTerminationRequestStatus,
   type DepositStatus,
   type LateFeeType,
   type LeaseDetail,
@@ -15,6 +16,7 @@ import {
   type LesseeOption,
   type RentChangeStatus,
   type SecurityDepositRecord,
+  type TerminationRequestStatus,
   type VacantUnitOption,
 } from "@/app/dashboard/real-estate/leases-utils";
 
@@ -35,6 +37,8 @@ type LeaseRow = {
   rent_amount_ghs: number | string;
   pending_rent_amount_ghs: number | string | null;
   rent_change_status: string | null;
+  pending_termination_reason: string | null;
+  termination_request_status: string | null;
   escalation_percent: number | string | null;
   escalation_frequency_months: number | null;
   late_fee_enabled: boolean;
@@ -366,6 +370,14 @@ export async function fetchLeaseDetail(
     rentChangeStatus = leaseRow.rent_change_status;
   }
 
+  let terminationRequestStatus: TerminationRequestStatus | null = null;
+  if (
+    leaseRow.termination_request_status &&
+    isTerminationRequestStatus(leaseRow.termination_request_status)
+  ) {
+    terminationRequestStatus = leaseRow.termination_request_status;
+  }
+
   let lateFeeType: LateFeeType | null = null;
   if (leaseRow.late_fee_type && isLateFeeType(leaseRow.late_fee_type)) {
     lateFeeType = leaseRow.late_fee_type;
@@ -388,6 +400,9 @@ export async function fetchLeaseDetail(
       rentAmountGhs: toNumber(leaseRow.rent_amount_ghs) ?? 0,
       pendingRentAmountGhs: toNumber(leaseRow.pending_rent_amount_ghs),
       rentChangeStatus,
+      pendingTerminationReason:
+        leaseRow.pending_termination_reason?.trim() || null,
+      terminationRequestStatus,
       escalationPercent: toNumber(leaseRow.escalation_percent),
       escalationFrequencyMonths: leaseRow.escalation_frequency_months,
       lateFeeEnabled: Boolean(leaseRow.late_fee_enabled),
@@ -402,4 +417,96 @@ export async function fetchLeaseDetail(
     },
     fetchError: null,
   };
+}
+
+/**
+ * Shared early-termination effect used by staff Terminate Lease Early and by
+ * approving a tenant termination request. Frees the unit; deposit is returned
+ * as deposit_id for the existing resolve-deposit UI (not auto-resolved).
+ */
+export async function terminateLeaseEarly(
+  admin: SupabaseClient,
+  options: {
+    tenantId: string;
+    leaseId: string;
+    terminationReason: string;
+    /** When true, stamp termination_request_status = approved (tenant request path). */
+    markRequestApproved?: boolean;
+  },
+): Promise<{ depositId: string | null }> {
+  const landlord = await assertRealEstateLandlordTenant(admin, options.tenantId);
+  if (!landlord.ok) {
+    throw new Error(landlord.error);
+  }
+
+  const leaseId = options.leaseId.trim();
+  const terminationReason = options.terminationReason.trim();
+  if (!leaseId) {
+    throw new Error("lease_id is required");
+  }
+  if (!terminationReason) {
+    throw new Error("termination_reason is required");
+  }
+
+  const { data: lease, error: leaseError } = await admin
+    .from("leases")
+    .select("lease_id, unit_id, status")
+    .eq("tenant_id", landlord.tenantId)
+    .eq("lease_id", leaseId)
+    .maybeSingle();
+
+  if (leaseError) {
+    throw new Error(leaseError.message);
+  }
+  if (!lease) {
+    throw new Error("Lease not found.");
+  }
+  if (lease.status !== "active") {
+    throw new Error("Only active leases can be terminated early.");
+  }
+
+  const now = new Date().toISOString();
+
+  const { error: updateError } = await admin
+    .from("leases")
+    .update({
+      status: "terminated_early",
+      terminated_at: now,
+      termination_reason: terminationReason,
+      pending_termination_reason: null,
+      termination_request_status: options.markRequestApproved
+        ? "approved"
+        : null,
+      updated_at: now,
+    })
+    .eq("tenant_id", landlord.tenantId)
+    .eq("lease_id", leaseId);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  const { error: unitError } = await admin
+    .from("property_units")
+    .update({
+      status: "vacant",
+      updated_at: now,
+    })
+    .eq("tenant_id", landlord.tenantId)
+    .eq("unit_id", lease.unit_id);
+
+  if (unitError) {
+    throw new Error(unitError.message);
+  }
+
+  const { data: deposit } = await admin
+    .from("security_deposits")
+    .select("deposit_id")
+    .eq("tenant_id", landlord.tenantId)
+    .eq("lease_id", leaseId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return { depositId: deposit?.deposit_id ?? null };
 }

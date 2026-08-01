@@ -9,6 +9,9 @@ export type RentChangeStatus =
   | "approved"
   | "rejected";
 
+/** Same value set as rent_change_status — tenant early-termination request. */
+export type TerminationRequestStatus = RentChangeStatus;
+
 export type LateFeeType = "fixed" | "percent";
 
 export type DepositStatus =
@@ -75,6 +78,8 @@ export type LeaseDetail = {
   rentAmountGhs: number;
   pendingRentAmountGhs: number | null;
   rentChangeStatus: RentChangeStatus | null;
+  pendingTerminationReason: string | null;
+  terminationRequestStatus: TerminationRequestStatus | null;
   escalationPercent: number | null;
   escalationFrequencyMonths: number | null;
   lateFeeEnabled: boolean;
@@ -163,6 +168,12 @@ export function isRentChangeStatus(value: string): value is RentChangeStatus {
     value === "approved" ||
     value === "rejected"
   );
+}
+
+export function isTerminationRequestStatus(
+  value: string,
+): value is TerminationRequestStatus {
+  return isRentChangeStatus(value);
 }
 
 export function isLateFeeType(value: string): value is LateFeeType {

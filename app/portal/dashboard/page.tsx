@@ -5,6 +5,7 @@ import {
 } from "@/utils/lessee-portal-auth";
 import PortalSignOutButton from "./sign-out-button";
 import PayRentButton from "./pay-rent-button";
+import RequestEarlyTerminationButton from "./request-early-termination-button";
 
 function formatMoney(value: number): string {
   return `GHS ${value.toLocaleString("en-GH", {
@@ -127,6 +128,14 @@ export default async function PortalDashboardPage() {
                   </dd>
                 </div>
               </dl>
+              <div className="mt-5">
+                <RequestEarlyTerminationButton
+                  alreadyPending={
+                    data.terminationRequestStatus === "pending_staff_approval"
+                  }
+                  pendingReason={data.pendingTerminationReason}
+                />
+              </div>
             </section>
 
             <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

@@ -62,6 +62,11 @@ export default function RentLedger({
   const [recordingEntryId, setRecordingEntryId] = useState<string | null>(null);
   const [verifyingEntryId, setVerifyingEntryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [billingMonth, setBillingMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<RentPaymentMethod>("cash");
   const [paymentDate, setPaymentDate] = useState(todayInputValue());
@@ -187,6 +192,56 @@ export default function RentLedger({
     router.refresh();
   }
 
+  async function handleGenerateNow() {
+    if (!selectedLandlordId) {
+      return;
+    }
+
+    const month = billingMonth.trim();
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      setError("Billing month must be YYYY-MM.");
+      return;
+    }
+
+    setGenerating(true);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/admin/rent-ledger/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: selectedLandlordId,
+        billingMonth: month,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      created?: number;
+      skipped?: number;
+      errors?: number;
+      overdueUpdated?: number;
+      billingMonth?: string;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to generate rent ledger.");
+      setGenerating(false);
+      return;
+    }
+
+    setGenerating(false);
+    setSuccess(
+      `Generated ${payload?.billingMonth ?? month}: ${payload?.created ?? 0} created, ${payload?.skipped ?? 0} skipped, ${payload?.errors ?? 0} errors${
+        payload?.overdueUpdated
+          ? `, ${payload.overdueUpdated} marked overdue`
+          : ""
+      }.`,
+    );
+    router.refresh();
+  }
+
   return (
     <div className="space-y-4">
       <div className="max-w-md">
@@ -250,28 +305,53 @@ export default function RentLedger({
                 </p>
               ) : null}
             </div>
-            <div className="min-w-[180px]">
-              <label
-                htmlFor="rent-ledger-status-filter"
-                className="mb-1 block text-sm font-medium text-slate-700"
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[140px]">
+                <label
+                  htmlFor="rent-ledger-billing-month"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Billing month
+                </label>
+                <input
+                  id="rent-ledger-billing-month"
+                  type="month"
+                  value={billingMonth}
+                  onChange={(event) => setBillingMonth(event.target.value)}
+                  className={inputClassName}
+                />
+              </div>
+              <button
+                type="button"
+                disabled={generating}
+                onClick={() => void handleGenerateNow()}
+                className={primaryButtonClassName}
               >
-                Status
-              </label>
-              <select
-                id="rent-ledger-status-filter"
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as RentLedgerStatus | "")
-                }
-                className={inputClassName}
-              >
-                <option value="">All</option>
-                {RENT_LEDGER_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                {generating ? "Generating…" : "Generate Now"}
+              </button>
+              <div className="min-w-[180px]">
+                <label
+                  htmlFor="rent-ledger-status-filter"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Status
+                </label>
+                <select
+                  id="rent-ledger-status-filter"
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as RentLedgerStatus | "")
+                  }
+                  className={inputClassName}
+                >
+                  <option value="">All</option>
+                  {RENT_LEDGER_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 

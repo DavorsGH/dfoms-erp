@@ -9,6 +9,13 @@ export type GenerateRentLedgerOptions = {
   /** Optional clock override for overdue checks (ISO date or Date). */
   asOf?: Date | string;
   admin?: SupabaseClient;
+  /**
+   * Optional landlord tenant scope. When omitted, all active leases are
+   * processed (cron / platform-wide path).
+   */
+  tenantId?: string;
+  /** Optional single-lease scope (still requires the lease to be active). */
+  leaseId?: string;
 };
 
 export type RentLedgerLeaseResult = {
@@ -190,25 +197,42 @@ export async function generateRentLedger(
   const asOfDate = resolveAsOfDate(options.asOf);
   const previous = previousMonthPeriod(periodStart);
 
+  const tenantId = options.tenantId?.trim() || undefined;
+  const leaseId = options.leaseId?.trim() || undefined;
+
   console.log("[generate-rent-ledger] start", {
     billingMonth,
     periodStart,
     periodEnd,
     asOfDate,
+    tenantId: tenantId ?? null,
+    leaseId: leaseId ?? null,
   });
 
-  const overdueUpdated = await markOverdueLedgerRows(admin, asOfDate);
-
-  const { data: leases, error: leasesError } = await admin
+  let leasesQuery = admin
     .from("leases")
     .select(
       "tenant_id, lease_id, start_date, end_date, rent_amount_ghs, escalation_percent, escalation_frequency_months, late_fee_enabled, late_fee_type, late_fee_amount",
     )
     .eq("status", "active");
 
+  if (tenantId) {
+    leasesQuery = leasesQuery.eq("tenant_id", tenantId);
+  }
+  if (leaseId) {
+    leasesQuery = leasesQuery.eq("lease_id", leaseId);
+  }
+
+  const { data: leases, error: leasesError } = await leasesQuery;
+
   if (leasesError) {
     throw new Error(`Failed to load active leases: ${leasesError.message}`);
   }
+
+  const overdueUpdated = await markOverdueLedgerRows(admin, asOfDate, {
+    tenantId,
+    leaseId,
+  });
 
   const activeLeases = (leases as ActiveLeaseRow[] | null) ?? [];
   const leaseResults: RentLedgerLeaseResult[] = [];
@@ -325,17 +349,27 @@ export async function generateRentLedger(
 async function markOverdueLedgerRows(
   admin: SupabaseClient,
   asOfDate: string,
+  scope?: { tenantId?: string; leaseId?: string },
 ): Promise<number> {
   const nowIso = new Date().toISOString();
-  const { data, error } = await admin
+  let query = admin
     .from("rent_ledger")
     .update({
       status: "overdue",
       updated_at: nowIso,
     })
     .lt("period_end", asOfDate)
-    .in("status", ["pending", "partial"])
-    .select("entry_id");
+    .in("status", ["pending", "partial"]);
+
+  // Scoped Generate Now must not mark the whole platform overdue.
+  if (scope?.tenantId) {
+    query = query.eq("tenant_id", scope.tenantId);
+  }
+  if (scope?.leaseId) {
+    query = query.eq("lease_id", scope.leaseId);
+  }
+
+  const { data, error } = await query.select("entry_id");
 
   if (error) {
     throw new Error(`Failed to mark overdue rent_ledger rows: ${error.message}`);
@@ -345,6 +379,8 @@ async function markOverdueLedgerRows(
   console.log("[generate-rent-ledger] marked overdue", {
     asOfDate,
     count,
+    tenantId: scope?.tenantId ?? null,
+    leaseId: scope?.leaseId ?? null,
   });
   return count;
 }

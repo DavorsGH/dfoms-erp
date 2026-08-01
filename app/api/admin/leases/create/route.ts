@@ -267,6 +267,8 @@ export async function POST(request: Request) {
     rent_amount_ghs: rent.value,
     pending_rent_amount_ghs: null,
     rent_change_status: null,
+    pending_termination_reason: null,
+    termination_request_status: null,
     escalation_percent: escalationPercent.value,
     escalation_frequency_months: escalationFrequency.value,
     late_fee_enabled: lateFeeEnabled,

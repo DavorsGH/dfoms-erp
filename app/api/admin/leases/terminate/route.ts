@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
+import { terminateLeaseEarly } from "@/utils/lease-management";
 
 type TerminateLeaseBody = {
   tenant_id?: string;
@@ -46,67 +47,26 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: lease, error: leaseError } = await admin
-    .from("leases")
-    .select("lease_id, unit_id, status")
-    .eq("tenant_id", landlord.tenantId)
-    .eq("lease_id", leaseId)
-    .maybeSingle();
+  try {
+    const result = await terminateLeaseEarly(admin, {
+      tenantId: landlord.tenantId,
+      leaseId,
+      terminationReason,
+    });
 
-  if (leaseError) {
-    return NextResponse.json({ error: leaseError.message }, { status: 400 });
+    return NextResponse.json({
+      success: true,
+      deposit_id: result.depositId,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to terminate lease.";
+    const status =
+      message === "Lease not found."
+        ? 404
+        : message.includes("Only active")
+          ? 400
+          : 400;
+    return NextResponse.json({ error: message }, { status });
   }
-  if (!lease) {
-    return NextResponse.json({ error: "Lease not found." }, { status: 404 });
-  }
-  if (lease.status !== "active") {
-    return NextResponse.json(
-      { error: "Only active leases can be terminated early." },
-      { status: 400 },
-    );
-  }
-
-  const now = new Date().toISOString();
-
-  const { error: updateError } = await admin
-    .from("leases")
-    .update({
-      status: "terminated_early",
-      terminated_at: now,
-      termination_reason: terminationReason,
-      updated_at: now,
-    })
-    .eq("tenant_id", landlord.tenantId)
-    .eq("lease_id", leaseId);
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 400 });
-  }
-
-  const { error: unitError } = await admin
-    .from("property_units")
-    .update({
-      status: "vacant",
-      updated_at: now,
-    })
-    .eq("tenant_id", landlord.tenantId)
-    .eq("unit_id", lease.unit_id);
-
-  if (unitError) {
-    return NextResponse.json({ error: unitError.message }, { status: 400 });
-  }
-
-  const { data: deposit } = await admin
-    .from("security_deposits")
-    .select("deposit_id")
-    .eq("tenant_id", landlord.tenantId)
-    .eq("lease_id", leaseId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  return NextResponse.json({
-    success: true,
-    deposit_id: deposit?.deposit_id ?? null,
-  });
 }

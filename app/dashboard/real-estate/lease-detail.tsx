@@ -43,6 +43,8 @@ export default function LeaseDetailView({
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [rentReviewLoading, setRentReviewLoading] = useState(false);
+  const [terminationReviewLoading, setTerminationReviewLoading] =
+    useState(false);
   const [terminating, setTerminating] = useState(false);
   const [showTerminate, setShowTerminate] = useState(false);
   const [terminationReason, setTerminationReason] = useState("");
@@ -121,6 +123,8 @@ export default function LeaseDetailView({
   const pendingRent =
     detail.rentChangeStatus === "pending_staff_approval" &&
     detail.pendingRentAmountGhs != null;
+  const pendingTermination =
+    detail.terminationRequestStatus === "pending_staff_approval";
 
   async function handleSave() {
     setSaving(true);
@@ -188,6 +192,50 @@ export default function LeaseDetailView({
       action === "approve" ? "Rent change approved." : "Rent change rejected.",
     );
     setRentReviewLoading(false);
+    router.refresh();
+  }
+
+  async function handleTerminationRequest(action: "approve" | "reject") {
+    setTerminationReviewLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/admin/leases/termination-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: detail.tenantId,
+        lease_id: detail.leaseId,
+        action,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      deposit_id?: string | null;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to review termination request.");
+      setTerminationReviewLoading(false);
+      return;
+    }
+
+    setTerminationReviewLoading(false);
+
+    if (action === "approve" && payload?.deposit_id) {
+      router.push(
+        `/dashboard/real-estate/leases/${detail.tenantId}/${detail.leaseId}?resolveDeposit=1`,
+      );
+      router.refresh();
+      return;
+    }
+
+    setSuccess(
+      action === "approve"
+        ? "Termination request approved — lease terminated early."
+        : "Termination request rejected — lease continues.",
+    );
     router.refresh();
   }
 
@@ -347,6 +395,46 @@ export default function LeaseDetailView({
               type="button"
               disabled={rentReviewLoading}
               onClick={() => handleRentChange("reject")}
+              className={dangerButtonClassName}
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingTermination ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-medium text-amber-950">
+            Pending early termination request from tenant, awaiting staff
+            approval
+          </p>
+          {detail.pendingTerminationReason ? (
+            <p className="mt-1 text-sm text-amber-900">
+              Reason: {detail.pendingTerminationReason}
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-amber-900">
+              No reason was provided.
+            </p>
+          )}
+          <p className="mt-1 text-sm text-amber-900">
+            Approving runs the same early-termination steps as Terminate Lease
+            Early (unit vacated; deposit still needs resolution).
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={terminationReviewLoading}
+              onClick={() => void handleTerminationRequest("approve")}
+              className={primaryButtonClassName}
+            >
+              {terminationReviewLoading ? "Working…" : "Approve"}
+            </button>
+            <button
+              type="button"
+              disabled={terminationReviewLoading}
+              onClick={() => void handleTerminationRequest("reject")}
               className={dangerButtonClassName}
             >
               Reject

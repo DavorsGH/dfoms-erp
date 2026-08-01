@@ -26,6 +26,7 @@ export type PortalUnpaidRent = {
 };
 
 export type PortalDashboardData = {
+  leaseId: string;
   propertyName: string;
   unitNumber: string;
   rentAmountGhs: number;
@@ -36,6 +37,8 @@ export type PortalDashboardData = {
   rentPeriodStart: string | null;
   rentPeriodEnd: string | null;
   unpaidRent: PortalUnpaidRent | null;
+  terminationRequestStatus: string | null;
+  pendingTerminationReason: string | null;
 };
 
 /**
@@ -97,7 +100,7 @@ async function loadDashboardWithClient(
   const { data: lease, error: leaseError } = await client
     .from("leases")
     .select(
-      "lease_id, tenant_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, status",
+      "lease_id, tenant_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, status, termination_request_status, pending_termination_reason",
     )
     .eq("tenant_id", session.tenantId)
     .eq("lessee_id", session.lesseeId)
@@ -191,6 +194,7 @@ async function loadDashboardWithClient(
 
   return {
     data: {
+      leaseId: lease.lease_id,
       propertyName,
       unitNumber: unit?.unit_number ?? "—",
       rentAmountGhs: Number(lease.rent_amount_ghs) || 0,
@@ -201,6 +205,10 @@ async function loadDashboardWithClient(
       rentPeriodStart: rentRow?.period_start ?? null,
       rentPeriodEnd: rentRow?.period_end ?? null,
       unpaidRent,
+      terminationRequestStatus:
+        (lease.termination_request_status as string | null) ?? null,
+      pendingTerminationReason:
+        (lease.pending_termination_reason as string | null)?.trim() || null,
     },
     error: null,
   };
