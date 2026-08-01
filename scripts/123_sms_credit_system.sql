@@ -207,6 +207,26 @@ END;
 $$;
 
 -- ----------------------------------------------------------------------------
+-- 7. Lock SECURITY DEFINER RPCs to service_role only
+--    Pattern: REVOKE ALL FROM PUBLIC/anon/authenticated (scripts 130 + 137),
+--    then GRANT EXECUTE only to service_role.
+-- ----------------------------------------------------------------------------
+REVOKE ALL ON FUNCTION public.ensure_sms_allowance_current(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ensure_sms_allowance_current(uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.ensure_sms_allowance_current(uuid) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.ensure_sms_allowance_current(uuid) TO service_role;
+
+REVOKE ALL ON FUNCTION public.debit_sms_credit(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.debit_sms_credit(uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.debit_sms_credit(uuid) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.debit_sms_credit(uuid) TO service_role;
+
+REVOKE ALL ON FUNCTION public.credit_sms_purchase(uuid, integer, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.credit_sms_purchase(uuid, integer, text) FROM anon;
+REVOKE ALL ON FUNCTION public.credit_sms_purchase(uuid, integer, text) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.credit_sms_purchase(uuid, integer, text) TO service_role;
+
+-- ----------------------------------------------------------------------------
 -- Verification (single combined query)
 -- ----------------------------------------------------------------------------
 SELECT 'sms_credit_packs row count' AS check_name, (SELECT count(*)::text FROM sms_credit_packs)

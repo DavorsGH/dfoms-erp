@@ -19,6 +19,10 @@ import {
   isRentLedgerPaystackContext,
   processRentLedgerPaystackEvent,
 } from "@/utils/rent-ledger-paystack";
+import {
+  isSmsCreditPaystackContext,
+  processSmsCreditPaystackEvent,
+} from "@/utils/sms-credit-paystack";
 import { verifyPaystackTransaction } from "@/utils/paystack";
 
 type JsonRecord = Record<string, unknown>;
@@ -1179,13 +1183,15 @@ export async function processPaystackWebhookEvent(
 
     switch (eventType) {
       case "charge.success":
-        // Product-sale / rent-ledger charges also carry metadata.tenant_id —
-        // route by context BEFORE subscription handling to avoid mis-activating
-        // ERP Suite subs.
+        // Product-sale / rent-ledger / sms-credit charges also carry
+        // metadata.tenant_id — route by context BEFORE subscription handling
+        // to avoid mis-activating ERP Suite subs.
         if (isProductSalePaystackContext(data)) {
           result = await processProductSalePaystackEvent(data);
         } else if (isRentLedgerPaystackContext(data)) {
           result = await processRentLedgerPaystackEvent(data);
+        } else if (isSmsCreditPaystackContext(data)) {
+          result = await processSmsCreditPaystackEvent(data);
         } else {
           result = await handleChargeSuccess(data);
         }

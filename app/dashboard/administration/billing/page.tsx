@@ -59,6 +59,8 @@ export default async function BillingSettingsPage({
     billingSettingsResult,
     invoicesResult,
     tiersResult,
+    smsPacksResult,
+    smsWalletResult,
   ] = await Promise.all([
     getTenantBillingSubscription(tenantId),
     supabase
@@ -77,6 +79,16 @@ export default async function BillingSettingsPage({
       .eq("tenant_id", DAVORS_TENANT_ID)
       .eq("category", ERP_SUITE_CATEGORY)
       .order("name", { ascending: true }),
+    admin
+      .from("sms_credit_packs")
+      .select("pack_key, credits, price_ghs, is_active")
+      .eq("is_active", true)
+      .order("credits", { ascending: true }),
+    supabase
+      .from("sms_credit_wallets")
+      .select("balance")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
   ]);
 
   let billingSettings = (billingSettingsResult.data as BillingSettingsRow | null) ??
@@ -98,7 +110,30 @@ export default async function BillingSettingsPage({
     billingSettingsResult.error?.message ??
     invoicesResult.error?.message ??
     tiersResult.error?.message ??
+    smsPacksResult.error?.message ??
+    smsWalletResult.error?.message ??
     null;
+
+  const smsCreditPacks = (
+    (smsPacksResult.data as
+      | Array<{
+          pack_key: string;
+          credits: number;
+          price_ghs: number;
+          is_active: boolean;
+        }>
+      | null) ?? []
+  ).map((pack) => ({
+    pack_key: pack.pack_key,
+    credits: Number(pack.credits) || 0,
+    price_ghs: Number(pack.price_ghs) || 0,
+    is_active: pack.is_active !== false,
+  }));
+
+  const smsCreditBalance =
+    smsWalletResult.data?.balance != null
+      ? Number(smsWalletResult.data.balance) || 0
+      : 0;
 
   return (
     <>
@@ -110,6 +145,8 @@ export default async function BillingSettingsPage({
         billingSettings={billingSettings}
         invoices={(invoicesResult.data as BillingInvoiceRow[] | null) ?? []}
         tierOptions={(tiersResult.data as BillingTierOption[] | null) ?? []}
+        smsCreditPacks={smsCreditPacks}
+        smsCreditBalance={smsCreditBalance}
         fetchError={fetchError}
         initialTab={initialTab}
       />
