@@ -2,13 +2,23 @@ import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
-import { roundPayoutMoney } from "@/app/dashboard/real-estate/payouts-utils";
+import {
+  formatPayoutPeriod,
+  roundPayoutMoney,
+} from "@/app/dashboard/real-estate/payouts-utils";
+import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
 type MarkRemittedBody = {
   tenant_id?: string;
   payout_id?: string;
   remittance_reference?: string;
 };
+
+const MANAGEMENT_FEE_INCOME_CATEGORY = "Real Estate Management Fee";
+
+function buildManagementFeeInvoiceNo(payoutId: string): string {
+  return `RE-MGMT-FEE-${payoutId}`;
+}
 
 export async function POST(request: Request) {
   const auth = await requireDavorsPlatformSuperAdmin();
@@ -47,17 +57,31 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: payout, error: payoutError } = await admin
-    .from("landlord_payouts")
-    .select(
-      "payout_id, remittance_status, net_amount_ghs, management_fee_ghs",
-    )
-    .eq("tenant_id", landlord.tenantId)
-    .eq("payout_id", payoutId)
-    .maybeSingle();
+  const [{ data: payout, error: payoutError }, { data: landlordRow, error: landlordTypeError }] =
+    await Promise.all([
+      admin
+        .from("landlord_payouts")
+        .select(
+          "payout_id, remittance_status, net_amount_ghs, management_fee_ghs, period_start, period_end",
+        )
+        .eq("tenant_id", landlord.tenantId)
+        .eq("payout_id", payoutId)
+        .maybeSingle(),
+      admin
+        .from("landlords")
+        .select("landlord_type")
+        .eq("tenant_id", landlord.tenantId)
+        .maybeSingle(),
+    ]);
 
   if (payoutError) {
     return NextResponse.json({ error: payoutError.message }, { status: 400 });
+  }
+  if (landlordTypeError) {
+    return NextResponse.json(
+      { error: landlordTypeError.message },
+      { status: 400 },
+    );
   }
   if (!payout) {
     return NextResponse.json({ error: "Payout not found." }, { status: 404 });
@@ -70,7 +94,12 @@ export async function POST(request: Request) {
   }
 
   const netAmount = roundPayoutMoney(Number(payout.net_amount_ghs) || 0);
+  const managementFeeGhs = roundPayoutMoney(
+    Number(payout.management_fee_ghs) || 0,
+  );
+  const isDavorsManaged = landlordRow?.landlord_type === "davors_managed";
   const nowIso = new Date().toISOString();
+  const remittanceDate = nowIso.slice(0, 10);
 
   const { data: latestEscrow, error: escrowBalanceError } = await admin
     .from("escrow_ledger")
@@ -119,6 +148,70 @@ export async function POST(request: Request) {
 
   if (escrowError) {
     return NextResponse.json({ error: escrowError.message }, { status: 400 });
+  }
+
+  // Davors' fee income — only for davors_managed remittances with a fee amount.
+  // Idempotent via deterministic invoice_no so retries cannot double-post.
+  if (isDavorsManaged && managementFeeGhs > 0) {
+    const invoiceNo = buildManagementFeeInvoiceNo(payoutId);
+    const periodLabel = formatPayoutPeriod(
+      payout.period_start,
+      payout.period_end,
+    );
+
+    const { data: existingIncome, error: existingIncomeError } = await admin
+      .from("income_register")
+      .select("id")
+      .eq("tenant_id", DAVORS_TENANT_ID)
+      .eq("invoice_no", invoiceNo)
+      .maybeSingle();
+
+    if (existingIncomeError) {
+      return NextResponse.json(
+        {
+          error: `Payout remitted, but failed to check Income Register: ${existingIncomeError.message}`,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!existingIncome) {
+      const description = `Real estate management fee — ${landlord.name} — payout period ${periodLabel} (payout ${payoutId})`;
+
+      const { error: incomeError } = await admin.from("income_register").insert({
+        tenant_id: DAVORS_TENANT_ID,
+        date: remittanceDate,
+        due_date: remittanceDate,
+        invoice_no: invoiceNo,
+        customer_name: landlord.name,
+        client_id: null,
+        entry_type: "service",
+        service_category: MANAGEMENT_FEE_INCOME_CATEGORY,
+        description,
+        amount: managementFeeGhs,
+        amount_received: managementFeeGhs,
+        outstanding_balance: 0,
+        payment_status: "Paid",
+        notes: `Auto-posted from Real Estate payout remittance. Landlord tenant_id=${landlord.tenantId}; remittance ref=${remittanceReference}.`,
+        tax_inclusive: true,
+        net_of_tax_amount: managementFeeGhs,
+        output_vat_amount: 0,
+        output_tax_component: null,
+        wht_rate: null,
+        wht_amount: 0,
+        sale_status: "active",
+        is_system_adjustment: false,
+      });
+
+      if (incomeError) {
+        return NextResponse.json(
+          {
+            error: `Payout remitted, but failed to post management fee to Income Register: ${incomeError.message}`,
+          },
+          { status: 400 },
+        );
+      }
+    }
   }
 
   return NextResponse.json({
