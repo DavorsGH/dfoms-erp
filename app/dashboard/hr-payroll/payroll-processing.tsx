@@ -38,6 +38,7 @@ import {
   calculatePayrollRow,
   countAbsencesForStaff,
   formatPayrollPaymentMethodDisplay,
+  formatPayrollMomoNameDisplay,
   resolvePayrollPolicyCompensation,
   sumOvertimeForEmployee,
   type PayrollAttendanceSource,
@@ -1289,6 +1290,7 @@ export default function PayrollProcessing({
               <th className={scrollableTableThClassName}>Total Deductions</th>
               <th className={scrollableTableThClassName}>Net Pay</th>
               <th className={scrollableTableThClassName}>Payment Method</th>
+              <th className={scrollableTableThClassName}>MoMo Name</th>
               {!isPeriodClosed ? (
                 <th className={scrollableTableThClassName}>Adjustments</th>
               ) : null}
@@ -1298,7 +1300,7 @@ export default function PayrollProcessing({
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={isPeriodClosed ? 13 : 14}
+                  colSpan={isPeriodClosed ? 14 : 15}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   {isPeriodClosed
@@ -1351,6 +1353,11 @@ export default function PayrollProcessing({
                     <td className="px-4 py-3">{formatGHS(row.net_pay)}</td>
                     <td className="px-4 py-3">
                       {formatPayrollPaymentMethodDisplay(
+                        employeeMap.get(row.employee_id),
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatPayrollMomoNameDisplay(
                         employeeMap.get(row.employee_id),
                       )}
                     </td>

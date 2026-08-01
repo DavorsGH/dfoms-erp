@@ -123,6 +123,7 @@ const emptyForm = {
   bank_name: "",
   account_number: "",
   momo_number: "",
+  momo_name: "",
   department: "",
   position: "",
   supervisor: "",
@@ -191,6 +192,7 @@ function employeeToForm(employee: EmployeeRecord) {
     bank_name: employee.bank_name ?? "",
     account_number: employee.account_number ?? "",
     momo_number: employee.momo_number ?? "",
+    momo_name: employee.momo_name ?? "",
     department: employee.department ?? "",
     position: employee.position ?? "",
     supervisor: employee.supervisor ?? "",
@@ -262,6 +264,10 @@ function buildPayload(
     bank_name: form.bank_name || null,
     account_number: form.account_number || null,
     momo_number: form.momo_number || null,
+    momo_name:
+      form.payment_method === "momo"
+        ? form.momo_name.trim() || form.full_name.trim() || null
+        : form.momo_name || null,
     department: form.department || null,
     position: form.position || null,
     supervisor: form.supervisor || null,
@@ -792,7 +798,31 @@ export default function EmployeesDirectory({
   }
 
   function updateField(field: keyof typeof emptyForm, value: string) {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => {
+      if (field === "payment_method" && value === "momo") {
+        return {
+          ...current,
+          payment_method: value,
+          momo_name: current.momo_name.trim()
+            ? current.momo_name
+            : current.full_name.trim(),
+        };
+      }
+
+      if (
+        field === "full_name" &&
+        current.payment_method === "momo" &&
+        !current.momo_name.trim()
+      ) {
+        return {
+          ...current,
+          full_name: value,
+          momo_name: value.trim(),
+        };
+      }
+
+      return { ...current, [field]: value };
+    });
   }
 
   async function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1347,6 +1377,18 @@ export default function EmployeesDirectory({
                       value={form.momo_number}
                       onChange={(e) =>
                         updateField("momo_number", e.target.value)
+                      }
+                      className={inputClassName}
+                    />
+                  </Field>
+                ) : null}
+                {form.payment_method === "momo" ? (
+                  <Field label="MoMo Name">
+                    <input
+                      type="text"
+                      value={form.momo_name}
+                      onChange={(e) =>
+                        updateField("momo_name", e.target.value)
                       }
                       className={inputClassName}
                     />

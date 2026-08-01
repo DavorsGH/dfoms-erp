@@ -77,6 +77,7 @@ export type PayrollEmployeeSource = {
   bank_name?: string | null;
   account_number?: string | null;
   momo_number?: string | null;
+  momo_name?: string | null;
 };
 
 /** Optional live policy resolution for Open payroll (script 117). */
@@ -240,6 +241,22 @@ export function formatPayrollPaymentMethodDisplay(
   }
 
   return "—";
+}
+
+/**
+ * Display-only MoMo registered name. Only for payment_method === "momo".
+ */
+export function formatPayrollMomoNameDisplay(
+  employee:
+    | Pick<PayrollEmployeeSource, "payment_method" | "momo_name">
+    | null
+    | undefined,
+): string {
+  if (!employee || employee.payment_method !== "momo") {
+    return "—";
+  }
+
+  return employee.momo_name?.trim() || "—";
 }
 
 function normalizeRate(rate: number): number {

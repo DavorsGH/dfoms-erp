@@ -16,6 +16,7 @@ export type EmployeeRecord = {
   bank_name: string | null;
   account_number: string | null;
   momo_number: string | null;
+  momo_name: string | null;
   department: string | null;
   position: string | null;
   supervisor: string | null;

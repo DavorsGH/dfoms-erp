@@ -14,11 +14,13 @@ export type LoginActionResult =
 
 /**
  * Server-side login so Upstash rate limits can run before Supabase Auth and
- * only failed attempts are recorded.
+ * only failed attempts are recorded. Optional Turnstile token is forwarded to
+ * Supabase when the client has already required CAPTCHA after failed attempts.
  */
 export async function loginWithPassword(
   email: string,
   password: string,
+  captchaToken?: string | null,
 ): Promise<LoginActionResult> {
   const trimmedEmail = email.trim();
   if (!trimmedEmail || !password) {
@@ -36,13 +38,32 @@ export async function loginWithPassword(
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  const trimmedCaptcha = captchaToken?.trim() || undefined;
+
   const { error } = await supabase.auth.signInWithPassword({
     email: trimmedEmail,
     password,
+    ...(trimmedCaptcha
+      ? { options: { captchaToken: trimmedCaptcha } }
+      : {}),
   });
 
   if (error) {
     await recordFailedLoginAttempt(trimmedEmail, ip);
+
+    const message = error.message?.toLowerCase() ?? "";
+    if (
+      message.includes("captcha") ||
+      message.includes("turnstile") ||
+      error.code === "captcha_failed"
+    ) {
+      return {
+        ok: false,
+        error:
+          "CAPTCHA verification failed or expired. Please complete the check and try again.",
+      };
+    }
+
     return { ok: false, error: error.message };
   }
 
