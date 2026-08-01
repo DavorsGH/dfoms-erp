@@ -7,10 +7,24 @@ type ApprovalBody = {
   tenant_id?: string;
 };
 
-async function setLandlordApprovalStatus(
-  tenantId: string,
-  approvalStatus: "approved" | "rejected",
-) {
+export async function POST(request: Request) {
+  const auth = await requireDavorsPlatformSuperAdmin();
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  let body: ApprovalBody;
+  try {
+    body = (await request.json()) as ApprovalBody;
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const tenantId = body.tenant_id?.trim() ?? "";
+  if (!tenantId) {
+    return NextResponse.json({ error: "tenant_id is required" }, { status: 400 });
+  }
+
   if (tenantId === DAVORS_TENANT_ID) {
     return NextResponse.json(
       { error: "The platform tenant cannot be managed as a landlord." },
@@ -62,7 +76,7 @@ async function setLandlordApprovalStatus(
   const { error: updateError } = await admin
     .from("landlords")
     .update({
-      approval_status: approvalStatus,
+      approval_status: "approved",
       updated_at: new Date().toISOString(),
     })
     .eq("tenant_id", tenantId);
@@ -71,26 +85,37 @@ async function setLandlordApprovalStatus(
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true, approval_status: approvalStatus });
-}
-
-export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
-  if (!auth.ok) {
-    return auth.response;
-  }
-
-  let body: ApprovalBody;
+  // Best-effort landlord portal invite (do not fail approve on email errors).
+  let portalInvite:
+    | { status: "sent" }
+    | { status: "skipped"; reason: string }
+    | { status: "failed"; error: string }
+    | undefined;
   try {
-    body = (await request.json()) as ApprovalBody;
-  } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    const { createAndSendLandlordPortalInvite } = await import(
+      "@/utils/landlord-portal-invite"
+    );
+    const inviteResult = await createAndSendLandlordPortalInvite(admin, {
+      tenantId,
+    });
+    if (inviteResult.ok) {
+      portalInvite =
+        inviteResult.status === "sent"
+          ? { status: "sent" }
+          : { status: "skipped", reason: inviteResult.reason };
+    } else {
+      portalInvite = { status: "failed", error: inviteResult.error };
+    }
+  } catch (error) {
+    portalInvite = {
+      status: "failed",
+      error: error instanceof Error ? error.message : "Invite failed.",
+    };
   }
 
-  const tenantId = body.tenant_id?.trim() ?? "";
-  if (!tenantId) {
-    return NextResponse.json({ error: "tenant_id is required" }, { status: 400 });
-  }
-
-  return setLandlordApprovalStatus(tenantId, "approved");
+  return NextResponse.json({
+    success: true,
+    approval_status: "approved",
+    portal_invite: portalInvite,
+  });
 }

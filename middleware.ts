@@ -48,8 +48,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Tenant portal invite acceptance API — public; validates token in-route.
-  if (pathname === "/api/portal/accept-invite") {
+  // Portal invite acceptance APIs — public; validate token in-route.
+  if (
+    pathname === "/api/portal/accept-invite" ||
+    pathname === "/api/landlord-portal/accept-invite"
+  ) {
     return NextResponse.next();
   }
 
@@ -69,8 +72,12 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isPortalPath = pathname.startsWith("/portal");
+  const isLandlordPortalPath = pathname.startsWith("/landlord-portal");
   const isPortalPublicPath =
     pathname === "/portal/login" || pathname === "/portal/accept-invite";
+  const isLandlordPortalPublicPath =
+    pathname === "/landlord-portal/login" ||
+    pathname === "/landlord-portal/accept-invite";
 
   const publicPaths = new Set([
     "/",
@@ -83,6 +90,8 @@ export async function middleware(request: NextRequest) {
     "/verify-email",
     "/portal/login",
     "/portal/accept-invite",
+    "/landlord-portal/login",
+    "/landlord-portal/accept-invite",
   ]);
 
   if (
@@ -95,17 +104,28 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/api/cron/")
   ) {
     const url = request.nextUrl.clone();
-    url.pathname = isPortalPath ? "/portal/login" : "/login";
-    // Preserve destination for staff login only (portal keeps its own default).
+    if (isLandlordPortalPath) {
+      url.pathname = "/landlord-portal/login";
+    } else if (isPortalPath) {
+      url.pathname = "/portal/login";
+    } else {
+      url.pathname = "/login";
+    }
+    // Preserve destination for staff login only (portals keep their own default).
     url.search = "";
-    if (!isPortalPath) {
+    if (!isPortalPath && !isLandlordPortalPath) {
       const returnPath = `${pathname}${request.nextUrl.search}`;
       url.searchParams.set("next", returnPath);
     }
     return NextResponse.redirect(url);
   }
 
-  if (user && pathname !== "/login" && !isPortalPublicPath) {
+  if (
+    user &&
+    pathname !== "/login" &&
+    !isPortalPublicPath &&
+    !isLandlordPortalPublicPath
+  ) {
     const { data: account } = await supabase
       .from("user_accounts")
       .select("is_active")
@@ -121,35 +141,52 @@ export async function middleware(request: NextRequest) {
   }
 
   let isLesseePortalUser = false;
-  if (
+  let isLandlordPortalUser = false;
+
+  const needsPersonaCheck =
     user &&
     (pathname === "/" ||
       pathname === "/login" ||
       pathname === "/signup" ||
       isPortalPublicPath ||
-      (isPortalPath && !isPortalPublicPath))
-  ) {
-    // Prefer auth metadata stamped at invite accept; fall back to lessees row.
-    if (user.user_metadata?.portal === "lessee") {
+      isLandlordPortalPublicPath ||
+      (isPortalPath && !isPortalPublicPath) ||
+      (isLandlordPortalPath && !isLandlordPortalPublicPath) ||
+      pathname.startsWith("/dashboard"));
+
+  if (needsPersonaCheck) {
+    const portalMeta = user.user_metadata?.portal;
+    if (portalMeta === "lessee") {
       isLesseePortalUser = true;
+    } else if (portalMeta === "landlord") {
+      isLandlordPortalUser = true;
     } else {
-      const { data: lessee } = await supabase
-        .from("lessees")
-        .select("lessee_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
+      const [{ data: lessee }, { data: landlord }] = await Promise.all([
+        supabase
+          .from("lessees")
+          .select("lessee_id")
+          .eq("auth_user_id", user.id)
+          .maybeSingle(),
+        supabase
+          .from("landlords")
+          .select("tenant_id")
+          .eq("auth_user_id", user.id)
+          .maybeSingle(),
+      ]);
       isLesseePortalUser = Boolean(lessee);
+      isLandlordPortalUser = Boolean(landlord);
     }
   }
 
-  // Authenticated lessees use /portal/*, not staff /dashboard.
+  // Authenticated lessees use /portal/*, not staff /dashboard or landlord portal.
   if (
     user &&
     isLesseePortalUser &&
     (pathname === "/" ||
       pathname === "/login" ||
       pathname === "/signup" ||
-      pathname.startsWith("/dashboard"))
+      pathname.startsWith("/dashboard") ||
+      isLandlordPortalPath)
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/portal/dashboard";
@@ -162,9 +199,31 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Authenticated landlords use /landlord-portal/*, not staff /dashboard or tenant portal.
+  if (
+    user &&
+    isLandlordPortalUser &&
+    (pathname === "/" ||
+      pathname === "/login" ||
+      pathname === "/signup" ||
+      pathname.startsWith("/dashboard") ||
+      isPortalPath)
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/landlord-portal/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  if (user && isLandlordPortalPublicPath && isLandlordPortalUser) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/landlord-portal/dashboard";
+    return NextResponse.redirect(url);
+  }
+
   if (
     user &&
     !isLesseePortalUser &&
+    !isLandlordPortalUser &&
     (pathname === "/" || pathname === "/login" || pathname === "/signup")
   ) {
     const nextParam =
@@ -180,7 +239,21 @@ export async function middleware(request: NextRequest) {
   // Non-lessee sessions cannot use the tenant portal dashboard.
   if (user && isPortalPath && !isPortalPublicPath && !isLesseePortalUser) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = isLandlordPortalUser
+      ? "/landlord-portal/dashboard"
+      : "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  // Non-landlord sessions cannot use the landlord portal dashboard.
+  if (
+    user &&
+    isLandlordPortalPath &&
+    !isLandlordPortalPublicPath &&
+    !isLandlordPortalUser
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = isLesseePortalUser ? "/portal/dashboard" : "/dashboard";
     return NextResponse.redirect(url);
   }
 
