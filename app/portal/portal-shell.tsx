@@ -6,6 +6,7 @@ import {
   DEFAULT_WORKSPACE_NAME,
 } from "@/utils/tenant-branding-types";
 import PortalNav from "./portal-nav";
+import PortalNotificationBell from "./portal-notification-bell";
 import PortalSignOutButton from "./dashboard/sign-out-button";
 
 type PortalShellProps = {
@@ -41,7 +42,10 @@ export default function PortalShell({ fullName, children }: PortalShellProps) {
                 </p>
               </div>
             </div>
-            <PortalSignOutButton />
+            <div className="flex shrink-0 items-center gap-1">
+              <PortalNotificationBell />
+              <PortalSignOutButton />
+            </div>
           </div>
           <h1 className="mt-4 text-lg font-semibold text-white sm:text-xl">
             Welcome, {fullName}

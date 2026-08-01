@@ -14,6 +14,10 @@ const navItems = [
   { label: "Complaints", href: "/dashboard/real-estate/complaints" },
   { label: "Inspections", href: "/dashboard/real-estate/inspections" },
   { label: "Expenses", href: "/dashboard/real-estate/expenses" },
+  {
+    label: "Announcements",
+    href: "/dashboard/real-estate/announcements",
+  },
 ] as const;
 
 export default function RealEstateNav() {

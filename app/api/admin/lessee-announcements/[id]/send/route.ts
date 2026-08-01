@@ -1,0 +1,49 @@
+import { NextResponse } from "next/server";
+import { runLesseeAnnouncementSend } from "@/utils/lessee-announcement-send";
+import {
+  readTenantIdFromBody,
+  requireLesseeAnnouncementAdmin,
+} from "@/utils/lessee-announcements-admin";
+
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+
+export async function POST(request: Request, context: RouteContext) {
+  const { id } = await context.params;
+  if (!id?.trim()) {
+    return NextResponse.json(
+      { error: "Announcement id is required." },
+      { status: 400 },
+    );
+  }
+
+  let rawBody: unknown = {};
+  try {
+    rawBody = await request.json();
+  } catch {
+    rawBody = {};
+  }
+
+  const ctx = await requireLesseeAnnouncementAdmin(readTenantIdFromBody(rawBody));
+  if (!ctx.ok) return ctx.response;
+
+  try {
+    const result = await runLesseeAnnouncementSend(ctx.admin, {
+      tenantId: ctx.tenantId,
+      announcementId: id,
+    });
+    return NextResponse.json({ result });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to send announcement.";
+    const status =
+      error &&
+      typeof error === "object" &&
+      "status" in error &&
+      typeof (error as { status?: unknown }).status === "number"
+        ? ((error as { status: number }).status)
+        : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
