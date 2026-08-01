@@ -1,3 +1,7 @@
+import type { InspectionListRow } from "./inspections-utils";
+import type { MaintenanceListRow } from "./maintenance-utils";
+import type { RentLedgerListRow } from "./rent-ledger-utils";
+
 export type LesseeStatus = "active" | "former";
 
 export type LesseeListRow = {
@@ -9,6 +13,53 @@ export type LesseeListRow = {
   status: LesseeStatus;
   privateNotes: string | null;
   createdAt: string;
+};
+
+export type LesseeActiveLeaseSummary = {
+  leaseId: string;
+  unitId: string;
+  unitNumber: string;
+  propertyId: string | null;
+  propertyName: string;
+  startDate: string;
+  endDate: string;
+  rentAmountGhs: number;
+  status: string;
+};
+
+export type LesseeDepositSummary = {
+  depositId: string;
+  leaseId: string;
+  unitLabel: string;
+  amountGhs: number;
+  status: string;
+  amountReturnedGhs: number | null;
+  dateCollected: string;
+  dateResolved: string | null;
+  resolutionNotes: string | null;
+};
+
+export type LesseeDetail = {
+  lesseeId: string;
+  tenantId: string;
+  landlordName: string;
+  fullName: string;
+  phone: string;
+  email: string | null;
+  status: LesseeStatus;
+  privateNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Primary/first property photo for the active lease’s property (or null). */
+  propertyHeroPhotoUrl: string | null;
+  propertyHeroPropertyId: string | null;
+  propertyHeroPropertyName: string | null;
+  activeLease: LesseeActiveLeaseSummary | null;
+  leases: LesseeActiveLeaseSummary[];
+  deposits: LesseeDepositSummary[];
+  rentLedger: RentLedgerListRow[];
+  maintenance: MaintenanceListRow[];
+  inspections: InspectionListRow[];
 };
 
 export const LESSEE_STATUS_OPTIONS: Array<{

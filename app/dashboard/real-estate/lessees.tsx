@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
@@ -363,7 +364,12 @@ export default function Lessees({
                         className={getStripedRowClassName(index)}
                       >
                         <td className="px-4 py-3 text-sm font-medium text-[#0f2744]">
-                          {row.fullName}
+                          <Link
+                            href={`/dashboard/real-estate/lessees/${row.tenantId}/${row.lesseeId}`}
+                            className="hover:underline"
+                          >
+                            {row.fullName}
+                          </Link>
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-700">
                           {row.phone}
@@ -379,6 +385,12 @@ export default function Lessees({
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <div className="flex flex-wrap gap-3">
+                            <Link
+                              href={`/dashboard/real-estate/lessees/${row.tenantId}/${row.lesseeId}`}
+                              className="text-[#0f2744] hover:underline"
+                            >
+                              View
+                            </Link>
                             <button
                               type="button"
                               onClick={() => openEditForm(row)}
