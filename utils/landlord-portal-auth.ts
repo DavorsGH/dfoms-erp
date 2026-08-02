@@ -864,3 +864,1117 @@ function buildLookupMaps(
   );
   return { leaseById, unitById, propertyNameById, lesseeNameById };
 }
+
+export type LandlordPortalArrearsBuckets = {
+  days0to30: number;
+  days31to60: number;
+  days61Plus: number;
+};
+
+export type LandlordPortalUpcomingLease = {
+  leaseId: string;
+  lesseeName: string;
+  unitLabel: string;
+  endDate: string;
+  daysUntilEnd: number;
+};
+
+export type LandlordPortalRentTrendPoint = {
+  label: string;
+  monthKey: string;
+  collectedGhs: number;
+  dueGhs: number;
+};
+
+export type LandlordPortalActivityItem = {
+  id: string;
+  type: "payment" | "maintenance" | "complaint" | "expense";
+  label: string;
+  detail: string;
+  occurredAt: string;
+};
+
+export type LandlordPortalOverviewMetrics = {
+  occupiedUnits: number;
+  totalUnits: number;
+  vacantUnits: number;
+  occupancyRatePct: number;
+  rentCollectedThisMonthGhs: number;
+  outstandingBalanceGhs: number;
+  openMaintenanceCount: number;
+  openComplaintsCount: number;
+  arrearsBuckets: LandlordPortalArrearsBuckets;
+  upcomingLeaseExpirations: LandlordPortalUpcomingLease[];
+  rentCollectionTrend: LandlordPortalRentTrendPoint[];
+  expensesThisMonthGhs: number;
+  netIncomeThisMonthGhs: number;
+  recentActivity: LandlordPortalActivityItem[];
+};
+
+export type LandlordPortalPropertyBrowseRow = {
+  propertyId: string;
+  name: string;
+  propertyType: string | null;
+  city: string | null;
+  region: string | null;
+  addressLine1: string | null;
+  unitCount: number;
+  occupiedCount: number;
+};
+
+export type LandlordPortalUnitBrowseRow = {
+  unitId: string;
+  propertyId: string;
+  propertyName: string;
+  unitNumber: string;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  baseRentGhs: number;
+  status: string;
+};
+
+export type LandlordPortalTenantBrowseRow = {
+  lesseeId: string;
+  fullName: string;
+  phone: string | null;
+  email: string | null;
+  status: string | null;
+};
+
+export type LandlordPortalLeaseBrowseRow = LandlordPortalLeaseRow;
+
+export type LandlordPortalRentLedgerBrowseRow = {
+  entryId: string;
+  leaseId: string;
+  lesseeName: string;
+  unitLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  amountDueGhs: number;
+  amountPaidGhs: number;
+  creditGhs: number;
+  outstandingGhs: number;
+  status: string;
+  statusLabel: string;
+  paymentDate: string | null;
+  paymentMethod: string | null;
+  notes: string | null;
+};
+
+export type LandlordPortalExpenseBrowseRow = {
+  expenseId: string;
+  propertyId: string;
+  propertyName: string;
+  category: string;
+  amountGhs: number;
+  expenseDate: string;
+  description: string | null;
+  receiptUrl: string | null;
+};
+
+export type LandlordPortalReportsData = {
+  occupancyRatePct: number;
+  occupiedUnits: number;
+  totalUnits: number;
+  vacantUnits: number;
+  rentCollectedGhs: number;
+  rentOutstandingGhs: number;
+  arrearsBuckets: {
+    current: number;
+    days1to30: number;
+    days31to60: number;
+    days61Plus: number;
+  };
+  ytd: {
+    year: number;
+    rentCollectedGhs: number;
+    rentDueGhs: number;
+    expensesGhs: number;
+    netIncomeGhs: number;
+    outstandingGhs: number;
+  };
+  exportRows: {
+    occupancy: Array<Array<string | number>>;
+    arrears: Array<Array<string | number>>;
+    ytd: Array<Array<string | number>>;
+  };
+};
+
+export type LandlordPortalWorkspaceProfile = {
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+};
+
+function monthBoundsIso(now = new Date()): { start: string; end: string } {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0);
+  const toIso = (d: Date) => d.toISOString().slice(0, 10);
+  return { start: toIso(start), end: toIso(end) };
+}
+
+function addCalendarDaysIso(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function daysBetweenIso(fromIso: string, toIso: string): number {
+  const from = new Date(`${fromIso}T00:00:00`);
+  const to = new Date(`${toIso}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    return 0;
+  }
+  return Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function monthKeyFromIso(isoDate: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(isoDate)) return null;
+  return isoDate.slice(0, 7);
+}
+
+function buildLastSixMonthKeys(now = new Date()): string[] {
+  const keys: string[] = [];
+  for (let offset = 5; offset >= 0; offset -= 1) {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    keys.push(`${year}-${month}`);
+  }
+  return keys;
+}
+
+function formatMonthTrendLabel(monthKey: string): string {
+  const [yearText, monthText] = monthKey.split("-");
+  const date = new Date(Number(yearText), Number(monthText) - 1, 1);
+  return date.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+}
+
+export async function fetchLandlordPortalOverviewMetrics(
+  session: LandlordPortalSession,
+): Promise<{ data: LandlordPortalOverviewMetrics | null; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { data: null, error: null };
+  }
+
+  const admin = createAdminClient();
+  const tenantId = session.tenantId;
+  const { start, end } = monthBoundsIso();
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const horizon90 = addCalendarDaysIso(todayIso, 90);
+  const trendKeys = buildLastSixMonthKeys();
+
+  const [
+    { data: units, error: unitsError },
+    { data: rentRows, error: rentError },
+    { data: maintenance, error: maintenanceError },
+    { data: complaints, error: complaintsError },
+    { data: expenses, error: expensesError },
+    { data: leases, error: leasesError },
+    { data: unitRows },
+    { data: properties },
+    { data: lessees },
+  ] = await Promise.all([
+    admin
+      .from("property_units")
+      .select("unit_id, status")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("rent_ledger")
+      .select(
+        "entry_id, lease_id, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, period_start, period_end",
+      )
+      .eq("tenant_id", tenantId),
+    admin
+      .from("maintenance_requests")
+      .select(
+        "request_id, status, landlord_approval_status, description, date_reported, lease_id",
+      )
+      .eq("tenant_id", tenantId)
+      .order("date_reported", { ascending: false }),
+    admin
+      .from("lessee_complaints")
+      .select("complaint_id, status, subject, date_reported, lease_id")
+      .eq("tenant_id", tenantId)
+      .order("date_reported", { ascending: false }),
+    admin
+      .from("property_expenses")
+      .select(
+        "expense_id, category, amount_ghs, expense_date, description, property_id, created_at",
+      )
+      .eq("tenant_id", tenantId)
+      .order("expense_date", { ascending: false }),
+    admin
+      .from("leases")
+      .select("lease_id, unit_id, lessee_id, end_date, status")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name")
+      .eq("tenant_id", tenantId),
+  ]);
+
+  if (unitsError) return { data: null, error: unitsError.message };
+  if (rentError) return { data: null, error: rentError.message };
+  if (maintenanceError) return { data: null, error: maintenanceError.message };
+  if (complaintsError) return { data: null, error: complaintsError.message };
+  if (expensesError) return { data: null, error: expensesError.message };
+  if (leasesError) return { data: null, error: leasesError.message };
+
+  const maps = buildLookupMaps(leases, unitRows, properties, lessees);
+  const propertyNameById = maps.propertyNameById;
+
+  const unitList =
+    (units as Array<{ unit_id: string; status: string }> | null) ?? [];
+  const occupiedUnits = unitList.filter((u) => u.status === "occupied").length;
+  const totalUnits = unitList.length;
+  const vacantUnits = Math.max(0, totalUnits - occupiedUnits);
+  const occupancyRatePct =
+    totalUnits === 0 ? 0 : Math.round((occupiedUnits / totalUnits) * 1000) / 10;
+
+  const arrearsBuckets: LandlordPortalArrearsBuckets = {
+    days0to30: 0,
+    days31to60: 0,
+    days61Plus: 0,
+  };
+  const trendMap = new Map(
+    trendKeys.map((key) => [key, { collectedGhs: 0, dueGhs: 0 }]),
+  );
+
+  let rentCollectedThisMonthGhs = 0;
+  let outstandingBalanceGhs = 0;
+  const activity: LandlordPortalActivityItem[] = [];
+
+  for (const row of (rentRows as Array<{
+    entry_id: string;
+    lease_id: string;
+    status: string;
+    amount_due_ghs: number | string;
+    amount_paid_ghs: number | string;
+    credit_ghs?: number | string | null;
+    payment_date: string | null;
+    period_start: string;
+    period_end: string;
+  }> | null) ?? []) {
+    const amountDue = Number(row.amount_due_ghs) || 0;
+    const amountPaid = Number(row.amount_paid_ghs) || 0;
+    const creditGhs = Number(row.credit_ghs) || 0;
+    const outstanding = rentOutstandingGhs(amountDue, amountPaid, creditGhs);
+    outstandingBalanceGhs += outstanding;
+
+    const paidInMonth =
+      row.payment_date &&
+      row.payment_date >= start &&
+      row.payment_date <= end;
+    if (paidInMonth) {
+      rentCollectedThisMonthGhs += amountPaid;
+    }
+
+    const dueMonth = monthKeyFromIso(row.period_start);
+    if (dueMonth && trendMap.has(dueMonth)) {
+      const point = trendMap.get(dueMonth)!;
+      point.dueGhs += amountDue;
+    }
+    if (row.payment_date) {
+      const paidMonth = monthKeyFromIso(row.payment_date);
+      if (paidMonth && trendMap.has(paidMonth)) {
+        const point = trendMap.get(paidMonth)!;
+        point.collectedGhs += amountPaid;
+      }
+    }
+
+    if (outstanding > 0 && row.period_end < todayIso) {
+      const ageDays = daysBetweenIso(row.period_end, todayIso);
+      if (ageDays <= 30) {
+        arrearsBuckets.days0to30 += outstanding;
+      } else if (ageDays <= 60) {
+        arrearsBuckets.days31to60 += outstanding;
+      } else {
+        arrearsBuckets.days61Plus += outstanding;
+      }
+    }
+
+    if (
+      row.payment_date &&
+      amountPaid > 0 &&
+      row.payment_date >= addCalendarDaysIso(todayIso, -90)
+    ) {
+      const lease = maps.leaseById.get(row.lease_id);
+      const unit = lease ? maps.unitById.get(lease.unit_id) : undefined;
+      const unitLabel = unit
+        ? `${propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
+        : "—";
+      const lesseeName = lease
+        ? (maps.lesseeNameById.get(lease.lessee_id) ?? "Tenant")
+        : "Tenant";
+      activity.push({
+        id: `payment-${row.entry_id}`,
+        type: "payment",
+        label: "Rent payment",
+        detail: `${lesseeName} · ${unitLabel} · GHS ${amountPaid.toFixed(2)}`,
+        occurredAt: row.payment_date,
+      });
+    }
+  }
+
+  let expensesThisMonthGhs = 0;
+  for (const row of (expenses as Array<{
+    expense_id: string;
+    category: string;
+    amount_ghs: number | string;
+    expense_date: string;
+    description: string | null;
+    property_id: string;
+    created_at: string | null;
+  }> | null) ?? []) {
+    const amount = Number(row.amount_ghs) || 0;
+    if (row.expense_date >= start && row.expense_date <= end) {
+      expensesThisMonthGhs += amount;
+    }
+    if (row.expense_date >= addCalendarDaysIso(todayIso, -90)) {
+      activity.push({
+        id: `expense-${row.expense_id}`,
+        type: "expense",
+        label: "Expense logged",
+        detail: `${propertyNameById.get(row.property_id) ?? "Property"} · ${row.category} · GHS ${amount.toFixed(2)}`,
+        occurredAt: row.expense_date || row.created_at?.slice(0, 10) || todayIso,
+      });
+    }
+  }
+
+  for (const row of (
+    (maintenance as Array<{
+      request_id: string;
+      status: string;
+      landlord_approval_status: string;
+      description: string;
+      date_reported: string;
+      lease_id: string;
+    }> | null) ?? []
+  ).slice(0, 15)) {
+    const lease = maps.leaseById.get(row.lease_id);
+    const unit = lease ? maps.unitById.get(lease.unit_id) : undefined;
+    const unitLabel = unit
+      ? `${propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
+      : "—";
+    activity.push({
+      id: `maintenance-${row.request_id}`,
+      type: "maintenance",
+      label: "Maintenance",
+      detail: `${unitLabel} · ${row.description.slice(0, 80)}`,
+      occurredAt: row.date_reported,
+    });
+  }
+
+  for (const row of (
+    (complaints as Array<{
+      complaint_id: string;
+      status: string;
+      subject: string;
+      date_reported: string;
+      lease_id: string;
+    }> | null) ?? []
+  ).slice(0, 15)) {
+    activity.push({
+      id: `complaint-${row.complaint_id}`,
+      type: "complaint",
+      label: "Complaint",
+      detail: row.subject,
+      occurredAt: row.date_reported,
+    });
+  }
+
+  const openMaintenanceCount = (
+    (maintenance as Array<{
+      status: string;
+      landlord_approval_status: string;
+    }> | null) ?? []
+  ).filter(
+    (row) =>
+      row.landlord_approval_status === "pending" ||
+      row.status === "submitted" ||
+      row.status === "in_progress" ||
+      row.status === "approved",
+  ).length;
+
+  const openComplaintsCount = (
+    (complaints as Array<{ status: string }> | null) ?? []
+  ).filter(
+    (row) => row.status === "submitted" || row.status === "in_progress",
+  ).length;
+
+  const upcomingLeaseExpirations: LandlordPortalUpcomingLease[] = (
+    (leases as Array<{
+      lease_id: string;
+      unit_id: string;
+      lessee_id: string;
+      end_date: string;
+      status: string;
+    }> | null) ?? []
+  )
+    .filter(
+      (row) =>
+        row.status === "active" &&
+        row.end_date >= todayIso &&
+        row.end_date <= horizon90,
+    )
+    .map((row) => {
+      const unit = maps.unitById.get(row.unit_id);
+      return {
+        leaseId: row.lease_id,
+        lesseeName: maps.lesseeNameById.get(row.lessee_id) ?? "—",
+        unitLabel: unit
+          ? `${propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
+          : "—",
+        endDate: row.end_date,
+        daysUntilEnd: daysBetweenIso(todayIso, row.end_date),
+      };
+    })
+    .sort((a, b) => a.endDate.localeCompare(b.endDate))
+    .slice(0, 12);
+
+  const rentCollectionTrend: LandlordPortalRentTrendPoint[] = trendKeys.map(
+    (monthKey) => {
+      const point = trendMap.get(monthKey) ?? { collectedGhs: 0, dueGhs: 0 };
+      return {
+        label: formatMonthTrendLabel(monthKey),
+        monthKey,
+        collectedGhs: point.collectedGhs,
+        dueGhs: point.dueGhs,
+      };
+    },
+  );
+
+  const recentActivity = activity
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(0, 8);
+
+  return {
+    data: {
+      occupiedUnits,
+      totalUnits,
+      vacantUnits,
+      occupancyRatePct,
+      rentCollectedThisMonthGhs,
+      outstandingBalanceGhs,
+      openMaintenanceCount,
+      openComplaintsCount,
+      arrearsBuckets,
+      upcomingLeaseExpirations,
+      rentCollectionTrend,
+      expensesThisMonthGhs,
+      netIncomeThisMonthGhs:
+        rentCollectedThisMonthGhs - expensesThisMonthGhs,
+      recentActivity,
+    },
+    error: null,
+  };
+}
+
+export async function fetchLandlordPortalProperties(
+  session: LandlordPortalSession,
+): Promise<{ rows: LandlordPortalPropertyBrowseRow[]; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], error: null };
+  }
+
+  const admin = createAdminClient();
+  const [{ data: properties, error }, { data: units }] = await Promise.all([
+    admin
+      .from("properties")
+      .select(
+        "property_id, name, property_type, city, region, address_line1",
+      )
+      .eq("tenant_id", session.tenantId)
+      .order("name", { ascending: true }),
+    admin
+      .from("property_units")
+      .select("property_id, status")
+      .eq("tenant_id", session.tenantId),
+  ]);
+
+  if (error) return { rows: [], error: error.message };
+
+  const stats = new Map<string, { total: number; occupied: number }>();
+  for (const unit of (units as Array<{
+    property_id: string;
+    status: string;
+  }> | null) ?? []) {
+    const current = stats.get(unit.property_id) ?? { total: 0, occupied: 0 };
+    current.total += 1;
+    if (unit.status === "occupied") current.occupied += 1;
+    stats.set(unit.property_id, current);
+  }
+
+  const rows: LandlordPortalPropertyBrowseRow[] = (
+    (properties as Array<{
+      property_id: string;
+      name: string;
+      property_type: string | null;
+      city: string | null;
+      region: string | null;
+      address_line1: string | null;
+    }> | null) ?? []
+  ).map((row) => {
+    const s = stats.get(row.property_id) ?? { total: 0, occupied: 0 };
+    return {
+      propertyId: row.property_id,
+      name: row.name,
+      propertyType: row.property_type,
+      city: row.city,
+      region: row.region,
+      addressLine1: row.address_line1,
+      unitCount: s.total,
+      occupiedCount: s.occupied,
+    };
+  });
+
+  return { rows, error: null };
+}
+
+export async function fetchLandlordPortalUnits(
+  session: LandlordPortalSession,
+): Promise<{ rows: LandlordPortalUnitBrowseRow[]; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], error: null };
+  }
+
+  const admin = createAdminClient();
+  const [{ data: units, error }, { data: properties }] = await Promise.all([
+    admin
+      .from("property_units")
+      .select(
+        "unit_id, property_id, unit_number, bedrooms, bathrooms, base_rent_ghs, status",
+      )
+      .eq("tenant_id", session.tenantId)
+      .order("unit_number", { ascending: true }),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", session.tenantId),
+  ]);
+
+  if (error) return { rows: [], error: error.message };
+
+  const propertyNameById = new Map(
+    ((properties as Array<{ property_id: string; name: string }> | null) ?? []).map(
+      (row) => [row.property_id, row.name],
+    ),
+  );
+
+  const rows: LandlordPortalUnitBrowseRow[] = (
+    (units as Array<{
+      unit_id: string;
+      property_id: string;
+      unit_number: string;
+      bedrooms: number | null;
+      bathrooms: number | null;
+      base_rent_ghs: number | string;
+      status: string;
+    }> | null) ?? []
+  ).map((row) => ({
+    unitId: row.unit_id,
+    propertyId: row.property_id,
+    propertyName: propertyNameById.get(row.property_id) ?? "—",
+    unitNumber: row.unit_number,
+    bedrooms: row.bedrooms,
+    bathrooms: row.bathrooms,
+    baseRentGhs: Number(row.base_rent_ghs) || 0,
+    status: row.status,
+  }));
+
+  return { rows, error: null };
+}
+
+export async function fetchLandlordPortalTenants(
+  session: LandlordPortalSession,
+): Promise<{ rows: LandlordPortalTenantBrowseRow[]; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], error: null };
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("lessees")
+    .select("lessee_id, full_name, phone, email, status")
+    .eq("tenant_id", session.tenantId)
+    .order("full_name", { ascending: true });
+
+  if (error) return { rows: [], error: error.message };
+
+  const rows: LandlordPortalTenantBrowseRow[] = (
+    (data as Array<{
+      lessee_id: string;
+      full_name: string;
+      phone: string | null;
+      email: string | null;
+      status: string | null;
+    }> | null) ?? []
+  ).map((row) => ({
+    lesseeId: row.lessee_id,
+    fullName: row.full_name,
+    phone: row.phone,
+    email: row.email,
+    status: row.status,
+  }));
+
+  return { rows, error: null };
+}
+
+export async function fetchLandlordPortalLeasesBrowse(
+  session: LandlordPortalSession,
+): Promise<{ rows: LandlordPortalLeaseBrowseRow[]; error: string | null }> {
+  const { data, error } = await fetchLandlordPortalDashboardData(session);
+  if (error) return { rows: [], error };
+  return { rows: data?.leases ?? [], error: null };
+}
+
+export async function fetchLandlordPortalRentLedgerBrowse(
+  session: LandlordPortalSession,
+): Promise<{ rows: LandlordPortalRentLedgerBrowseRow[]; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], error: null };
+  }
+
+  const admin = createAdminClient();
+  const tenantId = session.tenantId;
+
+  const [
+    { data: rentRows, error: rentError },
+    { data: leases },
+    { data: units },
+    { data: properties },
+    { data: lessees },
+  ] = await Promise.all([
+    admin
+      .from("rent_ledger")
+      .select(
+        "entry_id, lease_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, payment_method, notes",
+      )
+      .eq("tenant_id", tenantId)
+      .order("period_start", { ascending: false })
+      .limit(200),
+    admin
+      .from("leases")
+      .select("lease_id, unit_id, lessee_id")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name")
+      .eq("tenant_id", tenantId),
+  ]);
+
+  if (rentError) return { rows: [], error: rentError.message };
+
+  const maps = buildLookupMaps(leases, units, properties, lessees);
+  const rows: LandlordPortalRentLedgerBrowseRow[] = [];
+
+  for (const row of (rentRows as Array<{
+    entry_id: string;
+    lease_id: string;
+    period_start: string;
+    period_end: string;
+    status: string;
+    amount_due_ghs: number | string;
+    amount_paid_ghs: number | string;
+    credit_ghs?: number | string | null;
+    payment_date: string | null;
+    payment_method: string | null;
+    notes: string | null;
+  }> | null) ?? []) {
+    const amountDue = Number(row.amount_due_ghs) || 0;
+    const amountPaid = Number(row.amount_paid_ghs) || 0;
+    const creditGhs = Number(row.credit_ghs) || 0;
+    const outstanding = rentOutstandingGhs(amountDue, amountPaid, creditGhs);
+    const lease = maps.leaseById.get(row.lease_id);
+    const unit = lease ? maps.unitById.get(lease.unit_id) : undefined;
+    rows.push({
+      entryId: row.entry_id,
+      leaseId: row.lease_id,
+      lesseeName: lease
+        ? (maps.lesseeNameById.get(lease.lessee_id) ?? "—")
+        : "—",
+      unitLabel: unit
+        ? `${maps.propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
+        : "—",
+      periodStart: row.period_start,
+      periodEnd: row.period_end,
+      amountDueGhs: amountDue,
+      amountPaidGhs: amountPaid,
+      creditGhs,
+      outstandingGhs: outstanding,
+      status: row.status,
+      statusLabel: formatRentLedgerStatus(row.status as RentLedgerStatus),
+      paymentDate: row.payment_date,
+      paymentMethod: row.payment_method,
+      notes: row.notes,
+    });
+  }
+
+  return { rows, error: null };
+}
+
+export async function fetchLandlordPortalRentLedgerEntry(
+  session: LandlordPortalSession,
+  entryId: string,
+): Promise<{
+  row: LandlordPortalRentLedgerBrowseRow | null;
+  error: string | null;
+}> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { row: null, error: null };
+  }
+
+  const trimmed = entryId.trim();
+  if (!trimmed) {
+    return { row: null, error: "entry_id is required" };
+  }
+
+  const admin = createAdminClient();
+  const tenantId = session.tenantId;
+  const { data: rentRow, error: rentError } = await admin
+    .from("rent_ledger")
+    .select(
+      "entry_id, lease_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, payment_method, notes",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("entry_id", trimmed)
+    .maybeSingle();
+
+  if (rentError) return { row: null, error: rentError.message };
+  if (!rentRow) return { row: null, error: null };
+
+  const [{ data: leases }, { data: units }, { data: properties }, { data: lessees }] =
+    await Promise.all([
+      admin
+        .from("leases")
+        .select("lease_id, unit_id, lessee_id")
+        .eq("tenant_id", tenantId)
+        .eq("lease_id", rentRow.lease_id),
+      admin
+        .from("property_units")
+        .select("unit_id, unit_number, property_id")
+        .eq("tenant_id", tenantId),
+      admin
+        .from("properties")
+        .select("property_id, name")
+        .eq("tenant_id", tenantId),
+      admin
+        .from("lessees")
+        .select("lessee_id, full_name")
+        .eq("tenant_id", tenantId),
+    ]);
+
+  const maps = buildLookupMaps(leases, units, properties, lessees);
+  const amountDue = Number(rentRow.amount_due_ghs) || 0;
+  const amountPaid = Number(rentRow.amount_paid_ghs) || 0;
+  const creditGhs = Number(rentRow.credit_ghs) || 0;
+  const lease = maps.leaseById.get(rentRow.lease_id);
+  const unit = lease ? maps.unitById.get(lease.unit_id) : undefined;
+
+  return {
+    row: {
+      entryId: rentRow.entry_id,
+      leaseId: rentRow.lease_id,
+      lesseeName: lease
+        ? (maps.lesseeNameById.get(lease.lessee_id) ?? "—")
+        : "—",
+      unitLabel: unit
+        ? `${maps.propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
+        : "—",
+      periodStart: rentRow.period_start,
+      periodEnd: rentRow.period_end,
+      amountDueGhs: amountDue,
+      amountPaidGhs: amountPaid,
+      creditGhs,
+      outstandingGhs: rentOutstandingGhs(amountDue, amountPaid, creditGhs),
+      status: rentRow.status,
+      statusLabel: formatRentLedgerStatus(rentRow.status as RentLedgerStatus),
+      paymentDate: rentRow.payment_date,
+      paymentMethod: rentRow.payment_method,
+      notes: rentRow.notes,
+    },
+    error: null,
+  };
+}
+
+export async function fetchLandlordPortalExpenses(
+  session: LandlordPortalSession,
+): Promise<{
+  rows: LandlordPortalExpenseBrowseRow[];
+  properties: Array<{ propertyId: string; name: string }>;
+  error: string | null;
+}> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], properties: [], error: null };
+  }
+
+  const admin = createAdminClient();
+  const [{ data: expenses, error }, { data: properties }] = await Promise.all([
+    admin
+      .from("property_expenses")
+      .select(
+        "expense_id, property_id, category, amount_ghs, expense_date, description, receipt_url",
+      )
+      .eq("tenant_id", session.tenantId)
+      .order("expense_date", { ascending: false })
+      .limit(200),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", session.tenantId)
+      .order("name", { ascending: true }),
+  ]);
+
+  if (error) return { rows: [], properties: [], error: error.message };
+
+  const propertyNameById = new Map(
+    ((properties as Array<{ property_id: string; name: string }> | null) ?? []).map(
+      (row) => [row.property_id, row.name],
+    ),
+  );
+
+  const propertyOptions = (
+    (properties as Array<{ property_id: string; name: string }> | null) ?? []
+  ).map((row) => ({ propertyId: row.property_id, name: row.name }));
+
+  const rows: LandlordPortalExpenseBrowseRow[] = (
+    (expenses as Array<{
+      expense_id: string;
+      property_id: string;
+      category: string;
+      amount_ghs: number | string;
+      expense_date: string;
+      description: string | null;
+      receipt_url: string | null;
+    }> | null) ?? []
+  ).map((row) => ({
+    expenseId: row.expense_id,
+    propertyId: row.property_id,
+    propertyName: propertyNameById.get(row.property_id) ?? "—",
+    category: row.category,
+    amountGhs: Number(row.amount_ghs) || 0,
+    expenseDate: row.expense_date,
+    description: row.description,
+    receiptUrl: row.receipt_url,
+  }));
+
+  return { rows, properties: propertyOptions, error: null };
+}
+
+export async function fetchLandlordPortalReports(
+  session: LandlordPortalSession,
+): Promise<{ data: LandlordPortalReportsData | null; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { data: null, error: null };
+  }
+
+  const admin = createAdminClient();
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  const year = today.getFullYear();
+  const ytdStart = `${year}-01-01`;
+
+  const [
+    { data: units, error: unitsError },
+    { data: rentRows, error: rentError },
+    { data: expenses, error: expensesError },
+  ] = await Promise.all([
+    admin
+      .from("property_units")
+      .select("unit_id, status")
+      .eq("tenant_id", session.tenantId),
+    admin
+      .from("rent_ledger")
+      .select(
+        "amount_due_ghs, amount_paid_ghs, credit_ghs, period_start, period_end, payment_date, status",
+      )
+      .eq("tenant_id", session.tenantId),
+    admin
+      .from("property_expenses")
+      .select("amount_ghs, expense_date")
+      .eq("tenant_id", session.tenantId),
+  ]);
+
+  if (unitsError) return { data: null, error: unitsError.message };
+  if (rentError) return { data: null, error: rentError.message };
+  if (expensesError) return { data: null, error: expensesError.message };
+
+  const unitList =
+    (units as Array<{ unit_id: string; status: string }> | null) ?? [];
+  const occupiedUnits = unitList.filter((u) => u.status === "occupied").length;
+  const totalUnits = unitList.length;
+  const vacantUnits = Math.max(0, totalUnits - occupiedUnits);
+  const occupancyRatePct =
+    totalUnits === 0 ? 0 : Math.round((occupiedUnits / totalUnits) * 1000) / 10;
+
+  let rentCollectedGhs = 0;
+  let outstandingTotalGhs = 0;
+  let ytdCollected = 0;
+  let ytdDue = 0;
+  let ytdOutstanding = 0;
+  const arrearsBuckets = {
+    current: 0,
+    days1to30: 0,
+    days31to60: 0,
+    days61Plus: 0,
+  };
+
+  for (const row of (rentRows as Array<{
+    amount_due_ghs: number | string;
+    amount_paid_ghs: number | string;
+    credit_ghs?: number | string | null;
+    period_start: string;
+    period_end: string;
+    payment_date: string | null;
+    status: string;
+  }> | null) ?? []) {
+    const amountDue = Number(row.amount_due_ghs) || 0;
+    const amountPaid = Number(row.amount_paid_ghs) || 0;
+    const creditGhs = Number(row.credit_ghs) || 0;
+    rentCollectedGhs += amountPaid;
+    const outstanding = rentOutstandingGhs(amountDue, amountPaid, creditGhs);
+
+    if (row.period_start >= ytdStart) {
+      ytdDue += amountDue;
+    }
+    if (row.payment_date && row.payment_date >= ytdStart) {
+      ytdCollected += amountPaid;
+    }
+    if (outstanding > 0 && row.period_start >= ytdStart) {
+      ytdOutstanding += outstanding;
+    }
+
+    if (outstanding <= 0) continue;
+    outstandingTotalGhs += outstanding;
+
+    const periodEnd = new Date(`${row.period_end}T00:00:00`);
+    const ageDays = Number.isNaN(periodEnd.getTime())
+      ? 0
+      : Math.max(
+          0,
+          Math.floor(
+            (today.getTime() - periodEnd.getTime()) / (1000 * 60 * 60 * 24),
+          ),
+        );
+
+    if (row.period_end >= todayIso || ageDays <= 0) {
+      arrearsBuckets.current += outstanding;
+    } else if (ageDays <= 30) {
+      arrearsBuckets.days1to30 += outstanding;
+    } else if (ageDays <= 60) {
+      arrearsBuckets.days31to60 += outstanding;
+    } else {
+      arrearsBuckets.days61Plus += outstanding;
+    }
+  }
+
+  let ytdExpenses = 0;
+  for (const row of (expenses as Array<{
+    amount_ghs: number | string;
+    expense_date: string;
+  }> | null) ?? []) {
+    if (row.expense_date >= ytdStart) {
+      ytdExpenses += Number(row.amount_ghs) || 0;
+    }
+  }
+
+  const ytd = {
+    year,
+    rentCollectedGhs: ytdCollected,
+    rentDueGhs: ytdDue,
+    expensesGhs: ytdExpenses,
+    netIncomeGhs: ytdCollected - ytdExpenses,
+    outstandingGhs: ytdOutstanding,
+  };
+
+  return {
+    data: {
+      occupancyRatePct,
+      occupiedUnits,
+      totalUnits,
+      vacantUnits,
+      rentCollectedGhs,
+      rentOutstandingGhs: outstandingTotalGhs,
+      arrearsBuckets,
+      ytd,
+      exportRows: {
+        occupancy: [
+          ["Metric", "Value"],
+          ["Occupancy rate %", occupancyRatePct],
+          ["Occupied units", occupiedUnits],
+          ["Vacant units", vacantUnits],
+          ["Total units", totalUnits],
+        ],
+        arrears: [
+          ["Bucket", "Outstanding GHS"],
+          ["Current", arrearsBuckets.current],
+          ["1-30 days", arrearsBuckets.days1to30],
+          ["31-60 days", arrearsBuckets.days31to60],
+          ["61+ days", arrearsBuckets.days61Plus],
+          ["Total outstanding", outstandingTotalGhs],
+        ],
+        ytd: [
+          ["Metric", "Value"],
+          ["Year", year],
+          ["Rent collected YTD", ytd.rentCollectedGhs],
+          ["Rent due YTD", ytd.rentDueGhs],
+          ["Expenses YTD", ytd.expensesGhs],
+          ["Net income YTD", ytd.netIncomeGhs],
+          ["Outstanding (YTD periods)", ytd.outstandingGhs],
+        ],
+      },
+    },
+    error: null,
+  };
+}
+
+export async function fetchLandlordPortalWorkspaceProfile(
+  session: LandlordPortalSession,
+): Promise<{
+  data: LandlordPortalWorkspaceProfile | null;
+  error: string | null;
+}> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { data: null, error: null };
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("tenants")
+    .select("name, email, phone, address")
+    .eq("id", session.tenantId)
+    .maybeSingle();
+
+  if (error) return { data: null, error: error.message };
+  if (!data) return { data: null, error: "Workspace profile not found." };
+
+  return {
+    data: {
+      name: typeof data.name === "string" ? data.name : session.fullName,
+      email: typeof data.email === "string" ? data.email : session.email,
+      phone: typeof data.phone === "string" ? data.phone : null,
+      address: typeof data.address === "string" ? data.address : null,
+    },
+    error: null,
+  };
+}
