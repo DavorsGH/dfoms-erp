@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -24,15 +25,36 @@ type LandlordsProps = {
   fetchError: string | null;
 };
 
+const emptyForm = {
+  name: "",
+  email: "",
+  phone: "",
+  address: "",
+};
+
+const primaryButtonClassName =
+  "rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50";
+
+const secondaryButtonClassName =
+  "rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
 export default function Landlords({ initialRows, fetchError }: LandlordsProps) {
+  const router = useRouter();
   const [rows, setRows] = useState(initialRows);
-  const [error] = useState<string | null>(fetchError);
+  const [error, setError] = useState<string | null>(fetchError);
   const [filterApprovalStatus, setFilterApprovalStatus] = useState("");
   const [filterLandlordType, setFilterLandlordType] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setRows(initialRows);
   }, [initialRows]);
+
+  useEffect(() => {
+    setError(fetchError);
+  }, [fetchError]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -52,57 +74,208 @@ export default function Landlords({ initialRows, fetchError }: LandlordsProps) {
     });
   }, [rows, filterApprovalStatus, filterLandlordType]);
 
+  function updateField(field: keyof typeof emptyForm, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleCreate(event: React.FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    const response = await fetch("/api/admin/landlords/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim(),
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      tenant_id?: string;
+    } | null;
+
+    if (!response.ok || !payload?.tenant_id) {
+      setError(payload?.error ?? "Unable to create landlord.");
+      setLoading(false);
+      return;
+    }
+
+    setShowForm(false);
+    setForm(emptyForm);
+    setLoading(false);
+    router.push(`/dashboard/real-estate/landlords/${payload.tenant_id}`);
+    router.refresh();
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[180px]">
-          <label
-            htmlFor="landlord-filter-approval"
-            className="mb-1 block text-sm font-medium text-slate-700"
-          >
-            Approval Status
-          </label>
-          <select
-            id="landlord-filter-approval"
-            value={filterApprovalStatus}
-            onChange={(event) => setFilterApprovalStatus(event.target.value)}
-            className={inputClassName}
-          >
-            <option value="">All</option>
-            {LANDLORD_APPROVAL_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[180px]">
+            <label
+              htmlFor="landlord-filter-approval"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Approval Status
+            </label>
+            <select
+              id="landlord-filter-approval"
+              value={filterApprovalStatus}
+              onChange={(event) => setFilterApprovalStatus(event.target.value)}
+              className={inputClassName}
+            >
+              <option value="">All</option>
+              {LANDLORD_APPROVAL_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[180px]">
+            <label
+              htmlFor="landlord-filter-type"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Landlord Type
+            </label>
+            <select
+              id="landlord-filter-type"
+              value={filterLandlordType}
+              onChange={(event) => setFilterLandlordType(event.target.value)}
+              className={inputClassName}
+            >
+              <option value="">All</option>
+              {LANDLORD_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="min-w-[180px]">
-          <label
-            htmlFor="landlord-filter-type"
-            className="mb-1 block text-sm font-medium text-slate-700"
-          >
-            Landlord Type
-          </label>
-          <select
-            id="landlord-filter-type"
-            value={filterLandlordType}
-            onChange={(event) => setFilterLandlordType(event.target.value)}
-            className={inputClassName}
-          >
-            <option value="">All</option>
-            {LANDLORD_TYPE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setForm(emptyForm);
+            setShowForm((current) => !current);
+            setError(null);
+          }}
+          className={primaryButtonClassName}
+        >
+          {showForm ? "Cancel" : "Add Landlord"}
+        </button>
       </div>
 
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
+      ) : null}
+
+      {showForm ? (
+        <form
+          onSubmit={handleCreate}
+          className="space-y-4 rounded-md border border-slate-200 bg-white p-4"
+        >
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+            New Landlord
+          </h3>
+          <p className="text-sm text-slate-600">
+            Creates a pending landlord tenant. Approve from the detail page when
+            ready (portal invite is sent on approve).
+          </p>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div>
+              <label
+                htmlFor="landlord-create-name"
+                className="mb-1 block text-sm font-medium text-slate-700"
+              >
+                Name
+              </label>
+              <input
+                id="landlord-create-name"
+                required
+                type="text"
+                value={form.name}
+                onChange={(event) => updateField("name", event.target.value)}
+                className={inputClassName}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="landlord-create-email"
+                className="mb-1 block text-sm font-medium text-slate-700"
+              >
+                Email
+              </label>
+              <input
+                id="landlord-create-email"
+                required
+                type="email"
+                value={form.email}
+                onChange={(event) => updateField("email", event.target.value)}
+                className={inputClassName}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="landlord-create-phone"
+                className="mb-1 block text-sm font-medium text-slate-700"
+              >
+                Phone
+              </label>
+              <input
+                id="landlord-create-phone"
+                required
+                type="text"
+                value={form.phone}
+                onChange={(event) => updateField("phone", event.target.value)}
+                className={inputClassName}
+              />
+            </div>
+            <div className="md:col-span-2 xl:col-span-3">
+              <label
+                htmlFor="landlord-create-address"
+                className="mb-1 block text-sm font-medium text-slate-700"
+              >
+                Address
+              </label>
+              <input
+                id="landlord-create-address"
+                required
+                type="text"
+                value={form.address}
+                onChange={(event) => updateField("address", event.target.value)}
+                className={inputClassName}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className={primaryButtonClassName}
+            >
+              {loading ? "Saving…" : "Save Landlord"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                setForm(emptyForm);
+              }}
+              className={secondaryButtonClassName}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       ) : null}
 
       <ScrollableTable>
