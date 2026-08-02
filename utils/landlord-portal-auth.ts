@@ -2042,20 +2042,42 @@ export async function fetchLandlordPortalWorkspaceProfile(
   }
 
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("tenants")
-    .select("name, email, phone, address")
-    .eq("id", session.tenantId)
-    .maybeSingle();
+  const [tenantResult, landlordResult] = await Promise.all([
+    admin
+      .from("tenants")
+      .select("name, email, phone, address")
+      .eq("id", session.tenantId)
+      .maybeSingle(),
+    admin
+      .from("landlords")
+      .select("notification_phone")
+      .eq("tenant_id", session.tenantId)
+      .maybeSingle(),
+  ]);
 
-  if (error) return { data: null, error: error.message };
-  if (!data) return { data: null, error: "Workspace profile not found." };
+  if (tenantResult.error) {
+    return { data: null, error: tenantResult.error.message };
+  }
+  if (landlordResult.error) {
+    return { data: null, error: landlordResult.error.message };
+  }
+  if (!tenantResult.data) {
+    return { data: null, error: "Workspace profile not found." };
+  }
+
+  const data = tenantResult.data;
+  const notificationPhone =
+    typeof landlordResult.data?.notification_phone === "string"
+      ? landlordResult.data.notification_phone
+      : null;
+  const tenantPhone = typeof data.phone === "string" ? data.phone : null;
 
   return {
     data: {
       name: typeof data.name === "string" ? data.name : session.fullName,
       email: typeof data.email === "string" ? data.email : session.email,
-      phone: typeof data.phone === "string" ? data.phone : null,
+      // Prefer notification_phone when set; columns should stay equal after saves.
+      phone: notificationPhone ?? tenantPhone,
       address: typeof data.address === "string" ? data.address : null,
     },
     error: null,

@@ -16,6 +16,8 @@ type UpdateBody = {
  * Landlord updates own tenants row (workspace/profile).
  * Service-role after session check — landlords have SELECT-only RLS on tenants.
  * SCHEMA FLAG: no UPDATE policy for landlord JWT; app uses admin client.
+ * Also writes landlords.notification_phone when phone changes so Workspace Phone
+ * and Notification phone stay equal (same dual-column sync as staff update).
  */
 export async function POST(request: Request) {
   const session = await getLandlordPortalSession();
@@ -59,6 +61,7 @@ export async function POST(request: Request) {
     typeof body.address === "string" ? body.address.trim() || null : null;
 
   const admin = createAdminClient();
+  const nowIso = new Date().toISOString();
   const { error } = await admin
     .from("tenants")
     .update({
@@ -66,12 +69,25 @@ export async function POST(request: Request) {
       email,
       phone,
       address,
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     })
     .eq("id", session.tenantId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  // Keep landlords.notification_phone aligned with tenants.phone.
+  const { error: landlordError } = await admin
+    .from("landlords")
+    .update({
+      notification_phone: phone,
+      updated_at: nowIso,
+    })
+    .eq("tenant_id", session.tenantId);
+
+  if (landlordError) {
+    return NextResponse.json({ error: landlordError.message }, { status: 400 });
   }
 
   return NextResponse.json({
