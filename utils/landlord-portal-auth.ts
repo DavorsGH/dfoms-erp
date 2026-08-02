@@ -144,6 +144,13 @@ export type LandlordPortalTerminationRow = {
  * Session + service-role client for landlord-portal mutations.
  * Enforces platform_only (davors_managed cannot mutate even if UI is bypassed).
  */
+/** True when the landlord may load operational portal data (RLS + admin fallback). */
+export function landlordPortalHasDataAccess(
+  session: LandlordPortalSession,
+): boolean {
+  return session.approvalStatus === "approved";
+}
+
 export async function requirePlatformOnlyLandlordSession(): Promise<
   | {
       ok: true;
@@ -157,6 +164,18 @@ export async function requirePlatformOnlyLandlordSession(): Promise<
     return {
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+  if (!landlordPortalHasDataAccess(session)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            "Your landlord account is pending approval. Portal actions are unavailable until Davors staff approves your account.",
+        },
+        { status: 403 },
+      ),
     };
   }
   if (session.landlordType !== "platform_only") {
@@ -181,6 +200,14 @@ export async function fetchLandlordPortalNotificationContacts(
   notificationEmail: string | null;
   error: string | null;
 }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return {
+      notificationPhone: null,
+      notificationEmail: null,
+      error: null,
+    };
+  }
+
   const admin = createAdminClient();
   const [{ data: landlord, error: landlordError }, { data: tenant, error: tenantError }] =
     await Promise.all([
@@ -224,7 +251,9 @@ export async function fetchLandlordPortalNotificationContacts(
 
 /**
  * Resolves the signed-in Supabase user to a landlords row via auth_user_id.
- * Landlord portal auth is separate from user_accounts / staff RBAC.
+ * Allows pending/rejected so the portal can show a Pending Approval state.
+ * Data access still requires approval_status = approved (RLS helper +
+ * landlordPortalHasDataAccess / requirePlatformOnlyLandlordSession).
  */
 export async function getLandlordPortalSession(): Promise<LandlordPortalSession | null> {
   const cookieStore = await cookies();
@@ -245,9 +274,6 @@ export async function getLandlordPortalSession(): Promise<LandlordPortalSession 
     .maybeSingle();
 
   if (error || !landlord) {
-    return null;
-  }
-  if (landlord.approval_status !== "approved") {
     return null;
   }
 
@@ -276,6 +302,11 @@ export async function getLandlordPortalSession(): Promise<LandlordPortalSession 
 export async function fetchLandlordPortalDashboardData(
   session: LandlordPortalSession,
 ): Promise<{ data: LandlordPortalDashboardData | null; error: string | null }> {
+  // Never use the service-role fallback for unapproved landlords.
+  if (!landlordPortalHasDataAccess(session)) {
+    return { data: null, error: null };
+  }
+
   const cookieStore = await cookies();
   const userClient = createClient(cookieStore);
 
@@ -553,6 +584,10 @@ async function loadDashboardWithClient(
 export async function fetchLandlordPortalMaintenance(
   session: LandlordPortalSession,
 ): Promise<{ rows: LandlordPortalMaintenanceRow[]; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], error: null };
+  }
+
   const admin = createAdminClient();
   const tenantId = session.tenantId;
 
@@ -642,6 +677,10 @@ export async function fetchLandlordPortalMaintenance(
 export async function fetchLandlordPortalComplaints(
   session: LandlordPortalSession,
 ): Promise<{ rows: LandlordPortalComplaintRow[]; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], error: null };
+  }
+
   const admin = createAdminClient();
   const tenantId = session.tenantId;
 
@@ -719,6 +758,10 @@ export async function fetchLandlordPortalComplaints(
 export async function fetchLandlordPortalTerminations(
   session: LandlordPortalSession,
 ): Promise<{ rows: LandlordPortalTerminationRow[]; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], error: null };
+  }
+
   const admin = createAdminClient();
   const tenantId = session.tenantId;
 

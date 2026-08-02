@@ -98,7 +98,17 @@ export default function LandlordPortalLoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-slate-500">
+        <p className="mt-6 text-center text-sm text-slate-600">
+          New landlord?{" "}
+          <Link
+            href="/landlord-portal/signup"
+            className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+          >
+            Create an account
+          </Link>
+        </p>
+
+        <p className="mt-4 text-center text-xs text-slate-500">
           Staff users should use the{" "}
           <Link
             href="/login"

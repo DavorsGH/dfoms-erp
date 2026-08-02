@@ -48,10 +48,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Portal invite acceptance APIs — public; validate token in-route.
+  // Portal invite acceptance / landlord self-signup APIs — public; validate in-route.
   if (
     pathname === "/api/portal/accept-invite" ||
-    pathname === "/api/landlord-portal/accept-invite"
+    pathname === "/api/landlord-portal/accept-invite" ||
+    pathname === "/api/landlord-portal/signup"
   ) {
     return NextResponse.next();
   }
@@ -77,7 +78,8 @@ export async function middleware(request: NextRequest) {
     pathname === "/portal/login" || pathname === "/portal/accept-invite";
   const isLandlordPortalPublicPath =
     pathname === "/landlord-portal/login" ||
-    pathname === "/landlord-portal/accept-invite";
+    pathname === "/landlord-portal/accept-invite" ||
+    pathname === "/landlord-portal/signup";
 
   const publicPaths = new Set([
     "/",
@@ -92,6 +94,8 @@ export async function middleware(request: NextRequest) {
     "/portal/accept-invite",
     "/landlord-portal/login",
     "/landlord-portal/accept-invite",
+    "/landlord-portal/signup",
+    "/api/landlord-portal/signup",
   ]);
 
   if (

@@ -3,6 +3,7 @@ import {
   fetchLandlordPortalDashboardData,
   fetchLandlordPortalNotificationContacts,
   getLandlordPortalSession,
+  landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
 import { formatLeaseMoney } from "@/app/dashboard/real-estate/leases-utils";
 import { formatPayoutMoney } from "@/app/dashboard/real-estate/payouts-utils";
@@ -11,6 +12,7 @@ import {
   portalSectionClassName,
   portalSectionTitleClassName,
 } from "../portal-ui";
+import LandlordPortalPendingApprovalView from "../pending-approval-view";
 import LandlordPortalShell from "../portal-shell";
 import LandlordPortalNotificationContactsForm from "./notification-contacts-form";
 
@@ -30,6 +32,15 @@ export default async function LandlordPortalDashboardPage() {
   const session = await getLandlordPortalSession();
   if (!session) {
     redirect("/landlord-portal/login");
+  }
+
+  if (!landlordPortalHasDataAccess(session)) {
+    return (
+      <LandlordPortalPendingApprovalView
+        fullName={session.fullName}
+        approvalStatus={session.approvalStatus}
+      />
+    );
   }
 
   const { data, error } = await fetchLandlordPortalDashboardData(session);

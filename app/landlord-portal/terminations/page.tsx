@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import {
   fetchLandlordPortalTerminations,
   getLandlordPortalSession,
+  landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
 import { formatLeaseDate } from "@/app/dashboard/real-estate/leases-utils";
 import {
@@ -9,6 +10,7 @@ import {
   portalSectionClassName,
   portalSectionTitleClassName,
 } from "../portal-ui";
+import LandlordPortalPendingApprovalView from "../pending-approval-view";
 import LandlordPortalShell from "../portal-shell";
 import LandlordPortalTerminationActions from "./termination-actions";
 
@@ -16,6 +18,15 @@ export default async function LandlordPortalTerminationsPage() {
   const session = await getLandlordPortalSession();
   if (!session) {
     redirect("/landlord-portal/login");
+  }
+
+  if (!landlordPortalHasDataAccess(session)) {
+    return (
+      <LandlordPortalPendingApprovalView
+        fullName={session.fullName}
+        approvalStatus={session.approvalStatus}
+      />
+    );
   }
 
   const { rows, error } = await fetchLandlordPortalTerminations(session);

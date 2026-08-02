@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import {
   fetchLandlordPortalMaintenance,
   getLandlordPortalSession,
+  landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
 import { formatMaintenanceDate } from "@/app/dashboard/real-estate/maintenance-utils";
 import {
@@ -9,6 +10,7 @@ import {
   portalSectionClassName,
   portalSectionTitleClassName,
 } from "../portal-ui";
+import LandlordPortalPendingApprovalView from "../pending-approval-view";
 import LandlordPortalShell from "../portal-shell";
 import LandlordPortalMaintenanceActions from "./maintenance-actions";
 
@@ -16,6 +18,15 @@ export default async function LandlordPortalMaintenancePage() {
   const session = await getLandlordPortalSession();
   if (!session) {
     redirect("/landlord-portal/login");
+  }
+
+  if (!landlordPortalHasDataAccess(session)) {
+    return (
+      <LandlordPortalPendingApprovalView
+        fullName={session.fullName}
+        approvalStatus={session.approvalStatus}
+      />
+    );
   }
 
   const { rows, error } = await fetchLandlordPortalMaintenance(session);

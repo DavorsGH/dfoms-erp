@@ -11,6 +11,8 @@ import LandlordPortalSignOutButton from "./dashboard/sign-out-button";
 type LandlordPortalShellProps = {
   fullName: string;
   children: React.ReactNode;
+  /** Hide nav for pending/rejected accounts that have no operational pages yet. */
+  showNav?: boolean;
 };
 
 /**
@@ -20,6 +22,7 @@ type LandlordPortalShellProps = {
 export default function LandlordPortalShell({
   fullName,
   children,
+  showNav = true,
 }: LandlordPortalShellProps) {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -54,9 +57,11 @@ export default function LandlordPortalShell({
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-3xl px-4 pt-6 sm:px-6 sm:pt-8">
-        <LandlordPortalNav />
-      </div>
+      {showNav ? (
+        <div className="mx-auto w-full max-w-3xl px-4 pt-6 sm:px-6 sm:pt-8">
+          <LandlordPortalNav />
+        </div>
+      ) : null}
 
       <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-6 sm:px-6">
         {children}

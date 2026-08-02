@@ -14,8 +14,9 @@ export type LandlordPortalLoginActionResult =
   | { ok: false; error: string };
 
 /**
- * Landlord portal login — same rate-limit pattern as Tenant Portal, but requires
- * landlords.auth_user_id + approval_status = approved.
+ * Landlord portal login — rate-limited like Tenant Portal.
+ * Allows approved and pending landlords (pending see Pending Approval UI).
+ * Rejected accounts can sign in to see a clear rejected state.
  */
 export async function landlordPortalLoginWithPassword(
   email: string,
@@ -59,7 +60,7 @@ export async function landlordPortalLoginWithPassword(
     return { ok: false, error: landlordError.message };
   }
 
-  if (!landlord || landlord.approval_status !== "approved") {
+  if (!landlord) {
     await supabase.auth.signOut();
     return {
       ok: false,
@@ -68,5 +69,6 @@ export async function landlordPortalLoginWithPassword(
     };
   }
 
+  // Login is allowed for pending/approved/rejected; data access is gated separately.
   return { ok: true };
 }
