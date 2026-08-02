@@ -6061,6 +6061,7 @@ CREATE TABLE public.manual_financial_entries (
     vat_payable numeric(12,2) DEFAULT 0,
     bank_loans numeric(12,2) DEFAULT 0,
     other_long_term_liabilities numeric(12,2) DEFAULT 0,
+    directors_loan numeric(12,2) DEFAULT 0,
     share_capital numeric(12,2) DEFAULT 0,
     retained_earnings_prior_years numeric(12,2) DEFAULT 0,
     purchase_of_fixed_assets numeric(12,2) DEFAULT 0,

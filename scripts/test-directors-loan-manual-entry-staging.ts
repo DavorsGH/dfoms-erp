@@ -129,35 +129,52 @@ async function applyDirectorsLoanColumn(projectRef: string) {
     resolve(process.cwd(), "scripts/144_manual_entries_directors_loan.sql"),
     "utf8",
   );
-  const targets = buildPgTargets(projectRef);
-  if (targets.length === 0) {
-    throw new Error("No DATABASE_URL for staging DDL");
-  }
+  const envFiles = [".env.staging.local", ".env.local"];
   let lastErr: unknown = null;
-  for (const [index, target] of targets.entries()) {
-    const client = new pg.Client(
-      target.config ?? {
-        connectionString: target.connectionString,
-        ssl: { rejectUnauthorized: false },
-      },
-    );
+
+  for (const envFile of envFiles) {
     try {
-      await client.connect();
-      await client.query(sql);
-      await client.end();
-      console.log(`Applied 144 via candidate ${index} (${target.label})`);
-      return;
-    } catch (err) {
-      lastErr = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`DDL candidate ${index} (${target.label}) failed: ${msg}`);
+      loadEnvForce(resolve(process.cwd(), envFile));
+    } catch {
+      console.warn(`Skipping missing ${envFile}`);
+      continue;
+    }
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+    if (!url.includes(projectRef)) {
+      console.warn(`Skipping ${envFile}: not staging project`);
+      continue;
+    }
+    const targets = buildPgTargets(projectRef);
+    for (const [index, target] of targets.entries()) {
+      const client = new pg.Client(
+        target.config ?? {
+          connectionString: target.connectionString,
+          ssl: { rejectUnauthorized: false },
+        },
+      );
       try {
+        await client.connect();
+        await client.query(sql);
         await client.end();
-      } catch {
-        /* ignore */
+        console.log(
+          `Applied 144 via ${envFile} candidate ${index} (${target.label})`,
+        );
+        return;
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `DDL ${envFile} candidate ${index} (${target.label}) failed: ${msg}`,
+        );
+        try {
+          await client.end();
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
+
   throw new Error(
     `Failed to apply 144: ${
       lastErr instanceof Error ? lastErr.message : String(lastErr)
@@ -337,7 +354,7 @@ async function buildStagingSnapshot(admin) {
     admin
       .from("accounts_payable")
       .select(
-        "invoice_date, invoice_number, amount, amount_paid, balance_due, category, vendor_name",
+        "invoice_date, invoice_number, amount, amount_paid, balance_due, expense_category, vendor_name",
       )
       .eq("tenant_id", TENANT),
     admin
@@ -470,7 +487,6 @@ async function runLiveLiabilityCashTest(admin, options) {
 
   const prior = existing
     ? {
-        id: existing.id,
         loan_proceeds: Number(existing.loan_proceeds) || 0,
         [liabilityField]: Number(existing[liabilityField]) || 0,
       }
@@ -519,7 +535,7 @@ async function runLiveLiabilityCashTest(admin, options) {
           loan_proceeds: targetProceeds,
           [liabilityField]: targetLiability,
         })
-        .eq("id", prior.id)
+        .eq("period_month", PERIOD)
         .eq("tenant_id", TENANT);
       assert(!updErr, `update manual entry: ${updErr?.message}`);
     } else {
@@ -585,7 +601,7 @@ async function runLiveLiabilityCashTest(admin, options) {
             loan_proceeds: prior.loan_proceeds,
             [liabilityField]: prior[liabilityField],
           })
-          .eq("id", prior.id)
+          .eq("period_month", PERIOD)
           .eq("tenant_id", TENANT);
         assert(!restoreErr, `restore: ${restoreErr?.message}`);
       } else {

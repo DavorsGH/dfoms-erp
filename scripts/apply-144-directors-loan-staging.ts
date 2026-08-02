@@ -15,7 +15,14 @@ function loadEnvForce(filePath: string) {
     if (!trimmed || trimmed.startsWith("#")) continue;
     const i = trimmed.indexOf("=");
     if (i === -1) continue;
-    process.env[trimmed.slice(0, i).trim()] = trimmed.slice(i + 1).trim();
+    let value = trimmed.slice(i + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[trimmed.slice(0, i).trim()] = value;
   }
 }
 
@@ -49,25 +56,10 @@ function buildCandidates(rawUrl: string | undefined, supabaseUrl: string) {
   return [...new Set(candidates.filter(Boolean))];
 }
 
-async function main() {
-  loadEnvForce(resolve(process.cwd(), ".env.staging.local"));
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  if (!supabaseUrl.includes("wieflwbfdmjtsdnwbfii")) {
-    throw new Error("Refusing non-staging apply");
-  }
-
-  const sql = readFileSync(
-    resolve(process.cwd(), "scripts/144_manual_entries_directors_loan.sql"),
-    "utf8",
-  );
-
-  const candidates = buildCandidates(process.env.DATABASE_URL, supabaseUrl);
-  if (candidates.length === 0) {
-    throw new Error("No DATABASE_URL for staging");
-  }
-
-  let client: pg.Client | null = null;
-  let lastError: unknown;
+async function connectWithCandidates(
+  label: string,
+  candidates: string[],
+): Promise<{ client: pg.Client; index: number } | null> {
   for (const [index, connectionString] of candidates.entries()) {
     const attempt = new pg.Client({
       connectionString,
@@ -75,13 +67,11 @@ async function main() {
     });
     try {
       await attempt.connect();
-      client = attempt;
-      console.log("Connected via candidate", index);
-      break;
+      console.log(`Connected via ${label} candidate`, index);
+      return { client: attempt, index };
     } catch (err) {
-      lastError = err;
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`candidate ${index} failed: ${msg}`);
+      console.warn(`${label} candidate ${index} failed: ${msg}`);
       try {
         await attempt.end();
       } catch {
@@ -89,9 +79,45 @@ async function main() {
       }
     }
   }
+  return null;
+}
+
+async function main() {
+  const envFiles = [".env.staging.local", ".env.local"];
+  const sql = readFileSync(
+    resolve(process.cwd(), "scripts/144_manual_entries_directors_loan.sql"),
+    "utf8",
+  );
+
+  let client: pg.Client | null = null;
+  for (const envFile of envFiles) {
+    // Reset then load so each file is tried independently.
+    delete process.env.DATABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    try {
+      loadEnvForce(resolve(process.cwd(), envFile));
+    } catch {
+      console.warn(`Skipping missing ${envFile}`);
+      continue;
+    }
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+    if (!supabaseUrl.includes("wieflwbfdmjtsdnwbfii")) {
+      console.warn(`Skipping ${envFile}: not staging project`);
+      continue;
+    }
+    const candidates = buildCandidates(process.env.DATABASE_URL, supabaseUrl);
+    if (candidates.length === 0) {
+      console.warn(`Skipping ${envFile}: no DATABASE_URL`);
+      continue;
+    }
+    const connected = await connectWithCandidates(envFile, candidates);
+    if (connected) {
+      client = connected.client;
+      break;
+    }
+  }
 
   if (!client) {
-    console.error(lastError);
     throw new Error(
       "Could not connect to staging DB. Apply scripts/144_manual_entries_directors_loan.sql in the Supabase SQL Editor on wieflwbfdmjtsdnwbfii, then re-run the staging test.",
     );
