@@ -388,6 +388,7 @@ export default function ManualFinancialEntries({
               <th className={scrollableTableThClassName}>Cash on Hand</th>
               <th className={scrollableTableThClassName}>Bank Balance</th>
               <th className={scrollableTableThClassName}>Bank Loans</th>
+              <th className={scrollableTableThClassName}>Director&apos;s Loan</th>
               <th className={scrollableTableThClassName}>Opening Cash</th>
               <th className={scrollableTableThClassName}>Loan Proceeds</th>
               <th className={scrollableTableThClassName}>Actions</th>
@@ -397,7 +398,7 @@ export default function ManualFinancialEntries({
             {entries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No manual financial entries yet.
@@ -412,6 +413,9 @@ export default function ManualFinancialEntries({
                   <td className="px-4 py-3">{formatGHS(entry.cash_on_hand ?? 0)}</td>
                   <td className="px-4 py-3">{formatGHS(entry.bank_balance ?? 0)}</td>
                   <td className="px-4 py-3">{formatGHS(entry.bank_loans ?? 0)}</td>
+                  <td className="px-4 py-3">
+                    {formatGHS(entry.directors_loan ?? 0)}
+                  </td>
                   <td className="px-4 py-3">
                     {formatGHS(entry.opening_cash_balance ?? 0)}
                   </td>

@@ -285,6 +285,8 @@ async function main() {
     },
     fixedAssets ?? [],
     capital ?? [],
+    undefined,
+    payables ?? [],
   );
 
   const bsCash = bsAfter.rows.find((r) => r.key === "cash")?.amounts ?? [];

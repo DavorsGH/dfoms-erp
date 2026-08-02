@@ -13,6 +13,7 @@ export type ManualEntryFormFieldKey =
   | "vat_payable"
   | "bank_loans"
   | "other_long_term_liabilities"
+  | "directors_loan"
   | "retained_earnings_prior_years"
   | "loan_proceeds"
   | "loan_repayments"
@@ -57,6 +58,7 @@ export const MANUAL_ENTRY_FIELD_SECTIONS: ManualEntryFieldSection[] = [
         key: "other_long_term_liabilities",
         label: "Other Long-Term Liabilities",
       },
+      { key: "directors_loan", label: "Director's Loan" },
     ],
   },
   {

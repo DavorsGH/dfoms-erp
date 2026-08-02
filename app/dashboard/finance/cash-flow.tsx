@@ -13,6 +13,7 @@ import type {
 } from "./cash-flow-utils";
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type { ProfitLossAssetEntry } from "./profit-loss-utils";
+import type { BalanceSheetAccountsPayableEntry } from "./balance-sheet-ap-cash-utils";
 import {
   buildNetPayByPayrollMonth,
   type MonthEndCloseNetPayEntry,
@@ -38,6 +39,7 @@ type CashFlowProps = {
   initialInventoryPurchases: CashFlowInventoryPurchaseInput;
   initialFixedAssets: ProfitLossAssetEntry[];
   initialCapitalContributions: CapitalContributionEntry[];
+  initialPayableEntries?: BalanceSheetAccountsPayableEntry[];
   /** Same payroll inputs Balance Sheet uses to build the staff-salary net map. */
   initialPayrollHistory?: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
@@ -83,6 +85,7 @@ export default function CashFlow({
   initialInventoryPurchases,
   initialFixedAssets,
   initialCapitalContributions,
+  initialPayableEntries = [],
   initialPayrollHistory = [],
   initialMonthEndCloseNetPay = [],
   availableYears,
@@ -118,6 +121,7 @@ export default function CashFlow({
         initialFixedAssets,
         initialCapitalContributions,
         staffSalaryNetByPayrollMonth,
+        initialPayableEntries,
       ),
     [
       initialIncomeEntries,
@@ -125,6 +129,7 @@ export default function CashFlow({
       initialCapitalContributions,
       initialFixedAssets,
       initialInventoryPurchases,
+      initialPayableEntries,
       staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       selectedYear,
@@ -140,8 +145,8 @@ export default function CashFlow({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <p className="text-sm text-slate-600">
           Monthly cash flow for financial year {report.financialYear}, calculated
-          live from receipts, paid expenses, fixed-asset purchases, and manual
-          financing/opening entries.
+          live from receipts, paid expenses, AP settlements, fixed-asset
+          purchases, and manual financing/opening entries.
         </p>
         <FinancialYearSelector
           years={availableYears}

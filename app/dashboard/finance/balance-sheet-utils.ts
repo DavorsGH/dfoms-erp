@@ -32,6 +32,7 @@ import {
   resolveJanuaryOpeningCashBalance,
   type CashMovementManualEntry,
 } from "./cash-movement-utils";
+import { getPeriodMonthParts } from "./cash-flow-utils";
 import {
   calculateInventoryByMonth,
   calculateInventoryOpeningEquityByMonth,
@@ -43,9 +44,9 @@ import {
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
 import {
-  PAYROLL_PAYABLE_CATEGORY_PAYE,
-  PAYROLL_PAYABLE_CATEGORY_SSNIT,
-} from "../hr-payroll/payroll-lock-finance-utils";
+  isStatutoryRemittancePayable,
+  type BalanceSheetAccountsPayableEntry,
+} from "./balance-sheet-ap-cash-utils";
 import type {
   TaxLedgerComponent,
   TaxLedgerDirection,
@@ -65,16 +66,8 @@ function roundMonthlyTotals(totals: MonthlyTotals): MonthlyTotals {
   return totals.map((value) => roundCurrency(value));
 }
 
-export type BalanceSheetAccountsPayableEntry = {
-  invoice_date: string;
-  balance_due: number | null;
-  amount: number;
-  amount_paid: number;
-  /** Used to soft-exclude historical statutory remittance AP (Option A). */
-  vendor_name?: string | null;
-  invoice_number?: string | null;
-  expense_category?: string | null;
-};
+export type { BalanceSheetAccountsPayableEntry } from "./balance-sheet-ap-cash-utils";
+export { isStatutoryRemittancePayable } from "./balance-sheet-ap-cash-utils";
 
 export type BalanceSheetIncomeEntry = {
   date: string;
@@ -144,42 +137,6 @@ function normalizeDate(value: string): string {
   return value.slice(0, 10);
 }
 
-/**
- * Option A soft-deprecation: tax_ledger_entries is SoR for SSNIT/PAYE remittance.
- * Exclude historical unpaid Statutory SSNIT/GRA AP so BS does not double-count
- * the same liability as both AP and open statutory_payable ledger rows.
- *
- * Match rule (any one):
- * - vendor_name is SSNIT or GRA (case-insensitive)
- * - expense_category is Statutory - SSNIT / Statutory - PAYE
- * - invoice_number starts with PAYROLL-SSNIT / PAYROLL-PAYE / PAYROLL-GRA
- */
-export function isStatutoryRemittancePayable(entry: {
-  vendor_name?: string | null;
-  invoice_number?: string | null;
-  expense_category?: string | null;
-}): boolean {
-  const vendor = entry.vendor_name?.trim().toUpperCase() ?? "";
-  if (vendor === "SSNIT" || vendor === "GRA") {
-    return true;
-  }
-
-  const category = entry.expense_category?.trim() ?? "";
-  if (
-    category === PAYROLL_PAYABLE_CATEGORY_SSNIT ||
-    category === PAYROLL_PAYABLE_CATEGORY_PAYE
-  ) {
-    return true;
-  }
-
-  const invoice = entry.invoice_number?.trim().toUpperCase() ?? "";
-  return (
-    invoice.startsWith("PAYROLL-SSNIT") ||
-    invoice.startsWith("PAYROLL-PAYE") ||
-    invoice.startsWith("PAYROLL-GRA")
-  );
-}
-
 function getOutstandingBalance(entry: BalanceSheetIncomeEntry): number {
   return resolveIncomeOutstandingBalance(entry);
 }
@@ -244,6 +201,35 @@ function calculateAccountsPayableByMonth(
 
   totals[FULL_YEAR_INDEX] = totals[11];
   return totals;
+}
+
+type ManualLiabilityStockField =
+  | "bank_loans"
+  | "other_long_term_liabilities"
+  | "directors_loan";
+
+/**
+ * Month-end outstanding balances from manual_financial_entries (stock).
+ * Full-year column uses December (same pattern as AR/AP/tax).
+ */
+function calculateManualLiabilityStockByMonth(
+  manualEntries: CashMovementManualEntry[],
+  field: ManualLiabilityStockField,
+  financialYear: number,
+): MonthlyTotals {
+  const totals = createEmptyMonthlyTotals();
+
+  for (const entry of manualEntries) {
+    const parts = getPeriodMonthParts(entry.period_month);
+    if (!parts || parts.year !== financialYear) {
+      continue;
+    }
+
+    totals[parts.month - 1] = Number(entry[field]) || 0;
+  }
+
+  totals[FULL_YEAR_INDEX] = totals[11];
+  return roundMonthlyTotals(totals);
 }
 
 type OpenTaxBalancesByMonth = {
@@ -393,6 +379,7 @@ function calculateCashAndCashEquivalentsByMonth(
   productCashPurchases: ProductPurchaseCashEntry[],
   inventoryConfig: InventoryBalanceConfig | null,
   manualEntries: CashMovementManualEntry[],
+  payableEntries: BalanceSheetAccountsPayableEntry[],
   financialYear: number,
   staffSalaryNetByPayrollMonth?: Map<string, number>,
 ): MonthlyTotals {
@@ -406,6 +393,7 @@ function calculateCashAndCashEquivalentsByMonth(
       productCashPurchases,
       inventoryConfig,
       manualEntries,
+      accountsPayableSettlements: payableEntries,
       staffSalaryNetByPayrollMonth,
     },
     financialYear,
@@ -493,6 +481,7 @@ export function buildBalanceSheetReport(
     inventoryInput.productCashPurchases,
     inventoryInput.config,
     manualEntries,
+    payableEntries,
     financialYear,
     staffSalaryNetByPayrollMonth,
   );
@@ -538,6 +527,21 @@ export function buildBalanceSheetReport(
       monthEndCloseNetPay,
     ),
   );
+  const bankLoans = calculateManualLiabilityStockByMonth(
+    manualEntries,
+    "bank_loans",
+    financialYear,
+  );
+  const otherLongTermLiabilities = calculateManualLiabilityStockByMonth(
+    manualEntries,
+    "other_long_term_liabilities",
+    financialYear,
+  );
+  const directorsLoan = calculateManualLiabilityStockByMonth(
+    manualEntries,
+    "directors_loan",
+    financialYear,
+  );
   const totalLiabilities = roundMonthlyTotals(
     sumMonthlyTotals([
       accountsPayable,
@@ -546,6 +550,9 @@ export function buildBalanceSheetReport(
       openTax.netVatPayable,
       openTax.payePayable,
       openTax.ssnitPayable,
+      bankLoans,
+      otherLongTermLiabilities,
+      directorsLoan,
     ]),
   );
 
@@ -574,6 +581,9 @@ export function buildBalanceSheetReport(
       openTax.netVatPayable,
       openTax.payePayable,
       openTax.ssnitPayable,
+      bankLoans,
+      otherLongTermLiabilities,
+      directorsLoan,
       shareCapital,
       retainedEarnings,
       inventoryOpeningEquity,
@@ -683,6 +693,27 @@ export function buildBalanceSheetReport(
       key: "ssnit-payable",
       label: "SSNIT Payable",
       amounts: openTax.ssnitPayable,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "bank-loans",
+      label: "Bank Loans",
+      amounts: bankLoans,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "other-long-term-liabilities",
+      label: "Other Long-Term Liabilities",
+      amounts: otherLongTermLiabilities,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "directors-loan",
+      label: "Director's Loan",
+      amounts: directorsLoan,
       kind: "data",
       side: "liabilities",
     },

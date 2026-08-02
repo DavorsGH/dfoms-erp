@@ -548,6 +548,8 @@ async function main() {
       },
       fixedAssets ?? [],
       capital ?? [],
+      undefined,
+      payables ?? [],
     );
 
     const bsCash = bsReport.rows.find((r) => r.key === "cash")?.amounts;

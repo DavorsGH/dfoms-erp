@@ -349,6 +349,7 @@ async function main() {
         fixedAssets ?? [],
         capital ?? [],
         staffMap,
+        payables ?? [],
       )
     : buildCashFlowReport(
         incomeForCf,
@@ -358,6 +359,8 @@ async function main() {
         cfInv,
         fixedAssets ?? [],
         capital ?? [],
+        undefined,
+        payables ?? [],
       );
 
   const cashRow = bs.rows.find((r) => r.key === "cash");

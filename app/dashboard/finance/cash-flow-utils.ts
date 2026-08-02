@@ -24,6 +24,7 @@ import type {
   ProductPurchaseCashEntry,
   RawMaterialPurchaseCashEntry,
 } from "../inventory/inventory-balance-sheet-utils";
+import type { BalanceSheetAccountsPayableEntry } from "./balance-sheet-ap-cash-utils";
 import type {
   IncomeEntryType,
   ProductSaleStatus,
@@ -75,6 +76,7 @@ export type ManualFinancialEntry = {
   vat_payable?: number;
   bank_loans?: number;
   other_long_term_liabilities?: number;
+  directors_loan?: number;
   retained_earnings_prior_years?: number;
   share_capital?: number;
   /** Deprecated for Cash Flow: FA purchases now come from fixed_assets register. */
@@ -191,6 +193,10 @@ export function buildCashFlowReport(
    * Same map Balance Sheet passes into buildMonthlyCashComponents.
    */
   staffSalaryNetByPayrollMonth?: Map<string, number>,
+  /**
+   * AP settlements (amount_paid) — cash-only; mirrors Balance Sheet cash engine.
+   */
+  accountsPayableSettlements: BalanceSheetAccountsPayableEntry[] = [],
 ): CashFlowReport {
   const rows: CashFlowRow[] = [];
 
@@ -217,6 +223,7 @@ export function buildCashFlowReport(
       productCashPurchases: inventoryPurchases.productCashPurchases,
       inventoryConfig: inventoryPurchases.inventoryConfig,
       manualEntries,
+      accountsPayableSettlements,
       staffSalaryNetByPayrollMonth,
     },
     financialYear,
@@ -285,12 +292,19 @@ export function buildCashFlowReport(
       amounts: components.productPurchases,
       kind: "data" as const,
     },
+    {
+      key: "outflow-accounts-payable-settlements",
+      label: "Accounts Payable Settlements",
+      amounts: components.accountsPayableSettlements,
+      kind: "data" as const,
+    },
   ].filter((row) => row.amounts.some((amount) => amount !== 0));
 
   const totalCashOutflows = sumMonthlyTotals([
     ...outflowRows.map((row) => row.amounts),
     components.rawMaterialPurchases,
     components.productPurchases,
+    components.accountsPayableSettlements,
   ]);
 
   rows.push({

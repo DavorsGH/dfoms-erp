@@ -410,6 +410,7 @@ export function CashFlowStatementReport({
   initialInventoryPurchases,
   initialFixedAssets,
   initialCapitalContributions = [],
+  initialPayableEntries = [],
   initialPayrollHistory = [],
   initialMonthEndCloseNetPay = [],
   availableYears,
@@ -421,6 +422,7 @@ export function CashFlowStatementReport({
   initialInventoryPurchases: CashFlowInventoryPurchaseInput;
   initialFixedAssets: ProfitLossAssetEntry[];
   initialCapitalContributions?: CapitalContributionEntry[];
+  initialPayableEntries?: BalanceSheetAccountsPayableEntry[];
   initialPayrollHistory?: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
   availableYears: number[];
@@ -454,6 +456,7 @@ export function CashFlowStatementReport({
         initialFixedAssets,
         initialCapitalContributions,
         staffSalaryNetByPayrollMonth,
+        initialPayableEntries,
       ),
     [
       initialIncomeEntries,
@@ -461,6 +464,7 @@ export function CashFlowStatementReport({
       initialCapitalContributions,
       initialFixedAssets,
       initialInventoryPurchases,
+      initialPayableEntries,
       staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       year,

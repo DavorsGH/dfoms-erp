@@ -89,6 +89,7 @@ export async function fetchCashFlowReportData(
     { data: manualEntries, error: manualError },
     { data: fixedAssets, error: fixedAssetsError },
     { data: capitalContributions, error: capitalError },
+    { data: payableEntries, error: payableError },
     { data: payrollHistory, error: payrollHistoryError },
     { data: payrollProcessing, error: payrollProcessingError },
     { data: monthEndCloseRecords, error: monthEndCloseError },
@@ -118,6 +119,12 @@ export async function fetchCashFlowReportData(
       .from("capital_contributions")
       .select("id, date, contributed_by, amount, description, notes")
       .order("date", { ascending: true }),
+    supabase
+      .from("accounts_payable")
+      .select(
+        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
+      )
+      .order("invoice_date", { ascending: true }),
     // Display-only — never written back from this report path.
     supabase
       .from("payroll_history")
@@ -142,6 +149,7 @@ export async function fetchCashFlowReportData(
     initialInventoryPurchases: inventoryPurchases,
     initialFixedAssets: fixedAssets ?? [],
     initialCapitalContributions: capitalContributions ?? [],
+    initialPayableEntries: payableEntries ?? [],
     initialPayrollHistory: mergePayrollWagesWithLiveOpenMonths(
       (payrollHistory as PayrollHistoryWagesEntry[] | null) ?? [],
       (payrollProcessing as PayrollProcessingRow[] | null) ?? [],
@@ -157,6 +165,7 @@ export async function fetchCashFlowReportData(
         ...(manualEntries ?? []).map((entry) => entry.period_month),
         ...(fixedAssets ?? []).map((entry) => entry.purchase_date),
         ...(capitalContributions ?? []).map((entry) => entry.date),
+        ...(payableEntries ?? []).map((entry) => entry.invoice_date),
       ],
     ),
     fetchError:
@@ -165,6 +174,7 @@ export async function fetchCashFlowReportData(
       manualError?.message ??
       fixedAssetsError?.message ??
       capitalError?.message ??
+      payableError?.message ??
       payrollHistoryError?.message ??
       payrollProcessingError?.message ??
       monthEndCloseError?.message ??

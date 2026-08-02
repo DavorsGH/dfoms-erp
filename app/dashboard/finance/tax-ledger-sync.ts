@@ -208,11 +208,13 @@ export type PurchaseTaxLedgerInput = {
 };
 
 /**
- * Expense Register and Accounts Payable are independent registers — paying AP
- * does not auto-create an expense_register row (see cash-movement-utils). Each
- * row owns its own tax_ledger_entries via source_type+source_id, so the same
- * real-world payment is only double-counted if a user manually enters tax on
- * both registers for that invoice. Prefer one register per supplier bill.
+ * Expense Register and Accounts Payable are independent registers. Paying AP
+ * moves cash via cumulative amount_paid in the shared cash engine (see
+ * cash-movement-utils) — it does not auto-create an expense_register row, so
+ * settlement is cash-only and does not double P&L. Each row owns its own
+ * tax_ledger_entries via source_type+source_id, so the same real-world payment
+ * is only double-counted if a user manually enters tax on both registers for
+ * that invoice. Prefer one register per supplier bill.
  *
  * Supplier WHT is Davors' GRA liability (wht_payable). Input VAT is a credit
  * (direction=input), typically vat_bundle.

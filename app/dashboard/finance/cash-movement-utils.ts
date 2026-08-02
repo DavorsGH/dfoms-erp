@@ -1,9 +1,10 @@
 /**
  * Canonical cash-movement engine for Balance Sheet cash and Cash Flow Statement.
  *
- * Known v1 gap (documented, out of scope): accounts_payable settlements do not
- * automatically move cash — paying AP only updates the AP register unless a
- * separate Paid expense_register row is entered.
+ * AP settlements: cumulative `accounts_payable.amount_paid` is a cash outflow
+ * (same pattern as cash inventory purchases). Do NOT also post a Paid
+ * expense_register row for the same supplier payment — that would double cash.
+ * P&L is unaffected: AP/inventory accrual already carried the economic event.
  */
 import {
   type CapitalContributionEntry,
@@ -34,6 +35,10 @@ import {
   type ProductPurchaseCashEntry,
   type RawMaterialPurchaseCashEntry,
 } from "../inventory/inventory-balance-sheet-utils";
+import {
+  isStatutoryRemittancePayable,
+  type BalanceSheetAccountsPayableEntry,
+} from "./balance-sheet-ap-cash-utils";
 
 export {
   parseCashPaidFromExpenseNotes,
@@ -69,6 +74,10 @@ export type CashMovementManualEntry = {
   loan_repayments?: number | null;
   other_cash_inflows?: number | null;
   opening_cash_balance?: number | null;
+  /** Month-end outstanding balances (stock) — consumed by Balance Sheet. */
+  bank_loans?: number | null;
+  other_long_term_liabilities?: number | null;
+  directors_loan?: number | null;
 };
 
 export type CashMovementInputs = {
@@ -80,6 +89,10 @@ export type CashMovementInputs = {
   productCashPurchases: ProductPurchaseCashEntry[];
   inventoryConfig: InventoryBalanceConfig | null;
   manualEntries: CashMovementManualEntry[];
+  /**
+   * AP settlements (cumulative amount_paid). Cash-only — never a second P&L hit.
+   */
+  accountsPayableSettlements?: BalanceSheetAccountsPayableEntry[];
   /**
    * Fallback for Paid PAYROLL-SAL cash when notes lack cash_paid=<amount>.
    * Prefer actual bank cash_paid from expense notes over this map.
@@ -96,6 +109,7 @@ export type MonthlyCashComponents = {
   loanRepayments: MonthlyTotals;
   rawMaterialPurchases: MonthlyTotals;
   productPurchases: MonthlyTotals;
+  accountsPayableSettlements: MonthlyTotals;
   fixedAssetPurchases: MonthlyTotals;
   /** Signed net movement per month (inflows − outflows). */
   netMovement: MonthlyTotals;
@@ -240,6 +254,39 @@ function sumPaidExpensesByMonth(
   return roundMonthlyTotals(totals);
 }
 
+/**
+ * Cash outflows from AP settlements.
+ * Uses cumulative amount_paid (idempotent on edit — no double-count on update).
+ * Dated by invoice_date (v1; no payment_date column yet).
+ * Statutory remittance APs are excluded (tax_ledger / expense paths own those).
+ */
+export function calculateAccountsPayableCashOutflowsByMonth(
+  payableEntries: BalanceSheetAccountsPayableEntry[],
+  financialYear: number,
+): MonthlyTotals {
+  const totals = createEmptyMonthlyTotals();
+
+  for (const entry of payableEntries) {
+    if (isStatutoryRemittancePayable(entry)) {
+      continue;
+    }
+
+    const amountPaid = Number(entry.amount_paid) || 0;
+    if (amountPaid <= 0) {
+      continue;
+    }
+
+    const monthIndex = getEntryMonthIndex(entry.invoice_date, financialYear);
+    if (monthIndex === null) {
+      continue;
+    }
+
+    addAmountToMonth(totals, monthIndex, amountPaid);
+  }
+
+  return roundMonthlyTotals(totals);
+}
+
 /** January opening cash seed for the financial year (Option A). Default 0. */
 export function resolveJanuaryOpeningCashBalance(
   manualEntries: CashMovementManualEntry[],
@@ -301,6 +348,10 @@ export function buildMonthlyCashComponents(
       financialYear,
     ),
   );
+  const accountsPayableSettlements = calculateAccountsPayableCashOutflowsByMonth(
+    inputs.accountsPayableSettlements ?? [],
+    financialYear,
+  );
   const fixedAssetPurchases = roundMonthlyTotals(
     calculateFixedAssetPurchaseOutflowsByMonth(
       inputs.fixedAssets,
@@ -318,10 +369,13 @@ export function buildMonthlyCashComponents(
   const totalOutflows = addMonthlyTotals(
     addMonthlyTotals(
       addMonthlyTotals(
-        addMonthlyTotals(paidExpenses, loanRepayments),
-        rawMaterialPurchases,
+        addMonthlyTotals(
+          addMonthlyTotals(paidExpenses, loanRepayments),
+          rawMaterialPurchases,
+        ),
+        productPurchases,
       ),
-      productPurchases,
+      accountsPayableSettlements,
     ),
     fixedAssetPurchases,
   );
@@ -336,6 +390,7 @@ export function buildMonthlyCashComponents(
     loanRepayments,
     rawMaterialPurchases,
     productPurchases,
+    accountsPayableSettlements,
     fixedAssetPurchases,
     netMovement,
   };
