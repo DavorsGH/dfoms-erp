@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 export type FinishedProductSourcingType = "manufactured" | "purchased";
 
 export type FinishedProductExpirationStatus =
@@ -14,10 +16,19 @@ export type FinishedProductRecord = {
   standard_selling_price: number | null;
   sourcing_type: FinishedProductSourcingType | null;
   supplier_id: string | null;
+  /** Soonest lot manufacturing date (from batches/purchases), not finished_products. */
   manufacturing_date: string | null;
+  /** Soonest lot expiration date (from batches/purchases), not finished_products. */
   expiration_date: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/** Lot/batch date row from production_batches or product_purchases. */
+export type FinishedProductLotDateSource = {
+  product_id: string;
+  manufacturing_date: string | null;
+  expiration_date: string | null;
 };
 
 export const DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE: FinishedProductSourcingType =
@@ -31,8 +42,9 @@ export const FINISHED_PRODUCT_SOURCING_OPTIONS = [
   { value: "purchased", label: "Purchased" },
 ] as const;
 
+/** Master columns only — lot dates live on production_batches / product_purchases. */
 export const FINISHED_PRODUCT_SELECT =
-  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, manufacturing_date, expiration_date, created_at, updated_at";
+  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, created_at, updated_at";
 
 function normalizeDateOnly(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -66,8 +78,123 @@ export function getFinishedProductExpirationStatus(
   return null;
 }
 
+/**
+ * Pick list summary dates for one product: soonest expiration across lots wins;
+ * manufacturing_date is taken from that same soonest-expiring lot.
+ * If no lot has expiration, show earliest manufacturing_date only.
+ */
+export function pickSoonestLotDates(
+  lots: Array<{
+    manufacturing_date?: string | null;
+    expiration_date?: string | null;
+  }>,
+): { manufacturing_date: string | null; expiration_date: string | null } {
+  const normalized = lots.map((lot) => ({
+    manufacturing_date: normalizeDateOnly(lot.manufacturing_date),
+    expiration_date: normalizeDateOnly(lot.expiration_date),
+  }));
+
+  const withExpiration = normalized
+    .filter(
+      (lot): lot is { manufacturing_date: string | null; expiration_date: string } =>
+        lot.expiration_date != null,
+    )
+    .sort((a, b) => a.expiration_date.localeCompare(b.expiration_date));
+
+  if (withExpiration.length > 0) {
+    return withExpiration[0];
+  }
+
+  const manufacturingDates = normalized
+    .map((lot) => lot.manufacturing_date)
+    .filter((date): date is string => date != null)
+    .sort((a, b) => a.localeCompare(b));
+
+  return {
+    manufacturing_date: manufacturingDates[0] ?? null,
+    expiration_date: null,
+  };
+}
+
+export function mergeFinishedProductsWithLotDates(
+  products: FinishedProductRecord[],
+  lots: FinishedProductLotDateSource[],
+): FinishedProductRecord[] {
+  const lotsByProductId = new Map<string, FinishedProductLotDateSource[]>();
+  for (const lot of lots) {
+    const existing = lotsByProductId.get(lot.product_id);
+    if (existing) {
+      existing.push(lot);
+    } else {
+      lotsByProductId.set(lot.product_id, [lot]);
+    }
+  }
+
+  return products.map((product) => {
+    const dates = pickSoonestLotDates(lotsByProductId.get(product.id) ?? []);
+    return {
+      ...product,
+      manufacturing_date: dates.manufacturing_date,
+      expiration_date: dates.expiration_date,
+    };
+  });
+}
+
+export async function fetchFinishedProductLotDateSources(
+  supabase: SupabaseClient,
+): Promise<{ lots: FinishedProductLotDateSource[]; error: string | null }> {
+  const [batchesResult, purchasesResult] = await Promise.all([
+    supabase
+      .from("production_batches")
+      .select("finished_product_id, manufacturing_date, expiration_date"),
+    supabase
+      .from("product_purchases")
+      .select("product_id, manufacturing_date, expiration_date"),
+  ]);
+
+  if (batchesResult.error) {
+    return { lots: [], error: batchesResult.error.message };
+  }
+  if (purchasesResult.error) {
+    return { lots: [], error: purchasesResult.error.message };
+  }
+
+  const batchLots: FinishedProductLotDateSource[] = (
+    (batchesResult.data as
+      | {
+          finished_product_id: string;
+          manufacturing_date: string | null;
+          expiration_date: string | null;
+        }[]
+      | null) ?? []
+  ).map((row) => ({
+    product_id: row.finished_product_id,
+    manufacturing_date: normalizeDateOnly(row.manufacturing_date),
+    expiration_date: normalizeDateOnly(row.expiration_date),
+  }));
+
+  const purchaseLots: FinishedProductLotDateSource[] = (
+    (purchasesResult.data as
+      | {
+          product_id: string;
+          manufacturing_date: string | null;
+          expiration_date: string | null;
+        }[]
+      | null) ?? []
+  ).map((row) => ({
+    product_id: row.product_id,
+    manufacturing_date: normalizeDateOnly(row.manufacturing_date),
+    expiration_date: normalizeDateOnly(row.expiration_date),
+  }));
+
+  return { lots: [...batchLots, ...purchaseLots], error: null };
+}
+
 export function normalizeFinishedProduct(
-  raw: FinishedProductRecord,
+  raw: Omit<FinishedProductRecord, "manufacturing_date" | "expiration_date"> & {
+    manufacturing_date?: string | null;
+    expiration_date?: string | null;
+  },
 ): FinishedProductRecord {
   return {
     ...raw,

@@ -6,7 +6,9 @@ import { canEditInventory } from "@/utils/rbac-access";
 import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
 import FinishedProducts from "../finished-products";
 import {
+  fetchFinishedProductLotDateSources,
   FINISHED_PRODUCT_SELECT,
+  mergeFinishedProductsWithLotDates,
   normalizeFinishedProduct,
   type FinishedProductRecord,
 } from "../finished-products-utils";
@@ -20,6 +22,7 @@ export default async function FinishedProductsPage() {
   const [
     { data, error },
     { data: suppliers, error: suppliersError },
+    lotDatesResult,
   ] = await Promise.all([
     supabase
       .from("finished_products")
@@ -33,20 +36,29 @@ export default async function FinishedProductsPage() {
           .eq("is_active", true)
           .order("name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
+    fetchFinishedProductLotDateSources(supabase),
   ]);
 
   const role = (await getCurrentUserRole()) as AppRole | null;
 
+  const products = mergeFinishedProductsWithLotDates(
+    ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
+      normalizeFinishedProduct(row),
+    ),
+    lotDatesResult.lots,
+  );
+
   return (
     <InventoryShell sectionTitle="Finished Products">
       <FinishedProducts
-        initialProducts={
-          (data as FinishedProductRecord[] | null)?.map((row) =>
-            normalizeFinishedProduct(row),
-          ) ?? []
-        }
+        initialProducts={products}
         initialSuppliers={(suppliers as SupplierRow[] | null) ?? []}
-        fetchError={error?.message ?? suppliersError?.message ?? null}
+        fetchError={
+          error?.message ??
+          suppliersError?.message ??
+          lotDatesResult.error ??
+          null
+        }
         readOnly={!canEditInventory(role)}
       />
     </InventoryShell>

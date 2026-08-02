@@ -24,10 +24,12 @@ import { allocateProductCode } from "./inventory-ids-api";
 import {
   buildFinishedProductSavePayload,
   DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
+  fetchFinishedProductLotDateSources,
   FINISHED_PRODUCT_SELECT,
   FINISHED_PRODUCT_SOURCING_OPTIONS,
   finishedProductToForm,
   getFinishedProductExpirationStatus,
+  mergeFinishedProductsWithLotDates,
   normalizeFinishedProduct,
   type FinishedProductRecord,
   type FinishedProductSourcingType,
@@ -72,19 +74,29 @@ export default function FinishedProducts({
   }, [initialProducts]);
 
   async function refreshData() {
-    const { data, error: refreshError } = await supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
-      .order("product_name", { ascending: true });
+    const [{ data, error: refreshError }, lotDatesResult] = await Promise.all([
+      supabase
+        .from("finished_products")
+        .select(FINISHED_PRODUCT_SELECT)
+        .order("product_name", { ascending: true }),
+      fetchFinishedProductLotDateSources(supabase),
+    ]);
 
     if (refreshError) {
       setError(refreshError.message);
       return;
     }
+    if (lotDatesResult.error) {
+      setError(lotDatesResult.error);
+      return;
+    }
 
     setProducts(
-      ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
-        normalizeFinishedProduct(row),
+      mergeFinishedProductsWithLotDates(
+        ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
+          normalizeFinishedProduct(row),
+        ),
+        lotDatesResult.lots,
       ),
     );
     setError(null);
