@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { EmployeeNotificationRow } from "@/utils/employee-notifications-types";
+import { useRouter } from "next/navigation";
+import {
+  displayNotificationBody,
+  resolveNotificationHref,
+  type EmployeeNotificationRow,
+} from "@/utils/employee-notifications-types";
 
 const PAGE_SIZE = 20;
 
@@ -40,6 +45,7 @@ function BellIcon({ className }: { className?: string }) {
 }
 
 export default function NotificationBell() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<EmployeeNotificationRow[]>(
     [],
@@ -163,8 +169,17 @@ export default function NotificationBell() {
   }
 
   async function handleSelect(row: EmployeeNotificationRow) {
-    setExpandedId((current) => (current === row.id ? null : row.id));
+    const href = resolveNotificationHref(row);
     await markRead(row);
+
+    if (href) {
+      setOpen(false);
+      router.push(href);
+      return;
+    }
+
+    // Announcements / rows without a destination: expand to read body.
+    setExpandedId((current) => (current === row.id ? null : row.id));
   }
 
   async function handleMarkAllRead() {
@@ -255,6 +270,7 @@ export default function NotificationBell() {
                 {notifications.map((row) => {
                   const unread = row.read_at == null;
                   const expanded = expandedId === row.id;
+                  const bodyText = displayNotificationBody(row);
 
                   return (
                     <li key={row.id}>
@@ -292,11 +308,11 @@ export default function NotificationBell() {
                             </p>
                             {expanded ? (
                               <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                                {row.body}
+                                {bodyText}
                               </p>
                             ) : (
                               <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                                {row.body}
+                                {bodyText}
                               </p>
                             )}
                           </div>

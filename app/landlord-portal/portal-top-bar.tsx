@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import LandlordPortalSignOutButton from "./dashboard/sign-out-button";
+import LandlordNotificationBell from "./notification-bell";
 
 type LandlordPortalTopBarProps = {
   userLabel: string;
@@ -77,6 +78,8 @@ export default function LandlordPortalTopBar({
       <div className="hidden md:block" aria-hidden />
 
       <div className="flex items-center gap-2 md:gap-4">
+        <LandlordNotificationBell />
+
         <div className="hidden items-center gap-3 md:flex">
           <span className="text-sm text-slate-700">{userLabel}</span>
           <LandlordPortalSignOutButton variant="topbar" />

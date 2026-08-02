@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import RegisterRowActions, {
   getStripedRowClassName,
 } from "../../../finance/register-row-actions";
@@ -9,6 +9,8 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../../scrollable-table";
+import TemplatePlaceholderReference from "@/components/template-placeholder-reference";
+import { LESSEE_TEMPLATE_PLACEHOLDERS } from "@/utils/message-template-placeholders";
 import {
   channelIncludesEmail,
   channelIncludesSms,
@@ -82,6 +84,7 @@ export default function LesseeMessageTemplates({
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [channelFilter, setChannelFilter] = useState("");
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const showSubjectField = channelIncludesEmail(form.channel);
   const showSmsHint = channelIncludesSms(form.channel);
@@ -335,6 +338,7 @@ export default function LesseeMessageTemplates({
                 ) : null}
               </div>
               <textarea
+                ref={bodyTextareaRef}
                 required
                 rows={showSmsHint && !showSubjectField ? 4 : 6}
                 value={form.body}
@@ -347,10 +351,14 @@ export default function LesseeMessageTemplates({
                 className={inputClassName}
                 placeholder="Hello {{tenant_name}}, regarding {{property_name}} unit {{unit_number}}…"
               />
-              <p className="mt-1 text-xs text-slate-500">
-                Placeholders: {"{{tenant_name}}"}, {"{{property_name}}"},{" "}
-                {"{{unit_number}}"}, {"{{email}}"}, {"{{phone}}"}
-              </p>
+              <TemplatePlaceholderReference
+                placeholders={LESSEE_TEMPLATE_PLACEHOLDERS}
+                value={form.body}
+                onChange={(next) =>
+                  setForm((current) => ({ ...current, body: next }))
+                }
+                textareaRef={bodyTextareaRef}
+              />
             </div>
 
             <div className="flex flex-wrap gap-3">

@@ -110,6 +110,9 @@ export async function processMaintenanceLandlordDecision(
       selfFix,
       amountGhs: null,
       description: existing.description,
+      landlordTenantId: options.tenantId,
+      lesseeId: lease?.lessee_id ?? null,
+      requestId,
     });
 
     return { ok: true, landlordApprovalStatus: "rejected" };
@@ -209,6 +212,9 @@ export async function processMaintenanceLandlordDecision(
       selfFix: true,
       amountGhs: roundedCost,
       description: existing.description,
+      landlordTenantId: options.tenantId,
+      lesseeId: lease?.lessee_id ?? null,
+      requestId,
     });
 
     return {
@@ -305,6 +311,9 @@ export async function processMaintenanceLandlordDecision(
     selfFix: false,
     amountGhs: roundedCost,
     description: existing.description,
+    landlordTenantId: options.tenantId,
+    lesseeId: lease?.lessee_id ?? null,
+    requestId,
   });
 
   return {

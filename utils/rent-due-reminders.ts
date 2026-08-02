@@ -8,6 +8,8 @@ import {
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
+import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
+import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { sendResendEmail } from "@/utils/resend-email";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -350,6 +352,9 @@ async function resolveLandlordContacts(
 }
 
 async function notifyLesseeRentDue(options: {
+  landlordTenantId: string;
+  lesseeId: string | null;
+  entryId: string;
   lesseeName: string;
   email: string | null;
   phone: string | null;
@@ -369,6 +374,7 @@ async function notifyLesseeRentDue(options: {
   const subject = `Rent due reminder — ${options.periodLabel}`;
   const lead = `Friendly reminder: ${options.amountLabel} rent for ${options.periodLabel} is due ${daysLabel} (by ${options.periodEnd}).`;
   const place = `${options.propertyName} / Unit ${options.unitNumber}`;
+  const body = [lead, `Property: ${place}`].join("\n");
 
   const text = [
     `Hi ${options.lesseeName},`,
@@ -417,6 +423,21 @@ async function notifyLesseeRentDue(options: {
     }
   }
 
+  if (options.lesseeId) {
+    const inserted = await insertLesseePortalNotification({
+      landlordTenantId: options.landlordTenantId,
+      lesseeId: options.lesseeId,
+      title: "Rent due reminder",
+      body,
+      actionUrl: "/portal/dashboard",
+      context: `rent-due:${options.entryId}`,
+    });
+    // In-app counts as a delivery channel when the lessee has portal login.
+    if (inserted) {
+      sent = true;
+    }
+  }
+
   return sent;
 }
 
@@ -424,6 +445,8 @@ async function notifyLesseeRentDue(options: {
  * Best-effort landlord SMS/email. Failures must not block the lessee stamp.
  */
 async function notifyLandlordRentDue(options: {
+  landlordTenantId: string;
+  entryId: string;
   landlordName: string | null;
   email: string | null;
   phone: string | null;
@@ -437,12 +460,6 @@ async function notifyLandlordRentDue(options: {
 }): Promise<void> {
   const email = (options.email ?? "").trim();
   const phone = normalizeGhanaPhone(options.phone);
-  if (!email && !phone) {
-    console.warn(
-      "[rent-due-reminders] landlord notify skipped: no email/phone for routing.",
-    );
-    return;
-  }
 
   const name = options.landlordName?.trim() || "Landlord";
   const daysLabel =
@@ -454,6 +471,17 @@ async function notifyLandlordRentDue(options: {
   const place = `${options.propertyName} / Unit ${options.unitNumber}`;
   const subject = `Rent due soon — ${options.lesseeName}`;
   const lead = `${options.lesseeName} has ${options.amountLabel} rent due ${daysLabel} (by ${options.periodEnd}) for ${options.periodLabel}.`;
+  const body = [
+    lead,
+    `Property: ${place}`,
+    "A payment reminder was also sent to the tenant.",
+  ].join("\n");
+
+  if (!email && !phone) {
+    console.warn(
+      "[rent-due-reminders] landlord email/SMS skipped: no email/phone for routing.",
+    );
+  }
 
   const text = [
     `Hi ${name},`,
@@ -509,6 +537,14 @@ async function notifyLandlordRentDue(options: {
       );
     }
   }
+
+  await insertLandlordPortalNotification({
+    landlordTenantId: options.landlordTenantId,
+    title: "Rent due soon",
+    body,
+    actionUrl: "/landlord-portal/finance/rent-ledger",
+    context: `rent-due:${options.entryId}`,
+  });
 }
 
 /**
@@ -617,6 +653,9 @@ export async function runRentDueReminders(
       const periodLabel = formatRentPeriod(periodStart, periodEnd);
 
       const delivered = await notifyLesseeRentDue({
+        landlordTenantId: row.tenant_id,
+        lesseeId: ctx.lesseeId,
+        entryId: row.entry_id,
         lesseeName: ctx.lesseeName,
         email: ctx.lesseeEmail,
         phone: ctx.lesseePhone,
@@ -644,6 +683,8 @@ export async function runRentDueReminders(
         landlordContactCache,
       );
       await notifyLandlordRentDue({
+        landlordTenantId: row.tenant_id,
+        entryId: row.entry_id,
         landlordName: landlord.name,
         email: landlord.email,
         phone: landlord.phone,

@@ -28,6 +28,10 @@ import {
 type PropertyDetailViewProps = {
   initialDetail: PropertyDetail;
   fetchError: string | null;
+  /** Defaults to staff admin properties API. */
+  apiBasePath?: string;
+  backHref?: string;
+  showLandlordName?: boolean;
 };
 
 const primaryButtonClassName =
@@ -104,6 +108,9 @@ function PhotoGallery({
 export default function PropertyDetailView({
   initialDetail,
   fetchError,
+  apiBasePath = "/api/admin/properties",
+  backHref,
+  showLandlordName = true,
 }: PropertyDetailViewProps) {
   const router = useRouter();
   const [detail, setDetail] = useState(initialDetail);
@@ -150,7 +157,7 @@ export default function PropertyDetailView({
     setError(null);
     setSuccess(null);
 
-    const response = await fetch("/api/admin/properties/update", {
+    const response = await fetch(`${apiBasePath}/update`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -193,7 +200,7 @@ export default function PropertyDetailView({
     formData.set("entity_id", propertyId);
     formData.set("file", file);
 
-    const response = await fetch("/api/admin/properties/upload-photo", {
+    const response = await fetch(`${apiBasePath}/upload-photo`, {
       method: "POST",
       body: formData,
     });
@@ -255,8 +262,8 @@ export default function PropertyDetailView({
     setSuccess(null);
 
     const endpoint = editingUnitId
-      ? "/api/admin/properties/units/update"
-      : "/api/admin/properties/units/create";
+      ? `${apiBasePath}/units/update`
+      : `${apiBasePath}/units/create`;
 
     const response = await fetch(endpoint, {
       method: "POST",
@@ -299,7 +306,7 @@ export default function PropertyDetailView({
     setError(null);
     setSuccess(null);
 
-    const response = await fetch("/api/admin/properties/units/update", {
+    const response = await fetch(`${apiBasePath}/units/update`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -335,7 +342,7 @@ export default function PropertyDetailView({
     setDeletingUnitId(unitId);
     setError(null);
 
-    const response = await fetch("/api/admin/properties/units/delete", {
+    const response = await fetch(`${apiBasePath}/units/delete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -370,7 +377,7 @@ export default function PropertyDetailView({
     formData.set("entity_id", unit.unitId);
     formData.set("file", file);
 
-    const response = await fetch("/api/admin/properties/upload-photo", {
+    const response = await fetch(`${apiBasePath}/upload-photo`, {
       method: "POST",
       body: formData,
     });
@@ -404,7 +411,7 @@ export default function PropertyDetailView({
     const nextUrls = unit.photoUrls.filter((item) => item !== url);
     setError(null);
 
-    const response = await fetch("/api/admin/properties/units/update", {
+    const response = await fetch(`${apiBasePath}/units/update`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -440,19 +447,27 @@ export default function PropertyDetailView({
     router.refresh();
   }
 
+  const resolvedBackHref =
+    backHref ??
+    `/dashboard/real-estate/properties?landlord=${encodeURIComponent(tenantId)}`;
+
   return (
     <div className="space-y-8">
       <Link
-        href={`/dashboard/real-estate/properties?landlord=${encodeURIComponent(tenantId)}`}
+        href={resolvedBackHref}
         className="inline-block text-sm font-medium text-[#0f2744] hover:underline"
       >
         ← Back to Properties
       </Link>
 
-      <p className="text-sm text-slate-600">
-        Landlord:{" "}
-        <span className="font-medium text-[#0f2744]">{detail.landlordName}</span>
-      </p>
+      {showLandlordName ? (
+        <p className="text-sm text-slate-600">
+          Landlord:{" "}
+          <span className="font-medium text-[#0f2744]">
+            {detail.landlordName}
+          </span>
+        </p>
+      ) : null}
 
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

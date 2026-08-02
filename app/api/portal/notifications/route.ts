@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import {
   LESSEE_NOTIFICATION_SELECT,
+  LESSEE_NOTIFICATION_SELECT_LEGACY,
+  isMissingActionUrlColumnError,
   normalizeLesseeNotificationRow,
   type LesseeNotificationRow,
 } from "@/utils/lessee-notifications-types";
@@ -29,33 +31,59 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const [listResult, unreadResult] = await Promise.all([
-    supabase
+  let listData: unknown[] | null = null;
+  let listError: { message: string } | null = null;
+
+  {
+    const listResult = await supabase
       .from("lessee_notifications")
       .select(LESSEE_NOTIFICATION_SELECT)
       .eq("tenant_id", session.tenantId)
       .eq("recipient_user_id", session.authUserId)
       .eq("lessee_id", session.lesseeId)
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1),
-    supabase
-      .from("lessee_notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", session.tenantId)
-      .eq("recipient_user_id", session.authUserId)
-      .eq("lessee_id", session.lesseeId)
-      .is("read_at", null),
-  ]);
+      .range(offset, offset + limit - 1);
 
-  if (listResult.error) {
-    return NextResponse.json({ error: listResult.error.message }, { status: 500 });
+    if (
+      listResult.error &&
+      isMissingActionUrlColumnError(listResult.error.message)
+    ) {
+      const legacy = await supabase
+        .from("lessee_notifications")
+        .select(LESSEE_NOTIFICATION_SELECT_LEGACY)
+        .eq("tenant_id", session.tenantId)
+        .eq("recipient_user_id", session.authUserId)
+        .eq("lessee_id", session.lesseeId)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      listData = legacy.data;
+      listError = legacy.error;
+    } else {
+      listData = listResult.data;
+      listError = listResult.error;
+    }
+  }
+
+  const unreadResult = await supabase
+    .from("lessee_notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", session.tenantId)
+    .eq("recipient_user_id", session.authUserId)
+    .eq("lessee_id", session.lesseeId)
+    .is("read_at", null);
+
+  if (listError) {
+    return NextResponse.json({ error: listError.message }, { status: 500 });
   }
   if (unreadResult.error) {
-    return NextResponse.json({ error: unreadResult.error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: unreadResult.error.message },
+      { status: 500 },
+    );
   }
 
   const notifications = (
-    (listResult.data as LesseeNotificationRow[] | null) ?? []
+    (listData as LesseeNotificationRow[] | null) ?? []
   ).map(normalizeLesseeNotificationRow);
 
   return NextResponse.json({

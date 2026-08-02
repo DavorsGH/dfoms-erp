@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import {
   LESSEE_NOTIFICATION_SELECT,
+  LESSEE_NOTIFICATION_SELECT_LEGACY,
+  isMissingActionUrlColumnError,
   normalizeLesseeNotificationRow,
   type LesseeNotificationRow,
 } from "@/utils/lessee-notifications-types";
@@ -47,7 +49,7 @@ export async function PATCH(_request: Request, context: RouteContext) {
   }
 
   if (existing.read_at) {
-    const { data: current } = await supabase
+    const currentFull = await supabase
       .from("lessee_notifications")
       .select(LESSEE_NOTIFICATION_SELECT)
       .eq("id", id)
@@ -56,15 +58,30 @@ export async function PATCH(_request: Request, context: RouteContext) {
       .eq("lessee_id", session.lesseeId)
       .maybeSingle();
 
+    const current =
+      currentFull.error &&
+      isMissingActionUrlColumnError(currentFull.error.message)
+        ? await supabase
+            .from("lessee_notifications")
+            .select(LESSEE_NOTIFICATION_SELECT_LEGACY)
+            .eq("id", id)
+            .eq("tenant_id", session.tenantId)
+            .eq("recipient_user_id", session.authUserId)
+            .eq("lessee_id", session.lesseeId)
+            .maybeSingle()
+        : currentFull;
+
     return NextResponse.json({
-      notification: current
-        ? normalizeLesseeNotificationRow(current as LesseeNotificationRow)
+      notification: current.data
+        ? normalizeLesseeNotificationRow(
+            current.data as LesseeNotificationRow,
+          )
         : null,
     });
   }
 
   const now = new Date().toISOString();
-  const { data, error } = await supabase
+  const updatedFull = await supabase
     .from("lessee_notifications")
     .update({ read_at: now })
     .eq("id", id)
@@ -74,13 +91,27 @@ export async function PATCH(_request: Request, context: RouteContext) {
     .select(LESSEE_NOTIFICATION_SELECT)
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  const updated =
+    updatedFull.error &&
+    isMissingActionUrlColumnError(updatedFull.error.message)
+      ? await supabase
+          .from("lessee_notifications")
+          .update({ read_at: now })
+          .eq("id", id)
+          .eq("tenant_id", session.tenantId)
+          .eq("recipient_user_id", session.authUserId)
+          .eq("lessee_id", session.lesseeId)
+          .select(LESSEE_NOTIFICATION_SELECT_LEGACY)
+          .single()
+      : updatedFull;
+
+  if (updated.error) {
+    return NextResponse.json({ error: updated.error.message }, { status: 400 });
   }
 
   return NextResponse.json({
     notification: normalizeLesseeNotificationRow(
-      data as LesseeNotificationRow,
+      updated.data as LesseeNotificationRow,
     ),
   });
 }

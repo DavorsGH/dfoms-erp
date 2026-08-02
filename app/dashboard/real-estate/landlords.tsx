@@ -23,6 +23,8 @@ import {
 type LandlordsProps = {
   initialRows: LandlordListRow[];
   fetchError: string | null;
+  /** Scroll/highlight target from `?highlight=` (staff notification deep-link). */
+  highlightTenantId?: string | null;
 };
 
 const emptyForm = {
@@ -38,7 +40,11 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
-export default function Landlords({ initialRows, fetchError }: LandlordsProps) {
+export default function Landlords({
+  initialRows,
+  fetchError,
+  highlightTenantId = null,
+}: LandlordsProps) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [error, setError] = useState<string | null>(fetchError);
@@ -58,6 +64,10 @@ export default function Landlords({ initialRows, fetchError }: LandlordsProps) {
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
+      // Never hide the notification deep-link target behind list filters.
+      if (highlightTenantId && row.tenantId === highlightTenantId) {
+        return true;
+      }
       if (
         filterApprovalStatus &&
         (row.approvalStatus ?? "") !== filterApprovalStatus
@@ -72,7 +82,15 @@ export default function Landlords({ initialRows, fetchError }: LandlordsProps) {
       }
       return true;
     });
-  }, [rows, filterApprovalStatus, filterLandlordType]);
+  }, [rows, filterApprovalStatus, filterLandlordType, highlightTenantId]);
+
+  useEffect(() => {
+    if (!highlightTenantId) {
+      return;
+    }
+    const el = document.getElementById(`landlord-row-${highlightTenantId}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightTenantId, filteredRows]);
 
   function updateField(field: keyof typeof emptyForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -300,32 +318,43 @@ export default function Landlords({ initialRows, fetchError }: LandlordsProps) {
                 </td>
               </tr>
             ) : (
-              filteredRows.map((row, index) => (
-                <tr key={row.tenantId} className={getStripedRowClassName(index)}>
-                  <td className="px-4 py-3 text-sm font-medium text-[#0f2744]">
-                    <Link
-                      href={`/dashboard/real-estate/landlords/${row.tenantId}`}
-                      className="hover:underline"
-                    >
-                      {row.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    {formatLandlordType(row.landlordType)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    {formatLandlordApprovalStatus(row.approvalStatus)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    {row.landlordType === "davors_managed"
-                      ? "—"
-                      : formatLandlordTier(row.subscriptionTier)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
-                    {formatLandlordDate(row.createdAt)}
-                  </td>
-                </tr>
-              ))
+              filteredRows.map((row, index) => {
+                const isHighlighted = highlightTenantId === row.tenantId;
+                return (
+                  <tr
+                    key={row.tenantId}
+                    id={`landlord-row-${row.tenantId}`}
+                    className={
+                      isHighlighted
+                        ? "bg-amber-50 ring-2 ring-inset ring-amber-300"
+                        : getStripedRowClassName(index)
+                    }
+                  >
+                    <td className="px-4 py-3 text-sm font-medium text-[#0f2744]">
+                      <Link
+                        href={`/dashboard/real-estate/landlords/${row.tenantId}`}
+                        className="hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      {formatLandlordType(row.landlordType)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      {formatLandlordApprovalStatus(row.approvalStatus)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      {row.landlordType === "davors_managed"
+                        ? "—"
+                        : formatLandlordTier(row.subscriptionTier)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      {formatLandlordDate(row.createdAt)}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

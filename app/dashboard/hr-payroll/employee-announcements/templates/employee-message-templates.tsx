@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import RegisterRowActions, {
   getStripedRowClassName,
 } from "../../../finance/register-row-actions";
@@ -9,6 +9,8 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../../scrollable-table";
+import TemplatePlaceholderReference from "@/components/template-placeholder-reference";
+import { EMPLOYEE_TEMPLATE_PLACEHOLDERS } from "@/utils/message-template-placeholders";
 import {
   channelIncludesEmail,
   channelIncludesSms,
@@ -84,6 +86,7 @@ export default function EmployeeMessageTemplates({
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [channelFilter, setChannelFilter] = useState("");
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const showSubjectField = channelIncludesEmail(form.channel);
   const showSmsHint = channelIncludesSms(form.channel);
@@ -335,6 +338,7 @@ export default function EmployeeMessageTemplates({
                 ) : null}
               </div>
               <textarea
+                ref={bodyTextareaRef}
                 required
                 rows={showSmsHint && !showSubjectField ? 4 : 6}
                 value={form.body}
@@ -346,6 +350,14 @@ export default function EmployeeMessageTemplates({
                 }
                 className={inputClassName}
                 placeholder="Hello {{employee_name}}, ..."
+              />
+              <TemplatePlaceholderReference
+                placeholders={EMPLOYEE_TEMPLATE_PLACEHOLDERS}
+                value={form.body}
+                onChange={(next) =>
+                  setForm((current) => ({ ...current, body: next }))
+                }
+                textareaRef={bodyTextareaRef}
               />
             </div>
 

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { sendResendEmail } from "@/utils/resend-email";
 import {
   isRentLedgerStatus,
@@ -25,12 +26,11 @@ export async function notifyMaintenanceLandlordDecision(options: {
   selfFix: boolean;
   amountGhs: number | null;
   description: string;
+  /** When set, also insert lessee portal in-app (if auth_user_id). */
+  landlordTenantId?: string | null;
+  lesseeId?: string | null;
+  requestId?: string | null;
 }): Promise<void> {
-  const to = options.email?.trim();
-  if (!to) {
-    return;
-  }
-
   const name = options.fullName.trim() || "Tenant";
   const amountLabel =
     options.amountGhs != null
@@ -40,6 +40,23 @@ export async function notifyMaintenanceLandlordDecision(options: {
         })}`
       : null;
 
+  const sendInApp = async (
+    title: string,
+    body: string,
+  ): Promise<void> => {
+    const tenantId = options.landlordTenantId?.trim();
+    const lesseeId = options.lesseeId?.trim();
+    if (!tenantId || !lesseeId) return;
+    await insertLesseePortalNotification({
+      landlordTenantId: tenantId,
+      lesseeId,
+      title,
+      body,
+      actionUrl: "/portal/repairs",
+      context: `maintenance-decision:${options.requestId ?? lesseeId}`,
+    });
+  };
+
   if (options.approved) {
     const subject = options.selfFix
       ? "Self-fix repair approved"
@@ -48,54 +65,66 @@ export async function notifyMaintenanceLandlordDecision(options: {
       options.selfFix && amountLabel
         ? `Approved self-fix cost ${amountLabel} will be credited against your next rent payment.`
         : null;
-    const text = [
-      `Hi ${name},`,
-      "",
+    const bodyLines = [
       "Your maintenance / repair request has been approved.",
       `Request: ${options.description}`,
       creditLine,
+    ].filter(Boolean) as string[];
+    const text = [
+      `Hi ${name},`,
+      "",
+      ...bodyLines,
       "",
       "Davors Facilities",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ].join("\n");
+    const to = options.email?.trim();
+    if (to) {
+      const result = await sendResendEmail({
+        to,
+        subject,
+        text,
+        html: `<p>Hi ${escapeHtml(name)},</p>
+<p>Your maintenance / repair request has been <strong>approved</strong>.</p>
+<p>Request: ${escapeHtml(options.description)}</p>
+${creditLine ? `<p>${escapeHtml(creditLine)}</p>` : ""}
+<p>Davors Facilities</p>`,
+      });
+      if (!result.ok) {
+        console.error("[maintenance] approve email failed:", result.error);
+      }
+    }
+    await sendInApp(subject, bodyLines.join("\n"));
+    return;
+  }
+
+  const subject = "Maintenance request declined";
+  const bodyLines = [
+    "Your maintenance / repair request was not approved.",
+    `Request: ${options.description}`,
+  ];
+  const text = [
+    `Hi ${name},`,
+    "",
+    ...bodyLines,
+    "",
+    "Davors Facilities",
+  ].join("\n");
+  const to = options.email?.trim();
+  if (to) {
     const result = await sendResendEmail({
       to,
       subject,
       text,
       html: `<p>Hi ${escapeHtml(name)},</p>
-<p>Your maintenance / repair request has been <strong>approved</strong>.</p>
-<p>Request: ${escapeHtml(options.description)}</p>
-${creditLine ? `<p>${escapeHtml(creditLine)}</p>` : ""}
-<p>Davors Facilities</p>`,
-    });
-    if (!result.ok) {
-      console.error("[maintenance] approve email failed:", result.error);
-    }
-    return;
-  }
-
-  const subject = "Maintenance request declined";
-  const text = [
-    `Hi ${name},`,
-    "",
-    "Your maintenance / repair request was not approved.",
-    `Request: ${options.description}`,
-    "",
-    "Davors Facilities",
-  ].join("\n");
-  const result = await sendResendEmail({
-    to,
-    subject,
-    text,
-    html: `<p>Hi ${escapeHtml(name)},</p>
 <p>Your maintenance / repair request was <strong>not approved</strong>.</p>
 <p>Request: ${escapeHtml(options.description)}</p>
 <p>Davors Facilities</p>`,
-  });
-  if (!result.ok) {
-    console.error("[maintenance] reject email failed:", result.error);
+    });
+    if (!result.ok) {
+      console.error("[maintenance] reject email failed:", result.error);
+    }
   }
+  await sendInApp(subject, bodyLines.join("\n"));
 }
 
 /**

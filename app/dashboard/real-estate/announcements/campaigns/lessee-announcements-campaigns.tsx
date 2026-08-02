@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getStripedRowClassName } from "../../../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../../scrollable-table";
+import TemplatePlaceholderReference from "@/components/template-placeholder-reference";
 import {
   LESSEE_ANNOUNCEMENT_CHANNELS,
   LESSEE_ANNOUNCEMENT_STATUSES,
@@ -24,6 +25,7 @@ import {
   formatChannelLabel,
   type LesseeMessageTemplateRow,
 } from "@/utils/lessee-message-templates-types";
+import { LESSEE_TEMPLATE_PLACEHOLDERS } from "@/utils/message-template-placeholders";
 import { substituteTemplatePlaceholders } from "@/utils/message-template-render";
 
 export type AnnouncementLesseeOption = {
@@ -53,6 +55,8 @@ type LesseeAnnouncementsCampaignsProps = {
   leases: AnnouncementLeaseOption[];
   lessees: AnnouncementLesseeOption[];
   fetchError: string | null;
+  /** Defaults to staff admin announcements API. */
+  apiBasePath?: string;
 };
 
 type ContentMode = "template" | "adhoc";
@@ -301,6 +305,7 @@ export default function LesseeAnnouncementsCampaigns({
   leases,
   lessees,
   fetchError,
+  apiBasePath = "/api/admin/lessee-announcements",
 }: LesseeAnnouncementsCampaignsProps) {
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
   const [templates] = useState(activeTemplates);
@@ -308,6 +313,7 @@ export default function LesseeAnnouncementsCampaigns({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewOnly, setViewOnly] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -332,7 +338,7 @@ export default function LesseeAnnouncementsCampaigns({
     setViewDetailLoading(true);
 
     fetch(
-      `/api/admin/lessee-announcements/${editingId}/recipients?tenant_id=${encodeURIComponent(tenantId)}`,
+      `${apiBasePath}/${editingId}/recipients?tenant_id=${encodeURIComponent(tenantId)}`,
     )
       .then((response) => response.json())
       .then((payload: AnnouncementDetailPayload) => {
@@ -399,7 +405,7 @@ export default function LesseeAnnouncementsCampaigns({
     if (statusFilter) params.set("status", statusFilter);
 
     const response = await fetch(
-      `/api/admin/lessee-announcements?${params}`,
+      `${apiBasePath}?${params}`,
     );
     const payload = (await response.json()) as {
       announcements?: NormalizedLesseeAnnouncementRow[];
@@ -474,8 +480,8 @@ export default function LesseeAnnouncementsCampaigns({
 
     const response = await fetch(
       editingId
-        ? `/api/admin/lessee-announcements/${editingId}`
-        : "/api/admin/lessee-announcements",
+        ? `${apiBasePath}/${editingId}`
+        : apiBasePath,
       {
         method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -509,7 +515,7 @@ export default function LesseeAnnouncementsCampaigns({
     setError(null);
 
     const response = await fetch(
-      `/api/admin/lessee-announcements/${row.id}?tenant_id=${encodeURIComponent(tenantId)}`,
+      `${apiBasePath}/${row.id}?tenant_id=${encodeURIComponent(tenantId)}`,
       { method: "DELETE" },
     );
     const result = (await response.json()) as { error?: string };
@@ -531,7 +537,7 @@ export default function LesseeAnnouncementsCampaigns({
     setSendStatusMessage(null);
 
     const response = await fetch(
-      `/api/admin/lessee-announcements/${announcementId}/send`,
+      `${apiBasePath}/${announcementId}/send`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -559,7 +565,7 @@ export default function LesseeAnnouncementsCampaigns({
     setError(null);
 
     const previewResponse = await fetch(
-      `/api/admin/lessee-announcements/${row.id}/audience-preview?tenant_id=${encodeURIComponent(tenantId)}`,
+      `${apiBasePath}/${row.id}/audience-preview?tenant_id=${encodeURIComponent(tenantId)}`,
     );
     const previewPayload = (await previewResponse.json()) as {
       preview?: {
@@ -782,6 +788,7 @@ export default function LesseeAnnouncementsCampaigns({
                       Body
                     </label>
                     <textarea
+                      ref={bodyTextareaRef}
                       required
                       disabled={viewOnly}
                       rows={5}
@@ -794,6 +801,15 @@ export default function LesseeAnnouncementsCampaigns({
                       }
                       className={inputClassName}
                       placeholder="Hello {{tenant_name}}, ..."
+                    />
+                    <TemplatePlaceholderReference
+                      placeholders={LESSEE_TEMPLATE_PLACEHOLDERS}
+                      value={form.body}
+                      onChange={(next) =>
+                        setForm((current) => ({ ...current, body: next }))
+                      }
+                      textareaRef={bodyTextareaRef}
+                      disabled={viewOnly}
                     />
                   </div>
                 </div>

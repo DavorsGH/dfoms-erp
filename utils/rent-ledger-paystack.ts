@@ -17,6 +17,8 @@ import {
   type RentVerificationStatus,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
+import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
+import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { notifyStaffRentPaymentReceived } from "@/utils/real-estate-staff-notifications";
 
 export const RENT_LEDGER_PAYSTACK_CONTEXT = "rent_ledger" as const;
@@ -322,7 +324,21 @@ async function notifyRentPaystackSuccess(options: {
     }
   }
 
-  // 2) Landlord "rent received"
+  const tenantInAppBody = [
+    `We received your rent payment of ${amountLabel}.`,
+    `Period: ${periodLabel}`,
+    `Method: ${options.paymentMethod}`,
+  ].join("\n");
+  await insertLesseePortalNotification({
+    landlordTenantId: options.tenantId,
+    lesseeId: options.lesseeId,
+    title: "Rent payment receipt",
+    body: tenantInAppBody,
+    actionUrl: "/portal/dashboard",
+    context: `rent-receipt-tenant:${options.lesseeId}:${periodLabel}`,
+  });
+
+  // 2) Landlord "rent received" (sole landlord in-app path for rent payments)
   const escrowLine =
     options.landlordType === "davors_managed" &&
     options.escrowBalanceAfterGhs != null
@@ -384,6 +400,22 @@ async function notifyRentPaystackSuccess(options: {
       );
     }
   }
+
+  const landlordInAppBody = [
+    `Rent of ${amountLabel} was received from ${lesseeName}.`,
+    `Period: ${periodLabel}`,
+    `Method: ${options.paymentMethod}`,
+    escrowLine,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  await insertLandlordPortalNotification({
+    landlordTenantId: options.tenantId,
+    title: "Rent payment received",
+    body: landlordInAppBody,
+    actionUrl: "/landlord-portal/finance/rent-ledger",
+    context: `rent-receipt-landlord:${options.lesseeId}:${periodLabel}`,
+  });
 }
 
 function escapeHtml(value: string): string {

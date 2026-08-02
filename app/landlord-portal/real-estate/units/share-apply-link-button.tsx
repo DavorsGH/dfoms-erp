@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   portalPrimaryButtonClassName,
   portalSecondaryButtonClassName,
@@ -12,15 +12,44 @@ type Props = {
   unitLabel: string;
 };
 
+function canUseWebShare(url: string, unitLabel: string): boolean {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+    return false;
+  }
+  const data: ShareData = {
+    title: `Rental application — Unit ${unitLabel}`,
+    text: `Apply for unit ${unitLabel}`,
+    url,
+  };
+  if (typeof navigator.canShare === "function") {
+    try {
+      return navigator.canShare(data);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 export default function ShareApplyLinkButton({
   unitId,
   propertyId,
   unitLabel,
 }: Props) {
   const [loading, setLoading] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [nativeShareAvailable, setNativeShareAvailable] = useState(false);
+
+  useEffect(() => {
+    if (!url) {
+      setNativeShareAvailable(false);
+      return;
+    }
+    setNativeShareAvailable(canUseWebShare(url, unitLabel));
+  }, [url, unitLabel]);
 
   async function createLink() {
     setLoading(true);
@@ -56,6 +85,31 @@ export default function ShareApplyLinkButton({
     }
   }
 
+  async function shareUrl() {
+    if (!url || !canUseWebShare(url, unitLabel)) return;
+
+    setSharing(true);
+    setError(null);
+    try {
+      await navigator.share({
+        title: `Rental application — Unit ${unitLabel}`,
+        text: `Apply for unit ${unitLabel}`,
+        url,
+      });
+    } catch (err) {
+      // User dismissed the share sheet — not an error.
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
+      setError("Sharing failed. You can still copy the link.");
+    } finally {
+      setSharing(false);
+    }
+  }
+
   return (
     <div className="space-y-1">
       {!url ? (
@@ -68,17 +122,25 @@ export default function ShareApplyLinkButton({
           {loading ? "Creating…" : "Share apply link"}
         </button>
       ) : (
-        <div className="space-y-1">
-          <p className="max-w-xs break-all text-xs text-slate-600" title={url}>
-            {url}
-          </p>
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={copyUrl}
+            onClick={() => void copyUrl()}
             className={portalPrimaryButtonClassName}
+            title={url}
           >
             {copied ? "Copied" : `Copy link (${unitLabel})`}
           </button>
+          {nativeShareAvailable ? (
+            <button
+              type="button"
+              disabled={sharing}
+              onClick={() => void shareUrl()}
+              className={portalSecondaryButtonClassName}
+            >
+              {sharing ? "Sharing…" : "Share"}
+            </button>
+          ) : null}
         </div>
       )}
       {error ? <p className="text-xs text-red-600">{error}</p> : null}

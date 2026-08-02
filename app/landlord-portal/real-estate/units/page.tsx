@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   fetchLandlordPortalUnits,
@@ -18,6 +19,7 @@ import {
   portalSectionTitleClassName,
 } from "../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../pending-approval-view";
+import DeleteUnitButton from "./delete-unit-button";
 import ShareApplyLinkButton from "./share-apply-link-button";
 
 export default async function LandlordPortalUnitsPage() {
@@ -35,6 +37,7 @@ export default async function LandlordPortalUnitsPage() {
     );
   }
 
+  const canManage = session.landlordType === "platform_only";
   const { rows, error } = await fetchLandlordPortalUnits(session);
 
   return (
@@ -42,8 +45,9 @@ export default async function LandlordPortalUnitsPage() {
       <div>
         <h1 className={portalSectionTitleClassName}>Units</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Units across your properties. Vacant units can share a public
-          application link.
+          {canManage
+            ? "Units across your properties. Open a property to add, edit, or set base rent. Vacant units can share a public application link."
+            : "Units across your properties (read-only — Davors staff manages changes). Vacant units can share a public application link."}
         </p>
       </div>
 
@@ -64,6 +68,9 @@ export default async function LandlordPortalUnitsPage() {
                 <th className={scrollableTableThClassName}>Base rent</th>
                 <th className={scrollableTableThClassName}>Beds / baths</th>
                 <th className={scrollableTableThClassName}>Apply link</th>
+                {canManage ? (
+                  <th className={scrollableTableThClassName}>Manage</th>
+                ) : null}
               </tr>
             </thead>
             <tbody className={scrollableTableBodyClassName}>
@@ -91,6 +98,22 @@ export default async function LandlordPortalUnitsPage() {
                       <span className="text-xs text-slate-400">—</span>
                     )}
                   </td>
+                  {canManage ? (
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                        <Link
+                          href={`/landlord-portal/real-estate/properties/${row.propertyId}`}
+                          className="text-sm font-medium text-[#0f2744] hover:underline"
+                        >
+                          Edit on property
+                        </Link>
+                        <DeleteUnitButton
+                          unitId={row.unitId}
+                          unitLabel={row.unitNumber}
+                        />
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

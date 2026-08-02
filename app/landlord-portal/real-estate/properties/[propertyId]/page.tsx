@@ -11,6 +11,7 @@ import {
   formatUnitStatus,
 } from "@/app/dashboard/real-estate/properties-utils";
 import { formatLeaseMoney } from "@/app/dashboard/real-estate/leases-utils";
+import PropertyDetailView from "@/app/dashboard/real-estate/property-detail";
 import {
   portalErrorBannerClassName,
   portalSectionClassName,
@@ -40,6 +41,7 @@ export default async function LandlordPortalPropertyDetailPage({
     );
   }
 
+  const canManage = session.landlordType === "platform_only";
   const { propertyId } = await params;
   const admin = createAdminClient();
   const { detail, fetchError } = await fetchPropertyDetail(
@@ -62,6 +64,28 @@ export default async function LandlordPortalPropertyDetailPage({
     );
   }
 
+  if (canManage && detail) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-xl font-semibold text-[#0f2744]">
+            {detail.property.name}
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Edit property details, photos, and units.
+          </p>
+        </div>
+        <PropertyDetailView
+          initialDetail={detail}
+          fetchError={fetchError}
+          apiBasePath="/api/landlord-portal/properties"
+          backHref="/landlord-portal/real-estate/properties"
+          showLandlordName={false}
+        />
+      </div>
+    );
+  }
+
   const property = detail?.property;
   const units = detail?.units ?? [];
   const occupiedCount = units.filter((unit) => unit.status === "occupied").length;
@@ -78,6 +102,10 @@ export default async function LandlordPortalPropertyDetailPage({
         <h1 className="mt-2 text-xl font-semibold text-[#0f2744]">
           {property?.name ?? "Property"}
         </h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Read-only — Davors staff manages property changes for managed
+          landlords.
+        </p>
       </div>
 
       {fetchError ? (
@@ -125,24 +153,12 @@ export default async function LandlordPortalPropertyDetailPage({
 
           <section className={portalSectionClassName}>
             <h2 className={portalSectionTitleClassName}>Property photos</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Same gallery storage as staff Real Estate (read-only).
-            </p>
             <div className="mt-4">
               <LandlordPortalPhotoGalleryReadonly
                 urls={property.photoUrls}
                 alt="Property photo"
               />
             </div>
-          </section>
-
-          <section className={portalSectionClassName}>
-            <h2 className={portalSectionTitleClassName}>Document storage</h2>
-            <p className="mt-4 text-sm text-slate-600">
-              No property document store exists in the schema yet (staff uses
-              photo galleries only). Lease PDFs / title deeds are not available
-              until a documents table or column is added.
-            </p>
           </section>
         </>
       ) : null}

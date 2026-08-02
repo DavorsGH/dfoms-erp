@@ -4,6 +4,8 @@ import { requireAuthenticated } from "@/utils/admin-auth";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import {
   EMPLOYEE_NOTIFICATION_SELECT,
+  EMPLOYEE_NOTIFICATION_SELECT_LEGACY,
+  isMissingActionUrlColumnError,
   normalizeEmployeeNotificationRow,
   type EmployeeNotificationRow,
 } from "@/utils/employee-notifications-types";
@@ -53,7 +55,7 @@ export async function PATCH(_request: Request, context: RouteContext) {
   }
 
   if (existing.read_at) {
-    const { data: current } = await supabase
+    const currentFull = await supabase
       .from("employee_notifications")
       .select(EMPLOYEE_NOTIFICATION_SELECT)
       .eq("id", id)
@@ -61,15 +63,29 @@ export async function PATCH(_request: Request, context: RouteContext) {
       .eq("recipient_user_id", auth.userId)
       .maybeSingle();
 
+    const current =
+      currentFull.error &&
+      isMissingActionUrlColumnError(currentFull.error.message)
+        ? await supabase
+            .from("employee_notifications")
+            .select(EMPLOYEE_NOTIFICATION_SELECT_LEGACY)
+            .eq("id", id)
+            .eq("tenant_id", tenantId)
+            .eq("recipient_user_id", auth.userId)
+            .maybeSingle()
+        : currentFull;
+
     return NextResponse.json({
-      notification: current
-        ? normalizeEmployeeNotificationRow(current as EmployeeNotificationRow)
+      notification: current.data
+        ? normalizeEmployeeNotificationRow(
+            current.data as EmployeeNotificationRow,
+          )
         : null,
     });
   }
 
   const now = new Date().toISOString();
-  const { data, error } = await supabase
+  const updatedFull = await supabase
     .from("employee_notifications")
     .update({ read_at: now })
     .eq("id", id)
@@ -78,13 +94,26 @@ export async function PATCH(_request: Request, context: RouteContext) {
     .select(EMPLOYEE_NOTIFICATION_SELECT)
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  const updated =
+    updatedFull.error &&
+    isMissingActionUrlColumnError(updatedFull.error.message)
+      ? await supabase
+          .from("employee_notifications")
+          .update({ read_at: now })
+          .eq("id", id)
+          .eq("tenant_id", tenantId)
+          .eq("recipient_user_id", auth.userId)
+          .select(EMPLOYEE_NOTIFICATION_SELECT_LEGACY)
+          .single()
+      : updatedFull;
+
+  if (updated.error) {
+    return NextResponse.json({ error: updated.error.message }, { status: 400 });
   }
 
   return NextResponse.json({
     notification: normalizeEmployeeNotificationRow(
-      data as EmployeeNotificationRow,
+      updated.data as EmployeeNotificationRow,
     ),
   });
 }

@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { LESSEE_ANNOUNCEMENT_CODE_ENTITY_TYPE } from "@/utils/lessee-announcements-types";
@@ -57,6 +58,25 @@ export async function requireLesseeAnnouncementAdmin(
     tenantId: landlord.tenantId,
     landlordName: landlord.name,
     admin,
+  };
+}
+
+/**
+ * platform_only landlords compose/send their own tenant announcements.
+ * Tenant scope always comes from the session (ignore body/query tenant_id).
+ */
+export async function requireLesseeAnnouncementLandlordPortal(): Promise<LesseeAnnouncementAdminContext> {
+  const auth = await requirePlatformOnlyLandlordSession();
+  if (!auth.ok) {
+    return auth;
+  }
+
+  return {
+    ok: true,
+    userId: auth.session.authUserId,
+    tenantId: auth.session.tenantId,
+    landlordName: auth.session.fullName,
+    admin: auth.admin,
   };
 }
 

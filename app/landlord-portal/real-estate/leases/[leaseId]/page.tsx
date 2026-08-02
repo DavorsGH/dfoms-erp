@@ -18,6 +18,7 @@ import {
   portalSectionTitleClassName,
 } from "../../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../../pending-approval-view";
+import LandlordPortalLeaseEditForm from "../lease-edit-form";
 
 type PageProps = {
   params: Promise<{ leaseId: string }>;
@@ -79,6 +80,7 @@ export default async function LandlordPortalLeaseDetailPage({
     );
   }
 
+  const canManage = session.landlordType === "platform_only";
   const lateFeeLabel = !detail?.lateFeeEnabled
     ? "Disabled"
     : detail.lateFeeType === "percent"
@@ -98,12 +100,18 @@ export default async function LandlordPortalLeaseDetailPage({
           {detail ? `${detail.lesseeName} · Unit ${detail.unitNumber}` : "Lease"}
         </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Full lease terms (read-only).
+          {canManage
+            ? "Full lease terms. Edit rent and terms below."
+            : "Full lease terms (read-only — Davors staff manages changes)."}
         </p>
       </div>
 
       {fetchError ? (
         <div className={portalErrorBannerClassName}>{fetchError}</div>
+      ) : null}
+
+      {detail && canManage ? (
+        <LandlordPortalLeaseEditForm detail={detail} />
       ) : null}
 
       {detail ? (

@@ -18,6 +18,7 @@ import {
   portalSectionTitleClassName,
 } from "../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../pending-approval-view";
+import LandlordPortalPropertyCreateForm from "./property-create-form";
 
 export default async function LandlordPortalPropertiesPage() {
   const session = await getLandlordPortalSession();
@@ -34,6 +35,7 @@ export default async function LandlordPortalPropertiesPage() {
     );
   }
 
+  const canManage = session.landlordType === "platform_only";
   const { rows, error } = await fetchLandlordPortalProperties(session);
 
   return (
@@ -41,9 +43,13 @@ export default async function LandlordPortalPropertiesPage() {
       <div>
         <h1 className={portalSectionTitleClassName}>Properties</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Browse properties in your portfolio (read-only).
+          {canManage
+            ? "Add and edit properties in your portfolio."
+            : "Browse properties in your portfolio (read-only — Davors staff manages changes)."}
         </p>
       </div>
+
+      {canManage ? <LandlordPortalPropertyCreateForm /> : null}
 
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
 

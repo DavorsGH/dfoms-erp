@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { terminateLeaseEarly } from "@/utils/lease-management";
+import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { sendResendEmail } from "@/utils/resend-email";
 import { formatLeaseDate } from "@/app/dashboard/real-estate/leases-utils";
 
@@ -18,65 +19,88 @@ export async function notifyTenantTerminationDecision(options: {
   fullName: string;
   approved: boolean;
   reason: string | null;
+  landlordTenantId?: string | null;
+  lesseeId?: string | null;
+  leaseId?: string | null;
 }): Promise<void> {
-  const to = options.email?.trim();
-  if (!to) {
-    return;
-  }
-
   const name = options.fullName.trim() || "Tenant";
+
+  const sendInApp = async (title: string, body: string): Promise<void> => {
+    const tenantId = options.landlordTenantId?.trim();
+    const lesseeId = options.lesseeId?.trim();
+    if (!tenantId || !lesseeId) return;
+    await insertLesseePortalNotification({
+      landlordTenantId: tenantId,
+      lesseeId,
+      title,
+      body,
+      actionUrl: "/portal/dashboard",
+      context: `termination-decision:${options.leaseId ?? lesseeId}`,
+    });
+  };
+
   if (options.approved) {
     const subject = "Early lease termination approved";
+    const bodyLines = [
+      "Your request to end your lease early has been approved.",
+      options.reason ? `Reason on file: ${options.reason}` : null,
+      "Your lease is now terminated. Contact your property manager about your security deposit.",
+    ].filter(Boolean) as string[];
     const text = [
       `Hi ${name},`,
       "",
-      "Your request to end your lease early has been approved.",
-      options.reason ? `Reason on file: ${options.reason}` : null,
-      "",
-      "Your lease is now terminated. Contact your property manager about your security deposit.",
+      ...bodyLines,
       "",
       "Davors Facilities",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ].join("\n");
+    const to = options.email?.trim();
+    if (to) {
+      const result = await sendResendEmail({
+        to,
+        subject,
+        text,
+        html: `<p>Hi ${escapeHtml(name)},</p>
+<p>Your request to end your lease early has been <strong>approved</strong>.</p>
+${options.reason ? `<p>Reason on file: ${escapeHtml(options.reason)}</p>` : ""}
+<p>Your lease is now terminated. Contact your property manager about your security deposit.</p>
+<p>Davors Facilities</p>`,
+      });
+      if (!result.ok) {
+        console.error(
+          "[termination-request] approve email failed:",
+          result.error,
+        );
+      }
+    }
+    await sendInApp(subject, bodyLines.join("\n"));
+    return;
+  }
+
+  const subject = "Early lease termination request declined";
+  const body =
+    "Your request to end your lease early was not approved. Your lease continues as normal.";
+  const text = [
+    `Hi ${name},`,
+    "",
+    body,
+    "",
+    "Davors Facilities",
+  ].join("\n");
+  const to = options.email?.trim();
+  if (to) {
     const result = await sendResendEmail({
       to,
       subject,
       text,
       html: `<p>Hi ${escapeHtml(name)},</p>
-<p>Your request to end your lease early has been <strong>approved</strong>.</p>
-${options.reason ? `<p>Reason on file: ${escapeHtml(options.reason)}</p>` : ""}
-<p>Your lease is now terminated. Contact your property manager about your security deposit.</p>
+<p>Your request to end your lease early was <strong>not approved</strong>. Your lease continues as normal.</p>
 <p>Davors Facilities</p>`,
     });
     if (!result.ok) {
-      console.error(
-        "[termination-request] approve email failed:",
-        result.error,
-      );
+      console.error("[termination-request] reject email failed:", result.error);
     }
-    return;
   }
-
-  const subject = "Early lease termination request declined";
-  const text = [
-    `Hi ${name},`,
-    "",
-    "Your request to end your lease early was not approved. Your lease continues as normal.",
-    "",
-    "Davors Facilities",
-  ].join("\n");
-  const result = await sendResendEmail({
-    to,
-    subject,
-    text,
-    html: `<p>Hi ${escapeHtml(name)},</p>
-<p>Your request to end your lease early was <strong>not approved</strong>. Your lease continues as normal.</p>
-<p>Davors Facilities</p>`,
-  });
-  if (!result.ok) {
-    console.error("[termination-request] reject email failed:", result.error);
-  }
+  await sendInApp(subject, body);
 }
 
 export type ReviewTerminationRequestResult =
@@ -161,6 +185,9 @@ export async function reviewTerminationRequest(
       fullName: lessee?.full_name ?? "Tenant",
       approved: false,
       reason: pendingReason,
+      landlordTenantId: options.tenantId,
+      lesseeId: lease.lessee_id,
+      leaseId,
     });
 
     return { ok: true, action: "reject" };
@@ -191,6 +218,9 @@ export async function reviewTerminationRequest(
       fullName: lessee?.full_name ?? "Tenant",
       approved: true,
       reason: pendingReason,
+      landlordTenantId: options.tenantId,
+      lesseeId: lease.lessee_id,
+      leaseId,
     });
 
     return {

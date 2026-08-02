@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import RegisterRowActions, {
   getStripedRowClassName,
 } from "../../../finance/register-row-actions";
@@ -9,6 +9,8 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../../scrollable-table";
+import TemplatePlaceholderReference from "@/components/template-placeholder-reference";
+import { CUSTOMER_TEMPLATE_PLACEHOLDERS } from "@/utils/message-template-placeholders";
 import {
   channelIncludesEmail,
   channelIncludesSms,
@@ -94,6 +96,8 @@ export default function MessageTemplates({
   const [error, setError] = useState<string | null>(fetchError);
   const [typeFilter, setTypeFilter] = useState("");
   const [channelFilter, setChannelFilter] = useState("");
+  const emailBodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const smsBodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const showEmailFields = channelIncludesEmail(form.channel);
   const showSmsFields = channelIncludesSms(form.channel);
@@ -382,6 +386,7 @@ export default function MessageTemplates({
                     Email body
                   </label>
                   <textarea
+                    ref={emailBodyTextareaRef}
                     required
                     rows={6}
                     value={form.body_email}
@@ -393,6 +398,14 @@ export default function MessageTemplates({
                     }
                     className={inputClassName}
                     placeholder="Hello {{customer_name}}, ..."
+                  />
+                  <TemplatePlaceholderReference
+                    placeholders={CUSTOMER_TEMPLATE_PLACEHOLDERS}
+                    value={form.body_email}
+                    onChange={(next) =>
+                      setForm((current) => ({ ...current, body_email: next }))
+                    }
+                    textareaRef={emailBodyTextareaRef}
                   />
                 </div>
               </>
@@ -412,6 +425,7 @@ export default function MessageTemplates({
                   </span>
                 </div>
                 <textarea
+                  ref={smsBodyTextareaRef}
                   required
                   rows={4}
                   value={form.body_sms}
@@ -423,6 +437,14 @@ export default function MessageTemplates({
                   }
                   className={inputClassName}
                   placeholder="Hi {{customer_name}}, your balance is {{amount}}."
+                />
+                <TemplatePlaceholderReference
+                  placeholders={CUSTOMER_TEMPLATE_PLACEHOLDERS}
+                  value={form.body_sms}
+                  onChange={(next) =>
+                    setForm((current) => ({ ...current, body_sms: next }))
+                  }
+                  textareaRef={smsBodyTextareaRef}
                 />
               </div>
             ) : null}

@@ -4,6 +4,8 @@ import { requireAuthenticated } from "@/utils/admin-auth";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import {
   EMPLOYEE_NOTIFICATION_SELECT,
+  EMPLOYEE_NOTIFICATION_SELECT_LEGACY,
+  isMissingActionUrlColumnError,
   normalizeEmployeeNotificationRow,
   type EmployeeNotificationRow,
 } from "@/utils/employee-notifications-types";
@@ -36,31 +38,53 @@ export async function GET(request: Request) {
   const supabase = createClient(cookieStore);
 
   // RLS remains primary; app-level filters are defense-in-depth.
-  const [listResult, unreadResult] = await Promise.all([
-    supabase
+  let listData: unknown[] | null = null;
+  let listError: { message: string } | null = null;
+
+  {
+    const listResult = await supabase
       .from("employee_notifications")
       .select(EMPLOYEE_NOTIFICATION_SELECT)
       .eq("tenant_id", tenantId)
       .eq("recipient_user_id", auth.userId)
       .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1),
-    supabase
-      .from("employee_notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId)
-      .eq("recipient_user_id", auth.userId)
-      .is("read_at", null),
-  ]);
+      .range(offset, offset + limit - 1);
 
-  if (listResult.error) {
-    return NextResponse.json({ error: listResult.error.message }, { status: 500 });
+    if (
+      listResult.error &&
+      isMissingActionUrlColumnError(listResult.error.message)
+    ) {
+      const legacy = await supabase
+        .from("employee_notifications")
+        .select(EMPLOYEE_NOTIFICATION_SELECT_LEGACY)
+        .eq("tenant_id", tenantId)
+        .eq("recipient_user_id", auth.userId)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      listData = legacy.data;
+      listError = legacy.error;
+    } else {
+      listData = listResult.data;
+      listError = listResult.error;
+    }
+  }
+
+  const unreadResult = await supabase
+    .from("employee_notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("recipient_user_id", auth.userId)
+    .is("read_at", null);
+
+  if (listError) {
+    return NextResponse.json({ error: listError.message }, { status: 500 });
   }
   if (unreadResult.error) {
     return NextResponse.json({ error: unreadResult.error.message }, { status: 500 });
   }
 
   const notifications = (
-    (listResult.data as EmployeeNotificationRow[] | null) ?? []
+    (listData as EmployeeNotificationRow[] | null) ?? []
   ).map(normalizeEmployeeNotificationRow);
 
   return NextResponse.json({

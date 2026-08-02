@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   fetchLandlordPortalLeasesBrowse,
+  fetchLandlordPortalTenants,
+  fetchLandlordPortalUnits,
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
@@ -21,6 +23,7 @@ import {
   portalSectionTitleClassName,
 } from "../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../pending-approval-view";
+import LandlordPortalLeaseCreateForm from "./lease-create-form";
 
 export default async function LandlordPortalLeasesPage() {
   const session = await getLandlordPortalSession();
@@ -37,17 +40,47 @@ export default async function LandlordPortalLeasesPage() {
     );
   }
 
-  const { rows, error } = await fetchLandlordPortalLeasesBrowse(session);
+  const canManage = session.landlordType === "platform_only";
+  const [{ rows, error }, unitsResult, tenantsResult] = await Promise.all([
+    fetchLandlordPortalLeasesBrowse(session),
+    canManage
+      ? fetchLandlordPortalUnits(session)
+      : Promise.resolve({ rows: [], error: null }),
+    canManage
+      ? fetchLandlordPortalTenants(session)
+      : Promise.resolve({ rows: [], error: null }),
+  ]);
+
+  const vacantUnits = unitsResult.rows
+    .filter((unit) => unit.status === "vacant")
+    .map((unit) => ({
+      unitId: unit.unitId,
+      label: `${unit.propertyName} · Unit ${unit.unitNumber}`,
+      baseRentGhs: unit.baseRentGhs,
+    }));
+
+  const lessees = tenantsResult.rows.map((tenant) => ({
+    lesseeId: tenant.lesseeId,
+    fullName: tenant.fullName,
+  }));
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className={portalSectionTitleClassName}>Leases</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Active and historical leases for your portfolio (read-only). Open a
-          row for full lease terms.
+          {canManage
+            ? "Create and edit leases, set rent, or convert approved applications. Open a row for full lease terms."
+            : "Active and historical leases for your portfolio (read-only). Open a row for full lease terms."}
         </p>
       </div>
+
+      {canManage ? (
+        <LandlordPortalLeaseCreateForm
+          vacantUnits={vacantUnits}
+          lessees={lessees}
+        />
+      ) : null}
 
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
 

@@ -3,13 +3,25 @@ import { fetchLandlordListRows } from "@/utils/landlord-management";
 import RealEstateShell from "../real-estate-shell";
 import Landlords from "../landlords";
 
-export default async function LandlordsPage() {
+type LandlordsPageProps = {
+  searchParams: Promise<{ highlight?: string }>;
+};
+
+export default async function LandlordsPage({
+  searchParams,
+}: LandlordsPageProps) {
+  const { highlight: highlightParam } = await searchParams;
+  const highlightTenantId = highlightParam?.trim() || null;
   const admin = createAdminClient();
   const { rows, fetchError } = await fetchLandlordListRows(admin);
 
   return (
     <RealEstateShell sectionTitle="Landlords">
-      <Landlords initialRows={rows} fetchError={fetchError} />
+      <Landlords
+        initialRows={rows}
+        fetchError={fetchError}
+        highlightTenantId={highlightTenantId}
+      />
     </RealEstateShell>
   );
 }

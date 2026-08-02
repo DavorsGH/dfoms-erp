@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
+import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { sendResendEmail } from "@/utils/resend-email";
 import {
   isLesseeComplaintStatus,
@@ -92,16 +93,23 @@ export async function updateLesseeComplaint(
       .eq("lessee_id", existing.lessee_id)
       .maybeSingle();
 
+    const name = lessee?.full_name?.trim() || "Tenant";
+    const approved = status === "resolved";
+    const subject = approved
+      ? "Your complaint was resolved"
+      : "Update on your complaint";
+    const responseLine = staffResponse
+      ? `Staff response: ${staffResponse}`
+      : null;
+    const inAppBody = [
+      `Regarding your complaint “${existing.subject}”: status is now ${status}.`,
+      responseLine,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     const email = lessee?.email?.trim();
     if (email) {
-      const name = lessee?.full_name?.trim() || "Tenant";
-      const approved = status === "resolved";
-      const subject = approved
-        ? "Your complaint was resolved"
-        : "Update on your complaint";
-      const responseLine = staffResponse
-        ? `Staff response: ${staffResponse}`
-        : null;
       void sendResendEmail({
         to: email,
         subject,
@@ -125,6 +133,15 @@ ${staffResponse ? `<p>Staff response: ${escapeHtml(staffResponse)}</p>` : ""}
         }
       });
     }
+
+    void insertLesseePortalNotification({
+      landlordTenantId: options.tenantId,
+      lesseeId: existing.lessee_id,
+      title: subject,
+      body: inAppBody,
+      actionUrl: "/portal/complaints",
+      context: `complaint-status:${complaintId}`,
+    });
   }
 
   return { ok: true, status };

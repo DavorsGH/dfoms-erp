@@ -34,6 +34,27 @@ export function getLandlordPortalNavSections(
     });
   }
 
+  const realEstateLinks: LandlordPortalNavLink[] = [
+    {
+      label: "Properties",
+      href: "/landlord-portal/real-estate/properties",
+    },
+    { label: "Units", href: "/landlord-portal/real-estate/units" },
+    {
+      label: "Applications",
+      href: "/landlord-portal/real-estate/applications",
+    },
+    { label: "Tenants", href: "/landlord-portal/real-estate/tenants" },
+    { label: "Leases", href: "/landlord-portal/real-estate/leases" },
+  ];
+
+  if (landlordType === "platform_only") {
+    realEstateLinks.push({
+      label: "Announcements",
+      href: "/landlord-portal/real-estate/announcements",
+    });
+  }
+
   if (landlordType === "davors_managed") {
     financeLinks.push({
       label: "Payouts & Escrow",
@@ -76,19 +97,7 @@ export function getLandlordPortalNavSections(
     {
       id: "real-estate",
       label: "Real Estate",
-      links: [
-        {
-          label: "Properties",
-          href: "/landlord-portal/real-estate/properties",
-        },
-        { label: "Units", href: "/landlord-portal/real-estate/units" },
-        {
-          label: "Applications",
-          href: "/landlord-portal/real-estate/applications",
-        },
-        { label: "Tenants", href: "/landlord-portal/real-estate/tenants" },
-        { label: "Leases", href: "/landlord-portal/real-estate/leases" },
-      ],
+      links: realEstateLinks,
     },
     {
       id: "finance",

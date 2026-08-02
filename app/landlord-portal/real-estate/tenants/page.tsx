@@ -39,7 +39,8 @@ export default async function LandlordPortalTenantsPage() {
       <div>
         <h1 className={portalSectionTitleClassName}>Tenants</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Lessees linked to your portfolio (read-only).
+          Lessees linked to your portfolio (browse). New tenants are created
+          when you create a lease or convert an approved application.
         </p>
       </div>
 

@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { LesseeNotificationRow } from "@/utils/lessee-notifications-types";
+import { useRouter } from "next/navigation";
+import {
+  resolveLesseeNotificationHref,
+  type LesseeNotificationRow,
+} from "@/utils/lessee-notifications-types";
 
 const PAGE_SIZE = 20;
 
@@ -40,6 +44,7 @@ function BellIcon({ className }: { className?: string }) {
 }
 
 export default function PortalNotificationBell() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<LesseeNotificationRow[]>(
     [],
@@ -161,8 +166,17 @@ export default function PortalNotificationBell() {
   }
 
   async function handleSelect(row: LesseeNotificationRow) {
-    setExpandedId((current) => (current === row.id ? null : row.id));
+    const href = resolveLesseeNotificationHref(row);
     await markRead(row);
+
+    if (href) {
+      setOpen(false);
+      router.push(href);
+      return;
+    }
+
+    // Announcements / rows without a destination: expand to read body.
+    setExpandedId((current) => (current === row.id ? null : row.id));
   }
 
   async function handleMarkAllRead() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   EMPLOYMENT_TYPE_OPTIONS,
   SHIFT_OPTIONS,
@@ -11,6 +11,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../../scrollable-table";
+import TemplatePlaceholderReference from "@/components/template-placeholder-reference";
 import {
   EMPLOYEE_ANNOUNCEMENT_CHANNELS,
   EMPLOYEE_ANNOUNCEMENT_STATUSES,
@@ -28,6 +29,7 @@ import {
   formatChannelLabel,
   type EmployeeMessageTemplateRow,
 } from "@/utils/employee-message-templates-types";
+import { EMPLOYEE_TEMPLATE_PLACEHOLDERS } from "@/utils/message-template-placeholders";
 import { substituteTemplatePlaceholders } from "@/utils/message-template-render";
 
 export type AnnouncementEmployeeOption = {
@@ -326,6 +328,7 @@ export default function EmployeeAnnouncementsCampaigns({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewOnly, setViewOnly] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -814,6 +817,7 @@ export default function EmployeeAnnouncementsCampaigns({
                       Body
                     </label>
                     <textarea
+                      ref={bodyTextareaRef}
                       required
                       disabled={viewOnly}
                       rows={5}
@@ -826,6 +830,15 @@ export default function EmployeeAnnouncementsCampaigns({
                       }
                       className={inputClassName}
                       placeholder="Hello {{employee_name}}, ..."
+                    />
+                    <TemplatePlaceholderReference
+                      placeholders={EMPLOYEE_TEMPLATE_PLACEHOLDERS}
+                      value={form.body}
+                      onChange={(next) =>
+                        setForm((current) => ({ ...current, body: next }))
+                      }
+                      textareaRef={bodyTextareaRef}
+                      disabled={viewOnly}
                     />
                   </div>
                 </div>
