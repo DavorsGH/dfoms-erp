@@ -67,11 +67,6 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
   const displayedExpenses = isYtdMode
     ? summary.totalExpensesYtd
     : summary.totalExpenses;
-  const displayedDepreciation = isYtdMode
-    ? summary.depreciationIncludedYtd
-    : summary.depreciationIncluded;
-  const expensesCardSubtitle =
-    displayedDepreciation > 0 ? "incl. depreciation" : undefined;
   const displayedNetProfit = isYtdMode ? summary.netProfitYtd : summary.netProfit;
   const displayedPayrollCost = isYtdMode
     ? payroll.totalPayrollCostYtd
@@ -162,9 +157,21 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
         />
         <SummaryCard
           title={`Total Expenses (${selectedPeriodLabel})`}
-          subtitle={expensesCardSubtitle}
           value={formatGHS(displayedExpenses)}
           href="/dashboard/finance/expenses"
+        />
+        <SummaryCard
+          title="Depreciation (Month)"
+          subtitle={summary.periodLabel}
+          value={formatGHS(summary.depreciation)}
+          href="/dashboard/reports/finance/fixed-asset-schedule"
+        />
+        <SummaryCard
+          title="Depreciation (YTD)"
+          subtitle={summary.ytdThroughLabel}
+          value={formatGHS(summary.depreciationYtd)}
+          href="/dashboard/reports/finance/fixed-asset-schedule"
+          tone="ytd"
         />
         <SummaryCard
           title={netProfitCardTitle}
