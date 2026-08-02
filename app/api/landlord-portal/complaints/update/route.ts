@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
-import { createAdminClient } from "@/utils/supabase/admin";
-import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
+import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
 import { updateLesseeComplaint } from "@/utils/complaint-management";
 
 type UpdateBody = {
-  tenant_id?: string;
   complaint_id?: string;
   status?: string;
   staff_response?: string | null;
 };
 
+/**
+ * Platform-only landlord respond / resolve for own tenant_id complaints.
+ * Mutations use service role after session + landlord_type checks (RLS is SELECT-only).
+ */
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requirePlatformOnlyLandlordSession();
   if (!auth.ok) {
     return auth.response;
   }
@@ -24,22 +25,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const admin = createAdminClient();
-  const landlord = await assertDavorsManagedLandlord(admin, body.tenant_id ?? "");
-  if (!landlord.ok) {
-    return NextResponse.json(
-      { error: landlord.error },
-      { status: landlord.status },
-    );
-  }
-
   const staffResponse =
     typeof body.staff_response === "string"
       ? body.staff_response.trim() || null
       : null;
 
-  const result = await updateLesseeComplaint(admin, {
-    tenantId: landlord.tenantId,
+  const result = await updateLesseeComplaint(auth.admin, {
+    tenantId: auth.session.tenantId,
     complaintId: body.complaint_id ?? "",
     status: body.status ?? "",
     staffResponse,

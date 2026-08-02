@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
+import { sendResendEmail } from "@/utils/resend-email";
 import {
   isLesseeComplaintStatus,
   type LesseeComplaintListRow,
@@ -9,6 +10,125 @@ import {
 } from "@/app/dashboard/real-estate/complaints-utils";
 
 export type { LesseeComplaintListRow } from "@/app/dashboard/real-estate/complaints-utils";
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export type UpdateLesseeComplaintResult =
+  | { ok: true; status: LesseeComplaintStatus }
+  | { ok: false; error: string; status: number };
+
+/**
+ * Shared complaint status/response update + tenant email on resolve/reject.
+ * Caller must enforce landlord_type / ownership before calling.
+ */
+export async function updateLesseeComplaint(
+  admin: SupabaseClient,
+  options: {
+    tenantId: string;
+    complaintId: string;
+    status: string;
+    staffResponse: string | null;
+  },
+): Promise<UpdateLesseeComplaintResult> {
+  const complaintId = options.complaintId.trim();
+  const status = options.status.trim();
+  if (!complaintId) {
+    return { ok: false, error: "complaint_id is required", status: 400 };
+  }
+  if (!isLesseeComplaintStatus(status)) {
+    return { ok: false, error: "Invalid complaint status.", status: 400 };
+  }
+
+  const staffResponse =
+    typeof options.staffResponse === "string"
+      ? options.staffResponse.trim() || null
+      : null;
+
+  const { data: existing, error: existingError } = await admin
+    .from("lessee_complaints")
+    .select("complaint_id, lessee_id, subject, status")
+    .eq("tenant_id", options.tenantId)
+    .eq("complaint_id", complaintId)
+    .maybeSingle();
+
+  if (existingError) {
+    return { ok: false, error: existingError.message, status: 400 };
+  }
+  if (!existing) {
+    return { ok: false, error: "Complaint not found.", status: 404 };
+  }
+
+  const nowIso = new Date().toISOString();
+  const becameResolved =
+    (status === "resolved" || status === "rejected") &&
+    existing.status !== status;
+
+  const { error: updateError } = await admin
+    .from("lessee_complaints")
+    .update({
+      status,
+      staff_response: staffResponse,
+      date_resolved: becameResolved ? nowIso : null,
+      updated_at: nowIso,
+    })
+    .eq("tenant_id", options.tenantId)
+    .eq("complaint_id", complaintId);
+
+  if (updateError) {
+    return { ok: false, error: updateError.message, status: 400 };
+  }
+
+  if (becameResolved) {
+    const { data: lessee } = await admin
+      .from("lessees")
+      .select("full_name, email")
+      .eq("tenant_id", options.tenantId)
+      .eq("lessee_id", existing.lessee_id)
+      .maybeSingle();
+
+    const email = lessee?.email?.trim();
+    if (email) {
+      const name = lessee?.full_name?.trim() || "Tenant";
+      const approved = status === "resolved";
+      const subject = approved
+        ? "Your complaint was resolved"
+        : "Update on your complaint";
+      const responseLine = staffResponse
+        ? `Staff response: ${staffResponse}`
+        : null;
+      void sendResendEmail({
+        to: email,
+        subject,
+        text: [
+          `Hi ${name},`,
+          "",
+          `Regarding your complaint “${existing.subject}”: status is now ${status}.`,
+          responseLine,
+          "",
+          "Davors Facilities",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        html: `<p>Hi ${escapeHtml(name)},</p>
+<p>Regarding your complaint “${escapeHtml(existing.subject)}”: status is now <strong>${escapeHtml(status)}</strong>.</p>
+${staffResponse ? `<p>Staff response: ${escapeHtml(staffResponse)}</p>` : ""}
+<p>Davors Facilities</p>`,
+      }).then((result) => {
+        if (!result.ok) {
+          console.error("[complaints] notify failed:", result.error);
+        }
+      });
+    }
+  }
+
+  return { ok: true, status };
+}
 
 type ComplaintRow = {
   tenant_id: string;

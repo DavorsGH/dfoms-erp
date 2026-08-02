@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
@@ -28,7 +29,7 @@ import { isTerminationRequestStatus } from "@/app/dashboard/real-estate/leases-u
 
 function formatTerminationRequestStatus(value: string): string {
   if (value === "pending_staff_approval") {
-    return "Pending staff approval";
+    return "Pending approval";
   }
   if (value === "approved") {
     return "Approved";
@@ -107,7 +108,11 @@ export type LandlordPortalMaintenanceRow = {
   requestId: string;
   description: string;
   statusLabel: string;
+  landlordApprovalStatus: string;
   landlordApprovalLabel: string;
+  tenantSelfFix: boolean;
+  proposedCostGhs: number | null;
+  costGhs: number | null;
   dateReported: string;
   lesseeName: string;
   unitLabel: string;
@@ -116,7 +121,10 @@ export type LandlordPortalMaintenanceRow = {
 export type LandlordPortalComplaintRow = {
   complaintId: string;
   subject: string;
+  description: string;
+  status: string;
   statusLabel: string;
+  staffResponse: string | null;
   dateReported: string;
   lesseeName: string;
   unitLabel: string;
@@ -126,10 +134,93 @@ export type LandlordPortalTerminationRow = {
   leaseId: string;
   lesseeName: string;
   unitLabel: string;
+  requestStatus: string;
   statusLabel: string;
   reason: string | null;
   endDate: string;
 };
+
+/**
+ * Session + service-role client for landlord-portal mutations.
+ * Enforces platform_only (davors_managed cannot mutate even if UI is bypassed).
+ */
+export async function requirePlatformOnlyLandlordSession(): Promise<
+  | {
+      ok: true;
+      session: LandlordPortalSession;
+      admin: ReturnType<typeof createAdminClient>;
+    }
+  | { ok: false; response: NextResponse }
+> {
+  const session = await getLandlordPortalSession();
+  if (!session) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+  if (session.landlordType !== "platform_only") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            "Operational actions are only available for platform-only landlords.",
+        },
+        { status: 403 },
+      ),
+    };
+  }
+  return { ok: true, session, admin: createAdminClient() };
+}
+
+export async function fetchLandlordPortalNotificationContacts(
+  session: LandlordPortalSession,
+): Promise<{
+  notificationPhone: string | null;
+  notificationEmail: string | null;
+  error: string | null;
+}> {
+  const admin = createAdminClient();
+  const [{ data: landlord, error: landlordError }, { data: tenant, error: tenantError }] =
+    await Promise.all([
+      admin
+        .from("landlords")
+        .select("notification_phone")
+        .eq("tenant_id", session.tenantId)
+        .maybeSingle(),
+      admin
+        .from("tenants")
+        .select("email")
+        .eq("id", session.tenantId)
+        .maybeSingle(),
+    ]);
+
+  if (landlordError) {
+    return {
+      notificationPhone: null,
+      notificationEmail: null,
+      error: landlordError.message,
+    };
+  }
+  if (tenantError) {
+    return {
+      notificationPhone: null,
+      notificationEmail: null,
+      error: tenantError.message,
+    };
+  }
+
+  return {
+    notificationPhone:
+      typeof landlord?.notification_phone === "string"
+        ? landlord.notification_phone
+        : null,
+    notificationEmail:
+      typeof tenant?.email === "string" ? tenant.email : session.email,
+    error: null,
+  };
+}
 
 /**
  * Resolves the signed-in Supabase user to a landlords row via auth_user_id.
@@ -475,7 +566,7 @@ export async function fetchLandlordPortalMaintenance(
     admin
       .from("maintenance_requests")
       .select(
-        "request_id, lease_id, description, status, landlord_approval_status, date_reported",
+        "request_id, lease_id, description, status, landlord_approval_status, date_reported, tenant_self_fix, proposed_cost_ghs, cost_ghs",
       )
       .eq("tenant_id", tenantId)
       .order("date_reported", { ascending: false })
@@ -512,18 +603,29 @@ export async function fetchLandlordPortalMaintenance(
     status: string;
     landlord_approval_status: string;
     date_reported: string;
+    tenant_self_fix?: boolean | null;
+    proposed_cost_ghs?: number | string | null;
+    cost_ghs?: number | string | null;
   }> | null) ?? []) {
     if (!isMaintenanceStatus(row.status)) continue;
     if (!isLandlordApprovalStatus(row.landlord_approval_status)) continue;
     const lease = maps.leaseById.get(row.lease_id);
     const unit = lease ? maps.unitById.get(lease.unit_id) : undefined;
+    const proposed =
+      row.proposed_cost_ghs == null ? null : Number(row.proposed_cost_ghs);
+    const cost = row.cost_ghs == null ? null : Number(row.cost_ghs);
     rows.push({
       requestId: row.request_id,
       description: row.description,
       statusLabel: formatMaintenanceStatus(row.status),
+      landlordApprovalStatus: row.landlord_approval_status,
       landlordApprovalLabel: formatMaintenanceLandlordApproval(
         row.landlord_approval_status,
       ),
+      tenantSelfFix: Boolean(row.tenant_self_fix),
+      proposedCostGhs:
+        proposed != null && Number.isFinite(proposed) ? proposed : null,
+      costGhs: cost != null && Number.isFinite(cost) ? cost : null,
       dateReported: row.date_reported,
       lesseeName: lease
         ? (maps.lesseeNameById.get(lease.lessee_id) ?? "—")
@@ -553,7 +655,7 @@ export async function fetchLandlordPortalComplaints(
     admin
       .from("lessee_complaints")
       .select(
-        "complaint_id, lease_id, lessee_id, subject, status, date_reported",
+        "complaint_id, lease_id, lessee_id, subject, description, status, staff_response, date_reported",
       )
       .eq("tenant_id", tenantId)
       .order("date_reported", { ascending: false })
@@ -588,7 +690,9 @@ export async function fetchLandlordPortalComplaints(
     lease_id: string;
     lessee_id: string;
     subject: string;
+    description: string;
     status: string;
+    staff_response: string | null;
     date_reported: string;
   }> | null) ?? []) {
     if (!isLesseeComplaintStatus(row.status)) continue;
@@ -597,7 +701,10 @@ export async function fetchLandlordPortalComplaints(
     rows.push({
       complaintId: row.complaint_id,
       subject: row.subject,
+      description: row.description,
+      status: row.status,
       statusLabel: formatLesseeComplaintStatus(row.status),
+      staffResponse: row.staff_response,
       dateReported: row.date_reported,
       lesseeName: maps.lesseeNameById.get(row.lessee_id) ?? "—",
       unitLabel: unit
@@ -668,6 +775,7 @@ export async function fetchLandlordPortalTerminations(
       unitLabel: unit
         ? `${maps.propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
         : "—",
+      requestStatus: status,
       statusLabel: formatTerminationRequestStatus(status),
       reason: row.pending_termination_reason?.trim() || null,
       endDate: row.end_date,

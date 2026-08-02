@@ -1,28 +1,26 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
-import { createAdminClient } from "@/utils/supabase/admin";
-import { assertRealEstateLandlordTenant } from "@/utils/property-management";
+import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
 import { reviewTerminationRequest } from "@/utils/termination-request-review";
 
-type TerminationRequestBody = {
-  tenant_id?: string;
+type DecisionBody = {
   lease_id?: string;
   action?: "approve" | "reject";
 };
 
 /**
- * Staff approve/reject of a tenant-submitted early termination request.
- * Approve calls terminateLeaseEarly (same effect as Terminate Lease Early).
+ * Platform-only landlord approve/reject of early termination for own leases.
+ * Approve uses terminateLeaseEarly via reviewTerminationRequest.
+ * Mutations use service role after session + landlord_type checks (RLS is SELECT-only).
  */
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requirePlatformOnlyLandlordSession();
   if (!auth.ok) {
     return auth.response;
   }
 
-  let body: TerminationRequestBody;
+  let body: DecisionBody;
   try {
-    body = (await request.json()) as TerminationRequestBody;
+    body = (await request.json()) as DecisionBody;
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -39,20 +37,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const admin = createAdminClient();
-  const landlord = await assertRealEstateLandlordTenant(
-    admin,
-    body.tenant_id ?? "",
-  );
-  if (!landlord.ok) {
-    return NextResponse.json(
-      { error: landlord.error },
-      { status: landlord.status },
-    );
-  }
-
-  const result = await reviewTerminationRequest(admin, {
-    tenantId: landlord.tenantId,
+  const result = await reviewTerminationRequest(auth.admin, {
+    tenantId: auth.session.tenantId,
     leaseId,
     action,
   });

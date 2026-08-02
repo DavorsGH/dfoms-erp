@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import {
   fetchLandlordPortalDashboardData,
+  fetchLandlordPortalNotificationContacts,
   getLandlordPortalSession,
 } from "@/utils/landlord-portal-auth";
 import { formatLeaseMoney } from "@/app/dashboard/real-estate/leases-utils";
@@ -11,6 +12,7 @@ import {
   portalSectionTitleClassName,
 } from "../portal-ui";
 import LandlordPortalShell from "../portal-shell";
+import LandlordPortalNotificationContactsForm from "./notification-contacts-form";
 
 function formatDate(value: string): string {
   const date = new Date(`${value}T00:00:00`);
@@ -33,6 +35,9 @@ export default async function LandlordPortalDashboardPage() {
   const { data, error } = await fetchLandlordPortalDashboardData(session);
   const isDavorsManaged = session.landlordType === "davors_managed";
   const isPlatformOnly = session.landlordType === "platform_only";
+  const contacts = isPlatformOnly
+    ? await fetchLandlordPortalNotificationContacts(session)
+    : null;
 
   return (
     <LandlordPortalShell fullName={session.fullName}>
@@ -57,16 +62,39 @@ export default async function LandlordPortalDashboardPage() {
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
               Access
             </dt>
-            <dd className="mt-1 text-sm text-slate-900">View only</dd>
+            <dd className="mt-1 text-sm text-slate-900">
+              {isPlatformOnly
+                ? "Self-manage (approve / respond)"
+                : "View only"}
+            </dd>
           </div>
         </dl>
         {isPlatformOnly ? (
           <p className="mt-4 text-sm text-slate-600">
             Rent is collected directly to your account. Escrow and payout history
-            are not used for platform-only landlords.
+            are not used for platform-only landlords. You can approve maintenance,
+            respond to complaints, and decide termination requests yourself.
           </p>
         ) : null}
       </section>
+
+      {isPlatformOnly ? (
+        <section className={portalSectionClassName}>
+          <h2 className={portalSectionTitleClassName}>
+            Notification contacts
+          </h2>
+          {contacts?.error ? (
+            <div className={`mt-4 ${portalErrorBannerClassName}`}>
+              {contacts.error}
+            </div>
+          ) : (
+            <LandlordPortalNotificationContactsForm
+              initialPhone={contacts?.notificationPhone ?? null}
+              initialEmail={contacts?.notificationEmail ?? null}
+            />
+          )}
+        </section>
+      ) : null}
 
       {!data ? (
         <section className={portalSectionClassName}>

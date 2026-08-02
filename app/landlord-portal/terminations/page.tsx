@@ -10,6 +10,7 @@ import {
   portalSectionTitleClassName,
 } from "../portal-ui";
 import LandlordPortalShell from "../portal-shell";
+import LandlordPortalTerminationActions from "./termination-actions";
 
 export default async function LandlordPortalTerminationsPage() {
   const session = await getLandlordPortalSession();
@@ -18,13 +19,16 @@ export default async function LandlordPortalTerminationsPage() {
   }
 
   const { rows, error } = await fetchLandlordPortalTerminations(session);
+  const canAct = session.landlordType === "platform_only";
 
   return (
     <LandlordPortalShell fullName={session.fullName}>
       <section className={portalSectionClassName}>
         <h2 className={portalSectionTitleClassName}>Termination requests</h2>
         <p className="mt-1 text-sm text-slate-600">
-          View-only list of early termination requests and status.
+          {canAct
+            ? "Approve or reject early termination requests for your leases."
+            : "View-only list of early termination requests. Davors manages approvals for your account."}
         </p>
 
         {error ? (
@@ -48,6 +52,9 @@ export default async function LandlordPortalTerminationsPage() {
                 </p>
                 {row.reason ? (
                   <p className="mt-1 text-sm text-slate-600">{row.reason}</p>
+                ) : null}
+                {canAct && row.requestStatus === "pending_staff_approval" ? (
+                  <LandlordPortalTerminationActions leaseId={row.leaseId} />
                 ) : null}
               </li>
             ))}

@@ -10,6 +10,7 @@ import {
   portalSectionTitleClassName,
 } from "../portal-ui";
 import LandlordPortalShell from "../portal-shell";
+import LandlordPortalMaintenanceActions from "./maintenance-actions";
 
 export default async function LandlordPortalMaintenancePage() {
   const session = await getLandlordPortalSession();
@@ -18,14 +19,16 @@ export default async function LandlordPortalMaintenancePage() {
   }
 
   const { rows, error } = await fetchLandlordPortalMaintenance(session);
+  const canAct = session.landlordType === "platform_only";
 
   return (
     <LandlordPortalShell fullName={session.fullName}>
       <section className={portalSectionClassName}>
         <h2 className={portalSectionTitleClassName}>Maintenance requests</h2>
         <p className="mt-1 text-sm text-slate-600">
-          View-only list of repair requests and approval status for your
-          properties.
+          {canAct
+            ? "Review and approve or reject repair requests for your properties."
+            : "View-only list of repair requests and approval status. Davors manages approvals for your account."}
         </p>
 
         {error ? (
@@ -40,6 +43,11 @@ export default async function LandlordPortalMaintenancePage() {
               <li key={row.requestId} className="py-3">
                 <p className="text-sm font-medium text-slate-900">
                   {row.description}
+                  {row.tenantSelfFix ? (
+                    <span className="ml-1 text-xs font-normal text-slate-500">
+                      (self-fix)
+                    </span>
+                  ) : null}
                 </p>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {row.lesseeName} · {row.unitLabel}
@@ -48,6 +56,13 @@ export default async function LandlordPortalMaintenancePage() {
                   {formatMaintenanceDate(row.dateReported)} · {row.statusLabel}{" "}
                   · Landlord {row.landlordApprovalLabel}
                 </p>
+                {canAct && row.landlordApprovalStatus === "pending" ? (
+                  <LandlordPortalMaintenanceActions
+                    requestId={row.requestId}
+                    tenantSelfFix={row.tenantSelfFix}
+                    proposedCostGhs={row.proposedCostGhs}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
