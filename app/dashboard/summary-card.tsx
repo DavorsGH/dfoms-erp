@@ -7,6 +7,7 @@ export function SummaryCard({
   subtitle,
   value,
   breakdown,
+  showTotal = true,
   href,
   tone = "default",
 }: {
@@ -14,6 +15,8 @@ export function SummaryCard({
   subtitle?: string;
   value: string;
   breakdown?: Array<{ label: string; value: string }>;
+  /** When false with a breakdown, omit the Total row (e.g. non-additive peers). */
+  showTotal?: boolean;
   href: string;
   tone?: SummaryCardTone;
 }) {
@@ -43,13 +46,23 @@ export function SummaryCard({
               className="flex items-start justify-between gap-3 text-slate-600"
             >
               <span>{item.label}</span>
-              <span className="font-medium text-slate-800">{item.value}</span>
+              <span
+                className={
+                  showTotal
+                    ? "font-medium text-slate-800"
+                    : "text-lg font-semibold text-[#0f2744]"
+                }
+              >
+                {item.value}
+              </span>
             </div>
           ))}
-          <div className="flex items-start justify-between gap-3 border-t border-slate-200 pt-2">
-            <span className="font-medium text-slate-700">Total</span>
-            <span className="text-lg font-semibold text-[#0f2744]">{value}</span>
-          </div>
+          {showTotal ? (
+            <div className="flex items-start justify-between gap-3 border-t border-slate-200 pt-2">
+              <span className="font-medium text-slate-700">Total</span>
+              <span className="text-lg font-semibold text-[#0f2744]">{value}</span>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="mt-2 text-2xl font-semibold text-[#0f2744]">{value}</p>

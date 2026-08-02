@@ -61,13 +61,10 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
   const { summary, payroll } = selectedSnapshot;
   const { profitTrend, cashTrend, payrollTrend } = data;
   const selectedPeriodLabel = isYtdMode ? "YTD" : summary.periodLabel;
-  const netProfitCardTitle = isYtdMode ? "Net Profit (YTD)" : "Net Profit (Month)";
-  const netProfitCardSubtitle = isYtdMode ? summary.ytdThroughLabel : summary.periodLabel;
   const displayedRevenue = isYtdMode ? summary.totalRevenueYtd : summary.totalRevenue;
   const displayedExpenses = isYtdMode
     ? summary.totalExpensesYtd
     : summary.totalExpenses;
-  const displayedNetProfit = isYtdMode ? summary.netProfitYtd : summary.netProfit;
   const displayedPayrollCost = isYtdMode
     ? payroll.totalPayrollCostYtd
     : payroll.totalPayrollCost;
@@ -161,23 +158,20 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           href="/dashboard/finance/expenses"
         />
         <SummaryCard
-          title="Depreciation (Month)"
-          subtitle={summary.periodLabel}
-          value={formatGHS(summary.depreciation)}
-          href="/dashboard/reports/finance/fixed-asset-schedule"
-        />
-        <SummaryCard
-          title="Depreciation (YTD)"
-          subtitle={summary.ytdThroughLabel}
+          title="Depreciation"
           value={formatGHS(summary.depreciationYtd)}
+          breakdown={[
+            {
+              label: `Month (${summary.periodLabel})`,
+              value: formatGHS(summary.depreciation),
+            },
+            {
+              label: `YTD (${summary.ytdThroughLabel})`,
+              value: formatGHS(summary.depreciationYtd),
+            },
+          ]}
+          showTotal={false}
           href="/dashboard/reports/finance/fixed-asset-schedule"
-          tone="ytd"
-        />
-        <SummaryCard
-          title={netProfitCardTitle}
-          subtitle={netProfitCardSubtitle}
-          value={formatGHS(displayedNetProfit)}
-          href="/dashboard/finance/profit-loss"
         />
         <SummaryCard
           title="Total Purchases (Month)"
