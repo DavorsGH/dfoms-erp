@@ -51,12 +51,35 @@ type LedgerDbRow = {
   payment_date: string | null;
 };
 
+/**
+ * Staff: all Davors-managed landlords.
+ * Portal: single logged-in landlord tenant (any landlord_type).
+ */
+export type ReReportDataScope =
+  | { kind: "davors_managed" }
+  | { kind: "tenant"; tenantId: string; landlordName: string };
+
 function toNumber(value: number | string | null | undefined): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-async function loadDavorsManagedScope(admin: SupabaseClient) {
+async function resolveReportScope(
+  admin: SupabaseClient,
+  scope: ReReportDataScope,
+) {
+  if (scope.kind === "tenant") {
+    const landlordOptions: ReReportLandlordOption[] = [
+      { tenantId: scope.tenantId, name: scope.landlordName },
+    ];
+    return {
+      landlordOptions,
+      tenantIds: [scope.tenantId],
+      landlordNameById: new Map([[scope.tenantId, scope.landlordName]]),
+      landlordsError: null as string | null,
+    };
+  }
+
   const { rows: allLandlords, fetchError: landlordsError } =
     await fetchLandlordListRows(admin);
   const landlords = filterDavorsManagedLandlords(allLandlords);
@@ -76,9 +99,12 @@ async function loadDavorsManagedScope(admin: SupabaseClient) {
   };
 }
 
-export async function fetchVacancyOccupancyReportData(admin: SupabaseClient) {
+export async function fetchVacancyOccupancyReportData(
+  admin: SupabaseClient,
+  scope: ReReportDataScope = { kind: "davors_managed" },
+) {
   const { landlordOptions, tenantIds, landlordNameById, landlordsError } =
-    await loadDavorsManagedScope(admin);
+    await resolveReportScope(admin, scope);
 
   if (landlordsError) {
     return {
@@ -157,9 +183,12 @@ export async function fetchVacancyOccupancyReportData(admin: SupabaseClient) {
   };
 }
 
-export async function fetchArrearsIncomeReportData(admin: SupabaseClient) {
+export async function fetchArrearsIncomeReportData(
+  admin: SupabaseClient,
+  scope: ReReportDataScope = { kind: "davors_managed" },
+) {
   const { landlordOptions, tenantIds, landlordNameById, landlordsError } =
-    await loadDavorsManagedScope(admin);
+    await resolveReportScope(admin, scope);
 
   if (landlordsError) {
     return {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { assertRealEstateLandlordTenant } from "@/utils/property-management";
+import { createLeaseForLandlord } from "@/utils/lease-create";
 import { isLateFeeType } from "@/app/dashboard/real-estate/leases-utils";
 
 type CreateLeaseBody = {
@@ -23,6 +23,8 @@ type CreateLeaseBody = {
   late_fee_amount?: number | string | null;
   deposit_amount_ghs?: number | string;
   deposit_date_collected?: string;
+  /** Optional: convert approved rental application (allows application_hold unit). */
+  application_id?: string | null;
 };
 
 function parseNonNegativeNumber(
@@ -73,38 +75,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const admin = createAdminClient();
-  const landlord = await assertRealEstateLandlordTenant(
-    admin,
-    body.tenant_id ?? "",
-  );
-  if (!landlord.ok) {
-    return NextResponse.json(
-      { error: landlord.error },
-      { status: landlord.status },
-    );
-  }
-
-  const unitId = body.unit_id?.trim() ?? "";
-  if (!unitId) {
-    return NextResponse.json({ error: "unit_id is required" }, { status: 400 });
-  }
-
-  const startDate = body.start_date?.trim() ?? "";
-  const endDate = body.end_date?.trim() ?? "";
-  if (!startDate || !endDate) {
-    return NextResponse.json(
-      { error: "start_date and end_date are required" },
-      { status: 400 },
-    );
-  }
-  if (endDate < startDate) {
-    return NextResponse.json(
-      { error: "end_date must be on or after start_date." },
-      { status: 400 },
-    );
-  }
-
   const rent = parseNonNegativeNumber(body.rent_amount_ghs, "rent_amount_ghs", true);
   if (!rent.ok || rent.value == null) {
     return NextResponse.json(
@@ -127,18 +97,6 @@ export async function POST(request: Request) {
   );
   if (!escalationFrequency.ok) {
     return NextResponse.json({ error: escalationFrequency.error }, { status: 400 });
-  }
-  if (
-    (escalationPercent.value != null && escalationFrequency.value == null) ||
-    (escalationPercent.value == null && escalationFrequency.value != null)
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          "escalation_percent and escalation_frequency_months must both be set or both empty.",
-      },
-      { status: 400 },
-    );
   }
 
   const lateFeeEnabled = Boolean(body.late_fee_enabled);
@@ -181,175 +139,41 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const depositDateCollected = body.deposit_date_collected?.trim() ?? "";
-  if (!depositDateCollected) {
-    return NextResponse.json(
-      { error: "deposit_date_collected is required" },
-      { status: 400 },
-    );
-  }
 
-  const { data: unit, error: unitError } = await admin
-    .from("property_units")
-    .select("unit_id, status")
-    .eq("tenant_id", landlord.tenantId)
-    .eq("unit_id", unitId)
-    .maybeSingle();
-
-  if (unitError) {
-    return NextResponse.json({ error: unitError.message }, { status: 400 });
-  }
-  if (!unit) {
-    return NextResponse.json({ error: "Unit not found." }, { status: 404 });
-  }
-  if (unit.status !== "vacant") {
-    return NextResponse.json(
-      { error: "Selected unit must be vacant." },
-      { status: 400 },
-    );
-  }
-
-  let lesseeId = body.lessee_id?.trim() ?? "";
-  if (!lesseeId) {
-    const newLessee = body.new_lessee;
-    const fullName = newLessee?.full_name?.trim() ?? "";
-    const phone = newLessee?.phone?.trim() ?? "";
-    const email = newLessee?.email?.trim() || null;
-    if (!fullName || !phone) {
-      return NextResponse.json(
-        { error: "Select an existing tenant or provide new tenant full_name and phone." },
-        { status: 400 },
-      );
-    }
-    lesseeId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const { error: lesseeError } = await admin.from("lessees").insert({
-      tenant_id: landlord.tenantId,
-      lessee_id: lesseeId,
-      auth_user_id: null,
-      full_name: fullName,
-      phone,
-      email,
-      status: "active",
-      private_notes: null,
-      created_at: now,
-      updated_at: now,
-    });
-    if (lesseeError) {
-      return NextResponse.json({ error: lesseeError.message }, { status: 400 });
-    }
-  } else {
-    const { data: lessee, error: lesseeError } = await admin
-      .from("lessees")
-      .select("lessee_id")
-      .eq("tenant_id", landlord.tenantId)
-      .eq("lessee_id", lesseeId)
-      .maybeSingle();
-    if (lesseeError) {
-      return NextResponse.json({ error: lesseeError.message }, { status: 400 });
-    }
-    if (!lessee) {
-      return NextResponse.json({ error: "Tenant not found." }, { status: 404 });
-    }
-  }
-
-  const now = new Date().toISOString();
-  const leaseId = crypto.randomUUID();
-  const depositId = crypto.randomUUID();
-
-  const { error: leaseError } = await admin.from("leases").insert({
-    tenant_id: landlord.tenantId,
-    lease_id: leaseId,
-    unit_id: unitId,
-    lessee_id: lesseeId,
-    start_date: startDate,
-    end_date: endDate,
-    rent_amount_ghs: rent.value,
-    pending_rent_amount_ghs: null,
-    rent_change_status: null,
-    pending_termination_reason: null,
-    termination_request_status: null,
-    escalation_percent: escalationPercent.value,
-    escalation_frequency_months: escalationFrequency.value,
-    late_fee_enabled: lateFeeEnabled,
-    late_fee_type: lateFeeType,
-    late_fee_amount: lateFeeAmount,
-    status: "active",
-    terminated_at: null,
-    termination_reason: null,
-    created_at: now,
-    updated_at: now,
+  const admin = createAdminClient();
+  const result = await createLeaseForLandlord(admin, {
+    tenantId: body.tenant_id ?? "",
+    unitId: body.unit_id ?? "",
+    lesseeId: body.lessee_id,
+    newLessee: body.new_lessee
+      ? {
+          fullName: body.new_lessee.full_name,
+          phone: body.new_lessee.phone,
+          email: body.new_lessee.email,
+        }
+      : null,
+    startDate: body.start_date ?? "",
+    endDate: body.end_date ?? "",
+    rentAmountGhs: rent.value,
+    escalationPercent: escalationPercent.value,
+    escalationFrequencyMonths: escalationFrequency.value,
+    lateFeeEnabled,
+    lateFeeType,
+    lateFeeAmount,
+    depositAmountGhs: depositAmount.value,
+    depositDateCollected: body.deposit_date_collected ?? "",
+    applicationId: body.application_id,
   });
 
-  if (leaseError) {
-    return NextResponse.json({ error: leaseError.message }, { status: 400 });
-  }
-
-  const { error: unitUpdateError } = await admin
-    .from("property_units")
-    .update({
-      status: "occupied",
-      updated_at: now,
-    })
-    .eq("tenant_id", landlord.tenantId)
-    .eq("unit_id", unitId);
-
-  if (unitUpdateError) {
-    return NextResponse.json({ error: unitUpdateError.message }, { status: 400 });
-  }
-
-  const { error: depositError } = await admin.from("security_deposits").insert({
-    tenant_id: landlord.tenantId,
-    deposit_id: depositId,
-    lease_id: leaseId,
-    amount_ghs: depositAmount.value,
-    status: "held",
-    amount_returned_ghs: null,
-    date_collected: depositDateCollected,
-    date_resolved: null,
-    resolution_notes: null,
-    created_at: now,
-    updated_at: now,
-  });
-
-  if (depositError) {
-    return NextResponse.json({ error: depositError.message }, { status: 400 });
-  }
-
-  // Best-effort tenant portal invite (do not fail lease creation on email errors).
-  let portalInvite:
-    | { status: "sent" }
-    | { status: "skipped"; reason: string }
-    | { status: "failed"; error: string }
-    | undefined;
-  try {
-    const { createAndSendLesseePortalInvite } = await import(
-      "@/utils/lessee-portal-invite"
-    );
-    const inviteResult = await createAndSendLesseePortalInvite(admin, {
-      tenantId: landlord.tenantId,
-      lesseeId,
-    });
-    if (inviteResult.ok) {
-      portalInvite =
-        inviteResult.status === "sent"
-          ? { status: "sent" }
-          : { status: "skipped", reason: inviteResult.reason };
-    } else {
-      portalInvite = { status: "failed", error: inviteResult.error };
-    }
-  } catch (error) {
-    portalInvite = {
-      status: "failed",
-      error: error instanceof Error ? error.message : "Invite failed.",
-    };
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
   return NextResponse.json({
     success: true,
-    lease_id: leaseId,
-    deposit_id: depositId,
-    lessee_id: lesseeId,
-    portal_invite: portalInvite,
+    lease_id: result.leaseId,
+    deposit_id: result.depositId,
+    lessee_id: result.lesseeId,
+    portal_invite: result.portalInvite,
   });
 }

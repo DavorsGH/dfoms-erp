@@ -7,6 +7,7 @@ const navItems = [
   { label: "Landlords", href: "/dashboard/real-estate/landlords" },
   { label: "Properties", href: "/dashboard/real-estate/properties" },
   { label: "Tenants", href: "/dashboard/real-estate/lessees" },
+  { label: "Applications", href: "/dashboard/real-estate/applications" },
   { label: "Leases", href: "/dashboard/real-estate/leases" },
   { label: "Rent Ledger", href: "/dashboard/real-estate/rent-ledger" },
   { label: "Payouts", href: "/dashboard/real-estate/payouts" },

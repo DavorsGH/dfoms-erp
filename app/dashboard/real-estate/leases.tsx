@@ -22,6 +22,18 @@ import {
   type VacantUnitOption,
 } from "./leases-utils";
 
+export type LeaseApplicationPrefill = {
+  applicationId: string;
+  unitId: string;
+  fullName: string;
+  phone: string;
+  email: string | null;
+  desiredMoveIn: string | null;
+  baseRentGhs: number | null;
+  propertyName: string;
+  unitNumber: string;
+};
+
 type LeasesProps = {
   landlords: LandlordListRow[];
   selectedLandlordId: string | null;
@@ -30,6 +42,7 @@ type LeasesProps = {
   lesseeOptions: LesseeOption[];
   landlordsError: string | null;
   leasesError: string | null;
+  applicationPrefill?: LeaseApplicationPrefill | null;
 };
 
 const primaryButtonClassName =
@@ -57,6 +70,23 @@ const emptyForm = {
   deposit_date_collected: "",
 };
 
+function formFromPrefill(prefill: LeaseApplicationPrefill) {
+  return {
+    ...emptyForm,
+    unit_id: prefill.unitId,
+    lessee_mode: "new" as const,
+    new_full_name: prefill.fullName,
+    new_phone: prefill.phone,
+    new_email: prefill.email ?? "",
+    start_date: prefill.desiredMoveIn ?? "",
+    rent_amount_ghs:
+      prefill.baseRentGhs != null ? String(prefill.baseRentGhs) : "",
+    deposit_amount_ghs:
+      prefill.baseRentGhs != null ? String(prefill.baseRentGhs) : "",
+    deposit_date_collected: new Date().toISOString().slice(0, 10),
+  };
+}
+
 export default function Leases({
   landlords,
   selectedLandlordId,
@@ -65,15 +95,21 @@ export default function Leases({
   lesseeOptions,
   landlordsError,
   leasesError,
+  applicationPrefill = null,
 }: LeasesProps) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [error, setError] = useState<string | null>(
     landlordsError ?? leasesError,
   );
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [showForm, setShowForm] = useState(Boolean(applicationPrefill));
+  const [form, setForm] = useState(
+    applicationPrefill ? formFromPrefill(applicationPrefill) : emptyForm,
+  );
   const [loading, setLoading] = useState(false);
+  const [activeApplicationId, setActiveApplicationId] = useState<string | null>(
+    applicationPrefill?.applicationId ?? null,
+  );
 
   useEffect(() => {
     setRows(initialRows);
@@ -82,6 +118,15 @@ export default function Leases({
   useEffect(() => {
     setError(landlordsError ?? leasesError);
   }, [landlordsError, leasesError]);
+
+  useEffect(() => {
+    if (!applicationPrefill) {
+      return;
+    }
+    setActiveApplicationId(applicationPrefill.applicationId);
+    setForm(formFromPrefill(applicationPrefill));
+    setShowForm(true);
+  }, [applicationPrefill]);
 
   const selectedLandlord = landlords.find(
     (row) => row.tenantId === selectedLandlordId,
@@ -145,6 +190,7 @@ export default function Leases({
         late_fee_amount: form.late_fee_enabled ? form.late_fee_amount : null,
         deposit_amount_ghs: form.deposit_amount_ghs,
         deposit_date_collected: form.deposit_date_collected,
+        application_id: activeApplicationId,
       }),
     });
 
@@ -161,6 +207,7 @@ export default function Leases({
 
     setShowForm(false);
     setForm(emptyForm);
+    setActiveApplicationId(null);
     setLoading(false);
 
     if (payload?.lease_id && selectedLandlordId) {
@@ -221,8 +268,15 @@ export default function Leases({
             <button
               type="button"
               onClick={() => {
+                if (showForm) {
+                  setForm(emptyForm);
+                  setActiveApplicationId(null);
+                  setShowForm(false);
+                  return;
+                }
                 setForm(emptyForm);
-                setShowForm((current) => !current);
+                setActiveApplicationId(null);
+                setShowForm(true);
               }}
               className={primaryButtonClassName}
             >
@@ -230,13 +284,25 @@ export default function Leases({
             </button>
           </div>
 
+          {applicationPrefill && showForm ? (
+            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              Prefilling from approved application for{" "}
+              <span className="font-medium">{applicationPrefill.fullName}</span>{" "}
+              ({applicationPrefill.propertyName} /{" "}
+              {applicationPrefill.unitNumber}). Creating the lease will clear
+              the application hold.
+            </p>
+          ) : null}
+
           {showForm ? (
             <form
               onSubmit={handleCreate}
               className="space-y-4 rounded-md border border-slate-200 bg-white p-4"
             >
               <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-                New Lease
+                {activeApplicationId
+                  ? "New Lease from Application"
+                  : "New Lease"}
               </h3>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

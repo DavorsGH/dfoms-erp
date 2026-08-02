@@ -759,3 +759,113 @@ export async function notifyStaffLandlordPendingApproval(options: {
     );
   }
 }
+
+/** EVENT 6 — public rental application submitted. Notify landlord contacts; staff for davors_managed. */
+export async function notifyLandlordNewRentalApplication(options: {
+  landlordTenantId: string;
+  applicationId: string;
+  applicantName: string;
+  propertyName: string;
+  unitNumber: string;
+}): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const [{ data: landlord }, { data: tenant }] = await Promise.all([
+      admin
+        .from("landlords")
+        .select("landlord_type, notification_phone")
+        .eq("tenant_id", options.landlordTenantId)
+        .maybeSingle(),
+      admin
+        .from("tenants")
+        .select("email")
+        .eq("id", options.landlordTenantId)
+        .maybeSingle(),
+    ]);
+
+    const landlordType = landlord?.landlord_type as LandlordType | null;
+    const landlordDeepLink = `${siteBaseUrl().replace(/\/$/, "")}/landlord-portal/real-estate/applications/${encodeURIComponent(options.applicationId)}`;
+    const staffDeepLink = staffDashboardUrl(
+      `/dashboard/real-estate/applications?landlord=${encodeURIComponent(options.landlordTenantId)}`,
+    );
+    const deepLink =
+      landlordType === "davors_managed" ? staffDeepLink : landlordDeepLink;
+    const smsLink = await smsDeepLinkUrl(deepLink);
+
+    const title = "New rental application";
+    const body = [
+      `${options.applicantName} applied for ${options.propertyName} / Unit ${options.unitNumber}.`,
+      deepLink,
+    ].join("\n");
+
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Applicant", options.applicantName],
+        ["Property", options.propertyName],
+        ["Unit", options.unitNumber],
+      ],
+      deepLink,
+    );
+
+    // Always notify the landlord workspace contacts (both landlord types review apps).
+    const landlordEmail =
+      typeof tenant?.email === "string" ? tenant.email.trim() || null : null;
+    const landlordPhone =
+      typeof landlord?.notification_phone === "string"
+        ? landlord.notification_phone.trim() || null
+        : null;
+
+    await dispatchStaffNotification({
+      title,
+      body,
+      emailSubject: `Real Estate: New rental application — ${options.applicantName}`,
+      emailHtml: html,
+      emailText: text,
+      smsContent: `Davors RE: Application from ${options.applicantName}, ${options.propertyName} unit ${options.unitNumber}. ${smsLink}`,
+      context: `rental-app:${options.applicationId}`,
+      recipients: {
+        landlordType,
+        email: landlordEmail,
+        phone: landlordPhone,
+        sendInApp: false,
+      },
+    });
+
+    // Oversight: davors_managed also notifies Davors staff.
+    if (landlordType === "davors_managed") {
+      const staffRecipients = await resolveNotificationRecipients({
+        landlordTenantId: options.landlordTenantId,
+        forceDavors: true,
+      });
+      const staffSmsLink = await smsDeepLinkUrl(staffDeepLink);
+      const staffShell = buildEmailShell(
+        title,
+        [
+          ["Applicant", options.applicantName],
+          ["Property", options.propertyName],
+          ["Unit", options.unitNumber],
+        ],
+        staffDeepLink,
+      );
+      await dispatchStaffNotification({
+        title,
+        body: [
+          `${options.applicantName} applied for ${options.propertyName} / Unit ${options.unitNumber}.`,
+          staffDeepLink,
+        ].join("\n"),
+        emailSubject: `Real Estate: New rental application — ${options.applicantName}`,
+        emailHtml: staffShell.html,
+        emailText: staffShell.text,
+        smsContent: `Davors RE: Application from ${options.applicantName}, ${options.propertyName} unit ${options.unitNumber}. ${staffSmsLink}`,
+        context: `rental-app-staff:${options.applicationId}`,
+        recipients: staffRecipients,
+      });
+    }
+  } catch (error) {
+    console.error(
+      "[real-estate-staff-notifications] notifyLandlordNewRentalApplication failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}

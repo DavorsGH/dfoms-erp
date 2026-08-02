@@ -1,6 +1,10 @@
 export type PropertyType = "residential" | "commercial" | "mixed_use";
 
-export type UnitStatus = "vacant" | "occupied" | "under_maintenance";
+export type UnitStatus =
+  | "vacant"
+  | "occupied"
+  | "under_maintenance"
+  | "application_hold";
 
 export type PropertyListRow = {
   propertyId: string;
@@ -89,6 +93,7 @@ export const UNIT_STATUS_OPTIONS: Array<{
   { value: "vacant", label: "Vacant" },
   { value: "occupied", label: "Occupied" },
   { value: "under_maintenance", label: "Under Maintenance" },
+  { value: "application_hold", label: "Application Hold" },
 ];
 
 export function formatPropertyType(value: string | null | undefined): string {

@@ -5,17 +5,20 @@ import {
   fetchLesseeOptionsForLandlord,
   fetchVacantUnitsForLandlord,
 } from "@/utils/lease-management";
+import { fetchRentalApplicationDetail } from "@/utils/rental-application-management";
 import { filterDavorsManagedLandlords } from "../landlords-utils";
 import RealEstateShell from "../real-estate-shell";
-import Leases from "../leases";
+import Leases, { type LeaseApplicationPrefill } from "../leases";
 
 type LeasesPageProps = {
-  searchParams: Promise<{ landlord?: string }>;
+  searchParams: Promise<{ landlord?: string; application?: string }>;
 };
 
 export default async function LeasesPage({ searchParams }: LeasesPageProps) {
-  const { landlord: landlordParam } = await searchParams;
+  const { landlord: landlordParam, application: applicationParam } =
+    await searchParams;
   const requestedLandlordId = landlordParam?.trim() || null;
+  const applicationId = applicationParam?.trim() || null;
 
   const admin = createAdminClient();
   const { rows: allLandlords, fetchError: landlordsError } =
@@ -37,6 +40,7 @@ export default async function LeasesPage({ searchParams }: LeasesPageProps) {
     ReturnType<typeof fetchLesseeOptionsForLandlord>
   >["lessees"];
   let leasesError: string | null = null;
+  let applicationPrefill: LeaseApplicationPrefill | null = null;
 
   if (selectedLandlordId) {
     const [leasesResult, unitsResult, lesseesResult] = await Promise.all([
@@ -51,6 +55,45 @@ export default async function LeasesPage({ searchParams }: LeasesPageProps) {
       leasesResult.fetchError ??
       unitsResult.fetchError ??
       lesseesResult.fetchError;
+
+    if (applicationId) {
+      const { detail } = await fetchRentalApplicationDetail(
+        admin,
+        selectedLandlordId,
+        applicationId,
+      );
+      if (
+        detail &&
+        detail.status === "approved" &&
+        !detail.leaseId
+      ) {
+        applicationPrefill = {
+          applicationId: detail.applicationId,
+          unitId: detail.unitId,
+          fullName: detail.fullName,
+          phone: detail.phone,
+          email: detail.email,
+          desiredMoveIn: detail.desiredMoveIn,
+          baseRentGhs: detail.baseRentGhs,
+          propertyName: detail.propertyName,
+          unitNumber: detail.unitNumber,
+        };
+
+        // Ensure held unit appears in the unit picker.
+        if (!vacantUnits.some((unit) => unit.unitId === detail.unitId)) {
+          vacantUnits = [
+            {
+              unitId: detail.unitId,
+              unitNumber: detail.unitNumber,
+              propertyId: detail.propertyId,
+              propertyName: detail.propertyName,
+              baseRentGhs: detail.baseRentGhs ?? 0,
+            },
+            ...vacantUnits,
+          ];
+        }
+      }
+    }
   }
 
   return (
@@ -63,6 +106,7 @@ export default async function LeasesPage({ searchParams }: LeasesPageProps) {
         lesseeOptions={lesseeOptions}
         landlordsError={landlordsError}
         leasesError={leasesError}
+        applicationPrefill={applicationPrefill}
       />
     </RealEstateShell>
   );

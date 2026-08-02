@@ -57,6 +57,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Public rental application form (token in path); APIs validate hashed token.
+  if (pathname.startsWith("/apply/") || pathname.startsWith("/api/apply/")) {
+    return NextResponse.next();
+  }
+
   // Maintenance mode — blocks all access except heartbeat and the maintenance page itself.
   if (process.env.MAINTENANCE_MODE === "true") {
     if (pathname === "/maintenance") {
@@ -105,6 +110,8 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/unsubscribe") &&
     !pathname.startsWith("/api/unsubscribe") &&
     !pathname.startsWith("/s/") &&
+    !pathname.startsWith("/apply/") &&
+    !pathname.startsWith("/api/apply/") &&
     !pathname.startsWith("/api/cron/")
   ) {
     const url = request.nextUrl.clone();

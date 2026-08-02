@@ -18,6 +18,7 @@ import {
   portalSectionTitleClassName,
 } from "../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../pending-approval-view";
+import ShareApplyLinkButton from "./share-apply-link-button";
 
 export default async function LandlordPortalUnitsPage() {
   const session = await getLandlordPortalSession();
@@ -41,7 +42,8 @@ export default async function LandlordPortalUnitsPage() {
       <div>
         <h1 className={portalSectionTitleClassName}>Units</h1>
         <p className="mt-1 text-sm text-slate-600">
-          All units across your properties (read-only).
+          Units across your properties. Vacant units can share a public
+          application link.
         </p>
       </div>
 
@@ -61,6 +63,7 @@ export default async function LandlordPortalUnitsPage() {
                 <th className={scrollableTableThClassName}>Status</th>
                 <th className={scrollableTableThClassName}>Base rent</th>
                 <th className={scrollableTableThClassName}>Beds / baths</th>
+                <th className={scrollableTableThClassName}>Apply link</th>
               </tr>
             </thead>
             <tbody className={scrollableTableBodyClassName}>
@@ -76,6 +79,17 @@ export default async function LandlordPortalUnitsPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-700">
                     {row.bedrooms ?? "—"} / {row.bathrooms ?? "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.status === "vacant" ? (
+                      <ShareApplyLinkButton
+                        unitId={row.unitId}
+                        propertyId={row.propertyId}
+                        unitLabel={row.unitNumber}
+                      />
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

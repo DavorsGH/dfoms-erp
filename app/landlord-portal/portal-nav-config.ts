@@ -82,6 +82,10 @@ export function getLandlordPortalNavSections(
           href: "/landlord-portal/real-estate/properties",
         },
         { label: "Units", href: "/landlord-portal/real-estate/units" },
+        {
+          label: "Applications",
+          href: "/landlord-portal/real-estate/applications",
+        },
         { label: "Tenants", href: "/landlord-portal/real-estate/tenants" },
         { label: "Leases", href: "/landlord-portal/real-estate/leases" },
       ],

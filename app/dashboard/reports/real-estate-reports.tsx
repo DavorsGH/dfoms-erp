@@ -38,6 +38,9 @@ import {
   type ReReportUnitRow,
 } from "./real-estate-reports-utils";
 
+/** Staff: Landlord + Property. Portal: Property only (scoped to own tenant). */
+export type ReReportFilterMode = "staff" | "portal";
+
 function ReportFetchError({ fetchError }: { fetchError: string | null }) {
   if (!fetchError) return null;
   return (
@@ -98,13 +101,17 @@ function MetricCards({
 function useLandlordPropertyFilters(
   landlords: ReReportLandlordOption[],
   properties: ReReportPropertyOption[],
+  filterMode: ReReportFilterMode,
 ) {
   const [landlordId, setLandlordId] = useState("");
   const [propertyId, setPropertyId] = useState("");
 
+  const effectiveLandlordId =
+    filterMode === "portal" ? (landlords[0]?.tenantId ?? "") : landlordId;
+
   const propertyOptions = useMemo(
-    () => propertiesForLandlord(properties, landlordId),
-    [landlordId, properties],
+    () => propertiesForLandlord(properties, effectiveLandlordId),
+    [effectiveLandlordId, properties],
   );
 
   function onLandlordChange(nextLandlordId: string) {
@@ -121,23 +128,25 @@ function useLandlordPropertyFilters(
 
   const filterControls = (
     <>
-      <div className="min-w-[200px]">
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Landlord
-        </label>
-        <select
-          value={landlordId}
-          onChange={(event) => onLandlordChange(event.target.value)}
-          className={inputClassName}
-        >
-          <option value="">All landlords</option>
-          {landlords.map((landlord) => (
-            <option key={landlord.tenantId} value={landlord.tenantId}>
-              {landlord.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {filterMode === "staff" ? (
+        <div className="min-w-[200px]">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Landlord
+          </label>
+          <select
+            value={landlordId}
+            onChange={(event) => onLandlordChange(event.target.value)}
+            className={inputClassName}
+          >
+            <option value="">All landlords</option>
+            {landlords.map((landlord) => (
+              <option key={landlord.tenantId} value={landlord.tenantId}>
+                {landlord.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
       <div className="min-w-[200px]">
         <label className="mb-1 block text-sm font-medium text-slate-700">
           Property
@@ -158,38 +167,56 @@ function useLandlordPropertyFilters(
     </>
   );
 
-  const periodLabelParts = [
-    landlordId
-      ? (landlords.find((row) => row.tenantId === landlordId)?.name ??
-        "Selected landlord")
-      : "All landlords",
-    propertyId
-      ? (properties.find((row) => row.propertyId === propertyId)?.name ??
-        "Selected property")
-      : "All properties",
-  ];
+  const periodLabelParts =
+    filterMode === "portal"
+      ? [
+          propertyId
+            ? (properties.find((row) => row.propertyId === propertyId)?.name ??
+              "Selected property")
+            : "All properties",
+        ]
+      : [
+          landlordId
+            ? (landlords.find((row) => row.tenantId === landlordId)?.name ??
+              "Selected landlord")
+            : "All landlords",
+          propertyId
+            ? (properties.find((row) => row.propertyId === propertyId)?.name ??
+              "Selected property")
+            : "All properties",
+        ];
 
   return {
-    landlordId,
+    landlordId: filterMode === "portal" ? "" : landlordId,
     propertyId,
     filterControls,
     filterPeriodLabel: periodLabelParts.join(" · "),
+    showLandlordColumn: filterMode === "staff",
   };
 }
+
+type VacancyOccupancyReportProps = {
+  landlords: ReReportLandlordOption[];
+  properties: ReReportPropertyOption[];
+  units: ReReportUnitRow[];
+  fetchError: string | null;
+  filterMode?: ReReportFilterMode;
+};
 
 export function VacancyRateReport({
   landlords,
   properties,
   units,
   fetchError,
-}: {
-  landlords: ReReportLandlordOption[];
-  properties: ReReportPropertyOption[];
-  units: ReReportUnitRow[];
-  fetchError: string | null;
-}) {
-  const { landlordId, propertyId, filterControls, filterPeriodLabel } =
-    useLandlordPropertyFilters(landlords, properties);
+  filterMode = "staff",
+}: VacancyOccupancyReportProps) {
+  const {
+    landlordId,
+    propertyId,
+    filterControls,
+    filterPeriodLabel,
+    showLandlordColumn,
+  } = useLandlordPropertyFilters(landlords, properties, filterMode);
 
   const report = useMemo(() => {
     const filtered = filterUnitsByLandlordProperty(
@@ -203,15 +230,18 @@ export function VacancyRateReport({
   function exportCsv() {
     downloadCsv(
       "vacancy-rate-report.csv",
-      ["Landlord", "Property", "Unit", "Status"],
-      report.detailRows.map((row) => [
-        row.landlordName,
-        row.propertyName,
-        row.unitNumber,
-        row.statusLabel,
-      ]),
+      showLandlordColumn
+        ? ["Landlord", "Property", "Unit", "Status"]
+        : ["Property", "Unit", "Status"],
+      report.detailRows.map((row) =>
+        showLandlordColumn
+          ? [row.landlordName, row.propertyName, row.unitNumber, row.statusLabel]
+          : [row.propertyName, row.unitNumber, row.statusLabel],
+      ),
     );
   }
+
+  const colSpan = showLandlordColumn ? 4 : 3;
 
   return (
     <div className="space-y-6">
@@ -244,7 +274,9 @@ export function VacancyRateReport({
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Landlord</th>
+                {showLandlordColumn ? (
+                  <th className={scrollableTableThClassName}>Landlord</th>
+                ) : null}
                 <th className={scrollableTableThClassName}>Property</th>
                 <th className={scrollableTableThClassName}>Unit</th>
                 <th className={scrollableTableThClassName}>Status</th>
@@ -254,7 +286,7 @@ export function VacancyRateReport({
               {report.detailRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={colSpan}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No units match the selected filters.
@@ -266,7 +298,9 @@ export function VacancyRateReport({
                     key={row.unitId}
                     className={getStripedRowClassName(index)}
                   >
-                    <td className="px-4 py-3">{row.landlordName}</td>
+                    {showLandlordColumn ? (
+                      <td className="px-4 py-3">{row.landlordName}</td>
+                    ) : null}
                     <td className="px-4 py-3">{row.propertyName}</td>
                     <td className="px-4 py-3">{row.unitNumber}</td>
                     <td className="px-4 py-3">{row.statusLabel}</td>
@@ -286,14 +320,15 @@ export function OccupancyReport({
   properties,
   units,
   fetchError,
-}: {
-  landlords: ReReportLandlordOption[];
-  properties: ReReportPropertyOption[];
-  units: ReReportUnitRow[];
-  fetchError: string | null;
-}) {
-  const { landlordId, propertyId, filterControls, filterPeriodLabel } =
-    useLandlordPropertyFilters(landlords, properties);
+  filterMode = "staff",
+}: VacancyOccupancyReportProps) {
+  const {
+    landlordId,
+    propertyId,
+    filterControls,
+    filterPeriodLabel,
+    showLandlordColumn,
+  } = useLandlordPropertyFilters(landlords, properties, filterMode);
 
   const report = useMemo(() => {
     const filtered = filterUnitsByLandlordProperty(
@@ -307,26 +342,48 @@ export function OccupancyReport({
   function exportCsv() {
     downloadCsv(
       "occupancy-report.csv",
-      [
-        "Landlord",
-        "Property",
-        "Occupancy %",
-        "Occupied",
-        "Vacant",
-        "Under Maintenance",
-        "Total Units",
-      ],
-      report.rows.map((row) => [
-        row.landlordName,
-        row.propertyName,
-        row.occupancyRatePct,
-        row.occupied,
-        row.vacant,
-        row.underMaintenance,
-        row.total,
-      ]),
+      showLandlordColumn
+        ? [
+            "Landlord",
+            "Property",
+            "Occupancy %",
+            "Occupied",
+            "Vacant",
+            "Under Maintenance",
+            "Total Units",
+          ]
+        : [
+            "Property",
+            "Occupancy %",
+            "Occupied",
+            "Vacant",
+            "Under Maintenance",
+            "Total Units",
+          ],
+      report.rows.map((row) =>
+        showLandlordColumn
+          ? [
+              row.landlordName,
+              row.propertyName,
+              row.occupancyRatePct,
+              row.occupied,
+              row.vacant,
+              row.underMaintenance,
+              row.total,
+            ]
+          : [
+              row.propertyName,
+              row.occupancyRatePct,
+              row.occupied,
+              row.vacant,
+              row.underMaintenance,
+              row.total,
+            ],
+      ),
     );
   }
+
+  const colSpan = showLandlordColumn ? 7 : 6;
 
   return (
     <div className="space-y-6">
@@ -358,7 +415,9 @@ export function OccupancyReport({
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Landlord</th>
+                {showLandlordColumn ? (
+                  <th className={scrollableTableThClassName}>Landlord</th>
+                ) : null}
                 <th className={scrollableTableThClassName}>Property</th>
                 <th className={`${scrollableTableThClassName} text-right`}>
                   Occupancy %
@@ -381,7 +440,7 @@ export function OccupancyReport({
               {report.rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={colSpan}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No properties match the selected filters.
@@ -393,7 +452,9 @@ export function OccupancyReport({
                     key={row.propertyId}
                     className={getStripedRowClassName(index)}
                   >
-                    <td className="px-4 py-3">{row.landlordName}</td>
+                    {showLandlordColumn ? (
+                      <td className="px-4 py-3">{row.landlordName}</td>
+                    ) : null}
                     <td className="px-4 py-3">{row.propertyName}</td>
                     <td className="px-4 py-3 text-right">
                       {row.occupancyRatePct}%
@@ -415,19 +476,28 @@ export function OccupancyReport({
   );
 }
 
+type ArrearsAgingReportProps = {
+  landlords: ReReportLandlordOption[];
+  properties: ReReportPropertyOption[];
+  ledgerRows: ReReportLedgerRow[];
+  fetchError: string | null;
+  filterMode?: ReReportFilterMode;
+};
+
 export function ArrearsAgingReport({
   landlords,
   properties,
   ledgerRows,
   fetchError,
-}: {
-  landlords: ReReportLandlordOption[];
-  properties: ReReportPropertyOption[];
-  ledgerRows: ReReportLedgerRow[];
-  fetchError: string | null;
-}) {
-  const { landlordId, propertyId, filterControls, filterPeriodLabel } =
-    useLandlordPropertyFilters(landlords, properties);
+  filterMode = "staff",
+}: ArrearsAgingReportProps) {
+  const {
+    landlordId,
+    propertyId,
+    filterControls,
+    filterPeriodLabel,
+    showLandlordColumn,
+  } = useLandlordPropertyFilters(landlords, properties, filterMode);
 
   const report = useMemo(() => {
     const filtered = filterLedgerByLandlordProperty(
@@ -448,38 +518,72 @@ export function ArrearsAgingReport({
   function exportCsv() {
     downloadCsv(
       "arrears-aging-report.csv",
-      [
-        "Landlord",
-        "Property",
-        "Unit",
-        "Lessee",
-        "Lease ID",
-        "Period Start",
-        "Period End",
-        "Amount Due",
-        "Amount Paid",
-        "Credit",
-        "Outstanding",
-        "Age Days",
-        "Aging Bucket",
-      ],
-      report.detailRows.map((row) => [
-        row.landlordName,
-        row.propertyName,
-        row.unitNumber,
-        row.lesseeName,
-        row.leaseId,
-        row.periodStart,
-        row.periodEnd,
-        row.amountDueGhs,
-        row.amountPaidGhs,
-        row.creditGhs,
-        row.outstandingGhs,
-        row.ageDays,
-        row.bucketLabel,
-      ]),
+      showLandlordColumn
+        ? [
+            "Landlord",
+            "Property",
+            "Unit",
+            "Lessee",
+            "Lease ID",
+            "Period Start",
+            "Period End",
+            "Amount Due",
+            "Amount Paid",
+            "Credit",
+            "Outstanding",
+            "Age Days",
+            "Aging Bucket",
+          ]
+        : [
+            "Property",
+            "Unit",
+            "Lessee",
+            "Lease ID",
+            "Period Start",
+            "Period End",
+            "Amount Due",
+            "Amount Paid",
+            "Credit",
+            "Outstanding",
+            "Age Days",
+            "Aging Bucket",
+          ],
+      report.detailRows.map((row) =>
+        showLandlordColumn
+          ? [
+              row.landlordName,
+              row.propertyName,
+              row.unitNumber,
+              row.lesseeName,
+              row.leaseId,
+              row.periodStart,
+              row.periodEnd,
+              row.amountDueGhs,
+              row.amountPaidGhs,
+              row.creditGhs,
+              row.outstandingGhs,
+              row.ageDays,
+              row.bucketLabel,
+            ]
+          : [
+              row.propertyName,
+              row.unitNumber,
+              row.lesseeName,
+              row.leaseId,
+              row.periodStart,
+              row.periodEnd,
+              row.amountDueGhs,
+              row.amountPaidGhs,
+              row.creditGhs,
+              row.outstandingGhs,
+              row.ageDays,
+              row.bucketLabel,
+            ],
+      ),
     );
   }
+
+  const colSpan = showLandlordColumn ? 8 : 7;
 
   return (
     <div className="space-y-6">
@@ -509,7 +613,9 @@ export function ArrearsAgingReport({
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Landlord</th>
+                {showLandlordColumn ? (
+                  <th className={scrollableTableThClassName}>Landlord</th>
+                ) : null}
                 <th className={scrollableTableThClassName}>Property</th>
                 <th className={scrollableTableThClassName}>Unit</th>
                 <th className={scrollableTableThClassName}>Lessee</th>
@@ -527,7 +633,7 @@ export function ArrearsAgingReport({
               {report.detailRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={colSpan}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No outstanding rent matches the selected filters.
@@ -539,7 +645,9 @@ export function ArrearsAgingReport({
                     key={row.entryId}
                     className={getStripedRowClassName(index)}
                   >
-                    <td className="px-4 py-3">{row.landlordName}</td>
+                    {showLandlordColumn ? (
+                      <td className="px-4 py-3">{row.landlordName}</td>
+                    ) : null}
                     <td className="px-4 py-3">{row.propertyName}</td>
                     <td className="px-4 py-3">{row.unitNumber}</td>
                     <td className="px-4 py-3">{row.lesseeName}</td>
@@ -563,19 +671,23 @@ export function ArrearsAgingReport({
   );
 }
 
+type IncomeByPropertyReportProps = {
+  landlords: ReReportLandlordOption[];
+  properties: ReReportPropertyOption[];
+  ledgerRows: ReReportLedgerRow[];
+  availableYears: number[];
+  fetchError: string | null;
+  filterMode?: ReReportFilterMode;
+};
+
 export function IncomeByPropertyReport({
   landlords,
   properties,
   ledgerRows,
   availableYears,
   fetchError,
-}: {
-  landlords: ReReportLandlordOption[];
-  properties: ReReportPropertyOption[];
-  ledgerRows: ReReportLedgerRow[];
-  availableYears: number[];
-  fetchError: string | null;
-}) {
+  filterMode = "staff",
+}: IncomeByPropertyReportProps) {
   const defaults = getDefaultReportMonthYear();
   const [year, setYear] = useState(
     availableYears.includes(defaults.year)
@@ -583,10 +695,8 @@ export function IncomeByPropertyReport({
       : (availableYears[0] ?? defaults.year),
   );
   const [month, setMonth] = useState(defaults.month);
-  const { landlordId, propertyId, filterControls } = useLandlordPropertyFilters(
-    landlords,
-    properties,
-  );
+  const { landlordId, propertyId, filterControls, showLandlordColumn } =
+    useLandlordPropertyFilters(landlords, properties, filterMode);
 
   const report = useMemo(() => {
     const filtered = filterLedgerByLandlordProperty(
@@ -597,34 +707,51 @@ export function IncomeByPropertyReport({
     return buildIncomeByPropertyReport(filtered, year, month);
   }, [landlordId, ledgerRows, month, propertyId, year]);
 
-  const periodLabel = `${formatReportPeriodLabel(year, month)} · ${
-    landlordId
-      ? (landlords.find((row) => row.tenantId === landlordId)?.name ??
-        "Selected landlord")
-      : "All landlords"
-  }`;
+  const periodLabel =
+    filterMode === "portal"
+      ? formatReportPeriodLabel(year, month)
+      : `${formatReportPeriodLabel(year, month)} · ${
+          landlordId
+            ? (landlords.find((row) => row.tenantId === landlordId)?.name ??
+              "Selected landlord")
+            : "All landlords"
+        }`;
 
   function exportCsv() {
     downloadCsv(
       `income-by-property-${year}-${String(month).padStart(2, "0")}.csv`,
-      [
-        "Landlord",
-        "Property",
-        "Due",
-        "Collected",
-        "Outstanding",
-        "Collection %",
-      ],
-      report.rows.map((row) => [
-        row.landlordName,
-        row.propertyName,
-        row.dueGhs,
-        row.collectedGhs,
-        row.outstandingGhs,
-        row.collectionPct,
-      ]),
+      showLandlordColumn
+        ? [
+            "Landlord",
+            "Property",
+            "Due",
+            "Collected",
+            "Outstanding",
+            "Collection %",
+          ]
+        : ["Property", "Due", "Collected", "Outstanding", "Collection %"],
+      report.rows.map((row) =>
+        showLandlordColumn
+          ? [
+              row.landlordName,
+              row.propertyName,
+              row.dueGhs,
+              row.collectedGhs,
+              row.outstandingGhs,
+              row.collectionPct,
+            ]
+          : [
+              row.propertyName,
+              row.dueGhs,
+              row.collectedGhs,
+              row.outstandingGhs,
+              row.collectionPct,
+            ],
+      ),
     );
   }
+
+  const colSpan = showLandlordColumn ? 6 : 5;
 
   return (
     <div className="space-y-6">
@@ -674,7 +801,9 @@ export function IncomeByPropertyReport({
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Landlord</th>
+                {showLandlordColumn ? (
+                  <th className={scrollableTableThClassName}>Landlord</th>
+                ) : null}
                 <th className={scrollableTableThClassName}>Property</th>
                 <th className={`${scrollableTableThClassName} text-right`}>
                   Due
@@ -694,7 +823,7 @@ export function IncomeByPropertyReport({
               {report.rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={colSpan}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No rent activity for this period and filters.
@@ -706,7 +835,9 @@ export function IncomeByPropertyReport({
                     key={row.propertyId}
                     className={getStripedRowClassName(index)}
                   >
-                    <td className="px-4 py-3">{row.landlordName}</td>
+                    {showLandlordColumn ? (
+                      <td className="px-4 py-3">{row.landlordName}</td>
+                    ) : null}
                     <td className="px-4 py-3">{row.propertyName}</td>
                     <td className="px-4 py-3 text-right">
                       {formatReportCurrency(row.dueGhs)}

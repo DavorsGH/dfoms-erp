@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "status must be vacant, occupied, or under_maintenance.",
+          "status must be vacant, occupied, under_maintenance, or application_hold.",
       },
       { status: 400 },
     );

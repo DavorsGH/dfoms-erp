@@ -28,7 +28,8 @@ export type RealEstatePhotoEntity =
   | "maintenance"
   | "inspection"
   | "expense"
-  | "lessee";
+  | "lessee"
+  | "rental_application";
 
 export function getPropertyPhotoStoragePath(
   tenantId: string,
