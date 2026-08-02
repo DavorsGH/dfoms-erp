@@ -12,7 +12,7 @@ const envName = process.argv[2] || "staging";
 const envFileArg = process.argv[3];
 const envFile =
   envFileArg ||
-  (envName === "production" ? ".env.production.local" : ".env.staging.local");
+  (envName === "production" ? ".env.local.backup" : ".env.staging.local");
 const expectedRef =
   envName === "production" ? "tvcurcnmasnocwdxzgvz" : "wieflwbfdmjtsdnwbfii";
 
