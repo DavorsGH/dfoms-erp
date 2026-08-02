@@ -2,6 +2,10 @@ import Link from "next/link";
 
 export type SummaryCardTone = "default" | "success" | "danger" | "ytd";
 
+/** Keeps GHS amounts on one line; peer values scale via clamp below. */
+const breakdownValueBase =
+  "shrink-0 whitespace-nowrap text-right tabular-nums";
+
 export function SummaryCard({
   title,
   subtitle,
@@ -39,18 +43,18 @@ export function SummaryCard({
         <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
       ) : null}
       {breakdown ? (
-        <div className="mt-4 space-y-2 text-sm">
+        <div className="@container mt-4 space-y-2 text-sm">
           {breakdown.map((item) => (
             <div
               key={item.label}
-              className="flex items-start justify-between gap-3 text-slate-600"
+              className="flex items-baseline justify-between gap-2 text-slate-600"
             >
-              <span>{item.label}</span>
+              <span className="min-w-0 shrink">{item.label}</span>
               <span
                 className={
                   showTotal
-                    ? "font-medium text-slate-800"
-                    : "text-lg font-semibold text-[#0f2744]"
+                    ? `${breakdownValueBase} font-medium text-slate-800`
+                    : `${breakdownValueBase} font-semibold text-[#0f2744] text-[clamp(0.8125rem,5cqi,1.125rem)]`
                 }
               >
                 {item.value}
@@ -58,14 +62,22 @@ export function SummaryCard({
             </div>
           ))}
           {showTotal ? (
-            <div className="flex items-start justify-between gap-3 border-t border-slate-200 pt-2">
-              <span className="font-medium text-slate-700">Total</span>
-              <span className="text-lg font-semibold text-[#0f2744]">{value}</span>
+            <div className="flex items-baseline justify-between gap-2 border-t border-slate-200 pt-2">
+              <span className="min-w-0 shrink font-medium text-slate-700">
+                Total
+              </span>
+              <span
+                className={`${breakdownValueBase} text-lg font-semibold text-[#0f2744]`}
+              >
+                {value}
+              </span>
             </div>
           ) : null}
         </div>
       ) : (
-        <p className="mt-2 text-2xl font-semibold text-[#0f2744]">{value}</p>
+        <p className="mt-2 text-2xl font-semibold tabular-nums text-[#0f2744]">
+          {value}
+        </p>
       )}
     </Link>
   );
