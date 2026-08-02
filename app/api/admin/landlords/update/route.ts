@@ -15,6 +15,11 @@ type UpdateLandlordBody = {
   notification_email?: string | null;
 };
 
+/**
+ * Staff update for landlords settings. notification_phone writes both
+ * landlords.notification_phone and tenants.phone so profile Phone stays in sync.
+ */
+
 export async function POST(request: Request) {
   const auth = await requireDavorsPlatformSuperAdmin();
   if (!auth.ok) {
@@ -123,21 +128,30 @@ export async function POST(request: Request) {
     updated_at: new Date().toISOString(),
   };
 
+  // Keep tenants.phone in sync with landlords.notification_phone so profile
+  // Phone and Notification phone stay equal (historically two columns).
+  const tenantPatch: {
+    email?: string | null;
+    phone?: string | null;
+    updated_at: string;
+  } = {
+    phone: notificationPhone,
+    updated_at: new Date().toISOString(),
+  };
   if (notificationEmail !== undefined) {
-    const { error: tenantUpdateError } = await admin
-      .from("tenants")
-      .update({
-        email: notificationEmail,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", tenantId);
+    tenantPatch.email = notificationEmail;
+  }
 
-    if (tenantUpdateError) {
-      return NextResponse.json(
-        { error: tenantUpdateError.message },
-        { status: 400 },
-      );
-    }
+  const { error: tenantUpdateError } = await admin
+    .from("tenants")
+    .update(tenantPatch)
+    .eq("id", tenantId);
+
+  if (tenantUpdateError) {
+    return NextResponse.json(
+      { error: tenantUpdateError.message },
+      { status: 400 },
+    );
   }
 
   if (existing) {

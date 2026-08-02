@@ -26,6 +26,10 @@ import {
   isLesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
 import { isTerminationRequestStatus } from "@/app/dashboard/real-estate/leases-utils";
+import {
+  buildLandlordPortalFinancialSummary,
+  type LandlordPortalFinancialSummaryViewModel,
+} from "@/app/landlord-portal/dashboard/financial-summary-utils";
 
 function formatTerminationRequestStatus(value: string): string {
   if (value === "pending_staff_approval") {
@@ -151,7 +155,7 @@ export function landlordPortalHasDataAccess(
   return session.approvalStatus === "approved";
 }
 
-export async function requirePlatformOnlyLandlordSession(): Promise<
+export async function requireApprovedLandlordSession(): Promise<
   | {
       ok: true;
       session: LandlordPortalSession;
@@ -178,7 +182,22 @@ export async function requirePlatformOnlyLandlordSession(): Promise<
       ),
     };
   }
-  if (session.landlordType !== "platform_only") {
+  return { ok: true, session, admin: createAdminClient() };
+}
+
+export async function requirePlatformOnlyLandlordSession(): Promise<
+  | {
+      ok: true;
+      session: LandlordPortalSession;
+      admin: ReturnType<typeof createAdminClient>;
+    }
+  | { ok: false; response: NextResponse }
+> {
+  const auth = await requireApprovedLandlordSession();
+  if (!auth.ok) {
+    return auth;
+  }
+  if (auth.session.landlordType !== "platform_only") {
     return {
       ok: false,
       response: NextResponse.json(
@@ -190,7 +209,7 @@ export async function requirePlatformOnlyLandlordSession(): Promise<
       ),
     };
   }
-  return { ok: true, session, admin: createAdminClient() };
+  return auth;
 }
 
 export async function fetchLandlordPortalNotificationContacts(
@@ -909,6 +928,7 @@ export type LandlordPortalOverviewMetrics = {
   expensesThisMonthGhs: number;
   netIncomeThisMonthGhs: number;
   recentActivity: LandlordPortalActivityItem[];
+  financialSummary: LandlordPortalFinancialSummaryViewModel;
 };
 
 export type LandlordPortalPropertyBrowseRow = {
@@ -1005,6 +1025,42 @@ export type LandlordPortalWorkspaceProfile = {
   email: string | null;
   phone: string | null;
   address: string | null;
+};
+
+export type LandlordPortalLesseeAccountPortalStatus =
+  | "active"
+  | "pending_invite"
+  | "no_account";
+
+export type LandlordPortalLesseeAccountRow = {
+  lesseeId: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  portalStatus: LandlordPortalLesseeAccountPortalStatus;
+  inviteExpiresAt: string | null;
+  canResendInvite: boolean;
+};
+
+export type LandlordPortalSmsCreditPack = {
+  packKey: string;
+  credits: number;
+  priceGhs: number;
+  isActive: boolean;
+};
+
+/**
+ * SCHEMA FLAG: `landlord_subscriptions` is read for platform_only display in
+ * staff Landlords admin and landlord Billing Settings. No create/checkout
+ * flow exists in landlord portal — do not invent ERP-suite subscription UX.
+ */
+export type LandlordPortalBillingSnapshot = {
+  subscriptionTier: string | null;
+  subscriptionStatus: string | null;
+  trialEndsAt: string | null;
+  smsCreditBalance: number;
+  smsCreditPacks: LandlordPortalSmsCreditPack[];
+  billingEmail: string | null;
 };
 
 function monthBoundsIso(now = new Date()): { start: string; end: string } {
@@ -1360,6 +1416,32 @@ export async function fetchLandlordPortalOverviewMetrics(
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
     .slice(0, 8);
 
+  const revenueEntries: Array<{ date: string; amount: number }> = [];
+  for (const row of (rentRows as Array<{
+    amount_paid_ghs: number | string;
+    payment_date: string | null;
+  }> | null) ?? []) {
+    if (!row.payment_date) continue;
+    const amountPaid = Number(row.amount_paid_ghs) || 0;
+    if (amountPaid <= 0) continue;
+    revenueEntries.push({ date: row.payment_date, amount: amountPaid });
+  }
+
+  const expenseEntries = (
+    (expenses as Array<{
+      amount_ghs: number | string;
+      expense_date: string;
+    }> | null) ?? []
+  ).map((row) => ({
+    date: row.expense_date,
+    amount: Number(row.amount_ghs) || 0,
+  }));
+
+  const financialSummary = buildLandlordPortalFinancialSummary({
+    revenueEntries,
+    expenseEntries,
+  });
+
   return {
     data: {
       occupiedUnits,
@@ -1377,6 +1459,7 @@ export async function fetchLandlordPortalOverviewMetrics(
       netIncomeThisMonthGhs:
         rentCollectedThisMonthGhs - expensesThisMonthGhs,
       recentActivity,
+      financialSummary,
     },
     error: null,
   };
@@ -1977,4 +2060,194 @@ export async function fetchLandlordPortalWorkspaceProfile(
     },
     error: null,
   };
+}
+
+export async function fetchLandlordPortalBillingSnapshot(
+  session: LandlordPortalSession,
+): Promise<{
+  data: LandlordPortalBillingSnapshot | null;
+  error: string | null;
+}> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { data: null, error: null };
+  }
+
+  const admin = createAdminClient();
+  const tenantId = session.tenantId;
+
+  const [
+    subscriptionResult,
+    packsResult,
+    walletResult,
+    tenantResult,
+  ] = await Promise.all([
+    admin
+      .from("landlord_subscriptions")
+      .select("tier, status, trial_ends_at")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
+    admin
+      .from("sms_credit_packs")
+      .select("pack_key, credits, price_ghs, is_active")
+      .eq("is_active", true)
+      .order("credits", { ascending: true }),
+    admin
+      .from("sms_credit_wallets")
+      .select("balance")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
+    admin
+      .from("tenants")
+      .select("email")
+      .eq("id", tenantId)
+      .maybeSingle(),
+  ]);
+
+  // landlord_subscriptions may be absent for some tenants; treat lookup
+  // errors as "no plan" rather than blocking SMS purchase.
+  const subscriptionError = subscriptionResult.error?.message ?? null;
+  const fetchError =
+    packsResult.error?.message ??
+    walletResult.error?.message ??
+    tenantResult.error?.message ??
+    null;
+
+  const subscription =
+    !subscriptionError && subscriptionResult.data
+      ? (subscriptionResult.data as {
+          tier: string | null;
+          status: string | null;
+          trial_ends_at: string | null;
+        })
+      : null;
+
+  const smsCreditPacks: LandlordPortalSmsCreditPack[] = (
+    (packsResult.data as
+      | Array<{
+          pack_key: string;
+          credits: number;
+          price_ghs: number;
+          is_active: boolean;
+        }>
+      | null) ?? []
+  ).map((pack) => ({
+    packKey: pack.pack_key,
+    credits: Number(pack.credits) || 0,
+    priceGhs: Number(pack.price_ghs) || 0,
+    isActive: pack.is_active !== false,
+  }));
+
+  const billingEmail =
+    (typeof tenantResult.data?.email === "string"
+      ? tenantResult.data.email.trim()
+      : "") ||
+    (session.email?.trim() ?? "") ||
+    null;
+
+  return {
+    data: {
+      subscriptionTier:
+        session.landlordType === "platform_only"
+          ? (subscription?.tier ?? null)
+          : null,
+      subscriptionStatus:
+        session.landlordType === "platform_only"
+          ? (subscription?.status ?? null)
+          : null,
+      trialEndsAt:
+        session.landlordType === "platform_only"
+          ? (subscription?.trial_ends_at ?? null)
+          : null,
+      smsCreditBalance:
+        walletResult.data?.balance != null
+          ? Number(walletResult.data.balance) || 0
+          : 0,
+      smsCreditPacks,
+      billingEmail,
+    },
+    error: fetchError,
+  };
+}
+
+export async function fetchLandlordPortalLesseeAccounts(
+  session: LandlordPortalSession,
+): Promise<{
+  rows: LandlordPortalLesseeAccountRow[];
+  error: string | null;
+}> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { rows: [], error: null };
+  }
+
+  const admin = createAdminClient();
+  const tenantId = session.tenantId;
+  const nowIso = new Date().toISOString();
+
+  const [{ data: lessees, error: lesseesError }, { data: invites, error: invitesError }] =
+    await Promise.all([
+      admin
+        .from("lessees")
+        .select("lessee_id, full_name, email, phone, auth_user_id")
+        .eq("tenant_id", tenantId)
+        .order("full_name", { ascending: true }),
+      admin
+        .from("lessee_portal_invites")
+        .select("lessee_id, expires_at, used_at")
+        .eq("tenant_id", tenantId)
+        .is("used_at", null)
+        .gt("expires_at", nowIso),
+    ]);
+
+  if (lesseesError) {
+    return { rows: [], error: lesseesError.message };
+  }
+  if (invitesError) {
+    return { rows: [], error: invitesError.message };
+  }
+
+  const pendingInviteByLessee = new Map<string, string>();
+  for (const invite of (invites as Array<{
+    lessee_id: string;
+    expires_at: string;
+    used_at: string | null;
+  }> | null) ?? []) {
+    const existing = pendingInviteByLessee.get(invite.lessee_id);
+    if (!existing || invite.expires_at > existing) {
+      pendingInviteByLessee.set(invite.lessee_id, invite.expires_at);
+    }
+  }
+
+  const rows: LandlordPortalLesseeAccountRow[] = (
+    (lessees as Array<{
+      lessee_id: string;
+      full_name: string;
+      email: string | null;
+      phone: string | null;
+      auth_user_id: string | null;
+    }> | null) ?? []
+  ).map((lessee) => {
+    const email =
+      typeof lessee.email === "string" ? lessee.email.trim() || null : null;
+    const hasAuth = Boolean(lessee.auth_user_id);
+    const inviteExpiresAt = pendingInviteByLessee.get(lessee.lessee_id) ?? null;
+
+    let portalStatus: LandlordPortalLesseeAccountPortalStatus = "no_account";
+    if (hasAuth) {
+      portalStatus = "active";
+    } else if (inviteExpiresAt) {
+      portalStatus = "pending_invite";
+    }
+
+    return {
+      lesseeId: lessee.lessee_id,
+      fullName: lessee.full_name,
+      email,
+      phone: typeof lessee.phone === "string" ? lessee.phone : null,
+      portalStatus,
+      inviteExpiresAt,
+      canResendInvite: !hasAuth && Boolean(email),
+    };
+  });
+
+  return { rows, error: null };
 }

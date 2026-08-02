@@ -27,17 +27,16 @@ export default async function LandlordPortalNotificationContactsPage() {
     );
   }
 
-  if (session.landlordType !== "platform_only") {
-    redirect("/landlord-portal/administration/workspace");
-  }
-
   const contacts = await fetchLandlordPortalNotificationContacts(session);
 
   return (
     <section className={portalSectionClassName}>
       <h1 className={portalSectionTitleClassName}>Notification contacts</h1>
       <p className="mt-1 text-sm text-slate-600">
-        SMS and email contacts used for Real Estate operational alerts.
+        SMS and email contacts for Real Estate operational alerts. For
+        platform-only landlords these are used for ops notifications; Davors
+        managed portfolios may also keep contacts on file for workspace
+        communications.
       </p>
 
       {contacts.error ? (

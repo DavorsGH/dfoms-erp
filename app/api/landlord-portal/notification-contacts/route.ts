@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
+import { requireApprovedLandlordSession } from "@/utils/landlord-portal-auth";
 
 type UpdateBody = {
   notification_phone?: string | null;
@@ -7,12 +7,14 @@ type UpdateBody = {
 };
 
 /**
- * Platform-only landlord self-service for landlords.notification_phone + tenants.email.
- * Mutations use service role after session + landlord_type checks (RLS is SELECT-only).
+ * Landlord self-service for landlords.notification_phone + tenants.email/phone.
+ * Available to any approved landlord (platform_only and davors_managed).
+ * Mutations use service role after session checks (RLS is SELECT-only).
+ * Writes tenants.phone alongside notification_phone so both stay equal.
  * No schema change — columns already exist from script 136.
  */
 export async function POST(request: Request) {
-  const auth = await requirePlatformOnlyLandlordSession();
+  const auth = await requireApprovedLandlordSession();
   if (!auth.ok) {
     return auth.response;
   }
@@ -58,6 +60,7 @@ export async function POST(request: Request) {
     .from("tenants")
     .update({
       email: notificationEmail,
+      phone: notificationPhone,
       updated_at: nowIso,
     })
     .eq("id", auth.session.tenantId);

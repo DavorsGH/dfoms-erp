@@ -14,6 +14,7 @@ import {
 } from "../portal-ui";
 import LandlordPortalPendingApprovalView from "../pending-approval-view";
 import LandlordPortalRentCollectionChart from "./rent-collection-chart";
+import LandlordPortalFinancialSummary from "./financial-summary";
 
 function MetricCard({
   label,
@@ -75,6 +76,10 @@ export default async function LandlordPortalDashboardPage() {
   const { data, error } = await fetchLandlordPortalOverviewMetrics(session);
   const isDavorsManaged = session.landlordType === "davors_managed";
   const isPlatformOnly = session.landlordType === "platform_only";
+  const rentLedgerHref = "/landlord-portal/finance/rent-ledger";
+  const expensesHref = isPlatformOnly
+    ? "/landlord-portal/finance/expenses"
+    : rentLedgerHref;
 
   return (
     <div className="space-y-6">
@@ -100,7 +105,14 @@ export default async function LandlordPortalDashboardPage() {
         </section>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <LandlordPortalFinancialSummary
+            data={data.financialSummary}
+            revenueHref={rentLedgerHref}
+            expensesHref={expensesHref}
+            netProfitHref={rentLedgerHref}
+          />
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               label="Occupancy"
               value={`${data.occupancyRatePct}% occupied`}
@@ -108,24 +120,9 @@ export default async function LandlordPortalDashboardPage() {
               href="/landlord-portal/real-estate/units"
             />
             <MetricCard
-              label="Rent collected this month"
-              value={formatPayoutMoney(data.rentCollectedThisMonthGhs)}
-              href="/landlord-portal/finance/rent-ledger"
-            />
-            <MetricCard
               label="Outstanding balance"
               value={formatPayoutMoney(data.outstandingBalanceGhs)}
-              href="/landlord-portal/finance/rent-ledger"
-            />
-            <MetricCard
-              label="Net income this month"
-              value={formatPayoutMoney(data.netIncomeThisMonthGhs)}
-              hint={`Collected ${formatPayoutMoney(data.rentCollectedThisMonthGhs)} − expenses ${formatPayoutMoney(data.expensesThisMonthGhs)}`}
-              href={
-                isPlatformOnly
-                  ? "/landlord-portal/finance/expenses"
-                  : "/landlord-portal/finance/rent-ledger"
-              }
+              href={rentLedgerHref}
             />
             <MetricCard
               label="Open maintenance"
@@ -292,7 +289,7 @@ export default async function LandlordPortalDashboardPage() {
               </Link>
             </li>
           ) : null}
-          {isPlatformOnly ? (
+          {isPlatformOnly || isDavorsManaged ? (
             <li>
               <Link
                 href="/landlord-portal/administration/notification-contacts"
@@ -302,6 +299,14 @@ export default async function LandlordPortalDashboardPage() {
               </Link>
             </li>
           ) : null}
+          <li>
+            <Link
+              href="/landlord-portal/administration/billing"
+              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[#0f2744] hover:bg-slate-50"
+            >
+              Billing settings
+            </Link>
+          </li>
         </ul>
       </section>
     </div>

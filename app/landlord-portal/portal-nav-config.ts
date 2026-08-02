@@ -18,8 +18,7 @@ export function getLandlordPortalNavSections(
   landlordType: LandlordType | null,
   options?: { showNotificationContacts?: boolean },
 ): LandlordPortalNavSection[] {
-  const showNotificationContacts =
-    options?.showNotificationContacts ?? landlordType === "platform_only";
+  const showNotificationContacts = options?.showNotificationContacts ?? true;
 
   const financeLinks: LandlordPortalNavLink[] = [
     {
@@ -48,13 +47,21 @@ export function getLandlordPortalNavSections(
       href: "/landlord-portal/administration/workspace",
     },
     {
+      label: "Billing Settings",
+      href: "/landlord-portal/administration/billing",
+    },
+    {
+      label: "User Accounts",
+      href: "/landlord-portal/administration/user-accounts",
+    },
+    {
       label: "Account Security",
       href: "/landlord-portal/administration/account-security",
     },
   ];
 
   if (showNotificationContacts) {
-    administrationLinks.push({
+    administrationLinks.splice(3, 0, {
       label: "Notification Contacts",
       href: "/landlord-portal/administration/notification-contacts",
     });

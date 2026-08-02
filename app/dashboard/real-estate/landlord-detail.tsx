@@ -58,7 +58,7 @@ export default function LandlordDetailView({
     initialDetail.paystackSubaccountCode ?? "",
   );
   const [notificationPhone, setNotificationPhone] = useState(
-    initialDetail.notificationPhone ?? "",
+    initialDetail.notificationPhone ?? initialDetail.phone ?? "",
   );
   const [notificationEmail, setNotificationEmail] = useState(
     initialDetail.email ?? "",
@@ -76,7 +76,9 @@ export default function LandlordDetailView({
         : "",
     );
     setPaystackSubaccountCode(initialDetail.paystackSubaccountCode ?? "");
-    setNotificationPhone(initialDetail.notificationPhone ?? "");
+    setNotificationPhone(
+      initialDetail.notificationPhone ?? initialDetail.phone ?? "",
+    );
     setNotificationEmail(initialDetail.email ?? "");
     setShowConvertForm(false);
     setConvertFeePercent("");
@@ -270,7 +272,7 @@ export default function LandlordDetailView({
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="mb-4 text-base font-semibold text-[#0f2744]">
-          Tenant profile
+          Landlord profile
         </h3>
         <dl className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -300,7 +302,12 @@ export default function LandlordDetailView({
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
               Phone
             </dt>
-            <dd className="mt-1 text-sm text-slate-900">{detail.phone ?? "—"}</dd>
+            <dd className="mt-1 text-sm text-slate-900">
+              {detail.notificationPhone ?? detail.phone ?? "—"}
+            </dd>
+            <p className="mt-1 text-xs text-slate-500">
+              Editable below as notification phone.
+            </p>
           </div>
           <div className="sm:col-span-2">
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -468,7 +475,9 @@ export default function LandlordDetailView({
                   : "",
               );
               setPaystackSubaccountCode(detail.paystackSubaccountCode ?? "");
-              setNotificationPhone(detail.notificationPhone ?? "");
+              setNotificationPhone(
+                detail.notificationPhone ?? detail.phone ?? "",
+              );
               setNotificationEmail(detail.email ?? "");
               setError(null);
               setSuccess(null);
