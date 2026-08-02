@@ -48,8 +48,6 @@ const emptyForm = {
   standard_selling_price: "",
   sourcing_type: DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
   supplier_id: "",
-  manufacturing_date: "",
-  expiration_date: "",
 };
 
 export default function FinishedProducts({
@@ -125,8 +123,6 @@ export default function FinishedProducts({
           standard_selling_price: payload.standard_selling_price,
           sourcing_type: payload.sourcing_type,
           supplier_id: payload.supplier_id,
-          manufacturing_date: payload.manufacturing_date,
-          expiration_date: payload.expiration_date,
           updated_at: new Date().toISOString(),
         })
         .eq("id", editingProductId);
@@ -296,40 +292,6 @@ export default function FinishedProducts({
                   setForm((current) => ({
                     ...current,
                     standard_selling_price: event.target.value,
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Manufacturing Date{" "}
-                <span className="font-normal text-slate-500">(optional)</span>
-              </label>
-              <input
-                type="date"
-                value={form.manufacturing_date}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    manufacturing_date: event.target.value,
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Expiration Date{" "}
-                <span className="font-normal text-slate-500">(optional)</span>
-              </label>
-              <input
-                type="date"
-                value={form.expiration_date}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    expiration_date: event.target.value,
                   }))
                 }
                 className={inputClassName}

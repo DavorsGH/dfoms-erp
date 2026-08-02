@@ -166,6 +166,8 @@ export async function POST(request: Request) {
       p_notes: trimmed.notes,
       p_po_id: trimmed.po_id,
       p_po_item_id: trimmed.po_item_id,
+      p_manufacturing_date: trimmed.manufacturing_date,
+      p_expiration_date: trimmed.expiration_date,
     },
   );
 

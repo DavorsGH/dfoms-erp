@@ -74,6 +74,10 @@ export type DashboardSummaryCards = {
   totalRevenueYtd: number;
   totalExpenses: number;
   totalExpensesYtd: number;
+  /** Fixed-asset depreciation folded into totalExpenses for the selected month. */
+  depreciationIncluded: number;
+  /** YTD fixed-asset depreciation folded into totalExpensesYtd. */
+  depreciationIncludedYtd: number;
   rawMaterialPurchases: number;
   rawMaterialPurchasesYtd: number;
   productPurchases: number;
@@ -191,6 +195,19 @@ function sumNetProfitYtd(
 
   for (let monthIndex = 0; monthIndex <= throughMonthIndex; monthIndex += 1) {
     total += getProfitLossRowAmount(report, "net-profit", monthIndex);
+  }
+
+  return roundCurrency(total);
+}
+
+function sumDepreciationYtd(
+  report: ReturnType<typeof buildProfitLossReport>,
+  throughMonthIndex: number,
+): number {
+  let total = 0;
+
+  for (let monthIndex = 0; monthIndex <= throughMonthIndex; monthIndex += 1) {
+    total += getProfitLossRowAmount(report, "depreciation", monthIndex);
   }
 
   return roundCurrency(total);
@@ -338,6 +355,24 @@ function buildMonthSnapshot(input: {
     input.year,
     input.month,
   );
+  // Reuse P&L depreciation (same path as Net Profit) so expenses cards reconcile.
+  const depreciationIncluded = roundCurrency(
+    getProfitLossRowAmount(profitLossReport, "depreciation", monthIndex),
+  );
+  const depreciationIncludedYtd = sumDepreciationYtd(
+    profitLossReport,
+    monthIndex,
+  );
+  const registerExpenses = sumRegisterAmountForMonth(
+    input.expenseEntries,
+    input.year,
+    input.month,
+  );
+  const registerExpensesYtd = sumRegisterAmountYtd(
+    input.expenseEntries,
+    input.year,
+    input.month,
+  );
 
   return {
     summary: {
@@ -352,16 +387,12 @@ function buildMonthSnapshot(input: {
         input.year,
         input.month,
       ),
-      totalExpenses: sumRegisterAmountForMonth(
-        input.expenseEntries,
-        input.year,
-        input.month,
+      totalExpenses: roundCurrency(registerExpenses + depreciationIncluded),
+      totalExpensesYtd: roundCurrency(
+        registerExpensesYtd + depreciationIncludedYtd,
       ),
-      totalExpensesYtd: sumRegisterAmountYtd(
-        input.expenseEntries,
-        input.year,
-        input.month,
-      ),
+      depreciationIncluded,
+      depreciationIncludedYtd,
       rawMaterialPurchases,
       rawMaterialPurchasesYtd,
       productPurchases,

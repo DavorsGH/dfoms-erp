@@ -46,6 +46,8 @@ export type ProductPurchaseWriteBody = {
   cost_per_unit?: number | string;
   payment_method?: string;
   notes?: string | null;
+  manufacturing_date?: string | null;
+  expiration_date?: string | null;
   po_id?: string | null;
   po_item_id?: string | null;
 };
@@ -59,6 +61,8 @@ export function emptyProductPurchaseForm() {
     cost_per_unit: "",
     payment_method: "",
     notes: "",
+    manufacturing_date: "",
+    expiration_date: "",
   };
 }
 
@@ -115,6 +119,8 @@ export function trimProductPurchaseInput(body: ProductPurchaseWriteBody) {
     cost_per_unit: Number(body.cost_per_unit),
     payment_method: (body.payment_method ?? "").trim(),
     notes: (body.notes ?? "").trim() || null,
+    manufacturing_date: (body.manufacturing_date ?? "").trim() || null,
+    expiration_date: (body.expiration_date ?? "").trim() || null,
     po_id: (body.po_id ?? "").trim() || null,
     po_item_id: (body.po_item_id ?? "").trim() || null,
   };

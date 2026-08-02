@@ -94,8 +94,6 @@ export function finishedProductToForm(product: FinishedProductRecord) {
         : String(product.standard_selling_price),
     sourcing_type: product.sourcing_type ?? DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
     supplier_id: product.supplier_id ?? "",
-    manufacturing_date: product.manufacturing_date ?? "",
-    expiration_date: product.expiration_date ?? "",
   };
 }
 
@@ -106,8 +104,6 @@ export function buildFinishedProductSavePayload(form: {
   standard_selling_price: string;
   sourcing_type: FinishedProductSourcingType;
   supplier_id: string;
-  manufacturing_date: string;
-  expiration_date: string;
 }) {
   const supplierId =
     form.sourcing_type === "purchased" && form.supplier_id.trim()
@@ -124,7 +120,5 @@ export function buildFinishedProductSavePayload(form: {
         : Number(form.standard_selling_price),
     sourcing_type: form.sourcing_type,
     supplier_id: supplierId,
-    manufacturing_date: normalizeDateOnly(form.manufacturing_date),
-    expiration_date: normalizeDateOnly(form.expiration_date),
   };
 }

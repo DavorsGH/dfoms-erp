@@ -49,6 +49,8 @@ const emptyBatchForm = {
   production_date: new Date().toISOString().slice(0, 10),
   finished_product_id: "",
   quantity_produced: "",
+  manufacturing_date: "",
+  expiration_date: "",
   notes: "",
 };
 
@@ -268,6 +270,8 @@ export default function ProductionBatches({
       p_quantity_produced: quantityProduced,
       p_notes: nullableText(batchForm.notes),
       p_materials: materialPayload,
+      p_manufacturing_date: nullableText(batchForm.manufacturing_date),
+      p_expiration_date: nullableText(batchForm.expiration_date),
     });
 
     if (rpcError) {
@@ -366,6 +370,40 @@ export default function ProductionBatches({
                     setBatchForm((current) => ({
                       ...current,
                       quantity_produced: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Manufacturing Date{" "}
+                  <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={batchForm.manufacturing_date}
+                  onChange={(event) =>
+                    setBatchForm((current) => ({
+                      ...current,
+                      manufacturing_date: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Expiration Date{" "}
+                  <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={batchForm.expiration_date}
+                  onChange={(event) =>
+                    setBatchForm((current) => ({
+                      ...current,
+                      expiration_date: event.target.value,
                     }))
                   }
                   className={inputClassName}

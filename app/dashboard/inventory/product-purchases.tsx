@@ -443,6 +443,42 @@ export default function ProductPurchases({
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Manufacturing Date{" "}
+                  <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={form.manufacturing_date}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      manufacturing_date: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Expiration Date{" "}
+                  <span className="font-normal text-slate-500">(optional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={form.expiration_date}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      expiration_date: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
                   Quantity
                   {selectedProduct ? ` (${selectedProduct.unit_of_measure})` : ""}
                 </label>
