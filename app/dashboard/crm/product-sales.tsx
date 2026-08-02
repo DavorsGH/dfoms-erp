@@ -30,6 +30,7 @@ import { isPaidStatus } from "../finance/accrued-wages-utils";
 import {
   buildVoidProductSaleConfirmMessage,
   calculateOutstanding,
+  deriveProductSalePaymentStatus,
   formatDate,
   formatGHS,
   getIncomeCustomerDisplayName,
@@ -64,13 +65,10 @@ const emptyForm = {
   product_id: "",
   sale_quantity: "",
   unit_price: "",
-  amount_received: "",
-  payment_status: "",
+  amount_received: "0",
   due_date: "",
   notes: "",
 };
-
-const PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"];
 
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
@@ -118,6 +116,13 @@ export default function ProductSales({
     calculatedAmount,
     Number(form.amount_received) || 0,
   );
+
+  const previewPaymentStatus = deriveProductSalePaymentStatus(
+    calculatedAmount,
+    Number(form.amount_received) || 0,
+  );
+
+  const dueDateRequired = previewOutstanding > 0;
 
   const customerOptions = useMemo(
     () =>
@@ -379,6 +384,31 @@ export default function ProductSales({
       return;
     }
 
+    const amount = Math.round(quantity * unitPrice * 100) / 100;
+
+    if (Number.isNaN(amountReceived) || amountReceived < 0) {
+      setError("Amount paid now must be zero or greater.");
+      setLoading(false);
+      return;
+    }
+
+    if (amountReceived > amount) {
+      setError(
+        `Amount paid now (${formatGHS(amountReceived)}) cannot exceed the sale total (${formatGHS(amount)}).`,
+      );
+      setLoading(false);
+      return;
+    }
+
+    const outstanding = calculateOutstanding(amount, amountReceived);
+    if (outstanding > 0 && !form.due_date.trim()) {
+      setError("Enter a due date for the remaining balance.");
+      setLoading(false);
+      return;
+    }
+
+    const paymentStatus = deriveProductSalePaymentStatus(amount, amountReceived);
+
     const product = finishedProducts.find((item) => item.id === form.product_id);
     if (product && product.current_stock < quantity) {
       setError(
@@ -400,8 +430,8 @@ export default function ProductSales({
         p_quantity: quantity,
         p_unit_price: unitPrice,
         p_amount_received: amountReceived,
-        p_payment_status: form.payment_status,
-        p_due_date: form.due_date,
+        p_payment_status: paymentStatus,
+        p_due_date: outstanding > 0 ? form.due_date : form.due_date || form.date,
         p_description: null,
         p_notes: form.notes || null,
       },
@@ -492,7 +522,8 @@ export default function ProductSales({
     <div className="min-w-0 space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
-          Record external product sales, stock movements, and auto-posted COGS.
+          Record product sales with full or partial payment, stock movements, and
+          auto-posted COGS. Remaining balances use the due date for reminders.
         </p>
         <div className="flex gap-2">
           <button
@@ -540,6 +571,10 @@ export default function ProductSales({
           <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
             New Product Sale
           </h2>
+          <p className="mb-4 text-sm text-slate-600">
+            Enter quantity and unit price for the total. Pay in full now, or enter
+            a partial amount paid and a due date for the balance.
+          </p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div>
@@ -642,7 +677,7 @@ export default function ProductSales({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Amount
+                  Total Amount
                 </label>
                 <input
                   type="text"
@@ -653,7 +688,7 @@ export default function ProductSales({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Amount Received
+                  Amount Paid Now
                 </label>
                 <input
                   type="number"
@@ -664,36 +699,39 @@ export default function ProductSales({
                   onChange={(e) => updateField("amount_received", e.target.value)}
                   className={inputClassName}
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                  Enter 0 for unpaid, less than total for a partial payment, or the
+                  full total to mark paid.
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Payment Status
                 </label>
-                <select
-                  required
-                  value={form.payment_status}
-                  onChange={(e) => updateField("payment_status", e.target.value)}
-                  className={inputClassName}
-                >
-                  <option value="">Select status</option>
-                  {PAYMENT_STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  readOnly
+                  value={previewPaymentStatus}
+                  className={`${inputClassName} bg-slate-50 text-slate-700`}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Due Date
+                  Due Date{dueDateRequired ? "" : " (optional)"}
                 </label>
                 <input
                   type="date"
-                  required
+                  required={dueDateRequired}
                   value={form.due_date}
                   onChange={(e) => updateField("due_date", e.target.value)}
                   className={inputClassName}
                 />
+                {dueDateRequired ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Required for the remaining balance. Reminders fire ~3 days
+                    before and when overdue.
+                  </p>
+                ) : null}
               </div>
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -709,10 +747,16 @@ export default function ProductSales({
             </div>
 
             <p className="text-sm text-slate-600">
-              Outstanding Balance:{" "}
+              Remaining Balance:{" "}
               <span className="font-medium text-[#0f2744]">
                 {formatGHS(previewOutstanding)}
               </span>
+              {previewOutstanding > 0 ? (
+                <span className="text-slate-500">
+                  {" "}
+                  (total − amount paid now)
+                </span>
+              ) : null}
             </p>
 
             <div className="flex gap-3">
@@ -762,6 +806,7 @@ export default function ProductSales({
               <th className={scrollableTableThClassName}>Unit Price</th>
               <th className={scrollableTableThClassName}>Amount</th>
               <th className={scrollableTableThClassName}>Amount Received</th>
+              <th className={scrollableTableThClassName}>Outstanding</th>
               <th className={scrollableTableThClassName}>
                 <RegisterColumnFilterHeader
                   label="Payment Status"
@@ -786,7 +831,7 @@ export default function ProductSales({
             {entries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={12}
+                  colSpan={13}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No product sales recorded yet.
@@ -795,7 +840,7 @@ export default function ProductSales({
             ) : visibleEntries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={12}
+                  colSpan={13}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No entries match the current filters.
@@ -804,6 +849,10 @@ export default function ProductSales({
             ) : (
               visibleEntries.map((entry, index) => {
                 const voided = isProductSaleVoided(entry);
+                const outstanding = calculateOutstanding(
+                  Number(entry.amount) || 0,
+                  Number(entry.amount_received) || 0,
+                );
 
                 return (
                 <tr
@@ -832,6 +881,7 @@ export default function ProductSales({
                   <td className="px-4 py-3">
                     {formatGHS(entry.amount_received)}
                   </td>
+                  <td className="px-4 py-3">{formatGHS(outstanding)}</td>
                   <td className="px-4 py-3">{entry.payment_status}</td>
                   <td className="px-4 py-3">
                     {voided ? (

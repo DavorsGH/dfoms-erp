@@ -75,6 +75,26 @@ export function getProductSaleProductLabel(entry: ProductSaleEntry): string {
   return `${entry.product.product_code} — ${entry.product.product_name}`;
 }
 
+/**
+ * Derive payment_status from amounts for Add Sale / partial-pay flows.
+ * Overdue is reserved for due-date aging (cron / manual), not set at create time.
+ */
+export function deriveProductSalePaymentStatus(
+  amount: number,
+  amountReceived: number,
+): "Paid" | "Partial" | "Pending" {
+  const total = Math.round((Number(amount) || 0) * 100) / 100;
+  const received = Math.round((Number(amountReceived) || 0) * 100) / 100;
+
+  if (total <= 0 || received >= total) {
+    return "Paid";
+  }
+  if (received > 0) {
+    return "Partial";
+  }
+  return "Pending";
+}
+
 export {
   calculateOutstanding,
   formatDate,
