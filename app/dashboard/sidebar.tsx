@@ -219,9 +219,13 @@ export default function Sidebar({
     navItems.splice(insertAt, 0, realEstateItem);
   }
 
-  const reportLinks = REPORT_SIDEBAR_LINKS.filter((link) =>
-    canAccessReportCategory(userRole, link.categoryId),
-  );
+  const reportLinks = REPORT_SIDEBAR_LINKS.filter((link) => {
+    // Real Estate reports use the same Davors-platform gate as RE staff ops.
+    if (link.categoryId === "real-estate" && !showRealEstate) {
+      return false;
+    }
+    return canAccessReportCategory(userRole, link.categoryId);
+  });
   const reportsActive = isReportPath(pathname);
   const {
     isExpanded: reportsExpanded,

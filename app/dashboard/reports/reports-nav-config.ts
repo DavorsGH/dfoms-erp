@@ -176,6 +176,30 @@ export const REPORT_NAV_CATEGORIES: ReportNavCategory[] = [
       },
     ],
   },
+  {
+    id: "real-estate",
+    label: "Real Estate",
+    baseHref: "/dashboard/reports/real-estate",
+    pageTitle: "Real Estate Reports",
+    items: [
+      {
+        label: "Vacancy Rate",
+        href: "/dashboard/reports/real-estate/vacancy-rate",
+      },
+      {
+        label: "Occupancy",
+        href: "/dashboard/reports/real-estate/occupancy",
+      },
+      {
+        label: "Arrears Aging",
+        href: "/dashboard/reports/real-estate/arrears-aging",
+      },
+      {
+        label: "Income by Property",
+        href: "/dashboard/reports/real-estate/income-by-property",
+      },
+    ],
+  },
 ];
 
 export const REPORT_SIDEBAR_LINKS = REPORT_NAV_CATEGORIES.map((category) => ({

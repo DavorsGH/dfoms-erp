@@ -109,6 +109,8 @@ export const REPORT_CATEGORY_ROLES: Record<string, readonly AppRole[]> = {
   sales: CRM_SECTION_ROLES,
   "client-facing": ["super_admin"],
   incidents: ["super_admin", "operations_manager", "supervisor"],
+  /** Same audience as Real Estate staff ops (`isDavorsPlatformSuperAdmin`). */
+  "real-estate": ["super_admin"],
 };
 
 export type DashboardVisibility = {
