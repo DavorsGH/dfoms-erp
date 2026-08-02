@@ -27,6 +27,7 @@ import {
   FINISHED_PRODUCT_SELECT,
   FINISHED_PRODUCT_SOURCING_OPTIONS,
   finishedProductToForm,
+  getFinishedProductExpirationStatus,
   normalizeFinishedProduct,
   type FinishedProductRecord,
   type FinishedProductSourcingType,
@@ -47,6 +48,8 @@ const emptyForm = {
   standard_selling_price: "",
   sourcing_type: DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
   supplier_id: "",
+  manufacturing_date: "",
+  expiration_date: "",
 };
 
 export default function FinishedProducts({
@@ -122,6 +125,8 @@ export default function FinishedProducts({
           standard_selling_price: payload.standard_selling_price,
           sourcing_type: payload.sourcing_type,
           supplier_id: payload.supplier_id,
+          manufacturing_date: payload.manufacturing_date,
+          expiration_date: payload.expiration_date,
           updated_at: new Date().toISOString(),
         })
         .eq("id", editingProductId);
@@ -296,6 +301,40 @@ export default function FinishedProducts({
                 className={inputClassName}
               />
             </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Manufacturing Date{" "}
+                <span className="font-normal text-slate-500">(optional)</span>
+              </label>
+              <input
+                type="date"
+                value={form.manufacturing_date}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    manufacturing_date: event.target.value,
+                  }))
+                }
+                className={inputClassName}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Expiration Date{" "}
+                <span className="font-normal text-slate-500">(optional)</span>
+              </label>
+              <input
+                type="date"
+                value={form.expiration_date}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    expiration_date: event.target.value,
+                  }))
+                }
+                className={inputClassName}
+              />
+            </div>
             <div className="md:col-span-2">
               <fieldset>
                 <legend className="mb-2 block text-sm font-medium text-slate-700">
@@ -395,6 +434,8 @@ export default function FinishedProducts({
               <th className={scrollableTableThClassName}>Unit</th>
               <th className={scrollableTableThClassName}>Current Stock</th>
               <th className={scrollableTableThClassName}>Selling Price</th>
+              <th className={scrollableTableThClassName}>Mfg Date</th>
+              <th className={scrollableTableThClassName}>Expiration</th>
               {!readOnly ? (
                 <th className={scrollableTableThClassName}>Actions</th>
               ) : null}
@@ -404,14 +445,19 @@ export default function FinishedProducts({
             {products.length === 0 ? (
               <tr>
                 <td
-                  colSpan={readOnly ? 5 : 6}
+                  colSpan={readOnly ? 7 : 8}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No finished products yet.
                 </td>
               </tr>
             ) : (
-              products.map((product, index) => (
+              products.map((product, index) => {
+                const expirationStatus = getFinishedProductExpirationStatus(
+                  product.expiration_date,
+                );
+
+                return (
                 <tr key={product.id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{product.product_code}</td>
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
@@ -424,6 +470,26 @@ export default function FinishedProducts({
                   <td className="px-4 py-3">
                     {formatInventoryMoney(product.standard_selling_price)}
                   </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {product.manufacturing_date ?? "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-slate-600">
+                        {product.expiration_date ?? "—"}
+                      </span>
+                      {expirationStatus === "expired" ? (
+                        <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700">
+                          Expired
+                        </span>
+                      ) : null}
+                      {expirationStatus === "nearing_expiration" ? (
+                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">
+                          Nearing expiration
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
                   {!readOnly ? (
                   <RegisterRowActions
                     onEdit={() => openEditForm(product)}
@@ -432,7 +498,8 @@ export default function FinishedProducts({
                   />
                   ) : null}
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
