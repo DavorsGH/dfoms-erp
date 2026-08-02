@@ -51,7 +51,7 @@ async function main() {
     supabase
       .from("income_register")
       .select(
-        "date, amount, amount_received, outstanding_balance, service_category",
+        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
       ),
     supabase
       .from("expense_register")

@@ -92,7 +92,7 @@ async function buildTenantBs(admin: SupabaseClient, tenantId: string) {
     admin
       .from("income_register")
       .select(
-        "date, amount, amount_received, outstanding_balance, payment_status, entry_type, sale_status, client_id, customer_name",
+        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
       )
       .eq("tenant_id", tenantId),
     admin
