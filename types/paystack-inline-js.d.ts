@@ -1,6 +1,8 @@
 declare module "@paystack/inline-js" {
   type PaystackResumeCallbacks = {
-    onSuccess?: (transaction: { reference?: string }) => void;
+    onSuccess?: (
+      transaction: { reference?: string; trxref?: string } | string,
+    ) => void;
     onCancel?: () => void;
     onError?: (error: { message?: string }) => void;
   };

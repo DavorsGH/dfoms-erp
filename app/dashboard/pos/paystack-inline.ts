@@ -1,10 +1,36 @@
 "use client";
 
+type PaystackInlineTransaction =
+  | string
+  | {
+      reference?: string;
+      trxref?: string;
+    }
+  | null
+  | undefined;
+
 type PaystackResumeCallbacks = {
-  onSuccess?: (transaction: { reference?: string }) => void;
+  onSuccess?: (transaction: PaystackInlineTransaction) => void;
   onCancel?: () => void;
   onError?: (error: { message?: string }) => void;
 };
+
+/** Reference from Paystack Inline onSuccess (shape varies by SDK version). */
+export function extractPaystackInlineReference(
+  transaction: PaystackInlineTransaction,
+  fallbackReference?: string | null,
+): string {
+  if (typeof transaction === "string") {
+    return transaction.trim();
+  }
+
+  return (
+    transaction?.reference?.trim() ||
+    transaction?.trxref?.trim() ||
+    fallbackReference?.trim() ||
+    ""
+  );
+}
 
 type PaystackPopInstance = {
   resumeTransaction: (

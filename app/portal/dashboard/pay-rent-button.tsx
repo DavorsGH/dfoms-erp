@@ -2,7 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { openPaystackInlineWithAccessCode } from "@/app/dashboard/pos/paystack-inline";
+import {
+  extractPaystackInlineReference,
+  openPaystackInlineWithAccessCode,
+} from "@/app/dashboard/pos/paystack-inline";
 import { canInitiatePortalRentPayment } from "@/utils/lease-signature";
 
 type PayRentButtonProps = {
@@ -37,6 +40,16 @@ function formatMoney(value: number): string {
   })}`;
 }
 
+function normalizeEntryIds(values: Array<string | null | undefined>): string[] {
+  return [
+    ...new Set(
+      values
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter(Boolean),
+    ),
+  ];
+}
+
 /**
  * Portal Pay — Paystack Inline for rent + outstanding one-time charges
  * in a single bundled transaction.
@@ -65,7 +78,9 @@ export default function PayRentButton({
       setError(blockedMessage);
       return;
     }
-    if (entryIds.length === 0 || outstandingGhs <= 0) {
+
+    const requestedEntryIds = normalizeEntryIds(entryIds);
+    if (requestedEntryIds.length === 0 || outstandingGhs <= 0) {
       setError("Nothing outstanding to pay.");
       return;
     }
@@ -79,8 +94,8 @@ export default function PayRentButton({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          entry_id: entryIds[0],
-          entry_ids: entryIds,
+          entry_id: requestedEntryIds[0],
+          entry_ids: requestedEntryIds,
         }),
       });
       const initPayload = (await initResponse.json()) as InitializeResponse;
@@ -97,14 +112,43 @@ export default function PayRentButton({
         return;
       }
 
-      const confirmEntryIds =
-        initPayload.entry_ids && initPayload.entry_ids.length > 0
-          ? initPayload.entry_ids
-          : entryIds;
+      const initReference = initPayload.reference?.trim() ?? "";
+      const confirmEntryIds = normalizeEntryIds([
+        ...(initPayload.entry_ids ?? []),
+        initPayload.entry_id,
+        ...requestedEntryIds,
+      ]);
+
+      if (!initReference) {
+        setError("Paystack did not return a payment reference.");
+        setLoading(false);
+        return;
+      }
+
+      if (confirmEntryIds.length === 0) {
+        setError(
+          "Could not determine which charges to pay. Refresh and try again.",
+        );
+        setLoading(false);
+        return;
+      }
 
       await openPaystackInlineWithAccessCode(accessCode, {
         onSuccess: async (transaction) => {
           try {
+            const paymentReference = extractPaystackInlineReference(
+              transaction,
+              initReference,
+            );
+
+            if (!paymentReference) {
+              setError(
+                "Payment completed but no reference was returned. Refresh shortly — webhook may still apply it.",
+              );
+              setLoading(false);
+              return;
+            }
+
             const confirmResponse = await fetch(
               "/api/portal/rent/paystack/confirm",
               {
@@ -113,7 +157,7 @@ export default function PayRentButton({
                 body: JSON.stringify({
                   entry_id: confirmEntryIds[0],
                   entry_ids: confirmEntryIds,
-                  reference: transaction.reference ?? initPayload.reference,
+                  reference: paymentReference,
                 }),
               },
             );

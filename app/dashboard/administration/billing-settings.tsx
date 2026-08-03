@@ -12,7 +12,10 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
-import { openPaystackInlineWithAccessCode } from "@/app/dashboard/pos/paystack-inline";
+import {
+  extractPaystackInlineReference,
+  openPaystackInlineWithAccessCode,
+} from "@/app/dashboard/pos/paystack-inline";
 import {
   formatCreditBalance,
   formatInvoiceAmount,
@@ -259,7 +262,10 @@ export default function BillingSettings({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   purchase_request_id: purchaseRequestId,
-                  reference: transaction.reference ?? initPayload.reference,
+                  reference: extractPaystackInlineReference(
+                    transaction,
+                    initPayload.reference,
+                  ),
                 }),
               },
             );

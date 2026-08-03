@@ -35,7 +35,10 @@ import {
 } from "./pos-utils";
 import { PosReceiptPanel, type PosReceiptData } from "./pos-receipt";
 import RequestPaymentModal from "./request-payment-modal";
-import { openPaystackInlineWithAccessCode } from "./paystack-inline";
+import {
+  extractPaystackInlineReference,
+  openPaystackInlineWithAccessCode,
+} from "./paystack-inline";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -485,7 +488,10 @@ export default function PosCheckout({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   payment_request_id: paymentRequestId,
-                  reference: transaction.reference ?? initPayload.reference,
+                  reference: extractPaystackInlineReference(
+                    transaction,
+                    initPayload.reference,
+                  ),
                 }),
               },
             );

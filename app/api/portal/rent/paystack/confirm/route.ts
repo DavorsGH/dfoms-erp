@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   }
 
   const reference = body.reference?.trim() ?? "";
-  const entryIds = [
+  let entryIds = [
     ...new Set(
       [
         ...(Array.isArray(body.entry_ids) ? body.entry_ids : []),
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     ),
   ];
 
-  if (!reference || entryIds.length === 0) {
+  if (!reference) {
     return NextResponse.json(
       { error: "entry_id (or entry_ids) and reference are required" },
       { status: 400 },
@@ -81,6 +81,34 @@ export async function POST(request: Request) {
         ),
       },
       { status: 403 },
+    );
+  }
+
+  if (entryIds.length === 0) {
+    const { data: refRows, error: refLookupError } = await admin
+      .from("rent_ledger")
+      .select("entry_id")
+      .eq("tenant_id", session.tenantId)
+      .eq("lease_id", lease.lease_id)
+      .eq("paystack_reference", reference);
+
+    if (refLookupError) {
+      return NextResponse.json({ error: refLookupError.message }, { status: 400 });
+    }
+
+    entryIds = [
+      ...new Set(
+        ((refRows as Array<{ entry_id: string }> | null) ?? []).map(
+          (row) => row.entry_id,
+        ),
+      ),
+    ];
+  }
+
+  if (entryIds.length === 0) {
+    return NextResponse.json(
+      { error: "entry_id (or entry_ids) and reference are required" },
+      { status: 400 },
     );
   }
 
