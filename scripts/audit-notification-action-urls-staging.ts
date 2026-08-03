@@ -4,7 +4,26 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+type NotificationTable =
+  | "employee_notifications"
+  | "landlord_notifications"
+  | "lessee_notifications";
+
+type NotificationSampleRow = {
+  id: string;
+  title: string | null;
+  action_url: string | null;
+  body: string | null;
+  created_at: string | null;
+};
+
+type NotificationLandlordMatchRow = {
+  id: string;
+  action_url: string | null;
+  body: string | null;
+};
 
 function loadEnvForce(filePath: string) {
   for (const line of readFileSync(filePath, "utf8").split(/\r?\n/)) {
@@ -23,10 +42,7 @@ function loadEnvForce(filePath: string) {
   }
 }
 
-async function sample(
-  admin: ReturnType<typeof createClient>,
-  table: string,
-) {
+async function sample(admin: SupabaseClient, table: NotificationTable) {
   const { data, error } = await admin
     .from(table)
     .select("id, title, action_url, body, created_at")
@@ -37,8 +53,9 @@ async function sample(
     console.log(`${table}: ERROR ${error.message}`);
     return;
   }
+  const rows = (data ?? []) as NotificationSampleRow[];
   console.log(`\n=== ${table} (latest with action_url, up to 15) ===`);
-  for (const row of data ?? []) {
+  for (const row of rows) {
     console.log(
       `- ${row.created_at?.slice(0, 19)} | ${String(row.action_url)} | ${String(row.title).slice(0, 40)}`,
     );
@@ -51,9 +68,10 @@ async function sample(
       "action_url.ilike.%/dashboard/real-estate/landlords%,body.ilike.%/dashboard/real-estate/landlords%",
     )
     .limit(20);
+  const landlordRows = (landlordish ?? []) as NotificationLandlordMatchRow[];
   console.log(
     `${table} landlords-path matches:`,
-    (landlordish ?? []).map((r) => ({
+    landlordRows.map((r) => ({
       id: r.id,
       action_url: r.action_url,
       bodyTail: String(r.body ?? "").slice(-120),
