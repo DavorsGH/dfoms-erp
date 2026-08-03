@@ -203,6 +203,13 @@ export default function PayrollProcessing({
     !isPeriodClosed &&
     rows.length > 0;
 
+  /** Promote Partially Locked → Locked once the period month has ended. */
+  const canPromoteToFullLock =
+    canManagePayrollPeriod &&
+    isPartiallyLocked &&
+    isPayrollMonthEndedForPeriod &&
+    rows.length > 0;
+
   const fullLockDisabledReason = useMemo(() => {
     if (isPeriodClosed || rows.length === 0 || !currentPeriod) {
       return undefined;
@@ -989,6 +996,38 @@ export default function PayrollProcessing({
     }
   }
 
+  async function handleFullLockFromPartial() {
+    if (!currentPeriod || !canPromoteToFullLock) {
+      return;
+    }
+
+    const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
+
+    if (
+      !window.confirm(
+        `Fully lock ${label}? This marks payroll as fully paid and posts a cash outflow to Cash Position. This cannot be undone without Release to Open (or Reopen if still Partially Locked).`,
+      )
+    ) {
+      return;
+    }
+
+    setLocking(true);
+    setError(null);
+
+    try {
+      // Promote path loads history server-side; rows satisfy the client contract.
+      await executeLockPeriod(rows, PAYROLL_STATUS_LOCKED, null);
+    } catch (lockError) {
+      setError(
+        lockError instanceof Error
+          ? lockError.message
+          : "Failed to fully lock payroll period.",
+      );
+    } finally {
+      setLocking(false);
+    }
+  }
+
   async function handlePartialLockPeriod() {
     if (!currentPeriod || !canManagePayrollPeriod || isPeriodClosed) {
       return;
@@ -1124,6 +1163,16 @@ export default function PayrollProcessing({
               {reopening ? "Reopening…" : "Reopen Period"}
             </button>
           ) : null}
+          {canPromoteToFullLock ? (
+            <button
+              type="button"
+              onClick={handleFullLockFromPartial}
+              disabled={locking || loading || reopening || releasing}
+              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {locking ? "Locking…" : "Full Lock"}
+            </button>
+          ) : null}
           {canManagePayrollPeriod && isFullyLocked ? (
             <button
               type="button"
@@ -1214,7 +1263,13 @@ export default function PayrollProcessing({
                 monthEndClose?.notes?.trim()
                   ? ` Note: ${monthEndClose.notes.trim()}`
                   : ""
-              } Use Reopen Period to edit again.`
+              } Use Reopen Period to edit again.${
+                canPromoteToFullLock
+                  ? " Use Full Lock once ready to mark payroll paid and post cash outflow."
+                  : !isPayrollMonthEndedForPeriod && currentPeriod
+                    ? ` Full Lock will be available on or after ${getPeriodEndDate(currentPeriod.year, currentPeriod.month)}.`
+                    : ""
+              }`
             : isFullyLocked
               ? "This period is permanently locked — view only. Use Release to Open if this was locked by mistake before month-end."
               : "This period is locked — view only."}

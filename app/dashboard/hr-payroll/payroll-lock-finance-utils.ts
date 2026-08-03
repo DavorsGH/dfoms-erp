@@ -825,6 +825,11 @@ export async function postPayrollLockFinanceEntries(
      * Employer SSNIT always stays Accrued.
      */
     markStaffSalariesPaid?: boolean;
+    /**
+     * Partial→Full promote: loans were already applied on Partial Lock.
+     * Skip re-applying so balances are not double-reduced.
+     */
+    skipLoanRepayments?: boolean;
   },
 ): Promise<{
   insertedExpenses: number;
@@ -931,11 +936,9 @@ export async function postPayrollLockFinanceEntries(
     }
   }
 
-  const { updatedLoans } = await applyPayrollLoanRepaymentsOnLock(
-    admin,
-    rows,
-    tenantId,
-  );
+  const { updatedLoans } = options?.skipLoanRepayments
+    ? { updatedLoans: 0 }
+    : await applyPayrollLoanRepaymentsOnLock(admin, rows, tenantId);
 
   const statutoryLedger = await syncPayrollPeriodTaxLedger(
     admin,
