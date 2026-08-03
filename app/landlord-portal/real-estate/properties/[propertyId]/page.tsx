@@ -13,6 +13,7 @@ import {
 } from "@/app/dashboard/real-estate/properties-utils";
 import { formatLeaseMoney } from "@/app/dashboard/real-estate/leases-utils";
 import PropertyDetailView from "@/app/dashboard/real-estate/property-detail";
+import { getPlatformOnlyUnitActivationPriceGhs } from "@/utils/platform-billing-config";
 import {
   portalErrorBannerClassName,
   portalSectionClassName,
@@ -61,6 +62,8 @@ export default async function LandlordPortalPropertyDetailPage({
   }
 
   if (canManage && detail) {
+    const unitActivationPriceGhs = await getPlatformOnlyUnitActivationPriceGhs(admin);
+
     return (
       <div className="space-y-4">
         <div>
@@ -78,6 +81,7 @@ export default async function LandlordPortalPropertyDetailPage({
           backHref="/landlord-portal/real-estate/properties"
           showLandlordName={false}
           showUnitBillingControls={canManage}
+          unitActivationPriceGhs={unitActivationPriceGhs}
         />
       </div>
     );

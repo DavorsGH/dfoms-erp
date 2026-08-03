@@ -11,9 +11,14 @@ import {
 } from "@/utils/paystack";
 import { sendResendEmail } from "@/utils/resend-email";
 import { ERP_SUITE_TRIAL_DAYS } from "@/utils/tenant-signup";
+import {
+  DEFAULT_PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS,
+  getPlatformOnlyUnitActivationPriceGhs,
+} from "@/utils/platform-billing-config";
 
-/** Per-unit activation charge for platform_only landlords (GHS). */
-export const PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS = 110;
+/** @deprecated Use getPlatformOnlyUnitActivationPriceGhs() — kept for backwards compatibility. */
+export const PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS =
+  DEFAULT_PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS;
 
 export const PLATFORM_ONLY_UNIT_ACTIVATION_CONTEXT =
   "platform_only_unit_activation" as const;
@@ -368,7 +373,7 @@ export async function activatePlatformOnlyUnitForBilling(
   }
 
   const triggerType = resolveTriggerType(billingStatus, options.triggerType);
-  const amountGhs = PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS;
+  const amountGhs = await getPlatformOnlyUnitActivationPriceGhs(admin);
   const inTrial = await isPlatformOnlyLandlordInTrial(admin, options.tenantId);
 
   if (inTrial) {
@@ -566,6 +571,22 @@ export async function confirmPlatformOnlyUnitActivationPayment(
     return { ok: true, activated: true, reference: verified.reference };
   }
 
+  const { data: pendingAudit } = await admin
+    .from("landlord_unit_activation_charges")
+    .select("amount_ghs")
+    .eq("tenant_id", options.tenantId)
+    .eq("unit_id", options.unitId)
+    .eq("paystack_reference", reference)
+    .eq("charge_status", "pending")
+    .maybeSingle();
+
+  const auditAmount = Number(pendingAudit?.amount_ghs);
+  const amountGhs = Number.isFinite(auditAmount)
+    ? auditAmount
+    : verified.amount != null && verified.amount > 0
+      ? verified.amount / 100
+      : await getPlatformOnlyUnitActivationPriceGhs(admin);
+
   if (
     verified.authorizationCode &&
     (verified.authorizationReusable === true ||
@@ -593,7 +614,7 @@ export async function confirmPlatformOnlyUnitActivationPayment(
   await insertUnitActivationChargeAudit(admin, {
     tenantId: options.tenantId,
     unitId: options.unitId,
-    amountGhs: PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS,
+    amountGhs,
     chargeStatus: "success",
     paystackReference: verified.reference,
     failureReason: null,
@@ -604,7 +625,7 @@ export async function confirmPlatformOnlyUnitActivationPayment(
     tenantId: options.tenantId,
     unitNumber: unit.unit_number,
     success: true,
-    amountGhs: PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS,
+    amountGhs,
     trial: false,
   });
 
@@ -642,6 +663,7 @@ export async function ensurePlatformOnlyLandlordTrialSubscription(
   const trialEnd = new Date();
   trialEnd.setUTCDate(trialEnd.getUTCDate() + ERP_SUITE_TRIAL_DAYS);
   const trialEndsAt = trialEnd.toISOString().slice(0, 10);
+  const unitPriceGhs = await getPlatformOnlyUnitActivationPriceGhs(admin);
 
   const { error } = await admin.from("landlord_subscriptions").insert({
     tenant_id: tenantId,
@@ -649,7 +671,7 @@ export async function ensurePlatformOnlyLandlordTrialSubscription(
     status: "trialing",
     trial_ends_at: trialEndsAt,
     active_unit_count: 0,
-    extra_unit_price_ghs: PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS,
+    extra_unit_price_ghs: unitPriceGhs,
   });
 
   if (error) {

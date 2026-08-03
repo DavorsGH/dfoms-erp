@@ -16,6 +16,7 @@ type Props = {
   unitNumber: string;
   billingActivationStatus: UnitBillingActivationStatus;
   billingActivatedAt: string | null;
+  unitActivationPriceGhs: number;
   onError?: (message: string) => void;
   onSuccess?: (message: string) => void;
 };
@@ -61,11 +62,16 @@ export default function UnitBillingActivationControls({
   unitNumber,
   billingActivationStatus,
   billingActivatedAt,
+  unitActivationPriceGhs,
   onError,
   onSuccess,
 }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const priceLabel = `GHS ${unitActivationPriceGhs.toLocaleString("en-GH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
   async function activate(triggerType: "activation" | "reactivation") {
     setLoading(true);
@@ -102,7 +108,9 @@ export default function UnitBillingActivationControls({
           `Unit ${unitNumber} activated for billing (free during trial).`,
         );
       } else {
-        onSuccess?.(`Unit ${unitNumber} activated for billing (GHS 110 charged).`);
+        onSuccess?.(
+          `Unit ${unitNumber} activated for billing (${priceLabel} charged).`,
+        );
       }
 
       router.refresh();
@@ -163,7 +171,7 @@ export default function UnitBillingActivationControls({
             }
             className="rounded-md bg-[#0f2744] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#1a3a5c] disabled:opacity-50"
           >
-            {loading ? "Working…" : "Activate (GHS 110)"}
+            {loading ? "Working…" : `Activate (${priceLabel})`}
           </button>
         ) : (
           <button

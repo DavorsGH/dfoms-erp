@@ -37,6 +37,8 @@ type PropertyDetailViewProps = {
   showLandlordName?: boolean;
   /** platform_only landlord portal: per-unit billing activation controls. */
   showUnitBillingControls?: boolean;
+  /** Current platform-only unit activation price (GHS); loaded server-side for portal. */
+  unitActivationPriceGhs?: number;
 };
 
 const primaryButtonClassName =
@@ -117,6 +119,7 @@ export default function PropertyDetailView({
   backHref,
   showLandlordName = true,
   showUnitBillingControls = false,
+  unitActivationPriceGhs = 110,
 }: PropertyDetailViewProps) {
   const router = useRouter();
   const [detail, setDetail] = useState(initialDetail);
@@ -846,6 +849,7 @@ export default function PropertyDetailView({
                           unitNumber={unit.unitNumber}
                           billingActivationStatus={unit.billingActivationStatus}
                           billingActivatedAt={unit.billingActivatedAt}
+                          unitActivationPriceGhs={unitActivationPriceGhs}
                           onError={setError}
                           onSuccess={setSuccess}
                         />

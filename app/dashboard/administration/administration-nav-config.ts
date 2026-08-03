@@ -119,6 +119,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Tier Pricing",
         href: "/dashboard/administration/tier-pricing",
       },
+      {
+        label: "Platform Unit Pricing",
+        href: "/dashboard/administration/platform-unit-pricing",
+      },
     ],
   },
 ] as const;

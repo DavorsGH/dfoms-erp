@@ -3,7 +3,6 @@ import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth
 import { resolveSiteUrlFromRequest } from "@/utils/product-sale-paystack";
 import {
   activatePlatformOnlyUnitForBilling,
-  PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS,
 } from "@/utils/platform-only-unit-billing";
 
 export const runtime = "nodejs";
@@ -14,7 +13,7 @@ type ActivateBody = {
 };
 
 /**
- * platform_only: activate unit for metered billing (GHS 110 post-trial).
+ * platform_only: activate unit for metered billing (post-trial per-unit charge).
  * Uses stored Paystack authorization when available; otherwise returns Inline access_code.
  */
 export async function POST(request: Request) {
@@ -81,7 +80,7 @@ export async function POST(request: Request) {
       trial: result.trial,
       amount_ghs: result.amountGhs,
       reference: result.reference,
-      unit_activation_price_ghs: PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS,
+      unit_activation_price_ghs: result.amountGhs,
     });
   }
 

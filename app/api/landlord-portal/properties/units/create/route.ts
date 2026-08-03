@@ -14,7 +14,7 @@ type CreateUnitBody = {
   bathrooms?: number | string | null;
   base_rent_ghs?: number | string;
   status?: string;
-  /** When true (default), attempt billing activation after create (post-trial charges GHS 110). */
+  /** When true (default), attempt billing activation after create (post-trial per-unit charge). */
   activate_for_billing?: boolean;
 };
 
