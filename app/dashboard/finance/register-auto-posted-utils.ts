@@ -8,11 +8,13 @@ import {
   REMITTED_STATUS,
   todayIsoDate,
 } from "./tax-ledger-utils";
+import { buildRemitExpenseReceiptNo } from "./tax-ledger-remit";
 import {
   buildPayrollPeriodTaxLedgerSourceId,
   PAYROLL_PERIOD_SOURCE_TYPE,
 } from "../hr-payroll/payroll-statutory-ledger-sync";
 import {
+  EXPENSE_PAYMENT_STATUS_SETTLED_NO_CASH,
   PAYROLL_EXPENSE_AUTO_DESCRIPTION_PREFIX,
   PAYROLL_EXPENSE_PAYMENT_STATUS_PAID,
   PAYROLL_INCOME_RECEIPT_SUFFIX,
@@ -133,7 +135,10 @@ export function parsePayrollPeriodKeyFromEssnitReceipt(
  * Mark Accrued ESSNIT expense Paid (Cash Position) and remit matching employer
  * SSNIT tax_ledger legs (tier1 + tier2) for that payroll period.
  * Does NOT remit employee SSNIT — use Tax Ledger "Remit SSNIT for period" for
- * full employee + employer remittance cash and liability clear.
+ * remaining employee remittance cash and liability clear.
+ *
+ * If Remit SSNIT already posted cash for the period (TAX-REMIT-SSNIT-*), flips
+ * ESSNIT to Settled (No Cash Impact) instead — never a second Cash Position hit.
  */
 export async function markAutoPostedExpensePaid(
   supabase: SupabaseClient,
@@ -152,11 +157,70 @@ export async function markAutoPostedExpensePaid(
     };
   }
 
+  const isEssnit = isPayrollEssnitExpense(entry);
+  let tenantId = entry.tenant_id?.trim() || null;
+  let periodKey: string | null = null;
+  let payrollMonth: string | null = null;
+  let remittanceAlreadyPosted = false;
+
+  if (isEssnit) {
+    periodKey = parsePayrollPeriodKeyFromEssnitReceipt(entry.receipt_no);
+    if (!periodKey || !parsePeriodKey(periodKey)) {
+      return {
+        error:
+          "Could not parse payroll period from ESSNIT receipt — remit employer SSNIT on Tax Ledger manually.",
+        taxLegsRemitted: 0,
+      };
+    }
+    payrollMonth = `${periodKey}-01`;
+
+    if (!tenantId) {
+      const { data: row } = await supabase
+        .from("expense_register")
+        .select("tenant_id")
+        .eq("id", entry.id)
+        .maybeSingle();
+      tenantId =
+        (row as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    }
+
+    if (!tenantId) {
+      return {
+        error:
+          "Tenant could not be resolved for Tax Ledger remittance.",
+        taxLegsRemitted: 0,
+      };
+    }
+
+    const remitReceipt = buildRemitExpenseReceiptNo("ssnit", payrollMonth);
+    const { data: remitExpense, error: remitLookupError } = await supabase
+      .from("expense_register")
+      .select("id, payment_status")
+      .eq("tenant_id", tenantId)
+      .eq("receipt_no", remitReceipt)
+      .maybeSingle();
+
+    if (remitLookupError) {
+      return {
+        error: `Remittance lookup failed: ${remitLookupError.message}`,
+        taxLegsRemitted: 0,
+      };
+    }
+
+    remittanceAlreadyPosted = Boolean(
+      remitExpense && isPaidStatus(remitExpense.payment_status),
+    );
+  }
+
   const nowIso = new Date().toISOString();
+  const nextStatus = remittanceAlreadyPosted
+    ? EXPENSE_PAYMENT_STATUS_SETTLED_NO_CASH
+    : PAYROLL_EXPENSE_PAYMENT_STATUS_PAID;
+
   const { error: updateError } = await supabase
     .from("expense_register")
     .update({
-      payment_status: PAYROLL_EXPENSE_PAYMENT_STATUS_PAID,
+      payment_status: nextStatus,
     })
     .eq("id", entry.id);
 
@@ -164,46 +228,8 @@ export async function markAutoPostedExpensePaid(
     return { error: updateError.message, taxLegsRemitted: 0 };
   }
 
-  if (!isPayrollEssnitExpense(entry)) {
+  if (!isEssnit || !tenantId || !payrollMonth) {
     return { error: null, taxLegsRemitted: 0 };
-  }
-
-  const periodKey = parsePayrollPeriodKeyFromEssnitReceipt(entry.receipt_no);
-  if (!periodKey) {
-    return {
-      error:
-        "Expense marked Paid, but could not parse payroll period from ESSNIT receipt — remit employer SSNIT on Tax Ledger manually.",
-      taxLegsRemitted: 0,
-    };
-  }
-
-  const parsed = parsePeriodKey(periodKey);
-  if (!parsed) {
-    return {
-      error:
-        "Expense marked Paid, but payroll period is invalid — remit employer SSNIT on Tax Ledger manually.",
-      taxLegsRemitted: 0,
-    };
-  }
-
-  const payrollMonth = `${periodKey}-01`;
-  let tenantId = entry.tenant_id?.trim() || null;
-  if (!tenantId) {
-    const { data: row } = await supabase
-      .from("expense_register")
-      .select("tenant_id")
-      .eq("id", entry.id)
-      .maybeSingle();
-    tenantId =
-      (row as { tenant_id?: string | null } | null)?.tenant_id ?? null;
-  }
-
-  if (!tenantId) {
-    return {
-      error:
-        "Expense marked Paid, but tenant could not be resolved for Tax Ledger remittance.",
-      taxLegsRemitted: 0,
-    };
   }
 
   let sourceId: string;
@@ -213,8 +239,8 @@ export async function markAutoPostedExpensePaid(
     return {
       error:
         err instanceof Error
-          ? `Expense marked Paid, but Tax Ledger source id failed: ${err.message}`
-          : "Expense marked Paid, but Tax Ledger source id failed.",
+          ? `Expense updated, but Tax Ledger source id failed: ${err.message}`
+          : "Expense updated, but Tax Ledger source id failed.",
       taxLegsRemitted: 0,
     };
   }
@@ -233,7 +259,7 @@ export async function markAutoPostedExpensePaid(
 
   if (selectError) {
     return {
-      error: `Expense marked Paid, but Tax Ledger lookup failed: ${selectError.message}`,
+      error: `Expense updated, but Tax Ledger lookup failed: ${selectError.message}`,
       taxLegsRemitted: 0,
     };
   }
@@ -262,7 +288,7 @@ export async function markAutoPostedExpensePaid(
   const firstError = results.find((result) => result.error)?.error;
   if (firstError) {
     return {
-      error: `Expense marked Paid, but Tax Ledger remittance failed: ${firstError.message}. Stamp: ${stamp}`,
+      error: `Expense updated, but Tax Ledger remittance failed: ${firstError.message}. Stamp: ${stamp}`,
       taxLegsRemitted: 0,
     };
   }

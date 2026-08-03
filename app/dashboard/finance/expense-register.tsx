@@ -368,7 +368,7 @@ export default function ExpenseRegister({
 
     const essnit = isPayrollEssnitExpense(entry);
     const confirmMessage = essnit
-      ? `Mark this Employer SSNIT expense as Paid? This posts a Cash Position outflow for ${formatGHS(entry.amount)} and remits matching employer SSNIT Tax Ledger legs (Tier 1 + Tier 2) for the payroll period. Employee SSNIT remains open — use Statutory Ledger → Remit SSNIT for period for the full employee+employer remittance.`
+      ? `Mark this Employer SSNIT expense as Paid? This posts a Cash Position outflow for ${formatGHS(entry.amount)} and remits matching employer SSNIT Tax Ledger legs (Tier 1 + Tier 2) for the payroll period. Employee SSNIT remains open — use Statutory Ledger → Remit SSNIT for period for the remaining employee remittance (employer cash will not be posted again).`
       : `Mark this Staff Salaries expense as Paid? This posts a Cash Position outflow for ${formatGHS(entry.amount)} and clears Accrued Wages for the period.`;
 
     if (!window.confirm(confirmMessage)) {

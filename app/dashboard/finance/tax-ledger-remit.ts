@@ -323,8 +323,9 @@ export async function remitTaxForPeriod(
   }
 
   let cashAmount = computeRemitCashAmount(candidates, kind);
+  let employerCashSkipped = false;
 
-  // Orphan recovery: employer legs cleared without cash but ESSNIT still Accrued.
+  // Orphan recovery / Mark-as-Paid coordination for SSNIT.
   if (kind === "ssnit") {
     const periodKey =
       payrollMonthToPeriodKey(periodMonth) ?? periodMonth.slice(0, 7);
@@ -336,7 +337,24 @@ export async function remitTaxForPeriod(
       .eq("receipt_no", essnitReceipt)
       .maybeSingle();
 
-    if (
+    // Mark as Paid already posted employer cash — never cash employer legs again.
+    if (essnit && isPaidStatus(essnit.payment_status)) {
+      const cashEligible = candidates.filter(
+        (entry) =>
+          !EMPLOYER_SSNIT_COMPONENTS.includes(
+            entry.tax_component as (typeof EMPLOYER_SSNIT_COMPONENTS)[number],
+          ),
+      );
+      const employerOpen = candidates.filter((entry) =>
+        EMPLOYER_SSNIT_COMPONENTS.includes(
+          entry.tax_component as (typeof EMPLOYER_SSNIT_COMPONENTS)[number],
+        ),
+      );
+      if (employerOpen.length > 0) {
+        employerCashSkipped = true;
+      }
+      cashAmount = computeRemitCashAmount(cashEligible, kind);
+    } else if (
       essnit &&
       isAccruedPaymentStatus(essnit.payment_status) &&
       !candidates.some((entry) =>
@@ -345,6 +363,7 @@ export async function remitTaxForPeriod(
         ),
       )
     ) {
+      // Orphan recovery: employer legs cleared without cash but ESSNIT still Accrued.
       cashAmount = roundCurrency(
         cashAmount + (Number(essnit.amount) || 0),
       );
@@ -358,7 +377,64 @@ export async function remitTaxForPeriod(
     );
   }
 
+  // Employer legs may remain open after Mark as Paid if tax clear failed —
+  // clear them without posting remittance cash when ESSNIT is already Paid.
   if (cashAmount <= 0) {
+    if (kind === "ssnit" && employerCashSkipped && candidates.length > 0) {
+      let essnitAligned: RemitTaxForPeriodResult["essnitAligned"] = null;
+      try {
+        essnitAligned = await alignEssnitExpenseForSsnitRemit(
+          supabase,
+          tenantId,
+          periodMonth,
+        );
+      } catch (err) {
+        return empty(
+          err instanceof Error
+            ? err.message
+            : "ESSNIT alignment failed while clearing already-paid employer legs.",
+        );
+      }
+
+      const remittedOn = todayIsoDate();
+      const nowIso = new Date().toISOString();
+      const results = await Promise.all(
+        candidates.map((entry) =>
+          supabase
+            .from("tax_ledger_entries")
+            .update({
+              status: REMITTED_STATUS,
+              remitted_at: remittedOn,
+              notes: appendRemittedNote(entry.notes, new Date(remittedOn)),
+              updated_at: nowIso,
+            })
+            .eq("id", entry.id)
+            .eq("tenant_id", tenantId)
+            .eq("status", "open"),
+        ),
+      );
+
+      const firstLegError = results.find((result) => result.error)?.error;
+      if (firstLegError) {
+        return empty(
+          `Tax Ledger clear failed for already-paid employer SSNIT: ${firstLegError.message}`,
+        );
+      }
+
+      return {
+        error: null,
+        kind,
+        periodMonth,
+        legsCleared: candidates.length,
+        cashAmount: 0,
+        expenseReceiptNo: null,
+        expenseInserted: false,
+        essnitAligned,
+        dueDateAdvanced: false,
+        message: `Cleared ${candidates.length} open employer SSNIT leg(s) for ${periodLabel} with no additional cash (Employer SSNIT already Paid via Expense Register).`,
+      };
+    }
+
     return empty(
       null,
       `Open ${label} legs for ${periodLabel} sum to zero. Nothing remitted.`,
@@ -548,7 +624,9 @@ export async function remitTaxForPeriod(
     essnitAligned === "settled"
       ? " Accrued Employer SSNIT expense marked Settled (No Cash Impact)."
       : essnitAligned === "already_paid"
-        ? " Employer SSNIT expense already Paid — remittance cash is for remaining open legs only."
+        ? employerCashSkipped
+          ? " Employer SSNIT already Paid — remittance cash is employee (and any non-employer) legs only; open employer legs cleared without extra cash."
+          : " Employer SSNIT expense already Paid — remittance cash is for remaining open legs only."
         : "";
 
   return {

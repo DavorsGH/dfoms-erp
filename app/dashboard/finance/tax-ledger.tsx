@@ -505,6 +505,20 @@ export default function TaxLedger({
     [entries],
   );
 
+  /** Component-tab cards follow Period Month when set; otherwise all open periods. */
+  const periodScopedSummary = useMemo(
+    () =>
+      summarizeOpenTaxBalances(
+        scopedEntries,
+        filters.periodMonth ? filters.periodMonth : null,
+      ),
+    [scopedEntries, filters.periodMonth],
+  );
+
+  const periodScopeHint = filters.periodMonth
+    ? `Selected period: ${formatPeriodMonthLabel(filters.periodMonth)}`
+    : "All open periods (select Period Month to scope)";
+
   const reminders = useMemo(
     () => getUpcomingTaxReminders(settings),
     [settings],
@@ -762,9 +776,18 @@ export default function TaxLedger({
   ) {
     return (
       <div className="space-y-4">
+        <FilterBar
+          filters={filters}
+          setFilters={setFilters}
+          periodOptions={periodOptions}
+          componentOptions={componentOptions}
+          directionOptions={directionOptions}
+        />
+
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-1 text-lg font-semibold text-[#0f2744]">{title}</h3>
-          <p className="mb-4 text-sm text-slate-600">{subtitle}</p>
+          <p className="mb-1 text-sm text-slate-600">{subtitle}</p>
+          <p className="mb-4 text-xs text-slate-500">{periodScopeHint}</p>
           {balanceCards}
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {dueCards}
@@ -777,14 +800,6 @@ export default function TaxLedger({
           </h3>
           <RemitPeriodButtons kinds={remitKinds} />
         </div>
-
-        <FilterBar
-          filters={filters}
-          setFilters={setFilters}
-          periodOptions={periodOptions}
-          componentOptions={componentOptions}
-          directionOptions={directionOptions}
-        />
 
         <EntriesTable
           entries={filteredEntries}
@@ -872,23 +887,23 @@ export default function TaxLedger({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <BalanceCard
               label="Net VAT Position"
-              value={allTimeSummary.netVatPosition}
+              value={periodScopedSummary.netVatPosition}
               hint="Output − Input"
             />
             <BalanceCard
               label="WHT Receivable"
-              value={allTimeSummary.whtReceivable}
+              value={periodScopedSummary.whtReceivable}
             />
-            <BalanceCard label="WHT Payable" value={allTimeSummary.whtPayable} />
+            <BalanceCard label="WHT Payable" value={periodScopedSummary.whtPayable} />
             <BalanceCard
               label="Output Tax (VAT Bundle)"
-              value={allTimeSummary.outputVatBundle}
+              value={periodScopedSummary.outputVatBundle}
             />
             <BalanceCard
               label="Output Tax (VFRS)"
-              value={allTimeSummary.outputVfrs}
+              value={periodScopedSummary.outputVfrs}
             />
-            <BalanceCard label="Input Tax" value={allTimeSummary.inputTax} />
+            <BalanceCard label="Input Tax" value={periodScopedSummary.inputTax} />
           </div>,
           <>
             <DueDateCard
@@ -926,7 +941,7 @@ export default function TaxLedger({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <BalanceCard
               label="PAYE Payable"
-              value={allTimeSummary.payePayable}
+              value={periodScopedSummary.payePayable}
             />
           </div>,
           <DueDateCard
@@ -947,13 +962,13 @@ export default function TaxLedger({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <BalanceCard
               label="SSNIT Employee"
-              value={allTimeSummary.ssnitEmployee}
+              value={periodScopedSummary.ssnitEmployee}
             />
             <BalanceCard
               label="SSNIT Employer Tier 1"
-              value={allTimeSummary.ssnitEmployerTier1}
+              value={periodScopedSummary.ssnitEmployerTier1}
             />
-            <BalanceCard label="Tier 2" value={allTimeSummary.ssnitTier2} />
+            <BalanceCard label="Tier 2" value={periodScopedSummary.ssnitTier2} />
           </div>,
           <>
             <DueDateCard
