@@ -436,7 +436,7 @@ export default function DutyRoster({
                       </span>
                     </th>
                     <th className={scrollableTableThClassName}>Required Staff</th>
-                    <th className={scrollableTableThClassName}>Total Staff</th>
+                    <th className={scrollableTableThClassName}>Actual Staff</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -536,7 +536,7 @@ export default function DutyRoster({
                   Required
                 </th>
                 <th className="border border-slate-400 px-2 py-2 text-right">
-                  Total
+                  Actual
                 </th>
               </tr>
             </thead>

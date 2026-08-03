@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/utils/supabase/admin";
 import {
   CORRECTIVE_ACTION_SELECT,
   normalizeCorrectiveActionEntry,
@@ -105,7 +106,53 @@ async function fetchWorkOrders(supabase: SupabaseClient) {
     .order("date", { ascending: false });
 }
 
-async function fetchDutyRosterBundle(supabase: SupabaseClient) {
+type DutyRosterBundle = {
+  rosterConfigs: RosterConfigRecord[];
+  rosterEmployees: DutyRosterEmployee[];
+  rosterProjects: DutyRosterProject[];
+  rosterSites: DutyRosterSite[];
+  rosterHistory: RosterHistoryRecord[];
+  rosterFetchError: string | null;
+};
+
+const DUTY_ROSTER_EMPLOYEE_SELECT =
+  "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name), tenant_id";
+
+function normalizeDutyRosterBundle(input: {
+  configRows: RosterConfigRecord[] | null;
+  employees: DutyRosterEmployee[] | null;
+  projects: DutyRosterProject[] | null;
+  sites: DutyRosterSite[] | null;
+  history: RosterHistoryRecord[] | null;
+  configError?: string | null;
+  employeesError?: string | null;
+  projectsError?: string | null;
+  sitesError?: string | null;
+  historyError?: string | null;
+}): DutyRosterBundle {
+  return {
+    rosterConfigs: input.configRows ?? [],
+    rosterEmployees:
+      input.employees?.map((employee) => normalizeDutyRosterEmployee(employee)) ??
+      [],
+    rosterProjects:
+      input.projects?.map((project) => normalizeProjectEntry(project)) ?? [],
+    rosterSites:
+      input.sites?.map((site) => normalizeDutyRosterSite(site)) ?? [],
+    rosterHistory: input.history ?? [],
+    rosterFetchError:
+      input.configError ??
+      input.employeesError ??
+      input.projectsError ??
+      input.sitesError ??
+      input.historyError ??
+      null,
+  };
+}
+
+async function fetchDutyRosterBundle(
+  supabase: SupabaseClient,
+): Promise<DutyRosterBundle> {
   const [
     { data: configRows, error: configError },
     { data: employees, error: employeesError },
@@ -114,11 +161,12 @@ async function fetchDutyRosterBundle(supabase: SupabaseClient) {
     { data: history, error: historyError },
   ] = await Promise.all([
     supabase.from("roster_config").select(ROSTER_CONFIG_SELECT),
+    // Direct select (not duty-roster RPC): client portal needs facility-project
+    // staff visible via client_can_view_roster_employee (script 53) — or the
+    // elevated client-portal fetch below when RLS is incomplete.
     supabase
       .from("employees")
-      .select(
-        "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
-      )
+      .select(DUTY_ROSTER_EMPLOYEE_SELECT)
       .order("staff_id", { ascending: true }),
     supabase
       .from("projects")
@@ -131,29 +179,85 @@ async function fetchDutyRosterBundle(supabase: SupabaseClient) {
       .order("effective_date", { ascending: false }),
   ]);
 
-  return {
-    rosterConfigs: (configRows as RosterConfigRecord[] | null) ?? [],
-    rosterEmployees:
-      (employees as DutyRosterEmployee[] | null)?.map((employee) =>
-        normalizeDutyRosterEmployee(employee),
-      ) ?? [],
-    rosterProjects:
-      (projects as DutyRosterProject[] | null)?.map((project) =>
-        normalizeProjectEntry(project),
-      ) ?? [],
-    rosterSites:
-      (sites as DutyRosterSite[] | null)?.map((site) =>
-        normalizeDutyRosterSite(site),
-      ) ?? [],
-    rosterHistory: (history as RosterHistoryRecord[] | null) ?? [],
-    rosterFetchError:
-      configError?.message ??
-      employeesError?.message ??
-      projectsError?.message ??
-      sitesError?.message ??
-      historyError?.message ??
-      null,
-  };
+  return normalizeDutyRosterBundle({
+    configRows: configRows as RosterConfigRecord[] | null,
+    employees: employees as DutyRosterEmployee[] | null,
+    projects: projects as DutyRosterProject[] | null,
+    sites: sites as DutyRosterSite[] | null,
+    history: history as RosterHistoryRecord[] | null,
+    configError: configError?.message ?? null,
+    employeesError: employeesError?.message ?? null,
+    projectsError: projectsError?.message ?? null,
+    sitesError: sitesError?.message ?? null,
+    historyError: historyError?.message ?? null,
+  });
+}
+
+/**
+ * Client portal RLS historically only exposed the parent contract project, so
+ * buildDutyRosterViewModel saw sites/required_staff but Actual Staff = 0.
+ * Elevate with service role after the page has verified the caller's client_id,
+ * scoped to that client + tenant — same headcount source as Operations Duty Roster.
+ */
+async function fetchDutyRosterBundleForClientPortal(input: {
+  clientId: string;
+  tenantId: string | null;
+}): Promise<DutyRosterBundle> {
+  const admin = createAdminClient();
+  const clientId = input.clientId;
+
+  let sitesQuery = admin
+    .from("sites")
+    .select(SITE_SELECT)
+    .eq("client_id", clientId)
+    .order("site_name", { ascending: true });
+  let projectsQuery = admin
+    .from("projects")
+    .select(PROJECT_SELECT)
+    .order("project_name", { ascending: true });
+  let employeesQuery = admin
+    .from("employees")
+    .select(DUTY_ROSTER_EMPLOYEE_SELECT)
+    .order("staff_id", { ascending: true });
+
+  if (input.tenantId) {
+    sitesQuery = sitesQuery.eq("tenant_id", input.tenantId);
+    projectsQuery = projectsQuery.eq("tenant_id", input.tenantId);
+    employeesQuery = employeesQuery.eq("tenant_id", input.tenantId);
+  }
+
+  const [
+    { data: configRows, error: configError },
+    { data: employees, error: employeesError },
+    { data: projects, error: projectsError },
+    { data: sites, error: sitesError },
+    { data: history, error: historyError },
+  ] = await Promise.all([
+    admin
+      .from("roster_config")
+      .select(ROSTER_CONFIG_SELECT)
+      .eq("client_id", clientId),
+    employeesQuery,
+    projectsQuery,
+    sitesQuery,
+    admin
+      .from("roster_history")
+      .select("*")
+      .order("effective_date", { ascending: false }),
+  ]);
+
+  return normalizeDutyRosterBundle({
+    configRows: configRows as RosterConfigRecord[] | null,
+    employees: employees as DutyRosterEmployee[] | null,
+    projects: projects as DutyRosterProject[] | null,
+    sites: sites as DutyRosterSite[] | null,
+    history: history as RosterHistoryRecord[] | null,
+    configError: configError?.message ?? null,
+    employeesError: employeesError?.message ?? null,
+    projectsError: projectsError?.message ?? null,
+    sitesError: sitesError?.message ?? null,
+    historyError: historyError?.message ?? null,
+  });
 }
 
 function normalizeInspections(
@@ -262,7 +366,19 @@ export async function fetchCorrectiveActionStatusReportData(
   };
 }
 
-export async function fetchClientServiceReportData(supabase: SupabaseClient) {
+export async function fetchClientServiceReportData(
+  supabase: SupabaseClient,
+  options?: {
+    /**
+     * When set (client portal), load Duty Roster headcount via service role
+     * scoped to this client/tenant so Actual Staff is not forced to 0 by RLS.
+     */
+    elevateRosterForClientId?: string;
+    tenantId?: string | null;
+  },
+) {
+  const elevateClientId = options?.elevateRosterForClientId?.trim() || null;
+
   const [
     { data: clients, error: clientsError },
     { data: sites, error: sitesError },
@@ -280,7 +396,12 @@ export async function fetchClientServiceReportData(supabase: SupabaseClient) {
     fetchIncidents(supabase),
     fetchComplaints(supabase),
     fetchCorrectiveActions(supabase),
-    fetchDutyRosterBundle(supabase),
+    elevateClientId
+      ? fetchDutyRosterBundleForClientPortal({
+          clientId: elevateClientId,
+          tenantId: options?.tenantId ?? null,
+        })
+      : fetchDutyRosterBundle(supabase),
   ]);
 
   const normalizedInspections = normalizeInspections(

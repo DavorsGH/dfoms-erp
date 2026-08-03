@@ -19,6 +19,7 @@ import {
   PAYE_COMPONENTS,
   REMITTED_STATUS,
   SSNIT_COMPONENTS,
+  stripRemittedNote,
   todayIsoDate,
   type TaxDueDateSettingsSlice,
   type TaxLedgerComponent,
@@ -27,6 +28,7 @@ import {
 } from "./tax-ledger-utils";
 import {
   EXPENSE_PAYMENT_STATUS_SETTLED_NO_CASH,
+  PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
   PAYROLL_EXPENSE_PAYMENT_STATUS_PAID,
   buildPayrollExpenseReceiptNo,
 } from "../hr-payroll/payroll-lock-finance-utils";
@@ -640,5 +642,326 @@ export async function remitTaxForPeriod(
     essnitAligned,
     dueDateAdvanced,
     message: `Remitted ${label} for ${periodLabel}: cleared ${candidates.length} leg(s), Cash Position outflow ${cashAmount.toFixed(2)} (${receiptNo}).${essnitNote}${dueDateAdvanced ? " Next due date advanced." : ""}`,
+  };
+}
+
+export type PaidRemitExpense = {
+  id: string;
+  receiptNo: string;
+  amount: number;
+  paymentStatus: string | null;
+};
+
+export type UndoRemitTaxForPeriodResult = {
+  error: string | null;
+  kind: RemitTaxKind;
+  periodMonth: string;
+  legsReopened: number;
+  cashAmountReversed: number;
+  expenseReceiptNo: string | null;
+  expenseDeleted: boolean;
+  essnitRestored: "accrued" | "left_paid" | "left_other" | "none" | null;
+  message: string | null;
+};
+
+export function remitKindFromReceiptNo(
+  receiptNo: string | null | undefined,
+): RemitTaxKind | null {
+  const normalized = (receiptNo ?? "").trim().toUpperCase();
+  if (normalized.startsWith("TAX-REMIT-SSNIT-")) return "ssnit";
+  if (normalized.startsWith("TAX-REMIT-PAYE-")) return "paye";
+  if (normalized.startsWith("TAX-REMIT-VAT-")) return "vat";
+  if (normalized.startsWith("TAX-REMIT-WHT-")) return "wht";
+  return null;
+}
+
+/**
+ * Locate a Paid TAX-REMIT-* expense for the period/kind (tenant-scoped).
+ */
+export async function findPaidRemitExpense(
+  supabase: SupabaseClient,
+  params: {
+    tenantId: string;
+    periodMonth: string;
+    kind: RemitTaxKind;
+  },
+): Promise<PaidRemitExpense | null> {
+  const periodMonth = params.periodMonth.slice(0, 10);
+  const receiptNo = buildRemitExpenseReceiptNo(params.kind, periodMonth);
+
+  const { data, error } = await supabase
+    .from("expense_register")
+    .select("id, receipt_no, amount, payment_status")
+    .eq("tenant_id", params.tenantId)
+    .eq("receipt_no", receiptNo)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Remittance expense lookup failed: ${error.message}`);
+  }
+
+  if (!data || !isPaidStatus(data.payment_status)) {
+    return null;
+  }
+
+  return {
+    id: data.id as string,
+    receiptNo: (data.receipt_no as string) ?? receiptNo,
+    amount: Number(data.amount) || 0,
+    paymentStatus: (data.payment_status as string | null) ?? null,
+  };
+}
+
+async function restoreEssnitAfterSsnitUndo(
+  supabase: SupabaseClient,
+  tenantId: string,
+  periodMonth: string,
+): Promise<UndoRemitTaxForPeriodResult["essnitRestored"]> {
+  const periodKey =
+    payrollMonthToPeriodKey(periodMonth.slice(0, 10)) ??
+    periodMonth.slice(0, 7);
+  const receiptNo = buildPayrollExpenseReceiptNo("ESSNIT", periodKey);
+
+  const { data: essnit, error } = await supabase
+    .from("expense_register")
+    .select("id, payment_status")
+    .eq("tenant_id", tenantId)
+    .eq("receipt_no", receiptNo)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`ESSNIT restore lookup failed: ${error.message}`);
+  }
+
+  if (!essnit) {
+    return "none";
+  }
+
+  // Mark as Paid posted Cash Position independently — never reverse that cash.
+  if (isPaidStatus(essnit.payment_status)) {
+    return "left_paid";
+  }
+
+  if (!isSettledNoCashImpactStatus(essnit.payment_status)) {
+    return "left_other";
+  }
+
+  const { error: updateError } = await supabase
+    .from("expense_register")
+    .update({
+      payment_status: PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
+    })
+    .eq("id", essnit.id)
+    .eq("tenant_id", tenantId);
+
+  if (updateError) {
+    throw new Error(`ESSNIT restore update failed: ${updateError.message}`);
+  }
+
+  return "accrued";
+}
+
+/**
+ * Undo remit-for-period: delete Paid TAX-REMIT cash, reopen remitted legs,
+ * and (SSNIT) restore Settled ESSNIT → Accrued when remit caused Settled.
+ * Never reverses Mark-as-Paid ESSNIT cash. Tenant-scoped and idempotent.
+ */
+export async function undoRemitTaxForPeriod(
+  supabase: SupabaseClient,
+  params: {
+    tenantId: string;
+    periodMonth: string;
+    kind: RemitTaxKind;
+  },
+): Promise<UndoRemitTaxForPeriodResult> {
+  const { tenantId, kind } = params;
+  const periodMonth = params.periodMonth.slice(0, 10);
+  const label = REMIT_TAX_KIND_LABEL[kind];
+  const periodLabel = formatPeriodMonthLabel(periodMonth);
+  const empty = (
+    error: string | null,
+    message: string | null = null,
+  ): UndoRemitTaxForPeriodResult => ({
+    error,
+    kind,
+    periodMonth,
+    legsReopened: 0,
+    cashAmountReversed: 0,
+    expenseReceiptNo: null,
+    expenseDeleted: false,
+    essnitRestored: null,
+    message,
+  });
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(periodMonth)) {
+    return empty("Invalid period month.");
+  }
+
+  if (!tenantId.trim()) {
+    return empty("Tenant is required.");
+  }
+
+  let paidExpense: PaidRemitExpense | null;
+  try {
+    paidExpense = await findPaidRemitExpense(supabase, {
+      tenantId,
+      periodMonth,
+      kind,
+    });
+  } catch (err) {
+    return empty(
+      err instanceof Error ? err.message : "Remittance expense lookup failed.",
+    );
+  }
+
+  const receiptNo = buildRemitExpenseReceiptNo(kind, periodMonth);
+
+  if (!paidExpense) {
+    return empty(
+      null,
+      `No Paid ${label} remittance (${receiptNo}) for ${periodLabel} to undo.`,
+    );
+  }
+
+  // Decide SSNIT leg reopen scope before deleting cash (Mark-as-Paid guard).
+  let leaveEmployerLegsRemitted = false;
+  if (kind === "ssnit") {
+    const periodKey =
+      payrollMonthToPeriodKey(periodMonth) ?? periodMonth.slice(0, 7);
+    const essnitReceipt = buildPayrollExpenseReceiptNo("ESSNIT", periodKey);
+    const { data: essnit } = await supabase
+      .from("expense_register")
+      .select("id, payment_status")
+      .eq("tenant_id", tenantId)
+      .eq("receipt_no", essnitReceipt)
+      .maybeSingle();
+
+    if (essnit && isPaidStatus(essnit.payment_status)) {
+      leaveEmployerLegsRemitted = true;
+    }
+  }
+
+  const cashAmount = roundCurrency(paidExpense.amount);
+
+  const { error: deleteError } = await supabase
+    .from("expense_register")
+    .delete()
+    .eq("id", paidExpense.id)
+    .eq("tenant_id", tenantId);
+
+  if (deleteError) {
+    return empty(
+      `Failed to delete remittance cash (${receiptNo}): ${deleteError.message}`,
+    );
+  }
+
+  let essnitRestored: UndoRemitTaxForPeriodResult["essnitRestored"] = null;
+  if (kind === "ssnit") {
+    try {
+      essnitRestored = await restoreEssnitAfterSsnitUndo(
+        supabase,
+        tenantId,
+        periodMonth,
+      );
+    } catch (err) {
+      return {
+        ...empty(
+          err instanceof Error
+            ? err.message
+            : "ESSNIT restore failed after remittance cash delete.",
+        ),
+        cashAmountReversed: cashAmount,
+        expenseReceiptNo: receiptNo,
+        expenseDeleted: true,
+      };
+    }
+  }
+
+  const components = leaveEmployerLegsRemitted
+    ? componentsForRemitKind(kind).filter(
+        (component) =>
+          !EMPLOYER_SSNIT_COMPONENTS.includes(
+            component as (typeof EMPLOYER_SSNIT_COMPONENTS)[number],
+          ),
+      )
+    : [...componentsForRemitKind(kind)];
+
+  let remittedQuery = supabase
+    .from("tax_ledger_entries")
+    .select("id, notes")
+    .eq("tenant_id", tenantId)
+    .eq("period_month", periodMonth)
+    .eq("status", REMITTED_STATUS)
+    .in("tax_component", components);
+
+  if (kind === "wht") {
+    remittedQuery = remittedQuery.eq("direction", "wht_payable");
+  }
+
+  const { data: remittedLegs, error: remittedError } = await remittedQuery;
+
+  if (remittedError) {
+    return {
+      ...empty(
+        `Remittance cash deleted (${receiptNo}), but Tax Ledger lookup failed: ${remittedError.message}`,
+      ),
+      cashAmountReversed: cashAmount,
+      expenseReceiptNo: receiptNo,
+      expenseDeleted: true,
+      essnitRestored,
+    };
+  }
+
+  const legs =
+    (remittedLegs as Array<{ id: string; notes: string | null }> | null) ?? [];
+  const nowIso = new Date().toISOString();
+
+  const results = await Promise.all(
+    legs.map((leg) =>
+      supabase
+        .from("tax_ledger_entries")
+        .update({
+          status: "open" satisfies TaxLedgerStatus,
+          remitted_at: null,
+          notes: stripRemittedNote(leg.notes),
+          updated_at: nowIso,
+        })
+        .eq("id", leg.id)
+        .eq("tenant_id", tenantId)
+        .eq("status", REMITTED_STATUS),
+    ),
+  );
+
+  const firstLegError = results.find((result) => result.error)?.error;
+  if (firstLegError) {
+    return {
+      ...empty(
+        `Remittance cash deleted (${receiptNo}), but reopening Tax Ledger legs failed: ${firstLegError.message}`,
+      ),
+      cashAmountReversed: cashAmount,
+      expenseReceiptNo: receiptNo,
+      expenseDeleted: true,
+      essnitRestored,
+      legsReopened: 0,
+    };
+  }
+
+  const essnitNote =
+    essnitRestored === "accrued"
+      ? " Employer SSNIT expense restored to Accrued - Not Yet Paid."
+      : essnitRestored === "left_paid"
+        ? " Employer SSNIT Mark-as-Paid cash left intact (employer remitted legs unchanged)."
+        : "";
+
+  return {
+    error: null,
+    kind,
+    periodMonth,
+    legsReopened: legs.length,
+    cashAmountReversed: cashAmount,
+    expenseReceiptNo: receiptNo,
+    expenseDeleted: true,
+    essnitRestored,
+    message: `Undid ${label} remit for ${periodLabel}: deleted Cash Position outflow ${cashAmount.toFixed(2)} (${receiptNo}), reopened ${legs.length} leg(s).${essnitNote}`,
   };
 }

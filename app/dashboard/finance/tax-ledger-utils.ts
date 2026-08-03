@@ -481,6 +481,21 @@ export function appendRemittedNote(
   return `${trimmed} ${stamp}`;
 }
 
+/** Remove remittance stamp(s) when reopening a remitted leg. */
+export function stripRemittedNote(
+  existingNotes: string | null | undefined,
+): string | null {
+  const trimmed = existingNotes?.trim() ?? "";
+  if (!trimmed) {
+    return null;
+  }
+
+  const cleaned = trimmed
+    .replace(/\s*\[Remitted \d{4}-\d{2}-\d{2}\]/g, "")
+    .trim();
+  return cleaned || null;
+}
+
 export function todayIsoDate(today = new Date()): string {
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, "0");

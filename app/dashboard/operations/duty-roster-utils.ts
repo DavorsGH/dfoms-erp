@@ -213,8 +213,15 @@ export function buildDutyRosterCycleSummary(
   history: RosterHistoryRecord[],
   referenceDate?: Date,
 ) {
-  const rotationDates = calculateRotationDates(config);
-  const currentRotationNumber = getCurrentRotationNumber(history);
+  const rotationDates = resolveRotationDatesForReference(
+    config,
+    referenceDate ?? new Date(),
+  );
+  const currentRotationNumber = getRotationNumberForPeriod(
+    history,
+    rotationDates.cycleStartDate,
+    rotationDates.cycleEndDate,
+  );
   const daysToRotation = calculateDaysToRotation(
     rotationDates.nextRotationDate,
     referenceDate,
@@ -279,6 +286,37 @@ export function calculateRotationDates(
   };
 }
 
+/**
+ * Walk roster cycles forward/backward from config.cycle_start_date until the
+ * cycle window contains referenceDate. Used by monthly service reports so the
+ * staffing header reflects the rotation covering that report month — not always
+ * the latest configured cycle.
+ */
+export function resolveRotationDatesForReference(
+  config: Pick<RosterConfigRecord, "cycle_start_date" | "cycle_length_days">,
+  referenceDate = new Date(),
+) {
+  const length = Math.max(1, Number(config.cycle_length_days) || 1);
+  const ref = startOfDay(referenceDate);
+  let cycleStart = parseIsoDate(config.cycle_start_date);
+
+  while (ref < cycleStart) {
+    cycleStart = addDays(cycleStart, -length);
+  }
+
+  let cycleEnd = addDays(cycleStart, length - 1);
+  while (ref > cycleEnd) {
+    cycleStart = addDays(cycleStart, length);
+    cycleEnd = addDays(cycleStart, length - 1);
+  }
+
+  return {
+    cycleStartDate: formatIsoDate(cycleStart),
+    cycleEndDate: formatIsoDate(cycleEnd),
+    nextRotationDate: formatIsoDate(addDays(cycleStart, length)),
+  };
+}
+
 export function calculateDaysToRotation(
   nextRotationDate: string,
   referenceDate = new Date(),
@@ -298,6 +336,31 @@ export function getCurrentRotationNumber(
   }, 0);
 
   return maxRotation > 0 ? maxRotation : 1;
+}
+
+/**
+ * Prefer the rotation_number recorded for the resolved cycle window. Falls back
+ * to the latest history rotation when the period has no history rows yet.
+ */
+export function getRotationNumberForPeriod(
+  history: RosterHistoryRecord[],
+  cycleStartDate: string,
+  cycleEndDate: string,
+): number {
+  let periodMax = 0;
+
+  for (const row of history) {
+    const effective = row.effective_date?.slice(0, 10);
+    if (!effective) {
+      continue;
+    }
+
+    if (effective >= cycleStartDate && effective <= cycleEndDate) {
+      periodMax = Math.max(periodMax, Number(row.rotation_number) || 0);
+    }
+  }
+
+  return periodMax > 0 ? periodMax : getCurrentRotationNumber(history);
 }
 
 export function getNextRosterNumber(existingNumbers: string[]): string {
@@ -578,11 +641,24 @@ export function buildDutyRosterViewModel(input: {
         site,
         input.projects,
       );
-      const siteEmployees = activeEmployees.filter(
-        (employee) =>
+      const normalizedSiteName = site.site_name.trim().toLowerCase();
+      const siteEmployees = activeEmployees.filter((employee) => {
+        if (
           employee.contract_project &&
-          legacyProjectCodes.includes(employee.contract_project),
-      );
+          legacyProjectCodes.includes(employee.contract_project)
+        ) {
+          return true;
+        }
+
+        // Fallback when facility project rows are not in the loaded set but the
+        // employee still carries a project_ref / display name matching the site.
+        const displayName = getProjectDisplayName(
+          employee.contract_project,
+          input.projects,
+          employee.project_ref,
+        );
+        return displayName.trim().toLowerCase() === normalizedSiteName;
+      });
       const morningEmployees = siteEmployees.filter(
         (employee) => employee.shift === "Morning",
       );

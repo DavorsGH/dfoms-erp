@@ -47,11 +47,15 @@ import {
 } from "./tax-ledger-utils";
 import {
   REMIT_TAX_KIND_LABEL,
+  buildRemitExpenseReceiptNo,
   computeRemitCashAmount,
   filterOpenEntriesForRemit,
+  remitKindFromReceiptNo,
   remitTaxForPeriod,
+  undoRemitTaxForPeriod,
   type RemitTaxKind,
 } from "./tax-ledger-remit";
+import { isPaidStatus } from "./accrued-wages-utils";
 
 type TaxLedgerProps = {
   tenantId: string;
@@ -87,6 +91,16 @@ const inputClassName =
 
 const primaryButtonClassName =
   "rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#18365c] disabled:cursor-not-allowed disabled:opacity-50";
+
+const undoButtonClassName =
+  "rounded-md border border-amber-700 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50";
+
+const ALL_REMIT_KINDS: RemitTaxKind[] = ["ssnit", "paye", "vat", "wht"];
+
+type PaidRemitUi = {
+  amount: number;
+  receiptNo: string;
+};
 
 const TAB_ITEMS: Array<{ id: LedgerTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -458,6 +472,10 @@ export default function TaxLedger({
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [remittingKind, setRemittingKind] = useState<RemitTaxKind | null>(null);
+  const [undoingKind, setUndoingKind] = useState<RemitTaxKind | null>(null);
+  const [paidRemits, setPaidRemits] = useState<
+    Partial<Record<RemitTaxKind, PaidRemitUi>>
+  >({});
   const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
@@ -554,6 +572,49 @@ export default function TaxLedger({
     );
     setError(null);
   }
+
+  async function refreshPaidRemits(periodMonth: string | null) {
+    if (!periodMonth) {
+      setPaidRemits({});
+      return;
+    }
+
+    const receiptNos = ALL_REMIT_KINDS.map((kind) =>
+      buildRemitExpenseReceiptNo(kind, periodMonth),
+    );
+
+    const { data, error: remittanceError } = await supabase
+      .from("expense_register")
+      .select("receipt_no, amount, payment_status")
+      .eq("tenant_id", tenantId)
+      .in("receipt_no", receiptNos);
+
+    if (remittanceError) {
+      setError(remittanceError.message);
+      return;
+    }
+
+    const next: Partial<Record<RemitTaxKind, PaidRemitUi>> = {};
+    for (const row of data ?? []) {
+      if (!isPaidStatus(row.payment_status)) {
+        continue;
+      }
+      const kind = remitKindFromReceiptNo(row.receipt_no as string | null);
+      if (!kind) {
+        continue;
+      }
+      next[kind] = {
+        amount: Number(row.amount) || 0,
+        receiptNo: (row.receipt_no as string) ?? "",
+      };
+    }
+    setPaidRemits(next);
+  }
+
+  useEffect(() => {
+    void refreshPaidRemits(filters.periodMonth || null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when period or tenant changes
+  }, [filters.periodMonth, tenantId]);
 
   function updateFormField<K extends keyof SettingsForm>(
     key: K,
@@ -717,11 +778,66 @@ export default function TaxLedger({
     }
 
     await refreshEntries();
+    await refreshPaidRemits(filters.periodMonth || null);
     setRemittingKind(null);
     router.refresh();
   }
 
+  async function handleUndoRemitForPeriod(kind: RemitTaxKind) {
+    if (!filters.periodMonth) {
+      setError("Select a period month before undoing a remittance.");
+      return;
+    }
+
+    const paid = paidRemits[kind];
+    const label = REMIT_TAX_KIND_LABEL[kind];
+    const periodLabel = formatPeriodMonthLabel(filters.periodMonth);
+
+    if (!paid) {
+      setInfoMessage(
+        `No Paid ${label} remittance for ${periodLabel} to undo.`,
+      );
+      return;
+    }
+
+    const confirmDetail =
+      kind === "ssnit"
+        ? `This deletes Cash Position outflow ${formatGHS(paid.amount)} (${paid.receiptNo}), reopens remitted SSNIT Tax Ledger legs for the period, and restores Employer SSNIT from Settled → Accrued only when Remit had set Settled. Mark-as-Paid Employer SSNIT cash is NOT reversed.`
+        : `This deletes Cash Position outflow ${formatGHS(paid.amount)} (${paid.receiptNo}) and reopens remitted ${label} Tax Ledger legs for the period.`;
+
+    if (
+      !window.confirm(
+        `Undo Remit ${label} for ${periodLabel}?\n\nWARNING: Undo assumes the real-world payment has NOT been sent to ${kind === "ssnit" ? "SSNIT" : "GRA"} yet.\n\n${confirmDetail}`,
+      )
+    ) {
+      return;
+    }
+
+    setUndoingKind(kind);
+    setError(null);
+    setInfoMessage(null);
+
+    const result = await undoRemitTaxForPeriod(supabase, {
+      tenantId,
+      periodMonth: filters.periodMonth,
+      kind,
+    });
+
+    if (result.error) {
+      setError(result.error);
+    } else if (result.message) {
+      setInfoMessage(result.message);
+    }
+
+    await refreshEntries();
+    await refreshPaidRemits(filters.periodMonth || null);
+    setUndoingKind(null);
+    router.refresh();
+  }
+
   function RemitPeriodButtons({ kinds }: { kinds: RemitTaxKind[] }) {
+    const busy = remittingKind !== null || undoingKind !== null;
+
     return (
       <div className="flex flex-wrap items-center gap-2">
         {kinds.map((kind) => {
@@ -729,36 +845,52 @@ export default function TaxLedger({
             ? openRemitCandidates(kind)
             : [];
           const cashPreview = computeRemitCashAmount(candidates, kind);
-          const disabled =
-            remittingKind !== null ||
+          const paid = paidRemits[kind];
+          const remitDisabled =
+            busy ||
             !filters.periodMonth ||
             candidates.length === 0 ||
             (kind === "vat" && cashPreview <= 0);
+          const undoDisabled = busy || !filters.periodMonth || !paid;
           const label = REMIT_TAX_KIND_LABEL[kind];
 
           return (
-            <button
-              key={kind}
-              type="button"
-              disabled={disabled}
-              onClick={() => handleRemitForPeriod(kind)}
-              className={primaryButtonClassName}
-              title={
-                !filters.periodMonth
-                  ? "Select a period month filter to enable remit"
-                  : candidates.length === 0
-                    ? `No open ${label} liabilities in this period`
-                    : `Posts cash and clears ${label} liabilities for the filtered period`
-              }
-            >
-              {remittingKind === kind
-                ? `Remitting ${label}…`
-                : `Remit ${label} for period${
-                    candidates.length > 0
-                      ? ` (${candidates.length} · ${formatGHS(cashPreview)})`
-                      : ""
-                  }`}
-            </button>
+            <div key={kind} className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={remitDisabled}
+                onClick={() => handleRemitForPeriod(kind)}
+                className={primaryButtonClassName}
+                title={
+                  !filters.periodMonth
+                    ? "Select a period month filter to enable remit"
+                    : candidates.length === 0
+                      ? `No open ${label} liabilities in this period`
+                      : `Posts cash and clears ${label} liabilities for the filtered period`
+                }
+              >
+                {remittingKind === kind
+                  ? `Remitting ${label}…`
+                  : `Remit ${label} for period${
+                      candidates.length > 0
+                        ? ` (${candidates.length} · ${formatGHS(cashPreview)})`
+                        : ""
+                    }`}
+              </button>
+              {paid ? (
+                <button
+                  type="button"
+                  disabled={undoDisabled}
+                  onClick={() => handleUndoRemitForPeriod(kind)}
+                  className={undoButtonClassName}
+                  title={`Undo Remit ${label}: delete ${paid.receiptNo} and reopen remitted legs. Assumes payment was not sent.`}
+                >
+                  {undoingKind === kind
+                    ? `Undoing ${label}…`
+                    : `Undo Remit ${label} for period (${formatGHS(paid.amount)})`}
+                </button>
+              ) : null}
+            </div>
           );
         })}
       </div>
@@ -813,8 +945,9 @@ export default function TaxLedger({
     <div className="min-w-0 space-y-6">
       <p className="text-sm text-slate-600">
         Statutory remittance ledger for GRA tax (VAT/WHT), PAYE, and SSNIT —
-        period balances, due-date reminders, and Remit-for-period (cash +
-        liability clear).
+        period balances, due-date reminders, Remit-for-period (cash +
+        liability clear), and Undo Remit (reverse cash + reopen legs when
+        payment has not been sent).
       </p>
 
       {error && (

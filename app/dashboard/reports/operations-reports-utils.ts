@@ -668,7 +668,9 @@ export function buildClientServiceReport(input: {
       projects: input.rosterProjects,
       sites: input.rosterSites,
       history: input.rosterHistory,
-      referenceDate: new Date(input.year, input.month, 0),
+      // First day of the report month so Staffing Coverage shows the rotation
+      // covering that month (e.g. 1–14 July), not always the latest cycle window.
+      referenceDate: new Date(input.year, input.month - 1, 1),
     });
 
   const staffingRows = rosterViewModel?.rows ?? [];
