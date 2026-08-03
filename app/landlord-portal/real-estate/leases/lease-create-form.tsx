@@ -1,7 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DEFAULT_TERMINATION_NOTICE_MONTHS,
+  suggestAdvanceRentAmountGhs,
+} from "@/app/dashboard/real-estate/leases-utils";
 import {
   portalErrorBannerClassName,
   portalInputClassName,
@@ -52,6 +56,11 @@ export default function LandlordPortalLeaseCreateForm({
   const [rentAmount, setRentAmount] = useState(
     vacantUnits[0] ? String(vacantUnits[0].baseRentGhs) : "",
   );
+  const [advanceRent, setAdvanceRent] = useState("");
+  const [advanceTouched, setAdvanceTouched] = useState(false);
+  const [terminationNoticeMonths, setTerminationNoticeMonths] = useState(
+    String(DEFAULT_TERMINATION_NOTICE_MONTHS),
+  );
   const [depositAmount, setDepositAmount] = useState("");
   const [depositDate, setDepositDate] = useState(todayInputValue());
   const [lateFeeEnabled, setLateFeeEnabled] = useState(false);
@@ -65,6 +74,23 @@ export default function LandlordPortalLeaseCreateForm({
     () => vacantUnits.find((unit) => unit.unitId === unitId) ?? null,
     [unitId, vacantUnits],
   );
+
+  useEffect(() => {
+    if (advanceTouched) {
+      return;
+    }
+    const rent = Number(rentAmount);
+    if (
+      !Number.isFinite(rent) ||
+      !startDate ||
+      !endDate ||
+      endDate < startDate
+    ) {
+      return;
+    }
+    const suggested = suggestAdvanceRentAmountGhs(rent, startDate, endDate);
+    setAdvanceRent(suggested > 0 ? String(suggested) : "");
+  }, [advanceTouched, rentAmount, startDate, endDate]);
 
   function handleUnitChange(nextUnitId: string) {
     setUnitId(nextUnitId);
@@ -97,6 +123,8 @@ export default function LandlordPortalLeaseCreateForm({
         start_date: startDate,
         end_date: endDate,
         rent_amount_ghs: rentAmount,
+        advance_rent_amount_ghs: advanceRent || null,
+        termination_notice_months: terminationNoticeMonths || null,
         deposit_amount_ghs: depositAmount,
         deposit_date_collected: depositDate,
         late_fee_enabled: lateFeeEnabled,
@@ -277,6 +305,38 @@ export default function LandlordPortalLeaseCreateForm({
                 step="0.01"
                 value={rentAmount}
                 onChange={(event) => setRentAmount(event.target.value)}
+                className={portalInputClassName}
+              />
+            </div>
+            <div>
+              <label className={portalLabelClassName}>Advance rent (GHS)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={advanceRent}
+                onChange={(event) => {
+                  setAdvanceTouched(true);
+                  setAdvanceRent(event.target.value);
+                }}
+                className={portalInputClassName}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Suggested as rent × term months; override freely.
+              </p>
+            </div>
+            <div>
+              <label className={portalLabelClassName}>
+                Termination notice (months)
+              </label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={terminationNoticeMonths}
+                onChange={(event) =>
+                  setTerminationNoticeMonths(event.target.value)
+                }
                 className={portalInputClassName}
               />
             </div>

@@ -83,6 +83,12 @@ export default function LeaseDetailView({
       ? ""
       : String(initialDetail.lateFeeAmount),
   );
+  const [advanceRent, setAdvanceRent] = useState(
+    String(initialDetail.advanceRentAmountGhs),
+  );
+  const [terminationNoticeMonths, setTerminationNoticeMonths] = useState(
+    String(initialDetail.terminationNoticeMonths),
+  );
 
   useEffect(() => {
     setDetail(initialDetail);
@@ -106,6 +112,8 @@ export default function LeaseDetailView({
         ? ""
         : String(initialDetail.lateFeeAmount),
     );
+    setAdvanceRent(String(initialDetail.advanceRentAmountGhs));
+    setTerminationNoticeMonths(String(initialDetail.terminationNoticeMonths));
     setError(fetchError);
     if (focusDeposit) {
       setShowResolveDeposit(true);
@@ -141,6 +149,8 @@ export default function LeaseDetailView({
         start_date: startDate,
         end_date: endDate,
         proposed_rent_amount_ghs: isActive ? proposedRent : null,
+        advance_rent_amount_ghs: advanceRent,
+        termination_notice_months: terminationNoticeMonths,
         escalation_percent: escalationPercent || null,
         escalation_frequency_months: escalationFrequency || null,
         late_fee_enabled: lateFeeEnabled,
@@ -452,20 +462,23 @@ export default function LeaseDetailView({
         landlordAcknowledgedAt={detail.landlordAcknowledgedAt}
         tenantAcknowledgedAt={detail.tenantAcknowledgedAt}
         landlordName={detail.landlordName}
+        landlordAddress={detail.landlordAddress}
+        landlordPhone={detail.landlordPhone}
         lesseeName={detail.lesseeName}
         lesseePhone={detail.lesseePhone}
         lesseeEmail={detail.lesseeEmail}
         propertyName={detail.propertyName}
+        propertyAddress={detail.propertyAddress}
+        propertyLocation={detail.propertyLocation}
         unitNumber={detail.unitNumber}
         startDate={detail.startDate}
         endDate={detail.endDate}
         rentAmountGhs={detail.rentAmountGhs}
+        advanceRentAmountGhs={detail.advanceRentAmountGhs}
+        terminationNoticeMonths={detail.terminationNoticeMonths}
         depositAmountGhs={detail.deposit?.amountGhs ?? null}
-        lateFeeEnabled={detail.lateFeeEnabled}
-        lateFeeType={detail.lateFeeType}
-        lateFeeAmount={detail.lateFeeAmount}
-        escalationPercent={detail.escalationPercent}
-        escalationFrequencyMonths={detail.escalationFrequencyMonths}
+        agreementDate={detail.createdAt}
+        leaseDocumentUrl={detail.leaseDocumentUrl}
       />
 
       <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
@@ -548,6 +561,37 @@ export default function LeaseDetailView({
               step={1}
               value={escalationFrequency}
               onChange={(event) => setEscalationFrequency(event.target.value)}
+              className={inputClassName}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Advance rent (GHS)
+            </label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={advanceRent}
+              onChange={(event) => setAdvanceRent(event.target.value)}
+              className={inputClassName}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Shown on the tenancy PDF. Independent of monthly rent.
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Termination notice (months)
+            </label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={terminationNoticeMonths}
+              onChange={(event) =>
+                setTerminationNoticeMonths(event.target.value)
+              }
               className={inputClassName}
             />
           </div>

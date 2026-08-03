@@ -37,6 +37,8 @@ type LeaseRow = {
   start_date: string;
   end_date: string;
   rent_amount_ghs: number | string;
+  advance_rent_amount_ghs: number | string | null;
+  termination_notice_months: number | null;
   pending_rent_amount_ghs: number | string | null;
   rent_change_status: string | null;
   pending_termination_reason: string | null;
@@ -50,6 +52,7 @@ type LeaseRow = {
   terminated_at: string | null;
   termination_reason: string | null;
   signature_status: string | null;
+  lease_document_url: string | null;
   landlord_acknowledged_at: string | null;
   tenant_acknowledged_at: string | null;
   landlord_acknowledged_by: string | null;
@@ -57,6 +60,47 @@ type LeaseRow = {
   created_at: string;
   updated_at: string;
 };
+
+function composePropertyAddress(parts: {
+  propertyName: string;
+  unitNumber: string;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  region: string | null;
+}): string {
+  const street = [parts.addressLine1, parts.addressLine2]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  const locality = [parts.city, parts.region]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  const unitLabel =
+    parts.unitNumber && parts.unitNumber !== "—"
+      ? `Unit ${parts.unitNumber}`
+      : null;
+  const head = [parts.propertyName !== "—" ? parts.propertyName : null, unitLabel]
+    .filter(Boolean)
+    .join(" · ");
+  return [head, street, locality].filter(Boolean).join(", ") || "—";
+}
+
+function composePropertyLocation(
+  city: string | null,
+  region: string | null,
+  propertyName: string,
+): string {
+  const locality = [city, region]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  if (locality) {
+    return locality;
+  }
+  return propertyName !== "—" ? propertyName : "—";
+}
 
 type DepositRow = {
   tenant_id: string;
@@ -356,15 +400,61 @@ export async function fetchLeaseDetail(
   }
 
   let propertyName = "—";
+  let propertyAddressLine1: string | null = null;
+  let propertyAddressLine2: string | null = null;
+  let propertyCity: string | null = null;
+  let propertyRegion: string | null = null;
   if (unit?.property_id) {
     const { data: property } = await admin
       .from("properties")
-      .select("name")
+      .select("name, address_line1, address_line2, city, region")
       .eq("tenant_id", landlord.tenantId)
       .eq("property_id", unit.property_id)
       .maybeSingle();
     propertyName = (property?.name as string | undefined) ?? "—";
+    propertyAddressLine1 =
+      (property?.address_line1 as string | null | undefined) ?? null;
+    propertyAddressLine2 =
+      (property?.address_line2 as string | null | undefined) ?? null;
+    propertyCity = (property?.city as string | null | undefined) ?? null;
+    propertyRegion = (property?.region as string | null | undefined) ?? null;
   }
+
+  const [{ data: landlordContact }, { data: landlordRow }] = await Promise.all([
+    admin
+      .from("tenants")
+      .select("address, phone")
+      .eq("id", landlord.tenantId)
+      .maybeSingle(),
+    admin
+      .from("landlords")
+      .select("notification_phone")
+      .eq("tenant_id", landlord.tenantId)
+      .maybeSingle(),
+  ]);
+
+  const unitNumber = (unit?.unit_number as string | undefined) ?? "—";
+  const propertyAddress = composePropertyAddress({
+    propertyName,
+    unitNumber,
+    addressLine1: propertyAddressLine1,
+    addressLine2: propertyAddressLine2,
+    city: propertyCity,
+    region: propertyRegion,
+  });
+  const propertyLocation = composePropertyLocation(
+    propertyCity,
+    propertyRegion,
+    propertyName,
+  );
+  const tenantPhone =
+    typeof landlordContact?.phone === "string"
+      ? landlordContact.phone.trim() || null
+      : null;
+  const notificationPhone =
+    typeof landlordRow?.notification_phone === "string"
+      ? landlordRow.notification_phone.trim() || null
+      : null;
 
   const depositRow = ((deposits as DepositRow[] | null) ?? [])[0] ?? null;
   const deposit = depositRow ? mapDeposit(depositRow) : null;
@@ -398,14 +488,28 @@ export async function fetchLeaseDetail(
     signatureStatus = leaseRow.signature_status;
   }
 
+  const leaseDocumentUrl =
+    typeof leaseRow.lease_document_url === "string" &&
+    leaseRow.lease_document_url.trim()
+      ? leaseRow.lease_document_url.trim()
+      : null;
+
   return {
     detail: {
       leaseId: leaseRow.lease_id,
       tenantId: leaseRow.tenant_id,
       landlordName: landlord.name,
+      landlordAddress:
+        typeof landlordContact?.address === "string"
+          ? landlordContact.address.trim() || null
+          : null,
+      // Prefer landlords.notification_phone (workspace pattern); else tenants.phone.
+      landlordPhone: notificationPhone ?? tenantPhone,
       unitId: leaseRow.unit_id,
-      unitNumber: (unit?.unit_number as string | undefined) ?? "—",
+      unitNumber,
       propertyName,
+      propertyAddress,
+      propertyLocation,
       lesseeId: leaseRow.lessee_id,
       lesseeName: (lessee?.full_name as string | undefined) ?? "—",
       lesseePhone: (lessee?.phone as string | undefined) ?? "—",
@@ -413,6 +517,13 @@ export async function fetchLeaseDetail(
       startDate: leaseRow.start_date,
       endDate: leaseRow.end_date,
       rentAmountGhs: toNumber(leaseRow.rent_amount_ghs) ?? 0,
+      advanceRentAmountGhs: toNumber(leaseRow.advance_rent_amount_ghs) ?? 0,
+      terminationNoticeMonths:
+        typeof leaseRow.termination_notice_months === "number" &&
+        Number.isInteger(leaseRow.termination_notice_months) &&
+        leaseRow.termination_notice_months >= 1
+          ? leaseRow.termination_notice_months
+          : 3,
       pendingRentAmountGhs: toNumber(leaseRow.pending_rent_amount_ghs),
       rentChangeStatus,
       pendingTerminationReason:
@@ -427,6 +538,7 @@ export async function fetchLeaseDetail(
       terminatedAt: leaseRow.terminated_at,
       terminationReason: leaseRow.termination_reason,
       signatureStatus,
+      leaseDocumentUrl,
       landlordAcknowledgedAt: leaseRow.landlord_acknowledged_at ?? null,
       tenantAcknowledgedAt: leaseRow.tenant_acknowledged_at ?? null,
       landlordAcknowledgedBy: leaseRow.landlord_acknowledged_by ?? null,

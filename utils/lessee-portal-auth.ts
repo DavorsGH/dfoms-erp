@@ -28,8 +28,12 @@ export type PortalUnpaidRent = {
 export type PortalDashboardData = {
   leaseId: string;
   propertyName: string;
+  propertyAddress: string;
+  propertyLocation: string;
   unitNumber: string;
   rentAmountGhs: number;
+  advanceRentAmountGhs: number;
+  terminationNoticeMonths: number;
   leaseStartDate: string;
   leaseEndDate: string;
   leaseStatus: string;
@@ -37,10 +41,14 @@ export type PortalDashboardData = {
   landlordAcknowledgedAt: string | null;
   tenantAcknowledgedAt: string | null;
   landlordName: string;
+  landlordAddress: string | null;
+  landlordPhone: string | null;
   lesseeName: string;
   lesseePhone: string;
   lesseeEmail: string | null;
   depositAmountGhs: number | null;
+  leaseDocumentUrl: string | null;
+  leaseCreatedAt: string;
   lateFeeEnabled: boolean;
   lateFeeType: "fixed" | "percent" | null;
   lateFeeAmount: number | null;
@@ -113,7 +121,7 @@ async function loadDashboardWithClient(
   const { data: lease, error: leaseError } = await client
     .from("leases")
     .select(
-      "lease_id, tenant_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, status, termination_request_status, pending_termination_reason, signature_status, landlord_acknowledged_at, tenant_acknowledged_at, escalation_percent, escalation_frequency_months, late_fee_enabled, late_fee_type, late_fee_amount",
+      "lease_id, tenant_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, advance_rent_amount_ghs, termination_notice_months, status, termination_request_status, pending_termination_reason, signature_status, lease_document_url, landlord_acknowledged_at, tenant_acknowledged_at, escalation_percent, escalation_frequency_months, late_fee_enabled, late_fee_type, late_fee_amount, created_at",
     )
     .eq("tenant_id", session.tenantId)
     .eq("lessee_id", session.lesseeId)
@@ -141,6 +149,7 @@ async function loadDashboardWithClient(
     { data: rentRows },
     { data: depositRows },
     { data: tenantRow },
+    { data: landlordRow },
     { data: lesseeRow },
   ] = await Promise.all([
     client
@@ -167,8 +176,13 @@ async function loadDashboardWithClient(
       .limit(1),
     client
       .from("tenants")
-      .select("name")
+      .select("name, address, phone")
       .eq("id", session.tenantId)
+      .maybeSingle(),
+    client
+      .from("landlords")
+      .select("notification_phone")
+      .eq("tenant_id", session.tenantId)
       .maybeSingle(),
     client
       .from("lessees")
@@ -179,15 +193,48 @@ async function loadDashboardWithClient(
   ]);
 
   let propertyName = "—";
+  let propertyAddressLine1: string | null = null;
+  let propertyAddressLine2: string | null = null;
+  let propertyCity: string | null = null;
+  let propertyRegion: string | null = null;
   if (unit?.property_id) {
     const { data: property } = await client
       .from("properties")
-      .select("name")
+      .select("name, address_line1, address_line2, city, region")
       .eq("tenant_id", session.tenantId)
       .eq("property_id", unit.property_id)
       .maybeSingle();
     propertyName = property?.name ?? "—";
+    propertyAddressLine1 =
+      typeof property?.address_line1 === "string"
+        ? property.address_line1
+        : null;
+    propertyAddressLine2 =
+      typeof property?.address_line2 === "string"
+        ? property.address_line2
+        : null;
+    propertyCity =
+      typeof property?.city === "string" ? property.city : null;
+    propertyRegion =
+      typeof property?.region === "string" ? property.region : null;
   }
+
+  const unitNumber = unit?.unit_number ?? "—";
+  const street = [propertyAddressLine1, propertyAddressLine2]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  const locality = [propertyCity, propertyRegion]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  const unitLabel = unitNumber !== "—" ? `Unit ${unitNumber}` : null;
+  const head = [propertyName !== "—" ? propertyName : null, unitLabel]
+    .filter(Boolean)
+    .join(" · ");
+  const propertyAddress = [head, street, locality].filter(Boolean).join(", ") || "—";
+  const propertyLocation =
+    locality || (propertyName !== "—" ? propertyName : "—");
 
   const ledgerRows =
     (rentRows as Array<{
@@ -235,8 +282,17 @@ async function loadDashboardWithClient(
     data: {
       leaseId: lease.lease_id,
       propertyName,
-      unitNumber: unit?.unit_number ?? "—",
+      propertyAddress,
+      propertyLocation,
+      unitNumber,
       rentAmountGhs: Number(lease.rent_amount_ghs) || 0,
+      advanceRentAmountGhs: Number(lease.advance_rent_amount_ghs) || 0,
+      terminationNoticeMonths:
+        typeof lease.termination_notice_months === "number" &&
+        Number.isInteger(lease.termination_notice_months) &&
+        lease.termination_notice_months >= 1
+          ? lease.termination_notice_months
+          : 3,
       leaseStartDate: lease.start_date,
       leaseEndDate: lease.end_date,
       leaseStatus: lease.status,
@@ -250,6 +306,17 @@ async function loadDashboardWithClient(
         (lease.tenant_acknowledged_at as string | null) ?? null,
       landlordName:
         typeof tenantRow?.name === "string" ? tenantRow.name : "—",
+      landlordAddress:
+        typeof tenantRow?.address === "string"
+          ? tenantRow.address.trim() || null
+          : null,
+      landlordPhone:
+        (typeof landlordRow?.notification_phone === "string"
+          ? landlordRow.notification_phone.trim() || null
+          : null) ??
+        (typeof tenantRow?.phone === "string"
+          ? tenantRow.phone.trim() || null
+          : null),
       lesseeName:
         typeof lesseeRow?.full_name === "string"
           ? lesseeRow.full_name
@@ -263,6 +330,15 @@ async function loadDashboardWithClient(
         depositRows && depositRows[0]
           ? Number(depositRows[0].amount_ghs) || 0
           : null,
+      leaseDocumentUrl:
+        typeof lease.lease_document_url === "string" &&
+        lease.lease_document_url.trim()
+          ? lease.lease_document_url.trim()
+          : null,
+      leaseCreatedAt:
+        typeof lease.created_at === "string"
+          ? lease.created_at
+          : lease.start_date,
       lateFeeEnabled: Boolean(lease.late_fee_enabled),
       lateFeeType:
         lease.late_fee_type === "fixed" || lease.late_fee_type === "percent"

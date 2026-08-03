@@ -10,6 +10,8 @@ type Body = {
   rent_amount_ghs?: number | string;
   deposit_amount_ghs?: number | string;
   deposit_date_collected?: string;
+  advance_rent_amount_ghs?: number | string | null;
+  termination_notice_months?: number | string | null;
   escalation_percent?: number | string | null;
   escalation_frequency_months?: number | string | null;
   late_fee_enabled?: boolean;
@@ -79,6 +81,34 @@ export async function POST(request: Request) {
     );
   }
 
+  let advanceRent: number | null = null;
+  if (
+    body.advance_rent_amount_ghs != null &&
+    body.advance_rent_amount_ghs !== ""
+  ) {
+    advanceRent = Number(body.advance_rent_amount_ghs);
+    if (!Number.isFinite(advanceRent) || advanceRent < 0) {
+      return NextResponse.json(
+        { error: "advance_rent_amount_ghs must be a non-negative number." },
+        { status: 400 },
+      );
+    }
+  }
+
+  let noticeMonths: number | null = null;
+  if (
+    body.termination_notice_months != null &&
+    body.termination_notice_months !== ""
+  ) {
+    noticeMonths = Number(body.termination_notice_months);
+    if (!Number.isInteger(noticeMonths) || noticeMonths < 1) {
+      return NextResponse.json(
+        { error: "termination_notice_months must be a positive whole number." },
+        { status: 400 },
+      );
+    }
+  }
+
   let escalationPercent: number | null = null;
   let escalationFrequency: number | null = null;
   if (body.escalation_percent != null && body.escalation_percent !== "") {
@@ -137,6 +167,8 @@ export async function POST(request: Request) {
     startDate: body.start_date ?? "",
     endDate: body.end_date ?? "",
     rentAmountGhs: rent,
+    advanceRentAmountGhs: advanceRent,
+    terminationNoticeMonths: noticeMonths,
     escalationPercent,
     escalationFrequencyMonths: escalationFrequency,
     lateFeeEnabled,

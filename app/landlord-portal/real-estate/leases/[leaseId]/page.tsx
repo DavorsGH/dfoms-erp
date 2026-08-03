@@ -121,20 +121,23 @@ export default async function LandlordPortalLeaseDetailPage({
             landlordAcknowledgedAt={detail.landlordAcknowledgedAt}
             tenantAcknowledgedAt={detail.tenantAcknowledgedAt}
             landlordName={detail.landlordName}
+            landlordAddress={detail.landlordAddress}
+            landlordPhone={detail.landlordPhone}
             lesseeName={detail.lesseeName}
             lesseePhone={detail.lesseePhone}
             lesseeEmail={detail.lesseeEmail}
             propertyName={detail.propertyName}
+            propertyAddress={detail.propertyAddress}
+            propertyLocation={detail.propertyLocation}
             unitNumber={detail.unitNumber}
             startDate={detail.startDate}
             endDate={detail.endDate}
             rentAmountGhs={detail.rentAmountGhs}
+            advanceRentAmountGhs={detail.advanceRentAmountGhs}
+            terminationNoticeMonths={detail.terminationNoticeMonths}
             depositAmountGhs={detail.deposit?.amountGhs ?? null}
-            lateFeeEnabled={detail.lateFeeEnabled}
-            lateFeeType={detail.lateFeeType}
-            lateFeeAmount={detail.lateFeeAmount}
-            escalationPercent={detail.escalationPercent}
-            escalationFrequencyMonths={detail.escalationFrequencyMonths}
+            agreementDate={detail.createdAt}
+            leaseDocumentUrl={detail.leaseDocumentUrl}
           />
 
           <section className={portalSectionClassName}>
@@ -170,6 +173,14 @@ export default async function LandlordPortalLeaseDetailPage({
               <DetailItem
                 label="Rent"
                 value={formatLeaseMoney(detail.rentAmountGhs)}
+              />
+              <DetailItem
+                label="Advance rent"
+                value={formatLeaseMoney(detail.advanceRentAmountGhs)}
+              />
+              <DetailItem
+                label="Termination notice"
+                value={`${detail.terminationNoticeMonths} month${detail.terminationNoticeMonths === 1 ? "" : "s"}`}
               />
               <DetailItem
                 label="Escalation"

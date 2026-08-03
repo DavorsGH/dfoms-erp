@@ -72,9 +72,15 @@ export type LeaseDetail = {
   leaseId: string;
   tenantId: string;
   landlordName: string;
+  landlordAddress: string | null;
+  landlordPhone: string | null;
   unitId: string;
   unitNumber: string;
   propertyName: string;
+  /** Composed property street + unit for tenancy PDF. */
+  propertyAddress: string;
+  /** City / region used as witness LOCATION. */
+  propertyLocation: string;
   lesseeId: string;
   lesseeName: string;
   lesseePhone: string;
@@ -82,6 +88,10 @@ export type LeaseDetail = {
   startDate: string;
   endDate: string;
   rentAmountGhs: number;
+  /** Advance rent (GHS) for tenancy PDF — leases.advance_rent_amount_ghs */
+  advanceRentAmountGhs: number;
+  /** Prior notice months for PDF — leases.termination_notice_months */
+  terminationNoticeMonths: number;
   pendingRentAmountGhs: number | null;
   rentChangeStatus: RentChangeStatus | null;
   pendingTerminationReason: string | null;
@@ -95,6 +105,8 @@ export type LeaseDetail = {
   terminatedAt: string | null;
   terminationReason: string | null;
   signatureStatus: SignatureStatus;
+  /** Custom uploaded lease PDF URL; when set, preferred over generated default. */
+  leaseDocumentUrl: string | null;
   landlordAcknowledgedAt: string | null;
   tenantAcknowledgedAt: string | null;
   landlordAcknowledgedBy?: string | null;
@@ -202,4 +214,49 @@ export function isSignatureStatus(value: string): value is SignatureStatus {
     value === "partially_signed" ||
     value === "signed"
   );
+}
+
+/** Default notice period when termination_notice_months is unset (new leases / fallback). */
+export const DEFAULT_TERMINATION_NOTICE_MONTHS = 3;
+
+export const DEFAULT_LEASE_NOTICE_PERIOD_LABEL = "3 months";
+
+export function computeLeaseTermMonths(
+  startDate: string,
+  endDate: string,
+): number {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+  const months =
+    (end.getFullYear() - start.getFullYear()) * 12 +
+    (end.getMonth() - start.getMonth()) +
+    (end.getDate() >= start.getDate() ? 0 : -1);
+  return Math.max(1, months);
+}
+
+export function formatTerminationNoticeLabel(months: number): string {
+  if (!Number.isFinite(months) || months < 1) {
+    return DEFAULT_LEASE_NOTICE_PERIOD_LABEL;
+  }
+  const whole = Math.trunc(months);
+  return whole === 1 ? "1 month" : `${whole} months`;
+}
+
+/** Suggested advance on create: rent × term months (independently overridable). */
+export function suggestAdvanceRentAmountGhs(
+  rentAmountGhs: number,
+  startDate: string,
+  endDate: string,
+): number {
+  if (!Number.isFinite(rentAmountGhs) || rentAmountGhs < 0) {
+    return 0;
+  }
+  if (!startDate || !endDate) {
+    return 0;
+  }
+  const termMonths = computeLeaseTermMonths(startDate, endDate);
+  return Math.round(rentAmountGhs * termMonths * 100) / 100;
 }

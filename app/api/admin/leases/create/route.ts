@@ -16,6 +16,8 @@ type CreateLeaseBody = {
   start_date?: string;
   end_date?: string;
   rent_amount_ghs?: number | string;
+  advance_rent_amount_ghs?: number | string | null;
+  termination_notice_months?: number | string | null;
   escalation_percent?: number | string | null;
   escalation_frequency_months?: number | string | null;
   late_fee_enabled?: boolean;
@@ -81,6 +83,23 @@ export async function POST(request: Request) {
       { error: !rent.ok ? rent.error : "rent_amount_ghs is required" },
       { status: 400 },
     );
+  }
+
+  const advanceRent = parseNonNegativeNumber(
+    body.advance_rent_amount_ghs,
+    "advance_rent_amount_ghs",
+    false,
+  );
+  if (!advanceRent.ok) {
+    return NextResponse.json({ error: advanceRent.error }, { status: 400 });
+  }
+
+  const noticeMonths = parseOptionalInteger(
+    body.termination_notice_months,
+    "termination_notice_months",
+  );
+  if (!noticeMonths.ok) {
+    return NextResponse.json({ error: noticeMonths.error }, { status: 400 });
   }
 
   const escalationPercent = parseNonNegativeNumber(
@@ -155,6 +174,8 @@ export async function POST(request: Request) {
     startDate: body.start_date ?? "",
     endDate: body.end_date ?? "",
     rentAmountGhs: rent.value,
+    advanceRentAmountGhs: advanceRent.value,
+    terminationNoticeMonths: noticeMonths.value,
     escalationPercent: escalationPercent.value,
     escalationFrequencyMonths: escalationFrequency.value,
     lateFeeEnabled,

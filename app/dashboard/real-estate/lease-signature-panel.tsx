@@ -9,7 +9,10 @@ import {
   type LeaseSignatureStatus,
 } from "@/utils/lease-signature";
 import { formatLeaseDate } from "./leases-utils";
-import LeasePdfDocument from "./lease-pdf-document";
+import LeasePdfDocument, {
+  computeLeaseTermMonths,
+  formatTerminationNoticeLabel,
+} from "./lease-pdf-document";
 
 export type LeaseSignaturePanelMode =
   | "staff"
@@ -25,20 +28,26 @@ export type LeaseSignaturePanelProps = {
   landlordAcknowledgedAt: string | null;
   tenantAcknowledgedAt: string | null;
   landlordName: string;
+  landlordAddress: string | null;
+  landlordPhone: string | null;
   lesseeName: string;
   lesseePhone: string;
   lesseeEmail: string | null;
   propertyName: string;
+  propertyAddress: string;
+  propertyLocation: string;
   unitNumber: string;
   startDate: string;
   endDate: string;
   rentAmountGhs: number;
+  /** leases.advance_rent_amount_ghs */
+  advanceRentAmountGhs: number;
+  /** leases.termination_notice_months */
+  terminationNoticeMonths: number;
   depositAmountGhs: number | null;
-  lateFeeEnabled: boolean;
-  lateFeeType: "fixed" | "percent" | null;
-  lateFeeAmount: number | null;
-  escalationPercent: number | null;
-  escalationFrequencyMonths: number | null;
+  agreementDate: string;
+  /** Custom uploaded lease PDF; preferred over generated default when set. */
+  leaseDocumentUrl: string | null;
 };
 
 const primaryButtonClassName =
@@ -84,30 +93,44 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
     status !== "unsigned" && status !== "sent" ? true : status === "sent";
   const landlordAcked = Boolean(props.landlordAcknowledgedAt);
   const tenantAcked = Boolean(props.tenantAcknowledgedAt);
+  const customDocumentUrl = props.leaseDocumentUrl?.trim() || null;
 
   async function handleDownloadPdf() {
     setError(null);
     setSuccess(null);
     setDownloading(true);
     try {
+      if (customDocumentUrl) {
+        window.open(customDocumentUrl, "_blank", "noopener,noreferrer");
+        setSuccess("Opened uploaded lease document.");
+        return;
+      }
+
+      const termMonths = computeLeaseTermMonths(
+        props.startDate,
+        props.endDate,
+      );
+
       const blob = await pdf(
         <LeasePdfDocument
+          agreementDate={props.agreementDate}
           landlordName={props.landlordName}
+          landlordAddress={props.landlordAddress ?? "—"}
+          landlordPhone={props.landlordPhone ?? "—"}
           lesseeName={props.lesseeName}
           lesseePhone={props.lesseePhone}
           lesseeEmail={props.lesseeEmail}
-          propertyName={props.propertyName}
-          unitNumber={props.unitNumber}
+          propertyAddress={props.propertyAddress}
+          locationLabel={props.propertyLocation}
           startDate={props.startDate}
           endDate={props.endDate}
           rentAmountGhs={props.rentAmountGhs}
+          termMonths={termMonths}
+          advanceAmountGhs={props.advanceRentAmountGhs}
           depositAmountGhs={props.depositAmountGhs}
-          lateFeeEnabled={props.lateFeeEnabled}
-          lateFeeType={props.lateFeeType}
-          lateFeeAmount={props.lateFeeAmount}
-          escalationPercent={props.escalationPercent}
-          escalationFrequencyMonths={props.escalationFrequencyMonths}
-          disclaimer={LEASE_SIGNATURE_DISCLAIMER}
+          noticePeriodLabel={formatTerminationNoticeLabel(
+            props.terminationNoticeMonths,
+          )}
         />,
       ).toBlob();
       const url = URL.createObjectURL(blob);
@@ -224,6 +247,13 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
         {LEASE_SIGNATURE_DISCLAIMER}
       </p>
 
+      {customDocumentUrl ? (
+        <p className="text-xs text-slate-600">
+          A custom lease document is on file — download opens that upload instead
+          of the generated default agreement.
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -231,7 +261,13 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
           disabled={downloading || working}
           className={secondaryButtonClassName}
         >
-          {downloading ? "Generating PDF…" : "Download lease PDF"}
+          {downloading
+            ? customDocumentUrl
+              ? "Opening…"
+              : "Generating PDF…"
+            : customDocumentUrl
+              ? "Open uploaded lease"
+              : "Download lease PDF"}
         </button>
 
         {canMarkSent ? (

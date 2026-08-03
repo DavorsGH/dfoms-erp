@@ -133,20 +133,23 @@ export default async function PortalDashboardPage() {
             landlordAcknowledgedAt={data.landlordAcknowledgedAt}
             tenantAcknowledgedAt={data.tenantAcknowledgedAt}
             landlordName={data.landlordName}
+            landlordAddress={data.landlordAddress}
+            landlordPhone={data.landlordPhone}
             lesseeName={data.lesseeName}
             lesseePhone={data.lesseePhone}
             lesseeEmail={data.lesseeEmail}
             propertyName={data.propertyName}
+            propertyAddress={data.propertyAddress}
+            propertyLocation={data.propertyLocation}
             unitNumber={data.unitNumber}
             startDate={data.leaseStartDate}
             endDate={data.leaseEndDate}
             rentAmountGhs={data.rentAmountGhs}
+            advanceRentAmountGhs={data.advanceRentAmountGhs}
+            terminationNoticeMonths={data.terminationNoticeMonths}
             depositAmountGhs={data.depositAmountGhs}
-            lateFeeEnabled={data.lateFeeEnabled}
-            lateFeeType={data.lateFeeType}
-            lateFeeAmount={data.lateFeeAmount}
-            escalationPercent={data.escalationPercent}
-            escalationFrequencyMonths={data.escalationFrequencyMonths}
+            agreementDate={data.leaseCreatedAt}
+            leaseDocumentUrl={data.leaseDocumentUrl}
           />
 
           <section className={portalSectionClassName}>

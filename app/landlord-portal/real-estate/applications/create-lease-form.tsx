@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  DEFAULT_TERMINATION_NOTICE_MONTHS,
   LATE_FEE_TYPE_OPTIONS,
+  suggestAdvanceRentAmountGhs,
   type LateFeeType,
 } from "@/app/dashboard/real-estate/leases-utils";
 import {
@@ -31,10 +33,13 @@ export default function CreateLeaseFromApplicationForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [advanceTouched, setAdvanceTouched] = useState(false);
   const [form, setForm] = useState({
     start_date: defaultStartDate ?? "",
     end_date: "",
     rent_amount_ghs: defaultRentGhs != null ? String(defaultRentGhs) : "",
+    advance_rent_amount_ghs: "",
+    termination_notice_months: String(DEFAULT_TERMINATION_NOTICE_MONTHS),
     deposit_amount_ghs: defaultRentGhs != null ? String(defaultRentGhs) : "",
     deposit_date_collected: new Date().toISOString().slice(0, 10),
     escalation_percent: "",
@@ -43,6 +48,38 @@ export default function CreateLeaseFromApplicationForm({
     late_fee_type: "fixed" as LateFeeType,
     late_fee_amount: "",
   });
+
+  useEffect(() => {
+    if (advanceTouched) {
+      return;
+    }
+    const rent = Number(form.rent_amount_ghs);
+    if (
+      !Number.isFinite(rent) ||
+      !form.start_date ||
+      !form.end_date ||
+      form.end_date < form.start_date
+    ) {
+      return;
+    }
+    const suggested = suggestAdvanceRentAmountGhs(
+      rent,
+      form.start_date,
+      form.end_date,
+    );
+    setForm((current) => {
+      const next = suggested > 0 ? String(suggested) : "";
+      if (current.advance_rent_amount_ghs === next) {
+        return current;
+      }
+      return { ...current, advance_rent_amount_ghs: next };
+    });
+  }, [
+    advanceTouched,
+    form.rent_amount_ghs,
+    form.start_date,
+    form.end_date,
+  ]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -58,6 +95,8 @@ export default function CreateLeaseFromApplicationForm({
         body: JSON.stringify({
           application_id: applicationId,
           ...form,
+          advance_rent_amount_ghs: form.advance_rent_amount_ghs || null,
+          termination_notice_months: form.termination_notice_months || null,
           escalation_percent: form.escalation_percent || null,
           escalation_frequency_months: form.escalation_frequency_months || null,
           late_fee_type: form.late_fee_enabled ? form.late_fee_type : null,
@@ -140,6 +179,44 @@ export default function CreateLeaseFromApplicationForm({
             value={form.rent_amount_ghs}
             onChange={(e) =>
               setForm((c) => ({ ...c, rent_amount_ghs: e.target.value }))
+            }
+          />
+        </div>
+        <div>
+          <label className={portalLabelClassName}>Advance rent (GHS)</label>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            className={portalInputClassName}
+            value={form.advance_rent_amount_ghs}
+            onChange={(e) => {
+              setAdvanceTouched(true);
+              setForm((c) => ({
+                ...c,
+                advance_rent_amount_ghs: e.target.value,
+              }));
+            }}
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Suggested as rent × term months; override freely.
+          </p>
+        </div>
+        <div>
+          <label className={portalLabelClassName}>
+            Termination notice (months)
+          </label>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            className={portalInputClassName}
+            value={form.termination_notice_months}
+            onChange={(e) =>
+              setForm((c) => ({
+                ...c,
+                termination_notice_months: e.target.value,
+              }))
             }
           />
         </div>

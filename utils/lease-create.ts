@@ -2,7 +2,11 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
-import { isLateFeeType } from "@/app/dashboard/real-estate/leases-utils";
+import {
+  DEFAULT_TERMINATION_NOTICE_MONTHS,
+  isLateFeeType,
+  suggestAdvanceRentAmountGhs,
+} from "@/app/dashboard/real-estate/leases-utils";
 
 export type CreateLeaseInput = {
   tenantId: string;
@@ -16,6 +20,10 @@ export type CreateLeaseInput = {
   startDate: string;
   endDate: string;
   rentAmountGhs: number;
+  /** When omitted, defaults to rent × term months. */
+  advanceRentAmountGhs?: number | null;
+  /** When omitted, defaults to 3. */
+  terminationNoticeMonths?: number | null;
   escalationPercent?: number | null;
   escalationFrequencyMonths?: number | null;
   lateFeeEnabled: boolean;
@@ -86,6 +94,48 @@ export async function createLeaseForLandlord(
       status: 400,
     };
   }
+
+  let advanceRentAmountGhs: number;
+  if (
+    input.advanceRentAmountGhs != null &&
+    Number.isFinite(input.advanceRentAmountGhs)
+  ) {
+    if (input.advanceRentAmountGhs < 0) {
+      return {
+        ok: false,
+        error: "advance_rent_amount_ghs must be a non-negative number.",
+        status: 400,
+      };
+    }
+    advanceRentAmountGhs = input.advanceRentAmountGhs;
+  } else {
+    advanceRentAmountGhs = suggestAdvanceRentAmountGhs(
+      input.rentAmountGhs,
+      startDate,
+      endDate,
+    );
+  }
+
+  let terminationNoticeMonths: number;
+  if (
+    input.terminationNoticeMonths != null &&
+    Number.isFinite(input.terminationNoticeMonths)
+  ) {
+    if (
+      !Number.isInteger(input.terminationNoticeMonths) ||
+      input.terminationNoticeMonths < 1
+    ) {
+      return {
+        ok: false,
+        error: "termination_notice_months must be a positive whole number.",
+        status: 400,
+      };
+    }
+    terminationNoticeMonths = input.terminationNoticeMonths;
+  } else {
+    terminationNoticeMonths = DEFAULT_TERMINATION_NOTICE_MONTHS;
+  }
+
   if (!Number.isFinite(input.depositAmountGhs) || input.depositAmountGhs < 0) {
     return {
       ok: false,
@@ -265,6 +315,8 @@ export async function createLeaseForLandlord(
     start_date: startDate,
     end_date: endDate,
     rent_amount_ghs: input.rentAmountGhs,
+    advance_rent_amount_ghs: advanceRentAmountGhs,
+    termination_notice_months: terminationNoticeMonths,
     pending_rent_amount_ghs: null,
     rent_change_status: null,
     pending_termination_reason: null,

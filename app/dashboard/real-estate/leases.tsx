@@ -13,9 +13,11 @@ import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { LandlordListRow } from "./landlords-utils";
 import {
   LATE_FEE_TYPE_OPTIONS,
+  DEFAULT_TERMINATION_NOTICE_MONTHS,
   formatLeaseDate,
   formatLeaseMoney,
   formatLeaseStatus,
+  suggestAdvanceRentAmountGhs,
   type LateFeeType,
   type LeaseListRow,
   type LesseeOption,
@@ -61,6 +63,8 @@ const emptyForm = {
   start_date: "",
   end_date: "",
   rent_amount_ghs: "",
+  advance_rent_amount_ghs: "",
+  termination_notice_months: String(DEFAULT_TERMINATION_NOTICE_MONTHS),
   escalation_percent: "",
   escalation_frequency_months: "",
   late_fee_enabled: false,
@@ -106,6 +110,7 @@ export default function Leases({
   const [form, setForm] = useState(
     applicationPrefill ? formFromPrefill(applicationPrefill) : emptyForm,
   );
+  const [advanceTouched, setAdvanceTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeApplicationId, setActiveApplicationId] = useState<string | null>(
     applicationPrefill?.applicationId ?? null,
@@ -125,8 +130,41 @@ export default function Leases({
     }
     setActiveApplicationId(applicationPrefill.applicationId);
     setForm(formFromPrefill(applicationPrefill));
+    setAdvanceTouched(false);
     setShowForm(true);
   }, [applicationPrefill]);
+
+  useEffect(() => {
+    if (advanceTouched) {
+      return;
+    }
+    const rent = Number(form.rent_amount_ghs);
+    if (
+      !Number.isFinite(rent) ||
+      !form.start_date ||
+      !form.end_date ||
+      form.end_date < form.start_date
+    ) {
+      return;
+    }
+    const suggested = suggestAdvanceRentAmountGhs(
+      rent,
+      form.start_date,
+      form.end_date,
+    );
+    setForm((current) => {
+      const next = suggested > 0 ? String(suggested) : "";
+      if (current.advance_rent_amount_ghs === next) {
+        return current;
+      }
+      return { ...current, advance_rent_amount_ghs: next };
+    });
+  }, [
+    advanceTouched,
+    form.rent_amount_ghs,
+    form.start_date,
+    form.end_date,
+  ]);
 
   const selectedLandlord = landlords.find(
     (row) => row.tenantId === selectedLandlordId,
@@ -135,6 +173,7 @@ export default function Leases({
   function handleLandlordChange(tenantId: string) {
     setShowForm(false);
     setForm(emptyForm);
+    setAdvanceTouched(false);
     if (!tenantId) {
       router.push("/dashboard/real-estate/leases");
       return;
@@ -183,6 +222,8 @@ export default function Leases({
         start_date: form.start_date,
         end_date: form.end_date,
         rent_amount_ghs: form.rent_amount_ghs,
+        advance_rent_amount_ghs: form.advance_rent_amount_ghs || null,
+        termination_notice_months: form.termination_notice_months || null,
         escalation_percent: form.escalation_percent || null,
         escalation_frequency_months: form.escalation_frequency_months || null,
         late_fee_enabled: form.late_fee_enabled,
@@ -207,6 +248,7 @@ export default function Leases({
 
     setShowForm(false);
     setForm(emptyForm);
+    setAdvanceTouched(false);
     setActiveApplicationId(null);
     setLoading(false);
 
@@ -270,11 +312,13 @@ export default function Leases({
               onClick={() => {
                 if (showForm) {
                   setForm(emptyForm);
+                  setAdvanceTouched(false);
                   setActiveApplicationId(null);
                   setShowForm(false);
                   return;
                 }
                 setForm(emptyForm);
+                setAdvanceTouched(false);
                 setActiveApplicationId(null);
                 setShowForm(true);
               }}
@@ -480,6 +524,46 @@ export default function Leases({
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Advance rent (GHS)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.advance_rent_amount_ghs}
+                    onChange={(event) => {
+                      setAdvanceTouched(true);
+                      setForm((current) => ({
+                        ...current,
+                        advance_rent_amount_ghs: event.target.value,
+                      }));
+                    }}
+                    className={inputClassName}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Suggested as rent × term months; override freely.
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Termination notice (months)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={form.termination_notice_months}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        termination_notice_months: event.target.value,
+                      }))
+                    }
+                    className={inputClassName}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
                     Escalation % (optional)
                   </label>
                   <input
@@ -634,6 +718,7 @@ export default function Leases({
                   onClick={() => {
                     setShowForm(false);
                     setForm(emptyForm);
+                    setAdvanceTouched(false);
                   }}
                   className={secondaryButtonClassName}
                 >

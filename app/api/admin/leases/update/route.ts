@@ -10,6 +10,8 @@ type UpdateLeaseBody = {
   start_date?: string;
   end_date?: string;
   proposed_rent_amount_ghs?: number | string | null;
+  advance_rent_amount_ghs?: number | string | null;
+  termination_notice_months?: number | string | null;
   escalation_percent?: number | string | null;
   escalation_frequency_months?: number | string | null;
   late_fee_enabled?: boolean;
@@ -164,9 +166,41 @@ export async function POST(request: Request) {
     lateFeeAmount = amount.value;
   }
 
+  const advanceRent = parseNonNegativeNumber(
+    body.advance_rent_amount_ghs,
+    "advance_rent_amount_ghs",
+    true,
+  );
+  if (!advanceRent.ok || advanceRent.value == null) {
+    return NextResponse.json(
+      {
+        error: !advanceRent.ok
+          ? advanceRent.error
+          : "advance_rent_amount_ghs is required",
+      },
+      { status: 400 },
+    );
+  }
+
+  const noticeMonths = parseOptionalInteger(
+    body.termination_notice_months,
+    "termination_notice_months",
+  );
+  if (!noticeMonths.ok) {
+    return NextResponse.json({ error: noticeMonths.error }, { status: 400 });
+  }
+  if (noticeMonths.value == null) {
+    return NextResponse.json(
+      { error: "termination_notice_months is required" },
+      { status: 400 },
+    );
+  }
+
   const patch: Record<string, unknown> = {
     start_date: startDate,
     end_date: endDate,
+    advance_rent_amount_ghs: advanceRent.value,
+    termination_notice_months: noticeMonths.value,
     escalation_percent: escalationPercent.value,
     escalation_frequency_months: escalationFrequency.value,
     late_fee_enabled: lateFeeEnabled,

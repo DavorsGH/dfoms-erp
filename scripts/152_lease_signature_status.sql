@@ -3,9 +3,10 @@
 -- Apply to staging first. Do NOT apply to production until approved.
 --
 -- Formalizes leases.signature_status (already present live as text) with a
--- CHECK constraint and default 'unsigned'. Leaves lease_document_url in place
--- unused (on-demand PDF; no Storage). Adds acknowledgment timestamps/actors
--- used by the unsigned → sent → partially_signed → signed workflow.
+-- CHECK constraint and default 'unsigned'. Keeps lease_document_url for
+-- optional custom uploads (generated Ghanaian PDF is the default when null).
+-- Adds acknowledgment timestamps/actors used by the unsigned → sent →
+-- partially_signed → signed workflow.
 --
 -- Safe to re-run (idempotent).
 -- =============================================================================
@@ -57,7 +58,7 @@ COMMENT ON COLUMN public.leases.signature_status IS
   'Lease acknowledgment workflow: unsigned | sent | partially_signed | signed. Not a legal e-signature; portal acknowledgment only.';
 
 COMMENT ON COLUMN public.leases.lease_document_url IS
-  'Legacy placeholder for a stored lease PDF URL. Unused — PDFs are generated on demand; do not drop.';
+  'Optional custom/uploaded lease PDF URL. When set, download uses this instead of the on-demand generated Ghanaian tenancy PDF.';
 
 COMMENT ON COLUMN public.leases.landlord_acknowledged_at IS
   'When landlord (or staff on their behalf) acknowledged the lease terms.';

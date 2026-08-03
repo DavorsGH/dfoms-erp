@@ -24,6 +24,12 @@ export default function LandlordPortalLeaseEditForm({
   const [startDate, setStartDate] = useState(detail.startDate);
   const [endDate, setEndDate] = useState(detail.endDate);
   const [rentAmount, setRentAmount] = useState(String(detail.rentAmountGhs));
+  const [advanceRent, setAdvanceRent] = useState(
+    String(detail.advanceRentAmountGhs),
+  );
+  const [terminationNoticeMonths, setTerminationNoticeMonths] = useState(
+    String(detail.terminationNoticeMonths),
+  );
   const [escalationPercent, setEscalationPercent] = useState(
     detail.escalationPercent == null ? "" : String(detail.escalationPercent),
   );
@@ -57,6 +63,8 @@ export default function LandlordPortalLeaseEditForm({
         start_date: startDate,
         end_date: endDate,
         rent_amount_ghs: rentAmount,
+        advance_rent_amount_ghs: advanceRent,
+        termination_notice_months: terminationNoticeMonths,
         escalation_percent: escalationPercent || null,
         escalation_frequency_months: escalationFrequency || null,
         late_fee_enabled: lateFeeEnabled,
@@ -126,6 +134,34 @@ export default function LandlordPortalLeaseEditForm({
             step="0.01"
             value={rentAmount}
             onChange={(event) => setRentAmount(event.target.value)}
+            className={portalInputClassName}
+          />
+        </div>
+        <div>
+          <label className={portalLabelClassName}>Advance rent (GHS)</label>
+          <input
+            required
+            type="number"
+            min="0"
+            step="0.01"
+            value={advanceRent}
+            onChange={(event) => setAdvanceRent(event.target.value)}
+            className={portalInputClassName}
+          />
+        </div>
+        <div>
+          <label className={portalLabelClassName}>
+            Termination notice (months)
+          </label>
+          <input
+            required
+            type="number"
+            min="1"
+            step="1"
+            value={terminationNoticeMonths}
+            onChange={(event) =>
+              setTerminationNoticeMonths(event.target.value)
+            }
             className={portalInputClassName}
           />
         </div>
