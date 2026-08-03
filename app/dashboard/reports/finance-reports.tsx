@@ -1075,6 +1075,13 @@ export function ExpenseReport({
       "",
       report.totalAccrued,
     ]);
+    csvRows.push([
+      "",
+      "",
+      "Total Settled (No Cash Impact)",
+      "",
+      report.totalSettledNoCash,
+    ]);
 
     downloadCsv(
       `expense-report-${year}-${String(month).padStart(2, "0")}.csv`,
@@ -1187,7 +1194,7 @@ export function ExpenseReport({
           </table>
         </ScrollableTable>
         {hasRows ? (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Total Paid
@@ -1208,6 +1215,17 @@ export function ExpenseReport({
               </p>
               <p className="mt-1 text-xs text-slate-500">
                 Excluded from Cash Position until paid
+              </p>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Total Settled (No Cash Impact)
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[#0f2744]">
+                {formatReportCurrency(report.totalSettledNoCash)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Resolved; cash already posted elsewhere (e.g. AP)
               </p>
             </div>
           </div>

@@ -14,6 +14,13 @@ import {
 } from "./expense-register-utils";
 import { resolveManualExpenseReceiptNo } from "./expense-register-api";
 import {
+  canMarkAutoPostedExpenseAsPaid,
+  getRegisterRowClassName,
+  isAutoPostedExpenseRegisterEntry,
+  isPayrollEssnitExpense,
+  markAutoPostedExpensePaid,
+} from "./register-auto-posted-utils";
+import {
   computePurchaseTaxAmounts,
   computeWhtAmount,
   resolveDefaultWhtRate,
@@ -29,7 +36,6 @@ import {
 } from "./tax-ledger-sync";
 import RegisterRowActions, {
   confirmDeleteEntry,
-  getStripedRowClassName,
   toDateInputValue,
 } from "./register-row-actions";
 import {
@@ -98,6 +104,8 @@ const PAYMENT_STATUS_OPTIONS = [
   "Paid",
   "Overdue",
   "Accrued",
+  "Accrued - Not Yet Paid",
+  "Settled (No Cash Impact)",
 ];
 
 const inputClassName =
@@ -147,6 +155,7 @@ export default function ExpenseRegister({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   // Once the user types a WHT amount we stop overwriting it from Gross × rate.
   const [whtAmountEdited, setWhtAmountEdited] = useState(false);
@@ -321,6 +330,12 @@ export default function ExpenseRegister({
   }
 
   function openEditForm(entry: ExpenseRegisterEntry) {
+    if (isAutoPostedExpenseRegisterEntry(entry)) {
+      setError(
+        "Payroll auto-posted expenses cannot be edited here. Use Mark as Paid when remitting Accrued Employer SSNIT / Accrued Staff Salaries, or Release payroll to reverse the post.",
+      );
+      return;
+    }
     setEditingId(entry.id);
     setWhtAmountEdited(false);
     setForm({
@@ -344,6 +359,35 @@ export default function ExpenseRegister({
       notes: entry.notes ?? "",
     });
     setShowForm(true);
+  }
+
+  async function handleMarkAsPaid(entry: ExpenseRegisterEntry) {
+    if (!canMarkAutoPostedExpenseAsPaid(entry)) {
+      return;
+    }
+
+    const essnit = isPayrollEssnitExpense(entry);
+    const confirmMessage = essnit
+      ? `Mark this Employer SSNIT expense as Paid? This posts a Cash Position outflow for ${formatGHS(entry.amount)} and remits matching employer SSNIT Tax Ledger legs (Tier 1 + Tier 2) for the payroll period. Employee SSNIT remains on the Tax Ledger.`
+      : `Mark this Staff Salaries expense as Paid? This posts a Cash Position outflow for ${formatGHS(entry.amount)} and clears Accrued Wages for the period.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setMarkingPaidId(entry.id);
+    setError(null);
+
+    const result = await markAutoPostedExpensePaid(supabase, entry);
+    if (result.error) {
+      setError(result.error);
+      setMarkingPaidId(null);
+      await refreshEntries();
+      return;
+    }
+
+    await refreshEntries();
+    setMarkingPaidId(null);
   }
 
   async function handleDelete(id: string) {
@@ -938,16 +982,25 @@ export default function ExpenseRegister({
               ) : (
                 visibleEntries.map((entry, index) => {
                   const gross = getExpenseGrossBeforeWht(entry);
+                  const autoPosted = isAutoPostedExpenseRegisterEntry(entry);
+                  const showMarkPaid = canMarkAutoPostedExpenseAsPaid(entry);
 
                   return (
                     <tr
                       key={entry.id}
-                      className={getStripedRowClassName(index)}
+                      className={getRegisterRowClassName(index, autoPosted)}
                     >
                       <td className="px-4 py-3">{formatDate(entry.date)}</td>
                       <td className="px-4 py-3">{entry.expense_category}</td>
                       <td className="px-4 py-3">{entry.sub_category}</td>
-                      <td className="px-4 py-3">{entry.description ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        {entry.description ?? "—"}
+                        {autoPosted ? (
+                          <span className="ml-2 text-xs font-medium opacity-80">
+                            (auto-posted)
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3">{entry.vendor}</td>
                       <td className="px-4 py-3">{formatGHS(gross)}</td>
                       <td className="px-4 py-3">
@@ -960,6 +1013,15 @@ export default function ExpenseRegister({
                         onEdit={() => openEditForm(entry)}
                         onDelete={() => handleDelete(entry.id)}
                         deleting={deletingId === entry.id}
+                        disableEdit={autoPosted}
+                        onMarkPaid={
+                          showMarkPaid
+                            ? () => {
+                                void handleMarkAsPaid(entry);
+                              }
+                            : undefined
+                        }
+                        markingPaid={markingPaidId === entry.id}
                       />
                     </tr>
                   );

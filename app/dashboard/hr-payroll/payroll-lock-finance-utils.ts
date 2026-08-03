@@ -17,6 +17,12 @@ export const PAYROLL_EXPENSE_CATEGORY_EMPLOYER_SSNIT =
 export const PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED = "Accrued - Not Yet Paid";
 /** Permanent Lock marks Staff Salaries Paid so Cash Position / Accrued Wages clear. */
 export const PAYROLL_EXPENSE_PAYMENT_STATUS_PAID = "Paid";
+/**
+ * Expense resolved without a new Cash Position hit (cash already via AP settlement
+ * or another mechanism). Distinct from Accrued (still unpaid) and Paid (cash now).
+ */
+export const EXPENSE_PAYMENT_STATUS_SETTLED_NO_CASH =
+  "Settled (No Cash Impact)";
 export const PAYROLL_EXPENSE_SUB_CATEGORY_PAYROLL = "Payroll";
 export const PAYROLL_EXPENSE_PAYMENT_METHOD_ACCRUAL = "Accrual";
 export const PAYROLL_PAYABLE_CATEGORY_SSNIT = "Statutory - SSNIT";

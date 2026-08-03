@@ -1,4 +1,5 @@
 import {
+  EXPENSE_PAYMENT_STATUS_SETTLED_NO_CASH,
   PAYROLL_EXPENSE_AUTO_DESCRIPTION_PREFIX,
   PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES,
   PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
@@ -15,6 +16,8 @@ import {
   FULL_YEAR_INDEX,
   type MonthlyTotals,
 } from "./profit-loss-utils";
+
+export { EXPENSE_PAYMENT_STATUS_SETTLED_NO_CASH };
 
 export const STAFF_SALARIES_ACCRUED_STATUS = PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED;
 
@@ -124,6 +127,30 @@ export function isPaidStatus(paymentStatus: string | null | undefined): boolean 
   return normalized === "paid";
 }
 
+/**
+ * Settled via another cash path (e.g. AP settlement). Same cash engine behavior
+ * as Accrued (no expense_register Cash Position outflow) but distinct labeling —
+ * must not count as unpaid Accrued Staff Salaries / Accrued Wages Payable.
+ */
+export function isSettledNoCashImpactStatus(
+  paymentStatus: string | null | undefined,
+): boolean {
+  const normalized = normalizeStatus(paymentStatus);
+  if (!normalized) {
+    return false;
+  }
+
+  if (normalized === normalizeStatus(EXPENSE_PAYMENT_STATUS_SETTLED_NO_CASH)) {
+    return true;
+  }
+
+  // Tolerate minor punctuation/spacing variants of the canonical label.
+  return (
+    normalized.includes("settled") &&
+    (normalized.includes("no cash") || normalized.includes("non-cash"))
+  );
+}
+
 export function isAccruedPaymentStatus(
   paymentStatus: string | null | undefined,
 ): boolean {
@@ -132,7 +159,11 @@ export function isAccruedPaymentStatus(
     return false;
   }
 
-  if (normalized === "paid" || normalized === "partial") {
+  if (
+    normalized === "paid" ||
+    normalized === "partial" ||
+    isSettledNoCashImpactStatus(paymentStatus)
+  ) {
     return false;
   }
 
@@ -151,6 +182,10 @@ export function isCashOutflowExpense(entry: BalanceSheetCashExpenseEntry): boole
   // Non-Cash inventory moves (COGS / VOID-COGS / Internal Consumption) must
   // never hit cash — even if a row was incorrectly stored as Paid.
   if (normalizeStatus(entry.payment_status) === "non-cash") {
+    return false;
+  }
+  // Settled = cash already elsewhere (AP settlement, etc.) — never double-count.
+  if (isSettledNoCashImpactStatus(entry.payment_status)) {
     return false;
   }
   if (/^(VOID-)?COGS-/i.test(normalizeText(entry.receipt_no))) {
@@ -251,6 +286,11 @@ export function isAccruedStaffSalariesExpense(
   entry: StaffSalariesExpenseEntry,
 ): boolean {
   if (!isStaffSalariesExpenseEntry(entry)) {
+    return false;
+  }
+
+  // Settled clears orphan AP-style pairing without unpaid Accrued Wages.
+  if (isSettledNoCashImpactStatus(entry.payment_status)) {
     return false;
   }
 

@@ -4,9 +4,11 @@ type RegisterRowActionsProps = {
   onArchive?: () => void;
   onVoid?: () => void;
   onPrint?: () => void;
+  onMarkPaid?: () => void;
   deleting?: boolean;
   archiving?: boolean;
   voiding?: boolean;
+  markingPaid?: boolean;
   disableEdit?: boolean;
   disableDelete?: boolean;
   disableArchive?: boolean;
@@ -14,10 +16,14 @@ type RegisterRowActionsProps = {
   voidLabel?: string;
   archiveLabel?: string;
   printLabel?: string;
+  markPaidLabel?: string;
 };
 
 const editButtonClassName =
   "rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const markPaidButtonClassName =
+  "rounded-md border border-emerald-200 px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 const deleteButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -64,9 +70,11 @@ export default function RegisterRowActions({
   onArchive,
   onVoid,
   onPrint,
+  onMarkPaid,
   deleting = false,
   archiving = false,
   voiding = false,
+  markingPaid = false,
   disableEdit = false,
   disableDelete = false,
   disableArchive = false,
@@ -74,6 +82,7 @@ export default function RegisterRowActions({
   voidLabel = "Void Sale",
   archiveLabel = "Archive",
   printLabel = "Print Receipt",
+  markPaidLabel = "Mark as Paid",
 }: RegisterRowActionsProps) {
   return (
     <td className="px-4 py-3 whitespace-nowrap">
@@ -85,6 +94,16 @@ export default function RegisterRowActions({
             className={editButtonClassName}
           >
             {printLabel}
+          </button>
+        ) : null}
+        {onMarkPaid ? (
+          <button
+            type="button"
+            onClick={onMarkPaid}
+            disabled={markingPaid}
+            className={markPaidButtonClassName}
+          >
+            {markingPaid ? "Marking…" : markPaidLabel}
           </button>
         ) : null}
         {!disableEdit ? (

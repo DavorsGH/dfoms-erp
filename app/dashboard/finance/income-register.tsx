@@ -31,9 +31,12 @@ import {
 } from "./tax-ledger-sync";
 import RegisterRowActions, {
   confirmDeleteEntry,
-  getStripedRowClassName,
   toDateInputValue,
 } from "./register-row-actions";
+import {
+  getRegisterRowClassName,
+  isAutoPostedIncomeRegisterEntry,
+} from "./register-auto-posted-utils";
 import {
   RegisterColumnFilterHeader,
   RegisterFilteredTotal,
@@ -265,7 +268,7 @@ export default function IncomeRegister({
   }
 
   function openEditForm(entry: IncomeRegisterEntry) {
-    if (entry.is_system_adjustment) {
+    if (isAutoPostedIncomeRegisterEntry(entry)) {
       setError(
         "This is a system non-cash adjustment (payroll / forfeit). It cannot be edited in the Income Register — editing would re-apply VAT/WHT and AR.",
       );
@@ -294,7 +297,7 @@ export default function IncomeRegister({
 
   async function handleDelete(id: string) {
     const target = entries.find((entry) => entry.id === id);
-    if (target?.is_system_adjustment) {
+    if (target && isAutoPostedIncomeRegisterEntry(target)) {
       setError(
         "System non-cash adjustments cannot be deleted from the Income Register. Reverse them via payroll unlock / the originating correction script.",
       );
@@ -833,11 +836,12 @@ export default function IncomeRegister({
             ) : (
               visibleEntries.map((entry, index) => {
                 const outstanding = getIncomeEntryOutstanding(entry);
+                const autoPosted = isAutoPostedIncomeRegisterEntry(entry);
 
                 return (
                   <tr
                     key={entry.id}
-                    className={getStripedRowClassName(index)}
+                    className={getRegisterRowClassName(index, autoPosted)}
                   >
                     <td className="px-4 py-3">{formatDate(entry.date)}</td>
                     <td className="px-4 py-3">{entry.invoice_no}</td>
@@ -846,9 +850,9 @@ export default function IncomeRegister({
                     </td>
                     <td className="px-4 py-3">
                       {entry.service_category ?? "—"}
-                      {entry.is_system_adjustment ? (
-                        <span className="ml-2 text-xs font-medium text-slate-500">
-                          (system adj)
+                      {autoPosted ? (
+                        <span className="ml-2 text-xs font-medium opacity-80">
+                          (auto-posted)
                         </span>
                       ) : null}
                     </td>
@@ -866,8 +870,8 @@ export default function IncomeRegister({
                       onEdit={() => openEditForm(entry)}
                       onDelete={() => handleDelete(entry.id)}
                       deleting={deletingId === entry.id}
-                      disableEdit={Boolean(entry.is_system_adjustment)}
-                      disableDelete={Boolean(entry.is_system_adjustment)}
+                      disableEdit={autoPosted}
+                      disableDelete={autoPosted}
                     />
                   </tr>
                 );

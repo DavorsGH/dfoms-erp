@@ -1,5 +1,8 @@
 import { calculateDaysOutstanding } from "../finance/accounts-payable-utils";
-import { isPaidStatus } from "../finance/accrued-wages-utils";
+import {
+  isPaidStatus,
+  isSettledNoCashImpactStatus,
+} from "../finance/accrued-wages-utils";
 import { getMonthEndDate } from "../finance/capital-contributions-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
 import {
@@ -473,6 +476,7 @@ export type ExpenseReportLine = {
   paymentStatus: string;
   amount: number;
   isPaid: boolean;
+  isSettledNoCash: boolean;
 };
 
 export type ExpenseReportCategoryGroup = {
@@ -505,6 +509,7 @@ function resolveExpenseReportGroupKey(entry: ExpenseReportSourceEntry): string {
 /**
  * Monthly expense_register report. Paid vs accrued totals reuse isPaidStatus()
  * (same gate as calculateCashAndCashEquivalentsByMonth / isCashOutflowExpense).
+ * Settled (No Cash Impact) is neither Paid (cash) nor Accrued (unpaid).
  */
 export function buildExpenseReport(
   entries: ExpenseReportSourceEntry[],
@@ -515,6 +520,7 @@ export function buildExpenseReport(
   grandTotal: number;
   totalPaid: number;
   totalAccrued: number;
+  totalSettledNoCash: number;
 } {
   const monthIndex = monthIndexFromMonthNumber(month);
   const grouped = new Map<string, ExpenseReportLine[]>();
@@ -550,6 +556,7 @@ export function buildExpenseReport(
       paymentStatus: entry.payment_status?.trim() || "—",
       amount,
       isPaid: isPaidStatus(entry.payment_status),
+      isSettledNoCash: isSettledNoCashImpactStatus(entry.payment_status),
     };
 
     const rows = grouped.get(groupKey) ?? [];
@@ -581,12 +588,27 @@ export function buildExpenseReport(
       0,
     ),
   );
-  const totalAccrued = roundReportCurrency(grandTotal - totalPaid);
+  const totalSettledNoCash = roundReportCurrency(
+    groups.reduce(
+      (sum, group) =>
+        sum +
+        group.rows.reduce(
+          (groupSum, row) => groupSum + (row.isSettledNoCash ? row.amount : 0),
+          0,
+        ),
+      0,
+    ),
+  );
+  // Accrued = not Paid and not Settled (Pending/Partial/Overdue/Accrued/…).
+  const totalAccrued = roundReportCurrency(
+    grandTotal - totalPaid - totalSettledNoCash,
+  );
 
   return {
     groups,
     grandTotal,
     totalPaid,
     totalAccrued,
+    totalSettledNoCash,
   };
 }
