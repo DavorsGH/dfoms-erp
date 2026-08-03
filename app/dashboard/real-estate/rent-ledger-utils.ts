@@ -4,6 +4,12 @@ export type RentLedgerStatus = "pending" | "partial" | "paid" | "overdue";
 
 export type RentPaymentMethod = "cash" | "bank_transfer";
 
+export type PaystackRentPaymentMethod = "paystack_momo" | "paystack_card";
+
+export type RentLedgerPaymentMethod =
+  | RentPaymentMethod
+  | PaystackRentPaymentMethod;
+
 export type RentVerificationStatus =
   | "not_required"
   | "pending_verification"
@@ -47,6 +53,16 @@ export const MANUAL_PAYMENT_METHOD_OPTIONS: Array<{
   { value: "bank_transfer", label: "Bank Transfer" },
 ];
 
+const RENT_LEDGER_PAYMENT_METHOD_LABELS: Record<
+  RentLedgerPaymentMethod,
+  string
+> = {
+  cash: "Cash",
+  bank_transfer: "Bank Transfer",
+  paystack_momo: "Paystack Mobile Money",
+  paystack_card: "Paystack Card",
+};
+
 export function formatRentLedgerStatus(
   value: string | null | undefined,
 ): string {
@@ -65,11 +81,15 @@ export function formatRentPaymentMethod(
   if (!value) {
     return "—";
   }
-  const match = MANUAL_PAYMENT_METHOD_OPTIONS.find(
+  const known = RENT_LEDGER_PAYMENT_METHOD_LABELS[value as RentLedgerPaymentMethod];
+  if (known) {
+    return known;
+  }
+  const manual = MANUAL_PAYMENT_METHOD_OPTIONS.find(
     (option) => option.value === value,
   );
-  if (match) {
-    return match.label;
+  if (manual) {
+    return manual.label;
   }
   return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }

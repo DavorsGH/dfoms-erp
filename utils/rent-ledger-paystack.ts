@@ -9,10 +9,12 @@ import { fetchEscrowBalanceForLandlord } from "@/utils/payout-management";
 import { roundPayoutMoney } from "@/app/dashboard/real-estate/payouts-utils";
 import {
   formatRentMoney,
+  formatRentPaymentMethod,
   formatRentPeriod,
   resolvePaystackPaymentVerificationStatus,
   resolveRentStatusAfterPayment,
   rentOutstandingGhs,
+  type RentLedgerPaymentMethod,
   type RentLedgerStatus,
   type RentVerificationStatus,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
@@ -81,20 +83,31 @@ export function resolvePaystackRentVerificationStatus(): RentVerificationStatus 
   return resolvePaystackPaymentVerificationStatus();
 }
 
+/**
+ * Map Paystack verify/webhook channel to rent_ledger.payment_method values
+ * allowed by rent_ledger_payment_method_check (paystack_momo | paystack_card |
+ * cash | bank_transfer).
+ */
+export function paymentMethodFromPaystackChannel(
+  channel: string | null | undefined,
+): RentLedgerPaymentMethod {
+  const normalized = (channel ?? "").trim().toLowerCase();
+  if (normalized === "mobile_money" || normalized === "mobile money") {
+    return "paystack_momo";
+  }
+  if (normalized === "card") {
+    return "paystack_card";
+  }
+  // Portal initialize restricts channels to mobile_money + card; MoMo is the
+  // common Ghana default when verify omits channel.
+  return "paystack_momo";
+}
+
+/** @deprecated Use paymentMethodFromPaystackChannel + formatRentPaymentMethod */
 export function paymentMethodLabelFromPaystackChannel(
   channel: string | null | undefined,
 ): string {
-  const normalized = (channel ?? "").trim().toLowerCase();
-  if (normalized === "mobile_money" || normalized === "mobile money") {
-    return "Paystack Mobile Money";
-  }
-  if (normalized === "card") {
-    return "Paystack Card";
-  }
-  if (normalized) {
-    return `Paystack ${normalized.replace(/_/g, " ")}`;
-  }
-  return "Paystack";
+  return formatRentPaymentMethod(paymentMethodFromPaystackChannel(channel));
 }
 
 export function isRentLedgerPaystackContext(data: JsonRecord): boolean {
@@ -615,7 +628,8 @@ export async function fulfillRentLedgerPaystackPayment(
     );
   }
 
-  const paymentMethod = paymentMethodLabelFromPaystackChannel(options.channel);
+  const paymentMethod = paymentMethodFromPaystackChannel(options.channel);
+  const paymentMethodLabel = formatRentPaymentMethod(paymentMethod);
   const paidAtIso = options.paidAt?.trim() || new Date().toISOString();
   const nowIso = new Date().toISOString();
   const verificationStatus = resolvePaystackRentVerificationStatus();
@@ -644,7 +658,7 @@ export async function fulfillRentLedgerPaystackPayment(
       row.creditGhs,
     );
     const existingNotes = (row.entry.notes ?? "").trim();
-    const paymentNote = `Payment ${apply.toFixed(2)} via ${paymentMethod} (Paystack ${reference}).`;
+    const paymentNote = `Payment ${apply.toFixed(2)} via ${paymentMethodLabel} (Paystack ${reference}).`;
     const nextNotes = [existingNotes, paymentNote, marker]
       .filter(Boolean)
       .join("\n");
@@ -721,7 +735,7 @@ export async function fulfillRentLedgerPaystackPayment(
         amountGhs: totalApplied,
         periodStart: notifyPeriodStart,
         periodEnd: notifyPeriodEnd,
-        paymentMethod,
+        paymentMethod: paymentMethodLabel,
         escrowBalanceAfterGhs,
         lesseeId,
       });
@@ -742,7 +756,7 @@ export async function fulfillRentLedgerPaystackPayment(
         amountGhs: totalApplied,
         periodStart: notifyPeriodStart,
         periodEnd: notifyPeriodEnd,
-        paymentMethod,
+        paymentMethod: paymentMethodLabel,
         reference,
       });
     } catch (error) {
