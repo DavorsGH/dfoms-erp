@@ -26,6 +26,17 @@ export type PortalUnpaidRent = {
   statusLabel: string;
 };
 
+export type PortalOtherCharge = {
+  entryId: string;
+  description: string;
+  periodStart: string;
+  amountDueGhs: number;
+  amountPaidGhs: number;
+  outstandingGhs: number;
+  status: string;
+  statusLabel: string;
+};
+
 export type PortalDashboardData = {
   leaseId: string;
   propertyName: string;
@@ -59,6 +70,10 @@ export type PortalDashboardData = {
   rentPeriodStart: string | null;
   rentPeriodEnd: string | null;
   unpaidRent: PortalUnpaidRent | null;
+  otherCharges: PortalOtherCharge[];
+  otherChargesOutstandingGhs: number;
+  paymentTotalGhs: number;
+  paymentEntryIds: string[];
   terminationRequestStatus: string | null;
   pendingTerminationReason: string | null;
 };
@@ -171,12 +186,12 @@ async function loadDashboardWithClient(
     client
       .from("rent_ledger")
       .select(
-        "entry_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs",
+        "entry_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, charge_type, description",
       )
       .eq("tenant_id", session.tenantId)
       .eq("lease_id", lease.lease_id)
       .order("period_start", { ascending: false })
-      .limit(12),
+      .limit(48),
     client
       .from("security_deposits")
       .select("amount_ghs")
@@ -255,16 +270,21 @@ async function loadDashboardWithClient(
       amount_due_ghs: number | string;
       amount_paid_ghs: number | string;
       credit_ghs?: number | string | null;
+      charge_type?: string | null;
+      description?: string | null;
     }> | null) ?? [];
 
-  const rentRow = ledgerRows[0] ?? null;
+  const rentLedgerRows = ledgerRows.filter(
+    (row) => (row.charge_type ?? "rent") === "rent",
+  );
+  const rentRow = rentLedgerRows[0] ?? null;
   const rentStatusLabel = rentRow?.status
     ? formatRentLedgerStatus(rentRow.status)
     : "No rent entries yet";
 
-  // Most recent unpaid / partially paid row (portal Pay Rent target).
+  // Most recent unpaid / partially paid rent row (portal Pay Rent target).
   let unpaidRent: PortalUnpaidRent | null = null;
-  for (const row of ledgerRows) {
+  for (const row of rentLedgerRows) {
     if (row.status === "paid") {
       continue;
     }
@@ -287,6 +307,42 @@ async function loadDashboardWithClient(
     };
     break;
   }
+
+  const otherCharges: PortalOtherCharge[] = [];
+  for (const row of ledgerRows) {
+    if (row.charge_type !== "one_time" || row.status === "paid") {
+      continue;
+    }
+    const amountDue = Number(row.amount_due_ghs) || 0;
+    const amountPaid = Number(row.amount_paid_ghs) || 0;
+    const creditGhs = Number(row.credit_ghs) || 0;
+    const outstanding = rentOutstandingGhs(amountDue, amountPaid, creditGhs);
+    if (outstanding <= 0) {
+      continue;
+    }
+    otherCharges.push({
+      entryId: row.entry_id,
+      description: row.description?.trim() || "Other charge",
+      periodStart: row.period_start,
+      amountDueGhs: amountDue,
+      amountPaidGhs: amountPaid,
+      outstandingGhs: outstanding,
+      status: row.status,
+      statusLabel: formatRentLedgerStatus(row.status),
+    });
+  }
+  otherCharges.sort((a, b) => a.periodStart.localeCompare(b.periodStart));
+
+  const otherChargesOutstandingGhs = otherCharges.reduce(
+    (sum, row) => sum + row.outstandingGhs,
+    0,
+  );
+  const paymentEntryIds = [
+    ...(unpaidRent ? [unpaidRent.entryId] : []),
+    ...otherCharges.map((row) => row.entryId),
+  ];
+  const paymentTotalGhs =
+    (unpaidRent?.outstandingGhs ?? 0) + otherChargesOutstandingGhs;
 
   return {
     data: {
@@ -370,6 +426,10 @@ async function loadDashboardWithClient(
       rentPeriodStart: rentRow?.period_start ?? null,
       rentPeriodEnd: rentRow?.period_end ?? null,
       unpaidRent,
+      otherCharges,
+      otherChargesOutstandingGhs,
+      paymentTotalGhs,
+      paymentEntryIds,
       terminationRequestStatus:
         (lease.termination_request_status as string | null) ?? null,
       pendingTerminationReason:

@@ -145,6 +145,7 @@ export async function applySelfFixRentCredit(
     throw new Error("Self-fix credit amount must be greater than zero.");
   }
 
+  // Self-fix credit stays rent-only — never apply to one_time charges.
   const { data: entries, error } = await admin
     .from("rent_ledger")
     .select(
@@ -152,6 +153,7 @@ export async function applySelfFixRentCredit(
     )
     .eq("tenant_id", options.tenantId)
     .eq("lease_id", options.leaseId)
+    .eq("charge_type", "rent")
     .neq("status", "paid")
     .order("period_start", { ascending: true })
     .limit(24);

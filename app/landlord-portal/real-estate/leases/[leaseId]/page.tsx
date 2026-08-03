@@ -21,6 +21,7 @@ import {
 } from "../../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../../pending-approval-view";
 import LandlordPortalLeaseEditForm from "../lease-edit-form";
+import OneTimeChargeForm from "@/app/dashboard/real-estate/one-time-charge-form";
 
 type PageProps = {
   params: Promise<{ leaseId: string }>;
@@ -237,6 +238,31 @@ export default async function LandlordPortalLeaseDetailPage({
               </p>
             )}
           </section>
+
+          {canManage ? (
+            <section className={portalSectionClassName}>
+              <h2 className={portalSectionTitleClassName}>One-time charge</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Add an ad-hoc charge for this lease. Tenants see these under
+                Other charges and can pay them with rent in one transaction.
+              </p>
+              <div className="mt-4">
+                <OneTimeChargeForm
+                  mode="landlord"
+                  tenantId={detail.tenantId}
+                  leaseId={detail.leaseId}
+                  leaseActive={detail.status === "active"}
+                />
+              </div>
+            </section>
+          ) : (
+            <section className={portalSectionClassName}>
+              <h2 className={portalSectionTitleClassName}>One-time charge</h2>
+              <p className="mt-4 text-sm text-slate-600">
+                Davors staff create one-time charges for managed leases.
+              </p>
+            </section>
+          )}
         </>
       ) : null}
     </div>

@@ -6,7 +6,7 @@ import { openPaystackInlineWithAccessCode } from "@/app/dashboard/pos/paystack-i
 import { canInitiatePortalRentPayment } from "@/utils/lease-signature";
 
 type PayRentButtonProps = {
-  entryId: string;
+  entryIds: string[];
   outstandingGhs: number;
   periodLabel: string;
   signatureStatus?: string | null;
@@ -17,6 +17,7 @@ type InitializeResponse = {
   ok?: boolean;
   error?: string;
   entry_id?: string;
+  entry_ids?: string[];
   reference?: string;
   access_code?: string;
   amount_ghs?: number;
@@ -37,10 +38,11 @@ function formatMoney(value: number): string {
 }
 
 /**
- * Portal Pay Rent — same Paystack Inline resumeTransaction pattern as POS MoMo.
+ * Portal Pay — Paystack Inline for rent + outstanding one-time charges
+ * in a single bundled transaction.
  */
 export default function PayRentButton({
-  entryId,
+  entryIds,
   outstandingGhs,
   periodLabel,
   signatureStatus = null,
@@ -63,6 +65,10 @@ export default function PayRentButton({
       setError(blockedMessage);
       return;
     }
+    if (entryIds.length === 0 || outstandingGhs <= 0) {
+      setError("Nothing outstanding to pay.");
+      return;
+    }
 
     setError(null);
     setSuccess(null);
@@ -72,7 +78,10 @@ export default function PayRentButton({
       const initResponse = await fetch("/api/portal/rent/paystack/initialize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entry_id: entryId }),
+        body: JSON.stringify({
+          entry_id: entryIds[0],
+          entry_ids: entryIds,
+        }),
       });
       const initPayload = (await initResponse.json()) as InitializeResponse;
       if (!initResponse.ok || !initPayload.ok) {
@@ -88,6 +97,11 @@ export default function PayRentButton({
         return;
       }
 
+      const confirmEntryIds =
+        initPayload.entry_ids && initPayload.entry_ids.length > 0
+          ? initPayload.entry_ids
+          : entryIds;
+
       await openPaystackInlineWithAccessCode(accessCode, {
         onSuccess: async (transaction) => {
           try {
@@ -97,7 +111,8 @@ export default function PayRentButton({
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  entry_id: entryId,
+                  entry_id: confirmEntryIds[0],
+                  entry_ids: confirmEntryIds,
                   reference: transaction.reference ?? initPayload.reference,
                 }),
               },
@@ -151,7 +166,7 @@ export default function PayRentButton({
         <button
           type="button"
           onClick={() => void handlePay()}
-          disabled={loading || outstandingGhs <= 0}
+          disabled={loading || outstandingGhs <= 0 || entryIds.length === 0}
           className="inline-flex cursor-pointer items-center justify-center rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading

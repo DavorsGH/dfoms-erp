@@ -15,6 +15,8 @@ export type RentLedgerListRow = {
   leaseId: string;
   tenantName: string;
   unitLabel: string;
+  chargeType: "rent" | "one_time";
+  description: string | null;
   periodStart: string;
   periodEnd: string;
   amountDueGhs: number;

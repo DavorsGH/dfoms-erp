@@ -568,6 +568,7 @@ export async function runRentDueReminders(
     .select(
       "entry_id, tenant_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, status, reminders_sent",
     )
+    .eq("charge_type", "rent")
     .neq("status", "paid")
     .not("period_end", "is", null)
     .gte("period_end", asOfDate)

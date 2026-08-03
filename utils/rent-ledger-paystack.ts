@@ -105,7 +105,9 @@ export function isRentLedgerPaystackContext(data: JsonRecord): boolean {
 export type FulfillRentPaystackResult = {
   alreadyFulfilled: boolean;
   entryId: string;
+  entryIds: string[];
   amountPaidGhs: number;
+  totalAppliedGhs: number;
   status: RentLedgerStatus;
   verificationStatus: RentVerificationStatus;
   escrowBalanceAfterGhs: number | null;
@@ -115,6 +117,8 @@ type RentEntryRow = {
   entry_id: string;
   tenant_id: string;
   lease_id: string;
+  charge_type: string | null;
+  description: string | null;
   period_start: string;
   period_end: string;
   amount_due_ghs: number | string;
@@ -128,51 +132,96 @@ type RentEntryRow = {
   notes: string | null;
 };
 
-async function loadRentEntry(
+const RENT_ENTRY_SELECT =
+  "entry_id, tenant_id, lease_id, charge_type, description, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, status, payment_method, payment_date, verification_status, paystack_reference, notes";
+
+function parseEntryIdsFromMetadata(meta: JsonRecord): string[] {
+  const ids: string[] = [];
+  const raw = meta.entry_ids;
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const id = asString(item);
+      if (id) ids.push(id);
+    }
+  } else if (typeof raw === "string") {
+    for (const part of raw.split(",")) {
+      const id = part.trim();
+      if (id) ids.push(id);
+    }
+  }
+  const single =
+    asString(meta.entry_id) ?? asString(meta.rent_ledger_entry_id);
+  if (single && !ids.includes(single)) {
+    ids.unshift(single);
+  }
+  return [...new Set(ids)];
+}
+
+function sortEntriesForAllocation(entries: RentEntryRow[]): RentEntryRow[] {
+  return [...entries].sort((a, b) => {
+    const aRent = (a.charge_type ?? "rent") === "rent" ? 0 : 1;
+    const bRent = (b.charge_type ?? "rent") === "rent" ? 0 : 1;
+    if (aRent !== bRent) return aRent - bRent;
+    const byPeriod = a.period_start.localeCompare(b.period_start);
+    if (byPeriod !== 0) return byPeriod;
+    return a.entry_id.localeCompare(b.entry_id);
+  });
+}
+
+async function loadRentEntries(
   admin: SupabaseClient,
   options: {
+    entryIds?: string[] | null;
     entryId?: string | null;
     reference?: string | null;
     tenantId?: string | null;
   },
-): Promise<RentEntryRow | null> {
-  if (options.entryId) {
+): Promise<RentEntryRow[]> {
+  const explicitIds = [
+    ...new Set(
+      [
+        ...(options.entryIds ?? []),
+        options.entryId?.trim() || null,
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  if (explicitIds.length > 0) {
     let query = admin
       .from("rent_ledger")
-      .select(
-        "entry_id, tenant_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, status, payment_method, payment_date, verification_status, paystack_reference, notes",
-      )
-      .eq("entry_id", options.entryId);
+      .select(RENT_ENTRY_SELECT)
+      .in("entry_id", explicitIds);
     if (options.tenantId) {
       query = query.eq("tenant_id", options.tenantId);
     }
-    const { data, error } = await query.maybeSingle();
+    const { data, error } = await query;
     if (error) {
       throw new Error(error.message);
     }
-    return (data as RentEntryRow | null) ?? null;
+    const rows = (data as RentEntryRow[] | null) ?? [];
+    const byId = new Map(rows.map((row) => [row.entry_id, row]));
+    return explicitIds
+      .map((id) => byId.get(id))
+      .filter((row): row is RentEntryRow => Boolean(row));
   }
 
   if (options.reference) {
     let query = admin
       .from("rent_ledger")
-      .select(
-        "entry_id, tenant_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, status, payment_method, payment_date, verification_status, paystack_reference, notes",
-      )
+      .select(RENT_ENTRY_SELECT)
       .eq("paystack_reference", options.reference)
-      .order("updated_at", { ascending: false })
-      .limit(1);
+      .order("period_start", { ascending: true });
     if (options.tenantId) {
       query = query.eq("tenant_id", options.tenantId);
     }
-    const { data, error } = await query.maybeSingle();
+    const { data, error } = await query;
     if (error) {
       throw new Error(error.message);
     }
-    return (data as RentEntryRow | null) ?? null;
+    return (data as RentEntryRow[] | null) ?? [];
   }
 
-  return null;
+  return [];
 }
 
 async function insertEscrowCollection(options: {
@@ -427,13 +476,15 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Apply a verified Paystack charge to a rent_ledger row.
- * Idempotent via notes marker `[paystack:reference]`.
+ * Apply a verified Paystack charge to one or more rent_ledger rows.
+ * Idempotent via notes marker `[paystack:reference]` on each applied row.
+ * Allocation order: rent rows first, then one_time (by period_start).
  */
 export async function fulfillRentLedgerPaystackPayment(
   admin: SupabaseClient,
   options: {
     entryId?: string | null;
+    entryIds?: string[] | null;
     reference: string;
     paidAmountGhs: number | null;
     paidAt: string | null;
@@ -449,53 +500,74 @@ export async function fulfillRentLedgerPaystackPayment(
     throw new Error("Missing Paystack reference.");
   }
 
-  const entry = await loadRentEntry(admin, {
+  const entries = await loadRentEntries(admin, {
+    entryIds: options.entryIds,
     entryId: options.entryId,
-    reference: options.entryId ? null : reference,
+    reference:
+      options.entryId || (options.entryIds && options.entryIds.length > 0)
+        ? null
+        : reference,
     tenantId: options.metadataTenantId,
   });
 
-  if (!entry) {
+  if (entries.length === 0) {
     throw new Error("Rent ledger entry not found for this payment.");
   }
 
-  if (
-    options.metadataTenantId &&
-    entry.tenant_id !== options.metadataTenantId
-  ) {
-    throw new Error("Rent ledger tenant_id metadata mismatch.");
+  const tenantId = entries[0].tenant_id;
+  const leaseId = entries[0].lease_id;
+  for (const entry of entries) {
+    if (entry.tenant_id !== tenantId || entry.lease_id !== leaseId) {
+      throw new Error("Bundled rent payment entries must share the same lease.");
+    }
+    if (
+      options.metadataTenantId &&
+      entry.tenant_id !== options.metadataTenantId
+    ) {
+      throw new Error("Rent ledger tenant_id metadata mismatch.");
+    }
   }
 
   const marker = paystackAppliedMarker(reference);
-  const existingNotes = (entry.notes ?? "").trim();
-  if (existingNotes.includes(marker)) {
-    const amountDue = roundGhs(Number(entry.amount_due_ghs) || 0);
-    const amountPaid = roundGhs(Number(entry.amount_paid_ghs) || 0);
-    const creditGhs = roundGhs(Number(entry.credit_ghs) || 0);
+  const alreadyApplied = entries.filter((entry) =>
+    (entry.notes ?? "").includes(marker),
+  );
+  if (alreadyApplied.length === entries.length) {
+    const primary = entries[0];
+    const amountDue = roundGhs(Number(primary.amount_due_ghs) || 0);
+    const amountPaid = roundGhs(Number(primary.amount_paid_ghs) || 0);
+    const creditGhs = roundGhs(Number(primary.credit_ghs) || 0);
     const status = resolveRentStatusAfterPayment(
       amountDue,
       amountPaid,
-      (entry.status as RentLedgerStatus) || "pending",
+      (primary.status as RentLedgerStatus) || "pending",
       creditGhs,
     );
-    const { balanceGhs } = await fetchEscrowBalanceForLandlord(
-      admin,
-      entry.tenant_id,
-    );
+    const { balanceGhs } = await fetchEscrowBalanceForLandlord(admin, tenantId);
     return {
       alreadyFulfilled: true,
-      entryId: entry.entry_id,
+      entryId: primary.entry_id,
+      entryIds: entries.map((e) => e.entry_id),
       amountPaidGhs: amountPaid,
+      totalAppliedGhs: entries.reduce(
+        (sum, e) => sum + roundGhs(Number(e.amount_paid_ghs) || 0),
+        0,
+      ),
       status,
       verificationStatus: resolvePaystackRentVerificationStatus(),
       escrowBalanceAfterGhs: balanceGhs,
     };
   }
+  if (alreadyApplied.length > 0) {
+    throw new Error(
+      "Partial Paystack fulfillment detected for this reference. Resolve manually before retrying.",
+    );
+  }
 
   const { data: landlordRow, error: landlordError } = await admin
     .from("landlords")
     .select("landlord_type")
-    .eq("tenant_id", entry.tenant_id)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (landlordError) {
@@ -511,74 +583,112 @@ export async function fulfillRentLedgerPaystackPayment(
     throw new Error("Landlord type must be set before accepting rent payments.");
   }
 
-  const amountDue = roundGhs(Number(entry.amount_due_ghs) || 0);
-  const existingPaid = roundGhs(Number(entry.amount_paid_ghs) || 0);
-  const creditGhs = roundGhs(Number(entry.credit_ghs) || 0);
-  const outstanding = rentOutstandingGhs(amountDue, existingPaid, creditGhs);
+  const ordered = sortEntriesForAllocation(entries);
+  const outstandingByEntry = ordered.map((entry) => {
+    const amountDue = roundGhs(Number(entry.amount_due_ghs) || 0);
+    const existingPaid = roundGhs(Number(entry.amount_paid_ghs) || 0);
+    const creditGhs = roundGhs(Number(entry.credit_ghs) || 0);
+    return {
+      entry,
+      amountDue,
+      existingPaid,
+      creditGhs,
+      outstanding: rentOutstandingGhs(amountDue, existingPaid, creditGhs),
+    };
+  });
+
+  const totalOutstanding = roundGhs(
+    outstandingByEntry.reduce((sum, row) => sum + row.outstanding, 0),
+  );
   const paidAmount =
     options.paidAmountGhs != null && Number.isFinite(options.paidAmountGhs)
       ? roundGhs(options.paidAmountGhs)
-      : outstanding;
+      : totalOutstanding;
 
   if (paidAmount <= 0) {
     throw new Error("Paid amount must be greater than zero.");
   }
 
-  // Allow tiny gateway rounding; reject clear underpayment.
-  if (outstanding > 0 && paidAmount + 0.05 < outstanding) {
+  if (totalOutstanding > 0 && paidAmount + 0.05 < totalOutstanding) {
     throw new Error(
-      `Paid amount ${paidAmount.toFixed(2)} is less than outstanding ${outstanding.toFixed(2)}.`,
+      `Paid amount ${paidAmount.toFixed(2)} is less than outstanding ${totalOutstanding.toFixed(2)}.`,
     );
   }
 
-  const applied = outstanding > 0 ? Math.min(paidAmount, outstanding) : paidAmount;
-  const nextPaid = roundGhs(existingPaid + applied);
-  const nextStatus = resolveRentStatusAfterPayment(
-    amountDue,
-    nextPaid,
-    (entry.status as RentLedgerStatus) || "pending",
-    creditGhs,
-  );
-  const verificationStatus = resolvePaystackRentVerificationStatus();
   const paymentMethod = paymentMethodLabelFromPaystackChannel(options.channel);
-  const paidAtIso =
-    options.paidAt?.trim() || new Date().toISOString();
+  const paidAtIso = options.paidAt?.trim() || new Date().toISOString();
   const nowIso = new Date().toISOString();
-  const paymentNote = `Payment ${applied.toFixed(2)} via ${paymentMethod} (Paystack ${reference}).`;
-  const nextNotes = [existingNotes, paymentNote, marker]
-    .filter(Boolean)
-    .join("\n");
+  const verificationStatus = resolvePaystackRentVerificationStatus();
 
+  let remaining = paidAmount;
+  let totalApplied = 0;
   let escrowBalanceAfterGhs: number | null = null;
+  let primaryStatus: RentLedgerStatus = "paid";
+  let primaryPaid = 0;
+  let primarySet = false;
 
-  // Escrow before rent update so a failed insert can retry without a paid-but-unescrowed row.
-  if (landlordType === "davors_managed") {
-    escrowBalanceAfterGhs = await insertEscrowCollection({
-      admin,
-      tenantId: entry.tenant_id,
-      rentEntryId: entry.entry_id,
-      amountGhs: applied,
-      entryDate: paidAtIso,
-    });
+  for (const row of outstandingByEntry) {
+    const apply =
+      row.outstanding > 0
+        ? roundGhs(Math.min(remaining, row.outstanding))
+        : 0;
+    if (apply <= 0) {
+      continue;
+    }
+
+    const nextPaid = roundGhs(row.existingPaid + apply);
+    const nextStatus = resolveRentStatusAfterPayment(
+      row.amountDue,
+      nextPaid,
+      (row.entry.status as RentLedgerStatus) || "pending",
+      row.creditGhs,
+    );
+    const existingNotes = (row.entry.notes ?? "").trim();
+    const paymentNote = `Payment ${apply.toFixed(2)} via ${paymentMethod} (Paystack ${reference}).`;
+    const nextNotes = [existingNotes, paymentNote, marker]
+      .filter(Boolean)
+      .join("\n");
+
+    if (landlordType === "davors_managed") {
+      escrowBalanceAfterGhs = await insertEscrowCollection({
+        admin,
+        tenantId,
+        rentEntryId: row.entry.entry_id,
+        amountGhs: apply,
+        entryDate: paidAtIso,
+      });
+    }
+
+    const { error: updateError } = await admin
+      .from("rent_ledger")
+      .update({
+        amount_paid_ghs: nextPaid,
+        payment_method: paymentMethod,
+        payment_date: paidAtIso,
+        status: nextStatus,
+        verification_status: verificationStatus,
+        paystack_reference: reference,
+        notes: nextNotes || null,
+        updated_at: nowIso,
+      })
+      .eq("tenant_id", tenantId)
+      .eq("entry_id", row.entry.entry_id);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+
+    remaining = roundGhs(remaining - apply);
+    totalApplied = roundGhs(totalApplied + apply);
+    if (!primarySet) {
+      primaryStatus = nextStatus;
+      primaryPaid = nextPaid;
+      primarySet = true;
+    }
   }
 
-  const { error: updateError } = await admin
-    .from("rent_ledger")
-    .update({
-      amount_paid_ghs: nextPaid,
-      payment_method: paymentMethod,
-      payment_date: paidAtIso,
-      status: nextStatus,
-      verification_status: verificationStatus,
-      paystack_reference: reference,
-      notes: nextNotes || null,
-      updated_at: nowIso,
-    })
-    .eq("tenant_id", entry.tenant_id)
-    .eq("entry_id", entry.entry_id);
-
-  if (updateError) {
-    throw new Error(updateError.message);
+  if (totalApplied <= 0) {
+    throw new Error("Nothing outstanding to apply this payment to.");
   }
 
   let lesseeId = options.metadataLesseeId?.trim() || null;
@@ -586,20 +696,31 @@ export async function fulfillRentLedgerPaystackPayment(
     const { data: lease } = await admin
       .from("leases")
       .select("lessee_id")
-      .eq("tenant_id", entry.tenant_id)
-      .eq("lease_id", entry.lease_id)
+      .eq("tenant_id", tenantId)
+      .eq("lease_id", leaseId)
       .maybeSingle();
     lesseeId = lease?.lessee_id ?? null;
   }
 
+  const primaryEntry = ordered[0];
+  const periodLabelEntries = ordered.filter((e) =>
+    outstandingByEntry.some(
+      (row) => row.entry.entry_id === e.entry_id && row.outstanding > 0,
+    ),
+  );
+  const notifyPeriodStart = periodLabelEntries[0]?.period_start ?? primaryEntry.period_start;
+  const notifyPeriodEnd =
+    periodLabelEntries[periodLabelEntries.length - 1]?.period_end ??
+    primaryEntry.period_end;
+
   if (!options.skipNotify && lesseeId) {
     try {
       await notifyRentPaystackSuccess({
-        tenantId: entry.tenant_id,
+        tenantId,
         landlordType,
-        amountGhs: applied,
-        periodStart: entry.period_start,
-        periodEnd: entry.period_end,
+        amountGhs: totalApplied,
+        periodStart: notifyPeriodStart,
+        periodEnd: notifyPeriodEnd,
         paymentMethod,
         escrowBalanceAfterGhs,
         lesseeId,
@@ -612,16 +733,15 @@ export async function fulfillRentLedgerPaystackPayment(
     }
   }
 
-  // Staff ops alert — only on fresh fulfillment (idempotent path returns earlier).
   if (!options.skipNotify) {
     try {
       await notifyStaffRentPaymentReceived({
-        landlordTenantId: entry.tenant_id,
-        leaseId: entry.lease_id,
-        entryId: entry.entry_id,
-        amountGhs: applied,
-        periodStart: entry.period_start,
-        periodEnd: entry.period_end,
+        landlordTenantId: tenantId,
+        leaseId,
+        entryId: primaryEntry.entry_id,
+        amountGhs: totalApplied,
+        periodStart: notifyPeriodStart,
+        periodEnd: notifyPeriodEnd,
         paymentMethod,
         reference,
       });
@@ -635,9 +755,11 @@ export async function fulfillRentLedgerPaystackPayment(
 
   return {
     alreadyFulfilled: false,
-    entryId: entry.entry_id,
-    amountPaidGhs: nextPaid,
-    status: nextStatus,
+    entryId: primaryEntry.entry_id,
+    entryIds: ordered.map((e) => e.entry_id),
+    amountPaidGhs: primaryPaid || roundGhs(Number(primaryEntry.amount_paid_ghs) || 0),
+    totalAppliedGhs: totalApplied,
+    status: primaryStatus,
     verificationStatus,
     escrowBalanceAfterGhs,
   };
@@ -651,7 +773,8 @@ export async function processRentLedgerPaystackEvent(
 ): Promise<{ detail: string; ignored?: boolean }> {
   const meta = metadataObject(data);
   const reference = asString(data.reference);
-  const entryId = asString(meta.entry_id) ?? asString(meta.rent_ledger_entry_id);
+  const entryIds = parseEntryIdsFromMetadata(meta);
+  const entryId = entryIds[0] ?? null;
   const metadataTenantId = asString(meta.tenant_id);
   const metadataLesseeId = asString(meta.lessee_id);
   const landlordTypeHint = asString(meta.landlord_type) as LandlordType | null;
@@ -671,18 +794,12 @@ export async function processRentLedgerPaystackEvent(
     };
   }
 
-  if (!entryId && !reference) {
-    return {
-      ignored: true,
-      detail: "rent_ledger charge.success missing entry_id — ignored.",
-    };
-  }
-
   const admin = createAdminClient();
 
   try {
     const result = await fulfillRentLedgerPaystackPayment(admin, {
       entryId,
+      entryIds: entryIds.length > 0 ? entryIds : null,
       reference,
       paidAmountGhs,
       paidAt,
@@ -697,13 +814,11 @@ export async function processRentLedgerPaystackEvent(
     });
 
     return {
-      detail: `rent_ledger charge.success ${result.alreadyFulfilled ? "idempotent" : "applied"} entry ${result.entryId} (ref=${reference}, status=${result.status}).`,
+      detail: `rent_ledger charge.success ${result.alreadyFulfilled ? "idempotent" : "applied"} entries ${result.entryIds.join(",")} (ref=${reference}, applied=${result.totalAppliedGhs}, status=${result.status}).`,
     };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown rent fulfillment error";
-    // Not found / mismatch → ignore so subscription handler isn't wrongly hit
-    // (caller already branched on context). Surface as error via throw for webhook.
     throw new Error(`rent_ledger fulfillment failed: ${message}`);
   }
 }

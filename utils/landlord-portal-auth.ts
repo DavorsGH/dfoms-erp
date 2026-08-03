@@ -969,6 +969,8 @@ export type LandlordPortalRentLedgerBrowseRow = {
   leaseId: string;
   lesseeName: string;
   unitLabel: string;
+  chargeType: "rent" | "one_time";
+  description: string | null;
   periodStart: string;
   periodEnd: string;
   amountDueGhs: number;
@@ -1623,7 +1625,7 @@ export async function fetchLandlordPortalRentLedgerBrowse(
     admin
       .from("rent_ledger")
       .select(
-        "entry_id, lease_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, payment_method, notes",
+        "entry_id, lease_id, charge_type, description, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, payment_method, notes",
       )
       .eq("tenant_id", tenantId)
       .order("period_start", { ascending: false })
@@ -1654,6 +1656,8 @@ export async function fetchLandlordPortalRentLedgerBrowse(
   for (const row of (rentRows as Array<{
     entry_id: string;
     lease_id: string;
+    charge_type?: string | null;
+    description?: string | null;
     period_start: string;
     period_end: string;
     status: string;
@@ -1679,6 +1683,8 @@ export async function fetchLandlordPortalRentLedgerBrowse(
       unitLabel: unit
         ? `${maps.propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
         : "—",
+      chargeType: row.charge_type === "one_time" ? "one_time" : "rent",
+      description: row.description?.trim() || null,
       periodStart: row.period_start,
       periodEnd: row.period_end,
       amountDueGhs: amountDue,
@@ -1717,7 +1723,7 @@ export async function fetchLandlordPortalRentLedgerEntry(
   const { data: rentRow, error: rentError } = await admin
     .from("rent_ledger")
     .select(
-      "entry_id, lease_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, payment_method, notes",
+      "entry_id, lease_id, charge_type, description, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, payment_method, notes",
     )
     .eq("tenant_id", tenantId)
     .eq("entry_id", trimmed)
@@ -1764,6 +1770,11 @@ export async function fetchLandlordPortalRentLedgerEntry(
       unitLabel: unit
         ? `${maps.propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
         : "—",
+      chargeType: rentRow.charge_type === "one_time" ? "one_time" : "rent",
+      description:
+        typeof rentRow.description === "string"
+          ? rentRow.description.trim() || null
+          : null,
       periodStart: rentRow.period_start,
       periodEnd: rentRow.period_end,
       amountDueGhs: amountDue,

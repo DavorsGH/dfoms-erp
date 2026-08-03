@@ -13,13 +13,14 @@ export const runtime = "nodejs";
 
 type ConfirmBody = {
   entry_id?: string;
+  entry_ids?: string[];
   reference?: string;
 };
 
 /**
  * Tenant Portal: after Paystack Inline success, verify the charge and fulfill
- * rent_ledger (+ escrow for davors_managed). Webhook is the durable path;
- * this is the fast UX path (same pattern as POS MoMo confirm).
+ * rent_ledger rows (+ escrow for davors_managed). Allocates across rent +
+ * one-time entries bundled at initialize. Webhook is the durable path.
  */
 export async function POST(request: Request) {
   const session = await getPortalLesseeSession();
@@ -34,11 +35,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const entryId = body.entry_id?.trim() ?? "";
   const reference = body.reference?.trim() ?? "";
-  if (!entryId || !reference) {
+  const entryIds = [
+    ...new Set(
+      [
+        ...(Array.isArray(body.entry_ids) ? body.entry_ids : []),
+        body.entry_id?.trim() || null,
+      ]
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter(Boolean),
+    ),
+  ];
+
+  if (!reference || entryIds.length === 0) {
     return NextResponse.json(
-      { error: "entry_id and reference are required" },
+      { error: "entry_id (or entry_ids) and reference are required" },
       { status: 400 },
     );
   }
@@ -73,17 +84,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: entry, error: entryError } = await admin
+  const { data: entries, error: entryError } = await admin
     .from("rent_ledger")
     .select("entry_id, lease_id")
     .eq("tenant_id", session.tenantId)
-    .eq("entry_id", entryId)
-    .maybeSingle();
+    .in("entry_id", entryIds);
 
   if (entryError) {
     return NextResponse.json({ error: entryError.message }, { status: 400 });
   }
-  if (!entry || entry.lease_id !== lease.lease_id) {
+  const rows = (entries as Array<{ entry_id: string; lease_id: string }> | null) ?? [];
+  if (rows.length !== entryIds.length) {
+    return NextResponse.json(
+      { error: "One or more rent ledger entries were not found for your lease." },
+      { status: 404 },
+    );
+  }
+  if (rows.some((row) => row.lease_id !== lease.lease_id)) {
     return NextResponse.json(
       { error: "Rent ledger entry not found for your lease." },
       { status: 404 },
@@ -109,7 +126,8 @@ export async function POST(request: Request) {
 
   try {
     const result = await fulfillRentLedgerPaystackPayment(admin, {
-      entryId,
+      entryId: entryIds[0],
+      entryIds,
       reference: verified.reference,
       paidAmountGhs,
       paidAt: verified.paidAt,
@@ -121,7 +139,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       entry_id: result.entryId,
+      entry_ids: result.entryIds,
       amount_paid_ghs: result.amountPaidGhs,
+      total_applied_ghs: result.totalAppliedGhs,
       status: result.status,
       verification_status: result.verificationStatus,
       already_fulfilled: result.alreadyFulfilled,

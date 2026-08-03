@@ -449,6 +449,7 @@ export default function RentLedger({
                 <tr>
                   <th className={scrollableTableThClassName}>Tenant</th>
                   <th className={scrollableTableThClassName}>Unit</th>
+                  <th className={scrollableTableThClassName}>Type</th>
                   <th className={scrollableTableThClassName}>Period</th>
                   <th className={scrollableTableThClassName}>Amount Due</th>
                   <th className={scrollableTableThClassName}>Amount Paid</th>
@@ -464,7 +465,7 @@ export default function RentLedger({
                 {filteredRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={10}
                       className="px-4 py-8 text-center text-sm text-slate-500"
                     >
                       No rent ledger entries match the current filters.
@@ -481,6 +482,20 @@ export default function RentLedger({
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {row.unitLabel}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-700">
+                        {row.chargeType === "one_time" ? (
+                          <div>
+                            <span className="font-medium">One-time</span>
+                            {row.description ? (
+                              <p className="mt-0.5 text-xs text-slate-500">
+                                {row.description}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          "Rent"
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatRentPeriod(row.periodStart, row.periodEnd)}

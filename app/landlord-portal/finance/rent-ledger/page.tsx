@@ -79,6 +79,7 @@ export default async function LandlordPortalRentLedgerPage() {
               <tr>
                 <th className={scrollableTableThClassName}>Tenant</th>
                 <th className={scrollableTableThClassName}>Unit</th>
+                <th className={scrollableTableThClassName}>Type</th>
                 <th className={scrollableTableThClassName}>Period</th>
                 <th className={scrollableTableThClassName}>Due</th>
                 <th className={scrollableTableThClassName}>Paid</th>
@@ -95,6 +96,20 @@ export default async function LandlordPortalRentLedgerPage() {
                     {row.lesseeName}
                   </td>
                   <td className="px-4 py-3 text-slate-700">{row.unitLabel}</td>
+                  <td className="px-4 py-3 text-slate-700">
+                    {row.chargeType === "one_time" ? (
+                      <span>
+                        One-time
+                        {row.description ? (
+                          <span className="mt-0.5 block text-xs text-slate-500">
+                            {row.description}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      "Rent"
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-700">
                     {formatDate(row.periodStart)} – {formatDate(row.periodEnd)}
                   </td>

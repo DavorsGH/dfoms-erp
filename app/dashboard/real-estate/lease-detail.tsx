@@ -14,6 +14,7 @@ import {
   type LeaseDetail,
 } from "./leases-utils";
 import LeaseSignaturePanel from "./lease-signature-panel";
+import OneTimeChargeForm from "./one-time-charge-form";
 
 type LeaseDetailViewProps = {
   initialDetail: LeaseDetail;
@@ -841,6 +842,22 @@ export default function LeaseDetailView({
             ) : null}
           </>
         )}
+      </section>
+
+      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+          One-time charge
+        </h3>
+        <p className="text-sm text-slate-600">
+          Add an ad-hoc charge for this lease (shown as Other charges in the
+          tenant portal). Included in davors_managed management fee when paid.
+        </p>
+        <OneTimeChargeForm
+          mode="staff"
+          tenantId={detail.tenantId}
+          leaseId={detail.leaseId}
+          leaseActive={detail.status === "active"}
+        />
       </section>
     </div>
   );

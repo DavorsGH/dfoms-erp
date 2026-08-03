@@ -185,17 +185,6 @@ export default async function PortalDashboardPage() {
                   {formatDate(data.unpaidRent.periodEnd)} ·{" "}
                   {data.unpaidRent.statusLabel}
                 </p>
-                <PayRentButton
-                  entryId={data.unpaidRent.entryId}
-                  outstandingGhs={data.unpaidRent.outstandingGhs}
-                  periodLabel={`${formatDate(data.unpaidRent.periodStart)} – ${formatDate(data.unpaidRent.periodEnd)}`}
-                  signatureStatus={data.signatureStatus}
-                  paymentBlockedMessage={
-                    canInitiatePortalRentPayment(data.signatureStatus)
-                      ? null
-                      : portalRentPaymentBlockedMessage(data.signatureStatus)
-                  }
-                />
               </div>
             ) : (
               <p className="mt-4 text-sm text-slate-600">
@@ -203,6 +192,63 @@ export default async function PortalDashboardPage() {
               </p>
             )}
           </section>
+
+          <section className={portalSectionClassName}>
+            <h2 className={portalSectionTitleClassName}>Other charges</h2>
+            {data.otherCharges.length > 0 ? (
+              <ul className="mt-4 space-y-3">
+                {data.otherCharges.map((charge) => (
+                  <li
+                    key={charge.entryId}
+                    className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
+                  >
+                    <p className="text-sm font-medium text-[#0f2744]">
+                      {charge.description}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {formatMoney(charge.outstandingGhs)} outstanding ·{" "}
+                      {formatDate(charge.periodStart)} · {charge.statusLabel}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 text-sm text-slate-600">
+                No outstanding other charges.
+              </p>
+            )}
+          </section>
+
+          {data.paymentTotalGhs > 0 ? (
+            <section className={portalSectionClassName}>
+              <h2 className={portalSectionTitleClassName}>Pay now</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                {data.unpaidRent && data.otherCharges.length > 0
+                  ? "Pay current rent and all outstanding other charges in one transaction."
+                  : data.unpaidRent
+                    ? "Pay your outstanding rent."
+                    : "Pay outstanding other charges."}
+              </p>
+              <p className="mt-3 text-sm font-medium text-[#0f2744]">
+                Total due: {formatMoney(data.paymentTotalGhs)}
+              </p>
+              <PayRentButton
+                entryIds={data.paymentEntryIds}
+                outstandingGhs={data.paymentTotalGhs}
+                periodLabel={
+                  data.unpaidRent
+                    ? `${formatDate(data.unpaidRent.periodStart)} – ${formatDate(data.unpaidRent.periodEnd)}`
+                    : "other charges"
+                }
+                signatureStatus={data.signatureStatus}
+                paymentBlockedMessage={
+                  canInitiatePortalRentPayment(data.signatureStatus)
+                    ? null
+                    : portalRentPaymentBlockedMessage(data.signatureStatus)
+                }
+              />
+            </section>
+          ) : null}
         </>
       )}
     </PortalShell>

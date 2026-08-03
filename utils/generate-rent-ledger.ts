@@ -252,12 +252,14 @@ export async function generateRentLedger(
           .from("rent_ledger")
           .select("lease_id, period_start")
           .eq("period_start", periodStart)
+          .eq("charge_type", "rent")
           .in("lease_id", leaseIds),
         admin
           .from("rent_ledger")
           .select("lease_id, period_start, status")
           .eq("period_start", previous.periodStart)
           .eq("status", "overdue")
+          .eq("charge_type", "rent")
           .in("lease_id", leaseIds),
       ]);
 
@@ -358,6 +360,7 @@ async function markOverdueLedgerRows(
       status: "overdue",
       updated_at: nowIso,
     })
+    .eq("charge_type", "rent")
     .lt("period_end", asOfDate)
     .in("status", ["pending", "partial"]);
 
@@ -518,6 +521,8 @@ async function processActiveLease(args: {
     tenant_id: lease.tenant_id,
     entry_id: entryId,
     lease_id: lease.lease_id,
+    charge_type: "rent",
+    description: null,
     period_start: periodStart,
     period_end: periodEnd,
     amount_due_ghs: amountDue,

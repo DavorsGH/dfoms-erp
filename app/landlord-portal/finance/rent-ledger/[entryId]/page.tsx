@@ -109,6 +109,18 @@ export default async function LandlordPortalPaymentReceiptPage({
             </div>
             <div>
               <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Charge type
+              </dt>
+              <dd className="mt-1 text-sm text-slate-900">
+                {row.chargeType === "one_time"
+                  ? row.description
+                    ? `One-time — ${row.description}`
+                    : "One-time"
+                  : "Rent"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Billing period
               </dt>
               <dd className="mt-1 text-sm text-slate-900">
