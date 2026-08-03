@@ -54,9 +54,20 @@ export default function PortalChooserPage() {
                     HR, CRM, inventory, and operations in one workspace.
                   </p>
                 </div>
-                <Link href="/login" className={primaryButtonClassName}>
-                  Log In
-                </Link>
+                <div className="w-full space-y-3 sm:w-auto sm:min-w-[8.5rem]">
+                  <Link href="/login" className={primaryButtonClassName}>
+                    Log In
+                  </Link>
+                  <p className="text-center text-sm text-slate-600">
+                    New to DFOMS?{" "}
+                    <Link
+                      href="/signup"
+                      className="font-medium text-[#0f2744] underline-offset-2 hover:underline"
+                    >
+                      Sign Up
+                    </Link>
+                  </p>
+                </div>
               </div>
             </div>
           </section>
