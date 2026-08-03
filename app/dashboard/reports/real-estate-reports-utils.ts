@@ -2,7 +2,7 @@ import {
   formatUnitStatus,
   type UnitStatus,
 } from "../real-estate/properties-utils";
-import { rentOutstandingGhs } from "../real-estate/rent-ledger-utils";
+import { rentOutstandingGhs, isActiveLeaseStatus } from "../real-estate/rent-ledger-utils";
 import {
   formatReportPeriodLabel,
   getDefaultReportMonthYear,
@@ -44,6 +44,7 @@ export type ReReportLedgerRow = {
   amountPaidGhs: number;
   creditGhs: number;
   paymentDate: string | null;
+  leaseStatus: string;
 };
 
 export type ReArrearsBucketKey =
@@ -300,6 +301,10 @@ export function buildArrearsAgingReport(
   let totalOutstandingGhs = 0;
 
   for (const row of ledgerRows) {
+    if (!isActiveLeaseStatus(row.leaseStatus)) {
+      continue;
+    }
+
     const outstandingGhs = rentOutstandingGhs(
       row.amountDueGhs,
       row.amountPaidGhs,
@@ -403,11 +408,13 @@ export function buildIncomeByPropertyReport(
     const current = ensure(row);
     if (inPeriod) {
       current.dueGhs += row.amountDueGhs;
-      current.outstandingGhs += rentOutstandingGhs(
-        row.amountDueGhs,
-        row.amountPaidGhs,
-        row.creditGhs,
-      );
+      if (isActiveLeaseStatus(row.leaseStatus)) {
+        current.outstandingGhs += rentOutstandingGhs(
+          row.amountDueGhs,
+          row.amountPaidGhs,
+          row.creditGhs,
+        );
+      }
     }
     if (paidInPeriod) {
       current.collectedGhs += row.amountPaidGhs;

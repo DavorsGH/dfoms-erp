@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   formatRentMoney,
   formatRentPeriod,
+  isActiveLeaseStatus,
   rentOutstandingGhs,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
@@ -588,6 +589,30 @@ export async function runRentDueReminders(
   }
 
   const rows = (data as LedgerRow[] | null) ?? [];
+  const leaseIds = [...new Set(rows.map((row) => row.lease_id))];
+  const activeLeaseIds = new Set<string>();
+
+  if (leaseIds.length > 0) {
+    const { data: activeLeases, error: activeLeaseError } = await admin
+      .from("leases")
+      .select("lease_id, status")
+      .in("lease_id", leaseIds)
+      .eq("status", "active");
+
+    if (activeLeaseError) {
+      throw new Error(
+        `Failed to load lease status for due reminders: ${activeLeaseError.message}`,
+      );
+    }
+
+    for (const lease of (activeLeases as Array<{ lease_id: string; status: string }> | null) ??
+      []) {
+      if (isActiveLeaseStatus(lease.status)) {
+        activeLeaseIds.add(lease.lease_id);
+      }
+    }
+  }
+
   const entries: RentDueReminderEntryResult[] = [];
   let notified = 0;
   let skipped = 0;
@@ -622,6 +647,12 @@ export async function runRentDueReminders(
     if (outstanding <= 0) {
       skipped += 1;
       entries.push({ ...base, skipped: true, skipReason: "no_outstanding" });
+      continue;
+    }
+
+    if (!activeLeaseIds.has(row.lease_id)) {
+      skipped += 1;
+      entries.push({ ...base, skipped: true, skipReason: "lease_not_active" });
       continue;
     }
 

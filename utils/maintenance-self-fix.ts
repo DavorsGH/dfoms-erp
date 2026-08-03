@@ -145,6 +145,22 @@ export async function applySelfFixRentCredit(
     throw new Error("Self-fix credit amount must be greater than zero.");
   }
 
+  const { data: lease, error: leaseError } = await admin
+    .from("leases")
+    .select("status")
+    .eq("tenant_id", options.tenantId)
+    .eq("lease_id", options.leaseId)
+    .maybeSingle();
+
+  if (leaseError) {
+    throw new Error(leaseError.message);
+  }
+  if (!lease || lease.status !== "active") {
+    throw new Error(
+      "Self-fix rent credit can only be applied to an active lease.",
+    );
+  }
+
   // Self-fix credit stays rent-only — never apply to one_time charges.
   const { data: entries, error } = await admin
     .from("rent_ledger")

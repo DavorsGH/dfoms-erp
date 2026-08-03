@@ -8,6 +8,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
 import {
   formatRentLedgerStatus,
+  isActiveLeaseStatus,
   rentOutstandingGhs,
   type RentLedgerStatus,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
@@ -427,8 +428,14 @@ async function loadDashboardWithClient(
         lease_id: string;
         unit_id: string;
         lessee_id: string;
+        status: string;
       }> | null) ?? []
     ).map((row) => [row.lease_id, row]),
+  );
+  const leaseStatusById = new Map(
+    (
+      (leases as Array<{ lease_id: string; status: string }> | null) ?? []
+    ).map((row) => [row.lease_id, row.status]),
   );
 
   const unitCountByProperty = new Map<string, number>();
@@ -496,6 +503,11 @@ async function loadDashboardWithClient(
   const recent: LandlordPortalRentSummary["recent"] = [];
 
   for (const row of ledger) {
+    const leaseActive = isActiveLeaseStatus(leaseStatusById.get(row.lease_id));
+    if (!leaseActive) {
+      continue;
+    }
+
     const amountDue = Number(row.amount_due_ghs) || 0;
     const amountPaid = Number(row.amount_paid_ghs) || 0;
     const creditGhs = Number(row.credit_ghs) || 0;
@@ -854,14 +866,16 @@ function buildLookupMaps(
   properties: unknown,
   lessees: unknown,
 ) {
-  const leaseById = new Map(
-    (
-      (leases as Array<{
-        lease_id: string;
-        unit_id: string;
-        lessee_id: string;
-      }> | null) ?? []
-    ).map((row) => [row.lease_id, row]),
+  const leaseRows =
+    (leases as Array<{
+      lease_id: string;
+      unit_id: string;
+      lessee_id: string;
+      status?: string;
+    }> | null) ?? [];
+  const leaseById = new Map(leaseRows.map((row) => [row.lease_id, row]));
+  const leaseStatusById = new Map(
+    leaseRows.map((row) => [row.lease_id, row.status ?? ""]),
   );
   const unitById = new Map(
     (
@@ -882,7 +896,7 @@ function buildLookupMaps(
       (row) => [row.lessee_id, row.full_name],
     ),
   );
-  return { leaseById, unitById, propertyNameById, lesseeNameById };
+  return { leaseById, unitById, propertyNameById, lesseeNameById, leaseStatusById };
 }
 
 export type LandlordPortalArrearsBuckets = {
@@ -1205,11 +1219,16 @@ export async function fetchLandlordPortalOverviewMetrics(
     period_start: string;
     period_end: string;
   }> | null) ?? []) {
+    const leaseActive = isActiveLeaseStatus(
+      maps.leaseStatusById.get(row.lease_id),
+    );
     const amountDue = Number(row.amount_due_ghs) || 0;
     const amountPaid = Number(row.amount_paid_ghs) || 0;
     const creditGhs = Number(row.credit_ghs) || 0;
     const outstanding = rentOutstandingGhs(amountDue, amountPaid, creditGhs);
-    outstandingBalanceGhs += outstanding;
+    if (leaseActive) {
+      outstandingBalanceGhs += outstanding;
+    }
 
     const paidInMonth =
       row.payment_date &&
@@ -1232,7 +1251,7 @@ export async function fetchLandlordPortalOverviewMetrics(
       }
     }
 
-    if (outstanding > 0 && row.period_end < todayIso) {
+    if (leaseActive && outstanding > 0 && row.period_end < todayIso) {
       const ageDays = daysBetweenIso(row.period_end, todayIso);
       if (ageDays <= 30) {
         arrearsBuckets.days0to30 += outstanding;
@@ -1607,7 +1626,9 @@ export async function fetchLandlordPortalLeasesBrowse(
 
 export async function fetchLandlordPortalRentLedgerBrowse(
   session: LandlordPortalSession,
+  options: { activeLeasesOnly?: boolean } = {},
 ): Promise<{ rows: LandlordPortalRentLedgerBrowseRow[]; error: string | null }> {
+  const activeLeasesOnly = options.activeLeasesOnly !== false;
   if (!landlordPortalHasDataAccess(session)) {
     return { rows: [], error: null };
   }
@@ -1632,7 +1653,7 @@ export async function fetchLandlordPortalRentLedgerBrowse(
       .limit(200),
     admin
       .from("leases")
-      .select("lease_id, unit_id, lessee_id")
+      .select("lease_id, unit_id, lessee_id, status")
       .eq("tenant_id", tenantId),
     admin
       .from("property_units")
@@ -1668,6 +1689,13 @@ export async function fetchLandlordPortalRentLedgerBrowse(
     payment_method: string | null;
     notes: string | null;
   }> | null) ?? []) {
+    if (
+      activeLeasesOnly &&
+      !isActiveLeaseStatus(maps.leaseStatusById.get(row.lease_id))
+    ) {
+      continue;
+    }
+
     const amountDue = Number(row.amount_due_ghs) || 0;
     const amountPaid = Number(row.amount_paid_ghs) || 0;
     const creditGhs = Number(row.credit_ghs) || 0;

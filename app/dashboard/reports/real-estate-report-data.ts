@@ -31,6 +31,7 @@ type LeaseDbRow = {
   tenant_id: string;
   unit_id: string;
   lessee_id: string;
+  status: string;
 };
 
 type LesseeDbRow = {
@@ -228,7 +229,7 @@ export async function fetchArrearsIncomeReportData(
       .in("tenant_id", tenantIds),
     admin
       .from("leases")
-      .select("lease_id, tenant_id, unit_id, lessee_id")
+      .select("lease_id, tenant_id, unit_id, lessee_id, status")
       .in("tenant_id", tenantIds),
     admin
       .from("lessees")
@@ -296,6 +297,7 @@ export async function fetchArrearsIncomeReportData(
       {
         unitId: row.unit_id,
         lesseeId: row.lessee_id,
+        status: row.status,
       },
     ]),
   );
@@ -322,6 +324,7 @@ export async function fetchArrearsIncomeReportData(
       amountPaidGhs: toNumber(row.amount_paid_ghs),
       creditGhs: toNumber(row.credit_ghs),
       paymentDate: row.payment_date,
+      leaseStatus: lease?.status ?? "",
     });
   }
 

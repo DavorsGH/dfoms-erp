@@ -73,7 +73,9 @@ export default async function LandlordPortalRentStatementsPage({
   const period = params.period?.trim() || defaultPeriod;
   const bounds = monthBounds(period) ?? monthBounds(defaultPeriod)!;
 
-  const { rows, error } = await fetchLandlordPortalRentLedgerBrowse(session);
+  const { rows, error } = await fetchLandlordPortalRentLedgerBrowse(session, {
+    activeLeasesOnly: false,
+  });
   const statementRows = rows.filter(
     (row) =>
       row.periodStart >= bounds.start && row.periodStart <= bounds.end,

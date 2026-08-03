@@ -152,7 +152,9 @@ export async function fetchLesseeDetail(
     inspectionsResult,
   ] = await Promise.all([
     fetchLeasesForLandlord(admin, landlord.tenantId),
-    fetchRentLedgerForLandlord(admin, landlord.tenantId),
+    fetchRentLedgerForLandlord(admin, landlord.tenantId, {
+      activeLeasesOnly: false,
+    }),
     fetchMaintenanceRequestsForLandlord(admin, landlord.tenantId),
     fetchInspectionsForLandlord(admin, landlord.tenantId),
   ]);

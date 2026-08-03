@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import {
+  isActiveLeaseStatus,
   isRentLedgerStatus,
   isRentVerificationStatus,
   type RentLedgerListRow,
@@ -12,6 +13,14 @@ import {
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
 
 export type { RentLedgerListRow } from "@/app/dashboard/real-estate/rent-ledger-utils";
+
+export type FetchRentLedgerOptions = {
+  /**
+   * When true (default), omit rows whose lease is not active — for live ops views.
+   * Set false for per-lessee payment history and other historical contexts.
+   */
+  activeLeasesOnly?: boolean;
+};
 
 type LedgerRow = {
   tenant_id: string;
@@ -66,7 +75,9 @@ export async function fetchLandlordTypeForTenant(
 export async function fetchRentLedgerForLandlord(
   admin: SupabaseClient,
   tenantId: string,
+  options: FetchRentLedgerOptions = {},
 ): Promise<{ rows: RentLedgerListRow[]; fetchError: string | null }> {
+  const activeLeasesOnly = options.activeLeasesOnly !== false;
   const landlord = await assertRealEstateLandlordTenant(admin, tenantId);
   if (!landlord.ok) {
     return { rows: [], fetchError: landlord.error };
@@ -99,7 +110,7 @@ export async function fetchRentLedgerForLandlord(
   ] = await Promise.all([
     admin
       .from("leases")
-      .select("lease_id, unit_id, lessee_id")
+      .select("lease_id, unit_id, lessee_id, status")
       .eq("tenant_id", landlord.tenantId)
       .in("lease_id", leaseIds),
     admin
@@ -135,8 +146,15 @@ export async function fetchRentLedgerForLandlord(
         lease_id: string;
         unit_id: string;
         lessee_id: string;
+        status: string;
       }> | null) ?? []
     ).map((row) => [row.lease_id, row]),
+  );
+  const leaseStatusById = new Map(
+    [...leaseById.entries()].map(([leaseId, lease]) => [
+      leaseId,
+      lease.status,
+    ]),
   );
   const propertyNameById = new Map(
     ((properties as Array<{ property_id: string; name: string }> | null) ?? []).map(
@@ -160,6 +178,12 @@ export async function fetchRentLedgerForLandlord(
 
   const rows: RentLedgerListRow[] = [];
   for (const row of ledgerRows) {
+    if (
+      activeLeasesOnly &&
+      !isActiveLeaseStatus(leaseStatusById.get(row.lease_id))
+    ) {
+      continue;
+    }
     if (!isRentLedgerStatus(row.status)) {
       continue;
     }

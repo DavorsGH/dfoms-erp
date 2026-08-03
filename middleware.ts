@@ -87,7 +87,7 @@ export async function middleware(request: NextRequest) {
     pathname === "/landlord-portal/signup";
 
   const publicPaths = new Set([
-    "/",
+    "/", // Public portal chooser (landlord / tenant) — no auth redirects from here
     "/login",
     "/signup",
     "/api/signup",
@@ -156,8 +156,7 @@ export async function middleware(request: NextRequest) {
 
   const needsPersonaCheck =
     user &&
-    (pathname === "/" ||
-      pathname === "/login" ||
+    (pathname === "/login" ||
       pathname === "/signup" ||
       isPortalPublicPath ||
       isLandlordPortalPublicPath ||
@@ -193,8 +192,7 @@ export async function middleware(request: NextRequest) {
   if (
     user &&
     isLesseePortalUser &&
-    (pathname === "/" ||
-      pathname === "/login" ||
+    (pathname === "/login" ||
       pathname === "/signup" ||
       pathname.startsWith("/dashboard") ||
       isLandlordPortalPath)
@@ -214,8 +212,7 @@ export async function middleware(request: NextRequest) {
   if (
     user &&
     isLandlordPortalUser &&
-    (pathname === "/" ||
-      pathname === "/login" ||
+    (pathname === "/login" ||
       pathname === "/signup" ||
       pathname.startsWith("/dashboard") ||
       isPortalPath)
@@ -235,7 +232,7 @@ export async function middleware(request: NextRequest) {
     user &&
     !isLesseePortalUser &&
     !isLandlordPortalUser &&
-    (pathname === "/" || pathname === "/login" || pathname === "/signup")
+    (pathname === "/login" || pathname === "/signup")
   ) {
     const nextParam =
       pathname === "/login"

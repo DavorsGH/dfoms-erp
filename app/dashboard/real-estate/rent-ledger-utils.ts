@@ -189,6 +189,16 @@ export function resolveRentStatusAfterPayment(
   return currentStatus === "overdue" ? "overdue" : "pending";
 }
 
+/**
+ * Live operational rent views (staff ledger, portal balances, reminders) only
+ * surface ledger rows tied to an active lease. Historical views keep all rows.
+ */
+export function isActiveLeaseStatus(
+  status: string | null | undefined,
+): boolean {
+  return status === "active";
+}
+
 /** Outstanding after payments and approved credits (e.g. self-fix). */
 export function rentOutstandingGhs(
   amountDueGhs: number,
