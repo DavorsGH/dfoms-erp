@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLandlordDetail } from "@/utils/landlord-management";
 import RealEstateShell from "../../real-estate-shell";
@@ -32,7 +32,14 @@ export default async function LandlordDetailPage({
         </RealEstateShell>
       );
     }
-    notFound();
+    return (
+      <RealEstateShell sectionTitle="Landlord Detail">
+        <NotificationTargetUnavailablePanel
+          backHref="/dashboard/real-estate/landlords"
+          backLabel="Back to Landlords"
+        />
+      </RealEstateShell>
+    );
   }
 
   return (

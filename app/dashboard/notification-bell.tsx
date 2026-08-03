@@ -55,6 +55,8 @@ export default function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
+  const [clearingRead, setClearingRead] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -205,6 +207,54 @@ export default function NotificationBell() {
     setUnreadCount(0);
   }
 
+  async function handleDelete(row: EmployeeNotificationRow) {
+    setDeletingId(row.id);
+    setError(null);
+    const response = await fetch(`/api/employee-notifications/${row.id}`, {
+      method: "DELETE",
+    });
+    const payload = (await response.json()) as { error?: string };
+    setDeletingId(null);
+
+    if (!response.ok) {
+      setError(payload.error ?? "Failed to delete notification.");
+      return;
+    }
+
+    const wasUnread = row.read_at == null;
+    setNotifications((current) =>
+      current.filter((item) => item.id !== row.id),
+    );
+    if (wasUnread) {
+      setUnreadCount((current) => Math.max(0, current - 1));
+    }
+    if (expandedId === row.id) {
+      setExpandedId(null);
+    }
+  }
+
+  async function handleClearAllRead() {
+    setClearingRead(true);
+    setError(null);
+    const response = await fetch(
+      "/api/employee-notifications/clear-all-read",
+      { method: "DELETE" },
+    );
+    const payload = (await response.json()) as { error?: string };
+    setClearingRead(false);
+
+    if (!response.ok) {
+      setError(payload.error ?? "Failed to clear read notifications.");
+      return;
+    }
+
+    setNotifications((current) =>
+      current.filter((item) => item.read_at == null),
+    );
+  }
+
+  const hasReadNotifications = notifications.some((row) => row.read_at != null);
+
   const badgeLabel =
     unreadCount > 99 ? "99+" : unreadCount > 0 ? String(unreadCount) : null;
 
@@ -236,20 +286,32 @@ export default function NotificationBell() {
           aria-label="Notifications"
           className="absolute right-0 z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg"
         >
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
             <h2 className="text-sm font-semibold text-[#0f2744]">
               Notifications
             </h2>
-            {unreadCount > 0 ? (
-              <button
-                type="button"
-                disabled={markingAll}
-                onClick={() => void handleMarkAllRead()}
-                className="text-xs font-medium text-[#0f2744] hover:underline disabled:opacity-50"
-              >
-                {markingAll ? "Marking…" : "Mark all as read"}
-              </button>
-            ) : null}
+            <div className="flex shrink-0 items-center gap-3">
+              {hasReadNotifications ? (
+                <button
+                  type="button"
+                  disabled={clearingRead}
+                  onClick={() => void handleClearAllRead()}
+                  className="text-xs font-medium text-slate-600 hover:underline disabled:opacity-50"
+                >
+                  {clearingRead ? "Clearing…" : "Clear all read"}
+                </button>
+              ) : null}
+              {unreadCount > 0 ? (
+                <button
+                  type="button"
+                  disabled={markingAll}
+                  onClick={() => void handleMarkAllRead()}
+                  className="text-xs font-medium text-[#0f2744] hover:underline disabled:opacity-50"
+                >
+                  {markingAll ? "Marking…" : "Mark all as read"}
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="max-h-96 overflow-y-auto">
@@ -273,13 +335,16 @@ export default function NotificationBell() {
                   const bodyText = displayNotificationBody(row);
 
                   return (
-                    <li key={row.id}>
+                    <li
+                      key={row.id}
+                      className={`flex items-stretch ${
+                        unread ? "bg-sky-50/60" : "bg-white"
+                      }`}
+                    >
                       <button
                         type="button"
                         onClick={() => void handleSelect(row)}
-                        className={`w-full px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
-                          unread ? "bg-sky-50/60" : "bg-white"
-                        }`}
+                        className="min-w-0 flex-1 px-4 py-3 text-left transition-colors hover:bg-slate-50"
                       >
                         <div className="flex items-start gap-2">
                           {unread ? (
@@ -317,6 +382,15 @@ export default function NotificationBell() {
                             )}
                           </div>
                         </div>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete notification: ${row.title}`}
+                        disabled={deletingId === row.id}
+                        onClick={() => void handleDelete(row)}
+                        className="shrink-0 px-3 text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-red-700 disabled:opacity-50"
+                      >
+                        {deletingId === row.id ? "…" : "Delete"}
                       </button>
                     </li>
                   );

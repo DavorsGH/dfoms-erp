@@ -1,3 +1,5 @@
+import { rewriteStaleNotificationPath } from "@/utils/notification-unavailable";
+
 export const EMPLOYEE_NOTIFICATION_SELECT =
   "id, tenant_id, recipient_user_id, announcement_id, title, body, action_url, read_at, created_at" as const;
 
@@ -85,12 +87,12 @@ export function resolveNotificationHref(row: {
 }): string | null {
   const structured = row.action_url?.trim();
   if (structured) {
-    return toNotificationAppPath(structured);
+    return rewriteStaleNotificationPath(toNotificationAppPath(structured));
   }
 
   const match = row.body.match(TRAILING_URL_LINE);
   if (!match?.[1]) return null;
-  return toNotificationAppPath(match[1]);
+  return rewriteStaleNotificationPath(toNotificationAppPath(match[1]));
 }
 
 /** Body text without a dangling destination URL (structured or legacy trailing). */

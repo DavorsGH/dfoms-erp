@@ -1,3 +1,4 @@
+import { NotificationTargetUnavailableBanner } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLandlordListRows } from "@/utils/landlord-management";
 import { fetchComplaintsForLandlord } from "@/utils/complaint-management";
@@ -23,6 +24,7 @@ export default async function ComplaintsPage({
     requestedId && landlords.some((row) => row.tenantId === requestedId)
       ? requestedId
       : null;
+  const landlordMissing = requestedId != null && selectedLandlordId == null;
 
   const { rows, fetchError: complaintsError } = selectedLandlordId
     ? await fetchComplaintsForLandlord(admin, selectedLandlordId)
@@ -30,6 +32,11 @@ export default async function ComplaintsPage({
 
   return (
     <RealEstateShell sectionTitle="Complaints">
+      {landlordMissing ? (
+        <div className="mb-4">
+          <NotificationTargetUnavailableBanner />
+        </div>
+      ) : null}
       <ComplaintsView
         landlords={landlords}
         selectedLandlordId={selectedLandlordId}

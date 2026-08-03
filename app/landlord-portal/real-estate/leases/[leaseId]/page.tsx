@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
 import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
@@ -68,15 +69,10 @@ export default async function LandlordPortalLeaseDetailPage({
 
   if (!detail && !fetchError) {
     return (
-      <section className={portalSectionClassName}>
-        <p className="text-sm text-slate-600">Lease not found.</p>
-        <Link
-          href="/landlord-portal/real-estate/leases"
-          className="mt-3 inline-block text-sm text-[#0f2744] hover:underline"
-        >
-          Back to leases
-        </Link>
-      </section>
+      <NotificationTargetUnavailablePanel
+        backHref="/landlord-portal/real-estate/leases"
+        backLabel="Back to leases"
+      />
     );
   }
 

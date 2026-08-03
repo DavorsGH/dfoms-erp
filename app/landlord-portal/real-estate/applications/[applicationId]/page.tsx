@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
+import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
 import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
@@ -60,7 +61,12 @@ export default async function LandlordPortalApplicationDetailPage({
     );
   }
   if (!detail) {
-    notFound();
+    return (
+      <NotificationTargetUnavailablePanel
+        backHref="/landlord-portal/real-estate/applications"
+        backLabel="Back to Applications"
+      />
+    );
   }
 
   const canDecide = [

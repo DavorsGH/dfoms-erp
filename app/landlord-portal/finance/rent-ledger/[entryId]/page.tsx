@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
 import {
   fetchLandlordPortalRentLedgerEntry,
   getLandlordPortalSession,
@@ -54,15 +55,10 @@ export default async function LandlordPortalPaymentReceiptPage({
 
   if (!row && !error) {
     return (
-      <section className={portalSectionClassName}>
-        <p className="text-sm text-slate-600">Payment entry not found.</p>
-        <Link
-          href="/landlord-portal/finance/rent-ledger"
-          className="mt-3 inline-block text-sm text-[#0f2744] hover:underline"
-        >
-          Back to rent ledger
-        </Link>
-      </section>
+      <NotificationTargetUnavailablePanel
+        backHref="/landlord-portal/finance/rent-ledger"
+        backLabel="Back to rent ledger"
+      />
     );
   }
 

@@ -1,3 +1,4 @@
+import { NotificationTargetUnavailableBanner } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLandlordListRows } from "@/utils/landlord-management";
 import {
@@ -27,6 +28,8 @@ export default async function RentLedgerPage({
     landlords.some((row) => row.tenantId === requestedLandlordId)
       ? requestedLandlordId
       : null;
+  const landlordMissing =
+    requestedLandlordId != null && selectedLandlordId == null;
 
   let ledgerRows = [] as Awaited<
     ReturnType<typeof fetchRentLedgerForLandlord>
@@ -48,6 +51,11 @@ export default async function RentLedgerPage({
 
   return (
     <RealEstateShell sectionTitle="Rent Ledger">
+      {landlordMissing ? (
+        <div className="mb-4">
+          <NotificationTargetUnavailableBanner />
+        </div>
+      ) : null}
       <RentLedger
         landlords={landlords}
         selectedLandlordId={selectedLandlordId}

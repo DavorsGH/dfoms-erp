@@ -1,3 +1,4 @@
+import { NotificationTargetUnavailableBanner } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLandlordListRows } from "@/utils/landlord-management";
 import {
@@ -29,6 +30,8 @@ export default async function LeasesPage({ searchParams }: LeasesPageProps) {
     landlords.some((row) => row.tenantId === requestedLandlordId)
       ? requestedLandlordId
       : null;
+  const landlordMissing =
+    requestedLandlordId != null && selectedLandlordId == null;
 
   let leaseRows = [] as Awaited<
     ReturnType<typeof fetchLeasesForLandlord>
@@ -98,6 +101,11 @@ export default async function LeasesPage({ searchParams }: LeasesPageProps) {
 
   return (
     <RealEstateShell sectionTitle="Leases">
+      {landlordMissing ? (
+        <div className="mb-4">
+          <NotificationTargetUnavailableBanner />
+        </div>
+      ) : null}
       <Leases
         landlords={landlords}
         selectedLandlordId={selectedLandlordId}

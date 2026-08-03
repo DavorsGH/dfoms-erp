@@ -1,3 +1,4 @@
+import { NotificationTargetUnavailableBanner } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLandlordListRows } from "@/utils/landlord-management";
 import {
@@ -27,6 +28,8 @@ export default async function MaintenancePage({
     landlords.some((row) => row.tenantId === requestedLandlordId)
       ? requestedLandlordId
       : null;
+  const landlordMissing =
+    requestedLandlordId != null && selectedLandlordId == null;
 
   let requestRows = [] as Awaited<
     ReturnType<typeof fetchMaintenanceRequestsForLandlord>
@@ -49,6 +52,11 @@ export default async function MaintenancePage({
 
   return (
     <RealEstateShell sectionTitle="Maintenance">
+      {landlordMissing ? (
+        <div className="mb-4">
+          <NotificationTargetUnavailableBanner />
+        </div>
+      ) : null}
       <Maintenance
         landlords={landlords}
         selectedLandlordId={selectedLandlordId}

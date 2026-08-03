@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { NotificationTargetUnavailableBanner } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { fetchLandlordListRows } from "@/utils/landlord-management";
 import { fetchDavorsManagedRentalApplications } from "@/utils/rental-application-management";
 import {
   formatApplicationDate,
   formatApplicationMoney,
   formatRentalApplicationStatus,
 } from "../applications-utils";
+import { filterDavorsManagedLandlords } from "../landlords-utils";
 import RealEstateShell from "../real-estate-shell";
 import ScrollableTable, {
   scrollableTableBodyClassName,
@@ -23,7 +26,14 @@ export default async function StaffApplicationsPage({ searchParams }: PageProps)
   const landlordFilter = landlordParam?.trim() || null;
 
   const admin = createAdminClient();
-  const { rows, error } = await fetchDavorsManagedRentalApplications(admin);
+  const [{ rows, error }, { rows: allLandlords }] = await Promise.all([
+    fetchDavorsManagedRentalApplications(admin),
+    fetchLandlordListRows(admin),
+  ]);
+  const managedLandlords = filterDavorsManagedLandlords(allLandlords);
+  const landlordMissing =
+    landlordFilter != null &&
+    !managedLandlords.some((row) => row.tenantId === landlordFilter);
   const filtered = landlordFilter
     ? rows.filter((row) => row.tenantId === landlordFilter)
     : rows;
@@ -43,6 +53,8 @@ export default async function StaffApplicationsPage({ searchParams }: PageProps)
             {error}
           </p>
         ) : null}
+
+        {landlordMissing ? <NotificationTargetUnavailableBanner /> : null}
 
         {filtered.length === 0 ? (
           <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-sm text-slate-600">

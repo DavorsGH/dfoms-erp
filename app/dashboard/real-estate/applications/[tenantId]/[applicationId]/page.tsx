@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchRentalApplicationDetail } from "@/utils/rental-application-management";
 import { filterDavorsManagedLandlords } from "../../../landlords-utils";
@@ -25,7 +25,14 @@ export default async function StaffApplicationDetailPage({
   const managed = filterDavorsManagedLandlords(allLandlords);
   const landlord = managed.find((row) => row.tenantId === tenantId);
   if (!landlord) {
-    notFound();
+    return (
+      <RealEstateShell sectionTitle="Application">
+        <NotificationTargetUnavailablePanel
+          backHref="/dashboard/real-estate/applications"
+          backLabel="Back to Applications"
+        />
+      </RealEstateShell>
+    );
   }
 
   const { detail, error } = await fetchRentalApplicationDetail(
@@ -48,7 +55,14 @@ export default async function StaffApplicationDetailPage({
     );
   }
   if (!detail) {
-    notFound();
+    return (
+      <RealEstateShell sectionTitle="Application">
+        <NotificationTargetUnavailablePanel
+          backHref="/dashboard/real-estate/applications"
+          backLabel="Back to Applications"
+        />
+      </RealEstateShell>
+    );
   }
 
   const createLeaseHref = `/dashboard/real-estate/leases?landlord=${encodeURIComponent(tenantId)}&application=${encodeURIComponent(applicationId)}`;

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { NotificationTargetUnavailableBanner } from "@/components/notification-target-unavailable";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -84,13 +85,17 @@ export default function Landlords({
     });
   }, [rows, filterApprovalStatus, filterLandlordType, highlightTenantId]);
 
+  const highlightMissing =
+    Boolean(highlightTenantId) &&
+    !rows.some((row) => row.tenantId === highlightTenantId);
+
   useEffect(() => {
-    if (!highlightTenantId) {
+    if (!highlightTenantId || highlightMissing) {
       return;
     }
     const el = document.getElementById(`landlord-row-${highlightTenantId}`);
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [highlightTenantId, filteredRows]);
+  }, [highlightTenantId, highlightMissing, filteredRows]);
 
   function updateField(field: keyof typeof emptyForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -195,6 +200,8 @@ export default function Landlords({
           {error}
         </p>
       ) : null}
+
+      {highlightMissing ? <NotificationTargetUnavailableBanner /> : null}
 
       {showForm ? (
         <form

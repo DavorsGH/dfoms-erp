@@ -117,3 +117,48 @@ export async function PATCH(_request: Request, context: RouteContext) {
     ),
   });
 }
+
+/** Delete a single notification for the current user (self-delete RLS). */
+export async function DELETE(_request: Request, context: RouteContext) {
+  const auth = await requireAuthenticated();
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  const tenantId = await getCurrentUserTenantId();
+  if (!tenantId || !auth.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await context.params;
+  if (!id?.trim()) {
+    return NextResponse.json(
+      { error: "Notification id is required." },
+      { status: 400 },
+    );
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const { data, error } = await supabase
+    .from("employee_notifications")
+    .delete()
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .eq("recipient_user_id", auth.userId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (!data) {
+    return NextResponse.json(
+      { error: "Notification not found." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, id: data.id });
+}

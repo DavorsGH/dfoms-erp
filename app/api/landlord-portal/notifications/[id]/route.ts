@@ -84,3 +84,43 @@ export async function PATCH(_request: Request, context: RouteContext) {
     ),
   });
 }
+
+/** Delete a single landlord portal notification (self-delete RLS). */
+export async function DELETE(_request: Request, context: RouteContext) {
+  const session = await getLandlordPortalSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  if (!id?.trim()) {
+    return NextResponse.json(
+      { error: "Notification id is required." },
+      { status: 400 },
+    );
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const { data, error } = await supabase
+    .from("landlord_notifications")
+    .delete()
+    .eq("id", id)
+    .eq("tenant_id", session.tenantId)
+    .eq("recipient_user_id", session.authUserId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  if (!data) {
+    return NextResponse.json(
+      { error: "Notification not found." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, id: data.id });
+}

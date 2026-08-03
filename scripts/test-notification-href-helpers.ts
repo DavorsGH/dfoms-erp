@@ -70,4 +70,14 @@ assert(
   "absolute to path",
 );
 
+const staleLandlordDetail = {
+  action_url: "/dashboard/real-estate/landlords/11111111-2222-3333-4444-555555555555",
+  body: "Pending approval",
+};
+assert(
+  resolveNotificationHref(staleLandlordDetail) ===
+    "/dashboard/real-estate/landlords?highlight=11111111-2222-3333-4444-555555555555",
+  "stale landlord detail path rewritten",
+);
+
 console.log("PASS notification href/display helpers");
