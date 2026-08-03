@@ -877,6 +877,18 @@ function warnIfWaived(row: SubscriptionRow, eventType: string): void {
   }
 }
 
+/** Clears manual cancellation churn fields when Paystack reactivates a row. */
+function withSubscriptionReactivationFields(
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...patch,
+    cancellation_reason: null,
+    cancellation_reason_detail: null,
+    cancelled_at: null,
+  };
+}
+
 async function handleChargeSuccess(
   data: JsonRecord,
 ): Promise<{ detail: string; ignored?: boolean }> {
@@ -959,9 +971,9 @@ async function handleChargeSuccess(
   warnIfWaived(row, "charge.success");
 
   const previousStatus = row.subscription_status;
-  const patch: Record<string, unknown> = {
+  const patch: Record<string, unknown> = withSubscriptionReactivationFields({
     subscription_status: "active" satisfies CrmSubscriptionStatus,
-  };
+  });
 
   if (productId) {
     patch.product_id = productId;
@@ -1076,11 +1088,18 @@ async function handleSubscriptionCreate(
   if (emailToken) {
     patch.paystack_email_token = emailToken;
   }
-  // If we only had a trial row before, promote on subscription.create as well.
+  // Promote trialing/cancelled rows (or newly inserted) to active on subscription.create.
   const becomesActive =
-    row.subscription_status === "trialing" || created;
+    row.subscription_status === "trialing" ||
+    row.subscription_status === "cancelled" ||
+    created;
   if (becomesActive) {
-    patch.subscription_status = "active" satisfies CrmSubscriptionStatus;
+    Object.assign(
+      patch,
+      withSubscriptionReactivationFields({
+        subscription_status: "active" satisfies CrmSubscriptionStatus,
+      }),
+    );
   }
 
   await updateSubscription(row.id, patch);

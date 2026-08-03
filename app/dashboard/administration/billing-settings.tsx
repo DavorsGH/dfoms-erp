@@ -186,6 +186,9 @@ export default function BillingSettings({
     subscription_status: subscription.subscriptionStatus ?? "restricted",
     next_billing_date: subscription.nextBillingDate,
   });
+  const changePlanDisabled =
+    subscription.subscriptionStatus === "cancelled" &&
+    !cancelledWithinPaidPeriod;
   const canCancelSubscription =
     !subscription.billingWaived &&
     Boolean(subscription.paystackSubscriptionId) &&
@@ -498,7 +501,7 @@ export default function BillingSettings({
             type="button"
             onClick={() => setPlanModalOpen(true)}
             className={secondaryButtonClassName}
-            disabled={subscription.subscriptionStatus === "cancelled"}
+            disabled={changePlanDisabled}
           >
             Change Plan
           </button>
@@ -987,6 +990,13 @@ export default function BillingSettings({
                 <p className="mt-1 text-sm text-slate-600">
                   Choose a tier and billing cycle. You will be redirected to
                   Paystack to complete payment securely.
+                  {cancelledWithinPaidPeriod ? (
+                    <>
+                      {" "}
+                      Resubscribing starts a new Paystack subscription and
+                      replaces your cancelled plan when payment confirms.
+                    </>
+                  ) : null}
                 </p>
               </div>
               <button
@@ -1005,7 +1015,9 @@ export default function BillingSettings({
                 </p>
               ) : (
                 sortedTiers.map((tier) => {
-                  const isCurrent = tier.id === subscription.productId;
+                  const isCurrent =
+                    tier.id === subscription.productId &&
+                    subscription.subscriptionStatus !== "cancelled";
                   const isLoading = checkoutLoadingId === tier.id;
                   const hasPlan =
                     typeof tier.paystack_plan_code === "string" &&
@@ -1044,6 +1056,11 @@ export default function BillingSettings({
                         {isCurrent ? (
                           <p className="mt-1 text-xs font-medium text-emerald-700">
                             Current plan
+                          </p>
+                        ) : cancelledWithinPaidPeriod &&
+                          tier.id === subscription.productId ? (
+                          <p className="mt-1 text-xs font-medium text-[#0f2744]">
+                            Resubscribe
                           </p>
                         ) : isLoading ? (
                           <p className="mt-1 text-xs font-medium text-slate-500">
