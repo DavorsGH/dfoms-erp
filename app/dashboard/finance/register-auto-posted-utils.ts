@@ -132,7 +132,8 @@ export function parsePayrollPeriodKeyFromEssnitReceipt(
 /**
  * Mark Accrued ESSNIT expense Paid (Cash Position) and remit matching employer
  * SSNIT tax_ledger legs (tier1 + tier2) for that payroll period.
- * Does NOT remit employee SSNIT — that remains on Tax Ledger / full remittance flow.
+ * Does NOT remit employee SSNIT — use Tax Ledger "Remit SSNIT for period" for
+ * full employee + employer remittance cash and liability clear.
  */
 export async function markAutoPostedExpensePaid(
   supabase: SupabaseClient,

@@ -22,10 +22,7 @@ import {
   GRA_TAX_COMPONENTS,
   PAYE_COMPONENTS,
   REMINDER_WINDOW_DAYS,
-  REMITTED_STATUS,
   SSNIT_COMPONENTS,
-  appendRemittedNote,
-  buildRemittanceDueDatePatch,
   daysUntilDate,
   filterEntriesByComponents,
   filterTaxLedgerEntries,
@@ -43,12 +40,18 @@ import {
   listPeriodMonths,
   normalizeTaxLedgerEntry,
   summarizeOpenTaxBalances,
-  todayIsoDate,
   type TaxBalanceSummary,
   type TaxLedgerComponent,
   type TaxLedgerEntry,
   type TaxLedgerFilters,
 } from "./tax-ledger-utils";
+import {
+  REMIT_TAX_KIND_LABEL,
+  computeRemitCashAmount,
+  filterOpenEntriesForRemit,
+  remitTaxForPeriod,
+  type RemitTaxKind,
+} from "./tax-ledger-remit";
 
 type TaxLedgerProps = {
   tenantId: string;
@@ -84,9 +87,6 @@ const inputClassName =
 
 const primaryButtonClassName =
   "rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#18365c] disabled:cursor-not-allowed disabled:opacity-50";
-
-const secondaryButtonClassName =
-  "rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 const TAB_ITEMS: Array<{ id: LedgerTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -237,15 +237,9 @@ function dayOfMonthLabel(day: number): string {
 
 function EntriesTable({
   entries,
-  remittingId,
-  remittingPeriod,
-  onRemitEntry,
   emptyMessage,
 }: {
   entries: TaxLedgerEntry[];
-  remittingId: string | null;
-  remittingPeriod: boolean;
-  onRemitEntry: (entry: TaxLedgerEntry) => void;
   emptyMessage: string;
 }) {
   return (
@@ -261,14 +255,13 @@ function EntriesTable({
             <th className={scrollableTableThClassName}>Rate</th>
             <th className={scrollableTableThClassName}>Tax Amount</th>
             <th className={scrollableTableThClassName}>Status</th>
-            <th className={scrollableTableThClassName}>Actions</th>
           </tr>
         </thead>
         <tbody className={scrollableTableBodyClassName}>
           {entries.length === 0 ? (
             <tr>
               <td
-                colSpan={9}
+                colSpan={8}
                 className="px-4 py-6 text-center text-sm text-slate-500"
               >
                 {emptyMessage}
@@ -306,22 +299,6 @@ function EntriesTable({
                   </td>
                   <td className="px-4 py-3">{formatGHS(entry.tax_amount)}</td>
                   <td className="px-4 py-3">{getStatusLabel(entry.status)}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    {entry.status === "open" ? (
-                      <button
-                        type="button"
-                        disabled={remittingId === entry.id || remittingPeriod}
-                        onClick={() => onRemitEntry(entry)}
-                        className={secondaryButtonClassName}
-                      >
-                        {remittingId === entry.id
-                          ? "Marking…"
-                          : "Mark as Remitted"}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-500">—</span>
-                    )}
-                  </td>
                 </tr>
               );
             })
@@ -480,8 +457,7 @@ export default function TaxLedger({
     status: "open",
   });
   const [savingSettings, setSavingSettings] = useState(false);
-  const [remittingId, setRemittingId] = useState<string | null>(null);
-  const [remittingPeriod, setRemittingPeriod] = useState(false);
+  const [remittingKind, setRemittingKind] = useState<RemitTaxKind | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
@@ -534,18 +510,17 @@ export default function TaxLedger({
     [settings],
   );
 
-  const openInFilterPeriod = useMemo(() => {
+  function openRemitCandidates(kind: RemitTaxKind) {
     if (!filters.periodMonth) {
       return [];
     }
-
-    return scopedEntries.filter(
-      (entry) =>
-        entry.status === "open" &&
-        entry.period_month.slice(0, 10) === filters.periodMonth &&
-        (!filters.taxComponent || entry.tax_component === filters.taxComponent),
+    return filterOpenEntriesForRemit(
+      entries,
+      kind,
+      filters.periodMonth,
+      tenantId,
     );
-  }, [scopedEntries, filters.periodMonth, filters.taxComponent]);
+  }
 
   async function refreshEntries() {
     const { data, error: refreshError } = await supabase
@@ -659,146 +634,121 @@ export default function TaxLedger({
     router.refresh();
   }
 
-  async function markEntriesRemitted(ids: string[]) {
-    if (ids.length === 0) {
+  async function handleRemitForPeriod(kind: RemitTaxKind) {
+    if (!filters.periodMonth) {
+      setError("Select a period month before remitting.");
       return;
     }
 
-    const remittedOn = todayIsoDate();
-    const stamp = appendRemittedNote(null);
-    const updates = entries.filter(
-      (entry) => ids.includes(entry.id) && entry.status === "open",
-    );
+    const candidates = openRemitCandidates(kind);
+    const label = REMIT_TAX_KIND_LABEL[kind];
+    const periodLabel = formatPeriodMonthLabel(filters.periodMonth);
+    const cashPreview = computeRemitCashAmount(candidates, kind);
 
-    if (updates.length === 0) {
-      setInfoMessage("No open entries to mark as remitted.");
+    if (candidates.length === 0) {
+      setInfoMessage(`No open ${label} liabilities for ${periodLabel} to remit.`);
       return;
     }
 
-    const nowIso = new Date().toISOString();
-    const results = await Promise.all(
-      updates.map((entry) =>
-        supabase
-          .from("tax_ledger_entries")
-          .update({
-            status: REMITTED_STATUS,
-            remitted_at: remittedOn,
-            notes: appendRemittedNote(entry.notes),
-            updated_at: nowIso,
-          })
-          .eq("id", entry.id)
-          .eq("tenant_id", tenantId)
-          .eq("status", "open"),
-      ),
-    );
-
-    const firstError = results.find((result) => result.error)?.error;
-    if (firstError) {
-      setError(firstError.message);
+    if (kind === "vat" && cashPreview <= 0) {
+      setInfoMessage(
+        `No net VAT payable for ${periodLabel} (output ≤ input). Nothing to remit.`,
+      );
       return;
     }
 
-    const remittedIds = new Set(updates.map((entry) => entry.id));
-    const remainingOpen = entries.filter(
-      (entry) => entry.status === "open" && !remittedIds.has(entry.id),
-    );
-    const dueDatePatch = buildRemittanceDueDatePatch(
+    const confirmDetail =
+      kind === "ssnit"
+        ? `This posts one Cash Position outflow of ${formatGHS(cashPreview)} (employee + employer), clears ${candidates.length} SSNIT Tax Ledger leg(s), and settles any Accrued Employer SSNIT expense for the period without double-counting cash.`
+        : `This posts one Cash Position outflow of ${formatGHS(cashPreview)} and clears ${candidates.length} open ${label} Tax Ledger leg(s) for the period.`;
+
+    if (
+      !window.confirm(
+        `Remit ${label} for ${periodLabel}?\n\n${confirmDetail}`,
+      )
+    ) {
+      return;
+    }
+
+    setRemittingKind(kind);
+    setError(null);
+    setInfoMessage(null);
+
+    const result = await remitTaxForPeriod(supabase, {
+      tenantId,
+      periodMonth: filters.periodMonth,
+      kind,
       settings,
-      updates.map((entry) => entry.tax_component),
-      remainingOpen,
-    );
+      entries,
+    });
 
-    let dueAdvanceNote = "";
-    if (Object.keys(dueDatePatch).length > 0) {
-      const { data: advancedRow, error: advanceError } = await supabase
+    if (result.error) {
+      setError(result.error);
+    } else if (result.message) {
+      setInfoMessage(result.message);
+    }
+
+    if (result.dueDateAdvanced || result.legsCleared > 0) {
+      const { data: settingsRow } = await supabase
         .from("tax_settings")
-        .update(dueDatePatch)
-        .eq("tenant_id", tenantId)
         .select(TAX_SETTINGS_FULL_SELECT)
-        .single();
-
-      if (advanceError) {
-        setError(
-          `Entries remitted, but due-date advance failed: ${advanceError.message}`,
-        );
-      } else if (advancedRow) {
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (settingsRow) {
         const normalized =
-          normalizeTaxSettings(advancedRow as TaxSettings) ?? settings;
+          normalizeTaxSettings(settingsRow as TaxSettings) ?? settings;
         setSettings(normalized);
         setForm(settingsToForm(normalized));
-        const advancedLabels = Object.keys(dueDatePatch)
-          .map((field) => field.replace(/^next_/, "").replace(/_due_date$/, ""))
-          .join(", ");
-        dueAdvanceNote = ` Next due date advanced for ${advancedLabels}.`;
       }
     }
 
-    setInfoMessage(
-      updates.length === 1
-        ? `Marked 1 entry as remitted (${stamp}).${dueAdvanceNote}`
-        : `Marked ${updates.length} entries as remitted (${stamp}).${dueAdvanceNote}`,
-    );
     await refreshEntries();
+    setRemittingKind(null);
     router.refresh();
   }
 
-  async function handleMarkEntryRemitted(entry: TaxLedgerEntry) {
-    if (entry.status !== "open") {
-      return;
-    }
+  function RemitPeriodButtons({ kinds }: { kinds: RemitTaxKind[] }) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        {kinds.map((kind) => {
+          const candidates = filters.periodMonth
+            ? openRemitCandidates(kind)
+            : [];
+          const cashPreview = computeRemitCashAmount(candidates, kind);
+          const disabled =
+            remittingKind !== null ||
+            !filters.periodMonth ||
+            candidates.length === 0 ||
+            (kind === "vat" && cashPreview <= 0);
+          const label = REMIT_TAX_KIND_LABEL[kind];
 
-    const authority =
-      entry.tax_component === "paye" ||
-      entry.tax_component === "vat_bundle" ||
-      entry.tax_component === "vfrs" ||
-      entry.tax_component === "wht"
-        ? "GRA"
-        : "SSNIT";
-
-    if (
-      !window.confirm(
-        `Mark this statutory ledger entry as remitted to ${authority}? This sets status to Paid.`,
-      )
-    ) {
-      return;
-    }
-
-    setRemittingId(entry.id);
-    setError(null);
-    setInfoMessage(null);
-    await markEntriesRemitted([entry.id]);
-    setRemittingId(null);
-  }
-
-  async function handleMarkPeriodRemitted() {
-    if (!filters.periodMonth || openInFilterPeriod.length === 0) {
-      return;
-    }
-
-    const label = formatPeriodMonthLabel(filters.periodMonth);
-    const scopeHint = filters.taxComponent
-      ? ` (${getComponentLabel(filters.taxComponent as TaxLedgerComponent)})`
-      : activeTab === "gra"
-        ? " (GRA Tax components)"
-        : activeTab === "paye"
-          ? " (PAYE)"
-          : activeTab === "ssnit"
-            ? " (SSNIT components)"
-            : "";
-
-    if (
-      !window.confirm(
-        `Mark all ${openInFilterPeriod.length} open entr${openInFilterPeriod.length === 1 ? "y" : "ies"} for ${label}${scopeHint} as remitted? This sets status to Paid.`,
-      )
-    ) {
-      return;
-    }
-
-    setRemittingPeriod(true);
-    setError(null);
-    setInfoMessage(null);
-    await markEntriesRemitted(openInFilterPeriod.map((entry) => entry.id));
-    setRemittingPeriod(false);
+          return (
+            <button
+              key={kind}
+              type="button"
+              disabled={disabled}
+              onClick={() => handleRemitForPeriod(kind)}
+              className={primaryButtonClassName}
+              title={
+                !filters.periodMonth
+                  ? "Select a period month filter to enable remit"
+                  : candidates.length === 0
+                    ? `No open ${label} liabilities in this period`
+                    : `Posts cash and clears ${label} liabilities for the filtered period`
+              }
+            >
+              {remittingKind === kind
+                ? `Remitting ${label}…`
+                : `Remit ${label} for period${
+                    candidates.length > 0
+                      ? ` (${candidates.length} · ${formatGHS(cashPreview)})`
+                      : ""
+                  }`}
+            </button>
+          );
+        })}
+      </div>
+    );
   }
 
   function renderComponentTab(
@@ -808,6 +758,7 @@ export default function TaxLedger({
     dueCards: React.ReactNode,
     componentOptions: Array<{ value: string; label: string }>,
     directionOptions: Array<{ value: string; label: string }>,
+    remitKinds: RemitTaxKind[],
   ) {
     return (
       <div className="space-y-4">
@@ -824,29 +775,7 @@ export default function TaxLedger({
           <h3 className="text-lg font-semibold text-[#0f2744]">
             {title} Entries
           </h3>
-          <button
-            type="button"
-            disabled={
-              remittingPeriod ||
-              !filters.periodMonth ||
-              openInFilterPeriod.length === 0
-            }
-            onClick={handleMarkPeriodRemitted}
-            className={secondaryButtonClassName}
-            title={
-              filters.periodMonth
-                ? "Remits only open entries in this tab’s component scope"
-                : "Select a period month filter to enable batch remit"
-            }
-          >
-            {remittingPeriod
-              ? "Marking…"
-              : `Mark Period as Remitted${
-                  openInFilterPeriod.length > 0
-                    ? ` (${openInFilterPeriod.length})`
-                    : ""
-                }`}
-          </button>
+          <RemitPeriodButtons kinds={remitKinds} />
         </div>
 
         <FilterBar
@@ -859,9 +788,6 @@ export default function TaxLedger({
 
         <EntriesTable
           entries={filteredEntries}
-          remittingId={remittingId}
-          remittingPeriod={remittingPeriod}
-          onRemitEntry={handleMarkEntryRemitted}
           emptyMessage={`No ${title.toLowerCase()} entries match the current filters.`}
         />
       </div>
@@ -872,7 +798,8 @@ export default function TaxLedger({
     <div className="min-w-0 space-y-6">
       <p className="text-sm text-slate-600">
         Statutory remittance ledger for GRA tax (VAT/WHT), PAYE, and SSNIT —
-        period balances, due-date reminders, and component-scoped remit.
+        period balances, due-date reminders, and Remit-for-period (cash +
+        liability clear).
       </p>
 
       {error && (
@@ -989,6 +916,7 @@ export default function TaxLedger({
             { value: "wht_payable", label: "WHT Payable" },
             { value: "settlement", label: "Settlement" },
           ],
+          ["vat", "wht"],
         )}
 
       {activeTab === "paye" &&
@@ -1009,6 +937,7 @@ export default function TaxLedger({
           />,
           [{ value: "paye", label: "PAYE" }],
           [{ value: "statutory_payable", label: "Statutory Payable" }],
+          ["paye"],
         )}
 
       {activeTab === "ssnit" &&
@@ -1046,6 +975,7 @@ export default function TaxLedger({
             { value: "ssnit_tier2", label: "Tier 2" },
           ],
           [{ value: "statutory_payable", label: "Statutory Payable" }],
+          ["ssnit"],
         )}
 
       {activeTab === "settings" && (
