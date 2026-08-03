@@ -28,14 +28,15 @@ export default async function LandlordPortalUserAccountsPage() {
   }
 
   const { rows, error } = await fetchLandlordPortalLesseeAccounts(session);
+  const canManageAccounts = session.landlordType === "platform_only";
 
   return (
     <section className={portalSectionClassName}>
       <h1 className={portalSectionTitleClassName}>User accounts</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Lessee tenant-portal accounts for your properties. You can resend
-        invites for lessees who have not accepted yet. Staff role management is
-        not available here.
+        {canManageAccounts
+          ? "Lessee tenant-portal accounts for your properties. You can send invites, reset passwords, and deactivate or restore portal login without deleting tenant history. Staff role management is not available here."
+          : "Lessee tenant-portal accounts for your properties. You can resend invites for lessees who have not accepted yet; deactivate and password reset are managed by Davors staff. Staff role management is not available here."}
       </p>
 
       {error ? (
@@ -45,6 +46,7 @@ export default async function LandlordPortalUserAccountsPage() {
           <LandlordPortalLesseeAccounts
             initialRows={rows}
             fetchError={null}
+            canManageAccounts={canManageAccounts}
           />
         </div>
       )}

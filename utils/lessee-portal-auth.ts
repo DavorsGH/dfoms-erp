@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { formatRentLedgerStatus, rentOutstandingGhs } from "@/app/dashboard/real-estate/rent-ledger-utils";
+import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 
 export type PortalLesseeSession = {
   authUserId: string;
@@ -86,6 +87,15 @@ export async function getPortalLesseeSession(): Promise<PortalLesseeSession | nu
     .maybeSingle();
 
   if (error || !lessee) {
+    return null;
+  }
+
+  // Deactivated portal users keep lessees.auth_user_id; Auth ban blocks access.
+  const { data: authUserData } = await admin.auth.admin.getUserById(user.id);
+  const bannedUntil =
+    (authUserData?.user as { banned_until?: string | null } | undefined)
+      ?.banned_until ?? null;
+  if (isAuthUserBanned(bannedUntil)) {
     return null;
   }
 

@@ -26,6 +26,7 @@ import {
   isLesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
 import { isTerminationRequestStatus } from "@/app/dashboard/real-estate/leases-utils";
+import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 import {
   buildLandlordPortalFinancialSummary,
   type LandlordPortalFinancialSummaryViewModel,
@@ -1001,6 +1002,7 @@ export type LandlordPortalWorkspaceProfile = {
 
 export type LandlordPortalLesseeAccountPortalStatus =
   | "active"
+  | "disabled"
   | "pending_invite"
   | "no_account";
 
@@ -1011,7 +1013,13 @@ export type LandlordPortalLesseeAccountRow = {
   phone: string | null;
   portalStatus: LandlordPortalLesseeAccountPortalStatus;
   inviteExpiresAt: string | null;
+  /** Active lease preferred; otherwise most recent lease for detail link. */
+  leaseId: string | null;
   canResendInvite: boolean;
+  /** platform_only only — Auth ban toggle for existing portal users. */
+  canDeactivate: boolean;
+  canReactivate: boolean;
+  canResetPassword: boolean;
 };
 
 export type LandlordPortalSmsCreditPack = {
@@ -2009,27 +2017,39 @@ export async function fetchLandlordPortalLesseeAccounts(
   const admin = createAdminClient();
   const tenantId = session.tenantId;
   const nowIso = new Date().toISOString();
+  const canMutatePortalAccounts = session.landlordType === "platform_only";
 
-  const [{ data: lessees, error: lesseesError }, { data: invites, error: invitesError }] =
-    await Promise.all([
-      admin
-        .from("lessees")
-        .select("lessee_id, full_name, email, phone, auth_user_id")
-        .eq("tenant_id", tenantId)
-        .order("full_name", { ascending: true }),
-      admin
-        .from("lessee_portal_invites")
-        .select("lessee_id, expires_at, used_at")
-        .eq("tenant_id", tenantId)
-        .is("used_at", null)
-        .gt("expires_at", nowIso),
-    ]);
+  const [
+    { data: lessees, error: lesseesError },
+    { data: invites, error: invitesError },
+    { data: leases, error: leasesError },
+  ] = await Promise.all([
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name, email, phone, auth_user_id")
+      .eq("tenant_id", tenantId)
+      .order("full_name", { ascending: true }),
+    admin
+      .from("lessee_portal_invites")
+      .select("lessee_id, expires_at, used_at")
+      .eq("tenant_id", tenantId)
+      .is("used_at", null)
+      .gt("expires_at", nowIso),
+    admin
+      .from("leases")
+      .select("lease_id, lessee_id, status, created_at")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false }),
+  ]);
 
   if (lesseesError) {
     return { rows: [], error: lesseesError.message };
   }
   if (invitesError) {
     return { rows: [], error: invitesError.message };
+  }
+  if (leasesError) {
+    return { rows: [], error: leasesError.message };
   }
 
   const pendingInviteByLessee = new Map<string, string>();
@@ -2044,22 +2064,70 @@ export async function fetchLandlordPortalLesseeAccounts(
     }
   }
 
-  const rows: LandlordPortalLesseeAccountRow[] = (
+  const leaseIdByLessee = new Map<string, string>();
+  const hasActiveLease = new Set<string>();
+  for (const lease of (leases as Array<{
+    lease_id: string;
+    lessee_id: string;
+    status: string;
+  }> | null) ?? []) {
+    if (!leaseIdByLessee.has(lease.lessee_id)) {
+      // Rows are newest-first — first seen is the fallback lease.
+      leaseIdByLessee.set(lease.lessee_id, lease.lease_id);
+    }
+    if (lease.status === "active" && !hasActiveLease.has(lease.lessee_id)) {
+      leaseIdByLessee.set(lease.lessee_id, lease.lease_id);
+      hasActiveLease.add(lease.lessee_id);
+    }
+  }
+
+  const lesseeRows =
     (lessees as Array<{
       lessee_id: string;
       full_name: string;
       email: string | null;
       phone: string | null;
       auth_user_id: string | null;
-    }> | null) ?? []
-  ).map((lessee) => {
+    }> | null) ?? [];
+
+  const banChecks = await Promise.all(
+    lesseeRows.map(async (lessee) => {
+      const authUserId =
+        typeof lessee.auth_user_id === "string"
+          ? lessee.auth_user_id.trim()
+          : "";
+      if (!authUserId) {
+        return { lesseeId: lessee.lessee_id, banned: false };
+      }
+      const { data, error } = await admin.auth.admin.getUserById(authUserId);
+      if (error || !data.user) {
+        return { lesseeId: lessee.lessee_id, banned: false };
+      }
+      const bannedUntil =
+        (data.user as { banned_until?: string | null }).banned_until ?? null;
+      return {
+        lesseeId: lessee.lessee_id,
+        banned: isAuthUserBanned(bannedUntil),
+      };
+    }),
+  );
+  const bannedByLessee = new Map(
+    banChecks.map((row) => [row.lesseeId, row.banned]),
+  );
+
+  const rows: LandlordPortalLesseeAccountRow[] = lesseeRows.map((lessee) => {
     const email =
       typeof lessee.email === "string" ? lessee.email.trim() || null : null;
-    const hasAuth = Boolean(lessee.auth_user_id);
+    const hasAuth = Boolean(
+      typeof lessee.auth_user_id === "string" && lessee.auth_user_id.trim(),
+    );
     const inviteExpiresAt = pendingInviteByLessee.get(lessee.lessee_id) ?? null;
+    const isDisabled = Boolean(bannedByLessee.get(lessee.lessee_id));
 
     let portalStatus: LandlordPortalLesseeAccountPortalStatus = "no_account";
-    if (hasAuth) {
+    if (hasAuth && isDisabled) {
+      portalStatus = "disabled";
+    } else if (hasAuth) {
       portalStatus = "active";
     } else if (inviteExpiresAt) {
       portalStatus = "pending_invite";
@@ -2072,7 +2140,14 @@ export async function fetchLandlordPortalLesseeAccounts(
       phone: typeof lessee.phone === "string" ? lessee.phone : null,
       portalStatus,
       inviteExpiresAt,
+      leaseId: leaseIdByLessee.get(lessee.lessee_id) ?? null,
       canResendInvite: !hasAuth && Boolean(email),
+      canDeactivate:
+        canMutatePortalAccounts && hasAuth && portalStatus === "active",
+      canReactivate:
+        canMutatePortalAccounts && hasAuth && portalStatus === "disabled",
+      canResetPassword:
+        canMutatePortalAccounts && hasAuth && portalStatus === "active",
     };
   });
 

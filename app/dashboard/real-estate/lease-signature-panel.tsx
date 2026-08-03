@@ -1,8 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { pdf } from "@react-pdf/renderer";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
+import {
+  LEASE_DOCUMENT_ACCEPT,
+  LEASE_DOCUMENT_HINT,
+} from "@/utils/lease-document";
 import {
   LEASE_SIGNATURE_DISCLAIMER,
   formatLeaseSignatureStatus,
@@ -46,7 +51,7 @@ export type LeaseSignaturePanelProps = {
   terminationNoticeMonths: number;
   depositAmountGhs: number | null;
   agreementDate: string;
-  /** Custom uploaded lease PDF; preferred over generated default when set. */
+  /** Custom uploaded lease PDF/Word; preferred over generated default when set. */
   leaseDocumentUrl: string | null;
 };
 
@@ -56,10 +61,14 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+const dangerButtonClassName =
+  "rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
 type ActionResponse = {
   ok?: boolean;
   error?: string;
   status?: string;
+  lease_document_url?: string | null;
 };
 
 function apiForMode(mode: LeaseSignaturePanelMode): string | null {
@@ -75,25 +84,44 @@ function apiForMode(mode: LeaseSignaturePanelMode): string | null {
   return null;
 }
 
+function documentUploadApiForMode(mode: LeaseSignaturePanelMode): string | null {
+  if (mode === "staff") {
+    return "/api/admin/leases/upload-document";
+  }
+  if (mode === "landlord_manage") {
+    return "/api/landlord-portal/leases/upload-document";
+  }
+  return null;
+}
+
 export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
   const router = useRouter();
   const [downloading, setDownloading] = useState(false);
   const [working, setWorking] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [documentUrl, setDocumentUrl] = useState(props.leaseDocumentUrl);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDocumentUrl(props.leaseDocumentUrl);
+  }, [props.leaseDocumentUrl]);
 
   const canMarkSent =
     props.mode === "staff" || props.mode === "landlord_manage";
   const canAckLandlord =
     props.mode === "staff" || props.mode === "landlord_manage";
   const canAckTenant = props.mode === "staff" || props.mode === "tenant";
+  const canManageDocument =
+    props.mode === "staff" || props.mode === "landlord_manage";
 
   const status = props.signatureStatus || "unsigned";
   const markSentDisabled =
     status !== "unsigned" && status !== "sent" ? true : status === "sent";
   const landlordAcked = Boolean(props.landlordAcknowledgedAt);
   const tenantAcked = Boolean(props.tenantAcknowledgedAt);
-  const customDocumentUrl = props.leaseDocumentUrl?.trim() || null;
+  const customDocumentUrl = documentUrl?.trim() || null;
+  const busy = downloading || working || uploadingDocument;
 
   async function handleDownloadPdf() {
     setError(null);
@@ -146,6 +174,90 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
       setError("Unable to generate lease PDF.");
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function handleUploadDocument(file: File) {
+    const endpoint = documentUploadApiForMode(props.mode);
+    if (!endpoint) {
+      return;
+    }
+
+    setUploadingDocument(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const formData = new FormData();
+      formData.set("lease_id", props.leaseId);
+      formData.set("file", file);
+      if (props.mode === "staff") {
+        formData.set("tenant_id", props.tenantId);
+      }
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json().catch(() => null)) as ActionResponse | null;
+      if (!response.ok || !payload?.ok) {
+        setError(payload?.error ?? "Unable to upload lease document.");
+        setUploadingDocument(false);
+        return;
+      }
+
+      const nextUrl =
+        typeof payload.lease_document_url === "string"
+          ? payload.lease_document_url
+          : null;
+      setDocumentUrl(nextUrl);
+      setSuccess("Custom lease document uploaded.");
+      setUploadingDocument(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+      setUploadingDocument(false);
+    }
+  }
+
+  async function handleRemoveDocument() {
+    const endpoint = documentUploadApiForMode(props.mode);
+    if (!endpoint) {
+      return;
+    }
+
+    setUploadingDocument(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const formData = new FormData();
+      formData.set("lease_id", props.leaseId);
+      formData.set("action", "remove");
+      if (props.mode === "staff") {
+        formData.set("tenant_id", props.tenantId);
+      }
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json().catch(() => null)) as ActionResponse | null;
+      if (!response.ok || !payload?.ok) {
+        setError(payload?.error ?? "Unable to remove lease document.");
+        setUploadingDocument(false);
+        return;
+      }
+
+      setDocumentUrl(null);
+      setSuccess(
+        "Custom lease document removed. Download will use the generated lease PDF.",
+      );
+      setUploadingDocument(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Remove failed.");
+      setUploadingDocument(false);
     }
   }
 
@@ -206,6 +318,14 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
     }
   }
 
+  const downloadLabel = downloading
+    ? customDocumentUrl
+      ? "Opening…"
+      : "Generating PDF…"
+    : customDocumentUrl
+      ? "Download lease document"
+      : "Download lease PDF";
+
   return (
     <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
       <div>
@@ -254,27 +374,67 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
         </p>
       ) : null}
 
+      {canManageDocument ? (
+        <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+          <p className="text-sm font-medium text-slate-800">
+            Custom lease document
+          </p>
+          <p className="text-xs text-slate-600">
+            Upload a PDF or Word file to replace the generated lease PDF. Remove
+            to fall back to the generated agreement.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <ImageFileUploadButton
+              files={[]}
+              onChange={(next) => {
+                const file = next[0];
+                if (file) {
+                  void handleUploadDocument(file);
+                }
+              }}
+              multiple={false}
+              disabled={busy}
+              accept={LEASE_DOCUMENT_ACCEPT}
+              emptyHint={LEASE_DOCUMENT_HINT}
+              addLabel={
+                uploadingDocument
+                  ? "Uploading…"
+                  : customDocumentUrl
+                    ? "Replace document"
+                    : "Upload document"
+              }
+              showClear={false}
+              resetInputAfterSelect
+            />
+            {customDocumentUrl ? (
+              <button
+                type="button"
+                onClick={() => void handleRemoveDocument()}
+                disabled={busy}
+                className={dangerButtonClassName}
+              >
+                {uploadingDocument ? "Working…" : "Remove custom document"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => void handleDownloadPdf()}
-          disabled={downloading || working}
+          disabled={busy}
           className={secondaryButtonClassName}
         >
-          {downloading
-            ? customDocumentUrl
-              ? "Opening…"
-              : "Generating PDF…"
-            : customDocumentUrl
-              ? "Open uploaded lease"
-              : "Download lease PDF"}
+          {downloadLabel}
         </button>
 
         {canMarkSent ? (
           <button
             type="button"
             onClick={() => void postAction("mark_sent")}
-            disabled={working || downloading || markSentDisabled}
+            disabled={busy || markSentDisabled}
             className={primaryButtonClassName}
           >
             {status === "sent" ? "Already sent" : "Mark sent"}
@@ -285,9 +445,7 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
           <button
             type="button"
             onClick={() => void postAction("acknowledge_landlord")}
-            disabled={
-              working || downloading || landlordAcked || status === "unsigned"
-            }
+            disabled={busy || landlordAcked || status === "unsigned"}
             className={primaryButtonClassName}
           >
             {landlordAcked ? "Landlord acknowledged" : "Acknowledge as landlord"}
@@ -298,9 +456,7 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
           <button
             type="button"
             onClick={() => void postAction("acknowledge_tenant")}
-            disabled={
-              working || downloading || tenantAcked || status === "unsigned"
-            }
+            disabled={busy || tenantAcked || status === "unsigned"}
             className={primaryButtonClassName}
           >
             {tenantAcked ? "Tenant acknowledged" : "Acknowledge as tenant"}

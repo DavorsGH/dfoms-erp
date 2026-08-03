@@ -105,7 +105,7 @@ export type LeaseDetail = {
   terminatedAt: string | null;
   terminationReason: string | null;
   signatureStatus: SignatureStatus;
-  /** Custom uploaded lease PDF URL; when set, preferred over generated default. */
+  /** Custom uploaded lease PDF/Word URL; when set, preferred over generated default. */
   leaseDocumentUrl: string | null;
   landlordAcknowledgedAt: string | null;
   tenantAcknowledgedAt: string | null;

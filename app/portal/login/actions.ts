@@ -8,6 +8,7 @@ import {
   getRequestIp,
   recordFailedLoginAttempt,
 } from "@/utils/login-rate-limit";
+import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 
 export type PortalLoginActionResult =
   | { ok: true }
@@ -65,6 +66,21 @@ export async function portalLoginWithPassword(
       ok: false,
       error:
         "This account is not registered for the Tenant Portal. Use the staff login if you are a Davors user.",
+    };
+  }
+
+  const { data: authUserData } = await admin.auth.admin.getUserById(
+    signInData.user.id,
+  );
+  const bannedUntil =
+    (authUserData?.user as { banned_until?: string | null } | undefined)
+      ?.banned_until ?? null;
+  if (isAuthUserBanned(bannedUntil)) {
+    await supabase.auth.signOut();
+    return {
+      ok: false,
+      error:
+        "This portal account has been deactivated. Contact your landlord or property manager.",
     };
   }
 
