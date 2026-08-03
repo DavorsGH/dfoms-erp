@@ -7,6 +7,7 @@ import {
   isLateFeeType,
   isLeaseStatus,
   isRentChangeStatus,
+  isSignatureStatus,
   isTerminationRequestStatus,
   type DepositStatus,
   type LateFeeType,
@@ -16,6 +17,7 @@ import {
   type LesseeOption,
   type RentChangeStatus,
   type SecurityDepositRecord,
+  type SignatureStatus,
   type TerminationRequestStatus,
   type VacantUnitOption,
 } from "@/app/dashboard/real-estate/leases-utils";
@@ -47,6 +49,11 @@ type LeaseRow = {
   status: string;
   terminated_at: string | null;
   termination_reason: string | null;
+  signature_status: string | null;
+  landlord_acknowledged_at: string | null;
+  tenant_acknowledged_at: string | null;
+  landlord_acknowledged_by: string | null;
+  tenant_acknowledged_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -383,6 +390,14 @@ export async function fetchLeaseDetail(
     lateFeeType = leaseRow.late_fee_type;
   }
 
+  let signatureStatus: SignatureStatus = "unsigned";
+  if (
+    leaseRow.signature_status &&
+    isSignatureStatus(leaseRow.signature_status)
+  ) {
+    signatureStatus = leaseRow.signature_status;
+  }
+
   return {
     detail: {
       leaseId: leaseRow.lease_id,
@@ -411,6 +426,11 @@ export async function fetchLeaseDetail(
       status: leaseRow.status,
       terminatedAt: leaseRow.terminated_at,
       terminationReason: leaseRow.termination_reason,
+      signatureStatus,
+      landlordAcknowledgedAt: leaseRow.landlord_acknowledged_at ?? null,
+      tenantAcknowledgedAt: leaseRow.tenant_acknowledged_at ?? null,
+      landlordAcknowledgedBy: leaseRow.landlord_acknowledged_by ?? null,
+      tenantAcknowledgedBy: leaseRow.tenant_acknowledged_by ?? null,
       createdAt: leaseRow.created_at,
       updatedAt: leaseRow.updated_at,
       deposit,

@@ -20,6 +20,12 @@ export type DepositStatus =
   | "forfeited"
   | "partially_forfeited";
 
+export type SignatureStatus =
+  | "unsigned"
+  | "sent"
+  | "partially_signed"
+  | "signed";
+
 export type VacantUnitOption = {
   unitId: string;
   unitNumber: string;
@@ -88,6 +94,11 @@ export type LeaseDetail = {
   status: LeaseStatus;
   terminatedAt: string | null;
   terminationReason: string | null;
+  signatureStatus: SignatureStatus;
+  landlordAcknowledgedAt: string | null;
+  tenantAcknowledgedAt: string | null;
+  landlordAcknowledgedBy?: string | null;
+  tenantAcknowledgedBy?: string | null;
   createdAt: string;
   updatedAt: string;
   deposit: SecurityDepositRecord | null;
@@ -182,4 +193,13 @@ export function isLateFeeType(value: string): value is LateFeeType {
 
 export function isDepositStatus(value: string): value is DepositStatus {
   return DEPOSIT_STATUS_OPTIONS.some((option) => option.value === value);
+}
+
+export function isSignatureStatus(value: string): value is SignatureStatus {
+  return (
+    value === "unsigned" ||
+    value === "sent" ||
+    value === "partially_signed" ||
+    value === "signed"
+  );
 }

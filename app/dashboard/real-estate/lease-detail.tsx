@@ -13,6 +13,7 @@ import {
   type LateFeeType,
   type LeaseDetail,
 } from "./leases-utils";
+import LeaseSignaturePanel from "./lease-signature-panel";
 
 type LeaseDetailViewProps = {
   initialDetail: LeaseDetail;
@@ -442,6 +443,30 @@ export default function LeaseDetailView({
           </div>
         </div>
       ) : null}
+
+      <LeaseSignaturePanel
+        mode="staff"
+        tenantId={detail.tenantId}
+        leaseId={detail.leaseId}
+        signatureStatus={detail.signatureStatus}
+        landlordAcknowledgedAt={detail.landlordAcknowledgedAt}
+        tenantAcknowledgedAt={detail.tenantAcknowledgedAt}
+        landlordName={detail.landlordName}
+        lesseeName={detail.lesseeName}
+        lesseePhone={detail.lesseePhone}
+        lesseeEmail={detail.lesseeEmail}
+        propertyName={detail.propertyName}
+        unitNumber={detail.unitNumber}
+        startDate={detail.startDate}
+        endDate={detail.endDate}
+        rentAmountGhs={detail.rentAmountGhs}
+        depositAmountGhs={detail.deposit?.amountGhs ?? null}
+        lateFeeEnabled={detail.lateFeeEnabled}
+        lateFeeType={detail.lateFeeType}
+        lateFeeAmount={detail.lateFeeAmount}
+        escalationPercent={detail.escalationPercent}
+        escalationFrequencyMonths={detail.escalationFrequencyMonths}
+      />
 
       <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">

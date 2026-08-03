@@ -33,6 +33,19 @@ export type PortalDashboardData = {
   leaseStartDate: string;
   leaseEndDate: string;
   leaseStatus: string;
+  signatureStatus: string;
+  landlordAcknowledgedAt: string | null;
+  tenantAcknowledgedAt: string | null;
+  landlordName: string;
+  lesseeName: string;
+  lesseePhone: string;
+  lesseeEmail: string | null;
+  depositAmountGhs: number | null;
+  lateFeeEnabled: boolean;
+  lateFeeType: "fixed" | "percent" | null;
+  lateFeeAmount: number | null;
+  escalationPercent: number | null;
+  escalationFrequencyMonths: number | null;
   rentStatusLabel: string;
   rentPeriodStart: string | null;
   rentPeriodEnd: string | null;
@@ -100,7 +113,7 @@ async function loadDashboardWithClient(
   const { data: lease, error: leaseError } = await client
     .from("leases")
     .select(
-      "lease_id, tenant_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, status, termination_request_status, pending_termination_reason",
+      "lease_id, tenant_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, status, termination_request_status, pending_termination_reason, signature_status, landlord_acknowledged_at, tenant_acknowledged_at, escalation_percent, escalation_frequency_months, late_fee_enabled, late_fee_type, late_fee_amount",
     )
     .eq("tenant_id", session.tenantId)
     .eq("lessee_id", session.lesseeId)
@@ -123,7 +136,13 @@ async function loadDashboardWithClient(
     return { data: null, error: "Access denied." };
   }
 
-  const [{ data: unit }, { data: rentRows }] = await Promise.all([
+  const [
+    { data: unit },
+    { data: rentRows },
+    { data: depositRows },
+    { data: tenantRow },
+    { data: lesseeRow },
+  ] = await Promise.all([
     client
       .from("property_units")
       .select("unit_id, unit_number, property_id")
@@ -139,6 +158,24 @@ async function loadDashboardWithClient(
       .eq("lease_id", lease.lease_id)
       .order("period_start", { ascending: false })
       .limit(12),
+    client
+      .from("security_deposits")
+      .select("amount_ghs")
+      .eq("tenant_id", session.tenantId)
+      .eq("lease_id", lease.lease_id)
+      .order("created_at", { ascending: false })
+      .limit(1),
+    client
+      .from("tenants")
+      .select("name")
+      .eq("id", session.tenantId)
+      .maybeSingle(),
+    client
+      .from("lessees")
+      .select("full_name, phone, email")
+      .eq("tenant_id", session.tenantId)
+      .eq("lessee_id", session.lesseeId)
+      .maybeSingle(),
   ]);
 
   let propertyName = "—";
@@ -203,6 +240,46 @@ async function loadDashboardWithClient(
       leaseStartDate: lease.start_date,
       leaseEndDate: lease.end_date,
       leaseStatus: lease.status,
+      signatureStatus:
+        typeof lease.signature_status === "string" && lease.signature_status
+          ? lease.signature_status
+          : "unsigned",
+      landlordAcknowledgedAt:
+        (lease.landlord_acknowledged_at as string | null) ?? null,
+      tenantAcknowledgedAt:
+        (lease.tenant_acknowledged_at as string | null) ?? null,
+      landlordName:
+        typeof tenantRow?.name === "string" ? tenantRow.name : "—",
+      lesseeName:
+        typeof lesseeRow?.full_name === "string"
+          ? lesseeRow.full_name
+          : session.fullName,
+      lesseePhone:
+        typeof lesseeRow?.phone === "string" ? lesseeRow.phone : "—",
+      lesseeEmail:
+        (typeof lesseeRow?.email === "string" ? lesseeRow.email : null) ??
+        session.email,
+      depositAmountGhs:
+        depositRows && depositRows[0]
+          ? Number(depositRows[0].amount_ghs) || 0
+          : null,
+      lateFeeEnabled: Boolean(lease.late_fee_enabled),
+      lateFeeType:
+        lease.late_fee_type === "fixed" || lease.late_fee_type === "percent"
+          ? lease.late_fee_type
+          : null,
+      lateFeeAmount:
+        lease.late_fee_amount != null
+          ? Number(lease.late_fee_amount) || null
+          : null,
+      escalationPercent:
+        lease.escalation_percent != null
+          ? Number(lease.escalation_percent) || null
+          : null,
+      escalationFrequencyMonths:
+        lease.escalation_frequency_months != null
+          ? Number(lease.escalation_frequency_months) || null
+          : null,
       rentStatusLabel,
       rentPeriodStart: rentRow?.period_start ?? null,
       rentPeriodEnd: rentRow?.period_end ?? null,

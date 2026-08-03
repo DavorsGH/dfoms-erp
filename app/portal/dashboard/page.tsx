@@ -11,6 +11,11 @@ import {
 import PortalShell from "../portal-shell";
 import PayRentButton from "./pay-rent-button";
 import RequestEarlyTerminationButton from "./request-early-termination-button";
+import LeaseSignaturePanel from "@/app/dashboard/real-estate/lease-signature-panel";
+import {
+  canInitiatePortalRentPayment,
+  portalRentPaymentBlockedMessage,
+} from "@/utils/lease-signature";
 
 function formatMoney(value: number): string {
   return `GHS ${value.toLocaleString("en-GH", {
@@ -120,6 +125,30 @@ export default async function PortalDashboardPage() {
             </div>
           </section>
 
+          <LeaseSignaturePanel
+            mode="tenant"
+            tenantId={session.tenantId}
+            leaseId={data.leaseId}
+            signatureStatus={data.signatureStatus}
+            landlordAcknowledgedAt={data.landlordAcknowledgedAt}
+            tenantAcknowledgedAt={data.tenantAcknowledgedAt}
+            landlordName={data.landlordName}
+            lesseeName={data.lesseeName}
+            lesseePhone={data.lesseePhone}
+            lesseeEmail={data.lesseeEmail}
+            propertyName={data.propertyName}
+            unitNumber={data.unitNumber}
+            startDate={data.leaseStartDate}
+            endDate={data.leaseEndDate}
+            rentAmountGhs={data.rentAmountGhs}
+            depositAmountGhs={data.depositAmountGhs}
+            lateFeeEnabled={data.lateFeeEnabled}
+            lateFeeType={data.lateFeeType}
+            lateFeeAmount={data.lateFeeAmount}
+            escalationPercent={data.escalationPercent}
+            escalationFrequencyMonths={data.escalationFrequencyMonths}
+          />
+
           <section className={portalSectionClassName}>
             <h2 className={portalSectionTitleClassName}>Current rent status</h2>
             <dl className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -157,6 +186,12 @@ export default async function PortalDashboardPage() {
                   entryId={data.unpaidRent.entryId}
                   outstandingGhs={data.unpaidRent.outstandingGhs}
                   periodLabel={`${formatDate(data.unpaidRent.periodStart)} – ${formatDate(data.unpaidRent.periodEnd)}`}
+                  signatureStatus={data.signatureStatus}
+                  paymentBlockedMessage={
+                    canInitiatePortalRentPayment(data.signatureStatus)
+                      ? null
+                      : portalRentPaymentBlockedMessage(data.signatureStatus)
+                  }
                 />
               </div>
             ) : (

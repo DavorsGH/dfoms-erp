@@ -3,6 +3,10 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { verifyPaystackTransaction } from "@/utils/paystack";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
+import {
+  canInitiatePortalRentPayment,
+  portalRentPaymentBlockedMessage,
+} from "@/utils/lease-signature";
 import { fulfillRentLedgerPaystackPayment } from "@/utils/rent-ledger-paystack";
 
 export const runtime = "nodejs";
@@ -43,7 +47,7 @@ export async function POST(request: Request) {
 
   const { data: lease, error: leaseError } = await admin
     .from("leases")
-    .select("lease_id")
+    .select("lease_id, signature_status")
     .eq("tenant_id", session.tenantId)
     .eq("lessee_id", session.lesseeId)
     .eq("status", "active")
@@ -56,6 +60,17 @@ export async function POST(request: Request) {
   }
   if (!lease) {
     return NextResponse.json({ error: "No active lease found." }, { status: 404 });
+  }
+
+  if (!canInitiatePortalRentPayment(lease.signature_status as string | null)) {
+    return NextResponse.json(
+      {
+        error: portalRentPaymentBlockedMessage(
+          lease.signature_status as string | null,
+        ),
+      },
+      { status: 403 },
+    );
   }
 
   const { data: entry, error: entryError } = await admin

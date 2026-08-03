@@ -13,6 +13,7 @@ import {
   formatLeaseMoney,
   formatLeaseStatus,
 } from "@/app/dashboard/real-estate/leases-utils";
+import LeaseSignaturePanel from "@/app/dashboard/real-estate/lease-signature-panel";
 import {
   portalErrorBannerClassName,
   portalSectionClassName,
@@ -112,6 +113,30 @@ export default async function LandlordPortalLeaseDetailPage({
 
       {detail ? (
         <>
+          <LeaseSignaturePanel
+            mode={canManage ? "landlord_manage" : "landlord_view"}
+            tenantId={detail.tenantId}
+            leaseId={detail.leaseId}
+            signatureStatus={detail.signatureStatus}
+            landlordAcknowledgedAt={detail.landlordAcknowledgedAt}
+            tenantAcknowledgedAt={detail.tenantAcknowledgedAt}
+            landlordName={detail.landlordName}
+            lesseeName={detail.lesseeName}
+            lesseePhone={detail.lesseePhone}
+            lesseeEmail={detail.lesseeEmail}
+            propertyName={detail.propertyName}
+            unitNumber={detail.unitNumber}
+            startDate={detail.startDate}
+            endDate={detail.endDate}
+            rentAmountGhs={detail.rentAmountGhs}
+            depositAmountGhs={detail.deposit?.amountGhs ?? null}
+            lateFeeEnabled={detail.lateFeeEnabled}
+            lateFeeType={detail.lateFeeType}
+            lateFeeAmount={detail.lateFeeAmount}
+            escalationPercent={detail.escalationPercent}
+            escalationFrequencyMonths={detail.escalationFrequencyMonths}
+          />
+
           <section className={portalSectionClassName}>
             <h2 className={portalSectionTitleClassName}>Parties &amp; unit</h2>
             <dl className="mt-4 grid gap-4 sm:grid-cols-2">

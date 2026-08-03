@@ -277,6 +277,11 @@ export async function createLeaseForLandlord(
     status: "active",
     terminated_at: null,
     termination_reason: null,
+    signature_status: "unsigned",
+    landlord_acknowledged_at: null,
+    tenant_acknowledged_at: null,
+    landlord_acknowledged_by: null,
+    tenant_acknowledged_by: null,
     created_at: now,
     updated_at: now,
   });

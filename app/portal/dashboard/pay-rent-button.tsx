@@ -3,11 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { openPaystackInlineWithAccessCode } from "@/app/dashboard/pos/paystack-inline";
+import { canInitiatePortalRentPayment } from "@/utils/lease-signature";
 
 type PayRentButtonProps = {
   entryId: string;
   outstandingGhs: number;
   periodLabel: string;
+  signatureStatus?: string | null;
+  paymentBlockedMessage?: string | null;
 };
 
 type InitializeResponse = {
@@ -40,13 +43,27 @@ export default function PayRentButton({
   entryId,
   outstandingGhs,
   periodLabel,
+  signatureStatus = null,
+  paymentBlockedMessage = null,
 }: PayRentButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const paymentAllowed = canInitiatePortalRentPayment(signatureStatus);
+  const blockedMessage =
+    paymentBlockedMessage ??
+    (!paymentAllowed
+      ? "Rent payment is unavailable until the lease is acknowledged."
+      : null);
+
   async function handlePay() {
+    if (!paymentAllowed) {
+      setError(blockedMessage);
+      return;
+    }
+
     setError(null);
     setSuccess(null);
     setLoading(true);
@@ -97,9 +114,7 @@ export default function PayRentButton({
               return;
             }
 
-            setSuccess(
-              `Payment received for ${periodLabel}. Thank you.`,
-            );
+            setSuccess(`Payment received for ${periodLabel}. Thank you.`);
             setLoading(false);
             router.refresh();
           } catch (confirmError) {
@@ -132,16 +147,22 @@ export default function PayRentButton({
 
   return (
     <div className="mt-4 space-y-2">
-      <button
-        type="button"
-        onClick={() => void handlePay()}
-        disabled={loading || outstandingGhs <= 0}
-        className="inline-flex cursor-pointer items-center justify-center rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {loading
-          ? "Opening Paystack…"
-          : `Pay ${formatMoney(outstandingGhs)} (MoMo or card)`}
-      </button>
+      {paymentAllowed ? (
+        <button
+          type="button"
+          onClick={() => void handlePay()}
+          disabled={loading || outstandingGhs <= 0}
+          className="inline-flex cursor-pointer items-center justify-center rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading
+            ? "Opening Paystack…"
+            : `Pay ${formatMoney(outstandingGhs)} (MoMo or card)`}
+        </button>
+      ) : (
+        <p className="text-sm text-amber-800" role="status">
+          {blockedMessage}
+        </p>
+      )}
       {error ? (
         <p className="text-sm text-red-700" role="alert">
           {error}
