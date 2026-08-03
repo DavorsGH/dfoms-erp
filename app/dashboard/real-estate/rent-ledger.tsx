@@ -44,6 +44,27 @@ function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
+type BulkGenerateLandlordResult = {
+  tenantId: string;
+  landlordName: string | null;
+  ok: boolean;
+  error?: string;
+  created: number;
+  skipped: number;
+  errors: number;
+  overdueUpdated: number;
+};
+
+type BulkGenerateSummary = {
+  billingMonth: string;
+  landlordsProcessed: number;
+  created: number;
+  skipped: number;
+  errors: number;
+  overdueUpdated: number;
+  landlords: BulkGenerateLandlordResult[];
+};
+
 export default function RentLedger({
   landlords,
   selectedLandlordId,
@@ -71,6 +92,13 @@ export default function RentLedger({
   const [paymentMethod, setPaymentMethod] = useState<RentPaymentMethod>("cash");
   const [paymentDate, setPaymentDate] = useState(todayInputValue());
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [selectedGenerateIds, setSelectedGenerateIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkGenerateSummary | null>(null);
+  const [showBulkBreakdown, setShowBulkBreakdown] = useState(false);
 
   useEffect(() => {
     setRows(initialRows);
@@ -90,6 +118,106 @@ export default function RentLedger({
     }
     return rows.filter((row) => row.status === statusFilter);
   }, [rows, statusFilter]);
+
+  const allGenerateSelected =
+    landlords.length > 0 &&
+    landlords.every((landlord) => selectedGenerateIds.has(landlord.tenantId));
+
+  const selectedGenerateCount = selectedGenerateIds.size;
+
+  function toggleGenerateLandlord(tenantId: string) {
+    setSelectedGenerateIds((current) => {
+      const next = new Set(current);
+      if (next.has(tenantId)) {
+        next.delete(tenantId);
+      } else {
+        next.add(tenantId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllGenerateLandlords() {
+    if (allGenerateSelected) {
+      setSelectedGenerateIds(new Set());
+      return;
+    }
+    setSelectedGenerateIds(new Set(landlords.map((landlord) => landlord.tenantId)));
+  }
+
+  function requestBulkGenerate() {
+    const month = billingMonth.trim();
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      setError("Billing month must be YYYY-MM.");
+      return;
+    }
+    if (selectedGenerateCount === 0) {
+      setError("Select at least one landlord to generate rent ledger entries.");
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    setBulkConfirmOpen(true);
+  }
+
+  async function handleBulkGenerateConfirmed() {
+    const month = billingMonth.trim();
+    const tenantIds = [...selectedGenerateIds];
+    setBulkConfirmOpen(false);
+    setBulkGenerating(true);
+    setError(null);
+    setSuccess(null);
+    setBulkResult(null);
+    setShowBulkBreakdown(false);
+
+    const response = await fetch("/api/admin/rent-ledger/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_ids: tenantIds,
+        billingMonth: month,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      bulk?: boolean;
+      billingMonth?: string;
+      landlordsProcessed?: number;
+      created?: number;
+      skipped?: number;
+      errors?: number;
+      overdueUpdated?: number;
+      landlords?: BulkGenerateLandlordResult[];
+    } | null;
+
+    setBulkGenerating(false);
+
+    if (!response.ok || !payload?.bulk) {
+      setError(payload?.error ?? "Unable to generate rent ledger in bulk.");
+      return;
+    }
+
+    const summary: BulkGenerateSummary = {
+      billingMonth: payload.billingMonth ?? month,
+      landlordsProcessed: payload.landlordsProcessed ?? tenantIds.length,
+      created: payload.created ?? 0,
+      skipped: payload.skipped ?? 0,
+      errors: payload.errors ?? 0,
+      overdueUpdated: payload.overdueUpdated ?? 0,
+      landlords: payload.landlords ?? [],
+    };
+    setBulkResult(summary);
+    setShowBulkBreakdown(summary.landlords.length > 1);
+    setSuccess(
+      `${summary.landlordsProcessed} landlord${summary.landlordsProcessed === 1 ? "" : "s"} processed for ${summary.billingMonth}: ${summary.created} created, ${summary.skipped} skipped, ${summary.errors} errors${
+        summary.overdueUpdated
+          ? `, ${summary.overdueUpdated} marked overdue`
+          : ""
+      }.`,
+    );
+    router.refresh();
+  }
 
   function handleLandlordChange(tenantId: string) {
     setRecordingEntryId(null);
@@ -206,6 +334,7 @@ export default function RentLedger({
     setGenerating(true);
     setError(null);
     setSuccess(null);
+    setBulkResult(null);
 
     const response = await fetch("/api/admin/rent-ledger/generate", {
       method: "POST",
@@ -277,6 +406,232 @@ export default function RentLedger({
         </p>
       ) : null}
 
+      <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+            Bulk Generate Rent Ledger
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Select one or more Davors-managed landlords and run generation for
+            the same billing month. Each landlord is processed separately with
+            scoped overdue marking.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[140px]">
+            <label
+              htmlFor="rent-ledger-bulk-billing-month"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Billing month
+            </label>
+            <input
+              id="rent-ledger-bulk-billing-month"
+              type="month"
+              value={billingMonth}
+              onChange={(event) => setBillingMonth(event.target.value)}
+              className={inputClassName}
+            />
+          </div>
+          <button
+            type="button"
+            disabled={bulkGenerating || selectedGenerateCount === 0}
+            onClick={requestBulkGenerate}
+            className={primaryButtonClassName}
+          >
+            {bulkGenerating
+              ? "Generating…"
+              : `Generate for selected (${selectedGenerateCount})`}
+          </button>
+        </div>
+
+        {landlords.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            No Davors-managed landlords available.
+          </p>
+        ) : (
+          <ScrollableTable>
+            <table className={scrollableTableClassName}>
+              <thead className={scrollableTableHeadClassName}>
+                <tr>
+                  <th className={`${scrollableTableThClassName} w-10`}>
+                    <input
+                      type="checkbox"
+                      checked={allGenerateSelected}
+                      onChange={toggleSelectAllGenerateLandlords}
+                      aria-label="Select all Davors-managed landlords"
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                  </th>
+                  <th className={scrollableTableThClassName}>Landlord</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {landlords.map((landlord, index) => {
+                  const selected = selectedGenerateIds.has(landlord.tenantId);
+                  return (
+                    <tr
+                      key={landlord.tenantId}
+                      className={`${getStripedRowClassName(index)} ${
+                        selected ? "bg-slate-100" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() =>
+                            toggleGenerateLandlord(landlord.tenantId)
+                          }
+                          aria-label={`Select ${landlord.name} for generation`}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-sm font-medium text-[#0f2744]">
+                        {landlord.name}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </ScrollableTable>
+        )}
+
+        {bulkResult ? (
+          <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-slate-800">
+              Bulk run summary — {bulkResult.billingMonth}
+            </p>
+            <p className="text-sm text-slate-700">
+              {bulkResult.landlordsProcessed} landlord
+              {bulkResult.landlordsProcessed === 1 ? "" : "s"} processed:{" "}
+              {bulkResult.created} created, {bulkResult.skipped} skipped,{" "}
+              {bulkResult.errors} errors
+              {bulkResult.overdueUpdated
+                ? `, ${bulkResult.overdueUpdated} marked overdue`
+                : ""}
+              .
+            </p>
+            {bulkResult.landlords.length > 0 ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkBreakdown((current) => !current)}
+                  className="text-sm font-medium text-[#0f2744] hover:underline"
+                >
+                  {showBulkBreakdown
+                    ? "Hide per-landlord breakdown"
+                    : "Show per-landlord breakdown"}
+                </button>
+                {showBulkBreakdown ? (
+                  <ScrollableTable>
+                    <table className={`${scrollableTableClassName} mt-3`}>
+                      <thead className={scrollableTableHeadClassName}>
+                        <tr>
+                          <th className={scrollableTableThClassName}>Landlord</th>
+                          <th className={scrollableTableThClassName}>Created</th>
+                          <th className={scrollableTableThClassName}>Skipped</th>
+                          <th className={scrollableTableThClassName}>Errors</th>
+                          <th className={scrollableTableThClassName}>Overdue</th>
+                          <th className={scrollableTableThClassName}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {bulkResult.landlords.map((row, index) => (
+                          <tr
+                            key={row.tenantId}
+                            className={getStripedRowClassName(index)}
+                          >
+                            <td className="px-4 py-3 text-sm text-slate-800">
+                              {row.landlordName ?? row.tenantId}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-700">
+                              {row.created}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-700">
+                              {row.skipped}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-700">
+                              {row.errors}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-700">
+                              {row.overdueUpdated}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              {row.error ? (
+                                <span className="text-red-700">{row.error}</span>
+                              ) : row.ok ? (
+                                <span className="text-emerald-700">OK</span>
+                              ) : (
+                                <span className="text-amber-800">
+                                  Completed with lease errors
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </ScrollableTable>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      {bulkConfirmOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-generate-confirm-title"
+            className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-xl"
+          >
+            <h3
+              id="bulk-generate-confirm-title"
+              className="text-lg font-semibold text-[#0f2744]"
+            >
+              Confirm bulk rent ledger generation
+            </h3>
+            <p className="mt-3 text-sm text-slate-700">
+              Generate rent ledger entries for{" "}
+              <strong>{selectedGenerateCount}</strong> Davors-managed landlord
+              {selectedGenerateCount === 1 ? "" : "s"} for billing month{" "}
+              <strong>{billingMonth}</strong>?
+            </p>
+            {allGenerateSelected && landlords.length > 1 ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                You selected all {landlords.length} Davors-managed landlords.
+                This runs generation for each landlord separately (not the
+                platform cron), but still affects every managed portfolio for
+                this month.
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={bulkGenerating}
+                onClick={() => void handleBulkGenerateConfirmed()}
+                className={primaryButtonClassName}
+              >
+                {bulkGenerating ? "Generating…" : "Run generation"}
+              </button>
+              <button
+                type="button"
+                disabled={bulkGenerating}
+                onClick={() => setBulkConfirmOpen(false)}
+                className={secondaryButtonClassName}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {!selectedLandlordId ? (
         <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
           <p className="text-sm font-medium text-slate-700">
@@ -306,28 +661,14 @@ export default function RentLedger({
               ) : null}
             </div>
             <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-[140px]">
-                <label
-                  htmlFor="rent-ledger-billing-month"
-                  className="mb-1 block text-sm font-medium text-slate-700"
-                >
-                  Billing month
-                </label>
-                <input
-                  id="rent-ledger-billing-month"
-                  type="month"
-                  value={billingMonth}
-                  onChange={(event) => setBillingMonth(event.target.value)}
-                  className={inputClassName}
-                />
-              </div>
               <button
                 type="button"
-                disabled={generating}
+                disabled={generating || bulkGenerating}
                 onClick={() => void handleGenerateNow()}
-                className={primaryButtonClassName}
+                className={secondaryButtonClassName}
+                title="Generate for the landlord selected above only"
               >
-                {generating ? "Generating…" : "Generate Now"}
+                {generating ? "Generating…" : "Generate for this landlord"}
               </button>
               <div className="min-w-[180px]">
                 <label
