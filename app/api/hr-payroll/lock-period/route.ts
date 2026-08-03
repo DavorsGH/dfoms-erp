@@ -228,6 +228,10 @@ export async function POST(request: Request) {
       financePeriod,
       rows,
       tenantId,
+      {
+        // Permanent Lock → Paid (SAL only). Partial Lock stays Accrued.
+        markStaffSalariesPaid: isFullyLocked,
+      },
     );
 
     return NextResponse.json({

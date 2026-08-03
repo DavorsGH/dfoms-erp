@@ -262,10 +262,15 @@ export function getHistoryPeriodDisplayStatus(
   return PAYROLL_STATUS_NOT_STARTED;
 }
 
+/**
+ * Whether permanent Lock is eligible from a roster-coverage standpoint.
+ * Partial `days_to_pay` no longer blocks permanent Lock (month-end gate is separate).
+ * `totalWorkingDays` is retained for call-site compatibility only.
+ */
 export function isFullMonthPayrollLock(
   rows: { employee_id: string; days_to_pay: number | null }[],
   periodEmployeeIds: Set<string>,
-  totalWorkingDays: number,
+  _totalWorkingDays: number,
 ): boolean {
   if (periodEmployeeIds.size === 0) {
     return true;
@@ -273,15 +278,6 @@ export function isFullMonthPayrollLock(
 
   const periodRows = rows.filter((row) => periodEmployeeIds.has(row.employee_id));
 
-  if (periodRows.length !== periodEmployeeIds.size) {
-    return false;
-  }
-
-  return periodRows.every((row) => {
-    const daysToPay = Number(row.days_to_pay);
-    return (
-      Number.isFinite(daysToPay) &&
-      Math.abs(daysToPay - totalWorkingDays) < 0.001
-    );
-  });
+  // Require a processing row for every period employee; days_to_pay may be partial.
+  return periodRows.length === periodEmployeeIds.size;
 }

@@ -15,6 +15,8 @@ export const PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES = "Staff Salaries";
 export const PAYROLL_EXPENSE_CATEGORY_EMPLOYER_SSNIT =
   "Employer SSNIT Contribution";
 export const PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED = "Accrued - Not Yet Paid";
+/** Permanent Lock marks Staff Salaries Paid so Cash Position / Accrued Wages clear. */
+export const PAYROLL_EXPENSE_PAYMENT_STATUS_PAID = "Paid";
 export const PAYROLL_EXPENSE_SUB_CATEGORY_PAYROLL = "Payroll";
 export const PAYROLL_EXPENSE_PAYMENT_METHOD_ACCRUAL = "Accrual";
 export const PAYROLL_PAYABLE_CATEGORY_SSNIT = "Statutory - SSNIT";
@@ -204,6 +206,10 @@ export function buildPayrollExpenseReceiptNo(
   return `PAYROLL-${receiptSuffix}-${periodKey}`;
 }
 
+function isExpensePaidStatus(paymentStatus: string | null | undefined): boolean {
+  return (paymentStatus ?? "").trim().toLowerCase() === "paid";
+}
+
 function buildExpenseRegisterPayload(
   period: PayrollLockFinancePeriod,
   expenseCategory: string,
@@ -211,6 +217,7 @@ function buildExpenseRegisterPayload(
   vendor: string,
   receiptSuffix: string,
   tenantId: string,
+  paymentStatus: string = PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
 ) {
   const description = buildPayrollExpenseAutoDescription(period.monthLabel);
   const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
@@ -228,7 +235,7 @@ function buildExpenseRegisterPayload(
     payment_method: PAYROLL_EXPENSE_PAYMENT_METHOD_ACCRUAL,
     approved_by: "System",
     receipt_no: buildPayrollExpenseReceiptNo(receiptSuffix, periodKey),
-    payment_status: PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
+    payment_status: paymentStatus,
     notes: null,
   };
 }
@@ -236,7 +243,7 @@ function buildExpenseRegisterPayload(
 async function upsertPayrollExpenseRegisterEntry(
   admin: SupabaseClient,
   payload: ReturnType<typeof buildExpenseRegisterPayload>,
-): Promise<"inserted" | "updated" | "unchanged"> {
+): Promise<"inserted" | "updated" | "unchanged" | "skipped_already_paid"> {
   const { data: existing, error: selectError } = await admin
     .from("expense_register")
     .select("id, expense_category, payment_status, amount")
@@ -249,6 +256,44 @@ async function upsertPayrollExpenseRegisterEntry(
   }
 
   if (existing) {
+    const existingAlreadyPaid = isExpensePaidStatus(existing.payment_status);
+    const targetingPaid = isExpensePaidStatus(payload.payment_status);
+
+    // Double-post guard: if Expense Register already marked this PAYROLL-SAL Paid
+    // (manual Accrued→Paid), keep Paid — do not Accrue-then-rePaid. Cash Position
+    // is live-derived from Paid, so leaving Paid avoids a second outflow.
+    if (existingAlreadyPaid && targetingPaid) {
+      const needsNonStatusUpdate =
+        existing.expense_category !== payload.expense_category ||
+        Number(existing.amount) !== Number(payload.amount);
+
+      if (!needsNonStatusUpdate) {
+        return "skipped_already_paid";
+      }
+
+      const { error: updateError } = await admin
+        .from("expense_register")
+        .update({
+          date: payload.date,
+          expense_category: payload.expense_category,
+          sub_category: payload.sub_category,
+          description: payload.description,
+          vendor: payload.vendor,
+          price: payload.price,
+          quantity: payload.quantity,
+          amount: payload.amount,
+          payment_method: payload.payment_method,
+          // Preserve Paid; do not touch notes (may hold cash_paid= shortfall).
+        })
+        .eq("id", existing.id);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+
+      return "skipped_already_paid";
+    }
+
     const needsUpdate =
       existing.expense_category !== payload.expense_category ||
       existing.payment_status !== payload.payment_status ||
@@ -773,6 +818,14 @@ export async function postPayrollLockFinanceEntries(
   period: PayrollLockFinancePeriod,
   rows: PayrollLockFinanceSourceRow[],
   tenantId: string,
+  options?: {
+    /**
+     * Permanent Lock: mark Staff Salaries (PAYROLL-SAL-*) Paid so Cash Position
+     * and Accrued Wages clear. Partial Lock must omit this (stays Accrued).
+     * Employer SSNIT always stays Accrued.
+     */
+    markStaffSalariesPaid?: boolean;
+  },
 ): Promise<{
   insertedExpenses: number;
   insertedPayables: number;
@@ -780,6 +833,7 @@ export async function postPayrollLockFinanceEntries(
   insertedIncome: number;
   updatedIncome: number;
   updatedLoans: number;
+  staffSalariesAlreadyPaid: boolean;
   statutoryLedger: {
     sourceId: string;
     inserted: number;
@@ -796,6 +850,11 @@ export async function postPayrollLockFinanceEntries(
   let updatedExpenses = 0;
   let insertedIncome = 0;
   let updatedIncome = 0;
+  let staffSalariesAlreadyPaid = false;
+
+  const staffSalariesPaymentStatus = options?.markStaffSalariesPaid
+    ? PAYROLL_EXPENSE_PAYMENT_STATUS_PAID
+    : PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED;
 
   const staffSalariesPayload =
     totals.totalStaffSalariesExpense > 0
@@ -806,6 +865,7 @@ export async function postPayrollLockFinanceEntries(
           "Payroll",
           "SAL",
           tenantId,
+          staffSalariesPaymentStatus,
         )
       : null;
 
@@ -818,12 +878,15 @@ export async function postPayrollLockFinanceEntries(
       insertedExpenses += 1;
     } else if (result === "updated") {
       updatedExpenses += 1;
+    } else if (result === "skipped_already_paid") {
+      staffSalariesAlreadyPaid = true;
     }
   }
 
   // Employer SSNIT (+ Tier 2) remains a P&L expense accrual. Statutory remittance
   // liability (PAYE / SSNIT employee / employer Tier 1 / Tier 2) now posts only to
   // tax_ledger_entries — Option A: stop SSNIT/GRA AP auto-post going forward.
+  // Always Accrued — permanent Lock does not mark Employer SSNIT Paid.
   const employerSsnitPayload =
     totals.totalEmployerSsnitContribution > 0
       ? buildExpenseRegisterPayload(
@@ -833,6 +896,7 @@ export async function postPayrollLockFinanceEntries(
           "SSNIT",
           "ESSNIT",
           tenantId,
+          PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
         )
       : null;
 
@@ -886,6 +950,7 @@ export async function postPayrollLockFinanceEntries(
     insertedIncome,
     updatedIncome,
     updatedLoans,
+    staffSalariesAlreadyPaid,
     // Soft-deprecated: no new Statutory - SSNIT / Statutory - PAYE AP rows.
     insertedPayables: 0,
     statutoryLedger,

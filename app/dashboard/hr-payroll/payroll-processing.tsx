@@ -209,7 +209,7 @@ export default function PayrollProcessing({
     }
 
     if (!isFullMonthLockAvailable) {
-      return "Not available — some employees have partial Days to Pay. Use Partial Lock Period instead.";
+      return "Not available — add payroll rows for every employee in this period first.";
     }
 
     if (!isPayrollMonthEndedForPeriod) {
