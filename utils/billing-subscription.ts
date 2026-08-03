@@ -7,14 +7,24 @@ import type { CrmSubscriptionStatus } from "@/utils/tenant-signup";
 export type TenantBillingSubscription = {
   subscriptionStatus: CrmSubscriptionStatus | null;
   trialEndDate: string | null;
+  nextBillingDate: string | null;
   tierName: string | null;
   productId: string | null;
+  paystackSubscriptionId: string | null;
+  billingWaived: boolean;
+  cancelledAt: string | null;
+  cancellationReason: string | null;
 };
 
 type SubscriptionRecord = {
   subscription_status: CrmSubscriptionStatus;
   trial_end_date: string | null;
+  next_billing_date: string | null;
   product_id: string | null;
+  paystack_subscription_id: string | null;
+  billing_waived: boolean | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
   product: { name: string } | { name: string }[] | null;
 };
 
@@ -39,7 +49,7 @@ export const getTenantBillingSubscription = cache(
     const { data, error } = await admin
       .from("crm_subscriptions")
       .select(
-        "subscription_status, trial_end_date, product_id, product:crm_products(name)",
+        "subscription_status, trial_end_date, next_billing_date, product_id, paystack_subscription_id, billing_waived, cancelled_at, cancellation_reason, product:crm_products(name)",
       )
       .eq("linked_tenant_id", linkedTenantId)
       .order("created_at", { ascending: false })
@@ -54,8 +64,13 @@ export const getTenantBillingSubscription = cache(
       return {
         subscriptionStatus: null,
         trialEndDate: null,
+        nextBillingDate: null,
         tierName: null,
         productId: null,
+        paystackSubscriptionId: null,
+        billingWaived: false,
+        cancelledAt: null,
+        cancellationReason: null,
       };
     }
 
@@ -64,8 +79,13 @@ export const getTenantBillingSubscription = cache(
     return {
       subscriptionStatus: row.subscription_status,
       trialEndDate: row.trial_end_date,
+      nextBillingDate: row.next_billing_date,
       tierName: productNameFromRow(row.product),
       productId: row.product_id,
+      paystackSubscriptionId: row.paystack_subscription_id,
+      billingWaived: row.billing_waived === true,
+      cancelledAt: row.cancelled_at,
+      cancellationReason: row.cancellation_reason,
     };
   },
 );

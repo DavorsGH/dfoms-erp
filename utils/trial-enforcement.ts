@@ -17,7 +17,7 @@ export const getLinkedTenantSubscription = cache(
 
     const { data, error } = await admin
       .from("crm_subscriptions")
-      .select("subscription_status, trial_end_date, billing_waived")
+      .select("subscription_status, trial_end_date, next_billing_date, billing_waived")
       .eq("linked_tenant_id", linkedTenantId)
       .order("created_at", { ascending: false })
       .limit(1)

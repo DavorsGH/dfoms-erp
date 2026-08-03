@@ -3,6 +3,7 @@ import type { CrmSubscriptionStatus } from "@/utils/tenant-signup";
 export type SubscriptionAccessRow = {
   subscription_status: CrmSubscriptionStatus;
   trial_end_date: string | null;
+  next_billing_date: string | null;
   billing_waived: boolean | null;
 };
 
@@ -10,12 +11,29 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function isDateOnOrAfterToday(isoDate: string | null | undefined): boolean {
+  if (!isoDate) {
+    return false;
+  }
+  return todayIsoDate() <= isoDate.slice(0, 10);
+}
+
 function isTrialPeriodActive(trialEndDate: string | null): boolean {
   if (!trialEndDate) {
     return false;
   }
 
-  return todayIsoDate() <= trialEndDate.slice(0, 10);
+  return isDateOnOrAfterToday(trialEndDate);
+}
+
+/** Paid period end for cancelled subs (next_billing_date = current period end). */
+export function subscriptionCancelledAccessActive(
+  row: Pick<SubscriptionAccessRow, "subscription_status" | "next_billing_date">,
+): boolean {
+  return (
+    row.subscription_status === "cancelled" &&
+    isDateOnOrAfterToday(row.next_billing_date)
+  );
 }
 
 /**
@@ -29,7 +47,7 @@ export function subscriptionAllowsAccess(row: SubscriptionAccessRow): boolean {
     return true;
   }
 
-  const { subscription_status, trial_end_date } = row;
+  const { subscription_status, trial_end_date, next_billing_date } = row;
 
   if (subscription_status === "active") {
     return true;
@@ -43,6 +61,12 @@ export function subscriptionAllowsAccess(row: SubscriptionAccessRow): boolean {
 
   if (subscription_status === "trialing") {
     return isTrialPeriodActive(trial_end_date);
+  }
+
+  // Cancelled: retain access until next_billing_date (paid period end). Paystack
+  // stops future charges immediately; dashboard gate honours the prepaid window.
+  if (subscription_status === "cancelled") {
+    return isDateOnOrAfterToday(row.next_billing_date);
   }
 
   return false;

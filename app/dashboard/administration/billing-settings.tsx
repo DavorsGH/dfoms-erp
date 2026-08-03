@@ -26,6 +26,12 @@ import {
   type BillingSettingsRow,
 } from "@/utils/billing-settings-types";
 import type { TenantBillingSubscription } from "@/utils/billing-subscription";
+import {
+  formatSubscriptionAccessEndDate,
+  SUBSCRIPTION_CANCELLATION_REASONS,
+  type SubscriptionCancellationReason,
+} from "@/utils/subscription-cancellation";
+import { subscriptionCancelledAccessActive } from "@/utils/subscription-access";
 import PaymentSettings from "./payment-settings";
 
 export type BillingTierOption = {
@@ -48,6 +54,7 @@ export type SmsCreditPackOption = {
 
 type BillingSettingsProps = {
   subscription: TenantBillingSubscription;
+  workspaceName: string;
   billingSettings: BillingSettingsRow;
   invoices: BillingInvoiceRow[];
   tierOptions: BillingTierOption[];
@@ -69,6 +76,12 @@ const primaryButtonClassName =
 
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const dangerButtonClassName =
+  "rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const dangerSectionClassName =
+  "space-y-4 rounded-lg border border-red-200 bg-red-50 p-6 shadow-sm";
 
 const tabClassName = (active: boolean) =>
   `shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
@@ -124,6 +137,7 @@ function formatSmsPackPrice(priceGhs: number): string {
 
 export default function BillingSettings({
   subscription,
+  workspaceName,
   billingSettings,
   invoices,
   tierOptions,
@@ -146,6 +160,12 @@ export default function BillingSettings({
   );
   const [walletBalance, setWalletBalance] = useState(smsCreditBalance);
   const [activeTab, setActiveTab] = useState<"billing" | "payment">(initialTab);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] =
+    useState<SubscriptionCancellationReason>("too_expensive");
+  const [cancelReasonDetail, setCancelReasonDetail] = useState("");
+  const [cancelNameConfirmation, setCancelNameConfirmation] = useState("");
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   useEffect(() => {
     setWalletBalance(smsCreditBalance);
@@ -158,6 +178,72 @@ export default function BillingSettings({
   const sortedTiers = sortTierOptions(
     tierOptions.filter((tier) => tier.is_active !== false),
   );
+
+  const accessEndLabel = formatSubscriptionAccessEndDate(
+    subscription.nextBillingDate,
+  );
+  const cancelledWithinPaidPeriod = subscriptionCancelledAccessActive({
+    subscription_status: subscription.subscriptionStatus ?? "restricted",
+    next_billing_date: subscription.nextBillingDate,
+  });
+  const canCancelSubscription =
+    !subscription.billingWaived &&
+    Boolean(subscription.paystackSubscriptionId) &&
+    (subscription.subscriptionStatus === "active" ||
+      subscription.subscriptionStatus === "past_due");
+  const cancelNameMatches =
+    cancelNameConfirmation.trim() === workspaceName.trim();
+  const cancelReasonValid =
+    cancelReason !== "other" || cancelReasonDetail.trim().length > 0;
+  const cancelSubmitEnabled =
+    cancelNameMatches && cancelReasonValid && !cancelLoading;
+
+  function resetCancelModal() {
+    setCancelModalOpen(false);
+    setCancelReason("too_expensive");
+    setCancelReasonDetail("");
+    setCancelNameConfirmation("");
+    setCancelLoading(false);
+  }
+
+  async function handleCancelSubscription(event: React.FormEvent) {
+    event.preventDefault();
+    if (!cancelSubmitEnabled) {
+      return;
+    }
+
+    setCancelLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/billing/subscription/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reason: cancelReason,
+        reason_detail:
+          cancelReason === "other" ? cancelReasonDetail.trim() : null,
+        workspace_name_confirmation: cancelNameConfirmation.trim(),
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      access_until?: string | null;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to cancel subscription.");
+      setCancelLoading(false);
+      return;
+    }
+
+    resetCancelModal();
+    setSuccess(
+      `Subscription cancelled. You keep full access until ${formatSubscriptionAccessEndDate(payload?.access_until ?? subscription.nextBillingDate)}.`,
+    );
+    router.refresh();
+  }
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -392,11 +478,27 @@ export default function BillingSettings({
                 })}
               </p>
             ) : null}
+            {subscription.subscriptionStatus === "cancelled" ? (
+              <p className="mt-1 text-xs font-medium text-amber-800">
+                {cancelledWithinPaidPeriod
+                  ? `Cancelled — access continues until ${accessEndLabel}.`
+                  : "Cancelled — access has ended."}
+              </p>
+            ) : null}
+            {subscription.nextBillingDate &&
+            subscription.subscriptionStatus !== "cancelled" &&
+            (subscription.subscriptionStatus === "active" ||
+              subscription.subscriptionStatus === "past_due") ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Current billing period ends {accessEndLabel}.
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
             onClick={() => setPlanModalOpen(true)}
             className={secondaryButtonClassName}
+            disabled={subscription.subscriptionStatus === "cancelled"}
           >
             Change Plan
           </button>
@@ -697,6 +799,174 @@ export default function BillingSettings({
           {saving ? "Saving…" : "Save billing details"}
         </button>
       </form>
+
+      {canCancelSubscription ? (
+        <section className={dangerSectionClassName}>
+          <div>
+            <h3 className="text-sm font-semibold text-red-900">
+              Cancel Subscription
+            </h3>
+            <p className="mt-2 text-sm text-red-800">
+              Stop automatic renewal for this workspace. You will keep full access
+              until {accessEndLabel}. After that date, dashboard access will be
+              revoked — we do not end access immediately.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCancelModalOpen(true)}
+            className={dangerButtonClassName}
+          >
+            Cancel Subscription
+          </button>
+        </section>
+      ) : subscription.subscriptionStatus === "cancelled" ? (
+        <section className={dangerSectionClassName}>
+          <h3 className="text-sm font-semibold text-red-900">
+            Subscription cancelled
+          </h3>
+          <p className="mt-2 text-sm text-red-800">
+            {cancelledWithinPaidPeriod
+              ? `Your subscription is cancelled. Access continues until ${accessEndLabel}.`
+              : "Your subscription is cancelled and access has ended. Contact support to resubscribe."}
+          </p>
+        </section>
+      ) : null}
+
+      {cancelModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-subscription-title"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border border-red-200 bg-white p-6 shadow-xl"
+          >
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h3
+                  id="cancel-subscription-title"
+                  className="text-lg font-semibold text-red-900"
+                >
+                  Cancel Subscription
+                </h3>
+                <p className="mt-2 text-sm text-slate-700">
+                  This stops future billing. Your team keeps access until{" "}
+                  <strong>{accessEndLabel}</strong>, then the workspace will be
+                  locked out.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetCancelModal}
+                disabled={cancelLoading}
+                className="rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+
+            <form onSubmit={handleCancelSubscription} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="cancel_reason"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Why are you cancelling?
+                </label>
+                <select
+                  id="cancel_reason"
+                  value={cancelReason}
+                  onChange={(event) =>
+                    setCancelReason(
+                      event.target.value as SubscriptionCancellationReason,
+                    )
+                  }
+                  className={inputClassName}
+                >
+                  {SUBSCRIPTION_CANCELLATION_REASONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {cancelReason === "other" ? (
+                <div>
+                  <label
+                    htmlFor="cancel_reason_detail"
+                    className="mb-1 block text-sm font-medium text-slate-700"
+                  >
+                    Please tell us more
+                  </label>
+                  <textarea
+                    id="cancel_reason_detail"
+                    required
+                    rows={3}
+                    value={cancelReasonDetail}
+                    onChange={(event) =>
+                      setCancelReasonDetail(event.target.value)
+                    }
+                    className={inputClassName}
+                    placeholder="Brief reason for cancelling"
+                  />
+                </div>
+              ) : null}
+
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+                <p className="font-medium">What happens next</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  <li>Paystack stops charging at the next renewal date.</li>
+                  <li>
+                    Access continues until{" "}
+                    <strong>{accessEndLabel}</strong>.
+                  </li>
+                  <li>After that, users cannot sign in to this workspace.</li>
+                </ul>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="cancel_name_confirmation"
+                  className="mb-1 block text-sm font-medium text-slate-700"
+                >
+                  Type <span className="font-semibold">{workspaceName}</span> to
+                  confirm
+                </label>
+                <input
+                  id="cancel_name_confirmation"
+                  type="text"
+                  autoComplete="off"
+                  value={cancelNameConfirmation}
+                  onChange={(event) =>
+                    setCancelNameConfirmation(event.target.value)
+                  }
+                  className={inputClassName}
+                  placeholder={workspaceName}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={!cancelSubmitEnabled}
+                  className="rounded-md border border-red-400 bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {cancelLoading ? "Cancelling…" : "Confirm Cancellation"}
+                </button>
+                <button
+                  type="button"
+                  onClick={resetCancelModal}
+                  disabled={cancelLoading}
+                  className={secondaryButtonClassName}
+                >
+                  Keep Subscription
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {planModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

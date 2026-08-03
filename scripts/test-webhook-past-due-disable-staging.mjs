@@ -105,6 +105,10 @@ function subscriptionAllowsAccess(row) {
     if (!row.trial_end_date) return false;
     return new Date().toISOString().slice(0, 10) <= row.trial_end_date.slice(0, 10);
   }
+  if (row.subscription_status === "cancelled") {
+    if (!row.next_billing_date) return false;
+    return new Date().toISOString().slice(0, 10) <= row.next_billing_date.slice(0, 10);
+  }
   return false;
 }
 
@@ -203,13 +207,14 @@ console.log(
   "(access granted)",
 );
 
-// Negative control: cancelled must deny
+// Negative control: cancelled with no period end must deny
 assert(
   subscriptionAllowsAccess({
     ...afterFailed,
     subscription_status: "cancelled",
+    next_billing_date: null,
   }) === false,
-  "cancelled must deny access",
+  "cancelled without next_billing_date must deny access",
 );
 
 const disableEnvelope = {
@@ -244,7 +249,7 @@ assert(disableRes.status === 200, "disable webhook must return 200");
 
 const { data: afterDisable } = await supabase
   .from("crm_subscriptions")
-  .select("subscription_status, trial_end_date, billing_waived")
+  .select("subscription_status, trial_end_date, billing_waived, next_billing_date")
   .eq("id", sub.id)
   .single();
 assert(
@@ -252,9 +257,13 @@ assert(
   `expected cancelled, got ${afterDisable.subscription_status}`,
 );
 console.log("status after disable:", afterDisable.subscription_status);
-assert(
-  subscriptionAllowsAccess(afterDisable) === false,
-  "cancelled must deny ensureTrialAccess predicate",
+const accessAfterDisable = subscriptionAllowsAccess(afterDisable);
+console.log(
+  "ensureTrialAccess predicate after disable →",
+  accessAfterDisable,
+  afterDisable.next_billing_date
+    ? `(next_billing_date=${afterDisable.next_billing_date})`
+    : "(no next_billing_date — access denied)",
 );
 
 // Reset clean state

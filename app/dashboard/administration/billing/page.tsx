@@ -56,6 +56,7 @@ export default async function BillingSettingsPage({
 
   const [
     subscription,
+    tenantResult,
     billingSettingsResult,
     invoicesResult,
     tiersResult,
@@ -63,6 +64,7 @@ export default async function BillingSettingsPage({
     smsWalletResult,
   ] = await Promise.all([
     getTenantBillingSubscription(tenantId),
+    admin.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
     supabase
       .from("billing_settings")
       .select(BILLING_SETTINGS_SELECT)
@@ -112,7 +114,10 @@ export default async function BillingSettingsPage({
     tiersResult.error?.message ??
     smsPacksResult.error?.message ??
     smsWalletResult.error?.message ??
+    tenantResult.error?.message ??
     null;
+
+  const workspaceName = tenantResult.data?.name?.trim() ?? "Workspace";
 
   const smsCreditPacks = (
     (smsPacksResult.data as
@@ -142,6 +147,7 @@ export default async function BillingSettingsPage({
       </h2>
       <BillingSettings
         subscription={subscription}
+        workspaceName={workspaceName}
         billingSettings={billingSettings}
         invoices={(invoicesResult.data as BillingInvoiceRow[] | null) ?? []}
         tierOptions={(tiersResult.data as BillingTierOption[] | null) ?? []}

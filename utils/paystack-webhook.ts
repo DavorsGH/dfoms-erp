@@ -303,6 +303,15 @@ function extractSubscriptionCode(data: JsonRecord): string | null {
   return asString(nested?.subscription_code);
 }
 
+function extractEmailToken(data: JsonRecord): string | null {
+  const direct = asString(data.email_token);
+  if (direct) {
+    return direct;
+  }
+  const nested = asRecord(data.subscription);
+  return asString(nested?.email_token);
+}
+
 function extractNextPaymentDate(data: JsonRecord): string | null {
   const direct = toIsoDate(asString(data.next_payment_date));
   if (direct) {
@@ -966,6 +975,10 @@ async function handleChargeSuccess(
   if (subscriptionCode) {
     patch.paystack_subscription_id = subscriptionCode;
   }
+  const emailToken = extractEmailToken(data);
+  if (emailToken) {
+    patch.paystack_email_token = emailToken;
+  }
 
   await updateSubscription(row.id, patch);
 
@@ -1058,6 +1071,10 @@ async function handleSubscriptionCreate(
   }
   if (nextPaymentDate) {
     patch.next_billing_date = nextPaymentDate;
+  }
+  const emailToken = extractEmailToken(data);
+  if (emailToken) {
+    patch.paystack_email_token = emailToken;
   }
   // If we only had a trial row before, promote on subscription.create as well.
   const becomesActive =

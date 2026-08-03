@@ -369,3 +369,135 @@ export function verifyPaystackWebhookSignature(
     return false;
   }
 }
+
+export type PaystackSubscriptionDetails = {
+  subscriptionCode: string;
+  emailToken: string | null;
+  status: string | null;
+  nextPaymentDate: string | null;
+};
+
+/** GET /subscription/:code_or_id */
+export async function fetchPaystackSubscription(
+  subscriptionCodeOrId: string,
+): Promise<
+  { ok: true; subscription: PaystackSubscriptionDetails } | { ok: false; error: string }
+> {
+  const auth = requireSecretKey();
+  if (!auth.ok) {
+    return auth;
+  }
+
+  const trimmed = subscriptionCodeOrId.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Missing Paystack subscription code." };
+  }
+
+  try {
+    const response = await fetch(
+      `${PAYSTACK_BASE}/subscription/${encodeURIComponent(trimmed)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${auth.secretKey}`,
+        },
+      },
+    );
+
+    const payload = (await response.json().catch(() => null)) as {
+      status?: boolean;
+      message?: string;
+      data?: {
+        subscription_code?: string;
+        email_token?: string;
+        status?: string;
+        next_payment_date?: string | null;
+      };
+    } | null;
+
+    if (!response.ok || payload?.status === false || !payload?.data) {
+      return {
+        ok: false,
+        error:
+          payload?.message ??
+          `Paystack subscription fetch failed (${response.status}).`,
+      };
+    }
+
+    const subscriptionCode =
+      payload.data.subscription_code?.trim() || trimmed;
+    const emailToken = payload.data.email_token?.trim() || null;
+
+    return {
+      ok: true,
+      subscription: {
+        subscriptionCode,
+        emailToken,
+        status: payload.data.status ?? null,
+        nextPaymentDate: payload.data.next_payment_date ?? null,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Paystack subscription fetch request failed.",
+    };
+  }
+}
+
+/** POST /subscription/disable — stops future charges; current period remains paid. */
+export async function disablePaystackSubscription(options: {
+  subscriptionCode: string;
+  emailToken: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = requireSecretKey();
+  if (!auth.ok) {
+    return auth;
+  }
+
+  const code = options.subscriptionCode.trim();
+  const token = options.emailToken.trim();
+  if (!code || !token) {
+    return {
+      ok: false,
+      error: "Paystack subscription code and email token are required.",
+    };
+  }
+
+  try {
+    const response = await fetch(`${PAYSTACK_BASE}/subscription/disable`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${auth.secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code, token }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      status?: boolean;
+      message?: string;
+    } | null;
+
+    if (!response.ok || payload?.status === false) {
+      return {
+        ok: false,
+        error:
+          payload?.message ??
+          `Paystack subscription disable failed (${response.status}).`,
+      };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Paystack subscription disable request failed.",
+    };
+  }
+}
