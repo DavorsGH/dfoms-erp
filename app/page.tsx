@@ -17,6 +17,9 @@ const primaryButtonClassName =
 const signUpLinkClassName =
   "font-semibold text-[#0f2744] underline underline-offset-2 transition-colors hover:text-[#1a3a5c]";
 
+const signUpPromptClassName =
+  "flex flex-col items-center gap-0.5 text-center text-sm text-slate-600";
+
 export default function PortalChooserPage() {
   return (
     <div className="flex min-h-screen flex-col items-center bg-[#0F2744] px-4 py-10 sm:py-14">
@@ -62,12 +65,12 @@ export default function PortalChooserPage() {
                   <Link href="/login" className={primaryButtonClassName}>
                     Log In
                   </Link>
-                  <p className="text-center text-sm text-slate-600">
-                    New business?{" "}
+                  <div className={signUpPromptClassName}>
+                    <span>New business?</span>
                     <Link href="/signup" className={signUpLinkClassName}>
                       Sign Up
                     </Link>
-                  </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -93,15 +96,15 @@ export default function PortalChooserPage() {
                   >
                     Log In
                   </Link>
-                  <p className="text-center text-sm text-slate-600">
-                    New landlord?{" "}
+                  <div className={signUpPromptClassName}>
+                    <span>New landlord?</span>
                     <Link
                       href="/landlord-portal/signup"
                       className={signUpLinkClassName}
                     >
                       Sign Up
                     </Link>
-                  </p>
+                  </div>
                 </div>
               </section>
 
