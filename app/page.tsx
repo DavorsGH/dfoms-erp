@@ -4,7 +4,8 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Davors Facilities — Portals",
-  description: "Sign in to the DFOMS ERP Suite, landlord portal, or tenant portal.",
+  description:
+    "Sign in to the Davors Facilities ERP, landlord portal, or tenant portal.",
 };
 
 const cardClassName =
@@ -42,7 +43,7 @@ export default function PortalChooserPage() {
         <main className="mt-8 space-y-8 sm:mt-10 sm:space-y-10">
           <section>
             <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-300 sm:text-sm">
-              Business ERP
+              Davors Facilities Enterprise Management System
             </h2>
             <div
               className={`${cardClassName} border-[#0f2744]/20 p-7 shadow-md sm:p-8`}
@@ -50,11 +51,11 @@ export default function PortalChooserPage() {
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="sm:max-w-xl">
                   <h3 className="text-xl font-semibold text-[#0f2744] sm:text-2xl">
-                    DFOMS ERP Suite
+                    Davors Facilities ERP Suite
                   </h3>
                   <p className="mt-2 text-sm text-slate-600 sm:text-base">
-                    For businesses subscribed to the main platform — finance,
-                    HR, CRM, inventory, and operations in one workspace.
+                    For businesses on the main platform — finance, HR, CRM,
+                    inventory, and operations in one workspace.
                   </p>
                 </div>
                 <div className="w-full space-y-3 sm:w-auto sm:min-w-[8.5rem]">
@@ -62,7 +63,7 @@ export default function PortalChooserPage() {
                     Log In
                   </Link>
                   <p className="text-center text-sm text-slate-600">
-                    New to DFOMS?{" "}
+                    New business?{" "}
                     <Link href="/signup" className={signUpLinkClassName}>
                       Sign Up
                     </Link>
