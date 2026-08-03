@@ -13,6 +13,9 @@ const cardClassName =
 const primaryButtonClassName =
   "inline-flex w-full items-center justify-center rounded-md bg-[#0f2744] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] sm:w-auto sm:min-w-[8.5rem]";
 
+const signUpLinkClassName =
+  "font-semibold text-[#0f2744] underline underline-offset-2 transition-colors hover:text-[#1a3a5c]";
+
 export default function PortalChooserPage() {
   return (
     <div className="flex min-h-screen flex-col items-center bg-[#0F2744] px-4 py-10 sm:py-14">
@@ -60,10 +63,7 @@ export default function PortalChooserPage() {
                   </Link>
                   <p className="text-center text-sm text-slate-600">
                     New to DFOMS?{" "}
-                    <Link
-                      href="/signup"
-                      className="font-medium text-[#0f2744] underline-offset-2 hover:underline"
-                    >
+                    <Link href="/signup" className={signUpLinkClassName}>
                       Sign Up
                     </Link>
                   </p>
@@ -96,7 +96,7 @@ export default function PortalChooserPage() {
                     New landlord?{" "}
                     <Link
                       href="/landlord-portal/signup"
-                      className="font-medium text-[#0f2744] underline-offset-2 hover:underline"
+                      className={signUpLinkClassName}
                     >
                       Sign Up
                     </Link>
