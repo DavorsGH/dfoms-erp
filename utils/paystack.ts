@@ -236,6 +236,10 @@ export type PaystackVerifyResult =
       planCode: string | null;
       /** Paystack channel used for the charge (card, mobile_money, …). */
       channel: string | null;
+      authorizationCode: string | null;
+      authorizationEmail: string | null;
+      authorizationChannel: string | null;
+      authorizationReusable: boolean | null;
     }
   | { ok: false; error: string };
 
@@ -277,7 +281,12 @@ export async function verifyPaystackTransaction(
         customer?: { email?: string | null } | null;
         plan?: { plan_code?: string | null } | string | null;
         plan_object?: { plan_code?: string | null } | string | null;
-        authorization?: { channel?: string | null } | null;
+        authorization?: {
+          authorization_code?: string | null;
+          email?: string | null;
+          channel?: string | null;
+          reusable?: boolean | null;
+        } | null;
       };
     } | null;
 
@@ -313,6 +322,26 @@ export async function verifyPaystackTransaction(
         ? payload.data.authorization.channel.trim()
         : null);
 
+    const authorizationCode =
+      typeof payload.data.authorization?.authorization_code === "string" &&
+      payload.data.authorization.authorization_code.trim()
+        ? payload.data.authorization.authorization_code.trim()
+        : null;
+    const authorizationEmail =
+      typeof payload.data.authorization?.email === "string" &&
+      payload.data.authorization.email.trim()
+        ? payload.data.authorization.email.trim()
+        : null;
+    const authorizationChannel =
+      typeof payload.data.authorization?.channel === "string" &&
+      payload.data.authorization.channel.trim()
+        ? payload.data.authorization.channel.trim()
+        : null;
+    const authorizationReusable =
+      typeof payload.data.authorization?.reusable === "boolean"
+        ? payload.data.authorization.reusable
+        : null;
+
     return {
       ok: true,
       status: payload.data.status ?? "unknown",
@@ -324,6 +353,10 @@ export async function verifyPaystackTransaction(
       customerEmail: payload.data.customer?.email ?? null,
       planCode,
       channel,
+      authorizationCode,
+      authorizationEmail,
+      authorizationChannel,
+      authorizationReusable,
     };
   } catch (error) {
     return {
@@ -498,6 +531,106 @@ export async function disablePaystackSubscription(options: {
         error instanceof Error
           ? error.message
           : "Paystack subscription disable request failed.",
+    };
+  }
+}
+
+export type PaystackChargeAuthorizationResult =
+  | {
+      ok: true;
+      reference: string;
+      status: string;
+      gatewayResponse: string | null;
+    }
+  | { ok: false; error: string };
+
+/** POST /transaction/charge_authorization — off-session charge with stored auth code. */
+export async function chargePaystackAuthorization(options: {
+  authorizationCode: string;
+  email: string;
+  amountPesewas: number;
+  reference: string;
+  currency?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<PaystackChargeAuthorizationResult> {
+  const auth = requireSecretKey();
+  if (!auth.ok) {
+    return auth;
+  }
+
+  const authorizationCode = options.authorizationCode.trim();
+  const email = options.email.trim();
+  const reference = options.reference.trim();
+  if (!authorizationCode || !email || !reference) {
+    return {
+      ok: false,
+      error: "authorization_code, email, and reference are required.",
+    };
+  }
+  if (!Number.isFinite(options.amountPesewas) || options.amountPesewas <= 0) {
+    return { ok: false, error: "amount must be a positive integer (pesewas)." };
+  }
+
+  try {
+    const response = await fetch(`${PAYSTACK_BASE}/transaction/charge_authorization`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${auth.secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        authorization_code: authorizationCode,
+        email,
+        amount: options.amountPesewas,
+        currency: options.currency ?? "GHS",
+        reference,
+        metadata: options.metadata ?? undefined,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      status?: boolean;
+      message?: string;
+      data?: {
+        status?: string;
+        reference?: string;
+        gateway_response?: string | null;
+      };
+    } | null;
+
+    if (!response.ok || payload?.status === false || !payload?.data) {
+      return {
+        ok: false,
+        error:
+          payload?.message ??
+          `Paystack charge_authorization failed (${response.status}).`,
+      };
+    }
+
+    const paystackStatus = payload.data.status ?? "unknown";
+    if (paystackStatus !== "success") {
+      return {
+        ok: false,
+        error:
+          payload.data.gateway_response?.trim() ||
+          payload.message ||
+          `Charge not successful (status: ${paystackStatus}).`,
+      };
+    }
+
+    return {
+      ok: true,
+      reference: payload.data.reference ?? reference,
+      status: paystackStatus,
+      gatewayResponse: payload.data.gateway_response ?? null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Paystack charge_authorization request failed.",
     };
   }
 }

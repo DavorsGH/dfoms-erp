@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
+import { resolveSiteUrlFromRequest } from "@/utils/product-sale-paystack";
+import { activatePlatformOnlyUnitForBilling } from "@/utils/platform-only-unit-billing";
 import {
   isUnitStatus,
   type UnitStatus,
@@ -12,6 +14,8 @@ type CreateUnitBody = {
   bathrooms?: number | string | null;
   base_rent_ghs?: number | string;
   status?: string;
+  /** When true (default), attempt billing activation after create (post-trial charges GHS 110). */
+  activate_for_billing?: boolean;
 };
 
 function parseOptionalInteger(
@@ -117,6 +121,7 @@ export async function POST(request: Request) {
     bathrooms: bathrooms.value,
     base_rent_ghs: baseRent,
     status: status as UnitStatus,
+    billing_activation_status: "inactive",
     photo_urls: [],
     created_at: now,
     updated_at: now,
@@ -124,6 +129,53 @@ export async function POST(request: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  const activateForBilling = body.activate_for_billing !== false;
+  if (activateForBilling) {
+    const siteUrl = resolveSiteUrlFromRequest(request);
+    const callbackUrl = `${siteUrl}/landlord-portal/administration/billing/callback`;
+    const activation = await activatePlatformOnlyUnitForBilling(auth.admin, {
+      tenantId: auth.session.tenantId,
+      unitId,
+      triggerType: "create",
+      billingEmailFallback: auth.session.email,
+      callbackUrl,
+    });
+
+    if (!activation.ok) {
+      return NextResponse.json({
+        success: true,
+        unit_id: unitId,
+        billing_activation_error: activation.error,
+      });
+    }
+
+    if ("requiresPayment" in activation && activation.requiresPayment) {
+      return NextResponse.json({
+        success: true,
+        unit_id: unitId,
+        requires_payment: true,
+        amount_ghs: activation.amountGhs,
+        reference: activation.reference,
+        access_code: activation.accessCode,
+      });
+    }
+
+    if ("activated" in activation && activation.activated) {
+      return NextResponse.json({
+        success: true,
+        unit_id: unitId,
+        billing_activated: true,
+        trial: activation.trial,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      unit_id: unitId,
+      billing_activation_error: "Unexpected activation result.",
+    });
   }
 
   return NextResponse.json({ success: true, unit_id: unitId });

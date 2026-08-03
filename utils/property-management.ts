@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import {
   isPropertyType,
+  isUnitBillingActivationStatus,
   isUnitStatus,
   normalizePhotoUrls,
   computePropertyOccupancyStatus,
@@ -47,6 +48,8 @@ type UnitRow = {
   bathrooms: number | null;
   base_rent_ghs: number | string;
   status: string;
+  billing_activation_status?: string | null;
+  billing_activated_at?: string | null;
   photo_urls: unknown;
   created_at: string;
   updated_at: string;
@@ -77,6 +80,11 @@ function mapUnit(row: UnitRow): PropertyUnitRecord | null {
     return null;
   }
 
+  const billingStatus = row.billing_activation_status ?? "inactive";
+  if (!isUnitBillingActivationStatus(billingStatus)) {
+    return null;
+  }
+
   return {
     unitId: row.unit_id,
     tenantId: row.tenant_id,
@@ -86,6 +94,8 @@ function mapUnit(row: UnitRow): PropertyUnitRecord | null {
     bathrooms: row.bathrooms,
     baseRentGhs: Number(row.base_rent_ghs) || 0,
     status: row.status,
+    billingActivationStatus: billingStatus,
+    billingActivatedAt: row.billing_activated_at ?? null,
     photoUrls: normalizePhotoUrls(row.photo_urls),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -238,7 +248,7 @@ export async function fetchPropertyDetail(
     admin
       .from("property_units")
       .select(
-        "tenant_id, unit_id, property_id, unit_number, bedrooms, bathrooms, base_rent_ghs, status, photo_urls, created_at, updated_at",
+        "tenant_id, unit_id, property_id, unit_number, bedrooms, bathrooms, base_rent_ghs, status, billing_activation_status, billing_activated_at, photo_urls, created_at, updated_at",
       )
       .eq("tenant_id", landlord.tenantId)
       .eq("property_id", trimmedPropertyId)

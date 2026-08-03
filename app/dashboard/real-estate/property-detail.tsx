@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import UnitBillingActivationControls, {
+  openUnitActivationPaystackInline,
+} from "@/app/landlord-portal/real-estate/unit-billing-controls";
 import {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -32,6 +35,8 @@ type PropertyDetailViewProps = {
   apiBasePath?: string;
   backHref?: string;
   showLandlordName?: boolean;
+  /** platform_only landlord portal: per-unit billing activation controls. */
+  showUnitBillingControls?: boolean;
 };
 
 const primaryButtonClassName =
@@ -111,6 +116,7 @@ export default function PropertyDetailView({
   apiBasePath = "/api/admin/properties",
   backHref,
   showLandlordName = true,
+  showUnitBillingControls = false,
 }: PropertyDetailViewProps) {
   const router = useRouter();
   const [detail, setDetail] = useState(initialDetail);
@@ -277,6 +283,7 @@ export default function PropertyDetailView({
         bathrooms: unitForm.bathrooms,
         base_rent_ghs: unitForm.base_rent_ghs,
         status: unitForm.status,
+        activate_for_billing: showUnitBillingControls && !editingUnitId,
         photo_urls: editingUnitId
           ? (detail.units.find((unit) => unit.unitId === editingUnitId)
               ?.photoUrls ?? [])
@@ -286,6 +293,12 @@ export default function PropertyDetailView({
 
     const payload = (await response.json().catch(() => null)) as {
       error?: string;
+      unit_id?: string;
+      requires_payment?: boolean;
+      access_code?: string;
+      reference?: string;
+      billing_activation_error?: string;
+      trial?: boolean;
     } | null;
 
     if (!response.ok) {
@@ -294,11 +307,50 @@ export default function PropertyDetailView({
       return;
     }
 
+    if (
+      payload?.requires_payment &&
+      payload.unit_id &&
+      payload.access_code &&
+      payload.reference
+    ) {
+      try {
+        await openUnitActivationPaystackInline({
+          unitId: payload.unit_id,
+          accessCode: payload.access_code,
+          reference: payload.reference,
+        });
+        setSuccess("Unit added and billing activated after payment.");
+      } catch (paystackError) {
+        setError(
+          paystackError instanceof Error
+            ? paystackError.message
+            : "Unit saved but billing payment failed.",
+        );
+        setSavingUnit(false);
+        setShowUnitForm(false);
+        router.refresh();
+        return;
+      }
+    } else if (payload?.billing_activation_error) {
+      setSuccess(
+        `Unit saved, but billing activation failed: ${payload.billing_activation_error}`,
+      );
+    } else {
+      setSuccess(
+        editingUnitId
+          ? "Unit updated."
+          : payload?.trial
+            ? "Unit added and activated for billing (free during trial)."
+            : showUnitBillingControls && !editingUnitId
+              ? "Unit added and activated for billing."
+              : "Unit added.",
+      );
+    }
+
     setShowUnitForm(false);
     setEditingUnitId(null);
     setUnitForm(emptyUnitForm);
     setSavingUnit(false);
-    setSuccess(editingUnitId ? "Unit updated." : "Unit added.");
     router.refresh();
   }
 
@@ -737,6 +789,9 @@ export default function PropertyDetailView({
                 <th className={scrollableTableThClassName}>Bathrooms</th>
                 <th className={scrollableTableThClassName}>Base Rent (GHS)</th>
                 <th className={scrollableTableThClassName}>Status</th>
+                {showUnitBillingControls ? (
+                  <th className={scrollableTableThClassName}>Billing</th>
+                ) : null}
                 <th className={scrollableTableThClassName}>Actions</th>
               </tr>
             </thead>
@@ -744,7 +799,7 @@ export default function PropertyDetailView({
               {detail.units.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={showUnitBillingControls ? 7 : 6}
                     className="px-4 py-8 text-center text-sm text-slate-500"
                   >
                     No units yet for this property.
@@ -784,6 +839,18 @@ export default function PropertyDetailView({
                         {formatUnitStatus(unit.status)}
                       </span>
                     </td>
+                    {showUnitBillingControls ? (
+                      <td className="px-4 py-3 text-sm">
+                        <UnitBillingActivationControls
+                          unitId={unit.unitId}
+                          unitNumber={unit.unitNumber}
+                          billingActivationStatus={unit.billingActivationStatus}
+                          billingActivatedAt={unit.billingActivatedAt}
+                          onError={setError}
+                          onSuccess={setSuccess}
+                        />
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 text-sm">
                       <div className="flex flex-wrap gap-3">
                         <button

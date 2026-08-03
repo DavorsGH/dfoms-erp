@@ -20,6 +20,10 @@ import {
   processRentLedgerPaystackEvent,
 } from "@/utils/rent-ledger-paystack";
 import {
+  isPlatformOnlyUnitActivationPaystackContext,
+  processPlatformOnlyUnitActivationPaystackEvent,
+} from "@/utils/platform-only-unit-billing";
+import {
   isSmsCreditPaystackContext,
   processSmsCreditPaystackEvent,
 } from "@/utils/sms-credit-paystack";
@@ -1224,6 +1228,8 @@ export async function processPaystackWebhookEvent(
         // to avoid mis-activating ERP Suite subs.
         if (isProductSalePaystackContext(data)) {
           result = await processProductSalePaystackEvent(data);
+        } else if (isPlatformOnlyUnitActivationPaystackContext(data)) {
+          result = await processPlatformOnlyUnitActivationPaystackEvent(data);
         } else if (isRentLedgerPaystackContext(data)) {
           result = await processRentLedgerPaystackEvent(data);
         } else if (isSmsCreditPaystackContext(data)) {

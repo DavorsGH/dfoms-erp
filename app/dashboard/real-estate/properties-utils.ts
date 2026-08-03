@@ -6,6 +6,9 @@ export type UnitStatus =
   | "under_maintenance"
   | "application_hold";
 
+/** Platform-only metered billing — separate from operational UnitStatus. */
+export type UnitBillingActivationStatus = "inactive" | "active";
+
 export type PropertyListRow = {
   propertyId: string;
   tenantId: string;
@@ -66,6 +69,8 @@ export type PropertyUnitRecord = {
   bathrooms: number | null;
   baseRentGhs: number;
   status: UnitStatus;
+  billingActivationStatus: UnitBillingActivationStatus;
+  billingActivatedAt: string | null;
   photoUrls: string[];
   createdAt: string;
   updatedAt: string;
@@ -141,6 +146,24 @@ export function normalizePhotoUrls(value: unknown): string[] {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+export function isUnitBillingActivationStatus(
+  value: string,
+): value is UnitBillingActivationStatus {
+  return value === "inactive" || value === "active";
+}
+
+export function formatUnitBillingActivationStatus(
+  value: string | null | undefined,
+): string {
+  if (value === "active") {
+    return "Billing active";
+  }
+  if (value === "inactive") {
+    return "Billing inactive";
+  }
+  return "—";
 }
 
 export function isPropertyType(value: string): value is PropertyType {

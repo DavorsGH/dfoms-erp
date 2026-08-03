@@ -85,6 +85,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
 
+  try {
+    const { ensurePlatformOnlyLandlordTrialSubscription } = await import(
+      "@/utils/platform-only-unit-billing"
+    );
+    await ensurePlatformOnlyLandlordTrialSubscription(admin, tenantId);
+  } catch (error) {
+    console.warn(
+      "[landlords/approve] trial subscription seed failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
   // Best-effort landlord portal invite (do not fail approve on email errors).
   let portalInvite:
     | { status: "sent" }

@@ -77,6 +77,7 @@ export default async function LandlordPortalPropertyDetailPage({
           apiBasePath="/api/landlord-portal/properties"
           backHref="/landlord-portal/real-estate/properties"
           showLandlordName={false}
+          showUnitBillingControls={canManage}
         />
       </div>
     );
