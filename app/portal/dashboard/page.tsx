@@ -47,7 +47,7 @@ export default async function PortalDashboardPage() {
   const { data, error } = await fetchPortalDashboardData(session);
 
   return (
-    <PortalShell fullName={session.fullName}>
+    <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
 
       {!data ? (

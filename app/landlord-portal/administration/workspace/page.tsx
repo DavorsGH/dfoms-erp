@@ -33,9 +33,8 @@ export default async function LandlordPortalWorkspacePage() {
     <section className={portalSectionClassName}>
       <h1 className={portalSectionTitleClassName}>Workspace settings</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Update your landlord workspace name, address, and contact details. Buy
-        SMS credits and view plan status under Billing Settings. Logo upload is
-        not available in this portal.
+        Update your landlord workspace name, logo, address, and contact details.
+        Buy SMS credits and view plan status under Billing Settings.
       </p>
 
       {error ? (
@@ -48,6 +47,7 @@ export default async function LandlordPortalWorkspacePage() {
           initialEmail={data.email}
           initialPhone={data.phone}
           initialAddress={data.address}
+          initialLogoUrl={data.logoUrl}
         />
       ) : null}
     </section>

@@ -79,7 +79,7 @@ export default async function PortalIssuesPage() {
   const fetchError = maintenance.fetchError ?? complaints.fetchError;
 
   return (
-    <PortalShell fullName={session.fullName}>
+    <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <section className={portalSectionClassName}>
         <h2 className={portalSectionTitleClassName}>My Issues</h2>
         <p className="mt-1 text-sm text-slate-600">

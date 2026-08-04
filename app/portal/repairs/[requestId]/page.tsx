@@ -42,7 +42,7 @@ export default async function PortalRepairDetailPage({ params }: PageProps) {
   }
 
   return (
-    <PortalShell fullName={session.fullName}>
+    <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <div className="mb-4">
         <Link
           href="/portal/repairs"

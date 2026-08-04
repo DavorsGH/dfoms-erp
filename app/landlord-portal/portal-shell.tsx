@@ -3,6 +3,7 @@ import LandlordPortalDashboardShell from "./portal-dashboard-shell";
 
 type LandlordPortalShellProps = {
   fullName: string;
+  logoUrl?: string | null;
   children: React.ReactNode;
   landlordType?: LandlordType | null;
   /** Hide operational nav for pending/rejected accounts. */
@@ -16,6 +17,7 @@ type LandlordPortalShellProps = {
  */
 export default function LandlordPortalShell({
   fullName,
+  logoUrl = null,
   children,
   landlordType = null,
   showNav = true,
@@ -23,6 +25,7 @@ export default function LandlordPortalShell({
   return (
     <LandlordPortalDashboardShell
       userLabel={fullName}
+      userPhotoUrl={logoUrl}
       landlordType={landlordType}
       showNav={showNav}
     >

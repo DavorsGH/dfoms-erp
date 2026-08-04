@@ -32,7 +32,7 @@ export default async function PortalPaymentsPage() {
   const { rows, error } = await fetchPortalPaymentHistoryForSession(session);
 
   return (
-    <PortalShell fullName={session.fullName}>
+    <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <div className="space-y-4">
         <div>
           <Link

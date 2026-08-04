@@ -24,6 +24,7 @@ export type PortalLesseeSession = {
   tenantId: string;
   lesseeId: string;
   fullName: string;
+  photoUrl: string | null;
 };
 
 export type PortalUnpaidRent = {
@@ -110,7 +111,7 @@ export async function getPortalLesseeSession(): Promise<PortalLesseeSession | nu
   const admin = createAdminClient();
   const { data: lessee, error } = await admin
     .from("lessees")
-    .select("tenant_id, lessee_id, full_name, email, auth_user_id")
+    .select("tenant_id, lessee_id, full_name, email, auth_user_id, photo_url")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
@@ -133,6 +134,10 @@ export async function getPortalLesseeSession(): Promise<PortalLesseeSession | nu
     tenantId: lessee.tenant_id,
     lesseeId: lessee.lessee_id,
     fullName: lessee.full_name,
+    photoUrl:
+      typeof lessee.photo_url === "string" && lessee.photo_url.trim()
+        ? lessee.photo_url.trim()
+        : null,
   };
 }
 

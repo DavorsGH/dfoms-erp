@@ -27,7 +27,7 @@ export default async function PortalComplaintsPage() {
   );
 
   return (
-    <PortalShell fullName={session.fullName}>
+    <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <PortalComplaintForm />
 
       <section className={portalSectionClassName}>

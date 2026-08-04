@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import PortalHeaderAvatar, {
+  LANDLORD_HEADER_PLACEHOLDER_LOGO,
+} from "@/components/portal-header-avatar";
 import LandlordPortalSignOutButton from "./dashboard/sign-out-button";
 import LandlordNotificationBell from "./notification-bell";
 
 type LandlordPortalTopBarProps = {
   userLabel: string;
+  userPhotoUrl?: string | null;
   onMenuToggle: () => void;
   mobileNavOpen: boolean;
 };
@@ -29,6 +33,7 @@ function MenuIcon() {
 
 export default function LandlordPortalTopBar({
   userLabel,
+  userPhotoUrl = null,
   onMenuToggle,
   mobileNavOpen,
 }: LandlordPortalTopBarProps) {
@@ -81,6 +86,11 @@ export default function LandlordPortalTopBar({
         <LandlordNotificationBell />
 
         <div className="hidden items-center gap-3 md:flex">
+          <PortalHeaderAvatar
+            photoUrl={userPhotoUrl}
+            fullName={userLabel}
+            placeholderLogoUrl={LANDLORD_HEADER_PLACEHOLDER_LOGO}
+          />
           <span className="text-sm text-slate-700">{userLabel}</span>
           <LandlordPortalSignOutButton variant="topbar" />
         </div>
@@ -92,9 +102,13 @@ export default function LandlordPortalTopBar({
             aria-expanded={open}
             aria-haspopup="menu"
             aria-label="Open account menu"
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-100"
+            className="rounded-md p-0.5 transition-colors hover:bg-slate-100"
           >
-            Account
+            <PortalHeaderAvatar
+              photoUrl={userPhotoUrl}
+              fullName={userLabel}
+              placeholderLogoUrl={LANDLORD_HEADER_PLACEHOLDER_LOGO}
+            />
           </button>
           {open ? (
             <div

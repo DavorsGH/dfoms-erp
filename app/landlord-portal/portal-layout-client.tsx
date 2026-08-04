@@ -13,6 +13,7 @@ const PUBLIC_AUTH_PREFIXES = [
 type PortalLayoutClientProps = {
   children: React.ReactNode;
   userLabel: string | null;
+  userPhotoUrl?: string | null;
   landlordType: LandlordType | null;
   hasDataAccess: boolean;
   isAuthenticatedLandlord: boolean;
@@ -31,6 +32,7 @@ function isPublicAuthPath(pathname: string): boolean {
 export default function PortalLayoutClient({
   children,
   userLabel,
+  userPhotoUrl = null,
   landlordType,
   hasDataAccess,
   isAuthenticatedLandlord,
@@ -44,6 +46,7 @@ export default function PortalLayoutClient({
   return (
     <LandlordPortalDashboardShell
       userLabel={userLabel}
+      userPhotoUrl={userPhotoUrl}
       landlordType={landlordType}
       showNav={hasDataAccess}
     >

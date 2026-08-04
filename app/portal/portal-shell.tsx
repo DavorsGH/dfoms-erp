@@ -8,9 +8,11 @@ import {
 import PortalNav from "./portal-nav";
 import PortalNotificationBell from "./portal-notification-bell";
 import PortalSignOutButton from "./dashboard/sign-out-button";
+import PortalHeaderAvatar from "@/components/portal-header-avatar";
 
 type PortalShellProps = {
   fullName: string;
+  photoUrl?: string | null;
   children: React.ReactNode;
 };
 
@@ -18,7 +20,11 @@ type PortalShellProps = {
  * Shared Tenant Portal chrome — same navy sidebar colors, logo, wordmark,
  * and footer branding as the staff dashboard.
  */
-export default function PortalShell({ fullName, children }: PortalShellProps) {
+export default function PortalShell({
+  fullName,
+  photoUrl = null,
+  children,
+}: PortalShellProps) {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="bg-[#0f2744] text-white">
@@ -47,9 +53,16 @@ export default function PortalShell({ fullName, children }: PortalShellProps) {
               <PortalSignOutButton />
             </div>
           </div>
-          <h1 className="mt-4 text-lg font-semibold text-white sm:text-xl">
-            Welcome, {fullName}
-          </h1>
+          <div className="mt-4 flex items-center gap-3">
+            <PortalHeaderAvatar
+              photoUrl={photoUrl}
+              fullName={fullName}
+              className="ring-2 ring-white/25"
+            />
+            <h1 className="text-lg font-semibold text-white sm:text-xl">
+              Welcome, {fullName}
+            </h1>
+          </div>
         </div>
       </header>
 

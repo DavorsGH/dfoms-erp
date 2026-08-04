@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { DEFAULT_WORKSPACE_LOGO } from "@/utils/tenant-branding-types";
 import {
   portalErrorBannerClassName,
   portalInputClassName,
@@ -15,6 +17,7 @@ type WorkspaceFormProps = {
   initialEmail: string | null;
   initialPhone: string | null;
   initialAddress: string | null;
+  initialLogoUrl: string | null;
 };
 
 export default function LandlordPortalWorkspaceForm({
@@ -22,13 +25,16 @@ export default function LandlordPortalWorkspaceForm({
   initialEmail,
   initialPhone,
   initialAddress,
+  initialLogoUrl,
 }: WorkspaceFormProps) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
   const [email, setEmail] = useState(initialEmail ?? "");
   const [phone, setPhone] = useState(initialPhone ?? "");
   const [address, setAddress] = useState(initialAddress ?? "");
+  const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
   const [loading, setLoading] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -64,8 +70,42 @@ export default function LandlordPortalWorkspaceForm({
     router.refresh();
   }
 
+  async function handleLogoUpload(file: File) {
+    setUploadingLogo(true);
+    setError(null);
+    setSuccess(null);
+
+    const formData = new FormData();
+    formData.set("file", file);
+
+    const response = await fetch("/api/landlord-portal/workspace/upload-logo", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      logo_url?: string;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to upload logo.");
+      setUploadingLogo(false);
+      return;
+    }
+
+    if (payload?.logo_url) {
+      setLogoUrl(payload.logo_url);
+    }
+    setSuccess("Workspace logo updated.");
+    setUploadingLogo(false);
+    router.refresh();
+  }
+
+  const previewLogoUrl = logoUrl?.trim() || DEFAULT_WORKSPACE_LOGO;
+
   return (
-    <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+    <div className="mt-4 space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-3">
       <div>
         <label htmlFor="workspace-name" className={portalLabelClassName}>
           Display name
@@ -131,6 +171,39 @@ export default function LandlordPortalWorkspaceForm({
       >
         {loading ? "Saving…" : "Save settings"}
       </button>
-    </form>
+      </form>
+
+      <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
+        <div>
+          <p className="text-sm font-medium text-slate-700">Workspace logo</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Shown in the Landlord Portal header next to your name. JPEG, PNG, or
+            WebP.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewLogoUrl}
+            alt="Workspace logo preview"
+            className="h-20 w-20 shrink-0 rounded-full border border-slate-200 object-cover bg-white"
+          />
+          <ImageFileUploadButton
+            files={[]}
+            onChange={(next) => {
+              const file = next[0];
+              if (file) {
+                void handleLogoUpload(file);
+              }
+            }}
+            multiple={false}
+            disabled={uploadingLogo}
+            addLabel={uploadingLogo ? "Uploading…" : "Upload logo"}
+            showClear={false}
+            resetInputAfterSelect
+          />
+        </div>
+      </section>
+    </div>
   );
 }

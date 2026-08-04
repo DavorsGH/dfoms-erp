@@ -17,6 +17,7 @@ export default async function LandlordPortalLayout({
   return (
     <PortalLayoutClient
       userLabel={session?.fullName ?? null}
+      userPhotoUrl={session?.logoUrl ?? null}
       landlordType={session?.landlordType ?? null}
       hasDataAccess={session ? landlordPortalHasDataAccess(session) : false}
       isAuthenticatedLandlord={Boolean(session)}

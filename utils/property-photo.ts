@@ -26,6 +26,7 @@ export type RealEstatePhotoEntity =
   | "property"
   | "unit"
   | "lease"
+  | "landlord"
   | "maintenance"
   | "inspection"
   | "expense"

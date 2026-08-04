@@ -52,6 +52,7 @@ export type LandlordPortalSession = {
   email: string | null;
   tenantId: string;
   fullName: string;
+  logoUrl: string | null;
   landlordType: LandlordType | null;
   approvalStatus: string | null;
 };
@@ -294,7 +295,9 @@ export async function getLandlordPortalSession(): Promise<LandlordPortalSession 
   const admin = createAdminClient();
   const { data: landlord, error } = await admin
     .from("landlords")
-    .select("tenant_id, auth_user_id, landlord_type, approval_status")
+    .select(
+      "tenant_id, auth_user_id, landlord_type, approval_status, logo_url",
+    )
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
@@ -319,6 +322,10 @@ export async function getLandlordPortalSession(): Promise<LandlordPortalSession 
     email: user.email ?? tenant?.email ?? null,
     tenantId: landlord.tenant_id,
     fullName: tenant?.name?.trim() || "Landlord",
+    logoUrl:
+      typeof landlord.logo_url === "string" && landlord.logo_url.trim()
+        ? landlord.logo_url.trim()
+        : null,
     landlordType,
     approvalStatus: landlord.approval_status,
   };
@@ -1023,6 +1030,7 @@ export type LandlordPortalWorkspaceProfile = {
   email: string | null;
   phone: string | null;
   address: string | null;
+  logoUrl: string | null;
 };
 
 export type LandlordPortalLesseeAccountPortalStatus =
@@ -1911,7 +1919,7 @@ export async function fetchLandlordPortalWorkspaceProfile(
       .maybeSingle(),
     admin
       .from("landlords")
-      .select("notification_phone")
+      .select("notification_phone, logo_url")
       .eq("tenant_id", session.tenantId)
       .maybeSingle(),
   ]);
@@ -1940,6 +1948,11 @@ export async function fetchLandlordPortalWorkspaceProfile(
       // Prefer notification_phone when set; columns should stay equal after saves.
       phone: notificationPhone ?? tenantPhone,
       address: typeof data.address === "string" ? data.address : null,
+      logoUrl:
+        typeof landlordResult.data?.logo_url === "string" &&
+        landlordResult.data.logo_url.trim()
+          ? landlordResult.data.logo_url.trim()
+          : null,
     },
     error: null,
   };

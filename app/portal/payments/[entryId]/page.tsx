@@ -29,7 +29,7 @@ export default async function PortalPaymentReceiptPage({ params }: PageProps) {
 
   if (!receipt && !error) {
     return (
-      <PortalShell fullName={session.fullName}>
+      <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
         <NotificationTargetUnavailablePanel
           backHref="/portal/payments"
           backLabel="Back to payment history"
@@ -39,7 +39,7 @@ export default async function PortalPaymentReceiptPage({ params }: PageProps) {
   }
 
   return (
-    <PortalShell fullName={session.fullName}>
+    <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <div className="space-y-4">
         <div className="receipt-no-print">
           <Link

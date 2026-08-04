@@ -8,6 +8,7 @@ import LandlordPortalTopBar from "./portal-top-bar";
 type LandlordPortalDashboardShellProps = {
   children: React.ReactNode;
   userLabel: string;
+  userPhotoUrl?: string | null;
   landlordType: LandlordType | null;
   showNav?: boolean;
 };
@@ -19,6 +20,7 @@ type LandlordPortalDashboardShellProps = {
 export default function LandlordPortalDashboardShell({
   children,
   userLabel,
+  userPhotoUrl = null,
   landlordType,
   showNav = true,
 }: LandlordPortalDashboardShellProps) {
@@ -73,6 +75,7 @@ export default function LandlordPortalDashboardShell({
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <LandlordPortalTopBar
           userLabel={userLabel}
+          userPhotoUrl={userPhotoUrl}
           onMenuToggle={() => setMobileNavOpen((current) => !current)}
           mobileNavOpen={mobileNavOpen}
         />

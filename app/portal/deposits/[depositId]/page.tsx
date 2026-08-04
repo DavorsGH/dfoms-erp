@@ -39,7 +39,7 @@ export default async function PortalSecurityDepositReceiptPage({
 
   if (!receipt && !error) {
     return (
-      <PortalShell fullName={session.fullName}>
+      <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
         <NotificationTargetUnavailablePanel
           backHref="/portal/dashboard"
           backLabel="Back to dashboard"
@@ -51,7 +51,7 @@ export default async function PortalSecurityDepositReceiptPage({
   const showResolution = receipt ? depositIsResolved(receipt.status) : false;
 
   return (
-    <PortalShell fullName={session.fullName}>
+    <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <div className="space-y-4">
         <div className="receipt-no-print">
           <Link

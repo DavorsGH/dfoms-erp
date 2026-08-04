@@ -32,7 +32,7 @@ export default async function PortalRepairsPage() {
   const mine = rows.filter((row) => row.reportedBy === "tenant");
 
   return (
-    <PortalShell fullName={session.fullName}>
+    <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <PortalRepairForm />
 
       <section className={portalSectionClassName}>
