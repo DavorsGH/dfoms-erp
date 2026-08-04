@@ -7,7 +7,11 @@ import {
   canInitiatePortalRentPayment,
   portalRentPaymentBlockedMessage,
 } from "@/utils/lease-signature";
-import { fulfillRentLedgerPaystackPayment } from "@/utils/rent-ledger-paystack";
+import {
+  fulfillRentLedgerPaystackPayment,
+  parseRentPaystackMetadataEntryIds,
+  RENT_LEDGER_PAYSTACK_CONTEXT,
+} from "@/utils/rent-ledger-paystack";
 
 export const runtime = "nodejs";
 
@@ -36,6 +40,9 @@ export async function POST(request: Request) {
   }
 
   const reference = body.reference?.trim() ?? "";
+  const clientSuppliedEntryIds =
+    (Array.isArray(body.entry_ids) && body.entry_ids.length > 0) ||
+    Boolean(body.entry_id?.trim());
   let entryIds = [
     ...new Set(
       [
@@ -114,14 +121,19 @@ export async function POST(request: Request) {
 
   const { data: entries, error: entryError } = await admin
     .from("rent_ledger")
-    .select("entry_id, lease_id")
+    .select("entry_id, lease_id, paystack_reference")
     .eq("tenant_id", session.tenantId)
     .in("entry_id", entryIds);
 
   if (entryError) {
     return NextResponse.json({ error: entryError.message }, { status: 400 });
   }
-  const rows = (entries as Array<{ entry_id: string; lease_id: string }> | null) ?? [];
+  const rows =
+    (entries as Array<{
+      entry_id: string;
+      lease_id: string;
+      paystack_reference: string | null;
+    }> | null) ?? [];
   if (rows.length !== entryIds.length) {
     return NextResponse.json(
       { error: "One or more rent ledger entries were not found for your lease." },
@@ -133,6 +145,22 @@ export async function POST(request: Request) {
       { error: "Rent ledger entry not found for your lease." },
       { status: 404 },
     );
+  }
+
+  if (clientSuppliedEntryIds) {
+    const referenceMismatch = rows.some((row) => {
+      const storedReference = row.paystack_reference?.trim() ?? "";
+      return !storedReference || storedReference !== reference;
+    });
+    if (referenceMismatch) {
+      return NextResponse.json(
+        {
+          error:
+            "Payment reference does not match the initialized rent ledger entries.",
+        },
+        { status: 400 },
+      );
+    }
   }
 
   const verified = await verifyPaystackTransaction(reference);
@@ -149,6 +177,28 @@ export async function POST(request: Request) {
     );
   }
 
+  const paystackMetadata = verified.metadata ?? {};
+  if (paystackMetadata.context !== RENT_LEDGER_PAYSTACK_CONTEXT) {
+    return NextResponse.json(
+      { error: "Payment is not a rent ledger transaction." },
+      { status: 400 },
+    );
+  }
+
+  const metadataTenantId =
+    typeof paystackMetadata.tenant_id === "string"
+      ? paystackMetadata.tenant_id.trim()
+      : "";
+  const metadataLesseeId =
+    typeof paystackMetadata.lessee_id === "string"
+      ? paystackMetadata.lessee_id.trim()
+      : "";
+  const metadataLeaseId =
+    typeof paystackMetadata.lease_id === "string"
+      ? paystackMetadata.lease_id.trim()
+      : "";
+  const metadataEntryIds = parseRentPaystackMetadataEntryIds(paystackMetadata);
+
   const paidAmountGhs =
     verified.amount != null ? roundGhs(verified.amount / 100) : null;
 
@@ -160,8 +210,10 @@ export async function POST(request: Request) {
       paidAmountGhs,
       paidAt: verified.paidAt,
       channel: verified.channel,
-      metadataTenantId: session.tenantId,
-      metadataLesseeId: session.lesseeId,
+      metadataTenantId,
+      metadataLesseeId,
+      metadataLeaseId,
+      metadataEntryIds: metadataEntryIds.length > 0 ? metadataEntryIds : entryIds,
     });
 
     return NextResponse.json({

@@ -240,8 +240,36 @@ export type PaystackVerifyResult =
       authorizationEmail: string | null;
       authorizationChannel: string | null;
       authorizationReusable: boolean | null;
+      metadata: Record<string, unknown>;
     }
   | { ok: false; error: string };
+
+function parsePaystackVerifyMetadata(
+  raw: Record<string, unknown> | string | null | undefined,
+): Record<string, unknown> {
+  if (!raw) {
+    return {};
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith("{")) {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+    return {};
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw;
+  }
+  return {};
+}
 
 /** GET /transaction/verify/:reference */
 export async function verifyPaystackTransaction(
@@ -287,6 +315,7 @@ export async function verifyPaystackTransaction(
           channel?: string | null;
           reusable?: boolean | null;
         } | null;
+        metadata?: Record<string, unknown> | string | null;
       };
     } | null;
 
@@ -357,6 +386,7 @@ export async function verifyPaystackTransaction(
       authorizationEmail,
       authorizationChannel,
       authorizationReusable,
+      metadata: parsePaystackVerifyMetadata(payload.data.metadata),
     };
   } catch (error) {
     return {

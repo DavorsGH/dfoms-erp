@@ -170,6 +170,12 @@ function parseEntryIdsFromMetadata(meta: JsonRecord): string[] {
   return [...new Set(ids)];
 }
 
+export function parseRentPaystackMetadataEntryIds(
+  meta: Record<string, unknown>,
+): string[] {
+  return parseEntryIdsFromMetadata(meta);
+}
+
 function sortEntriesForAllocation(entries: RentEntryRow[]): RentEntryRow[] {
   return [...entries].sort((a, b) => {
     const aRent = (a.charge_type ?? "rent") === "rent" ? 0 : 1;
@@ -235,6 +241,133 @@ async function loadRentEntries(
   }
 
   return [];
+}
+
+function sortedUniqueIds(ids: string[]): string[] {
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))].sort();
+}
+
+async function assertReferenceNotFulfilledForOtherEntries(
+  admin: SupabaseClient,
+  reference: string,
+  targetEntryIds: string[],
+): Promise<void> {
+  const marker = paystackAppliedMarker(reference);
+  const targetSet = new Set(targetEntryIds);
+  const { data, error } = await admin
+    .from("rent_ledger")
+    .select("entry_id, notes")
+    .eq("paystack_reference", reference);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const fulfilledElsewhere = (
+    (data as Array<{ entry_id: string; notes: string | null }> | null) ?? []
+  ).filter(
+    (row) =>
+      (row.notes ?? "").includes(marker) && !targetSet.has(row.entry_id),
+  );
+
+  if (fulfilledElsewhere.length > 0) {
+    throw new Error(
+      "This Paystack reference was already applied to other rent ledger entries.",
+    );
+  }
+}
+
+async function validateRentPaystackMetadataAgainstEntries(
+  admin: SupabaseClient,
+  options: {
+    reference: string;
+    entries: RentEntryRow[];
+    metadataTenantId?: string | null;
+    metadataLesseeId?: string | null;
+    metadataLeaseId?: string | null;
+    metadataEntryIds?: string[] | null;
+  },
+): Promise<void> {
+  const { entries, reference } = options;
+  if (entries.length === 0) {
+    return;
+  }
+
+  const tenantId = entries[0].tenant_id;
+  const leaseId = entries[0].lease_id;
+  const marker = paystackAppliedMarker(reference);
+  const targetEntryIds = entries.map((entry) => entry.entry_id);
+
+  for (const entry of entries) {
+    if ((entry.notes ?? "").includes(marker)) {
+      continue;
+    }
+    const storedRef = asString(entry.paystack_reference);
+    if (!storedRef || storedRef !== reference) {
+      throw new Error(
+        "Rent ledger paystack_reference does not match this payment reference.",
+      );
+    }
+  }
+
+  const metaTenantId = asString(options.metadataTenantId);
+  const metaLesseeId = asString(options.metadataLesseeId);
+  const metaLeaseId = asString(options.metadataLeaseId);
+
+  if (!metaTenantId || !metaLesseeId || !metaLeaseId) {
+    throw new Error(
+      "Paystack payment metadata is missing required rent ledger identifiers.",
+    );
+  }
+
+  if (metaTenantId !== tenantId) {
+    throw new Error(
+      "Paystack payment tenant_id does not match rent ledger entries.",
+    );
+  }
+  if (metaLeaseId !== leaseId) {
+    throw new Error(
+      "Paystack payment lease_id does not match rent ledger entries.",
+    );
+  }
+
+  const { data: lease, error: leaseError } = await admin
+    .from("leases")
+    .select("lessee_id")
+    .eq("tenant_id", tenantId)
+    .eq("lease_id", leaseId)
+    .maybeSingle();
+
+  if (leaseError) {
+    throw new Error(leaseError.message);
+  }
+  if (!lease?.lessee_id) {
+    throw new Error("Lease not found for rent ledger entries.");
+  }
+  if (lease.lessee_id !== metaLesseeId) {
+    throw new Error(
+      "Paystack payment lessee_id does not match rent ledger lease.",
+    );
+  }
+
+  const metadataEntryIds = sortedUniqueIds(options.metadataEntryIds ?? []);
+  if (metadataEntryIds.length > 0) {
+    const targetIds = sortedUniqueIds(targetEntryIds);
+    if (
+      targetIds.length !== metadataEntryIds.length ||
+      !targetIds.every((id, index) => id === metadataEntryIds[index])
+    ) {
+      throw new Error(
+        "Paystack payment entry_ids do not match rent ledger entries being fulfilled.",
+      );
+    }
+  }
+
+  await assertReferenceNotFulfilledForOtherEntries(
+    admin,
+    reference,
+    targetEntryIds,
+  );
 }
 
 async function insertEscrowCollection(options: {
@@ -505,6 +638,8 @@ export async function fulfillRentLedgerPaystackPayment(
     channel: string | null;
     metadataTenantId?: string | null;
     metadataLesseeId?: string | null;
+    metadataLeaseId?: string | null;
+    metadataEntryIds?: string[] | null;
     landlordTypeHint?: LandlordType | null;
     skipNotify?: boolean;
   },
@@ -534,13 +669,16 @@ export async function fulfillRentLedgerPaystackPayment(
     if (entry.tenant_id !== tenantId || entry.lease_id !== leaseId) {
       throw new Error("Bundled rent payment entries must share the same lease.");
     }
-    if (
-      options.metadataTenantId &&
-      entry.tenant_id !== options.metadataTenantId
-    ) {
-      throw new Error("Rent ledger tenant_id metadata mismatch.");
-    }
   }
+
+  await validateRentPaystackMetadataAgainstEntries(admin, {
+    reference,
+    entries,
+    metadataTenantId: options.metadataTenantId,
+    metadataLesseeId: options.metadataLesseeId,
+    metadataLeaseId: options.metadataLeaseId,
+    metadataEntryIds: options.metadataEntryIds,
+  });
 
   const marker = paystackAppliedMarker(reference);
   const alreadyApplied = entries.filter((entry) =>
@@ -793,6 +931,7 @@ export async function processRentLedgerPaystackEvent(
   const entryId = entryIds[0] ?? null;
   const metadataTenantId = asString(meta.tenant_id);
   const metadataLesseeId = asString(meta.lessee_id);
+  const metadataLeaseId = asString(meta.lease_id);
   const landlordTypeHint = asString(meta.landlord_type) as LandlordType | null;
   const amountPesewas = asNumber(data.amount);
   const paidAmountGhs =
@@ -822,6 +961,8 @@ export async function processRentLedgerPaystackEvent(
       channel,
       metadataTenantId,
       metadataLesseeId,
+      metadataLeaseId,
+      metadataEntryIds: entryIds.length > 0 ? entryIds : null,
       landlordTypeHint:
         landlordTypeHint === "platform_only" ||
         landlordTypeHint === "davors_managed"
