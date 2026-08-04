@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { notifyLesseeOneTimeChargeAdded } from "@/utils/rent-ledger-one-time-notifications";
 
 export type RentLedgerChargeType = "rent" | "one_time";
 
@@ -98,6 +99,22 @@ export async function createOneTimeLeaseCharge(
 
   if (insertError) {
     throw new Error(insertError.message);
+  }
+
+  try {
+    await notifyLesseeOneTimeChargeAdded({
+      admin,
+      landlordTenantId: input.tenantId,
+      leaseId: input.leaseId,
+      entryId,
+      description,
+      amountGhs: amountDue,
+    });
+  } catch (error) {
+    console.error(
+      "[rent-ledger-one-time] tenant notification failed:",
+      error instanceof Error ? error.message : error,
+    );
   }
 
   return {
