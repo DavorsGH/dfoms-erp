@@ -1,15 +1,27 @@
 import EmployeePhotoAvatar from "@/app/dashboard/employee-photo-avatar";
 import { DEFAULT_WORKSPACE_LOGO } from "@/utils/tenant-branding-types";
 
+export type PortalHeaderAvatarSize = "header" | "nav";
+
 type PortalHeaderAvatarProps = {
   photoUrl?: string | null;
   fullName?: string | null;
   /** When set, shown instead of initials when photoUrl is empty (landlord header). */
   placeholderLogoUrl?: string | null;
+  size?: PortalHeaderAvatarSize;
   className?: string;
 };
 
-const headerSizeClass = "h-14 w-14 shrink-0";
+const sizeClasses: Record<PortalHeaderAvatarSize, string> = {
+  header: "h-14 w-14 text-sm",
+  nav: "h-9 w-9 text-[10px]",
+};
+
+const employeeSizeMap: Record<PortalHeaderAvatarSize, "header" | "sm"> = {
+  header: "header",
+  nav: "sm",
+};
+
 const shapeClass = "rounded-lg";
 
 /**
@@ -19,16 +31,19 @@ export default function PortalHeaderAvatar({
   photoUrl,
   fullName,
   placeholderLogoUrl,
+  size = "nav",
   className = "",
 }: PortalHeaderAvatarProps) {
+  const sizeClass = sizeClasses[size];
   const trimmed = photoUrl?.trim();
+
   if (trimmed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={trimmed}
         alt={fullName ? `${fullName} photo` : "Profile photo"}
-        className={`${headerSizeClass} ${shapeClass} object-cover bg-slate-100 ${className}`}
+        className={`${sizeClass} ${shapeClass} shrink-0 object-cover bg-slate-100 ${className}`}
       />
     );
   }
@@ -39,7 +54,7 @@ export default function PortalHeaderAvatar({
       <img
         src={placeholderLogoUrl}
         alt="Davors Facilities"
-        className={`${headerSizeClass} ${shapeClass} object-cover bg-white ${className}`}
+        className={`${sizeClass} ${shapeClass} shrink-0 object-cover bg-white ${className}`}
       />
     );
   }
@@ -48,7 +63,7 @@ export default function PortalHeaderAvatar({
     <EmployeePhotoAvatar
       photoUrl={null}
       fullName={fullName}
-      size="header"
+      size={employeeSizeMap[size]}
       square
       className={className}
     />

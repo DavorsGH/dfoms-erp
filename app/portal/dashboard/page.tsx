@@ -9,6 +9,7 @@ import {
   portalSectionClassName,
   portalSectionTitleClassName,
 } from "../portal-ui";
+import { portalPageGreetingClassName } from "@/components/portal-header-brand";
 import PortalShell from "../portal-shell";
 import PayRentButton from "./pay-rent-button";
 import RequestEarlyTerminationButton from "./request-early-termination-button";
@@ -48,6 +49,8 @@ export default async function PortalDashboardPage() {
 
   return (
     <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
+      <h1 className={portalPageGreetingClassName}>Welcome, {session.fullName}</h1>
+
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
 
       {!data ? (

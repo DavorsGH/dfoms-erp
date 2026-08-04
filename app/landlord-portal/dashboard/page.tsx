@@ -12,6 +12,7 @@ import {
   portalSectionClassName,
   portalSectionTitleClassName,
 } from "../portal-ui";
+import { portalPageGreetingClassName } from "@/components/portal-header-brand";
 import LandlordPortalPendingApprovalView from "../pending-approval-view";
 import LandlordPortalRentCollectionChart from "./rent-collection-chart";
 import LandlordPortalFinancialSummary from "./financial-summary";
@@ -84,9 +85,11 @@ export default async function LandlordPortalDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-[#0f2744]">Dashboard</h1>
+        <h1 className={portalPageGreetingClassName}>
+          Welcome, {session.fullName}
+        </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Portfolio overview for {session.fullName}
+          Portfolio overview
           {isDavorsManaged
             ? " · Davors managed (view-only finance remittance)"
             : isPlatformOnly

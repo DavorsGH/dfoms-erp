@@ -2,9 +2,8 @@ import Image from "next/image";
 import {
   DAVORS_PLATFORM_LOGO,
   DEFAULT_COMPANY_LEGAL_NAME,
-  DEFAULT_WORKSPACE_LOGO,
-  DEFAULT_WORKSPACE_NAME,
 } from "@/utils/tenant-branding-types";
+import PortalHeaderBrand from "@/components/portal-header-brand";
 import PortalNav from "./portal-nav";
 import PortalNotificationBell from "./portal-notification-bell";
 import PortalSignOutButton from "./dashboard/sign-out-button";
@@ -17,8 +16,7 @@ type PortalShellProps = {
 };
 
 /**
- * Shared Tenant Portal chrome — same navy sidebar colors, logo, wordmark,
- * and footer branding as the staff dashboard.
+ * Shared Tenant Portal chrome — compact single-row header, nav, and footer.
  */
 export default function PortalShell({
   fullName,
@@ -28,45 +26,26 @@ export default function PortalShell({
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="bg-[#0f2744] text-white">
-        <div className="mx-auto max-w-3xl px-4 py-5 sm:px-6 sm:py-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-4">
-              <Image
-                src={DEFAULT_WORKSPACE_LOGO}
-                alt={`${DEFAULT_WORKSPACE_NAME} logo`}
-                width={80}
-                height={80}
-                className="h-16 w-16 shrink-0 rounded-sm object-cover sm:h-20 sm:w-20"
-                priority
-              />
-              <div className="min-w-0 flex-1">
-                <p className="break-words text-lg font-semibold leading-tight text-emerald-400">
-                  {DEFAULT_WORKSPACE_NAME}
-                </p>
-                <p className="mt-0.5 text-sm font-medium leading-tight text-white/90">
-                  Real Estate Portal
-                </p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <PortalNotificationBell />
-              <PortalSignOutButton />
-            </div>
-          </div>
-          <div className="mt-4 flex items-center gap-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <PortalHeaderBrand variant="dark" />
+
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <PortalHeaderAvatar
               photoUrl={photoUrl}
               fullName={fullName}
+              size="nav"
               className="ring-2 ring-white/25"
             />
-            <h1 className="text-lg font-semibold text-white sm:text-xl">
-              Welcome, {fullName}
-            </h1>
+            <span className="max-w-[5rem] truncate text-xs font-medium text-white/90 sm:max-w-[12rem] sm:text-sm">
+              {fullName}
+            </span>
+            <PortalNotificationBell />
+            <PortalSignOutButton />
           </div>
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-3xl px-4 pt-6 sm:px-6 sm:pt-8">
+      <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6 sm:pt-6">
         <PortalNav />
       </div>
 
