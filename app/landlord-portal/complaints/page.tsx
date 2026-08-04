@@ -36,8 +36,8 @@ export default async function LandlordPortalComplaintsPage() {
       <h2 className={portalSectionTitleClassName}>Complaints</h2>
       <p className="mt-1 text-sm text-slate-600">
         {canAct
-          ? "Respond to tenant complaints and mark them resolved."
-          : "View-only list of tenant complaints and current status. Davors manages responses for your account."}
+          ? "Respond to tenant complaints, file complaints about tenants from a lease, and mark items resolved."
+          : "View-only list of complaints and current status. Davors manages responses for your account."}
       </p>
 
       {error ? (
@@ -49,11 +49,17 @@ export default async function LandlordPortalComplaintsPage() {
           {rows.map((row) => {
             const open =
               row.status === "submitted" || row.status === "in_progress";
+            const isTenantRaised = row.raisedBy === "tenant";
             return (
               <li key={row.complaintId} className="py-3">
-                <p className="text-sm font-medium text-slate-900">
-                  {row.subject}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-slate-900">
+                    {row.subject}
+                  </p>
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                    {row.raisedByLabel}
+                  </span>
+                </div>
                 <p className="mt-0.5 text-xs text-slate-500">
                   {row.lesseeName} · {row.unitLabel}
                 </p>
@@ -66,12 +72,15 @@ export default async function LandlordPortalComplaintsPage() {
                 ) : null}
                 {row.staffResponse ? (
                   <p className="mt-1 text-sm text-slate-600">
-                    Response: {row.staffResponse}
+                    {isTenantRaised
+                      ? `Your response: ${row.staffResponse}`
+                      : `Tenant response: ${row.staffResponse}`}
                   </p>
                 ) : null}
                 {canAct && open ? (
                   <LandlordPortalComplaintActions
                     complaintId={row.complaintId}
+                    raisedBy={row.raisedBy}
                     initialStatus={row.status}
                     initialResponse={row.staffResponse}
                   />

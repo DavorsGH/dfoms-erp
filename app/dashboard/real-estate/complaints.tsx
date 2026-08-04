@@ -13,6 +13,7 @@ import type { LandlordListRow } from "./landlords-utils";
 import {
   LESSEE_COMPLAINT_STATUS_OPTIONS,
   formatLesseeComplaintDate,
+  formatLesseeComplaintRaisedBy,
   formatLesseeComplaintStatus,
   type LesseeComplaintListRow,
   type LesseeComplaintStatus,
@@ -200,6 +201,7 @@ export default function ComplaintsView({
                   <th className={scrollableTableThClassName}>Tenant</th>
                   <th className={scrollableTableThClassName}>Unit</th>
                   <th className={scrollableTableThClassName}>Subject</th>
+                  <th className={scrollableTableThClassName}>Filed by</th>
                   <th className={scrollableTableThClassName}>Status</th>
                   <th className={scrollableTableThClassName}>Reported</th>
                   <th className={scrollableTableThClassName}>Actions</th>
@@ -209,7 +211,7 @@ export default function ComplaintsView({
                 {filteredRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-6 text-center text-sm text-slate-500"
                     >
                       No complaints for this landlord
@@ -230,6 +232,9 @@ export default function ComplaintsView({
                       </td>
                       <td className="max-w-xs px-4 py-3 text-sm text-slate-700">
                         <span className="line-clamp-2">{row.subject}</span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-700">
+                        {formatLesseeComplaintRaisedBy(row.raisedBy)}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatLesseeComplaintStatus(row.status)}
@@ -263,7 +268,8 @@ export default function ComplaintsView({
                 {expandedRow.subject}
               </h3>
               <p className="mt-1 text-sm text-slate-600">
-                {expandedRow.lesseeName} · {expandedRow.unitLabel}
+                {expandedRow.lesseeName} · {expandedRow.unitLabel} ·{" "}
+                {formatLesseeComplaintRaisedBy(expandedRow.raisedBy)}
               </p>
               <p className="mt-4 whitespace-pre-wrap text-sm text-slate-800">
                 {expandedRow.description}
@@ -292,7 +298,9 @@ export default function ComplaintsView({
                 </div>
                 <div className="sm:col-span-2">
                   <label className="mb-1 block text-xs font-medium text-slate-600">
-                    Staff response
+                    {expandedRow.raisedBy === "landlord"
+                      ? "Tenant response / closing note"
+                      : "Staff response"}
                   </label>
                   <textarea
                     className={textareaClassName}

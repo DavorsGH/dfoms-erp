@@ -5,10 +5,17 @@ import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { sendResendEmail } from "@/utils/resend-email";
 import {
+  isLesseeComplaintRaisedBy,
   isLesseeComplaintStatus,
   type LesseeComplaintListRow,
+  type LesseeComplaintRaisedBy,
   type LesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
+import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
+import {
+  notifyStaffLandlordRaisedComplaint,
+  notifyStaffNewComplaint,
+} from "@/utils/real-estate-staff-notifications";
 
 export type { LesseeComplaintListRow } from "@/app/dashboard/real-estate/complaints-utils";
 
@@ -24,9 +31,205 @@ export type UpdateLesseeComplaintResult =
   | { ok: true; status: LesseeComplaintStatus }
   | { ok: false; error: string; status: number };
 
+export type CreateLesseeComplaintResult =
+  | { ok: true; complaintId: string }
+  | { ok: false; error: string; status: number };
+
+export type RespondLesseeComplaintAsTenantResult =
+  | { ok: true; status: LesseeComplaintStatus }
+  | { ok: false; error: string; status: number };
+
 /**
- * Shared complaint status/response update + tenant email on resolve/reject.
- * Caller must enforce landlord_type / ownership before calling.
+ * Insert a complaint. Uses staff_response for the non-filer party's reply
+ * (landlord/staff when tenant raised; tenant when landlord raised).
+ */
+export async function createLesseeComplaint(
+  admin: SupabaseClient,
+  options: {
+    tenantId: string;
+    leaseId: string;
+    lesseeId: string;
+    subject: string;
+    description: string;
+    raisedBy: LesseeComplaintRaisedBy;
+    lesseeName?: string | null;
+    landlordName?: string | null;
+  },
+): Promise<CreateLesseeComplaintResult> {
+  const subject = options.subject.trim();
+  const description = options.description.trim();
+  const leaseId = options.leaseId.trim();
+  if (!leaseId) {
+    return { ok: false, error: "lease_id is required", status: 400 };
+  }
+  if (!subject) {
+    return { ok: false, error: "subject is required", status: 400 };
+  }
+  if (!description) {
+    return { ok: false, error: "description is required", status: 400 };
+  }
+
+  const { data: lease, error: leaseError } = await admin
+    .from("leases")
+    .select("lease_id, lessee_id")
+    .eq("tenant_id", options.tenantId)
+    .eq("lease_id", leaseId)
+    .maybeSingle();
+
+  if (leaseError) {
+    return { ok: false, error: leaseError.message, status: 400 };
+  }
+  if (!lease || lease.lessee_id !== options.lesseeId) {
+    return { ok: false, error: "Lease not found for this tenant.", status: 404 };
+  }
+
+  const nowIso = new Date().toISOString();
+  const complaintId = crypto.randomUUID();
+
+  const { error: insertError } = await admin.from("lessee_complaints").insert({
+    tenant_id: options.tenantId,
+    complaint_id: complaintId,
+    lease_id: leaseId,
+    lessee_id: options.lesseeId,
+    subject,
+    description,
+    status: "submitted",
+    raised_by: options.raisedBy,
+    staff_response: null,
+    date_reported: nowIso,
+    date_resolved: null,
+    created_at: nowIso,
+    updated_at: nowIso,
+  });
+
+  if (insertError) {
+    return { ok: false, error: insertError.message, status: 400 };
+  }
+
+  if (options.raisedBy === "tenant") {
+    await notifyStaffNewComplaint({
+      landlordTenantId: options.tenantId,
+      leaseId,
+      complaintId,
+      subject,
+      description,
+      lesseeName: options.lesseeName,
+    });
+  } else {
+    const lesseeName = options.lesseeName?.trim() || "Tenant";
+    void insertLesseePortalNotification({
+      landlordTenantId: options.tenantId,
+      lesseeId: options.lesseeId,
+      title: "New complaint from your landlord",
+      body: [
+        `Your landlord filed a complaint: “${subject}”.`,
+        description,
+        "Open Complaints to respond.",
+      ].join("\n"),
+      actionUrl: "/portal/complaints",
+      context: `complaint-landlord-raised:${complaintId}`,
+    });
+    await notifyStaffLandlordRaisedComplaint({
+      landlordTenantId: options.tenantId,
+      leaseId,
+      complaintId,
+      subject,
+      description,
+      lesseeName,
+      landlordName: options.landlordName,
+    });
+  }
+
+  return { ok: true, complaintId };
+}
+
+/**
+ * Tenant reply to a landlord-raised complaint (response only; cannot resolve).
+ */
+export async function respondToLesseeComplaintAsTenant(
+  admin: SupabaseClient,
+  options: {
+    tenantId: string;
+    lesseeId: string;
+    complaintId: string;
+    response: string;
+  },
+): Promise<RespondLesseeComplaintAsTenantResult> {
+  const complaintId = options.complaintId.trim();
+  const response = options.response.trim();
+  if (!complaintId) {
+    return { ok: false, error: "complaint_id is required", status: 400 };
+  }
+  if (!response) {
+    return { ok: false, error: "response is required", status: 400 };
+  }
+
+  const { data: existing, error: existingError } = await admin
+    .from("lessee_complaints")
+    .select("complaint_id, lessee_id, subject, status, raised_by")
+    .eq("tenant_id", options.tenantId)
+    .eq("complaint_id", complaintId)
+    .maybeSingle();
+
+  if (existingError) {
+    return { ok: false, error: existingError.message, status: 400 };
+  }
+  if (!existing) {
+    return { ok: false, error: "Complaint not found.", status: 404 };
+  }
+  if (existing.lessee_id !== options.lesseeId) {
+    return { ok: false, error: "Access denied.", status: 403 };
+  }
+  if (existing.raised_by !== "landlord") {
+    return {
+      ok: false,
+      error: "Only landlord-raised complaints can be answered here.",
+      status: 400,
+    };
+  }
+  if (existing.status === "resolved" || existing.status === "rejected") {
+    return {
+      ok: false,
+      error: "This complaint is already closed.",
+      status: 400,
+    };
+  }
+
+  const nextStatus: LesseeComplaintStatus =
+    existing.status === "submitted" ? "in_progress" : existing.status;
+  const nowIso = new Date().toISOString();
+
+  const { error: updateError } = await admin
+    .from("lessee_complaints")
+    .update({
+      status: nextStatus,
+      staff_response: response,
+      updated_at: nowIso,
+    })
+    .eq("tenant_id", options.tenantId)
+    .eq("complaint_id", complaintId);
+
+  if (updateError) {
+    return { ok: false, error: updateError.message, status: 400 };
+  }
+
+  void insertLandlordPortalNotification({
+    landlordTenantId: options.tenantId,
+    title: "Tenant responded to your complaint",
+    body: [
+      `Regarding “${existing.subject}”, the tenant replied:`,
+      response,
+    ].join("\n"),
+    actionUrl: "/landlord-portal/complaints",
+    context: `complaint-tenant-response:${complaintId}`,
+  });
+
+  return { ok: true, status: nextStatus };
+}
+
+/**
+ * Landlord/staff status/response update. Same as before: landlord or staff
+ * closes complaints (resolved/rejected); tenants cannot close via this path.
  */
 export async function updateLesseeComplaint(
   admin: SupabaseClient,
@@ -53,7 +256,7 @@ export async function updateLesseeComplaint(
 
   const { data: existing, error: existingError } = await admin
     .from("lessee_complaints")
-    .select("complaint_id, lessee_id, subject, status")
+    .select("complaint_id, lessee_id, subject, status, raised_by")
     .eq("tenant_id", options.tenantId)
     .eq("complaint_id", complaintId)
     .maybeSingle();
@@ -94,19 +297,36 @@ export async function updateLesseeComplaint(
       .maybeSingle();
 
     const name = lessee?.full_name?.trim() || "Tenant";
+    const raisedBy =
+      existing.raised_by === "landlord" ? "landlord" : "tenant";
     const approved = status === "resolved";
-    const subject = approved
-      ? "Your complaint was resolved"
-      : "Update on your complaint";
+    const subject =
+      raisedBy === "tenant"
+        ? approved
+          ? "Your complaint was resolved"
+          : "Update on your complaint"
+        : approved
+          ? "Landlord complaint closed"
+          : "Update on landlord complaint";
+    const responseLabel =
+      raisedBy === "tenant" ? "Landlord response" : "Resolution note";
     const responseLine = staffResponse
-      ? `Staff response: ${staffResponse}`
+      ? `${responseLabel}: ${staffResponse}`
       : null;
-    const inAppBody = [
-      `Regarding your complaint “${existing.subject}”: status is now ${status}.`,
-      responseLine,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const inAppBody =
+      raisedBy === "tenant"
+        ? [
+            `Regarding your complaint “${existing.subject}”: status is now ${status}.`,
+            responseLine,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : [
+            `Regarding the complaint about you (“${existing.subject}”): status is now ${status}.`,
+            responseLine,
+          ]
+            .filter(Boolean)
+            .join("\n");
 
     const email = lessee?.email?.trim();
     if (email) {
@@ -116,16 +336,15 @@ export async function updateLesseeComplaint(
         text: [
           `Hi ${name},`,
           "",
-          `Regarding your complaint “${existing.subject}”: status is now ${status}.`,
-          responseLine,
+          inAppBody,
           "",
           "Davors Facilities",
         ]
           .filter(Boolean)
           .join("\n"),
         html: `<p>Hi ${escapeHtml(name)},</p>
-<p>Regarding your complaint “${escapeHtml(existing.subject)}”: status is now <strong>${escapeHtml(status)}</strong>.</p>
-${staffResponse ? `<p>Staff response: ${escapeHtml(staffResponse)}</p>` : ""}
+<p>${escapeHtml(inAppBody.replace(/\n/g, " "))}</p>
+${staffResponse ? `<p>${escapeHtml(responseLabel)}: ${escapeHtml(staffResponse)}</p>` : ""}
 <p>Davors Facilities</p>`,
       }).then((result) => {
         if (!result.ok) {
@@ -155,10 +374,15 @@ type ComplaintRow = {
   subject: string;
   description: string;
   status: string;
+  raised_by: string;
   staff_response: string | null;
   date_reported: string;
   date_resolved: string | null;
 };
+
+function mapRaisedBy(value: string): LesseeComplaintRaisedBy {
+  return isLesseeComplaintRaisedBy(value) ? value : "tenant";
+}
 
 export async function fetchComplaintsForLandlord(
   admin: SupabaseClient,
@@ -179,7 +403,7 @@ export async function fetchComplaintsForLandlord(
     admin
       .from("lessee_complaints")
       .select(
-        "tenant_id, complaint_id, lease_id, lessee_id, subject, description, status, staff_response, date_reported, date_resolved",
+        "tenant_id, complaint_id, lease_id, lessee_id, subject, description, status, raised_by, staff_response, date_reported, date_resolved",
       )
       .eq("tenant_id", landlord.tenantId)
       .order("date_reported", { ascending: false }),
@@ -268,6 +492,7 @@ export async function fetchComplaintsForLandlord(
       subject: row.subject,
       description: row.description,
       status: row.status as LesseeComplaintStatus,
+      raisedBy: mapRaisedBy(row.raised_by),
       staffResponse: row.staff_response,
       dateReported: row.date_reported,
       dateResolved: row.date_resolved,
@@ -285,7 +510,7 @@ export async function fetchComplaintsForLessee(
   const { data: complaints, error: complaintsError } = await admin
     .from("lessee_complaints")
     .select(
-      "tenant_id, complaint_id, lease_id, lessee_id, subject, description, status, staff_response, date_reported, date_resolved",
+      "tenant_id, complaint_id, lease_id, lessee_id, subject, description, status, raised_by, staff_response, date_reported, date_resolved",
     )
     .eq("tenant_id", tenantId)
     .eq("lessee_id", lesseeId)
@@ -310,6 +535,7 @@ export async function fetchComplaintsForLessee(
       subject: row.subject,
       description: row.description,
       status: row.status as LesseeComplaintStatus,
+      raisedBy: mapRaisedBy(row.raised_by),
       staffResponse: row.staff_response,
       dateReported: row.date_reported,
       dateResolved: row.date_resolved,

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
-import { notifyStaffNewComplaint } from "@/utils/real-estate-staff-notifications";
+import { createLesseeComplaint } from "@/utils/complaint-management";
 
 type CreateBody = {
   subject?: string;
@@ -20,18 +20,6 @@ export async function POST(request: Request) {
     body = (await request.json()) as CreateBody;
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-  }
-
-  const subject = body.subject?.trim() ?? "";
-  const description = body.description?.trim() ?? "";
-  if (!subject) {
-    return NextResponse.json({ error: "subject is required" }, { status: 400 });
-  }
-  if (!description) {
-    return NextResponse.json(
-      { error: "description is required" },
-      { status: 400 },
-    );
   }
 
   const admin = createAdminClient();
@@ -65,36 +53,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const nowIso = new Date().toISOString();
-  const complaintId = crypto.randomUUID();
-
-  const { error: insertError } = await admin.from("lessee_complaints").insert({
-    tenant_id: session.tenantId,
-    complaint_id: complaintId,
-    lease_id: lease.lease_id,
-    lessee_id: session.lesseeId,
-    subject,
-    description,
-    status: "submitted",
-    staff_response: null,
-    date_reported: nowIso,
-    date_resolved: null,
-    created_at: nowIso,
-    updated_at: nowIso,
-  });
-
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 400 });
-  }
-
-  await notifyStaffNewComplaint({
-    landlordTenantId: session.tenantId,
+  const result = await createLesseeComplaint(admin, {
+    tenantId: session.tenantId,
     leaseId: lease.lease_id,
-    complaintId,
-    subject,
-    description,
+    lesseeId: session.lesseeId,
+    subject: body.subject ?? "",
+    description: body.description ?? "",
+    raisedBy: "tenant",
     lesseeName: session.fullName,
   });
 
-  return NextResponse.json({ success: true, complaint_id: complaintId });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  return NextResponse.json({ success: true, complaint_id: result.complaintId });
 }

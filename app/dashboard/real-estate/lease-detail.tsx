@@ -16,6 +16,7 @@ import {
 import LeaseSignaturePanel from "./lease-signature-panel";
 import OneTimeChargeForm from "./one-time-charge-form";
 import MoveInConditionPhotosPanel from "./move-in-condition-photos-panel";
+import FileComplaintForm from "./file-complaint-form";
 
 type LeaseDetailViewProps = {
   initialDetail: LeaseDetail;
@@ -875,6 +876,22 @@ export default function LeaseDetailView({
           tenant portal). Included in davors_managed management fee when paid.
         </p>
         <OneTimeChargeForm
+          mode="staff"
+          tenantId={detail.tenantId}
+          leaseId={detail.leaseId}
+          leaseActive={detail.status === "active"}
+        />
+      </section>
+
+      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+          File a complaint
+        </h3>
+        <p className="text-sm text-slate-600">
+          File a complaint about this tenant on behalf of the landlord. The tenant
+          can respond from their portal.
+        </p>
+        <FileComplaintForm
           mode="staff"
           tenantId={detail.tenantId}
           leaseId={detail.leaseId}

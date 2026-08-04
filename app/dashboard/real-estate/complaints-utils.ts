@@ -4,6 +4,8 @@ export type LesseeComplaintStatus =
   | "resolved"
   | "rejected";
 
+export type LesseeComplaintRaisedBy = "tenant" | "landlord";
+
 export type LesseeComplaintListRow = {
   complaintId: string;
   tenantId: string;
@@ -14,6 +16,7 @@ export type LesseeComplaintListRow = {
   subject: string;
   description: string;
   status: LesseeComplaintStatus;
+  raisedBy: LesseeComplaintRaisedBy;
   staffResponse: string | null;
   dateReported: string;
   dateResolved: string | null;
@@ -35,6 +38,18 @@ export function isLesseeComplaintStatus(
   return LESSEE_COMPLAINT_STATUS_OPTIONS.some(
     (option) => option.value === value,
   );
+}
+
+export function isLesseeComplaintRaisedBy(
+  value: string,
+): value is LesseeComplaintRaisedBy {
+  return value === "tenant" || value === "landlord";
+}
+
+export function formatLesseeComplaintRaisedBy(
+  value: LesseeComplaintRaisedBy,
+): string {
+  return value === "landlord" ? "From landlord" : "From tenant";
 }
 
 export function formatLesseeComplaintStatus(

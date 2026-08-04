@@ -23,6 +23,7 @@ import LandlordPortalPendingApprovalView from "../../../pending-approval-view";
 import LandlordPortalLeaseEditForm from "../lease-edit-form";
 import OneTimeChargeForm from "@/app/dashboard/real-estate/one-time-charge-form";
 import MoveInConditionPhotosPanel from "@/app/dashboard/real-estate/move-in-condition-photos-panel";
+import FileComplaintForm from "@/app/dashboard/real-estate/file-complaint-form";
 
 type PageProps = {
   params: Promise<{ leaseId: string }>;
@@ -301,6 +302,25 @@ export default async function LandlordPortalLeaseDetailPage({
               </p>
             </section>
           )}
+
+          {canManage ? (
+            <section className={portalSectionClassName}>
+              <h2 className={portalSectionTitleClassName}>File a complaint</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                File a complaint about this tenant. They can respond from their
+                tenant portal.
+              </p>
+              <div className="mt-4">
+                <FileComplaintForm
+                  mode="landlord"
+                  tenantId={detail.tenantId}
+                  leaseId={detail.leaseId}
+                  leaseActive={detail.status === "active"}
+                  variant="portal"
+                />
+              </div>
+            </section>
+          ) : null}
         </>
       ) : null}
     </div>

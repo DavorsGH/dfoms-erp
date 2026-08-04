@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   LESSEE_COMPLAINT_STATUS_OPTIONS,
+  type LesseeComplaintRaisedBy,
   type LesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
 import {
@@ -16,18 +17,23 @@ import {
 
 type ComplaintActionsProps = {
   complaintId: string;
+  raisedBy: LesseeComplaintRaisedBy;
   initialStatus: string;
   initialResponse: string | null;
 };
 
 export default function LandlordPortalComplaintActions({
   complaintId,
+  raisedBy,
   initialStatus,
   initialResponse,
 }: ComplaintActionsProps) {
   const router = useRouter();
+  const isTenantRaised = raisedBy === "tenant";
   const [status, setStatus] = useState(initialStatus);
-  const [responseText, setResponseText] = useState(initialResponse ?? "");
+  const [responseText, setResponseText] = useState(
+    isTenantRaised ? (initialResponse ?? "") : "",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -37,13 +43,21 @@ export default function LandlordPortalComplaintActions({
     setError(null);
     setSuccess(null);
 
+    const staffResponse = isTenantRaised
+      ? responseText
+      : responseText.trim()
+        ? initialResponse
+          ? `${initialResponse}\n\nClosing note: ${responseText.trim()}`
+          : responseText.trim()
+        : initialResponse;
+
     const response = await fetch("/api/landlord-portal/complaints/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         complaint_id: complaintId,
         status,
-        staff_response: responseText,
+        staff_response: staffResponse,
       }),
     });
     const payload = (await response.json().catch(() => null)) as {
@@ -90,22 +104,41 @@ export default function LandlordPortalComplaintActions({
           ))}
         </select>
       </div>
-      <div>
-        <label
-          htmlFor={`complaint-response-${complaintId}`}
-          className={portalLabelClassName}
-        >
-          Your response
-        </label>
-        <textarea
-          id={`complaint-response-${complaintId}`}
-          className={`${portalInputClassName} min-h-[80px]`}
-          value={responseText}
-          onChange={(event) => setResponseText(event.target.value)}
-          disabled={loading}
-          placeholder="Optional note to the tenant…"
-        />
-      </div>
+      {isTenantRaised ? (
+        <div>
+          <label
+            htmlFor={`complaint-response-${complaintId}`}
+            className={portalLabelClassName}
+          >
+            Your response
+          </label>
+          <textarea
+            id={`complaint-response-${complaintId}`}
+            className={`${portalInputClassName} min-h-[80px]`}
+            value={responseText}
+            onChange={(event) => setResponseText(event.target.value)}
+            disabled={loading}
+            placeholder="Optional note to the tenant…"
+          />
+        </div>
+      ) : (
+        <div>
+          <label
+            htmlFor={`complaint-closing-${complaintId}`}
+            className={portalLabelClassName}
+          >
+            Closing note (optional)
+          </label>
+          <textarea
+            id={`complaint-closing-${complaintId}`}
+            className={`${portalInputClassName} min-h-[80px]`}
+            value={responseText}
+            onChange={(event) => setResponseText(event.target.value)}
+            disabled={loading}
+            placeholder="Optional note when resolving or rejecting…"
+          />
+        </div>
+      )}
 
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
       {success ? (
@@ -122,7 +155,7 @@ export default function LandlordPortalComplaintActions({
           ? "Saving…"
           : (status as LesseeComplaintStatus) === "resolved"
             ? "Save & mark resolved"
-            : "Save response"}
+            : "Save"}
       </button>
     </div>
   );

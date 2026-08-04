@@ -11,6 +11,7 @@ import {
 } from "@/app/dashboard/real-estate/maintenance-utils";
 import {
   formatLesseeComplaintDate,
+  formatLesseeComplaintRaisedBy,
   formatLesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
 import {
@@ -24,9 +25,11 @@ type IssueItem = {
   kind: "repair" | "complaint";
   title: string;
   statusLabel: string;
+  raisedByLabel: string | null;
   dateIso: string;
   dateLabel: string;
   detail: string | null;
+  isLandlordRaised: boolean;
 };
 
 export default async function PortalIssuesPage() {
@@ -59,18 +62,22 @@ export default async function PortalIssuesPage() {
         ]
           .filter(Boolean)
           .join(" · "),
+        raisedByLabel: null,
         dateIso: row.dateReported,
         dateLabel: formatMaintenanceDate(row.dateReported),
         detail: null,
+        isLandlordRaised: false,
       })),
     ...complaints.rows.map((row) => ({
       id: `complaint-${row.complaintId}`,
       kind: "complaint" as const,
       title: row.subject,
       statusLabel: formatLesseeComplaintStatus(row.status),
+      raisedByLabel: formatLesseeComplaintRaisedBy(row.raisedBy),
       dateIso: row.dateReported,
       dateLabel: formatLesseeComplaintDate(row.dateReported),
       detail: row.staffResponse,
+      isLandlordRaised: row.raisedBy === "landlord",
     })),
   ].sort(
     (a, b) => new Date(b.dateIso).getTime() - new Date(a.dateIso).getTime(),
@@ -100,6 +107,11 @@ export default async function PortalIssuesPage() {
                   <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-600">
                     {item.kind === "repair" ? "Repair" : "Complaint"}
                   </span>
+                  {item.raisedByLabel ? (
+                    <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      {item.raisedByLabel}
+                    </span>
+                  ) : null}
                   <span className="text-xs text-slate-500">{item.dateLabel}</span>
                 </div>
                 <p className="mt-1 text-sm font-medium text-slate-900">
@@ -115,10 +127,23 @@ export default async function PortalIssuesPage() {
                       View repair details & photos
                     </Link>
                   </p>
-                ) : null}
+                ) : (
+                  <p className="mt-2">
+                    <Link
+                      href="/portal/complaints"
+                      className="text-sm font-medium text-[#0f2744] hover:underline"
+                    >
+                      {item.isLandlordRaised
+                        ? "View & respond"
+                        : "View complaint details"}
+                    </Link>
+                  </p>
+                )}
                 {item.detail ? (
                   <p className="mt-2 text-sm text-slate-700">
-                    Staff: {item.detail}
+                    {item.isLandlordRaised
+                      ? `Your response: ${item.detail}`
+                      : `Landlord: ${item.detail}`}
                   </p>
                 ) : null}
               </li>

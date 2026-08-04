@@ -24,7 +24,9 @@ import {
   normalizePhotoUrls,
 } from "@/app/dashboard/real-estate/maintenance-utils";
 import {
+  formatLesseeComplaintRaisedBy,
   formatLesseeComplaintStatus,
+  isLesseeComplaintRaisedBy,
   isLesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
 import { isTerminationRequestStatus } from "@/app/dashboard/real-estate/leases-utils";
@@ -135,6 +137,8 @@ export type LandlordPortalComplaintRow = {
   description: string;
   status: string;
   statusLabel: string;
+  raisedBy: "tenant" | "landlord";
+  raisedByLabel: string;
   staffResponse: string | null;
   dateReported: string;
   lesseeName: string;
@@ -742,7 +746,7 @@ export async function fetchLandlordPortalComplaints(
     admin
       .from("lessee_complaints")
       .select(
-        "complaint_id, lease_id, lessee_id, subject, description, status, staff_response, date_reported",
+        "complaint_id, lease_id, lessee_id, subject, description, status, raised_by, staff_response, date_reported",
       )
       .eq("tenant_id", tenantId)
       .order("date_reported", { ascending: false })
@@ -779,18 +783,24 @@ export async function fetchLandlordPortalComplaints(
     subject: string;
     description: string;
     status: string;
+    raised_by: string;
     staff_response: string | null;
     date_reported: string;
   }> | null) ?? []) {
     if (!isLesseeComplaintStatus(row.status)) continue;
     const lease = maps.leaseById.get(row.lease_id);
     const unit = lease ? maps.unitById.get(lease.unit_id) : undefined;
+    const raisedBy = isLesseeComplaintRaisedBy(row.raised_by)
+      ? row.raised_by
+      : "tenant";
     rows.push({
       complaintId: row.complaint_id,
       subject: row.subject,
       description: row.description,
       status: row.status,
       statusLabel: formatLesseeComplaintStatus(row.status),
+      raisedBy,
+      raisedByLabel: formatLesseeComplaintRaisedBy(raisedBy),
       staffResponse: row.staff_response,
       dateReported: row.date_reported,
       lesseeName: maps.lesseeNameById.get(row.lessee_id) ?? "—",
