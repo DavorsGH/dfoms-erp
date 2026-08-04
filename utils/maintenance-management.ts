@@ -28,6 +28,7 @@ type MaintenanceRequestRow = {
   date_reported: string;
   date_resolved: string | null;
   photo_urls: unknown;
+  completion_photo_urls: unknown;
   tenant_self_fix?: boolean | null;
   proposed_cost_ghs?: number | string | null;
   rent_credit_entry_id?: string | null;
@@ -185,7 +186,7 @@ export async function fetchMaintenanceRequestsForLandlord(
     admin
       .from("maintenance_requests")
       .select(
-        "tenant_id, request_id, lease_id, reported_by, description, status, cost_ghs, landlord_approval_status, date_reported, date_resolved, photo_urls, tenant_self_fix, proposed_cost_ghs, rent_credit_entry_id",
+        "tenant_id, request_id, lease_id, reported_by, description, status, cost_ghs, landlord_approval_status, date_reported, date_resolved, photo_urls, completion_photo_urls, tenant_self_fix, proposed_cost_ghs, rent_credit_entry_id",
       )
       .eq("tenant_id", landlord.tenantId)
       .order("date_reported", { ascending: false }),
@@ -291,6 +292,7 @@ export async function fetchMaintenanceRequestsForLandlord(
       proposedCostGhs: toNumber(row.proposed_cost_ghs),
       rentCreditEntryId: row.rent_credit_entry_id?.trim() || null,
       photoUrls: normalizePhotoUrls(row.photo_urls),
+      completionPhotoUrls: normalizePhotoUrls(row.completion_photo_urls),
     });
   }
 
@@ -323,7 +325,7 @@ export async function fetchMaintenanceRequestsForLessee(
   const { data: requests, error: requestsError } = await admin
     .from("maintenance_requests")
     .select(
-      "tenant_id, request_id, lease_id, reported_by, description, status, cost_ghs, landlord_approval_status, date_reported, date_resolved, photo_urls, tenant_self_fix, proposed_cost_ghs, rent_credit_entry_id",
+      "tenant_id, request_id, lease_id, reported_by, description, status, cost_ghs, landlord_approval_status, date_reported, date_resolved, photo_urls, completion_photo_urls, tenant_self_fix, proposed_cost_ghs, rent_credit_entry_id",
     )
     .eq("tenant_id", tenantId)
     .in("lease_id", leaseIds)
@@ -363,6 +365,7 @@ export async function fetchMaintenanceRequestsForLessee(
       proposedCostGhs: toNumber(row.proposed_cost_ghs),
       rentCreditEntryId: row.rent_credit_entry_id?.trim() || null,
       photoUrls: normalizePhotoUrls(row.photo_urls),
+      completionPhotoUrls: normalizePhotoUrls(row.completion_photo_urls),
     });
   }
 

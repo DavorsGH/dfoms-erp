@@ -21,6 +21,7 @@ import {
   type MaintenanceListRow,
   type MaintenanceStatus,
 } from "./maintenance-utils";
+import MaintenanceBeforeAfterGallery from "./maintenance-before-after-gallery";
 
 type MaintenanceProps = {
   landlords: LandlordListRow[];
@@ -73,7 +74,7 @@ export default function Maintenance({
   );
   const [editStatus, setEditStatus] = useState<MaintenanceStatus>("submitted");
   const [editCost, setEditCost] = useState("");
-  const [detailPhotoFiles, setDetailPhotoFiles] = useState<File[]>([]);
+  const [completionPhotoFiles, setCompletionPhotoFiles] = useState<File[]>([]);
 
   useEffect(() => {
     setRows(initialRows);
@@ -132,10 +133,10 @@ export default function Maintenance({
     setExpandedRequestId(row.requestId);
     setEditStatus(row.status);
     setEditCost(row.costGhs != null ? String(row.costGhs) : "");
-    setDetailPhotoFiles([]);
+    setCompletionPhotoFiles([]);
   }
 
-  async function uploadPhotos(requestId: string, files: File[]) {
+  async function uploadSubmissionPhotos(requestId: string, files: File[]) {
     if (!selectedLandlordId || files.length === 0) {
       return { ok: true as const };
     }
@@ -157,6 +158,38 @@ export default function Maintenance({
         return {
           ok: false as const,
           error: payload?.error ?? "Unable to upload photo.",
+        };
+      }
+    }
+
+    return { ok: true as const };
+  }
+
+  async function uploadCompletionPhotos(requestId: string, files: File[]) {
+    if (!selectedLandlordId || files.length === 0) {
+      return { ok: true as const };
+    }
+
+    for (const file of files) {
+      const formData = new FormData();
+      formData.set("tenant_id", selectedLandlordId);
+      formData.set("request_id", requestId);
+      formData.set("file", file);
+
+      const response = await fetch(
+        "/api/admin/maintenance/upload-completion-photo",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!response.ok) {
+        return {
+          ok: false as const,
+          error: payload?.error ?? "Unable to upload completion photo.",
         };
       }
     }
@@ -197,7 +230,7 @@ export default function Maintenance({
     }
 
     if (photoFiles.length > 0) {
-      const uploadResult = await uploadPhotos(payload.request_id, photoFiles);
+      const uploadResult = await uploadSubmissionPhotos(payload.request_id, photoFiles);
       if (!uploadResult.ok) {
         setError(
           `Request created, but photo upload failed: ${uploadResult.error}`,
@@ -255,21 +288,21 @@ export default function Maintenance({
       return;
     }
 
-    if (detailPhotoFiles.length > 0) {
-      const uploadResult = await uploadPhotos(
+    if (editStatus === "completed" && completionPhotoFiles.length > 0) {
+      const uploadResult = await uploadCompletionPhotos(
         expandedRequestId,
-        detailPhotoFiles,
+        completionPhotoFiles,
       );
       if (!uploadResult.ok) {
         setError(
-          `Status updated, but photo upload failed: ${uploadResult.error}`,
+          `Status updated, but completion photo upload failed: ${uploadResult.error}`,
         );
         setLoading(false);
-        setDetailPhotoFiles([]);
+        setCompletionPhotoFiles([]);
         router.refresh();
         return;
       }
-      setDetailPhotoFiles([]);
+      setCompletionPhotoFiles([]);
     }
 
     setLoading(false);
@@ -687,38 +720,26 @@ export default function Maintenance({
                     </div>
                   )}
                   <div>
-                    <p className="mb-1 text-sm font-medium text-slate-700">
-                      Add photos
-                    </p>
-                    <ImageFileUploadButton
-                      inputId="maintenance-detail-photos"
-                      files={detailPhotoFiles}
-                      onChange={setDetailPhotoFiles}
-                      multiple
+                    <MaintenanceBeforeAfterGallery
+                      submissionPhotoUrls={expandedRow.photoUrls}
+                      completionPhotoUrls={expandedRow.completionPhotoUrls}
                     />
                   </div>
+                  {editStatus === "completed" ||
+                  expandedRow.status === "completed" ? (
+                    <div>
+                      <p className="mb-1 text-sm font-medium text-slate-700">
+                        Add after photos (completed work)
+                      </p>
+                      <ImageFileUploadButton
+                        inputId="maintenance-completion-photos"
+                        files={completionPhotoFiles}
+                        onChange={setCompletionPhotoFiles}
+                        multiple
+                      />
+                    </div>
+                  ) : null}
                 </div>
-
-                {expandedRow.photoUrls.length > 0 ? (
-                  <div className="flex flex-wrap gap-3">
-                    {expandedRow.photoUrls.map((url) => (
-                      <a
-                        key={url}
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block overflow-hidden rounded-md border border-slate-200"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={url}
-                          alt="Maintenance"
-                          className="h-24 w-24 object-cover"
-                        />
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
 
                 <button
                   type="submit"

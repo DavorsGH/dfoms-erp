@@ -17,6 +17,7 @@ import {
   canInitiatePortalRentPayment,
   portalRentPaymentBlockedMessage,
 } from "@/utils/lease-signature";
+import MoveInConditionPhotosPanel from "@/app/dashboard/real-estate/move-in-condition-photos-panel";
 
 function formatMoney(value: number): string {
   return `GHS ${value.toLocaleString("en-GH", {
@@ -122,6 +123,19 @@ export default async function PortalDashboardPage() {
                   data.terminationRequestStatus === "pending_staff_approval"
                 }
                 pendingReason={data.pendingTerminationReason}
+              />
+            </div>
+          </section>
+
+          <section className={portalSectionClassName}>
+            <h2 className={portalSectionTitleClassName}>Move-in condition</h2>
+            <div className="mt-4">
+              <MoveInConditionPhotosPanel
+                tenantId={session.tenantId}
+                leaseId={data.leaseId}
+                initialUrls={data.moveInConditionPhotoUrls}
+                uploadPath="/api/admin/leases/upload-move-in-photo"
+                readOnly
               />
             </div>
           </section>

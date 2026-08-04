@@ -21,6 +21,7 @@ import {
   type TerminationRequestStatus,
   type VacantUnitOption,
 } from "@/app/dashboard/real-estate/leases-utils";
+import { normalizePhotoUrls } from "@/app/dashboard/real-estate/properties-utils";
 
 export type {
   LeaseDetail,
@@ -57,6 +58,7 @@ type LeaseRow = {
   tenant_acknowledged_at: string | null;
   landlord_acknowledged_by: string | null;
   tenant_acknowledged_by: string | null;
+  move_in_condition_photo_urls: unknown;
   created_at: string;
   updated_at: string;
 };
@@ -539,6 +541,9 @@ export async function fetchLeaseDetail(
       terminationReason: leaseRow.termination_reason,
       signatureStatus,
       leaseDocumentUrl,
+      moveInConditionPhotoUrls: normalizePhotoUrls(
+        leaseRow.move_in_condition_photo_urls,
+      ),
       landlordAcknowledgedAt: leaseRow.landlord_acknowledged_at ?? null,
       tenantAcknowledgedAt: leaseRow.tenant_acknowledged_at ?? null,
       landlordAcknowledgedBy: leaseRow.landlord_acknowledged_by ?? null,

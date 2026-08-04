@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { formatRentLedgerStatus, rentOutstandingGhs } from "@/app/dashboard/real-estate/rent-ledger-utils";
+import { normalizePhotoUrls } from "@/app/dashboard/real-estate/properties-utils";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 import {
   fetchPortalPaymentHistory,
@@ -87,6 +88,7 @@ export type PortalDashboardData = {
   paymentEntryIds: string[];
   terminationRequestStatus: string | null;
   pendingTerminationReason: string | null;
+  moveInConditionPhotoUrls: string[];
 };
 
 /**
@@ -157,7 +159,7 @@ async function loadDashboardWithClient(
   const { data: lease, error: leaseError } = await client
     .from("leases")
     .select(
-      "lease_id, tenant_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, advance_rent_amount_ghs, termination_notice_months, status, termination_request_status, pending_termination_reason, signature_status, lease_document_url, landlord_acknowledged_at, tenant_acknowledged_at, escalation_percent, escalation_frequency_months, late_fee_enabled, late_fee_type, late_fee_amount, created_at",
+      "lease_id, tenant_id, unit_id, lessee_id, start_date, end_date, rent_amount_ghs, advance_rent_amount_ghs, termination_notice_months, status, termination_request_status, pending_termination_reason, signature_status, lease_document_url, landlord_acknowledged_at, tenant_acknowledged_at, escalation_percent, escalation_frequency_months, late_fee_enabled, late_fee_type, late_fee_amount, created_at, move_in_condition_photo_urls",
     )
     .eq("tenant_id", session.tenantId)
     .eq("lessee_id", session.lesseeId)
@@ -449,6 +451,9 @@ async function loadDashboardWithClient(
         (lease.termination_request_status as string | null) ?? null,
       pendingTerminationReason:
         (lease.pending_termination_reason as string | null)?.trim() || null,
+      moveInConditionPhotoUrls: normalizePhotoUrls(
+        lease.move_in_condition_photo_urls,
+      ),
     },
     error: null,
   };

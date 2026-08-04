@@ -15,6 +15,7 @@ import {
 } from "./leases-utils";
 import LeaseSignaturePanel from "./lease-signature-panel";
 import OneTimeChargeForm from "./one-time-charge-form";
+import MoveInConditionPhotosPanel from "./move-in-condition-photos-panel";
 
 type LeaseDetailViewProps = {
   initialDetail: LeaseDetail;
@@ -851,6 +852,18 @@ export default function LeaseDetailView({
             ) : null}
           </>
         )}
+      </section>
+
+      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+          Move-in condition
+        </h3>
+        <MoveInConditionPhotosPanel
+          tenantId={detail.tenantId}
+          leaseId={detail.leaseId}
+          initialUrls={detail.moveInConditionPhotoUrls}
+          uploadPath="/api/admin/leases/upload-move-in-photo"
+        />
       </section>
 
       <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">

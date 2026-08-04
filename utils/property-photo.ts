@@ -25,6 +25,7 @@ function extensionForFile(file: File): string {
 export type RealEstatePhotoEntity =
   | "property"
   | "unit"
+  | "lease"
   | "maintenance"
   | "inspection"
   | "expense"
@@ -43,7 +44,7 @@ export function getPropertyPhotoStoragePath(
 
 /**
  * Uploads a real-estate photo/receipt into the existing tenant-logos bucket
- * (property, unit, maintenance, inspection, expense, or lessee profile).
+ * (property, unit, lease, maintenance, inspection, expense, or lessee profile).
  */
 export async function uploadPropertyPhoto(
   supabase: SupabaseClient,

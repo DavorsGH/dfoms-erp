@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { fetchMaintenanceRequestsForLessee } from "@/utils/maintenance-management";
@@ -44,19 +45,27 @@ export default async function PortalRepairsPage() {
           <ul className="mt-4 divide-y divide-slate-200">
             {mine.map((row) => (
               <li key={row.requestId} className="py-3">
-                <p className="text-sm font-medium text-slate-900">
-                  {row.description}
-                </p>
-                <p className="mt-1 text-xs text-slate-600">
-                  {formatMaintenanceDate(row.dateReported)} ·{" "}
-                  {formatMaintenanceStatus(row.status)} · Landlord:{" "}
-                  {formatMaintenanceLandlordApproval(
-                    row.landlordApprovalStatus,
-                  )}
-                  {row.tenantSelfFix
-                    ? ` · Self-fix ${formatMaintenanceMoney(row.proposedCostGhs)}`
-                    : ""}
-                </p>
+                <Link
+                  href={`/portal/repairs/${row.requestId}`}
+                  className="block hover:bg-slate-50 -mx-2 px-2 rounded-md"
+                >
+                  <p className="text-sm font-medium text-slate-900">
+                    {row.description}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {formatMaintenanceDate(row.dateReported)} ·{" "}
+                    {formatMaintenanceStatus(row.status)} · Landlord:{" "}
+                    {formatMaintenanceLandlordApproval(
+                      row.landlordApprovalStatus,
+                    )}
+                    {row.tenantSelfFix
+                      ? ` · Self-fix ${formatMaintenanceMoney(row.proposedCostGhs)}`
+                      : ""}
+                    {(row.photoUrls.length > 0 ||
+                      row.completionPhotoUrls.length > 0) &&
+                      " · View photos"}
+                  </p>
+                </Link>
               </li>
             ))}
           </ul>

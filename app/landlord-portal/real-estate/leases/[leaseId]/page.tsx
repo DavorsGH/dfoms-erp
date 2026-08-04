@@ -22,6 +22,7 @@ import {
 import LandlordPortalPendingApprovalView from "../../../pending-approval-view";
 import LandlordPortalLeaseEditForm from "../lease-edit-form";
 import OneTimeChargeForm from "@/app/dashboard/real-estate/one-time-charge-form";
+import MoveInConditionPhotosPanel from "@/app/dashboard/real-estate/move-in-condition-photos-panel";
 
 type PageProps = {
   params: Promise<{ leaseId: string }>;
@@ -248,6 +249,33 @@ export default async function LandlordPortalLeaseDetailPage({
               </p>
             )}
           </section>
+
+          {canManage ? (
+            <section className={portalSectionClassName}>
+              <h2 className={portalSectionTitleClassName}>Move-in condition</h2>
+              <div className="mt-4">
+                <MoveInConditionPhotosPanel
+                  tenantId={detail.tenantId}
+                  leaseId={detail.leaseId}
+                  initialUrls={detail.moveInConditionPhotoUrls}
+                  uploadPath="/api/landlord-portal/leases/upload-move-in-photo"
+                />
+              </div>
+            </section>
+          ) : detail.moveInConditionPhotoUrls.length > 0 ? (
+            <section className={portalSectionClassName}>
+              <h2 className={portalSectionTitleClassName}>Move-in condition</h2>
+              <div className="mt-4">
+                <MoveInConditionPhotosPanel
+                  tenantId={detail.tenantId}
+                  leaseId={detail.leaseId}
+                  initialUrls={detail.moveInConditionPhotoUrls}
+                  uploadPath="/api/landlord-portal/leases/upload-move-in-photo"
+                  readOnly
+                />
+              </div>
+            </section>
+          ) : null}
 
           {canManage ? (
             <section className={portalSectionClassName}>

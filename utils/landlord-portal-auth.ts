@@ -21,6 +21,7 @@ import {
   formatMaintenanceStatus,
   isLandlordApprovalStatus,
   isMaintenanceStatus,
+  normalizePhotoUrls,
 } from "@/app/dashboard/real-estate/maintenance-utils";
 import {
   formatLesseeComplaintStatus,
@@ -113,6 +114,7 @@ export type LandlordPortalDashboardData = {
 export type LandlordPortalMaintenanceRow = {
   requestId: string;
   description: string;
+  status: string;
   statusLabel: string;
   landlordApprovalStatus: string;
   landlordApprovalLabel: string;
@@ -122,6 +124,8 @@ export type LandlordPortalMaintenanceRow = {
   dateReported: string;
   lesseeName: string;
   unitLabel: string;
+  photoUrls: string[];
+  completionPhotoUrls: string[];
 };
 
 export type LandlordPortalComplaintRow = {
@@ -633,7 +637,7 @@ export async function fetchLandlordPortalMaintenance(
     admin
       .from("maintenance_requests")
       .select(
-        "request_id, lease_id, description, status, landlord_approval_status, date_reported, tenant_self_fix, proposed_cost_ghs, cost_ghs",
+        "request_id, lease_id, description, status, landlord_approval_status, date_reported, tenant_self_fix, proposed_cost_ghs, cost_ghs, photo_urls, completion_photo_urls",
       )
       .eq("tenant_id", tenantId)
       .order("date_reported", { ascending: false })
@@ -673,6 +677,8 @@ export async function fetchLandlordPortalMaintenance(
     tenant_self_fix?: boolean | null;
     proposed_cost_ghs?: number | string | null;
     cost_ghs?: number | string | null;
+    photo_urls?: unknown;
+    completion_photo_urls?: unknown;
   }> | null) ?? []) {
     if (!isMaintenanceStatus(row.status)) continue;
     if (!isLandlordApprovalStatus(row.landlord_approval_status)) continue;
@@ -684,6 +690,7 @@ export async function fetchLandlordPortalMaintenance(
     rows.push({
       requestId: row.request_id,
       description: row.description,
+      status: row.status,
       statusLabel: formatMaintenanceStatus(row.status),
       landlordApprovalStatus: row.landlord_approval_status,
       landlordApprovalLabel: formatMaintenanceLandlordApproval(
@@ -700,6 +707,8 @@ export async function fetchLandlordPortalMaintenance(
       unitLabel: unit
         ? `${maps.propertyNameById.get(unit.property_id) ?? "—"} · ${unit.unit_number}`
         : "—",
+      photoUrls: normalizePhotoUrls(row.photo_urls),
+      completionPhotoUrls: normalizePhotoUrls(row.completion_photo_urls),
     });
   }
 

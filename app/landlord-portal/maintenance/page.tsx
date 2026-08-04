@@ -12,6 +12,8 @@ import {
 } from "../portal-ui";
 import LandlordPortalPendingApprovalView from "../pending-approval-view";
 import LandlordPortalMaintenanceActions from "./maintenance-actions";
+import LandlordPortalMaintenanceCompletePanel from "./maintenance-complete-panel";
+import MaintenanceBeforeAfterGallery from "@/app/dashboard/real-estate/maintenance-before-after-gallery";
 
 export default async function LandlordPortalMaintenancePage() {
   const session = await getLandlordPortalSession();
@@ -71,6 +73,22 @@ export default async function LandlordPortalMaintenancePage() {
                   tenantSelfFix={row.tenantSelfFix}
                   proposedCostGhs={row.proposedCostGhs}
                 />
+              ) : null}
+              {canAct ? (
+                <LandlordPortalMaintenanceCompletePanel
+                  requestId={row.requestId}
+                  status={row.status}
+                  landlordApprovalStatus={row.landlordApprovalStatus}
+                />
+              ) : null}
+              {row.photoUrls.length > 0 || row.completionPhotoUrls.length > 0 ? (
+                <div className="mt-3">
+                  <MaintenanceBeforeAfterGallery
+                    submissionPhotoUrls={row.photoUrls}
+                    completionPhotoUrls={row.completionPhotoUrls}
+                    compact
+                  />
+                </div>
               ) : null}
             </li>
           ))}

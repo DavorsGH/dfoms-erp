@@ -1,0 +1,97 @@
+import { NextResponse } from "next/server";
+import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
+import { uploadPropertyPhoto } from "@/utils/property-photo";
+import { normalizePhotoUrls } from "@/app/dashboard/real-estate/properties-utils";
+
+/**
+ * platform_only: upload after/completion photos when a maintenance request is completed.
+ */
+export async function POST(request: Request) {
+  const auth = await requirePlatformOnlyLandlordSession();
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return NextResponse.json({ error: "Invalid form data" }, { status: 400 });
+  }
+
+  const requestId = String(formData.get("request_id") ?? "").trim();
+  const file = formData.get("file");
+
+  if (!requestId) {
+    return NextResponse.json(
+      { error: "request_id is required" },
+      { status: 400 },
+    );
+  }
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "file is required" }, { status: 400 });
+  }
+
+  const tenantId = auth.session.tenantId;
+
+  const { data: existing, error: existingError } = await auth.admin
+    .from("maintenance_requests")
+    .select("request_id, status, completion_photo_urls")
+    .eq("tenant_id", tenantId)
+    .eq("request_id", requestId)
+    .maybeSingle();
+
+  if (existingError) {
+    return NextResponse.json({ error: existingError.message }, { status: 400 });
+  }
+  if (!existing) {
+    return NextResponse.json(
+      { error: "Maintenance request not found." },
+      { status: 404 },
+    );
+  }
+  if (existing.status !== "completed") {
+    return NextResponse.json(
+      {
+        error:
+          "Completion photos can only be added when the request is marked completed.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const uploadResult = await uploadPropertyPhoto(
+    auth.admin,
+    tenantId,
+    "maintenance",
+    requestId,
+    file,
+  );
+  if ("error" in uploadResult) {
+    return NextResponse.json({ error: uploadResult.error }, { status: 400 });
+  }
+
+  const nextUrls = [
+    ...normalizePhotoUrls(existing.completion_photo_urls),
+    uploadResult.publicUrl,
+  ];
+
+  const { error: updateError } = await auth.admin
+    .from("maintenance_requests")
+    .update({
+      completion_photo_urls: nextUrls,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("tenant_id", tenantId)
+    .eq("request_id", requestId);
+
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 400 });
+  }
+
+  return NextResponse.json({
+    success: true,
+    publicUrl: uploadResult.publicUrl,
+    completion_photo_urls: nextUrls,
+  });
+}

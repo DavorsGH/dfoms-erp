@@ -27,6 +27,7 @@ export type MaintenanceListRow = {
   proposedCostGhs: number | null;
   rentCreditEntryId: string | null;
   photoUrls: string[];
+  completionPhotoUrls: string[];
 };
 
 export type ActiveLeaseOption = {

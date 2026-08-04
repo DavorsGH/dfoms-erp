@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { fetchMaintenanceRequestsForLessee } from "@/utils/maintenance-management";
@@ -105,6 +106,16 @@ export default async function PortalIssuesPage() {
                   {item.title}
                 </p>
                 <p className="mt-1 text-xs text-slate-600">{item.statusLabel}</p>
+                {item.kind === "repair" ? (
+                  <p className="mt-2">
+                    <Link
+                      href={`/portal/repairs/${item.id.replace(/^repair-/, "")}`}
+                      className="text-sm font-medium text-[#0f2744] hover:underline"
+                    >
+                      View repair details & photos
+                    </Link>
+                  </p>
+                ) : null}
                 {item.detail ? (
                   <p className="mt-2 text-sm text-slate-700">
                     Staff: {item.detail}

@@ -107,6 +107,8 @@ export type LeaseDetail = {
   signatureStatus: SignatureStatus;
   /** Custom uploaded lease PDF/Word URL; when set, preferred over generated default. */
   leaseDocumentUrl: string | null;
+  /** Move-in condition photos (separate from listing/marketing photos). */
+  moveInConditionPhotoUrls: string[];
   landlordAcknowledgedAt: string | null;
   tenantAcknowledgedAt: string | null;
   landlordAcknowledgedBy?: string | null;
