@@ -761,6 +761,15 @@ export default function LeaseDetailView({
               </div>
             </dl>
 
+            <p className="text-sm">
+              <Link
+                href={`/dashboard/real-estate/deposits/${detail.tenantId}/${detail.deposit.depositId}`}
+                className="font-medium text-[#0f2744] hover:underline"
+              >
+                View deposit collection / resolution records
+              </Link>
+            </p>
+
             {detail.deposit.status === "held" ? (
               <>
                 <button

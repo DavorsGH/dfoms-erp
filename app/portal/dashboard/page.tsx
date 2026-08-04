@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import {
   fetchPortalDashboardData,
   getPortalLesseeSession,
@@ -249,6 +250,33 @@ export default async function PortalDashboardPage() {
               />
             </section>
           ) : null}
+
+          <section className={portalSectionClassName}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className={portalSectionTitleClassName}>Payments & receipts</h2>
+              <Link
+                href="/portal/payments"
+                className="text-sm font-medium text-[#0f2744] hover:underline"
+              >
+                View payment history
+              </Link>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">
+              Download or print receipts for confirmed rent and one-time charge
+              payments.
+            </p>
+            {data.depositId ? (
+              <p className="mt-3 text-sm text-slate-600">
+                Security deposit:{" "}
+                <Link
+                  href={`/portal/deposits/${data.depositId}`}
+                  className="font-medium text-[#0f2744] hover:underline"
+                >
+                  View deposit records
+                </Link>
+              </p>
+            ) : null}
+          </section>
         </>
       )}
     </PortalShell>

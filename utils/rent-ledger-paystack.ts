@@ -317,6 +317,7 @@ async function notifyRentPaystackSuccess(options: {
   paymentMethod: string;
   escrowBalanceAfterGhs: number | null;
   lesseeId: string;
+  primaryEntryId: string;
 }): Promise<void> {
   const admin = createAdminClient();
   const periodLabel = formatRentPeriod(options.periodStart, options.periodEnd);
@@ -396,7 +397,7 @@ async function notifyRentPaystackSuccess(options: {
     lesseeId: options.lesseeId,
     title: "Rent payment receipt",
     body: tenantInAppBody,
-    actionUrl: "/portal/dashboard",
+    actionUrl: `/portal/payments/${options.primaryEntryId}`,
     context: `rent-receipt-tenant:${options.lesseeId}:${periodLabel}`,
   });
 
@@ -738,6 +739,7 @@ export async function fulfillRentLedgerPaystackPayment(
         paymentMethod: paymentMethodLabel,
         escrowBalanceAfterGhs,
         lesseeId,
+        primaryEntryId: primaryEntry.entry_id,
       });
     } catch (error) {
       console.error(

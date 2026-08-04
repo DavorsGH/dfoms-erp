@@ -6,6 +6,16 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { formatRentLedgerStatus, rentOutstandingGhs } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
+import {
+  fetchPortalPaymentHistory,
+  fetchRentPaymentReceipt,
+  type PortalPaymentHistoryRow,
+  type RentPaymentReceiptData,
+} from "@/utils/rent-payment-receipt";
+import {
+  fetchSecurityDepositReceipt,
+  type SecurityDepositReceiptData,
+} from "@/utils/security-deposit-receipt";
 
 export type PortalLesseeSession = {
   authUserId: string;
@@ -59,6 +69,7 @@ export type PortalDashboardData = {
   lesseePhone: string;
   lesseeEmail: string | null;
   depositAmountGhs: number | null;
+  depositId: string | null;
   leaseDocumentUrl: string | null;
   leaseCreatedAt: string;
   lateFeeEnabled: boolean;
@@ -194,7 +205,7 @@ async function loadDashboardWithClient(
       .limit(48),
     client
       .from("security_deposits")
-      .select("amount_ghs")
+      .select("deposit_id, amount_ghs")
       .eq("tenant_id", session.tenantId)
       .eq("lease_id", lease.lease_id)
       .order("created_at", { ascending: false })
@@ -396,6 +407,10 @@ async function loadDashboardWithClient(
         depositRows && depositRows[0]
           ? Number(depositRows[0].amount_ghs) || 0
           : null,
+      depositId:
+        depositRows && depositRows[0] && typeof depositRows[0].deposit_id === "string"
+          ? depositRows[0].deposit_id
+          : null,
       leaseDocumentUrl:
         typeof lease.lease_document_url === "string" &&
         lease.lease_document_url.trim()
@@ -437,4 +452,80 @@ async function loadDashboardWithClient(
     },
     error: null,
   };
+}
+
+export async function fetchPortalActiveLeaseId(
+  session: PortalLesseeSession,
+): Promise<{ leaseId: string | null; error: string | null }> {
+  const admin = createAdminClient();
+  const { data: lease, error } = await admin
+    .from("leases")
+    .select("lease_id")
+    .eq("tenant_id", session.tenantId)
+    .eq("lessee_id", session.lesseeId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return { leaseId: null, error: error.message };
+  }
+  return { leaseId: lease?.lease_id ?? null, error: null };
+}
+
+export async function fetchPortalPaymentHistoryForSession(
+  session: PortalLesseeSession,
+): Promise<{ rows: PortalPaymentHistoryRow[]; error: string | null }> {
+  const { leaseId, error: leaseError } = await fetchPortalActiveLeaseId(session);
+  if (leaseError) {
+    return { rows: [], error: leaseError };
+  }
+  if (!leaseId) {
+    return { rows: [], error: null };
+  }
+
+  const admin = createAdminClient();
+  return fetchPortalPaymentHistory(admin, {
+    tenantId: session.tenantId,
+    lesseeId: session.lesseeId,
+    leaseId,
+  });
+}
+
+export async function fetchPortalRentPaymentReceipt(
+  session: PortalLesseeSession,
+  entryId: string,
+): Promise<{ receipt: RentPaymentReceiptData | null; error: string | null }> {
+  const admin = createAdminClient();
+  return fetchRentPaymentReceipt(admin, {
+    tenantId: session.tenantId,
+    entryId,
+    lesseeId: session.lesseeId,
+  });
+}
+
+export async function fetchPortalSecurityDepositReceipt(
+  session: PortalLesseeSession,
+  depositId: string,
+): Promise<{ receipt: SecurityDepositReceiptData | null; error: string | null }> {
+  const cookieStore = await cookies();
+  const userClient = createClient(cookieStore);
+
+  const primary = await fetchSecurityDepositReceipt(userClient, {
+    tenantId: session.tenantId,
+    depositId,
+    lesseeId: session.lesseeId,
+  });
+
+  if (!primary.error && primary.receipt) {
+    return primary;
+  }
+
+  const admin = createAdminClient();
+  return fetchSecurityDepositReceipt(admin, {
+    tenantId: session.tenantId,
+    depositId,
+    lesseeId: session.lesseeId,
+  });
 }

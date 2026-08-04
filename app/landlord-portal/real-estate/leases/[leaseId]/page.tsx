@@ -210,6 +210,7 @@ export default async function LandlordPortalLeaseDetailPage({
           <section className={portalSectionClassName}>
             <h2 className={portalSectionTitleClassName}>Security deposit</h2>
             {detail.deposit ? (
+              <>
               <dl className="mt-4 grid gap-4 sm:grid-cols-2">
                 <DetailItem
                   label="Amount held"
@@ -232,6 +233,15 @@ export default async function LandlordPortalLeaseDetailPage({
                   value={detail.deposit.resolutionNotes ?? "—"}
                 />
               </dl>
+              <p className="mt-4 text-sm">
+                <Link
+                  href={`/landlord-portal/finance/deposits/${detail.deposit.depositId}`}
+                  className="font-medium text-[#0f2744] hover:underline"
+                >
+                  View deposit collection / resolution records
+                </Link>
+              </p>
+              </>
             ) : (
               <p className="mt-4 text-sm text-slate-600">
                 No security deposit on record for this lease.
