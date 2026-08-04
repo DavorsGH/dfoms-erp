@@ -20,6 +20,7 @@ export type LesseeComplaintListRow = {
   staffResponse: string | null;
   dateReported: string;
   dateResolved: string | null;
+  tenantAcknowledgedAt: string | null;
 };
 
 export const LESSEE_COMPLAINT_STATUS_OPTIONS: Array<{

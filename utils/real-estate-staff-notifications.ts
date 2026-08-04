@@ -725,6 +725,76 @@ export async function notifyStaffLandlordRaisedComplaint(options: {
   }
 }
 
+/** Tenant responded to a landlord-raised complaint — notify staff or landlord to review. */
+export async function notifyStaffTenantComplaintResponse(options: {
+  landlordTenantId: string;
+  leaseId: string;
+  complaintId: string;
+  subject: string;
+  response: string;
+  lesseeName?: string | null;
+}): Promise<void> {
+  try {
+    const [ctx, recipients] = await Promise.all([
+      loadLeaseContext(options.landlordTenantId, options.leaseId),
+      resolveNotificationRecipients({
+        landlordTenantId: options.landlordTenantId,
+      }),
+    ]);
+    const lesseeName = options.lesseeName?.trim() || ctx.lesseeName;
+    const responsePreview =
+      options.response.length > 120
+        ? `${options.response.slice(0, 117)}…`
+        : options.response;
+    const actionPath = landlordFilteredPath(
+      "complaints",
+      options.landlordTenantId,
+    );
+    const deepLink = staffDashboardUrl(actionPath);
+    const smsLink = await smsDeepLinkUrl(deepLink);
+
+    const title = "Tenant responded to complaint";
+    const body = [
+      `${lesseeName} responded to the complaint “${options.subject}”.`,
+      `Property: ${ctx.propertyName} / Unit ${ctx.unitNumber}`,
+      responsePreview,
+    ].join("\n");
+
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Tenant", lesseeName],
+        ["Subject", options.subject],
+        ["Property", ctx.propertyName],
+        ["Unit", ctx.unitNumber],
+        ["Response", responsePreview],
+      ],
+      deepLink,
+    );
+
+    await dispatchStaffNotification({
+      title,
+      body,
+      actionUrl: actionPath,
+      emailSubject: `Real Estate: Tenant response — ${options.subject}`,
+      emailHtml: html,
+      emailText: text,
+      smsContent: `Davors RE: ${lesseeName} responded to complaint "${options.subject}". ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
+      context: `complaint-tenant-response:${options.complaintId}`,
+      recipients,
+      landlordPortal: {
+        landlordTenantId: options.landlordTenantId,
+        actionUrl: landlordPortalPath("complaints"),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "[real-estate-staff-notifications] notifyStaffTenantComplaintResponse failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 /** EVENT 3 — portal rent Paystack payment successfully fulfilled (not duplicates). */
 export async function notifyStaffRentPaymentReceived(options: {
   landlordTenantId: string;

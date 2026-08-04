@@ -14,6 +14,7 @@ import {
 import PortalShell from "../portal-shell";
 import PortalComplaintForm from "./complaint-form";
 import PortalComplaintActions from "./complaint-actions";
+import PortalComplaintAcknowledge from "./complaint-acknowledge";
 
 export default async function PortalComplaintsPage() {
   const session = await getPortalLesseeSession();
@@ -44,6 +45,12 @@ export default async function PortalComplaintsPage() {
               const open =
                 row.status === "submitted" || row.status === "in_progress";
               const isLandlordRaised = row.raisedBy === "landlord";
+              const isTenantRaised = row.raisedBy === "tenant";
+              const needsAcknowledgment =
+                isTenantRaised &&
+                row.status === "resolved" &&
+                !row.tenantAcknowledgedAt;
+
               return (
                 <li key={row.complaintId} className="py-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -57,9 +64,15 @@ export default async function PortalComplaintsPage() {
                   <p className="mt-1 text-xs text-slate-600">
                     {formatLesseeComplaintDate(row.dateReported)} ·{" "}
                     {formatLesseeComplaintStatus(row.status)}
+                    {row.tenantAcknowledgedAt
+                      ? " · Acknowledged"
+                      : needsAcknowledgment
+                        ? " · Awaiting your acknowledgment"
+                        : ""}
                   </p>
-                  {isLandlordRaised ? (
+                  {isTenantRaised || isLandlordRaised ? (
                     <p className="mt-2 text-sm text-slate-700">
+                      {isTenantRaised ? "Your report: " : null}
                       {row.description}
                     </p>
                   ) : null}
@@ -74,6 +87,18 @@ export default async function PortalComplaintsPage() {
                     <PortalComplaintActions
                       complaintId={row.complaintId}
                       initialResponse={row.staffResponse}
+                    />
+                  ) : null}
+                  {needsAcknowledgment ? (
+                    <PortalComplaintAcknowledge
+                      complaintId={row.complaintId}
+                      acknowledgedAt={row.tenantAcknowledgedAt}
+                    />
+                  ) : null}
+                  {isTenantRaised && row.tenantAcknowledgedAt ? (
+                    <PortalComplaintAcknowledge
+                      complaintId={row.complaintId}
+                      acknowledgedAt={row.tenantAcknowledgedAt}
                     />
                   ) : null}
                 </li>

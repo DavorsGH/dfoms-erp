@@ -72,7 +72,18 @@ export default async function PortalIssuesPage() {
       id: `complaint-${row.complaintId}`,
       kind: "complaint" as const,
       title: row.subject,
-      statusLabel: formatLesseeComplaintStatus(row.status),
+      statusLabel: [
+        formatLesseeComplaintStatus(row.status),
+        row.raisedBy === "tenant" &&
+        row.status === "resolved" &&
+        !row.tenantAcknowledgedAt
+          ? "Awaiting your acknowledgment"
+          : row.tenantAcknowledgedAt
+            ? "Acknowledged"
+            : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
       raisedByLabel: formatLesseeComplaintRaisedBy(row.raisedBy),
       dateIso: row.dateReported,
       dateLabel: formatLesseeComplaintDate(row.dateReported),
@@ -135,7 +146,9 @@ export default async function PortalIssuesPage() {
                     >
                       {item.isLandlordRaised
                         ? "View & respond"
-                        : "View complaint details"}
+                        : item.statusLabel.includes("Awaiting your acknowledgment")
+                          ? "Acknowledge resolution"
+                          : "View complaint details"}
                     </Link>
                   </p>
                 )}

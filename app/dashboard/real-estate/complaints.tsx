@@ -36,6 +36,97 @@ const secondaryButtonClassName =
 const textareaClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
+function ComplaintDetailPanel({
+  row,
+  editStatus,
+  editResponse,
+  loading,
+  onStatusChange,
+  onResponseChange,
+  onSave,
+}: {
+  row: LesseeComplaintListRow;
+  editStatus: LesseeComplaintStatus;
+  editResponse: string;
+  loading: boolean;
+  onStatusChange: (value: LesseeComplaintStatus) => void;
+  onResponseChange: (value: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <h3 className="text-base font-semibold text-[#0f2744]">{row.subject}</h3>
+      <p className="mt-1 text-sm text-slate-600">
+        {row.lesseeName} · {row.unitLabel} ·{" "}
+        {formatLesseeComplaintRaisedBy(row.raisedBy)}
+      </p>
+      {row.status === "resolved" &&
+      row.raisedBy === "tenant" &&
+      row.tenantAcknowledgedAt ? (
+        <p className="mt-2 text-sm text-emerald-700">
+          Tenant acknowledged{" "}
+          {formatLesseeComplaintDate(row.tenantAcknowledgedAt)}
+        </p>
+      ) : null}
+      <p className="mt-4 whitespace-pre-wrap text-sm text-slate-800">
+        {row.description}
+      </p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600">
+            Status
+          </label>
+          <select
+            className={inputClassName}
+            value={editStatus}
+            onChange={(event) =>
+              onStatusChange(event.target.value as LesseeComplaintStatus)
+            }
+            disabled={loading}
+          >
+            {LESSEE_COMPLAINT_STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-xs font-medium text-slate-600">
+            {row.raisedBy === "landlord"
+              ? "Tenant response / closing note"
+              : "Staff response"}
+          </label>
+          <textarea
+            className={textareaClassName}
+            rows={4}
+            value={editResponse}
+            onChange={(event) => onResponseChange(event.target.value)}
+            disabled={loading}
+            placeholder={
+              row.raisedBy === "landlord"
+                ? "Optional closing note…"
+                : "Reply to the tenant…"
+            }
+          />
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <button
+          type="button"
+          className={primaryButtonClassName}
+          disabled={loading}
+          onClick={onSave}
+        >
+          {loading ? "Saving…" : "Save response"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ComplaintsView({
   landlords,
   selectedLandlordId,
@@ -68,14 +159,14 @@ export default function ComplaintsView({
     if (!expandedId) {
       return;
     }
-    const current = initialRows.find((row) => row.complaintId === expandedId);
+    const current = rows.find((row) => row.complaintId === expandedId);
     if (!current) {
       setExpandedId(null);
       return;
     }
     setEditStatus(current.status);
     setEditResponse(current.staffResponse ?? "");
-  }, [initialRows, expandedId]);
+  }, [rows, expandedId]);
 
   const filteredRows = useMemo(() => {
     if (!statusFilter) {
@@ -193,33 +284,33 @@ export default function ComplaintsView({
           Select a Davors-managed landlord to view tenant complaints.
         </p>
       ) : (
-        <>
-          <ScrollableTable>
-            <table className={scrollableTableClassName}>
-              <thead className={scrollableTableHeadClassName}>
+        <ScrollableTable>
+          <table className={scrollableTableClassName}>
+            <thead className={scrollableTableHeadClassName}>
+              <tr>
+                <th className={scrollableTableThClassName}>Tenant</th>
+                <th className={scrollableTableThClassName}>Unit</th>
+                <th className={scrollableTableThClassName}>Subject</th>
+                <th className={scrollableTableThClassName}>Filed by</th>
+                <th className={scrollableTableThClassName}>Status</th>
+                <th className={scrollableTableThClassName}>Reported</th>
+                <th className={scrollableTableThClassName}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.length === 0 ? (
                 <tr>
-                  <th className={scrollableTableThClassName}>Tenant</th>
-                  <th className={scrollableTableThClassName}>Unit</th>
-                  <th className={scrollableTableThClassName}>Subject</th>
-                  <th className={scrollableTableThClassName}>Filed by</th>
-                  <th className={scrollableTableThClassName}>Status</th>
-                  <th className={scrollableTableThClassName}>Reported</th>
-                  <th className={scrollableTableThClassName}>Actions</th>
+                  <td
+                    colSpan={7}
+                    className="px-4 py-6 text-center text-sm text-slate-500"
+                  >
+                    No complaints for this landlord
+                    {statusFilter ? " with the selected status" : ""}.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {filteredRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="px-4 py-6 text-center text-sm text-slate-500"
-                    >
-                      No complaints for this landlord
-                      {statusFilter ? " with the selected status" : ""}.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRows.map((row, index) => (
+              ) : (
+                filteredRows.flatMap((row, index) => {
+                  const mainRow = (
                     <tr
                       key={row.complaintId}
                       className={getStripedRowClassName(index)}
@@ -238,6 +329,14 @@ export default function ComplaintsView({
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatLesseeComplaintStatus(row.status)}
+                        {row.status === "resolved" &&
+                        row.raisedBy === "tenant" &&
+                        row.tenantAcknowledgedAt
+                          ? " · Acknowledged"
+                          : row.status === "resolved" &&
+                              row.raisedBy === "tenant"
+                            ? " · Pending ack"
+                            : ""}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatLesseeComplaintDate(row.dateReported)}
@@ -256,75 +355,33 @@ export default function ComplaintsView({
                         </button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </ScrollableTable>
+                  );
 
-          {expandedRow ? (
-            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-semibold text-[#0f2744]">
-                {expandedRow.subject}
-              </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                {expandedRow.lesseeName} · {expandedRow.unitLabel} ·{" "}
-                {formatLesseeComplaintRaisedBy(expandedRow.raisedBy)}
-              </p>
-              <p className="mt-4 whitespace-pre-wrap text-sm text-slate-800">
-                {expandedRow.description}
-              </p>
+                  if (expandedId !== row.complaintId) {
+                    return [mainRow];
+                  }
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">
-                    Status
-                  </label>
-                  <select
-                    className={inputClassName}
-                    value={editStatus}
-                    onChange={(event) =>
-                      setEditStatus(
-                        event.target.value as LesseeComplaintStatus,
-                      )
-                    }
-                  >
-                    {LESSEE_COMPLAINT_STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1 block text-xs font-medium text-slate-600">
-                    {expandedRow.raisedBy === "landlord"
-                      ? "Tenant response / closing note"
-                      : "Staff response"}
-                  </label>
-                  <textarea
-                    className={textareaClassName}
-                    rows={4}
-                    value={editResponse}
-                    onChange={(event) => setEditResponse(event.target.value)}
-                    placeholder="Optional reply to the tenant…"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  className={primaryButtonClassName}
-                  disabled={loading}
-                  onClick={() => void handleSave()}
-                >
-                  {loading ? "Saving…" : "Save"}
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </>
+                  return [
+                    mainRow,
+                    <tr key={`${row.complaintId}-detail`}>
+                      <td colSpan={7} className="px-4 py-4">
+                        <ComplaintDetailPanel
+                          row={row}
+                          editStatus={editStatus}
+                          editResponse={editResponse}
+                          loading={loading}
+                          onStatusChange={setEditStatus}
+                          onResponseChange={setEditResponse}
+                          onSave={() => void handleSave()}
+                        />
+                      </td>
+                    </tr>,
+                  ];
+                })
+              )}
+            </tbody>
+          </table>
+        </ScrollableTable>
       )}
     </div>
   );

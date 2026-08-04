@@ -11,10 +11,10 @@ import {
   type LesseeComplaintRaisedBy,
   type LesseeComplaintStatus,
 } from "@/app/dashboard/real-estate/complaints-utils";
-import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
 import {
   notifyStaffLandlordRaisedComplaint,
   notifyStaffNewComplaint,
+  notifyStaffTenantComplaintResponse,
 } from "@/utils/real-estate-staff-notifications";
 
 export type { LesseeComplaintListRow } from "@/app/dashboard/real-estate/complaints-utils";
@@ -37,6 +37,10 @@ export type CreateLesseeComplaintResult =
 
 export type RespondLesseeComplaintAsTenantResult =
   | { ok: true; status: LesseeComplaintStatus }
+  | { ok: false; error: string; status: number };
+
+export type AcknowledgeLesseeComplaintResult =
+  | { ok: true; acknowledgedAt: string }
   | { ok: false; error: string; status: number };
 
 /**
@@ -166,7 +170,7 @@ export async function respondToLesseeComplaintAsTenant(
 
   const { data: existing, error: existingError } = await admin
     .from("lessee_complaints")
-    .select("complaint_id, lessee_id, subject, status, raised_by")
+    .select("complaint_id, lease_id, lessee_id, subject, status, raised_by")
     .eq("tenant_id", options.tenantId)
     .eq("complaint_id", complaintId)
     .maybeSingle();
@@ -213,15 +217,21 @@ export async function respondToLesseeComplaintAsTenant(
     return { ok: false, error: updateError.message, status: 400 };
   }
 
-  void insertLandlordPortalNotification({
+  const { data: lessee } = await admin
+    .from("lessees")
+    .select("full_name")
+    .eq("tenant_id", options.tenantId)
+    .eq("lessee_id", existing.lessee_id)
+    .maybeSingle();
+
+  await notifyStaffTenantComplaintResponse({
     landlordTenantId: options.tenantId,
-    title: "Tenant responded to your complaint",
-    body: [
-      `Regarding “${existing.subject}”, the tenant replied:`,
-      response,
-    ].join("\n"),
-    actionUrl: "/landlord-portal/complaints",
-    context: `complaint-tenant-response:${complaintId}`,
+    leaseId: existing.lease_id,
+    complaintId,
+    subject: existing.subject,
+    response,
+    lesseeName:
+      typeof lessee?.full_name === "string" ? lessee.full_name : null,
   });
 
   return { ok: true, status: nextStatus };
@@ -256,7 +266,9 @@ export async function updateLesseeComplaint(
 
   const { data: existing, error: existingError } = await admin
     .from("lessee_complaints")
-    .select("complaint_id, lessee_id, subject, status, raised_by")
+    .select(
+      "complaint_id, lessee_id, subject, status, raised_by, staff_response",
+    )
     .eq("tenant_id", options.tenantId)
     .eq("complaint_id", complaintId)
     .maybeSingle();
@@ -288,6 +300,62 @@ export async function updateLesseeComplaint(
     return { ok: false, error: updateError.message, status: 400 };
   }
 
+  const raisedBy =
+    existing.raised_by === "landlord" ? "landlord" : "tenant";
+  const previousResponse =
+    typeof existing.staff_response === "string"
+      ? existing.staff_response.trim() || null
+      : null;
+  const responseChanged =
+    staffResponse != null && staffResponse !== previousResponse;
+
+  if (
+    raisedBy === "tenant" &&
+    !becameResolved &&
+    responseChanged &&
+    staffResponse
+  ) {
+    const { data: lessee } = await admin
+      .from("lessees")
+      .select("full_name, email")
+      .eq("tenant_id", options.tenantId)
+      .eq("lessee_id", existing.lessee_id)
+      .maybeSingle();
+
+    const name = lessee?.full_name?.trim() || "Tenant";
+    const title = "Response to your complaint";
+    const inAppBody = [
+      `Regarding your complaint “${existing.subject}”, you have a new response:`,
+      staffResponse,
+    ].join("\n");
+
+    const email = lessee?.email?.trim();
+    if (email) {
+      void sendResendEmail({
+        to: email,
+        subject: title,
+        text: [`Hi ${name},`, "", inAppBody, "", "Davors Facilities"].join("\n"),
+        html: `<p>Hi ${escapeHtml(name)},</p>
+<p>${escapeHtml(inAppBody.replace(/\n/g, " "))}</p>
+<p><strong>Response:</strong> ${escapeHtml(staffResponse)}</p>
+<p>Davors Facilities</p>`,
+      }).then((result) => {
+        if (!result.ok) {
+          console.error("[complaints] response notify failed:", result.error);
+        }
+      });
+    }
+
+    void insertLesseePortalNotification({
+      landlordTenantId: options.tenantId,
+      lesseeId: existing.lessee_id,
+      title,
+      body: inAppBody,
+      actionUrl: "/portal/complaints",
+      context: `complaint-response:${complaintId}`,
+    });
+  }
+
   if (becameResolved) {
     const { data: lessee } = await admin
       .from("lessees")
@@ -297,8 +365,6 @@ export async function updateLesseeComplaint(
       .maybeSingle();
 
     const name = lessee?.full_name?.trim() || "Tenant";
-    const raisedBy =
-      existing.raised_by === "landlord" ? "landlord" : "tenant";
     const approved = status === "resolved";
     const subject =
       raisedBy === "tenant"
@@ -318,6 +384,9 @@ export async function updateLesseeComplaint(
         ? [
             `Regarding your complaint “${existing.subject}”: status is now ${status}.`,
             responseLine,
+            approved
+              ? "Open Complaints in your portal to acknowledge the resolution."
+              : null,
           ]
             .filter(Boolean)
             .join("\n")
@@ -366,6 +435,79 @@ ${staffResponse ? `<p>${escapeHtml(responseLabel)}: ${escapeHtml(staffResponse)}
   return { ok: true, status };
 }
 
+/**
+ * Tenant confirms satisfaction with resolution of their own complaint.
+ */
+export async function acknowledgeLesseeComplaint(
+  admin: SupabaseClient,
+  options: {
+    tenantId: string;
+    lesseeId: string;
+    complaintId: string;
+  },
+): Promise<AcknowledgeLesseeComplaintResult> {
+  const complaintId = options.complaintId.trim();
+  if (!complaintId) {
+    return { ok: false, error: "complaint_id is required", status: 400 };
+  }
+
+  const { data: existing, error: existingError } = await admin
+    .from("lessee_complaints")
+    .select(
+      "complaint_id, lessee_id, subject, status, raised_by, tenant_acknowledged_at",
+    )
+    .eq("tenant_id", options.tenantId)
+    .eq("complaint_id", complaintId)
+    .maybeSingle();
+
+  if (existingError) {
+    return { ok: false, error: existingError.message, status: 400 };
+  }
+  if (!existing) {
+    return { ok: false, error: "Complaint not found.", status: 404 };
+  }
+  if (existing.lessee_id !== options.lesseeId) {
+    return { ok: false, error: "Access denied.", status: 403 };
+  }
+  if (existing.raised_by !== "tenant") {
+    return {
+      ok: false,
+      error: "Only your own complaints can be acknowledged here.",
+      status: 400,
+    };
+  }
+  if (existing.status !== "resolved") {
+    return {
+      ok: false,
+      error: "Only resolved complaints can be acknowledged.",
+      status: 400,
+    };
+  }
+  if (existing.tenant_acknowledged_at) {
+    return {
+      ok: false,
+      error: "This complaint has already been acknowledged.",
+      status: 400,
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error: updateError } = await admin
+    .from("lessee_complaints")
+    .update({
+      tenant_acknowledged_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq("tenant_id", options.tenantId)
+    .eq("complaint_id", complaintId);
+
+  if (updateError) {
+    return { ok: false, error: updateError.message, status: 400 };
+  }
+
+  return { ok: true, acknowledgedAt: nowIso };
+}
+
 type ComplaintRow = {
   tenant_id: string;
   complaint_id: string;
@@ -378,6 +520,7 @@ type ComplaintRow = {
   staff_response: string | null;
   date_reported: string;
   date_resolved: string | null;
+  tenant_acknowledged_at: string | null;
 };
 
 function mapRaisedBy(value: string): LesseeComplaintRaisedBy {
@@ -403,7 +546,7 @@ export async function fetchComplaintsForLandlord(
     admin
       .from("lessee_complaints")
       .select(
-        "tenant_id, complaint_id, lease_id, lessee_id, subject, description, status, raised_by, staff_response, date_reported, date_resolved",
+        "tenant_id, complaint_id, lease_id, lessee_id, subject, description, status, raised_by, staff_response, date_reported, date_resolved, tenant_acknowledged_at",
       )
       .eq("tenant_id", landlord.tenantId)
       .order("date_reported", { ascending: false }),
@@ -496,6 +639,7 @@ export async function fetchComplaintsForLandlord(
       staffResponse: row.staff_response,
       dateReported: row.date_reported,
       dateResolved: row.date_resolved,
+      tenantAcknowledgedAt: row.tenant_acknowledged_at,
     });
   }
 
@@ -510,7 +654,7 @@ export async function fetchComplaintsForLessee(
   const { data: complaints, error: complaintsError } = await admin
     .from("lessee_complaints")
     .select(
-      "tenant_id, complaint_id, lease_id, lessee_id, subject, description, status, raised_by, staff_response, date_reported, date_resolved",
+      "tenant_id, complaint_id, lease_id, lessee_id, subject, description, status, raised_by, staff_response, date_reported, date_resolved, tenant_acknowledged_at",
     )
     .eq("tenant_id", tenantId)
     .eq("lessee_id", lesseeId)
@@ -539,6 +683,7 @@ export async function fetchComplaintsForLessee(
       staffResponse: row.staff_response,
       dateReported: row.date_reported,
       dateResolved: row.date_resolved,
+      tenantAcknowledgedAt: row.tenant_acknowledged_at,
     });
   }
 
