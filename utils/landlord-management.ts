@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PaystackSubaccountStatus } from "@/utils/billing-settings-types";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import type {
   LandlordApprovalStatus,
@@ -42,6 +43,7 @@ type LandlordRow = {
   approval_status: LandlordApprovalStatus | null;
   management_fee_percent: number | null;
   paystack_subaccount_code: string | null;
+  paystack_subaccount_status: PaystackSubaccountStatus | null;
   notification_phone: string | null;
   sms_credit_balance: number | null;
   created_at: string | null;

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import type { PaystackSubaccountStatus } from "@/utils/billing-settings-types";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
 import {
   formatRentLedgerStatus,
@@ -1090,6 +1091,7 @@ export type LandlordPortalBillingSnapshot = {
   smsCreditBalance: number;
   smsCreditPacks: LandlordPortalSmsCreditPack[];
   billingEmail: string | null;
+  paystackSubaccountStatus: PaystackSubaccountStatus;
 };
 
 function monthBoundsIso(now = new Date()): { start: string; end: string } {
@@ -1997,6 +1999,7 @@ export async function fetchLandlordPortalBillingSnapshot(
     packsResult,
     walletResult,
     tenantResult,
+    landlordResult,
   ] = await Promise.all([
     admin
       .from("landlord_subscriptions")
@@ -2018,6 +2021,11 @@ export async function fetchLandlordPortalBillingSnapshot(
       .select("email")
       .eq("id", tenantId)
       .maybeSingle(),
+    admin
+      .from("landlords")
+      .select("paystack_subaccount_code, paystack_subaccount_status")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
   ]);
 
   // landlord_subscriptions may be absent for some tenants; treat lookup
@@ -2027,7 +2035,28 @@ export async function fetchLandlordPortalBillingSnapshot(
     packsResult.error?.message ??
     walletResult.error?.message ??
     tenantResult.error?.message ??
+    landlordResult.error?.message ??
     null;
+
+  const landlordRow = landlordResult.data as
+    | {
+        paystack_subaccount_code: string | null;
+        paystack_subaccount_status: string | null;
+      }
+    | null;
+
+  let paystackSubaccountStatus: PaystackSubaccountStatus = "not_setup";
+  if (landlordRow?.paystack_subaccount_status === "active") {
+    paystackSubaccountStatus = "active";
+  } else if (landlordRow?.paystack_subaccount_status === "pending") {
+    paystackSubaccountStatus = "pending";
+  } else if (
+    landlordRow?.paystack_subaccount_code?.trim() &&
+    !landlordRow.paystack_subaccount_status
+  ) {
+    // Pre-migration rows may have a code without status.
+    paystackSubaccountStatus = "active";
+  }
 
   const subscription =
     !subscriptionError && subscriptionResult.data
@@ -2081,6 +2110,7 @@ export async function fetchLandlordPortalBillingSnapshot(
           : 0,
       smsCreditPacks,
       billingEmail,
+      paystackSubaccountStatus,
     },
     error: fetchError,
   };

@@ -162,6 +162,7 @@ export async function createPendingLandlordTenant(
     sms_credit_balance: 0,
     management_fee_percent: null,
     paystack_subaccount_code: null,
+    paystack_subaccount_status: "not_setup",
     notification_phone: null,
     created_at: now,
     updated_at: now,

@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { requireTenantSuperAdmin } from "@/utils/admin-auth";
+import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
 import { notifyStaffNewPaystackSubaccount } from "@/utils/real-estate-staff-notifications";
 import {
   createPaystackSubaccount,
@@ -9,24 +8,19 @@ import {
   resolvePaystackAccount,
   updatePaystackSubaccount,
 } from "@/utils/paystack-subaccounts";
-import { createClient } from "@/utils/supabase/server";
 
-async function getTenantSupabase() {
-  const cookieStore = await cookies();
-  return createClient(cookieStore);
-}
+export const runtime = "nodejs";
 
 export async function GET() {
-  const auth = await requireTenantSuperAdmin();
+  const auth = await requirePlatformOnlyLandlordSession();
   if (!auth.ok) {
     return auth.response;
   }
 
-  const supabase = await getTenantSupabase();
-  const { data, error } = await supabase
-    .from("billing_settings")
+  const { data, error } = await auth.admin
+    .from("landlords")
     .select("paystack_subaccount_code, paystack_subaccount_status")
-    .eq("tenant_id", auth.tenantId)
+    .eq("tenant_id", auth.session.tenantId)
     .maybeSingle();
 
   if (error) {
@@ -52,7 +46,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireTenantSuperAdmin();
+  const auth = await requirePlatformOnlyLandlordSession();
   if (!auth.ok) {
     return auth.response;
   }
@@ -91,20 +85,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = await getTenantSupabase();
+  const tenantId = auth.session.tenantId;
   const [{ data: tenant, error: tenantError }, resolvedAccount] =
     await Promise.all([
-      supabase
-        .from("tenants")
-        .select("name")
-        .eq("id", auth.tenantId)
-        .single(),
+      auth.admin.from("tenants").select("name").eq("id", tenantId).single(),
       resolvePaystackAccount({ accountNumber, bankCode }),
     ]);
 
   if (tenantError || !tenant?.name?.trim()) {
     return NextResponse.json(
-      { error: tenantError?.message ?? "Unable to resolve tenant name." },
+      { error: tenantError?.message ?? "Unable to resolve workspace name." },
       { status: 500 },
     );
   }
@@ -117,23 +107,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: resolvedAccount.error }, { status });
   }
 
-  // Create once; subsequent Save & Verify updates the existing Paystack
-  // subaccount in place so we do not orphan duplicate ACCT_ codes.
-  const { data: existingBilling, error: billingLookupError } = await supabase
-    .from("billing_settings")
+  const { data: existingLandlord, error: landlordLookupError } = await auth.admin
+    .from("landlords")
     .select("paystack_subaccount_code")
-    .eq("tenant_id", auth.tenantId)
+    .eq("tenant_id", tenantId)
     .maybeSingle();
 
-  if (billingLookupError) {
+  if (landlordLookupError) {
     return NextResponse.json(
-      { error: billingLookupError.message },
+      { error: landlordLookupError.message },
       { status: 500 },
     );
   }
 
   const existingCode =
-    existingBilling?.paystack_subaccount_code?.trim() ?? "";
+    existingLandlord?.paystack_subaccount_code?.trim() ?? "";
   const isNewSubaccount = !existingCode;
   const businessName = tenant.name.trim();
 
@@ -155,21 +143,21 @@ export async function POST(request: Request) {
   }
 
   const subaccountCode = existingCode || paystackResult.data.subaccountCode;
+  const nowIso = new Date().toISOString();
 
-  const { error: saveError } = await supabase.from("billing_settings").upsert(
-    {
-      tenant_id: auth.tenantId,
+  const { error: saveError } = await auth.admin
+    .from("landlords")
+    .update({
       paystack_subaccount_code: subaccountCode,
       paystack_subaccount_status: "active",
-    },
-    { onConflict: "tenant_id" },
-  );
+      updated_at: nowIso,
+    })
+    .eq("tenant_id", tenantId);
 
   if (saveError) {
     return NextResponse.json({ error: saveError.message }, { status: 500 });
   }
 
-  // Best-effort ops email — never block subaccount creation/save.
   if (isNewSubaccount) {
     let bankName = "";
     try {
@@ -183,9 +171,9 @@ export async function POST(request: Request) {
     }
 
     void notifyStaffNewPaystackSubaccount({
-      entityType: "business_tenant",
+      entityType: "platform_only_landlord",
       entityName: businessName,
-      entityTenantId: auth.tenantId,
+      entityTenantId: tenantId,
       bankName,
       accountNumber,
       subaccountCode,

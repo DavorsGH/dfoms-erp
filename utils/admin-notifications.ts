@@ -3,7 +3,7 @@ import "server-only";
 import { sendResendEmail } from "@/utils/resend-email";
 
 /**
- * Platform-level recipient for ops alerts (new subaccounts, signups, paid conversions).
+ * Platform-level recipient for ops alerts (signups, paid conversions).
  * Tenant-independent — not billing_settings.email_recipient (per-tenant invoices).
  */
 export function getAdminNotificationEmail(): string | null {
@@ -11,12 +11,12 @@ export function getAdminNotificationEmail(): string | null {
   return email.length > 0 ? email : null;
 }
 
-function maskAccountLast4(accountNumber: string): string {
-  const digits = accountNumber.replace(/\D/g, "");
-  if (digits.length < 4) {
-    return "****";
-  }
-  return `****${digits.slice(-4)}`;
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 async function notifyAdminBestEffort(options: {
@@ -52,49 +52,6 @@ async function notifyAdminBestEffort(options: {
       error instanceof Error ? error.message : error,
     );
   }
-}
-
-/** EVENT 1 — only call after a genuine Paystack subaccount create (not update). */
-export async function notifyNewPaystackSubaccount(options: {
-  tenantName: string;
-  bankName: string;
-  accountNumber: string;
-  subaccountCode: string;
-}): Promise<void> {
-  const masked = maskAccountLast4(options.accountNumber);
-  const bankLabel = options.bankName.trim() || "Unknown bank";
-  const subject = `New Paystack subaccount: ${options.tenantName}`;
-  const text = [
-    "A new Paystack settlement subaccount was created.",
-    "",
-    `Tenant: ${options.tenantName}`,
-    `Bank / MoMo: ${bankLabel}`,
-    `Account: ${masked}`,
-    `Subaccount code: ${options.subaccountCode}`,
-    "",
-    "Action required: Open Paystack Dashboard → Subaccounts → Verify Subaccounts",
-    "before this tenant can receive its first payout.",
-  ].join("\n");
-
-  const html = `
-    <h2>New Paystack subaccount</h2>
-    <p>A new Paystack settlement subaccount was created.</p>
-    <ul>
-      <li><strong>Tenant:</strong> ${escapeHtml(options.tenantName)}</li>
-      <li><strong>Bank / MoMo:</strong> ${escapeHtml(bankLabel)}</li>
-      <li><strong>Account:</strong> ${escapeHtml(masked)}</li>
-      <li><strong>Subaccount code:</strong> ${escapeHtml(options.subaccountCode)}</li>
-    </ul>
-    <p><strong>Action required:</strong> Open Paystack Dashboard → Subaccounts →
-    Verify Subaccounts before this tenant can receive its first payout.</p>
-  `.trim();
-
-  await notifyAdminBestEffort({
-    subject,
-    html,
-    text,
-    context: `new-subaccount:${options.subaccountCode}`,
-  });
 }
 
 /** EVENT 2a — new tenant trial signup. */
@@ -167,12 +124,4 @@ export async function notifySubscriptionConvertedToPaid(options: {
     text,
     context: `paid-conversion:${options.tenantName}`,
   });
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }

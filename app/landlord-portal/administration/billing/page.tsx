@@ -11,7 +11,13 @@ import {
 import LandlordPortalPendingApprovalView from "../../pending-approval-view";
 import LandlordPortalBillingSettings from "./billing-settings";
 
-export default async function LandlordPortalBillingPage() {
+type PageProps = {
+  searchParams?: Promise<{ tab?: string }>;
+};
+
+export default async function LandlordPortalBillingPage({
+  searchParams,
+}: PageProps) {
   const session = await getLandlordPortalSession();
   if (!session) {
     redirect("/landlord-portal/login");
@@ -26,6 +32,13 @@ export default async function LandlordPortalBillingPage() {
     );
   }
 
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const tabParam = resolvedSearchParams.tab?.trim();
+  const initialTab =
+    tabParam === "payment" || tabParam === "sms" || tabParam === "billing"
+      ? tabParam
+      : "billing";
+
   const { data, error } = await fetchLandlordPortalBillingSnapshot(session);
 
   return (
@@ -33,8 +46,8 @@ export default async function LandlordPortalBillingPage() {
       <div>
         <h1 className={portalSectionTitleClassName}>Billing settings</h1>
         <p className="mt-1 text-sm text-slate-600">
-          View your landlord plan status and buy prepaid SMS credits for this
-          workspace.
+          View your landlord plan status, buy prepaid SMS credits, and configure
+          rent settlement for your workspace.
         </p>
       </div>
 
@@ -54,7 +67,10 @@ export default async function LandlordPortalBillingPage() {
             priceGhs: pack.priceGhs,
           }))}
           billingEmail={data.billingEmail}
+          paystackSubaccountStatus={data.paystackSubaccountStatus}
+          showPaymentSettings={session.landlordType === "platform_only"}
           fetchError={error}
+          initialTab={initialTab}
         />
       ) : null}
     </div>

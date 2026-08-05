@@ -996,6 +996,103 @@ export async function notifyStaffLandlordPendingApproval(options: {
   }
 }
 
+function maskAccountLast4(accountNumber: string): string {
+  const digits = accountNumber.replace(/\D/g, "");
+  if (digits.length < 4) {
+    return "****";
+  }
+  return `****${digits.slice(-4)}`;
+}
+
+export type PaystackSubaccountEntityType =
+  | "business_tenant"
+  | "platform_only_landlord";
+
+function formatPaystackSubaccountEntityType(
+  entityType: PaystackSubaccountEntityType,
+): string {
+  if (entityType === "business_tenant") {
+    return "Business tenant (ERP Suite)";
+  }
+  return "Platform-only landlord";
+}
+
+/** Paystack settlement subaccount created (first time only — not updates). Always Davors staff. */
+export async function notifyStaffNewPaystackSubaccount(options: {
+  entityType: PaystackSubaccountEntityType;
+  entityName: string;
+  entityTenantId: string;
+  bankName: string;
+  accountNumber: string;
+  subaccountCode: string;
+}): Promise<void> {
+  try {
+    const recipients = await resolveNotificationRecipients({
+      landlordTenantId: options.entityTenantId,
+      forceDavors: true,
+    });
+
+    const entityLabel = formatPaystackSubaccountEntityType(options.entityType);
+    const name = options.entityName.trim() || "Unknown";
+    const masked = maskAccountLast4(options.accountNumber);
+    const bankLabel = options.bankName.trim() || "Unknown bank";
+
+    const actionPath =
+      options.entityType === "platform_only_landlord"
+        ? landlordPendingApprovalPath(options.entityTenantId)
+        : null;
+    const deepLink = actionPath ? staffDashboardUrl(actionPath) : null;
+    const smsLink = deepLink ? await smsDeepLinkUrl(deepLink) : null;
+
+    const title = "New Paystack settlement subaccount";
+    const body = [
+      `${name} set up a Paystack settlement account.`,
+      `Account type: ${entityLabel}`,
+      `Bank / MoMo: ${bankLabel}`,
+      `Account: ${masked}`,
+      `Subaccount: ${options.subaccountCode}`,
+      "",
+      "Verify in Paystack Dashboard → Subaccounts before first payout.",
+    ].join("\n");
+
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Name", name],
+        ["Account type", entityLabel],
+        ["Bank / MoMo", bankLabel],
+        ["Account", masked],
+        ["Subaccount code", options.subaccountCode],
+      ],
+      deepLink ?? "Paystack Dashboard → Subaccounts → Verify Subaccounts",
+    );
+
+    const smsContent = [
+      `Davors: New Paystack subaccount for ${name} (${entityLabel}). ${bankLabel} ${masked}. Verify in Paystack.`,
+      smsLink,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    await dispatchStaffNotification({
+      title,
+      body,
+      actionUrl: actionPath,
+      emailSubject: `Paystack subaccount: ${name} (${entityLabel})`,
+      emailHtml: html,
+      emailText: text,
+      smsContent,
+      context: `paystack-subaccount:${options.entityType}:${options.subaccountCode}`,
+      recipients,
+    });
+  } catch (error) {
+    console.error(
+      "[real-estate-staff-notifications] notifyStaffNewPaystackSubaccount failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 /** EVENT 6 — public rental application submitted. Notify landlord contacts; staff for davors_managed. */
 export async function notifyLandlordNewRentalApplication(options: {
   landlordTenantId: string;

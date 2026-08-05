@@ -7,18 +7,22 @@ import {
   openPaystackInlineWithAccessCode,
 } from "@/app/dashboard/pos/paystack-inline";
 import { formatLandlordTier } from "@/app/dashboard/real-estate/landlords-utils";
+import type { PaystackSubaccountStatus } from "@/utils/billing-settings-types";
 import {
   portalErrorBannerClassName,
   portalSectionClassName,
   portalSectionTitleClassName,
   portalSuccessBannerClassName,
 } from "../../portal-ui";
+import LandlordPaymentSettings from "./payment-settings";
 
 export type LandlordBillingSmsPack = {
   packKey: string;
   credits: number;
   priceGhs: number;
 };
+
+type BillingTab = "billing" | "sms" | "payment";
 
 type LandlordPortalBillingSettingsProps = {
   subscriptionTier: string | null;
@@ -27,8 +31,18 @@ type LandlordPortalBillingSettingsProps = {
   smsCreditBalance: number;
   smsCreditPacks: LandlordBillingSmsPack[];
   billingEmail: string | null;
+  paystackSubaccountStatus: PaystackSubaccountStatus;
+  showPaymentSettings: boolean;
   fetchError: string | null;
+  initialTab?: BillingTab;
 };
+
+const tabClassName = (active: boolean) =>
+  `shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+    active
+      ? "bg-[#0f2744] text-white"
+      : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+  }`;
 
 function formatSmsPackPrice(priceGhs: number): string {
   return `GH₵ ${Number(priceGhs).toLocaleString("en-GH", {
@@ -62,9 +76,19 @@ export default function LandlordPortalBillingSettings({
   smsCreditBalance,
   smsCreditPacks,
   billingEmail,
+  paystackSubaccountStatus,
+  showPaymentSettings,
   fetchError,
+  initialTab = "billing",
 }: LandlordPortalBillingSettingsProps) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<BillingTab>(
+    initialTab === "payment" && showPaymentSettings
+      ? "payment"
+      : initialTab === "sms"
+        ? "sms"
+        : "billing",
+  );
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
   const [smsPackLoadingKey, setSmsPackLoadingKey] = useState<string | null>(
@@ -206,88 +230,134 @@ export default function LandlordPortalBillingSettings({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl space-y-6">
+      <nav className="border-b border-slate-200 pb-4" aria-label="Billing settings">
+        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "billing"}
+            onClick={() => setActiveTab("billing")}
+            className={tabClassName(activeTab === "billing")}
+          >
+            Billing Settings
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "sms"}
+            onClick={() => setActiveTab("sms")}
+            className={tabClassName(activeTab === "sms")}
+          >
+            Buy SMS Credits
+          </button>
+          {showPaymentSettings ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "payment"}
+              onClick={() => setActiveTab("payment")}
+              className={tabClassName(activeTab === "payment")}
+            >
+              Payment Settings
+            </button>
+          ) : null}
+        </div>
+      </nav>
+
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
       {success ? (
         <div className={portalSuccessBannerClassName}>{success}</div>
       ) : null}
 
-      <section className={portalSectionClassName}>
-        <h2 className={portalSectionTitleClassName}>Subscription plan</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Landlord platform plans are assigned by Davors staff. Self-service
-          plan changes are not available here.
-        </p>
-        <p className="mt-3 text-lg font-semibold text-[#0f2744]">{planLabel}</p>
-        <p className="mt-1 text-sm text-slate-600">
-          Status: <span className="font-medium text-slate-800">{planState}</span>
-        </p>
-        {trialEndsAt ? (
-          <p className="mt-1 text-xs text-slate-500">
-            Trial ends{" "}
-            {new Date(trialEndsAt).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
+      <div hidden={activeTab !== "billing"} className="space-y-6">
+        <section className={portalSectionClassName}>
+          <h2 className={portalSectionTitleClassName}>Subscription plan</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Landlord platform plans are assigned by Davors staff. Self-service
+            plan changes are not available here.
           </p>
-        ) : null}
-      </section>
+          <p className="mt-3 text-lg font-semibold text-[#0f2744]">{planLabel}</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Status:{" "}
+            <span className="font-medium text-slate-800">{planState}</span>
+          </p>
+          {trialEndsAt ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Trial ends{" "}
+              {new Date(trialEndsAt).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </p>
+          ) : null}
+        </section>
+      </div>
 
-      <section className={portalSectionClassName}>
-        <h2 className={portalSectionTitleClassName}>Buy SMS credits</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Prepaid credits for tenant SMS from your landlord workspace wallet.
-          When the wallet is empty, transactional messages fall back to email.
-        </p>
-        <p className="mt-2 text-lg font-semibold text-[#0f2744]">
-          {walletBalance.toLocaleString("en-GH")} SMS
-          <span className="ml-2 text-sm font-normal text-slate-600">
-            current balance
-          </span>
-        </p>
-        {billingEmail ? (
+      <div hidden={activeTab !== "sms"} className="space-y-6">
+        <section className={portalSectionClassName}>
+          <h2 className={portalSectionTitleClassName}>Buy SMS credits</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Paystack receipt email: {billingEmail}
+            Prepaid credits for tenant SMS from your landlord workspace wallet.
+            When the wallet is empty, transactional messages fall back to email.
           </p>
-        ) : (
-          <p className="mt-2 text-sm text-amber-800">
-            Add a workspace email under Workspace Settings before purchasing.
+          <p className="mt-2 text-lg font-semibold text-[#0f2744]">
+            {walletBalance.toLocaleString("en-GH")} SMS
+            <span className="ml-2 text-sm font-normal text-slate-600">
+              current balance
+            </span>
           </p>
-        )}
+          {billingEmail ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Paystack receipt email: {billingEmail}
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-amber-800">
+              Add a workspace email under Workspace Settings before purchasing.
+            </p>
+          )}
 
-        {smsCreditPacks.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">
-            SMS credit packs are not available yet. Contact support if this
-            persists.
-          </p>
-        ) : (
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {smsCreditPacks.map((pack) => {
-              const isLoading = smsPackLoadingKey === pack.packKey;
-              return (
-                <button
-                  key={pack.packKey}
-                  type="button"
-                  disabled={smsPackLoadingKey !== null}
-                  onClick={() => handleBuySmsPack(pack)}
-                  className="rounded-md border border-slate-200 px-4 py-4 text-left transition-colors hover:border-[#0f2744] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <p className="text-base font-semibold text-[#0f2744]">
-                    {pack.credits.toLocaleString("en-GH")} SMS
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {formatSmsPackPrice(pack.priceGhs)}
-                  </p>
-                  <p className="mt-3 text-xs font-medium text-[#0f2744]">
-                    {isLoading ? "Opening Paystack…" : "Buy with Paystack"}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
+          {smsCreditPacks.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">
+              SMS credit packs are not available yet. Contact support if this
+              persists.
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {smsCreditPacks.map((pack) => {
+                const isLoading = smsPackLoadingKey === pack.packKey;
+                return (
+                  <button
+                    key={pack.packKey}
+                    type="button"
+                    disabled={smsPackLoadingKey !== null}
+                    onClick={() => handleBuySmsPack(pack)}
+                    className="rounded-md border border-slate-200 px-4 py-4 text-left transition-colors hover:border-[#0f2744] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <p className="text-base font-semibold text-[#0f2744]">
+                      {pack.credits.toLocaleString("en-GH")} SMS
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {formatSmsPackPrice(pack.priceGhs)}
+                    </p>
+                    <p className="mt-3 text-xs font-medium text-[#0f2744]">
+                      {isLoading ? "Opening Paystack…" : "Buy with Paystack"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {showPaymentSettings ? (
+        <LandlordPaymentSettings
+          initialStatus={paystackSubaccountStatus}
+          hidden={activeTab !== "payment"}
+        />
+      ) : null}
     </div>
   );
 }
