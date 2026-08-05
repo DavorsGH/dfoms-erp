@@ -15,14 +15,20 @@ import { inputClassName } from "../../hr-payroll/hr-register-utils";
 import { nullableText } from "../../operations/operations-register-utils";
 import {
   BILLING_CYCLE_OPTIONS,
+  buildPlatformUnitActivationCatalogEntry,
   CRM_PRODUCT_SELECT,
   DEFAULT_PRODUCT_TYPE,
   ERP_SUITE_CATEGORY,
   formatActiveStatus,
   formatBillingCycle,
+  formatCatalogUnitPrice,
   formatProductPrice,
   formatProductType,
+  getCatalogManagedLabel,
   getUniqueProductCategories,
+  isErpSuiteCatalogProduct,
+  isPlatformUnitActivationCatalogProduct,
+  PLATFORM_BILLING_CATEGORY,
   PRODUCT_TYPE_OPTIONS,
   type CrmProductEntry,
 } from "./products-utils";
@@ -30,6 +36,7 @@ import ProductsBulkImport from "./products-bulk-import";
 
 type ProductsProps = {
   initialProducts: CrmProductEntry[];
+  platformUnitActivationPriceGhs: number;
   fetchError: string | null;
 };
 
@@ -53,6 +60,7 @@ const emptyForm = (): ProductFormState => ({
 
 export default function Products({
   initialProducts,
+  platformUnitActivationPriceGhs,
   fetchError,
 }: ProductsProps) {
   const supabase = createClient();
@@ -70,21 +78,31 @@ export default function Products({
     setProducts(initialProducts);
   }, [initialProducts]);
 
+  const catalogProducts = useMemo(() => {
+    const virtual = buildPlatformUnitActivationCatalogEntry(
+      platformUnitActivationPriceGhs,
+    );
+    return [...products, virtual].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [platformUnitActivationPriceGhs, products]);
+
   const categoryOptions = useMemo(() => {
-    const unique = new Set(getUniqueProductCategories(products));
+    const unique = new Set(getUniqueProductCategories(catalogProducts));
     unique.add(ERP_SUITE_CATEGORY);
+    unique.add(PLATFORM_BILLING_CATEGORY);
     return [...unique].sort((a, b) => a.localeCompare(b));
-  }, [products]);
+  }, [catalogProducts]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
+    return catalogProducts.filter((product) => {
       if (!filterCategory) {
         return true;
       }
 
       return (product.category ?? "") === filterCategory;
     });
-  }, [filterCategory, products]);
+  }, [catalogProducts, filterCategory]);
 
   async function refreshProducts() {
     const { data, error: refreshError } = await supabase
@@ -129,6 +147,10 @@ export default function Products({
   }
 
   function openEditForm(product: CrmProductEntry) {
+    if (getCatalogManagedLabel(product)) {
+      return;
+    }
+
     setEditingId(product.id);
     setForm({
       name: product.name,
@@ -152,6 +174,17 @@ export default function Products({
   }
 
   async function handleDelete(productId: string) {
+    if (
+      isPlatformUnitActivationCatalogProduct({ id: productId } as CrmProductEntry)
+    ) {
+      return;
+    }
+
+    const target = products.find((product) => product.id === productId);
+    if (target && isErpSuiteCatalogProduct(target)) {
+      return;
+    }
+
     if (!confirmDeleteEntry()) {
       return;
     }
@@ -410,7 +443,10 @@ export default function Products({
                 </td>
               </tr>
             ) : (
-              filteredProducts.map((product, index) => (
+              filteredProducts.map((product, index) => {
+                const managedLabel = getCatalogManagedLabel(product);
+
+                return (
                 <tr key={product.id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
                     {product.name}
@@ -420,7 +456,7 @@ export default function Products({
                   </td>
                   <td className="px-4 py-3">{product.category ?? "—"}</td>
                   <td className="px-4 py-3">
-                    {formatProductPrice(product.unit_price)}
+                    {formatCatalogUnitPrice(product)}
                   </td>
                   <td className="px-4 py-3">
                     {formatBillingCycle(product.billing_cycle)}
@@ -428,13 +464,22 @@ export default function Products({
                   <td className="px-4 py-3">
                     {formatActiveStatus(product.is_active)}
                   </td>
-                  <RegisterRowActions
-                    onEdit={() => openEditForm(product)}
-                    onDelete={() => handleDelete(product.id)}
-                    deleting={deletingId === product.id}
-                  />
+                  {managedLabel ? (
+                    <td className="px-4 py-3">
+                      <span className="text-xs font-medium text-slate-500">
+                        {managedLabel}
+                      </span>
+                    </td>
+                  ) : (
+                    <RegisterRowActions
+                      onEdit={() => openEditForm(product)}
+                      onDelete={() => handleDelete(product.id)}
+                      deleting={deletingId === product.id}
+                    />
+                  )}
                 </tr>
-              ))
+              );
+              })
             )}
           </tbody>
         </table>

@@ -3,6 +3,8 @@ export type CrmProductEntry = {
   name: string;
   product_type: string | null;
   unit_price: number | null;
+  /** Populated for ERP Suite tiers (USD lives in unit_price). */
+  price_ghs?: number | null;
   billing_cycle: string | null;
   is_active: boolean | null;
   category: string | null;
@@ -10,8 +12,48 @@ export type CrmProductEntry = {
 
 export const ERP_SUITE_CATEGORY = "ERP Suite";
 
+export const PLATFORM_BILLING_CATEGORY = "Platform Billing";
+
+/** Synthetic catalog id — not a crm_products row. */
+export const PLATFORM_UNIT_ACTIVATION_CATALOG_ID =
+  "__catalog_platform_unit_activation__";
+
+export function isErpSuiteCatalogProduct(product: CrmProductEntry): boolean {
+  return (product.category ?? "").trim() === ERP_SUITE_CATEGORY;
+}
+
+export function isPlatformUnitActivationCatalogProduct(
+  product: CrmProductEntry,
+): boolean {
+  return product.id === PLATFORM_UNIT_ACTIVATION_CATALOG_ID;
+}
+
+export function getCatalogManagedLabel(product: CrmProductEntry): string | null {
+  if (isErpSuiteCatalogProduct(product)) {
+    return "Managed via Tier Pricing";
+  }
+  if (isPlatformUnitActivationCatalogProduct(product)) {
+    return "Managed via Platform Unit Pricing";
+  }
+  return null;
+}
+
+export function buildPlatformUnitActivationCatalogEntry(
+  priceGhs: number,
+): CrmProductEntry {
+  return {
+    id: PLATFORM_UNIT_ACTIVATION_CATALOG_ID,
+    name: "Platform-only unit activation",
+    product_type: DEFAULT_PRODUCT_TYPE,
+    category: PLATFORM_BILLING_CATEGORY,
+    unit_price: priceGhs,
+    billing_cycle: "one_time",
+    is_active: true,
+  };
+}
+
 export const CRM_PRODUCT_SELECT =
-  "id, name, product_type, unit_price, billing_cycle, is_active, category";
+  "id, name, product_type, unit_price, price_ghs, billing_cycle, is_active, category";
 
 export const DEFAULT_PRODUCT_TYPE = "service";
 
@@ -37,6 +79,15 @@ export function formatProductPrice(value: number | null | undefined): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+/** Product Catalog Unit Price column — GHS for display. */
+export function formatCatalogUnitPrice(product: CrmProductEntry): string {
+  if (isErpSuiteCatalogProduct(product)) {
+    return formatProductPrice(product.price_ghs);
+  }
+
+  return formatProductPrice(product.unit_price);
 }
 
 export function formatUsdPrice(value: number | null | undefined): string {
