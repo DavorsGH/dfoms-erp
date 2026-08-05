@@ -513,6 +513,19 @@ export async function fetchPortalRentPaymentReceipt(
   session: PortalLesseeSession,
   entryId: string,
 ): Promise<{ receipt: RentPaymentReceiptData | null; error: string | null }> {
+  const cookieStore = await cookies();
+  const userClient = createClient(cookieStore);
+
+  const primary = await fetchRentPaymentReceipt(userClient, {
+    tenantId: session.tenantId,
+    entryId,
+    lesseeId: session.lesseeId,
+  });
+
+  if (!primary.error && primary.receipt) {
+    return primary;
+  }
+
   const admin = createAdminClient();
   return fetchRentPaymentReceipt(admin, {
     tenantId: session.tenantId,
