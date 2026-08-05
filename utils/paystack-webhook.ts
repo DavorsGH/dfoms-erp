@@ -24,9 +24,15 @@ import {
   processPlatformOnlyUnitActivationPaystackEvent,
 } from "@/utils/platform-only-unit-billing";
 import {
+  isPlatformOnlyUnitMonthlyPaystackContext,
+  processPlatformOnlyUnitMonthlyPaystackEvent,
+} from "@/utils/platform-only-unit-monthly-billing";
+import {
   isSmsCreditPaystackContext,
   processSmsCreditPaystackEvent,
 } from "@/utils/sms-credit-paystack";
+import { postErpSubscriptionPaystackFinance } from "@/utils/paystack-finance-posting";
+import { roundGhs } from "@/utils/product-sale-paystack";
 import { verifyPaystackTransaction } from "@/utils/paystack";
 
 type JsonRecord = Record<string, unknown>;
@@ -191,12 +197,20 @@ function formatGhsAmount(amount: number): string {
 }
 
 /** Paystack charge amounts are in the smallest currency unit (pesewas for GHS). */
-function extractChargeAmountLabel(data: JsonRecord): string | null {
-  const amount = asNumber(data.amount);
-  if (amount == null) {
+function extractChargeAmountGhs(data: JsonRecord): number | null {
+  const amountPesewas = asNumber(data.amount);
+  if (amountPesewas == null) {
     return null;
   }
-  return formatGhsAmount(amount / 100);
+  return roundGhs(amountPesewas / 100);
+}
+
+function extractChargeAmountLabel(data: JsonRecord): string | null {
+  const amountGhs = extractChargeAmountGhs(data);
+  if (amountGhs == null) {
+    return null;
+  }
+  return formatGhsAmount(amountGhs);
 }
 
 async function resolveTenantName(tenantId: string | null): Promise<string> {
@@ -998,6 +1012,45 @@ async function handleChargeSuccess(
 
   await updateSubscription(row.id, patch);
 
+  if (!reference) {
+    throw new Error(
+      "[paystack-webhook] charge.success subscription fulfillment missing reference — cannot post income_register.",
+    );
+  }
+
+  let transactionAmountGhs = extractChargeAmountGhs(data);
+  if (transactionAmountGhs == null) {
+    const verified = await verifyPaystackTransaction(reference);
+    if (!verified.ok) {
+      throw new Error(
+        `[paystack-webhook] charge.success could not resolve amount for ref ${reference}: ${verified.error}`,
+      );
+    }
+    if (verified.status !== "success") {
+      throw new Error(
+        `[paystack-webhook] charge.success verify status "${verified.status}" for ref ${reference} — income not posted.`,
+      );
+    }
+    transactionAmountGhs =
+      verified.amount != null ? roundGhs(verified.amount / 100) : null;
+  }
+
+  if (transactionAmountGhs == null || transactionAmountGhs <= 0) {
+    throw new Error(
+      `[paystack-webhook] charge.success missing verified amount for subscription ref ${reference}.`,
+    );
+  }
+
+  const admin = createAdminClient();
+  await postErpSubscriptionPaystackFinance(admin, {
+    reference,
+    transactionAmountGhs,
+    paidAt,
+    linkedTenantId: row.linked_tenant_id,
+    productId: productId ?? row.product_id,
+    subscriptionId: row.id,
+  });
+
   await maybeNotifyPaidConversion({
     previousStatus,
     becameActive: true,
@@ -1228,6 +1281,8 @@ export async function processPaystackWebhookEvent(
         // to avoid mis-activating ERP Suite subs.
         if (isProductSalePaystackContext(data)) {
           result = await processProductSalePaystackEvent(data);
+        } else if (isPlatformOnlyUnitMonthlyPaystackContext(data)) {
+          result = await processPlatformOnlyUnitMonthlyPaystackEvent(data);
         } else if (isPlatformOnlyUnitActivationPaystackContext(data)) {
           result = await processPlatformOnlyUnitActivationPaystackEvent(data);
         } else if (isRentLedgerPaystackContext(data)) {

@@ -17,6 +17,7 @@ type PortalLayoutClientProps = {
   landlordType: LandlordType | null;
   hasDataAccess: boolean;
   isAuthenticatedLandlord: boolean;
+  billingPastDueBanner?: React.ReactNode;
 };
 
 function isPublicAuthPath(pathname: string): boolean {
@@ -36,6 +37,7 @@ export default function PortalLayoutClient({
   landlordType,
   hasDataAccess,
   isAuthenticatedLandlord,
+  billingPastDueBanner = null,
 }: PortalLayoutClientProps) {
   const pathname = usePathname();
 
@@ -49,6 +51,7 @@ export default function PortalLayoutClient({
       userPhotoUrl={userPhotoUrl}
       landlordType={landlordType}
       showNav={hasDataAccess}
+      billingPastDueBanner={billingPastDueBanner}
     >
       {children}
     </LandlordPortalDashboardShell>

@@ -10,6 +10,7 @@ import {
 } from "@/app/dashboard/pos/pos-utils";
 import { verifyPaystackTransaction } from "@/utils/paystack";
 import { roundGhs } from "@/utils/product-sale-paystack";
+import { postProductSalePaystackFee } from "@/utils/paystack-finance-posting";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 
 export type PosCartSnapshot = {
@@ -166,6 +167,18 @@ export async function fulfillPosCartSnapshotPaymentRequest(
     const incomeIds = Array.isArray(requestRow.income_ids)
       ? requestRow.income_ids
       : [];
+    const paidReference =
+      (options.reference ?? requestRow.paystack_reference ?? "").trim() || null;
+    if (paidReference && options.paidAmountGhs != null && options.paidAmountGhs > 0) {
+      await postProductSalePaystackFee(admin, {
+        tenantId: requestRow.tenant_id,
+        reference: paidReference,
+        transactionAmountGhs: roundGhs(options.paidAmountGhs),
+        paidAt: options.paidAt ?? new Date().toISOString(),
+        flowLabel: "POS product sale",
+        invoiceNo: requestRow.invoice_no,
+      });
+    }
     return {
       invoiceNo: requestRow.invoice_no,
       incomeIds,
@@ -193,6 +206,20 @@ export async function fulfillPosCartSnapshotPaymentRequest(
       .eq("tenant_id", requestRow.tenant_id);
     if (markPaidError) {
       throw new Error(markPaidError.message);
+    }
+    const paidReference =
+      (options.reference ?? requestRow.paystack_reference ?? "").trim() || null;
+    const paidAmount =
+      options.paidAmountGhs ?? roundGhs(Number(requestRow.amount_requested));
+    if (paidReference && paidAmount > 0) {
+      await postProductSalePaystackFee(admin, {
+        tenantId: requestRow.tenant_id,
+        reference: paidReference,
+        transactionAmountGhs: paidAmount,
+        paidAt: options.paidAt ?? new Date().toISOString(),
+        flowLabel: "POS product sale",
+        invoiceNo: requestRow.invoice_no,
+      });
     }
     return {
       invoiceNo: requestRow.invoice_no,
@@ -348,6 +375,21 @@ export async function fulfillPosCartSnapshotPaymentRequest(
   if (updateError) {
     throw new Error(updateError.message);
   }
+
+  if (!reference) {
+    throw new Error(
+      `POS fulfillment ${requestRow.id}: missing Paystack reference — fee not posted.`,
+    );
+  }
+
+  await postProductSalePaystackFee(admin, {
+    tenantId: requestRow.tenant_id,
+    reference,
+    transactionAmountGhs: paidAmount,
+    paidAt: options.paidAt ?? new Date().toISOString(),
+    flowLabel: "POS product sale",
+    invoiceNo: allocatedInvoiceNo,
+  });
 
   // Best-effort transactional customer notices (never block fulfillment).
   const customerId = snapshot.clientId?.trim() || null;

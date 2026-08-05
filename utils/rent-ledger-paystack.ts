@@ -22,6 +22,7 @@ import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
 import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { notifyStaffRentPaymentReceived } from "@/utils/real-estate-staff-notifications";
+import { postRentPaystackFee } from "@/utils/paystack-finance-posting";
 
 export const RENT_LEDGER_PAYSTACK_CONTEXT = "rent_ledger" as const;
 
@@ -685,6 +686,44 @@ export async function fulfillRentLedgerPaystackPayment(
     (entry.notes ?? "").includes(marker),
   );
   if (alreadyApplied.length === entries.length) {
+    const { data: landlordRowEarly, error: landlordErrorEarly } = await admin
+      .from("landlords")
+      .select("landlord_type")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (landlordErrorEarly) {
+      throw new Error(landlordErrorEarly.message);
+    }
+
+    const landlordTypeEarly = (landlordRowEarly?.landlord_type ??
+      options.landlordTypeHint) as LandlordType | null;
+    if (
+      landlordTypeEarly !== "platform_only" &&
+      landlordTypeEarly !== "davors_managed"
+    ) {
+      throw new Error("Landlord type must be set before accepting rent payments.");
+    }
+
+    const idempotentPaidAmount =
+      options.paidAmountGhs != null && Number.isFinite(options.paidAmountGhs)
+        ? roundGhs(options.paidAmountGhs)
+        : roundGhs(
+            alreadyApplied.reduce(
+              (sum, entry) => sum + roundGhs(Number(entry.amount_paid_ghs) || 0),
+              0,
+            ),
+          );
+
+    await postRentPaystackFee(admin, {
+      landlordTenantId: tenantId,
+      landlordType: landlordTypeEarly,
+      leaseId,
+      reference,
+      transactionAmountGhs: idempotentPaidAmount,
+      paidAt: options.paidAt,
+    });
+
     const primary = entries[0];
     const amountDue = roundGhs(Number(primary.amount_due_ghs) || 0);
     const amountPaid = roundGhs(Number(primary.amount_paid_ghs) || 0);
@@ -843,6 +882,15 @@ export async function fulfillRentLedgerPaystackPayment(
   if (totalApplied <= 0) {
     throw new Error("Nothing outstanding to apply this payment to.");
   }
+
+  await postRentPaystackFee(admin, {
+    landlordTenantId: tenantId,
+    landlordType,
+    leaseId,
+    reference,
+    transactionAmountGhs: paidAmount,
+    paidAt: paidAtIso,
+  });
 
   let lesseeId = options.metadataLesseeId?.trim() || null;
   if (!lesseeId) {

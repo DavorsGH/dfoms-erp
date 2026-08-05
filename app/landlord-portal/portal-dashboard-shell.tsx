@@ -11,6 +11,7 @@ type LandlordPortalDashboardShellProps = {
   userPhotoUrl?: string | null;
   landlordType: LandlordType | null;
   showNav?: boolean;
+  billingPastDueBanner?: React.ReactNode;
 };
 
 /**
@@ -23,6 +24,7 @@ export default function LandlordPortalDashboardShell({
   userPhotoUrl = null,
   landlordType,
   showNav = true,
+  billingPastDueBanner = null,
 }: LandlordPortalDashboardShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -80,6 +82,7 @@ export default function LandlordPortalDashboardShell({
           mobileNavOpen={mobileNavOpen}
         />
         <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6">
+          {billingPastDueBanner}
           {children}
         </main>
       </div>

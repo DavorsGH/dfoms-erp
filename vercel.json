@@ -6,6 +6,10 @@
       "schedule": "0 0 1 * *"
     },
     {
+      "path": "/api/cron/platform-unit-billing",
+      "schedule": "0 0 1 * *"
+    },
+    {
       "path": "/api/cron/product-sale-due-reminders",
       "schedule": "0 8 * * *"
     },

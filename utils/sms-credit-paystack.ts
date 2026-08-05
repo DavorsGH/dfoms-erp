@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { roundGhs } from "@/utils/product-sale-paystack";
+import { postSmsCreditPurchasePaystackFinance } from "@/utils/paystack-finance-posting";
 
 export const SMS_CREDIT_PAYSTACK_CONTEXT = "sms_credit" as const;
 
@@ -183,6 +184,7 @@ export async function fulfillSmsCreditPurchase(
   const tenantId = requestRow.tenant_id;
   const requestStatus = requestRow.status;
   const credits = Number(requestRow.credits_requested);
+  const packKey = requestRow.pack_key;
   if (!Number.isFinite(credits) || credits <= 0) {
     throw new Error("Purchase request has invalid credits_requested.");
   }
@@ -192,6 +194,18 @@ export async function fulfillSmsCreditPurchase(
     options.paidAmountGhs != null
       ? roundGhs(options.paidAmountGhs)
       : roundGhs(Number(requestRow.amount_requested_ghs) || 0);
+
+  async function postFinanceRecords() {
+    await postSmsCreditPurchasePaystackFinance(admin, {
+      reference,
+      transactionAmountGhs: paidAmount,
+      paidAt: nowIso,
+      purchasingTenantId: tenantId,
+      purchaseRequestId,
+      packKey,
+      credits,
+    });
+  }
 
   async function markPaidIfNeeded(currentStatus: string) {
     if (currentStatus === "paid") {
@@ -218,6 +232,7 @@ export async function fulfillSmsCreditPurchase(
   }
 
   if (requestStatus === "paid") {
+    await postFinanceRecords();
     const balance = await loadWalletBalance(admin, tenantId);
     return {
       alreadyFulfilled: true,
@@ -243,6 +258,7 @@ export async function fulfillSmsCreditPurchase(
 
   if (existingTxn) {
     await markPaidIfNeeded(requestStatus);
+    await postFinanceRecords();
     const balance = await loadWalletBalance(admin, tenantId);
     return {
       alreadyFulfilled: true,
@@ -264,6 +280,7 @@ export async function fulfillSmsCreditPurchase(
   }
 
   await markPaidIfNeeded(requestStatus);
+  await postFinanceRecords();
 
   const balance = await loadWalletBalance(admin, tenantId);
 

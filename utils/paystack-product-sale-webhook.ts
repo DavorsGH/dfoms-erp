@@ -11,6 +11,7 @@ import {
   fulfillPosCartSnapshotPaymentRequest,
   loadPaymentRequestForFulfillment,
 } from "@/utils/pos-momo-fulfillment";
+import { postProductSalePaystackFee } from "@/utils/paystack-finance-posting";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -95,6 +96,16 @@ export async function processProductSalePaystackEvent(
   }
 
   if (requestRow.status === "paid") {
+    if (reference && paidAmountGhs != null && paidAmountGhs > 0) {
+      await postProductSalePaystackFee(admin, {
+        tenantId: requestRow.tenant_id,
+        reference,
+        transactionAmountGhs: paidAmountGhs,
+        paidAt,
+        flowLabel: "Product sale payment",
+        invoiceNo: invoiceNo ?? requestRow.invoice_no,
+      });
+    }
     return {
       detail: `product_sale charge.success ${reference ?? ""} — request ${requestRow.id} already paid (idempotent).`,
     };
@@ -200,6 +211,21 @@ export async function processProductSalePaystackEvent(
   if (markPaidError) {
     throw new Error(markPaidError.message);
   }
+
+  if (!reference) {
+    throw new Error(
+      `product_sale charge.success request ${requestRow.id}: missing Paystack reference — fee not posted.`,
+    );
+  }
+
+  await postProductSalePaystackFee(admin, {
+    tenantId: requestRow.tenant_id,
+    reference,
+    transactionAmountGhs: applyAmount,
+    paidAt,
+    flowLabel: "Product sale payment",
+    invoiceNo: invoiceNo ?? requestRow.invoice_no,
+  });
 
   // Payment on an already-created sale (not cart_snapshot create) — payment_received only.
   const { data: customerLine } = await admin

@@ -15,6 +15,8 @@ import {
   DEFAULT_PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS,
   getPlatformOnlyUnitActivationPriceGhs,
 } from "@/utils/platform-billing-config";
+import { postPlatformUnitActivationPaystackFinance } from "@/utils/paystack-finance-posting";
+import { roundGhs } from "@/utils/product-sale-paystack";
 
 /** @deprecated Use getPlatformOnlyUnitActivationPriceGhs() — kept for backwards compatibility. */
 export const PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS =
@@ -23,7 +25,11 @@ export const PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS =
 export const PLATFORM_ONLY_UNIT_ACTIVATION_CONTEXT =
   "platform_only_unit_activation" as const;
 
-export type UnitActivationTriggerType = "activation" | "reactivation" | "create";
+export type UnitActivationTriggerType =
+  | "activation"
+  | "reactivation"
+  | "create"
+  | "monthly_recurring";
 
 export type UnitActivationChargeStatus =
   | "success"
@@ -190,7 +196,7 @@ export async function insertUnitActivationChargeAudit(
   admin: SupabaseClient,
   options: {
     tenantId: string;
-    unitId: string;
+    unitId: string | null;
     amountGhs: number;
     chargeStatus: UnitActivationChargeStatus;
     paystackReference: string | null;
@@ -211,6 +217,29 @@ export async function insertUnitActivationChargeAudit(
   if (error) {
     throw new Error(`Failed to write activation charge audit: ${error.message}`);
   }
+}
+
+async function postUnitActivationPaystackFinanceRecords(
+  admin: SupabaseClient,
+  options: {
+    tenantId: string;
+    unitId: string;
+    unitNumber: string;
+    reference: string;
+    transactionAmountGhs: number;
+    paidAt: string | null;
+    triggerType?: UnitActivationTriggerType | null;
+  },
+): Promise<void> {
+  await postPlatformUnitActivationPaystackFinance(admin, {
+    reference: options.reference,
+    transactionAmountGhs: roundGhs(options.transactionAmountGhs),
+    paidAt: options.paidAt,
+    landlordTenantId: options.tenantId,
+    unitId: options.unitId,
+    unitNumber: options.unitNumber,
+    triggerType: options.triggerType ?? null,
+  });
 }
 
 async function setUnitBillingActive(
@@ -459,6 +488,15 @@ export async function activatePlatformOnlyUnitForBilling(
       failureReason: null,
       triggerType,
     });
+    await postUnitActivationPaystackFinanceRecords(admin, {
+      tenantId: options.tenantId,
+      unitId: options.unitId,
+      unitNumber: unit.unit_number,
+      reference: charged.reference,
+      transactionAmountGhs: amountGhs,
+      paidAt: new Date().toISOString(),
+      triggerType,
+    });
     await notifyUnitActivationChargeResult({
       tenantId: options.tenantId,
       unitNumber: unit.unit_number,
@@ -568,6 +606,19 @@ export async function confirmPlatformOnlyUnitActivationPayment(
   }
 
   if (unit.billing_activation_status === "active") {
+    const amountGhs =
+      verified.amount != null && verified.amount > 0
+        ? roundGhs(verified.amount / 100)
+        : await getPlatformOnlyUnitActivationPriceGhs(admin);
+    await postUnitActivationPaystackFinanceRecords(admin, {
+      tenantId: options.tenantId,
+      unitId: options.unitId,
+      unitNumber: unit.unit_number,
+      reference: verified.reference,
+      transactionAmountGhs: amountGhs,
+      paidAt: verified.paidAt,
+      triggerType: "activation",
+    });
     return { ok: true, activated: true, reference: verified.reference };
   }
 
@@ -584,7 +635,7 @@ export async function confirmPlatformOnlyUnitActivationPayment(
   const amountGhs = Number.isFinite(auditAmount)
     ? auditAmount
     : verified.amount != null && verified.amount > 0
-      ? verified.amount / 100
+      ? roundGhs(verified.amount / 100)
       : await getPlatformOnlyUnitActivationPriceGhs(admin);
 
   if (
@@ -618,6 +669,16 @@ export async function confirmPlatformOnlyUnitActivationPayment(
     chargeStatus: "success",
     paystackReference: verified.reference,
     failureReason: null,
+    triggerType: "activation",
+  });
+
+  await postUnitActivationPaystackFinanceRecords(admin, {
+    tenantId: options.tenantId,
+    unitId: options.unitId,
+    unitNumber: unit.unit_number,
+    reference: verified.reference,
+    transactionAmountGhs: amountGhs,
+    paidAt: verified.paidAt,
     triggerType: "activation",
   });
 
