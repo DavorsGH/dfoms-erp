@@ -86,6 +86,7 @@ export default async function LandlordPortalMaintenancePage() {
                   <MaintenanceBeforeAfterGallery
                     submissionPhotoUrls={row.photoUrls}
                     completionPhotoUrls={row.completionPhotoUrls}
+                    tenantId={session.tenantId}
                     compact
                   />
                 </div>

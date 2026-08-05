@@ -23,6 +23,7 @@ import {
   isMaintenanceStatus,
   normalizePhotoUrls,
 } from "@/app/dashboard/real-estate/maintenance-utils";
+import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 import {
   formatLesseeComplaintRaisedBy,
   formatLesseeComplaintStatus,
@@ -321,15 +322,20 @@ export async function getLandlordPortalSession(): Promise<LandlordPortalSession 
       ? landlord.landlord_type
       : null;
 
+  const rawLogoUrl =
+    typeof landlord.logo_url === "string" && landlord.logo_url.trim()
+      ? landlord.logo_url.trim()
+      : null;
+  const logoUrl = rawLogoUrl
+    ? (await createTenantLogosSignedUrl(admin, rawLogoUrl)) ?? rawLogoUrl
+    : null;
+
   return {
     authUserId: user.id,
     email: user.email ?? tenant?.email ?? null,
     tenantId: landlord.tenant_id,
     fullName: tenant?.name?.trim() || "Landlord",
-    logoUrl:
-      typeof landlord.logo_url === "string" && landlord.logo_url.trim()
-        ? landlord.logo_url.trim()
-        : null,
+    logoUrl,
     landlordType,
     approvalStatus: landlord.approval_status,
   };
@@ -1951,6 +1957,15 @@ export async function fetchLandlordPortalWorkspaceProfile(
       : null;
   const tenantPhone = typeof data.phone === "string" ? data.phone : null;
 
+  const rawLogoUrl =
+    typeof landlordResult.data?.logo_url === "string" &&
+    landlordResult.data.logo_url.trim()
+      ? landlordResult.data.logo_url.trim()
+      : null;
+  const logoUrl = rawLogoUrl
+    ? (await createTenantLogosSignedUrl(admin, rawLogoUrl)) ?? rawLogoUrl
+    : null;
+
   return {
     data: {
       name: typeof data.name === "string" ? data.name : session.fullName,
@@ -1958,11 +1973,7 @@ export async function fetchLandlordPortalWorkspaceProfile(
       // Prefer notification_phone when set; columns should stay equal after saves.
       phone: notificationPhone ?? tenantPhone,
       address: typeof data.address === "string" ? data.address : null,
-      logoUrl:
-        typeof landlordResult.data?.logo_url === "string" &&
-        landlordResult.data.logo_url.trim()
-          ? landlordResult.data.logo_url.trim()
-          : null,
+      logoUrl,
     },
     error: null,
   };

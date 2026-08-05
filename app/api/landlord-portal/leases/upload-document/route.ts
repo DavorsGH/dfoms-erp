@@ -80,7 +80,7 @@ export async function POST(request: Request) {
   const { error: updateError } = await auth.admin
     .from("leases")
     .update({
-      lease_document_url: uploadResult.publicUrl,
+      lease_document_url: uploadResult.storagePath,
       updated_at: new Date().toISOString(),
     })
     .eq("tenant_id", auth.session.tenantId)
@@ -92,6 +92,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    lease_document_url: uploadResult.publicUrl,
+    lease_document_url: uploadResult.storagePath,
   });
 }

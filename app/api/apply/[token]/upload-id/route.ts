@@ -51,5 +51,5 @@ export async function POST(request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: uploaded.error }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true, url: uploaded.publicUrl });
+  return NextResponse.json({ success: true, url: uploaded.storagePath });
 }

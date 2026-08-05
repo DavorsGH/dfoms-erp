@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -904,19 +905,18 @@ export default function Inspections({
 
                 {editForm.photo_urls.length > 0 ? (
                   <div className="flex flex-wrap gap-3">
-                    {editForm.photo_urls.map((url) => (
+                    {editForm.photo_urls.map((reference) => (
                       <div
-                        key={url}
+                        key={reference}
                         className="relative overflow-hidden rounded-md border border-slate-200"
                       >
-                        <a href={url} target="_blank" rel="noreferrer">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={url}
-                            alt="Inspection"
-                            className="h-24 w-24 object-cover"
-                          />
-                        </a>
+                        <TenantLogosMediaImage
+                          reference={reference}
+                          tenantId={selectedLandlordId ?? undefined}
+                          alt="Inspection"
+                          className="h-24 w-24 object-cover"
+                          linkable
+                        />
                         <button
                           type="button"
                           className="absolute right-1 top-1 rounded bg-white/90 px-1.5 py-0.5 text-xs font-medium text-red-700 shadow-sm hover:bg-white"
@@ -924,7 +924,7 @@ export default function Inspections({
                             setEditForm((current) => ({
                               ...current,
                               photo_urls: current.photo_urls.filter(
-                                (photoUrl) => photoUrl !== url,
+                                (photoUrl) => photoUrl !== reference,
                               ),
                             }))
                           }

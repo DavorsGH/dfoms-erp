@@ -6,6 +6,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { formatRentLedgerStatus, rentOutstandingGhs } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import { normalizePhotoUrls } from "@/app/dashboard/real-estate/properties-utils";
+import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 import {
   fetchPortalPaymentHistory,
@@ -128,16 +129,21 @@ export async function getPortalLesseeSession(): Promise<PortalLesseeSession | nu
     return null;
   }
 
+  const rawPhotoUrl =
+    typeof lessee.photo_url === "string" && lessee.photo_url.trim()
+      ? lessee.photo_url.trim()
+      : null;
+  const photoUrl = rawPhotoUrl
+    ? (await createTenantLogosSignedUrl(admin, rawPhotoUrl)) ?? rawPhotoUrl
+    : null;
+
   return {
     authUserId: user.id,
     email: user.email ?? lessee.email ?? null,
     tenantId: lessee.tenant_id,
     lesseeId: lessee.lessee_id,
     fullName: lessee.full_name,
-    photoUrl:
-      typeof lessee.photo_url === "string" && lessee.photo_url.trim()
-        ? lessee.photo_url.trim()
-        : null,
+    photoUrl,
   };
 }
 

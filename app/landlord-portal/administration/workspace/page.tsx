@@ -43,6 +43,7 @@ export default async function LandlordPortalWorkspacePage() {
 
       {data ? (
         <LandlordPortalWorkspaceForm
+          tenantId={session.tenantId}
           initialName={data.name}
           initialEmail={data.email}
           initialPhone={data.phone}

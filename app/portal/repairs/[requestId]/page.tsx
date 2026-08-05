@@ -75,6 +75,7 @@ export default async function PortalRepairDetailPage({ params }: PageProps) {
               <MaintenanceBeforeAfterGallery
                 submissionPhotoUrls={row.photoUrls}
                 completionPhotoUrls={row.completionPhotoUrls}
+                tenantId={session.tenantId}
               />
             </div>
           </section>

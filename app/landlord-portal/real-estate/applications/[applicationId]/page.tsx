@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TenantLogosMediaLink } from "@/components/tenant-logos-media";
 import { redirect } from "next/navigation";
 import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
 import {
@@ -152,16 +153,15 @@ export default async function LandlordPortalApplicationDetailPage({
         <section className={`${portalSectionClassName} space-y-2 text-sm`}>
           <h2 className="font-semibold text-[#0f2744]">ID documents</h2>
           <ul className="list-disc pl-5">
-            {detail.idDocumentUrls.map((url) => (
-              <li key={url}>
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
+            {detail.idDocumentUrls.map((reference) => (
+              <li key={reference}>
+                <TenantLogosMediaLink
+                  reference={reference}
+                  tenantId={session.tenantId}
                   className="text-[#0f2744] underline"
                 >
                   View document
-                </a>
+                </TenantLogosMediaLink>
               </li>
             ))}
           </ul>

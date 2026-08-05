@@ -66,7 +66,7 @@ export async function POST(request: Request) {
   const { error: updateError } = await admin
     .from("landlords")
     .update({
-      logo_url: uploadResult.publicUrl,
+      logo_url: uploadResult.storagePath,
       updated_at: new Date().toISOString(),
     })
     .eq("tenant_id", tenantId);
@@ -77,6 +77,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    logo_url: uploadResult.publicUrl,
+    logo_url: uploadResult.storagePath,
   });
 }

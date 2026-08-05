@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import UnitBillingActivationControls, {
   openUnitActivationPaystackInline,
 } from "@/app/landlord-portal/real-estate/unit-billing-controls";
@@ -57,11 +58,13 @@ const emptyUnitForm = {
 
 function PhotoGallery({
   urls,
+  tenantId,
   uploading,
   onUpload,
   onRemove,
 }: {
   urls: string[];
+  tenantId: string;
   uploading: boolean;
   onUpload: (file: File) => void;
   onRemove: (url: string) => void;
@@ -72,20 +75,20 @@ function PhotoGallery({
         {urls.length === 0 ? (
           <p className="text-sm text-slate-500">No photos yet.</p>
         ) : (
-          urls.map((url) => (
+          urls.map((reference) => (
             <div
-              key={url}
+              key={reference}
               className="relative h-24 w-24 overflow-hidden rounded-md border border-slate-200 bg-slate-50"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={url}
+              <TenantLogosMediaImage
+                reference={reference}
+                tenantId={tenantId}
                 alt="Property photo"
                 className="h-full w-full object-cover"
               />
               <button
                 type="button"
-                onClick={() => onRemove(url)}
+                onClick={() => onRemove(reference)}
                 className="absolute right-1 top-1 rounded bg-white/90 px-1.5 py-0.5 text-xs font-medium text-red-700 shadow-sm hover:bg-white"
               >
                 Remove
@@ -619,6 +622,7 @@ export default function PropertyDetailView({
           <h4 className="mb-2 text-sm font-medium text-slate-700">Photos</h4>
           <PhotoGallery
             urls={detail.property.photoUrls}
+            tenantId={detail.property.tenantId}
             uploading={uploadingPropertyPhoto}
             onUpload={handlePropertyPhotoUpload}
             onRemove={handleRemovePropertyPhoto}
@@ -895,21 +899,21 @@ export default function PropertyDetailView({
                       </div>
                       {unit.photoUrls.length > 0 ? (
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {unit.photoUrls.map((url) => (
+                          {unit.photoUrls.map((reference) => (
                             <div
-                              key={url}
+                              key={reference}
                               className="relative h-16 w-16 overflow-hidden rounded border border-slate-200"
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={url}
+                              <TenantLogosMediaImage
+                                reference={reference}
+                                tenantId={detail.property.tenantId}
                                 alt={`Unit ${unit.unitNumber} photo`}
                                 className="h-full w-full object-cover"
                               />
                               <button
                                 type="button"
                                 onClick={() =>
-                                  handleRemoveUnitPhoto(unit, url)
+                                  handleRemoveUnitPhoto(unit, reference)
                                 }
                                 className="absolute right-0.5 top-0.5 rounded bg-white/90 px-1 text-[10px] font-medium text-red-700"
                               >

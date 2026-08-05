@@ -22,6 +22,7 @@ import {
 } from "../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../pending-approval-view";
 import LandlordPortalExpenseForm from "./expense-form";
+import { TenantLogosMediaLink } from "@/components/tenant-logos-media";
 
 export default async function LandlordPortalExpensesPage() {
   const session = await getLandlordPortalSession();
@@ -101,14 +102,13 @@ export default async function LandlordPortalExpensesPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {row.receiptUrl ? (
-                        <a
-                          href={row.receiptUrl}
-                          target="_blank"
-                          rel="noreferrer"
+                        <TenantLogosMediaLink
+                          reference={row.receiptUrl}
+                          tenantId={session.tenantId}
                           className="font-medium text-[#0f2744] hover:underline"
                         >
                           View
-                        </a>
+                        </TenantLogosMediaLink>
                       ) : (
                         "—"
                       )}

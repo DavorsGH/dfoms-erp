@@ -723,6 +723,7 @@ export default function Maintenance({
                     <MaintenanceBeforeAfterGallery
                       submissionPhotoUrls={expandedRow.photoUrls}
                       completionPhotoUrls={expandedRow.completionPhotoUrls}
+                      tenantId={expandedRow.tenantId}
                     />
                   </div>
                   {editStatus === "completed" ||

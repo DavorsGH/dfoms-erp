@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TenantLogosMediaLink } from "@/components/tenant-logos-media";
 import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchRentalApplicationDetail } from "@/utils/rental-application-management";
@@ -127,16 +128,15 @@ export default async function StaffApplicationDetailPage({
           </p>
           {detail.idDocumentUrls.length > 0 ? (
             <ul className="list-disc pl-5">
-              {detail.idDocumentUrls.map((url) => (
-                <li key={url}>
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
+              {detail.idDocumentUrls.map((reference) => (
+                <li key={reference}>
+                  <TenantLogosMediaLink
+                    reference={reference}
+                    tenantId={tenantId}
                     className="text-[#0f2744] underline"
                   >
                     ID document
-                  </a>
+                  </TenantLogosMediaLink>
                 </li>
               ))}
             </ul>

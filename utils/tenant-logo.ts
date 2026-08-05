@@ -22,7 +22,7 @@ export async function uploadTenantLogo(
   supabase: SupabaseClient,
   tenantId: string,
   file: File,
-): Promise<{ publicUrl: string } | { error: string }> {
+): Promise<{ storagePath: string } | { error: string }> {
   if (!isAcceptedTenantLogoFile(file)) {
     return {
       error: "Please upload a JPEG, PNG, or WebP image.",
@@ -42,7 +42,5 @@ export async function uploadTenantLogo(
     return { error: uploadError.message };
   }
 
-  const { data } = supabase.storage.from(TENANT_LOGOS_BUCKET).getPublicUrl(path);
-
-  return { publicUrl: data.publicUrl };
+  return { storagePath: path };
 }

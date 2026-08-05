@@ -129,7 +129,21 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
     setDownloading(true);
     try {
       if (customDocumentUrl) {
-        window.open(customDocumentUrl, "_blank", "noopener,noreferrer");
+        const params = new URLSearchParams({
+          reference: customDocumentUrl,
+          tenant_id: props.tenantId,
+        });
+        const response = await fetch(
+          `/api/storage/tenant-logos/signed-url?${params.toString()}`,
+        );
+        const payload = (await response.json().catch(() => null)) as {
+          signedUrl?: string;
+          error?: string;
+        } | null;
+        if (!response.ok || !payload?.signedUrl) {
+          throw new Error(payload?.error ?? "Unable to open lease document.");
+        }
+        window.open(payload.signedUrl, "_blank", "noopener,noreferrer");
         setSuccess("Opened uploaded lease document.");
         return;
       }

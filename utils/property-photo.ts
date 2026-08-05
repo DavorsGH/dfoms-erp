@@ -1,5 +1,8 @@
+import "server-only";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_LOGOS_BUCKET } from "@/utils/tenant-logo";
+import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -53,7 +56,9 @@ export async function uploadPropertyPhoto(
   entity: RealEstatePhotoEntity,
   entityId: string,
   file: File,
-): Promise<{ publicUrl: string } | { error: string }> {
+): Promise<
+  { storagePath: string; signedUrl: string | null } | { error: string }
+> {
   if (!isAcceptedPropertyPhotoFile(file)) {
     return {
       error: "Please upload a JPEG, PNG, or WebP image.",
@@ -73,9 +78,7 @@ export async function uploadPropertyPhoto(
     return { error: uploadError.message };
   }
 
-  const { data } = supabase.storage
-    .from(TENANT_LOGOS_BUCKET)
-    .getPublicUrl(path);
+  const signedUrl = await createTenantLogosSignedUrl(supabase, path);
 
-  return { publicUrl: data.publicUrl };
+  return { storagePath: path, signedUrl };
 }

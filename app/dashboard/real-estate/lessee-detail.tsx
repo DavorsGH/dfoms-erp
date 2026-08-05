@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -216,9 +217,9 @@ export default function LesseeDetailView({
               <div className="shrink-0">
                 {detail.photoUrl ? (
                   <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={detail.photoUrl}
+                    <TenantLogosMediaImage
+                      reference={detail.photoUrl}
+                      tenantId={detail.tenantId}
                       alt={`${detail.fullName} profile`}
                       className="h-28 w-28 object-cover"
                     />
@@ -418,9 +419,9 @@ export default function LesseeDetailView({
           <div className="w-full shrink-0 lg:w-[340px] xl:w-[400px]">
             {detail.propertyHeroPhotoUrl ? (
               <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={detail.propertyHeroPhotoUrl}
+                <TenantLogosMediaImage
+                  reference={detail.propertyHeroPhotoUrl}
+                  tenantId={detail.tenantId}
                   alt={
                     detail.propertyHeroPropertyName
                       ? `${detail.propertyHeroPropertyName} property`

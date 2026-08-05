@@ -71,7 +71,7 @@ export async function POST(request: Request) {
   const { error: updateError } = await admin
     .from("lessees")
     .update({
-      photo_url: uploadResult.publicUrl,
+      photo_url: uploadResult.storagePath,
       updated_at: new Date().toISOString(),
     })
     .eq("tenant_id", landlord.tenantId)
@@ -83,6 +83,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    photo_url: uploadResult.publicUrl,
+    photo_url: uploadResult.storagePath,
   });
 }

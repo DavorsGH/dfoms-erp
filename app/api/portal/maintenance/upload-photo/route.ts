@@ -81,7 +81,7 @@ export async function POST(request: Request) {
 
   const nextUrls = [
     ...normalizePhotoUrls(existing.photo_urls),
-    uploadResult.publicUrl,
+    uploadResult.storagePath,
   ];
 
   const { error: updateError } = await admin
@@ -99,7 +99,8 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    publicUrl: uploadResult.publicUrl,
+    storagePath: uploadResult.storagePath,
+    signedUrl: uploadResult.signedUrl,
     photo_urls: nextUrls,
   });
 }

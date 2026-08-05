@@ -1,13 +1,17 @@
+import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
+
 /**
  * Read-only photo gallery mirroring staff PhotoGallery layout
  * (app/dashboard/real-estate/property-detail.tsx) without upload/remove.
  */
 export default function LandlordPortalPhotoGalleryReadonly({
   urls,
+  tenantId,
   emptyLabel = "No photos yet.",
   alt = "Photo",
 }: {
   urls: string[];
+  tenantId?: string;
   emptyLabel?: string;
   alt?: string;
 }) {
@@ -17,17 +21,15 @@ export default function LandlordPortalPhotoGalleryReadonly({
 
   return (
     <div className="flex flex-wrap gap-3">
-      {urls.map((url) => (
-        <a
-          key={url}
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="relative h-24 w-24 overflow-hidden rounded-md border border-slate-200 bg-slate-50"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={url} alt={alt} className="h-full w-full object-cover" />
-        </a>
+      {urls.map((reference) => (
+        <TenantLogosMediaImage
+          key={reference}
+          reference={reference}
+          tenantId={tenantId}
+          alt={alt}
+          className="h-24 w-24 object-cover"
+          linkable
+        />
       ))}
     </div>
   );

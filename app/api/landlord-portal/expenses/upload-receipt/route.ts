@@ -60,7 +60,7 @@ export async function POST(request: Request) {
   const { error: updateError } = await auth.admin
     .from("property_expenses")
     .update({
-      receipt_url: uploadResult.publicUrl,
+      receipt_url: uploadResult.storagePath,
       updated_at: new Date().toISOString(),
     })
     .eq("tenant_id", auth.session.tenantId)
@@ -72,6 +72,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    receipt_url: uploadResult.publicUrl,
+    receipt_url: uploadResult.storagePath,
   });
 }

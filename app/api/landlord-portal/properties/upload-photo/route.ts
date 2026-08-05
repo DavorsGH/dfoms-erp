@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 
     const nextUrls = [
       ...normalizePhotoUrls(property.photo_urls),
-      uploadResult.publicUrl,
+      uploadResult.storagePath,
     ];
 
     const { error: updateError } = await auth.admin
@@ -87,7 +87,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      publicUrl: uploadResult.publicUrl,
+      storagePath: uploadResult.storagePath,
+      signedUrl: uploadResult.signedUrl,
       photo_urls: nextUrls,
     });
   }
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
 
   const nextUrls = [
     ...normalizePhotoUrls(unit.photo_urls),
-    uploadResult.publicUrl,
+    uploadResult.storagePath,
   ];
 
   const { error: updateError } = await auth.admin
@@ -137,7 +138,8 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    publicUrl: uploadResult.publicUrl,
+    storagePath: uploadResult.storagePath,
+    signedUrl: uploadResult.signedUrl,
     photo_urls: nextUrls,
   });
 }

@@ -1,5 +1,8 @@
+import "server-only";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TENANT_LOGOS_BUCKET } from "@/utils/tenant-logo";
+import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 
 const ACCEPTED_MIME_TYPES = new Set([
   "application/pdf",
@@ -61,14 +64,16 @@ export function getLeaseDocumentStoragePath(
 
 /**
  * Uploads a custom lease PDF/Word file into the existing tenant-logos bucket.
- * Callers persist the returned public URL on leases.lease_document_url.
+ * Callers persist the returned storage path on leases.lease_document_url.
  */
 export async function uploadLeaseDocument(
   supabase: SupabaseClient,
   tenantId: string,
   leaseId: string,
   file: File,
-): Promise<{ publicUrl: string } | { error: string }> {
+): Promise<
+  { storagePath: string; signedUrl: string | null } | { error: string }
+> {
   const contentType = resolveContentType(file);
   if (!contentType) {
     return {
@@ -89,9 +94,7 @@ export async function uploadLeaseDocument(
     return { error: uploadError.message };
   }
 
-  const { data } = supabase.storage
-    .from(TENANT_LOGOS_BUCKET)
-    .getPublicUrl(path);
+  const signedUrl = await createTenantLogosSignedUrl(supabase, path);
 
-  return { publicUrl: data.publicUrl };
+  return { storagePath: path, signedUrl };
 }

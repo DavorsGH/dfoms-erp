@@ -157,6 +157,7 @@ export default async function LandlordPortalPropertyDetailPage({
             <div className="mt-4">
               <LandlordPortalPhotoGalleryReadonly
                 urls={property.photoUrls}
+                tenantId={property.tenantId}
                 alt="Property photo"
               />
             </div>
@@ -185,6 +186,7 @@ export default async function LandlordPortalPropertyDetailPage({
                 </div>
                 <LandlordPortalPhotoGalleryReadonly
                   urls={unit.photoUrls}
+                  tenantId={unit.tenantId}
                   emptyLabel="No unit photos."
                   alt={`Unit ${unit.unitNumber} photo`}
                 />

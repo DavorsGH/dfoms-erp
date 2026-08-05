@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { TenantLogosMediaLink } from "@/components/tenant-logos-media";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -880,14 +881,13 @@ export default function Expenses({
 
               {editForm.receipt_url ? (
                 <div className="flex flex-wrap items-center gap-3">
-                  <a
-                    href={editForm.receipt_url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <TenantLogosMediaLink
+                    reference={editForm.receipt_url}
+                    tenantId={selectedLandlordId ?? undefined}
                     className="text-sm font-medium text-[#0f2744] hover:underline"
                   >
                     View current receipt
-                  </a>
+                  </TenantLogosMediaLink>
                   <button
                     type="button"
                     className={secondaryButtonClassName}

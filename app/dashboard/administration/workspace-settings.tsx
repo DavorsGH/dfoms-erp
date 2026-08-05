@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import { DEFAULT_WORKSPACE_LOGO } from "@/utils/tenant-branding-types";
 import { uploadTenantLogo } from "@/utils/tenant-logo";
 
@@ -103,7 +104,7 @@ export default function WorkspaceSettings({
       return;
     }
 
-    const nextLogoUrl = uploadResult.publicUrl;
+    const nextLogoUrl = uploadResult.storagePath;
 
     const { error: updateError } = await supabase
       .from("tenants")
@@ -126,6 +127,7 @@ export default function WorkspaceSettings({
   }
 
   const previewLogoUrl = logoUrl?.trim() || DEFAULT_WORKSPACE_LOGO;
+  const usesStorageLogo = Boolean(logoUrl?.trim());
 
   return (
     <div className="max-w-lg space-y-8">
@@ -237,12 +239,21 @@ export default function WorkspaceSettings({
         </div>
 
         <div className="flex items-center gap-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={previewLogoUrl}
-            alt="Workspace logo preview"
-            className="h-20 w-20 shrink-0 rounded-sm border border-slate-200 object-cover bg-white"
-          />
+          {usesStorageLogo ? (
+            <TenantLogosMediaImage
+              reference={logoUrl!}
+              tenantId={tenantId}
+              alt="Workspace logo preview"
+              className="h-20 w-20 shrink-0 rounded-sm border border-slate-200 object-cover bg-white"
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewLogoUrl}
+              alt="Workspace logo preview"
+              className="h-20 w-20 shrink-0 rounded-sm border border-slate-200 object-cover bg-white"
+            />
+          )}
           <ImageFileUploadButton
             files={[]}
             onChange={(next) => {

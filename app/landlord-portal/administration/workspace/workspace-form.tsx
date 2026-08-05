@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import { DEFAULT_WORKSPACE_LOGO } from "@/utils/tenant-branding-types";
 import {
   portalErrorBannerClassName,
@@ -13,6 +14,7 @@ import {
 } from "../../portal-ui";
 
 type WorkspaceFormProps = {
+  tenantId: string;
   initialName: string;
   initialEmail: string | null;
   initialPhone: string | null;
@@ -21,6 +23,7 @@ type WorkspaceFormProps = {
 };
 
 export default function LandlordPortalWorkspaceForm({
+  tenantId,
   initialName,
   initialEmail,
   initialPhone,
@@ -102,6 +105,7 @@ export default function LandlordPortalWorkspaceForm({
   }
 
   const previewLogoUrl = logoUrl?.trim() || DEFAULT_WORKSPACE_LOGO;
+  const usesStorageLogo = Boolean(logoUrl?.trim());
 
   return (
     <div className="mt-4 space-y-6">
@@ -182,12 +186,21 @@ export default function LandlordPortalWorkspaceForm({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={previewLogoUrl}
-            alt="Workspace logo preview"
-            className="h-20 w-20 shrink-0 rounded-full border border-slate-200 object-cover bg-white"
-          />
+          {usesStorageLogo ? (
+            <TenantLogosMediaImage
+              reference={logoUrl!}
+              tenantId={tenantId}
+              alt="Workspace logo preview"
+              className="h-20 w-20 shrink-0 rounded-full border border-slate-200 object-cover bg-white"
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewLogoUrl}
+              alt="Workspace logo preview"
+              className="h-20 w-20 shrink-0 rounded-full border border-slate-200 object-cover bg-white"
+            />
+          )}
           <ImageFileUploadButton
             files={[]}
             onChange={(next) => {

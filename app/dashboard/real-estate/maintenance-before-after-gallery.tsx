@@ -1,13 +1,17 @@
 /**
  * Before/after maintenance photo galleries for portal and staff views.
  */
+import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
+
 export default function MaintenanceBeforeAfterGallery({
   submissionPhotoUrls,
   completionPhotoUrls,
+  tenantId,
   compact = false,
 }: {
   submissionPhotoUrls: string[];
   completionPhotoUrls: string[];
+  tenantId?: string;
   compact?: boolean;
 }) {
   const thumbClass = compact ? "h-20 w-20" : "h-24 w-24";
@@ -18,21 +22,15 @@ export default function MaintenanceBeforeAfterGallery({
         <p className="mb-2 text-sm font-medium text-slate-700">{label}</p>
         {urls.length > 0 ? (
           <div className="flex flex-wrap gap-3">
-            {urls.map((url) => (
-              <a
-                key={url}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="block overflow-hidden rounded-md border border-slate-200"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={url}
-                  alt={label}
-                  className={`${thumbClass} object-cover`}
-                />
-              </a>
+            {urls.map((reference) => (
+              <TenantLogosMediaImage
+                key={reference}
+                reference={reference}
+                tenantId={tenantId}
+                alt={label}
+                className={`${thumbClass} object-cover`}
+                linkable
+              />
             ))}
           </div>
         ) : (

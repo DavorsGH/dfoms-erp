@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 
 type MoveInConditionPhotosPanelProps = {
   tenantId: string;
@@ -56,7 +57,7 @@ export default function MoveInConditionPhotosPanel({
       });
       const payload = (await response.json().catch(() => null)) as {
         error?: string;
-        publicUrl?: string;
+        storagePath?: string;
         photo_urls?: string[];
       } | null;
 
@@ -68,8 +69,8 @@ export default function MoveInConditionPhotosPanel({
 
       if (payload?.photo_urls) {
         nextUrls.splice(0, nextUrls.length, ...payload.photo_urls);
-      } else if (payload?.publicUrl) {
-        nextUrls.push(payload.publicUrl);
+      } else if (payload?.storagePath) {
+        nextUrls.push(payload.storagePath);
       }
     }
 
@@ -97,21 +98,15 @@ export default function MoveInConditionPhotosPanel({
 
       {urls.length > 0 ? (
         <div className="flex flex-wrap gap-3">
-          {urls.map((url) => (
-            <a
-              key={url}
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="block overflow-hidden rounded-md border border-slate-200"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={url}
-                alt="Move-in condition"
-                className="h-24 w-24 object-cover"
-              />
-            </a>
+          {urls.map((reference) => (
+            <TenantLogosMediaImage
+              key={reference}
+              reference={reference}
+              tenantId={tenantId}
+              alt="Move-in condition"
+              className="h-24 w-24 object-cover"
+              linkable
+            />
           ))}
         </div>
       ) : (

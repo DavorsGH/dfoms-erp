@@ -3,7 +3,9 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 import {
   DEFAULT_TENANT_BRANDING,
   DEFAULT_COMPANY_LEGAL_NAME,
@@ -41,9 +43,17 @@ export const getCurrentTenantBranding = cache(
       return DEFAULT_TENANT_BRANDING;
     }
 
+    const rawLogoUrl = data.logo_url?.trim() || "";
+    let workspaceLogoUrl = DEFAULT_WORKSPACE_LOGO;
+    if (rawLogoUrl) {
+      const admin = createAdminClient();
+      workspaceLogoUrl =
+        (await createTenantLogosSignedUrl(admin, rawLogoUrl)) ?? rawLogoUrl;
+    }
+
     return {
       workspaceName: data.name?.trim() || DEFAULT_WORKSPACE_NAME,
-      workspaceLogoUrl: data.logo_url?.trim() || DEFAULT_WORKSPACE_LOGO,
+      workspaceLogoUrl,
       companyLegalName: data.name?.trim() || DEFAULT_COMPANY_LEGAL_NAME,
       address: data.address?.trim() || null,
       phone: data.phone?.trim() || null,
