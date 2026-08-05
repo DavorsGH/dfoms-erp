@@ -37,6 +37,7 @@ import ProductsBulkImport from "./products-bulk-import";
 type ProductsProps = {
   initialProducts: CrmProductEntry[];
   platformUnitActivationPriceGhs: number;
+  showPlatformBillingCatalogEntry: boolean;
   fetchError: string | null;
 };
 
@@ -61,6 +62,7 @@ const emptyForm = (): ProductFormState => ({
 export default function Products({
   initialProducts,
   platformUnitActivationPriceGhs,
+  showPlatformBillingCatalogEntry,
   fetchError,
 }: ProductsProps) {
   const supabase = createClient();
@@ -79,20 +81,27 @@ export default function Products({
   }, [initialProducts]);
 
   const catalogProducts = useMemo(() => {
-    const virtual = buildPlatformUnitActivationCatalogEntry(
-      platformUnitActivationPriceGhs,
-    );
-    return [...products, virtual].sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  }, [platformUnitActivationPriceGhs, products]);
+    const rows = showPlatformBillingCatalogEntry
+      ? [
+          ...products,
+          buildPlatformUnitActivationCatalogEntry(platformUnitActivationPriceGhs),
+        ]
+      : products;
+    return [...rows].sort((a, b) => a.name.localeCompare(b.name));
+  }, [
+    platformUnitActivationPriceGhs,
+    products,
+    showPlatformBillingCatalogEntry,
+  ]);
 
   const categoryOptions = useMemo(() => {
     const unique = new Set(getUniqueProductCategories(catalogProducts));
     unique.add(ERP_SUITE_CATEGORY);
-    unique.add(PLATFORM_BILLING_CATEGORY);
+    if (showPlatformBillingCatalogEntry) {
+      unique.add(PLATFORM_BILLING_CATEGORY);
+    }
     return [...unique].sort((a, b) => a.localeCompare(b));
-  }, [catalogProducts]);
+  }, [catalogProducts, showPlatformBillingCatalogEntry]);
 
   const filteredProducts = useMemo(() => {
     return catalogProducts.filter((product) => {

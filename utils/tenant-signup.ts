@@ -5,6 +5,13 @@ import {
 
 export const DAVORS_TENANT_ID = "00000001-0000-4000-8000-000000000001";
 
+/** True when the workspace is Davors Facilities (platform operator tenant). */
+export function isDavorsPlatformTenant(
+  tenantId: string | null | undefined,
+): boolean {
+  return tenantId === DAVORS_TENANT_ID;
+}
+
 export const ERP_SUITE_SIGNUP_SOURCE = "erp_suite_signup";
 export const ERP_SUITE_CUSTOMER_TYPE = "digital_subscriber";
 export const ERP_SUITE_CUSTOMER_STATUS = "lead";

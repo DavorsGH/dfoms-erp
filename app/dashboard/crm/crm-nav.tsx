@@ -5,7 +5,11 @@ import { usePathname } from "next/navigation";
 
 const navItems = [
   { label: "Customer List", href: "/dashboard/crm/customers" },
-  { label: "Product Catalog", href: "/dashboard/crm/products" },
+  {
+    label: "Product Catalog",
+    href: "/dashboard/crm/products",
+    davorsOnly: true,
+  },
   { label: "Product Sales", href: "/dashboard/crm/product-sales" },
   { label: "POS", href: "/dashboard/pos" },
   { label: "Sales Log", href: "/dashboard/crm/sales" },
@@ -15,13 +19,20 @@ const navItems = [
   },
 ] as const;
 
-export default function CrmNav() {
+type CrmNavProps = {
+  showProductCatalog: boolean;
+};
+
+export default function CrmNav({ showProductCatalog }: CrmNavProps) {
   const pathname = usePathname();
+  const visibleItems = navItems.filter(
+    (item) => !("davorsOnly" in item && item.davorsOnly) || showProductCatalog,
+  );
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const active = pathname.startsWith("/dashboard/crm/email-promotions")
             ? item.href.startsWith("/dashboard/crm/email-promotions")
             : pathname === item.href || pathname.startsWith(`${item.href}/`);
