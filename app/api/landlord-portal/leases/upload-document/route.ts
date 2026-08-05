@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
-import { uploadLeaseDocument } from "@/utils/lease-document";
+import { uploadLeaseDocument } from "@/utils/lease-document-upload";
 
 export const runtime = "nodejs";
 

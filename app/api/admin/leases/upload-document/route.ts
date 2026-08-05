@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
-import { uploadLeaseDocument } from "@/utils/lease-document";
+import { uploadLeaseDocument } from "@/utils/lease-document-upload";
 
 export const runtime = "nodejs";
 

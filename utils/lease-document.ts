@@ -1,8 +1,7 @@
-import "server-only";
-
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { TENANT_LOGOS_BUCKET } from "@/utils/tenant-logo";
-import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
+/**
+ * Client-safe lease document helpers (constants + file validation).
+ * Server upload logic lives in lease-document-upload.ts.
+ */
 
 const ACCEPTED_MIME_TYPES = new Set([
   "application/pdf",
@@ -33,7 +32,7 @@ function extensionFromFileName(fileName: string): string | null {
   return match ? match[1].toLowerCase() : null;
 }
 
-function resolveContentType(file: File): string | null {
+export function resolveLeaseDocumentContentType(file: File): string | null {
   const mime = file.type.toLowerCase().trim();
   if (mime && ACCEPTED_MIME_TYPES.has(mime)) {
     return mime;
@@ -46,7 +45,7 @@ function resolveContentType(file: File): string | null {
 }
 
 export function isAcceptedLeaseDocumentFile(file: File): boolean {
-  return resolveContentType(file) != null;
+  return resolveLeaseDocumentContentType(file) != null;
 }
 
 export function getLeaseDocumentStoragePath(
@@ -54,47 +53,10 @@ export function getLeaseDocumentStoragePath(
   leaseId: string,
   file: File,
 ): string {
-  const contentType = resolveContentType(file) ?? "application/pdf";
+  const contentType = resolveLeaseDocumentContentType(file) ?? "application/pdf";
   const extension =
     EXTENSION_BY_MIME[contentType] ??
     extensionFromFileName(file.name) ??
     "pdf";
   return `${tenantId}/real-estate/lease/${leaseId}/${crypto.randomUUID()}.${extension}`;
-}
-
-/**
- * Uploads a custom lease PDF/Word file into the existing tenant-logos bucket.
- * Callers persist the returned storage path on leases.lease_document_url.
- */
-export async function uploadLeaseDocument(
-  supabase: SupabaseClient,
-  tenantId: string,
-  leaseId: string,
-  file: File,
-): Promise<
-  { storagePath: string; signedUrl: string | null } | { error: string }
-> {
-  const contentType = resolveContentType(file);
-  if (!contentType) {
-    return {
-      error: "Please upload a PDF, DOC, or DOCX lease document.",
-    };
-  }
-
-  const path = getLeaseDocumentStoragePath(tenantId, leaseId, file);
-
-  const { error: uploadError } = await supabase.storage
-    .from(TENANT_LOGOS_BUCKET)
-    .upload(path, file, {
-      upsert: false,
-      contentType,
-    });
-
-  if (uploadError) {
-    return { error: uploadError.message };
-  }
-
-  const signedUrl = await createTenantLogosSignedUrl(supabase, path);
-
-  return { storagePath: path, signedUrl };
 }
