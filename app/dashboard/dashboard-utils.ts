@@ -40,10 +40,17 @@ import type {
   SpendingAnalysisIncomeRow,
 } from "./dashboard-spending-analysis-utils";
 import type { SalesAnalysisRow } from "./dashboard-sales-analysis-utils";
+import { isActiveIncomeForReporting } from "./finance/income-register-utils";
 
 export type DashboardIncomeEntry = {
   date: string;
   amount: number;
+};
+
+export type DashboardProductSaleEntry = {
+  date: string;
+  amount: number;
+  sale_status?: string | null;
 };
 
 export type DashboardExpenseEntry = {
@@ -78,6 +85,10 @@ export type DashboardSummaryCards = {
   depreciation: number;
   /** YTD fixed-asset depreciation through the selected month. */
   depreciationYtd: number;
+  /** Active product_sale revenue for the selected month. */
+  productSales: number;
+  /** Active product_sale revenue YTD through the selected month. */
+  productSalesYtd: number;
   rawMaterialPurchases: number;
   rawMaterialPurchasesYtd: number;
   productPurchases: number;
@@ -272,8 +283,20 @@ function buildYtdThroughLabel(year: number, throughMonth: number): string {
   return `Jan – ${formatPeriodLabel(year, throughMonth)}`;
 }
 
+function filterActiveProductSaleEntries(
+  entries: DashboardProductSaleEntry[],
+): DashboardProductSaleEntry[] {
+  return entries.filter((entry) =>
+    isActiveIncomeForReporting({
+      entry_type: "product_sale",
+      sale_status: entry.sale_status === "voided" ? "voided" : "active",
+    }),
+  );
+}
+
 function buildMonthSnapshot(input: {
   incomeEntries: DashboardIncomeEntry[];
+  productSaleEntries: DashboardProductSaleEntry[];
   profitLossIncomeEntries: ProfitLossIncomeEntry[];
   balanceSheetIncomeEntries: BalanceSheetIncomeEntry[];
   expenseEntries: DashboardExpenseEntry[];
@@ -360,6 +383,19 @@ function buildMonthSnapshot(input: {
     getProfitLossRowAmount(profitLossReport, "depreciation", monthIndex),
   );
   const depreciationYtd = sumDepreciationYtd(profitLossReport, monthIndex);
+  const activeProductSaleEntries = filterActiveProductSaleEntries(
+    input.productSaleEntries,
+  );
+  const productSales = sumRegisterAmountForMonth(
+    activeProductSaleEntries,
+    input.year,
+    input.month,
+  );
+  const productSalesYtd = sumRegisterAmountYtd(
+    activeProductSaleEntries,
+    input.year,
+    input.month,
+  );
 
   return {
     summary: {
@@ -386,6 +422,8 @@ function buildMonthSnapshot(input: {
       ),
       depreciation,
       depreciationYtd,
+      productSales,
+      productSalesYtd,
       rawMaterialPurchases,
       rawMaterialPurchasesYtd,
       productPurchases,
@@ -630,6 +668,7 @@ function monthHasPayrollActivity(
 
 export function buildDashboardViewModel(input: {
   incomeEntries: DashboardIncomeEntry[];
+  productSaleEntries: DashboardProductSaleEntry[];
   profitLossIncomeEntries: ProfitLossIncomeEntry[];
   balanceSheetIncomeEntries: BalanceSheetIncomeEntry[];
   expenseEntries: DashboardExpenseEntry[];

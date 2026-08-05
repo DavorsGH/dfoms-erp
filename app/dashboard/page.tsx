@@ -377,6 +377,14 @@ export default async function DashboardPage() {
         date: entry.date,
         amount: entry.amount,
       })) ?? [],
+    productSaleEntries:
+      incomeEntries
+        ?.filter((entry) => entry.entry_type === "product_sale")
+        .map((entry) => ({
+          date: entry.date,
+          amount: entry.amount,
+          sale_status: entry.sale_status,
+        })) ?? [],
     profitLossIncomeEntries:
       incomeEntries?.map((entry) => ({
         date: entry.date,
