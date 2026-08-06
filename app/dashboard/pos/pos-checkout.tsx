@@ -815,7 +815,7 @@ export default function PosCheckout({
                         {line.productCode} — {line.productName}
                       </p>
                       <p className="text-xs text-slate-500">
-                        Available:{" "}
+                        Max qty for this line:{" "}
                         {formatInventoryQuantity(
                           getAvailableStockForProduct(
                             products.find((item) => item.id === line.productId)!,
