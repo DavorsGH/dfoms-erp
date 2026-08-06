@@ -16,6 +16,7 @@ import CrmShell from "../../crm-shell";
 import Customer360 from "../customer-360";
 import {
   CUSTOMER_360_INVOICE_SELECT,
+  CUSTOMER_360_LOYALTY_TRANSACTION_SELECT,
   CUSTOMER_360_OPPORTUNITY_SELECT,
   CUSTOMER_360_PRODUCT_SALE_SELECT,
   CUSTOMER_360_QUOTE_SELECT,
@@ -23,7 +24,11 @@ import {
   normalizeCustomer360Opportunity,
   normalizeCustomer360ProductSale,
   normalizeCustomer360Quote,
+  normalizeLoyaltyAccount,
+  normalizeLoyaltyTransaction,
   type Customer360Invoice,
+  type Customer360LoyaltyAccount,
+  type Customer360LoyaltyTransaction,
   type Customer360Opportunity,
   type Customer360ProductSale,
   type Customer360Quote,
@@ -49,6 +54,8 @@ export default async function CustomerDetailPage({
     { data: invoices, error: invoicesError },
     { data: productSales, error: productSalesError },
     { data: activities, error: activitiesError },
+    { data: loyaltyAccount, error: loyaltyAccountError },
+    { data: loyaltyTransactions, error: loyaltyTransactionsError },
   ] = await Promise.all([
     supabase.from("customers").select("*").eq("client_id", clientId).maybeSingle(),
     supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
@@ -78,6 +85,16 @@ export default async function CustomerDetailPage({
       .select(SALES_ACTIVITY_SELECT)
       .eq("client_id", clientId)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("loyalty_accounts")
+      .select("id, tenant_id, client_id, points_balance, lifetime_earned, lifetime_redeemed")
+      .eq("client_id", clientId)
+      .maybeSingle(),
+    supabase
+      .from("loyalty_transactions")
+      .select(CUSTOMER_360_LOYALTY_TRANSACTION_SELECT)
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (!customer) {
@@ -90,16 +107,18 @@ export default async function CustomerDetailPage({
         (employees as HrEmployee[] | null) ?? [],
         customerEntry.assigned_supervisor,
       )
-    : "—";
+    : "?";
 
   const fetchError =
-    (customerError as { message?: string } | null)?.message ??
-    (employeesError as { message?: string } | null)?.message ??
-    (opportunitiesError as { message?: string } | null)?.message ??
-    (quotesError as { message?: string } | null)?.message ??
-    (invoicesError as { message?: string } | null)?.message ??
-    (productSalesError as { message?: string } | null)?.message ??
-    (activitiesError as { message?: string } | null)?.message ??
+    customerError?.message ??
+    employeesError?.message ??
+    opportunitiesError?.message ??
+    quotesError?.message ??
+    invoicesError?.message ??
+    productSalesError?.message ??
+    activitiesError?.message ??
+    loyaltyAccountError?.message ??
+    loyaltyTransactionsError?.message ??
     null;
 
   return (
@@ -139,6 +158,16 @@ export default async function CustomerDetailPage({
         activities={
           ((activities as SalesActivity[] | null) ?? []).map((row) =>
             normalizeSalesActivity(row),
+          )
+        }
+        loyaltyAccount={
+          loyaltyAccount
+            ? normalizeLoyaltyAccount(loyaltyAccount as Customer360LoyaltyAccount)
+            : null
+        }
+        loyaltyTransactions={
+          ((loyaltyTransactions as Customer360LoyaltyTransaction[] | null) ?? []).map(
+            (row) => normalizeLoyaltyTransaction(row),
           )
         }
         fetchError={fetchError}
