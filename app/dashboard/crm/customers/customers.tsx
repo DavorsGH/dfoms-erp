@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import RegisterRowActions, {
@@ -621,7 +622,12 @@ export default function Customers({
                   className={getStripedRowClassName(index)}
                 >
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
-                    {customer.client_name}
+                    <Link
+                      href={`/dashboard/crm/customers/${customer.client_id}`}
+                      className="text-[#0f2744] underline-offset-2 hover:underline"
+                    >
+                      {customer.client_name}
+                    </Link>
                   </td>
                   <td className="px-4 py-3">{customer.contact_person ?? "—"}</td>
                   <td className="px-4 py-3">{customer.email ?? "—"}</td>
