@@ -21,6 +21,7 @@ export type PosCheckoutInput = {
   invoiceNo?: string | null;
   clientId: string | null;
   customerName: string | null;
+  salesRepId?: string | null;
   paymentMethod: string;
   amountReceived: number;
   paymentStatus: string;
@@ -240,6 +241,7 @@ export async function runPosCheckout(
       p_description: null,
       p_notes: notes,
       p_invoice_entity_type: POS_INVOICE_ENTITY_TYPE,
+      p_sales_rep_id: input.salesRepId?.trim() || null,
     });
 
     if (error) {

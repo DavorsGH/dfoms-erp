@@ -75,10 +75,24 @@ export function getEmployeeByStaffId(
 }
 
 export function getEmployeeById(
-  employees: HrEmployee[],
+  employees: HrEmployee[] | null | undefined,
   employeeId: string,
 ): HrEmployee | undefined {
-  return employees.find((employee) => employee.employee_id === employeeId);
+  return (employees ?? []).find(
+    (employee) => employee?.employee_id === employeeId,
+  );
+}
+
+/** Pick a valid employee_id for required selects (handles empty / stale defaults). */
+export function resolveSelectableEmployeeId(
+  employees: HrEmployee[],
+  preferredEmployeeId = "",
+): string {
+  const trimmed = preferredEmployeeId.trim();
+  if (trimmed && employees.some((employee) => employee.employee_id === trimmed)) {
+    return trimmed;
+  }
+  return employees[0]?.employee_id ?? "";
 }
 
 export function getEmployeeDisplayName(

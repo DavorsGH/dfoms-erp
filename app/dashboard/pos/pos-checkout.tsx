@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import PromoCodeField from "@/components/promo-code-field";
+import SalesRepSelect from "@/components/sales-rep-select";
 import { PAYMENT_SETTINGS_REQUIRED_CODE } from "@/utils/product-sale-paystack";
 import { redeemLoyaltyPointsForCheckout } from "@/utils/promo-discount-utils";
 import {
@@ -14,6 +15,7 @@ import {
   type LoyaltyAccountRow,
 } from "@/utils/loyalty-types";
 import { inputClassName } from "../employees/employee-record-utils";
+import type { HrEmployee } from "../hr-payroll/employee-utils";
 import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
@@ -57,6 +59,8 @@ type PosCheckoutProps = {
   showTitle?: boolean;
   initialClients: ClientEntry[];
   initialProducts: FinishedProductRecord[];
+  initialEmployees: HrEmployee[];
+  defaultSalesRepId?: string;
   /** Kept for API compat; POS checkout uses Cash / Mobile Money only. */
   initialPaymentMethods: string[];
   /** Pre-load cart from an accepted product quote conversion. */
@@ -99,6 +103,8 @@ export default function PosCheckout({
   showTitle = true,
   initialClients,
   initialProducts,
+  initialEmployees,
+  defaultSalesRepId = "",
   initialPaymentMethods,
   initialCartLines = [],
   initialClientId = "",
@@ -115,6 +121,7 @@ export default function PosCheckout({
   const [productSearch, setProductSearch] = useState("");
   const [clientId, setClientId] = useState(initialClientId);
   const [customerName, setCustomerName] = useState("");
+  const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
   const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [dueDate, setDueDate] = useState(todayIsoDate());
   const [notes, setNotes] = useState(initialNotes);
@@ -520,6 +527,7 @@ export default function PosCheckout({
       invoiceNo: pendingInvoiceNo,
       clientId: trimmedClientId,
       customerName: trimmedClientId ? null : trimmedCustomerName,
+      salesRepId: salesRepId.trim() || null,
       paymentMethod: paymentMethod.trim(),
       amountReceived,
       paymentStatus: "Paid",
@@ -632,6 +640,7 @@ export default function PosCheckout({
           sale_date: todayIsoDate(),
           client_id: trimmedClientId,
           customer_name: trimmedClientId ? null : trimmedCustomerName,
+          sales_rep_id: salesRepId.trim() || null,
           notes: notes.trim() || null,
           due_date: dueDate,
           delivery_email: payerEmail.trim() || null,
@@ -1226,6 +1235,13 @@ export default function PosCheckout({
               className={`${inputClassName}${clientId ? " bg-slate-50 text-slate-600" : ""}`}
             />
           </div>
+          <SalesRepSelect
+            employees={initialEmployees}
+            value={salesRepId}
+            onChange={setSalesRepId}
+            className={inputClassName}
+            hint="Defaults to your employee record when linked."
+          />
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Payer Email

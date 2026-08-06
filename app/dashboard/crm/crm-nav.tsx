@@ -16,6 +16,10 @@ const navItems = [
   { label: "Product Sales", href: "/dashboard/crm/product-sales" },
   { label: "POS", href: "/dashboard/pos" },
   { label: "Sales Log", href: "/dashboard/crm/sales" },
+  { label: "Sales Targets", href: "/dashboard/crm/sales-targets" },
+  { label: "Commission Rules", href: "/dashboard/crm/commission-rules" },
+  { label: "Commissions", href: "/dashboard/crm/commissions" },
+  { label: "Sales Forecast", href: "/dashboard/crm/sales-forecast" },
   { label: "Loyalty Settings", href: "/dashboard/crm/loyalty-settings" },
   {
     label: "Email & Promotions",

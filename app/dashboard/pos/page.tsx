@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import { getCurrentUserEmployeeId, getCurrentUserRole } from "@/utils/dashboard-auth";
 import { canAccessCrmSection } from "@/utils/rbac-access";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { CLIENT_SELECT, type ClientEntry } from "../operations/clients-utils";
@@ -18,6 +18,11 @@ import {
 import { buildPosCartLinesFromQuote } from "./pos-utils";
 import CrmShell from "../crm/crm-shell";
 import PosCheckout from "./pos-checkout";
+import {
+  filterActiveEmployees,
+  HR_EMPLOYEE_SELECT,
+  type HrEmployee,
+} from "../hr-payroll/employee-utils";
 
 type PosPageProps = {
   searchParams: Promise<{ quoteId?: string | string[] }>;
@@ -35,8 +40,11 @@ export default async function PosPage({ searchParams }: PosPageProps) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const role = (await getCurrentUserRole()) as AppRole | null;
-  const showCrmNav = canAccessCrmSection(role);
+  const [role, defaultSalesRepId] = await Promise.all([
+    getCurrentUserRole(),
+    getCurrentUserEmployeeId(),
+  ]);
+  const showCrmNav = canAccessCrmSection(role as AppRole | null);
 
   const quoteFetchPromise = quoteId
     ? Promise.all([
@@ -57,6 +65,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     { data: clients, error: clientsError },
     { data: products, error: productsError },
     { data: paymentMethods, error: paymentMethodsError },
+    { data: employees, error: employeesError },
     quoteResults,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", {
@@ -69,6 +78,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     supabase.from("payment_methods").select("name").order("name", {
       ascending: true,
     }),
+    supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
     quoteFetchPromise,
   ]);
 
@@ -101,6 +111,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     clientsError?.message ??
     productsError?.message ??
     paymentMethodsError?.message ??
+    employeesError?.message ??
     null;
 
   if (quoteId && !quote) {
@@ -118,6 +129,10 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       showTitle={!showCrmNav}
       initialClients={(clients as ClientEntry[] | null) ?? []}
       initialProducts={normalizedProducts}
+      initialEmployees={filterActiveEmployees(
+        (employees as HrEmployee[] | null) ?? [],
+      )}
+      defaultSalesRepId={defaultSalesRepId ?? ""}
       initialPaymentMethods={
         ((paymentMethods as { name: string }[] | null) ?? []).map(
           (row) => row.name,
