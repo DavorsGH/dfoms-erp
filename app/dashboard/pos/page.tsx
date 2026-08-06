@@ -9,19 +9,55 @@ import {
   normalizeFinishedProduct,
   type FinishedProductRecord,
 } from "../inventory/finished-products-utils";
+import {
+  SALES_QUOTE_HEADER_SELECT,
+  SALES_QUOTE_LINE_ITEM_SELECT,
+  type SalesQuoteHeaderRow,
+  type SalesQuoteLineItemRow,
+} from "@/utils/sales-quotes-types";
+import { buildPosCartLinesFromQuote } from "./pos-utils";
 import CrmShell from "../crm/crm-shell";
 import PosCheckout from "./pos-checkout";
 
-export default async function PosPage() {
+type PosPageProps = {
+  searchParams: Promise<{ quoteId?: string | string[] }>;
+};
+
+export default async function PosPage({ searchParams }: PosPageProps) {
+  const params = await searchParams;
+  const quoteIdParam = params.quoteId;
+  const quoteId =
+    typeof quoteIdParam === "string"
+      ? quoteIdParam.trim()
+      : Array.isArray(quoteIdParam)
+        ? quoteIdParam[0]?.trim() ?? ""
+        : "";
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const role = (await getCurrentUserRole()) as AppRole | null;
   const showCrmNav = canAccessCrmSection(role);
 
+  const quoteFetchPromise = quoteId
+    ? Promise.all([
+        supabase
+          .from("sales_quotes")
+          .select(SALES_QUOTE_HEADER_SELECT)
+          .eq("id", quoteId)
+          .maybeSingle(),
+        supabase
+          .from("sales_quote_line_items")
+          .select(SALES_QUOTE_LINE_ITEM_SELECT)
+          .eq("quote_id", quoteId)
+          .order("sort_order", { ascending: true }),
+      ])
+    : Promise.resolve([{ data: null, error: null }, { data: null, error: null }] as const);
+
   const [
     { data: clients, error: clientsError },
     { data: products, error: productsError },
     { data: paymentMethods, error: paymentMethodsError },
+    quoteResults,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", {
       ascending: true,
@@ -33,28 +69,65 @@ export default async function PosPage() {
     supabase.from("payment_methods").select("name").order("name", {
       ascending: true,
     }),
+    quoteFetchPromise,
   ]);
 
-  const fetchError =
+  const [{ data: quoteRow, error: quoteError }, { data: quoteLines, error: quoteLinesError }] =
+    quoteResults;
+
+  const normalizedProducts = (
+    (products as FinishedProductRecord[] | null) ?? []
+  ).map((row) => normalizeFinishedProduct(row));
+
+  const quote =
+    quoteRow &&
+    (quoteRow as SalesQuoteHeaderRow).quote_type === "product" &&
+    (quoteRow as SalesQuoteHeaderRow).status === "accepted"
+      ? (quoteRow as SalesQuoteHeaderRow)
+      : null;
+
+  const quoteCartLines = quote
+    ? buildPosCartLinesFromQuote(
+        ((quoteLines as SalesQuoteLineItemRow[] | null) ?? []).map((line) => ({
+          product_id: line.product_id,
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+        })),
+        normalizedProducts,
+      )
+    : [];
+
+  let fetchError =
     clientsError?.message ??
     productsError?.message ??
     paymentMethodsError?.message ??
     null;
 
+  if (quoteId && !quote) {
+    fetchError =
+      quoteError?.message ??
+      quoteLinesError?.message ??
+      "Quote not found or not eligible for POS conversion.";
+  } else if (quoteId && quote && quoteCartLines.length === 0) {
+    fetchError =
+      "Quote has no product lines that can be loaded into the POS cart.";
+  }
+
   const checkout = (
     <PosCheckout
       showTitle={!showCrmNav}
       initialClients={(clients as ClientEntry[] | null) ?? []}
-      initialProducts={
-        ((products as FinishedProductRecord[] | null) ?? []).map((row) =>
-          normalizeFinishedProduct(row),
-        )
-      }
+      initialProducts={normalizedProducts}
       initialPaymentMethods={
         ((paymentMethods as { name: string }[] | null) ?? []).map(
           (row) => row.name,
         )
       }
+      quoteConversionId={quote?.id}
+      quoteNumber={quote?.quote_number}
+      initialCartLines={quoteCartLines}
+      initialClientId={quote?.client_id ?? ""}
+      initialNotes={quote?.notes ?? ""}
       fetchError={fetchError}
     />
   );

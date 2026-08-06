@@ -72,6 +72,49 @@ export function cartTotal(lines: PosCartLine[]): number {
   return roundMoney(lines.reduce((sum, line) => sum + lineSubtotal(line), 0));
 }
 
+export function buildPosCartLinesFromQuote(
+  quoteLineItems: Array<{
+    product_id: string | null;
+    quantity: number | null;
+    unit_price: number | null;
+  }>,
+  products: FinishedProductRecord[],
+): PosCartLine[] {
+  const lines: PosCartLine[] = [];
+
+  for (const item of quoteLineItems) {
+    if (!item.product_id) {
+      continue;
+    }
+
+    const product = products.find((entry) => entry.id === item.product_id);
+    if (!product) {
+      continue;
+    }
+
+    const quantity = Number(item.quantity) || 0;
+    if (quantity <= 0) {
+      continue;
+    }
+
+    lines.push({
+      id: crypto.randomUUID(),
+      productId: product.id,
+      productCode: product.product_code,
+      productName: product.product_name,
+      unitOfMeasure: product.unit_of_measure,
+      quantity,
+      unitPrice:
+        item.unit_price != null
+          ? Number(item.unit_price) || 0
+          : product.standard_selling_price ?? 0,
+      availableStock: product.current_stock,
+    });
+  }
+
+  return lines;
+}
+
 export function cartQuantityForProduct(
   lines: PosCartLine[],
   productId: string,

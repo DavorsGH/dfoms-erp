@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import {
   AUTHORIZED_BY_OTHER,
@@ -31,6 +32,8 @@ type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> &
 type ClientInvoiceFormProps = {
   mode: "create" | "edit";
   invoiceId?: string;
+  /** When set, records quote conversion after a successful create save. */
+  quoteConversionId?: string;
   /** Non-allocating preview of the next server-assigned invoice number (e.g. DF-INV-0001). */
   nextInvoiceNumberPreview?: string | null;
   existingInvoiceNumber?: string;
@@ -61,6 +64,7 @@ function reindexLineItems(lines: ClientInvoiceFormLineItem[]) {
 export default function ClientInvoiceForm({
   mode,
   invoiceId,
+  quoteConversionId,
   nextInvoiceNumberPreview,
   existingInvoiceNumber,
   initialCustomers,
@@ -71,6 +75,7 @@ export default function ClientInvoiceForm({
   fetchError = null,
 }: ClientInvoiceFormProps) {
   const router = useRouter();
+  const supabase = createClient();
   const [form, setForm] = useState<ClientInvoiceFormState>(initialForm);
   const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
@@ -241,6 +246,25 @@ export default function ClientInvoiceForm({
       setError(result?.error ?? "Unable to save invoice.");
       setSaving(false);
       return;
+    }
+
+    const createdInvoiceId = result?.client_invoice?.id;
+    if (mode === "create" && quoteConversionId && createdInvoiceId) {
+      const { error: conversionError } = await supabase.rpc(
+        "record_quote_invoice_conversion",
+        {
+          p_quote_id: quoteConversionId,
+          p_invoice_id: createdInvoiceId,
+        },
+      );
+
+      if (conversionError) {
+        setError(
+          `Invoice saved, but quote conversion failed: ${conversionError.message}`,
+        );
+        setSaving(false);
+        return;
+      }
     }
 
     router.push("/dashboard/finance/client-invoices");
@@ -514,8 +538,8 @@ export default function ClientInvoiceForm({
                       <tr>
                         <th className="px-3 py-2">Description</th>
                         <th className="px-3 py-2">Category</th>
-                        <th className="px-3 py-2">Service</th>
-                        <th className="px-3 py-2">Material</th>
+                        <th className="px-3 py-2">Service Cost (GHS)</th>
+                        <th className="px-3 py-2">Material Cost (GHS)</th>
                         <th className="px-3 py-2">Discount</th>
                         <th className="px-3 py-2">Taxed</th>
                         <th className="px-3 py-2">Total</th>

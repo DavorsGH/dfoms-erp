@@ -39,6 +39,7 @@ import {
   extractPaystackInlineReference,
   openPaystackInlineWithAccessCode,
 } from "./paystack-inline";
+import { recordQuoteSaleConversions } from "@/utils/sales-quotes-types";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -48,6 +49,12 @@ type PosCheckoutProps = {
   initialProducts: FinishedProductRecord[];
   /** Kept for API compat; POS checkout uses Cash / Mobile Money only. */
   initialPaymentMethods: string[];
+  /** Pre-load cart from an accepted product quote conversion. */
+  initialCartLines?: PosCartLine[];
+  initialClientId?: string;
+  initialNotes?: string;
+  quoteConversionId?: string;
+  quoteNumber?: string;
   fetchError: string | null;
 };
 
@@ -66,6 +73,7 @@ type MomoConfirmResponse = {
   ok?: boolean;
   error?: string;
   invoice_no?: string;
+  income_ids?: string[];
   already_fulfilled?: boolean;
 };
 
@@ -82,19 +90,24 @@ export default function PosCheckout({
   initialClients,
   initialProducts,
   initialPaymentMethods,
+  initialCartLines = [],
+  initialClientId = "",
+  initialNotes = "",
+  quoteConversionId,
+  quoteNumber,
   fetchError,
 }: PosCheckoutProps) {
   const supabase = createClient();
   const [products, setProducts] = useState(
     initialProducts.map(normalizeFinishedProduct),
   );
-  const [cartLines, setCartLines] = useState<PosCartLine[]>([]);
+  const [cartLines, setCartLines] = useState<PosCartLine[]>(initialCartLines);
   const [productSearch, setProductSearch] = useState("");
-  const [clientId, setClientId] = useState("");
+  const [clientId, setClientId] = useState(initialClientId);
   const [customerName, setCustomerName] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [dueDate, setDueDate] = useState(todayIsoDate());
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialNotes);
   const [payerEmail, setPayerEmail] = useState("");
   const [payerPhone, setPayerPhone] = useState("");
   const [loading, setLoading] = useState(false);
@@ -124,6 +137,30 @@ export default function PosCheckout({
   } | null>(null);
 
   void initialPaymentMethods;
+
+  async function recordQuoteConversionsForIncomeIds(incomeIds: string[]) {
+    if (!quoteConversionId || incomeIds.length === 0) {
+      return null;
+    }
+
+    try {
+      await recordQuoteSaleConversions(supabase, quoteConversionId, incomeIds);
+      return null;
+    } catch (conversionError) {
+      return conversionError instanceof Error
+        ? conversionError.message
+        : "Quote conversion recording failed.";
+    }
+  }
+
+  async function recordQuoteConversionsFromSummary(
+    summary: PosCheckoutRunSummary,
+  ) {
+    const incomeIds = summary.succeeded
+      .map((line) => line.incomeId)
+      .filter((id): id is string => Boolean(id));
+    return recordQuoteConversionsForIncomeIds(incomeIds);
+  }
 
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
@@ -359,6 +396,8 @@ export default function PosCheckout({
 
     await refreshProducts();
 
+    const conversionWarning = await recordQuoteConversionsFromSummary(summary);
+
     if (summary.stoppedEarly) {
       const succeededLineIds = new Set(
         summary.succeeded.map((line) => line.lineId),
@@ -373,7 +412,8 @@ export default function PosCheckout({
       setPendingInvoiceNo(summary.invoiceNo);
       setCheckoutResult(summary);
       setError(
-        "Checkout stopped because a line item failed. Review the succeeded and failed lines below before retrying the remaining items or handling them manually in Product Sales.",
+        conversionWarning ??
+          "Checkout stopped because a line item failed. Review the succeeded and failed lines below before retrying the remaining items or handling them manually in Product Sales.",
       );
       return;
     }
@@ -426,6 +466,10 @@ export default function PosCheckout({
     if (summary.taxSyncWarning) {
       setError(
         `Sale recorded, but the VFRS tax ledger could not be updated: ${summary.taxSyncWarning}`,
+      );
+    } else if (conversionWarning) {
+      setError(
+        `Sale recorded, but quote conversion failed: ${conversionWarning}`,
       );
     }
   }
@@ -516,6 +560,11 @@ export default function PosCheckout({
             }
 
             await refreshProducts();
+
+            const conversionWarning = await recordQuoteConversionsForIncomeIds(
+              confirmPayload.income_ids ?? [],
+            );
+
             showPaidReceipt({
               invoiceNo: confirmPayload.invoice_no,
               customerLabel,
@@ -523,6 +572,12 @@ export default function PosCheckout({
               lines: cartSnapshotForReceipt,
               amountReceived: cartTotal(cartSnapshotForReceipt),
             });
+
+            if (conversionWarning) {
+              setError(
+                `Sale recorded, but quote conversion failed: ${conversionWarning}`,
+              );
+            }
           } catch (confirmError) {
             setError(
               confirmError instanceof Error
@@ -664,6 +719,12 @@ export default function PosCheckout({
           Search products, build a cart, and complete a multi-line product sale
           with one shared invoice number.
         </p>
+        {quoteConversionId && quoteNumber ? (
+          <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            Converting accepted product quote {quoteNumber}. Cart and customer
+            are pre-filled — review and complete checkout normally.
+          </p>
+        ) : null}
       </div>
 
       {error ? (
