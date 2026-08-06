@@ -28,11 +28,16 @@ export type PositionLookup = {
 
 async function fetchDepartments(
   supabase: SupabaseClient,
+  tenantId?: string | null,
 ): Promise<DepartmentLookup[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("departments")
     .select("dept_code, department_name")
     .order("department_name", { ascending: true });
+  if (tenantId) {
+    query = query.eq("tenant_id", tenantId);
+  }
+  const { data, error } = await query;
 
   if (error || !data?.length) {
     return [];
@@ -49,11 +54,16 @@ async function fetchDepartments(
 
 async function fetchProjects(
   supabase: SupabaseClient,
+  tenantId?: string | null,
 ): Promise<ProjectLookup[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("projects")
     .select("project_code, project_name")
     .order("project_name", { ascending: true });
+  if (tenantId) {
+    query = query.eq("tenant_id", tenantId);
+  }
+  const { data, error } = await query;
 
   if (error || !data?.length) {
     return [];
@@ -70,12 +80,17 @@ async function fetchProjects(
 
 export async function fetchPositions(
   supabase: SupabaseClient,
+  tenantId?: string | null,
 ): Promise<PositionLookup[]> {
   // positions PK / display column is position_title (tenant-scoped via RLS).
-  const { data, error } = await supabase
+  let query = supabase
     .from("positions")
     .select("position_title")
     .order("position_title", { ascending: true });
+  if (tenantId) {
+    query = query.eq("tenant_id", tenantId);
+  }
+  const { data, error } = await query;
 
   if (error || !data?.length) {
     return [];
@@ -156,11 +171,12 @@ export type EmployeePayConfig = {
 
 export async function loadEmployeeLookups(
   supabase: SupabaseClient,
+  tenantId?: string | null,
 ): Promise<EmployeeLookups> {
   const [departments, positions, projects, shifts, sites] = await Promise.all([
-    fetchDepartments(supabase),
-    fetchPositions(supabase),
-    fetchProjects(supabase),
+    fetchDepartments(supabase, tenantId),
+    fetchPositions(supabase, tenantId),
+    fetchProjects(supabase, tenantId),
     fetchNamedLookup(supabase, "shifts"),
     fetchSites(supabase),
   ]);

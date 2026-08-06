@@ -70,12 +70,18 @@ export default async function PayrollProcessingPage() {
     supabase.from("payroll_processing").select("payroll_month"),
     supabase.from("payroll_history").select("payroll_month"),
     supabase.from("month_end_close").select("*"),
-    supabase
-      .from("employees")
-      .select(
-        "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name",
-      )
-      .order("staff_id", { ascending: true }),
+    tenantId
+      ? supabase
+          .from("employees")
+          .select(
+            "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name",
+          )
+          .eq("tenant_id", tenantId)
+          .order("staff_id", { ascending: true })
+      : Promise.resolve({
+          data: null,
+          error: { message: "Unable to resolve tenant for payroll employees." },
+        }),
     supabase
       .from("attendance_register")
       .select("staff_id, date, attendance_status"),

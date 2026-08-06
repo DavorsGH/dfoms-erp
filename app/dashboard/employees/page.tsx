@@ -26,12 +26,17 @@ export default async function EmployeesPage() {
   const supabase = createClient(cookieStore);
   const tenantId = await getCurrentUserTenantId();
 
+  const employeeQuery = supabase
+    .from("employees")
+    .select(EMPLOYEE_SELECT)
+    .order("staff_id", { ascending: true });
+  if (tenantId) {
+    employeeQuery.eq("tenant_id", tenantId);
+  }
+
   const [{ data, error }, lookups, payConfig] = await Promise.all([
-    supabase
-      .from("employees")
-      .select(EMPLOYEE_SELECT)
-      .order("staff_id", { ascending: true }),
-    loadEmployeeLookups(supabase),
+    employeeQuery,
+    loadEmployeeLookups(supabase, tenantId),
     loadEmployeePayConfig(supabase, tenantId),
   ]);
 
