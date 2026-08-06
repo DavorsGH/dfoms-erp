@@ -1,9 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
+import PromoCodeField from "@/components/promo-code-field";
 import { PAYMENT_SETTINGS_REQUIRED_CODE } from "@/utils/product-sale-paystack";
+import { redeemLoyaltyPointsForCheckout } from "@/utils/promo-discount-utils";
+import {
+  LOYALTY_ACCOUNT_SELECT,
+  earnLoyaltyPointsForSale,
+  formatLoyaltyPoints,
+  normalizeLoyaltyAccount,
+  type LoyaltyAccountRow,
+} from "@/utils/loyalty-types";
 import { inputClassName } from "../employees/employee-record-utils";
 import {
   FINISHED_PRODUCT_SELECT,
@@ -26,6 +35,7 @@ import {
   POS_CHECKOUT_PAYMENT_METHODS,
   POS_MOMO_PAYMENT_METHOD,
   cartTotal,
+  effectiveCartTotal,
   getAvailableStockForProduct,
   getCustomerDisplayName,
   lineSubtotal,
@@ -135,6 +145,14 @@ export default function PosCheckout({
     amountGhs: number;
     paymentMethod: string;
   } | null>(null);
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+  const [loyaltyPointsRedeemed, setLoyaltyPointsRedeemed] = useState(0);
+  const [loyaltyBalance, setLoyaltyBalance] = useState<number | null>(null);
+  const [loyaltyRedeemInput, setLoyaltyRedeemInput] = useState("");
+  const [loyaltyRedeemError, setLoyaltyRedeemError] = useState<string | null>(null);
+  const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
 
   void initialPaymentMethods;
 
@@ -176,8 +194,59 @@ export default function PosCheckout({
   }, [productSearch, products]);
 
   const total = useMemo(() => cartTotal(cartLines), [cartLines]);
+  const payableTotal = useMemo(
+    () => effectiveCartTotal(cartLines, promoDiscount, loyaltyDiscount),
+    [cartLines, promoDiscount, loyaltyDiscount],
+  );
   const isMobileMoney = paymentMethod === POS_MOMO_PAYMENT_METHOD;
   const busy = loading || momoWaiting;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLoyaltyBalance() {
+      if (!clientId) {
+        setLoyaltyBalance(null);
+        return;
+      }
+
+      const { data, error: loyaltyError } = await supabase
+        .from("loyalty_accounts")
+        .select(LOYALTY_ACCOUNT_SELECT)
+        .eq("client_id", clientId)
+        .maybeSingle();
+
+      if (cancelled) {
+        return;
+      }
+
+      if (loyaltyError) {
+        setLoyaltyBalance(null);
+        return;
+      }
+
+      setLoyaltyBalance(
+        data
+          ? normalizeLoyaltyAccount(data as LoyaltyAccountRow).points_balance
+          : 0,
+      );
+    }
+
+    void loadLoyaltyBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
+
+  function clearCheckoutAdjustments() {
+    setAppliedPromoCode(null);
+    setPromoDiscount(0);
+    setLoyaltyDiscount(0);
+    setLoyaltyPointsRedeemed(0);
+    setLoyaltyRedeemInput("");
+    setLoyaltyRedeemError(null);
+  }
 
   async function refreshProducts() {
     const { data, error: productError } = await supabase
@@ -208,6 +277,7 @@ export default function PosCheckout({
 
     setError(null);
     setCheckoutResult(null);
+    clearCheckoutAdjustments();
 
     setCartLines((current) => [
       ...current,
@@ -230,6 +300,7 @@ export default function PosCheckout({
     value: string,
   ) {
     setCheckoutResult(null);
+    clearCheckoutAdjustments();
 
     setCartLines((current) =>
       current.map((line) => {
@@ -273,7 +344,69 @@ export default function PosCheckout({
 
   function removeCartLine(lineId: string) {
     setCheckoutResult(null);
+    clearCheckoutAdjustments();
     setCartLines((current) => current.filter((line) => line.id !== lineId));
+  }
+
+  async function handleRedeemLoyaltyPoints() {
+    if (!clientId) {
+      setLoyaltyRedeemError("Select a customer to redeem points.");
+      return;
+    }
+
+    const points = Number.parseFloat(loyaltyRedeemInput);
+    if (!Number.isFinite(points) || points <= 0) {
+      setLoyaltyRedeemError("Enter a valid points amount.");
+      return;
+    }
+
+    setLoyaltyRedeemLoading(true);
+    setLoyaltyRedeemError(null);
+
+    const result = await redeemLoyaltyPointsForCheckout(supabase, {
+      clientId,
+      points,
+      sourceType: "product_sale",
+    });
+
+    if (!result.ok) {
+      setLoyaltyRedeemError(result.error);
+      setLoyaltyRedeemLoading(false);
+      return;
+    }
+
+    setLoyaltyPointsRedeemed(points);
+    setLoyaltyDiscount(result.discountAmount);
+    setAppliedPromoCode(null);
+    setPromoDiscount(0);
+    setLoyaltyBalance((current) =>
+      current == null ? current : Math.max(0, current - points),
+    );
+    setLoyaltyRedeemLoading(false);
+  }
+
+  function clearLoyaltyRedemption() {
+    setLoyaltyDiscount(0);
+    setLoyaltyPointsRedeemed(0);
+    setLoyaltyRedeemInput("");
+    setLoyaltyRedeemError(null);
+  }
+
+  async function recordLoyaltyEarnAfterSale(
+    trimmedClientId: string | null,
+    amountPaid: number,
+    sourceReference: string,
+  ) {
+    if (!trimmedClientId || amountPaid <= 0) {
+      return null;
+    }
+
+    return earnLoyaltyPointsForSale(supabase, {
+      clientId: trimmedClientId,
+      amountSpent: amountPaid,
+      sourceType: "product_sale",
+      sourceReference,
+    });
   }
 
   function resetCheckoutForm() {
@@ -295,6 +428,7 @@ export default function PosCheckout({
     setMomoWaiting(false);
     setError(null);
     setPaymentSettingsRequired(false);
+    clearCheckoutAdjustments();
   }
 
   function validateCheckoutBasics(): {
@@ -380,7 +514,7 @@ export default function PosCheckout({
     trimmedClientId: string | null,
     trimmedCustomerName: string | null,
   ) {
-    const amountReceived = cartTotal(cartLines);
+    const amountReceived = payableTotal;
     const summary = await runPosCheckout(supabase, {
       saleDate: todayIsoDate(),
       invoiceNo: pendingInvoiceNo,
@@ -433,8 +567,14 @@ export default function PosCheckout({
       ),
       paymentMethod: paymentMethod.trim(),
       lines: receiptLines,
-      amountReceived: cartTotal(receiptLines),
+      amountReceived,
     });
+
+    const loyaltyEarnWarning = await recordLoyaltyEarnAfterSale(
+      trimmedClientId,
+      amountReceived,
+      summary.invoiceNo,
+    );
 
     // Cash / non-Paystack POS: sale_completed only (no separate payment_received).
     if (trimmedClientId) {
@@ -454,7 +594,7 @@ export default function PosCheckout({
               initialClients,
             ),
             invoice_no: summary.invoiceNo,
-            amount: String(cartTotal(receiptLines)),
+            amount: String(amountReceived),
             product_summary: productSummary,
           },
         }),
@@ -463,7 +603,11 @@ export default function PosCheckout({
       });
     }
 
-    if (summary.taxSyncWarning) {
+    if (loyaltyEarnWarning) {
+      setError(
+        `Sale recorded, but loyalty points could not be earned: ${loyaltyEarnWarning}`,
+      );
+    } else if (summary.taxSyncWarning) {
       setError(
         `Sale recorded, but the VFRS tax ledger could not be updated: ${summary.taxSyncWarning}`,
       );
@@ -492,6 +636,7 @@ export default function PosCheckout({
           due_date: dueDate,
           delivery_email: payerEmail.trim() || null,
           cart_lines: cartLines,
+          checkout_amount_ghs: payableTotal,
         }),
       });
 
@@ -570,12 +715,22 @@ export default function PosCheckout({
               customerLabel,
               paymentMethod: POS_MOMO_PAYMENT_METHOD,
               lines: cartSnapshotForReceipt,
-              amountReceived: cartTotal(cartSnapshotForReceipt),
+              amountReceived: payableTotal,
             });
+
+            const loyaltyEarnWarning = await recordLoyaltyEarnAfterSale(
+              trimmedClientId,
+              payableTotal,
+              confirmPayload.invoice_no,
+            );
 
             if (conversionWarning) {
               setError(
                 `Sale recorded, but quote conversion failed: ${conversionWarning}`,
+              );
+            } else if (loyaltyEarnWarning) {
+              setError(
+                `Sale recorded, but loyalty points could not be earned: ${loyaltyEarnWarning}`,
               );
             }
           } catch (confirmError) {
@@ -669,7 +824,7 @@ export default function PosCheckout({
       return;
     }
 
-    const amountGhs = cartTotal(cartLines);
+    const amountGhs = payableTotal;
     if (amountGhs <= 0) {
       setError("Cart total must be greater than zero.");
       return;
@@ -930,9 +1085,24 @@ export default function PosCheckout({
           </ScrollableTable>
         )}
         <p className="mt-4 text-sm text-slate-700">
-          Cart total:{" "}
+          Cart subtotal:{" "}
+          <span className="font-semibold text-[#0f2744]">{formatGHS(total)}</span>
+        </p>
+        {promoDiscount > 0 ? (
+          <p className="mt-1 text-sm text-emerald-800">
+            Promo discount ({appliedPromoCode}): -{formatGHS(promoDiscount)}
+          </p>
+        ) : null}
+        {loyaltyDiscount > 0 ? (
+          <p className="mt-1 text-sm text-emerald-800">
+            Loyalty redemption ({formatLoyaltyPoints(loyaltyPointsRedeemed)} pts): -
+            {formatGHS(loyaltyDiscount)}
+          </p>
+        ) : null}
+        <p className="mt-2 text-sm text-slate-700">
+          Amount due:{" "}
           <span className="text-lg font-semibold text-[#0f2744]">
-            {formatGHS(total)}
+            {formatGHS(payableTotal)}
           </span>
         </p>
       </section>
@@ -942,6 +1112,76 @@ export default function PosCheckout({
         className="space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
       >
         <h2 className="text-lg font-semibold text-[#0f2744]">Checkout</h2>
+
+        <PromoCodeField
+          supabase={supabase}
+          clientId={clientId || null}
+          orderAmount={total}
+          sourceType="product_sale"
+          appliedCode={appliedPromoCode}
+          appliedDiscount={promoDiscount}
+          onApplied={(code, discountAmount) => {
+            setAppliedPromoCode(code);
+            setPromoDiscount(discountAmount);
+            clearLoyaltyRedemption();
+          }}
+          onClear={() => {
+            setAppliedPromoCode(null);
+            setPromoDiscount(0);
+          }}
+          disabled={busy || cartLines.length === 0}
+        />
+
+        {clientId ? (
+          <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-[#0f2744]">Redeem Points</p>
+            <p className="text-sm text-slate-600">
+              Available balance:{" "}
+              {loyaltyBalance == null
+                ? "Loading…"
+                : `${formatLoyaltyPoints(loyaltyBalance)} pts`}
+            </p>
+            {loyaltyDiscount > 0 ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm text-emerald-800">
+                  Redeemed {formatLoyaltyPoints(loyaltyPointsRedeemed)} pts for{" "}
+                  {formatGHS(loyaltyDiscount)} off
+                </p>
+                <button
+                  type="button"
+                  onClick={clearLoyaltyRedemption}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  step="1"
+                  value={loyaltyRedeemInput}
+                  onChange={(event) => setLoyaltyRedeemInput(event.target.value)}
+                  placeholder="Points to redeem"
+                  disabled={busy || loyaltyRedeemLoading}
+                  className={`${inputClassName} min-w-[180px] flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleRedeemLoyaltyPoints()}
+                  disabled={busy || loyaltyRedeemLoading || !loyaltyRedeemInput.trim()}
+                  className="rounded-md border border-[#0f2744] px-3 py-1.5 text-sm font-medium text-[#0f2744] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loyaltyRedeemLoading ? "Redeeming…" : "Redeem"}
+                </button>
+              </div>
+            )}
+            {loyaltyRedeemError ? (
+              <p className="text-sm text-red-700">{loyaltyRedeemError}</p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div>
@@ -953,6 +1193,7 @@ export default function PosCheckout({
               onChange={(event) => {
                 const nextClientId = event.target.value;
                 setClientId(nextClientId);
+                clearCheckoutAdjustments();
                 if (nextClientId) {
                   setCustomerName("");
                   const selected = initialClients.find(

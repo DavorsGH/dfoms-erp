@@ -24,6 +24,49 @@ import {
   type CustomerEntry,
 } from "./customers-utils";
 
+import {
+  formatLoyaltyPoints,
+  formatLoyaltyTransactionType,
+  loyaltyTransactionBadgeClassName,
+  normalizeLoyaltyAccount,
+  normalizeLoyaltyTransaction,
+  type LoyaltyAccountRow,
+  type LoyaltyTransactionRow,
+} from "@/utils/loyalty-types";
+
+export type Customer360LoyaltyAccount = LoyaltyAccountRow;
+export type Customer360LoyaltyTransaction = LoyaltyTransactionRow;
+
+export const CUSTOMER_360_LOYALTY_TRANSACTION_SELECT =
+  "id, tenant_id, client_id, transaction_type, points, source_type, source_reference, notes, created_at";
+
+export function formatLoyaltyTransactionDate(value: string | null | undefined) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export {
+  formatLoyaltyPoints,
+  formatLoyaltyTransactionType,
+  loyaltyTransactionBadgeClassName,
+  normalizeLoyaltyAccount,
+  normalizeLoyaltyTransaction,
+};
+
 export type Customer360Opportunity = {
   id: string;
   opportunity_name: string;
@@ -90,6 +133,7 @@ export const CUSTOMER_360_TABS = [
   { id: "quotes", label: "Quotes" },
   { id: "invoices", label: "Invoices" },
   { id: "product-sales", label: "Product Sales" },
+  { id: "loyalty", label: "Loyalty" },
   { id: "activities", label: "Activities" },
 ] as const;
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import PromoCodeField from "@/components/promo-code-field";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import {
   AUTHORIZED_BY_OTHER,
@@ -15,6 +16,8 @@ import {
   formatInvoiceMoney,
   groupLineItemsByCategory,
   resolveAuthorizedByFields,
+  roundMoney,
+  toNumber,
   type ClientInvoiceAuthorizedSignerOption,
   type ClientInvoiceFormAuthorizedByState,
   type ClientInvoiceFormLineItem,
@@ -79,6 +82,8 @@ export default function ClientInvoiceForm({
   const [form, setForm] = useState<ClientInvoiceFormState>(initialForm);
   const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
+  const [promoDiscount, setPromoDiscount] = useState(0);
   const [sitePicker, setSitePicker] = useState("");
 
   const clientSites = useMemo(
@@ -97,6 +102,11 @@ export default function ClientInvoiceForm({
         form.wht_rate,
       ),
     [form.line_items, form.vat_nhil_getfund_rate, form.wht_rate],
+  );
+
+  const invoiceTotalDue = useMemo(
+    () => roundMoney(Math.max(0, totals.total_amount_due - promoDiscount)),
+    [totals.total_amount_due, promoDiscount],
   );
 
   const groupedLines = useMemo(
@@ -225,7 +235,24 @@ export default function ClientInvoiceForm({
       notes: form.notes,
       authorized_by_name: authorizedBy.authorized_by_name,
       authorized_by_title: authorizedBy.authorized_by_title,
-      line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => line),
+      line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }, index) =>
+        index === 0 && promoDiscount > 0
+          ? {
+              ...line,
+              discount_amount: roundMoney(
+                toNumber(line.discount_amount) + promoDiscount,
+              ),
+              total_cost: roundMoney(
+                computeLineTotalCost({
+                  ...line,
+                  discount_amount: roundMoney(
+                    toNumber(line.discount_amount) + promoDiscount,
+                  ),
+                }),
+              ),
+            }
+          : line,
+      ),
       payment_account_ids: form.payment_account_ids,
     };
 
@@ -819,6 +846,24 @@ export default function ClientInvoiceForm({
             />
           </div>
         </div>
+        <PromoCodeField
+          supabase={supabase}
+          clientId={form.client_id.trim() || null}
+          orderAmount={totals.subtotal}
+          sourceType="invoice"
+          sourceReference={invoiceId ?? null}
+          appliedCode={appliedPromoCode}
+          appliedDiscount={promoDiscount}
+          onApplied={(code, discountAmount) => {
+            setAppliedPromoCode(code);
+            setPromoDiscount(discountAmount);
+          }}
+          onClear={() => {
+            setAppliedPromoCode(null);
+            setPromoDiscount(0);
+          }}
+          disabled={saving || totals.subtotal <= 0}
+        />
         <dl className="grid gap-3 md:grid-cols-2">
           <div className="rounded-md bg-slate-50 px-4 py-3">
             <dt className="text-xs uppercase tracking-wide text-slate-500">Subtotal</dt>
@@ -842,12 +887,22 @@ export default function ClientInvoiceForm({
               {formatInvoiceMoney(totals.wht_amount)}
             </dd>
           </div>
-          <div className="rounded-md bg-[#0f2744] px-4 py-3 text-white">
+          <div className="rounded-md bg-slate-50 px-4 py-3 md:col-span-2">
+            <dt className="text-xs uppercase tracking-wide text-slate-500">
+              Promo Discount
+            </dt>
+            <dd className="text-lg font-semibold text-emerald-800">
+              {promoDiscount > 0
+                ? `-${formatInvoiceMoney(promoDiscount)} (${appliedPromoCode})`
+                : formatInvoiceMoney(0)}
+            </dd>
+          </div>
+          <div className="rounded-md bg-[#0f2744] px-4 py-3 text-white md:col-span-2">
             <dt className="text-xs uppercase tracking-wide text-slate-200">
               Total Amount Due
             </dt>
             <dd className="text-lg font-semibold">
-              {formatInvoiceMoney(totals.total_amount_due)}
+              {formatInvoiceMoney(invoiceTotalDue)}
             </dd>
           </div>
         </dl>

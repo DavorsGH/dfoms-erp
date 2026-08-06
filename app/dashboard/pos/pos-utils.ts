@@ -72,6 +72,18 @@ export function cartTotal(lines: PosCartLine[]): number {
   return roundMoney(lines.reduce((sum, line) => sum + lineSubtotal(line), 0));
 }
 
+export function effectiveCartTotal(
+  lines: PosCartLine[],
+  promoDiscount = 0,
+  loyaltyDiscount = 0,
+): number {
+  const gross = cartTotal(lines);
+  const totalDiscount = roundMoney(
+    Math.max(0, promoDiscount) + Math.max(0, loyaltyDiscount),
+  );
+  return roundMoney(Math.max(0, gross - totalDiscount));
+}
+
 export function buildPosCartLinesFromQuote(
   quoteLineItems: Array<{
     product_id: string | null;

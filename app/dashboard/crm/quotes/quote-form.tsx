@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import PromoCodeField from "@/components/promo-code-field";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import type { FinishedProductRecord } from "@/app/dashboard/inventory/finished-products-utils";
 import {
@@ -21,7 +22,7 @@ import {
   type QuoteType,
   type SalesQuoteSiteOption,
 } from "@/utils/sales-quotes-types";
-import { groupLineItemsByCategory } from "@/utils/client-invoices-types";
+import { groupLineItemsByCategory, roundMoney } from "@/utils/client-invoices-types";
 
 type PipelineOpportunityOption = {
   id: string;
@@ -78,6 +79,8 @@ export default function QuoteForm({
   const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
   const [sitePicker, setSitePicker] = useState("");
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
+  const [promoDiscount, setPromoDiscount] = useState(0);
 
   const clientSites = useMemo(
     () =>
@@ -105,6 +108,11 @@ export default function QuoteForm({
         form.product_line_items,
       ),
     [form.quote_type, form.service_line_items, form.product_line_items],
+  );
+
+  const quoteTotal = useMemo(
+    () => roundMoney(Math.max(0, totals.subtotal - promoDiscount)),
+    [totals.subtotal, promoDiscount],
   );
 
   const groupedServiceLines = useMemo(
@@ -307,6 +315,24 @@ export default function QuoteForm({
         return;
       }
 
+      if (promoDiscount > 0) {
+        const { error: promoUpdateError } = await supabase
+          .from("sales_quotes")
+          .update({
+            discount_amount: promoDiscount,
+            total_amount: quoteTotal,
+          })
+          .eq("id", String(data));
+
+        if (promoUpdateError) {
+          setError(
+            `Quote created, but promo discount could not be saved: ${promoUpdateError.message}`,
+          );
+          setSaving(false);
+          return;
+        }
+      }
+
       router.push(`/dashboard/crm/quotes/${String(data)}`);
       router.refresh();
       return;
@@ -329,8 +355,8 @@ export default function QuoteForm({
         bill_to_address: form.bill_to_address.trim() || null,
         notes: form.notes.trim() || null,
         subtotal: totals.subtotal,
-        discount_amount: totals.discount_amount,
-        total_amount: totals.total_amount,
+        discount_amount: promoDiscount,
+        total_amount: quoteTotal,
         updated_at: new Date().toISOString(),
       })
       .eq("id", quoteId);
@@ -776,6 +802,25 @@ export default function QuoteForm({
       </section>
 
       <section className={cardClassName}>
+        <PromoCodeField
+          supabase={supabase}
+          clientId={form.client_id.trim() || null}
+          orderAmount={totals.subtotal}
+          sourceType="invoice"
+          sourceReference={quoteId ?? null}
+          appliedCode={appliedPromoCode}
+          appliedDiscount={promoDiscount}
+          onApplied={(code, discountAmount) => {
+            setAppliedPromoCode(code);
+            setPromoDiscount(discountAmount);
+          }}
+          onClear={() => {
+            setAppliedPromoCode(null);
+            setPromoDiscount(0);
+          }}
+          disabled={saving || totals.subtotal <= 0}
+        />
+
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm text-slate-600">
@@ -784,10 +829,15 @@ export default function QuoteForm({
                 {formatQuoteMoney(totals.subtotal)}
               </span>
             </p>
+            {promoDiscount > 0 ? (
+              <p className="text-sm text-emerald-800">
+                Promo discount ({appliedPromoCode}): -{formatQuoteMoney(promoDiscount)}
+              </p>
+            ) : null}
             <p className="text-sm text-slate-600">
               Total:{" "}
               <span className="text-lg font-semibold text-[#0f2744]">
-                {formatQuoteMoney(totals.total_amount)}
+                {formatQuoteMoney(quoteTotal)}
               </span>
             </p>
           </div>

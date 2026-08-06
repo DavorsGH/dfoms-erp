@@ -21,6 +21,9 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
   formatInvoiceStatus,
+  formatLoyaltyPoints,
+  formatLoyaltyTransactionDate,
+  formatLoyaltyTransactionType,
   formatQuoteMoney,
   formatQuoteStatus,
   formatQuoteType,
@@ -31,8 +34,11 @@ import {
   getProductSaleLabel,
   isActivityComplete,
   isProductSaleVoided,
+  loyaltyTransactionBadgeClassName,
   quoteStatusBadgeClassName,
   type Customer360Invoice,
+  type Customer360LoyaltyAccount,
+  type Customer360LoyaltyTransaction,
   type Customer360Opportunity,
   type Customer360ProductSale,
   type Customer360Quote,
@@ -47,6 +53,8 @@ type Customer360Props = {
   invoices: Customer360Invoice[];
   productSales: Customer360ProductSale[];
   activities: SalesActivity[];
+  loyaltyAccount: Customer360LoyaltyAccount | null;
+  loyaltyTransactions: Customer360LoyaltyTransaction[];
   fetchError: string | null;
 };
 
@@ -61,6 +69,8 @@ export default function Customer360({
   invoices,
   productSales,
   activities,
+  loyaltyAccount,
+  loyaltyTransactions,
   fetchError,
 }: Customer360Props) {
   const [activeTab, setActiveTab] = useState<Customer360TabId>("opportunities");
@@ -198,6 +208,12 @@ export default function Customer360({
           {activeTab === "invoices" ? <InvoicesSection invoices={invoices} /> : null}
           {activeTab === "product-sales" ? (
             <ProductSalesSection productSales={productSales} />
+          ) : null}
+          {activeTab === "loyalty" ? (
+            <LoyaltySection
+              loyaltyAccount={loyaltyAccount}
+              loyaltyTransactions={loyaltyTransactions}
+            />
           ) : null}
           {activeTab === "activities" ? (
             <ActivitiesSection activities={activities} />
@@ -389,6 +405,86 @@ function ProductSalesSection({
         </tbody>
       </table>
     </ScrollableTable>
+  );
+}
+
+function LoyaltySection({
+  loyaltyAccount,
+  loyaltyTransactions,
+}: {
+  loyaltyAccount: Customer360LoyaltyAccount | null;
+  loyaltyTransactions: Customer360LoyaltyTransaction[];
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs uppercase tracking-wide text-slate-500">
+            Points Balance
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-[#0f2744]">
+            {formatLoyaltyPoints(loyaltyAccount?.points_balance ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs uppercase tracking-wide text-slate-500">
+            Lifetime Earned
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-[#0f2744]">
+            {formatLoyaltyPoints(loyaltyAccount?.lifetime_earned ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs uppercase tracking-wide text-slate-500">
+            Lifetime Redeemed
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-[#0f2744]">
+            {formatLoyaltyPoints(loyaltyAccount?.lifetime_redeemed ?? 0)}
+          </p>
+        </div>
+      </div>
+
+      <ScrollableTable>
+        <table className={scrollableTableClassName}>
+          <thead className={scrollableTableHeadClassName}>
+            <tr>
+              <th className={scrollableTableThClassName}>Date</th>
+              <th className={scrollableTableThClassName}>Type</th>
+              <th className={scrollableTableThClassName}>Points</th>
+              <th className={scrollableTableThClassName}>Source</th>
+              <th className={scrollableTableThClassName}>Reference</th>
+              <th className={scrollableTableThClassName}>Notes</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {loyaltyTransactions.length === 0 ? (
+              <EmptyRow colSpan={6} message="No loyalty transactions yet." />
+            ) : (
+              loyaltyTransactions.map((entry, index) => (
+                <tr key={entry.id} className={getStripedRowClassName(index)}>
+                  <td className="px-4 py-3">
+                    {formatLoyaltyTransactionDate(entry.created_at)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${loyaltyTransactionBadgeClassName(entry.transaction_type)}`}
+                    >
+                      {formatLoyaltyTransactionType(entry.transaction_type)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {formatLoyaltyPoints(entry.points)}
+                  </td>
+                  <td className="px-4 py-3">{entry.source_type ?? "—"}</td>
+                  <td className="px-4 py-3">{entry.source_reference ?? "—"}</td>
+                  <td className="px-4 py-3">{entry.notes ?? "—"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </ScrollableTable>
+    </div>
   );
 }
 
