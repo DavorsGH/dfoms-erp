@@ -1,6 +1,9 @@
 -- Read-only audit: policies that may leak cross-tenant data.
 -- Run in Supabase SQL editor BEFORE and AFTER scripts/69_drop_legacy_cross_tenant_rls_policies.sql
 --
+-- CI / pre-deploy gate (preferred): npm run audit:tenant-rls
+--   → scripts/audit-tenant-rls.ts (exits non-zero, lists every offending policy)
+--
 -- A policy is flagged when its USING or WITH CHECK expression references role/access
 -- helpers (is_super_admin, current_user_role, can_access_*, can_manage_*, can_write_*)
 -- but does NOT reference tenant_matches(...) or current_user_tenant_id().

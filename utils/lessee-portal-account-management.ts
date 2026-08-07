@@ -1,6 +1,10 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  mapSupabasePasswordError,
+  validatePasswordLength,
+} from "@/utils/password-policy";
 
 /** Long-lived Auth ban — blocks new sign-in / refresh without deleting the Auth user. */
 const PORTAL_BAN_DURATION = "876000h";
@@ -116,18 +120,16 @@ export async function resetLesseePortalPassword(
   authUserId: string,
   password: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (password.length < 8) {
-    return {
-      ok: false,
-      error: "Password must be at least 8 characters.",
-    };
+  const lengthError = validatePasswordLength(password);
+  if (lengthError) {
+    return { ok: false, error: lengthError };
   }
 
   const { error } = await admin.auth.admin.updateUserById(authUserId, {
     password,
   });
   if (error) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: mapSupabasePasswordError(error) };
   }
   return { ok: true };
 }

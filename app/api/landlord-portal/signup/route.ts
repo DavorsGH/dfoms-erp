@@ -7,6 +7,11 @@ import {
 import { notifyStaffLandlordPendingApproval } from "@/utils/real-estate-staff-notifications";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isDuplicateEmailError } from "@/utils/tenant-signup";
+import {
+  mapSupabasePasswordError,
+  validatePasswordClient,
+} from "@/utils/password-policy";
+import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
 
 type SignupBody = {
   name?: string;
@@ -42,17 +47,9 @@ export async function POST(request: Request) {
   const password = body.password ?? "";
   const confirmPassword = body.confirm_password ?? "";
 
-  if (password.length < 8) {
-    return NextResponse.json(
-      { error: "Password must be at least 8 characters." },
-      { status: 400 },
-    );
-  }
-  if (password !== confirmPassword) {
-    return NextResponse.json(
-      { error: "Password and confirmation do not match." },
-      { status: 400 },
-    );
+  const passwordError = validatePasswordClient(password, confirmPassword);
+  if (passwordError) {
+    return NextResponse.json({ error: passwordError }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -99,10 +96,14 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(
+      { error: mapSupabasePasswordError(createError ?? { message }) },
+      { status: 400 },
+    );
   }
 
   const authUserId = authCreated.user.id;
+  await recordPasswordUpdatedAt(authUserId);
 
   const { error: linkError } = await admin
     .from("landlords")

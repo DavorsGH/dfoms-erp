@@ -6,6 +6,11 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PasswordInput from "@/components/password-input";
 import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_POLICY_HINT,
+  validatePasswordClient,
+} from "@/utils/password-policy";
+import {
   portalAuthCardClassName,
   portalAuthInputClassName,
   portalAuthPrimaryButtonClassName,
@@ -41,12 +46,9 @@ export default function AcceptInvitePage() {
       setError("Missing invite token.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+    const validationError = validatePasswordClient(password, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 

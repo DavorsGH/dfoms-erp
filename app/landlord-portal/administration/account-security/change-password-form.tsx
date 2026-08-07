@@ -1,8 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/utils/supabase/client";
 import PasswordInput from "@/components/password-input";
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_POLICY_HINT,
+} from "@/utils/password-policy";
+import { updateOwnPassword } from "@/lib/security/update-password-action";
 import {
   portalErrorBannerClassName,
   portalInputClassName,
@@ -11,12 +15,7 @@ import {
   portalSuccessBannerClassName,
 } from "../../portal-ui";
 
-/**
- * Landlord portal password change — same supabase.auth.updateUser pattern as
- * staff My Account, with portal signup min length (8).
- */
 export default function LandlordPortalChangePasswordForm() {
-  const supabase = createClient();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,25 +26,12 @@ export default function LandlordPortalChangePasswordForm() {
     event.preventDefault();
     setError(null);
     setSuccess(null);
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError("New passwords do not match.");
-      return;
-    }
-
     setLoading(true);
 
-    const { error: updateError } = await supabase.auth.updateUser({
-      password,
-    });
+    const result = await updateOwnPassword(password, confirmPassword);
 
-    if (updateError) {
-      setError(updateError.message);
+    if (!result.ok) {
+      setError(result.error);
       setLoading(false);
       return;
     }
@@ -58,6 +44,7 @@ export default function LandlordPortalChangePasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="mt-4 grid max-w-md gap-4">
+      <p className="text-sm text-slate-600">{PASSWORD_POLICY_HINT}</p>
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
       {success ? (
         <div className={portalSuccessBannerClassName}>{success}</div>
@@ -70,7 +57,7 @@ export default function LandlordPortalChangePasswordForm() {
         <PasswordInput
           id="new-password"
           required
-          minLength={8}
+          minLength={PASSWORD_MIN_LENGTH}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className={portalInputClassName}
@@ -83,7 +70,7 @@ export default function LandlordPortalChangePasswordForm() {
         <PasswordInput
           id="confirm-password"
           required
-          minLength={8}
+          minLength={PASSWORD_MIN_LENGTH}
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
           className={portalInputClassName}

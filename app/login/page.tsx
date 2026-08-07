@@ -29,6 +29,16 @@ export default function LoginPage() {
     }
 
     const destination = getSafeNext(searchParams.get("next"), "/dashboard");
+
+    if (result.mfaRequired) {
+      const params = new URLSearchParams();
+      params.set("next", destination);
+      params.set("method", result.method);
+      router.push(`/login/mfa?${params.toString()}`);
+      router.refresh();
+      return;
+    }
+
     router.push(destination);
     router.refresh();
   }

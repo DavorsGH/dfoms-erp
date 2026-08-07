@@ -7,6 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "audit:tenant-rls": "npx tsx scripts/audit-tenant-rls.ts",
+    "test:pg-connection": "npx tsx scripts/test-pg-connection.ts",
+    "test:tenant-isolation": "npx tsx scripts/test-two-tenant-isolation-staging.ts",
+    "gate:tenant-security": "npm run audit:tenant-rls && npm run test:tenant-isolation",
+    "sql:list-applied": "npx tsx scripts/list-applied-sql-scripts.ts --env staging",
+    "sql:record-applied": "npx tsx scripts/record-applied-sql-script.ts",
     "generate-favicons": "node scripts/generate-favicons.mjs",
     "generate-og-image": "node scripts/generate-og-image.mjs"
   },
@@ -36,6 +42,7 @@
     "pg": "^8.22.0",
     "sharp": "^0.35.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.9",
     "typescript": "^5"
   }
 }

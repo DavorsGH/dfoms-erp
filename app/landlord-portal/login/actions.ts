@@ -8,10 +8,10 @@ import {
   getRequestIp,
   recordFailedLoginAttempt,
 } from "@/utils/login-rate-limit";
+import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
+import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
-export type LandlordPortalLoginActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type LandlordPortalLoginActionResult = LoginWithMfaResult;
 
 /**
  * Landlord portal login — rate-limited like Tenant Portal.
@@ -70,5 +70,15 @@ export async function landlordPortalLoginWithPassword(
   }
 
   // Login is allowed for pending/approved/rejected; data access is gated separately.
+  const mfa = await evaluatePostPasswordMfa(signInData.user.id);
+  if (mfa.mfaRequired) {
+    return {
+      ok: true,
+      mfaRequired: true,
+      method: mfa.method,
+      maskedPhone: mfa.maskedPhone,
+    };
+  }
+
   return { ok: true };
 }

@@ -9,10 +9,10 @@ import {
   recordFailedLoginAttempt,
 } from "@/utils/login-rate-limit";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
+import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
+import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
-export type PortalLoginActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type PortalLoginActionResult = LoginWithMfaResult;
 
 /**
  * Tenant portal login — same rate-limit pattern as staff /login, but requires
@@ -81,6 +81,16 @@ export async function portalLoginWithPassword(
       ok: false,
       error:
         "This portal account has been deactivated. Contact your landlord or property manager.",
+    };
+  }
+
+  const mfa = await evaluatePostPasswordMfa(signInData.user.id);
+  if (mfa.mfaRequired) {
+    return {
+      ok: true,
+      mfaRequired: true,
+      method: mfa.method,
+      maskedPhone: mfa.maskedPhone,
     };
   }
 

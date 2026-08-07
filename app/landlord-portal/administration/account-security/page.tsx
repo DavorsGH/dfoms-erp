@@ -32,6 +32,14 @@ export default async function LandlordPortalAccountSecurityPage() {
         Change the password for {session.email ?? "your signed-in account"}.
         Profile photo and logo upload are not available in this portal.
       </p>
+      <p className="mt-3 text-sm">
+        <a
+          href="/landlord-portal/administration/account-security/mfa"
+          className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+        >
+          Manage two-factor authentication
+        </a>
+      </p>
       <LandlordPortalChangePasswordForm />
     </section>
   );

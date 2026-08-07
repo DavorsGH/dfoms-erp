@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PASSWORD_MIN_LENGTH } from "@/utils/password-policy";
 import type { Employee } from "../lookup-types";
 import { getRoleLabel } from "../role-labels";
 import ScrollableTable, {
@@ -428,7 +429,7 @@ export default function UserAccounts({
               </label>
               <PasswordInput
                 required
-                minLength={6}
+                minLength={PASSWORD_MIN_LENGTH}
                 value={createForm.password}
                 onChange={(e) =>
                   setCreateForm((current) => ({
@@ -664,7 +665,7 @@ export default function UserAccounts({
                             </label>
                             <PasswordInput
                               required
-                              minLength={6}
+                              minLength={PASSWORD_MIN_LENGTH}
                               value={resetPassword}
                               onChange={(e) => setResetPassword(e.target.value)}
                               className={inputClassName}

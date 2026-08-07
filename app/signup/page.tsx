@@ -5,6 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import PasswordInput from "@/components/password-input";
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_POLICY_HINT,
+  validatePasswordClient,
+} from "@/utils/password-policy";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -22,6 +27,13 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
     setSuccess(null);
+
+    const validationError = validatePasswordClient(password, confirmPassword);
+    if (validationError) {
+      setError(validationError);
+      setLoading(false);
+      return;
+    }
 
     const response = await fetch("/api/signup", {
       method: "POST",
@@ -150,10 +162,11 @@ export default function SignupPage() {
               >
                 Password
               </label>
+              <p className="mb-2 text-xs text-zinc-500">{PASSWORD_POLICY_HINT}</p>
               <PasswordInput
                 id="password"
                 required
-                minLength={6}
+                minLength={PASSWORD_MIN_LENGTH}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
@@ -170,7 +183,7 @@ export default function SignupPage() {
               <PasswordInput
                 id="confirm_password"
                 required
-                minLength={6}
+                minLength={PASSWORD_MIN_LENGTH}
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"

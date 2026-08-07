@@ -6,6 +6,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import PasswordInput from "@/components/password-input";
 import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_POLICY_HINT,
+  validatePasswordClient,
+} from "@/utils/password-policy";
+import {
   portalAuthCardClassName,
   portalAuthInputClassName,
   portalAuthPrimaryButtonClassName,
@@ -28,12 +33,9 @@ export default function LandlordPortalSignupPage() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+    const validationError = validatePasswordClient(password, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -173,7 +175,7 @@ export default function LandlordPortalSignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={8}
+              minLength={PASSWORD_MIN_LENGTH}
               className={portalAuthInputClassName}
               placeholder="At least 8 characters"
             />
@@ -188,7 +190,7 @@ export default function LandlordPortalSignupPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              minLength={8}
+              minLength={PASSWORD_MIN_LENGTH}
               className={portalAuthInputClassName}
               placeholder="Re-enter password"
             />

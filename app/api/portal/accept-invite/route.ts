@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { hashLesseeInviteToken } from "@/utils/lessee-portal-invite";
+import {
+  mapSupabasePasswordError,
+  validatePasswordLength,
+} from "@/utils/password-policy";
+import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
 
 type AcceptInviteBody = {
   token?: string;
@@ -24,11 +29,9 @@ export async function POST(request: Request) {
   if (!rawToken) {
     return NextResponse.json({ error: "Invite token is required." }, { status: 400 });
   }
-  if (password.length < 8) {
-    return NextResponse.json(
-      { error: "Password must be at least 8 characters." },
-      { status: 400 },
-    );
+  const lengthError = validatePasswordLength(password);
+  if (lengthError) {
+    return NextResponse.json({ error: lengthError }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -112,10 +115,14 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(
+      { error: mapSupabasePasswordError(createError ?? { message }) },
+      { status: 400 },
+    );
   }
 
   const authUserId = created.user.id;
+  await recordPasswordUpdatedAt(authUserId);
 
   const { error: linkError } = await admin
     .from("lessees")

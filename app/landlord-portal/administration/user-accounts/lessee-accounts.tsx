@@ -16,6 +16,7 @@ import {
   portalSecondaryButtonClassName,
   portalSuccessBannerClassName,
 } from "../../portal-ui";
+import { PASSWORD_MIN_LENGTH } from "@/utils/password-policy";
 
 export type LandlordPortalLesseeAccountViewRow = {
   lesseeId: string;
@@ -346,12 +347,12 @@ export default function LandlordPortalLesseeAccounts({
                           className="flex max-w-sm flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 p-3"
                         >
                           <label className="text-xs font-medium text-slate-700">
-                            New password (min 8 characters)
+                            New password (min {PASSWORD_MIN_LENGTH} characters)
                           </label>
                           <input
                             type="password"
                             required
-                            minLength={8}
+                            minLength={PASSWORD_MIN_LENGTH}
                             value={resetPassword}
                             onChange={(e) => setResetPassword(e.target.value)}
                             className={portalInputClassName}

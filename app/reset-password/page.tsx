@@ -5,6 +5,13 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import PasswordInput from "@/components/password-input";
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_POLICY_HINT,
+  mapSupabasePasswordError,
+  validatePasswordClient,
+} from "@/utils/password-policy";
+import { recordOwnPasswordChanged } from "@/lib/security/update-password-action";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -43,13 +50,9 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+    const validationError = validatePasswordClient(password, confirmPassword);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -58,14 +61,13 @@ export default function ResetPasswordPage() {
     setLoading(false);
 
     if (error) {
-      setError(error.message);
+      setError(mapSupabasePasswordError(error));
       return;
     }
 
+    await recordOwnPasswordChanged();
     setSuccess(true);
-    setTimeout(() => {
-      router.push("/login");
-    }, 2000);
+    setTimeout(() => router.push("/login"), 2000);
   }
 
   return (
@@ -75,77 +77,64 @@ export default function ResetPasswordPage() {
           <Image
             src="/icons/apple-touch-icon-180x180.png"
             alt="Davors Facilities"
-            width={80}
-            height={80}
-            className="h-20 w-20"
-            priority
+            width={64}
+            height={64}
+            className="h-16 w-16"
           />
         </div>
-        <h1 className="mb-6 text-center text-2xl font-semibold text-zinc-900">
-          Set New Password
+        <h1 className="mb-2 text-center text-2xl font-semibold text-zinc-900">
+          Set a new password
         </h1>
+        <p className="mb-6 text-center text-sm text-zinc-600">
+          {PASSWORD_POLICY_HINT}
+        </p>
+
+        {error && (
+          <p className="mb-4 text-sm text-red-600">{error}</p>
+        )}
 
         {success ? (
-          <p className="text-center text-sm text-zinc-700">
-            Password updated. Redirecting to login…
+          <p className="text-center text-sm text-emerald-700">
+            Password updated. Redirecting to sign in…
           </p>
-        ) : error && !ready ? (
-          <div className="space-y-4 text-center">
-            <p className="text-sm text-red-600">{error}</p>
-            <a
-              href="/forgot-password"
-              className="inline-block text-sm font-medium text-zinc-900 underline hover:text-zinc-700"
-            >
-              Request a new reset link
-            </a>
-          </div>
-        ) : !ready ? (
-          <p className="text-center text-sm text-zinc-600">
-            Verifying reset link…
-          </p>
-        ) : (
+        ) : ready ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label
-                htmlFor="password"
-                className="mb-1 block text-sm font-medium text-zinc-700"
-              >
-                New Password
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                New password
               </label>
               <PasswordInput
-                id="password"
+                required
+                minLength={PASSWORD_MIN_LENGTH}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
                 className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-                placeholder="••••••••"
               />
             </div>
             <div>
-              <label
-                htmlFor="confirmPassword"
-                className="mb-1 block text-sm font-medium text-zinc-700"
-              >
-                Confirm New Password
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                Confirm password
               </label>
               <PasswordInput
-                id="confirmPassword"
+                required
+                minLength={PASSWORD_MIN_LENGTH}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                required
                 className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-                placeholder="••••••••"
               />
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
             >
-              {loading ? "Updating…" : "Update Password"}
+              {loading ? "Updating…" : "Update password"}
             </button>
           </form>
+        ) : (
+          !error && (
+            <p className="text-center text-sm text-zinc-600">Verifying link…</p>
+          )
         )}
       </div>
     </div>

@@ -33,6 +33,15 @@ export default function LandlordPortalLoginPage() {
       return;
     }
 
+    if (result.mfaRequired) {
+      const params = new URLSearchParams();
+      params.set("next", "/landlord-portal/dashboard");
+      params.set("method", result.method);
+      router.push(`/landlord-portal/login/mfa?${params.toString()}`);
+      router.refresh();
+      return;
+    }
+
     router.push("/landlord-portal/dashboard");
     router.refresh();
   }

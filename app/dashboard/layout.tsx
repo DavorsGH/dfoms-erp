@@ -1,8 +1,9 @@
 import DashboardShell from "./dashboard-shell";
-import { getCurrentUserRole, hasLeaveApprovalInbox, isDavorsPlatformSuperAdmin } from "@/utils/dashboard-auth";
+import { getCurrentUserRole, hasLeaveApprovalInbox, isDavorsPlatformSuperAdmin, getCurrentAuthUser, getCurrentUserAccount } from "@/utils/dashboard-auth";
 import { getCurrentTenantBranding } from "@/utils/tenant-branding";
 import { getUserDisplayInfo } from "@/utils/user-display";
 import { ensureTrialAccess } from "@/utils/trial-enforcement";
+import { ensureSecurityNotifications } from "@/utils/security-notifications";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 
 export const dynamic = "force-dynamic";
@@ -15,14 +16,26 @@ export default async function DashboardLayout({
 }>) {
   await ensureTrialAccess();
 
-  const [displayInfo, userRole, showLeaveApprovals, showPlatformSettings, tenantBranding] =
+  const [displayInfo, userRole, showLeaveApprovals, showPlatformSettings, tenantBranding, authUser, account] =
     await Promise.all([
       getUserDisplayInfo(),
       getCurrentUserRole(),
       hasLeaveApprovalInbox(),
       isDavorsPlatformSuperAdmin(),
       getCurrentTenantBranding(),
+      getCurrentAuthUser(),
+      getCurrentUserAccount(),
     ]);
+
+  if (authUser && account?.tenant_id) {
+    await ensureSecurityNotifications({
+      authUid: authUser.id,
+      persona: "staff",
+      tenantId: account.tenant_id,
+      passwordActionUrl: "/dashboard/my-account",
+      mfaActionUrl: "/dashboard/my-account/mfa",
+    });
+  }
 
   const showRealEstate = showPlatformSettings;
 

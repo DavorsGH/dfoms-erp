@@ -18,6 +18,8 @@ import {
   validateSignupInput,
   type SignupRequestBody,
 } from "@/utils/tenant-signup";
+import { mapSupabasePasswordError } from "@/utils/password-policy";
+import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
 
 type SignupRollbackState = {
   authUserId: string | null;
@@ -139,13 +141,14 @@ export async function POST(request: Request) {
       {
         error: isDuplicateEmailError(authError?.message ?? "")
           ? "An account with this email already exists."
-          : (authError?.message ?? "Failed to create auth user."),
+          : mapSupabasePasswordError(authError ?? { message: "Failed to create auth user." }),
       },
       { status: 400 },
     );
   }
 
   rollbackState.authUserId = authData.user.id;
+  await recordPasswordUpdatedAt(authData.user.id);
 
   const { data: tenantRow, error: tenantError } = await admin
     .from("tenants")

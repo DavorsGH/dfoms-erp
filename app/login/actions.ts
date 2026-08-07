@@ -7,10 +7,11 @@ import {
   getRequestIp,
   recordFailedLoginAttempt,
 } from "@/utils/login-rate-limit";
+import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
+import { isMfaEnforcementEnabled } from "@/lib/mfa/config";
+import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
-export type LoginActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type LoginActionResult = LoginWithMfaResult;
 
 /**
  * Server-side login so Upstash rate limits can run before Supabase Auth and
@@ -65,6 +66,33 @@ export async function loginWithPassword(
     }
 
     return { ok: false, error: error.message };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const mfa = await evaluatePostPasswordMfa(user.id);
+
+    if (process.env.NODE_ENV === "development") {
+      console.log("[loginWithPassword:mfa]", {
+        email: trimmedEmail,
+        authUid: user.id,
+        mfaEnforcementRaw: process.env.MFA_ENFORCEMENT ?? "(unset)",
+        enforcementOn: isMfaEnforcementEnabled(),
+        mfa,
+      });
+    }
+
+    if (mfa.mfaRequired) {
+      return {
+        ok: true,
+        mfaRequired: true,
+        method: mfa.method,
+        maskedPhone: mfa.maskedPhone,
+      };
+    }
   }
 
   return { ok: true };

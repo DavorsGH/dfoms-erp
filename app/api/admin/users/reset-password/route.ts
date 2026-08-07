@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
+import {
+  mapSupabasePasswordError,
+  validatePasswordLength,
+} from "@/utils/password-policy";
 
 type ResetPasswordBody = {
   auth_uid?: string;
@@ -31,11 +35,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (password.length < 6) {
-    return NextResponse.json(
-      { error: "Password must be at least 6 characters" },
-      { status: 400 },
-    );
+  const lengthError = validatePasswordLength(password);
+  if (lengthError) {
+    return NextResponse.json({ error: lengthError }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -57,7 +59,10 @@ export async function POST(request: Request) {
   );
 
   if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 400 });
+    return NextResponse.json(
+      { error: mapSupabasePasswordError(updateError) },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ success: true });

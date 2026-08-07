@@ -2,6 +2,11 @@ import {
   generateNextOperationsId,
   parseOperationsIdNumber,
 } from "@/app/dashboard/operations/operations-register-utils";
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_POLICY_HINT,
+  validatePasswordLength,
+} from "@/utils/password-policy";
 
 export const DAVORS_TENANT_ID = "00000001-0000-4000-8000-000000000001";
 
@@ -75,11 +80,9 @@ export function validateSignupInput(body: SignupRequestBody): SignupValidationRe
     return { ok: false, error: "Password is required." };
   }
 
-  if (password.length < 6) {
-    return {
-      ok: false,
-      error: "Password must be at least 6 characters.",
-    };
+  const lengthError = validatePasswordLength(password);
+  if (lengthError) {
+    return { ok: false, error: lengthError };
   }
 
   if (password !== confirmPassword) {

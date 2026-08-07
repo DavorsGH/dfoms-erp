@@ -8,6 +8,11 @@ import {
   validationErrorMessage,
 } from "@/utils/admin-user-role";
 import { createAdminClient } from "@/utils/supabase/admin";
+import {
+  mapSupabasePasswordError,
+  validatePasswordLength,
+} from "@/utils/password-policy";
+import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
 
 type CreateUserBody = {
   employee_id?: string | null;
@@ -43,11 +48,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (password.length < 6) {
-    return NextResponse.json(
-      { error: "Password must be at least 6 characters" },
-      { status: 400 },
-    );
+  const lengthError = validatePasswordLength(password);
+  if (lengthError) {
+    return NextResponse.json({ error: lengthError }, { status: 400 });
   }
 
   const built = buildUserAccountPayload({
@@ -98,7 +101,7 @@ export async function POST(request: Request) {
 
   if (authError || !authData.user) {
     return NextResponse.json(
-      { error: authError?.message ?? "Failed to create auth user" },
+      { error: mapSupabasePasswordError(authError ?? { message: "Failed to create auth user" }) },
       { status: 400 },
     );
   }
@@ -131,6 +134,8 @@ export async function POST(request: Request) {
     await admin.auth.admin.deleteUser(authData.user.id);
     return NextResponse.json({ error: siteSyncError }, { status: 400 });
   }
+
+  await recordPasswordUpdatedAt(authData.user.id);
 
   return NextResponse.json({ auth_uid: authData.user.id });
 }

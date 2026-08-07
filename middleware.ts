@@ -1,6 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getSafeNext } from "@/utils/safe-redirect";
 import { createClient } from "@/utils/supabase/middleware";
+import {
+  getMfaChallengeRedirectPath,
+  shouldBlockLoginAutoRedirect,
+} from "@/lib/mfa/middleware-gate";
+import { MFA_CHALLENGE_ROUTES } from "@/lib/mfa/types";
 
 /** Redirect to a validated relative path+query (pathname + search). */
 function redirectToRelativePath(request: NextRequest, relativePath: string) {
@@ -89,6 +94,7 @@ export async function middleware(request: NextRequest) {
   const publicPaths = new Set([
     "/", // Public portal chooser (landlord / tenant) — no auth redirects from here
     "/login",
+    "/login/mfa",
     "/signup",
     "/api/signup",
     "/api/webhooks/paystack",
@@ -96,8 +102,10 @@ export async function middleware(request: NextRequest) {
     "/reset-password",
     "/verify-email",
     "/portal/login",
+    "/portal/login/mfa",
     "/portal/accept-invite",
     "/landlord-portal/login",
+    "/landlord-portal/login/mfa",
     "/landlord-portal/accept-invite",
     "/landlord-portal/signup",
     "/api/landlord-portal/signup",
@@ -188,6 +196,21 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // MFA gate — must run before persona routing and login → dashboard redirects.
+  if (user && needsPersonaCheck) {
+    const mfaRedirect = await getMfaChallengeRedirectPath({
+      supabase,
+      userId: user.id,
+      pathname,
+      searchParams: request.nextUrl.searchParams,
+      isLesseePortalUser,
+      isLandlordPortalUser,
+    });
+    if (mfaRedirect) {
+      return redirectToRelativePath(request, mfaRedirect);
+    }
+  }
+
   // Authenticated lessees use /portal/*, not staff /dashboard or landlord portal.
   if (
     user &&
@@ -197,12 +220,6 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/dashboard") ||
       isLandlordPortalPath)
   ) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/portal/dashboard";
-    return NextResponse.redirect(url);
-  }
-
-  if (user && isPortalPublicPath && isLesseePortalUser) {
     const url = request.nextUrl.clone();
     url.pathname = "/portal/dashboard";
     return NextResponse.redirect(url);
@@ -222,25 +239,73 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isLandlordPortalPublicPath && isLandlordPortalUser) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/landlord-portal/dashboard";
-    return NextResponse.redirect(url);
-  }
-
   if (
     user &&
     !isLesseePortalUser &&
     !isLandlordPortalUser &&
     (pathname === "/login" || pathname === "/signup")
   ) {
-    const nextParam =
-      pathname === "/login"
-        ? request.nextUrl.searchParams.get("next")
-        : null;
+    const blockDashboardRedirect = await shouldBlockLoginAutoRedirect({
+      supabase,
+      userId: user.id,
+      pathname,
+      isLesseePortalUser,
+      isLandlordPortalUser,
+    });
+    if (!blockDashboardRedirect) {
+      const nextParam =
+        pathname === "/login"
+          ? request.nextUrl.searchParams.get("next")
+          : null;
+      return redirectToRelativePath(
+        request,
+        getSafeNext(nextParam, "/dashboard"),
+      );
+    }
+    const nextParam = request.nextUrl.searchParams.get("next");
     return redirectToRelativePath(
       request,
-      getSafeNext(nextParam, "/dashboard"),
+      `${MFA_CHALLENGE_ROUTES.staff.challengePath}?next=${encodeURIComponent(getSafeNext(nextParam, "/dashboard"))}`,
+    );
+  }
+
+  if (user && isPortalPublicPath && isLesseePortalUser) {
+    const blockRedirect = await shouldBlockLoginAutoRedirect({
+      supabase,
+      userId: user.id,
+      pathname: "/portal/login",
+      isLesseePortalUser,
+      isLandlordPortalUser,
+    });
+    if (!blockRedirect) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/portal/dashboard";
+      return NextResponse.redirect(url);
+    }
+    const nextParam = request.nextUrl.searchParams.get("next");
+    return redirectToRelativePath(
+      request,
+      `${MFA_CHALLENGE_ROUTES.lessee.challengePath}?next=${encodeURIComponent(getSafeNext(nextParam, "/portal/dashboard"))}`,
+    );
+  }
+
+  if (user && isLandlordPortalPublicPath && isLandlordPortalUser) {
+    const blockRedirect = await shouldBlockLoginAutoRedirect({
+      supabase,
+      userId: user.id,
+      pathname: "/landlord-portal/login",
+      isLesseePortalUser,
+      isLandlordPortalUser,
+    });
+    if (!blockRedirect) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/landlord-portal/dashboard";
+      return NextResponse.redirect(url);
+    }
+    const nextParam = request.nextUrl.searchParams.get("next");
+    return redirectToRelativePath(
+      request,
+      `${MFA_CHALLENGE_ROUTES.landlord.challengePath}?next=${encodeURIComponent(getSafeNext(nextParam, "/landlord-portal/dashboard"))}`,
     );
   }
 

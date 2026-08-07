@@ -33,6 +33,15 @@ export default function PortalLoginPage() {
       return;
     }
 
+    if (result.mfaRequired) {
+      const params = new URLSearchParams();
+      params.set("next", "/portal/dashboard");
+      params.set("method", result.method);
+      router.push(`/portal/login/mfa?${params.toString()}`);
+      router.refresh();
+      return;
+    }
+
     router.push("/portal/dashboard");
     router.refresh();
   }
