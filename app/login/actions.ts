@@ -8,7 +8,7 @@ import {
   recordFailedLoginAttempt,
 } from "@/utils/login-rate-limit";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
-import { isMfaEnforcementEnabled } from "@/lib/mfa/config";
+import { mfaDebugLog } from "@/lib/mfa/debug-log";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type LoginActionResult = LoginWithMfaResult;
@@ -73,17 +73,19 @@ export async function loginWithPassword(
   } = await supabase.auth.getUser();
 
   if (user) {
-    const mfa = await evaluatePostPasswordMfa(user.id);
+    mfaDebugLog("login.actions.loginWithPassword.beforeMfaEval", {
+      email: trimmedEmail,
+      authUid: user.id,
+      pathname: "staff",
+    });
 
-    if (process.env.NODE_ENV === "development") {
-      console.log("[loginWithPassword:mfa]", {
-        email: trimmedEmail,
-        authUid: user.id,
-        mfaEnforcementRaw: process.env.MFA_ENFORCEMENT ?? "(unset)",
-        enforcementOn: isMfaEnforcementEnabled(),
-        mfa,
-      });
-    }
+    const mfa = await evaluatePostPasswordMfa(user.id, trimmedEmail);
+
+    mfaDebugLog("login.actions.loginWithPassword.afterMfaEval", {
+      email: trimmedEmail,
+      authUid: user.id,
+      mfa,
+    });
 
     if (mfa.mfaRequired) {
       return {
