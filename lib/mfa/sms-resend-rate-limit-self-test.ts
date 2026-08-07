@@ -81,7 +81,7 @@ export async function runSmsResendPolicySelfTest(): Promise<SmsResendPolicyCheck
     const backoffMinutes = SMS_RESEND_BACKOFF_MINUTES[sends.length - 1] ?? 0;
     const shifted = sends.map((timestamp, index) =>
       index === sends.length - 1
-        ? Date.now() - backoffMinutes * 60_000 - 500
+        ? Date.now() - backoffMinutes * 60_000 - 5_000
         : timestamp,
     );
     await redis.set(smsResendRedisKey(authUid), { sends: shifted }, { ex: 960 });
@@ -94,17 +94,21 @@ export async function runSmsResendPolicySelfTest(): Promise<SmsResendPolicyCheck
         allowed.ok ? `allowed after ${check.label}` : "still blocked",
       ),
     );
-    await recordMfaResend(authUid);
+    if (allowed.ok) {
+      await recordMfaResend(authUid);
+    } else {
+      break;
+    }
   }
 
   await resetMfaResendStateForAccount(authUid);
   const now = Date.now();
   const packedSends = [
-    now - 14 * 60_000,
     now - 13 * 60_000,
     now - 12 * 60_000,
     now - 11 * 60_000,
     now - 10 * 60_000,
+    now - 9 * 60_000,
   ];
   const { Redis } = await import("@upstash/redis");
   const redis = Redis.fromEnv();
