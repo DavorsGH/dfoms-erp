@@ -86,6 +86,12 @@ GRANT EXECUTE ON FUNCTION public.get_finished_product_average_costs(uuid)
 -- create_product_sale: replace inline lifetime-lot WAC with shared function.
 -- Body matches 104_pos_receipt_entity_type.sql except COGS unit-cost source.
 DROP FUNCTION IF EXISTS public.create_product_sale(
+  date, text, text, text, uuid, numeric, numeric, numeric, text, date, text, text, text, text
+);
+DROP FUNCTION IF EXISTS public.create_product_sale(
+  date, text, text, text, uuid, numeric, numeric, numeric, text, date, text, text, text
+);
+DROP FUNCTION IF EXISTS public.create_product_sale(
   date, text, text, text, uuid, numeric, numeric, numeric, text, date, text, text
 );
 
@@ -102,7 +108,8 @@ CREATE OR REPLACE FUNCTION public.create_product_sale(
   p_due_date date,
   p_description text,
   p_notes text,
-  p_invoice_entity_type text DEFAULT 'PSI'
+  p_invoice_entity_type text DEFAULT 'PSI',
+  p_sales_rep_id text DEFAULT NULL
 )
 RETURNS uuid
 LANGUAGE plpgsql

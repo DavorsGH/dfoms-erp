@@ -126,6 +126,23 @@ function isOnOrAfterGoLive(
   return normalizeDate(entryDate) >= normalizeDate(goLiveDate);
 }
 
+/**
+ * Inventory purchases activated after go-live participate in Balance Sheet cash
+ * and valuation even when purchase_date was backdated before go-live.
+ */
+export function getActivatedInventoryPurchaseEffectiveDate(
+  purchase: { purchase_date: string; created_at: string },
+  config: InventoryBalanceConfig | null,
+): string | null {
+  if (!config?.go_live_date || !isActivatedPurchase(purchase.created_at, config)) {
+    return null;
+  }
+
+  const goLiveDate = normalizeDate(config.go_live_date);
+  const purchaseDate = normalizeDate(purchase.purchase_date);
+  return purchaseDate >= goLiveDate ? purchaseDate : goLiveDate;
+}
+
 export function calculateInventoryByMonth(
   rawMaterials: Array<Pick<RawMaterialRecord, "current_stock" | "average_cost_per_unit">>,
   finishedProducts: Array<Pick<FinishedProductRecord, "id" | "current_stock">>,
@@ -220,11 +237,11 @@ function calculateInventoryPurchaseCashOutflowsByMonth(
   }
 
   for (const purchase of purchases) {
-    if (!isOnOrAfterGoLive(purchase.purchase_date, config.go_live_date)) {
-      continue;
-    }
-
-    if (!isActivatedPurchase(purchase.created_at, config)) {
+    const effectiveDate = getActivatedInventoryPurchaseEffectiveDate(
+      purchase,
+      config,
+    );
+    if (!effectiveDate) {
       continue;
     }
 
@@ -232,7 +249,7 @@ function calculateInventoryPurchaseCashOutflowsByMonth(
       continue;
     }
 
-    const monthIndex = getEntryMonthIndex(purchase.purchase_date, financialYear);
+    const monthIndex = getEntryMonthIndex(effectiveDate, financialYear);
     if (monthIndex === null) {
       continue;
     }
