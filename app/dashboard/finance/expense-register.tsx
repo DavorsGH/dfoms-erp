@@ -21,6 +21,13 @@ import {
   markAutoPostedExpensePaid,
 } from "./register-auto-posted-utils";
 import {
+  fetchLinkedProductSaleCogsByExpenseId,
+  formatLinkedProductSaleCogsDeleteMessage,
+  isIncomeRegisterCogsExpenseFkError,
+  lookupLinkedProductSaleCogsForExpense,
+  type LinkedProductSaleCogs,
+} from "./product-sale-cogs-expense-utils";
+import {
   computePurchaseTaxAmounts,
   computeWhtAmount,
   resolveDefaultWhtRate,
@@ -161,6 +168,8 @@ export default function ExpenseRegister({
   const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [linkedProductSaleCogsByExpenseId, setLinkedProductSaleCogsByExpenseId] =
+    useState<Map<string, LinkedProductSaleCogs>>(() => new Map());
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
 
@@ -296,6 +305,28 @@ export default function ExpenseRegister({
     loadLookups();
   }, [showForm]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const linked = await fetchLinkedProductSaleCogsByExpenseId(supabase);
+        setLinkedProductSaleCogsByExpenseId(linked);
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load linked product sale COGS entries.",
+        );
+      }
+    })();
+    // Load linked product-sale COGS map once on mount (shared client instance).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function refreshLinkedProductSaleCogs() {
+    const linked = await fetchLinkedProductSaleCogsByExpenseId(supabase);
+    setLinkedProductSaleCogsByExpenseId(linked);
+  }
+
   async function refreshEntries() {
     const { data, error: refreshError } = await supabase
       .from("expense_register")
@@ -313,6 +344,16 @@ export default function ExpenseRegister({
       ),
     );
     setError(null);
+
+    try {
+      await refreshLinkedProductSaleCogs();
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not refresh linked product sale COGS entries.",
+      );
+    }
   }
 
   function openAddForm() {
@@ -330,6 +371,14 @@ export default function ExpenseRegister({
   }
 
   function openEditForm(entry: ExpenseRegisterEntry) {
+    const linkedProductSaleCogs = linkedProductSaleCogsByExpenseId.get(
+      entry.id,
+    );
+    if (linkedProductSaleCogs) {
+      setError(formatLinkedProductSaleCogsDeleteMessage(linkedProductSaleCogs));
+      return;
+    }
+
     if (isAutoPostedExpenseRegisterEntry(entry)) {
       setError(
         "Payroll auto-posted expenses cannot be edited here. Use Mark as Paid when remitting Accrued Employer SSNIT / Accrued Staff Salaries, or Release payroll to reverse the post.",
@@ -391,6 +440,12 @@ export default function ExpenseRegister({
   }
 
   async function handleDelete(id: string) {
+    const knownLink = linkedProductSaleCogsByExpenseId.get(id);
+    if (knownLink) {
+      setError(formatLinkedProductSaleCogsDeleteMessage(knownLink));
+      return;
+    }
+
     if (!confirmDeleteEntry()) {
       return;
     }
@@ -398,13 +453,67 @@ export default function ExpenseRegister({
     setDeletingId(id);
     setError(null);
 
+    let linkedProductSaleCogs: LinkedProductSaleCogs | null = null;
+    try {
+      linkedProductSaleCogs = await lookupLinkedProductSaleCogsForExpense(
+        supabase,
+        id,
+      );
+    } catch (lookupError) {
+      setError(
+        lookupError instanceof Error
+          ? lookupError.message
+          : "Could not verify whether this expense is linked to a product sale.",
+      );
+      setDeletingId(null);
+      return;
+    }
+
+    if (linkedProductSaleCogs) {
+      setLinkedProductSaleCogsByExpenseId((current) => {
+        const next = new Map(current);
+        next.set(id, linkedProductSaleCogs!);
+        return next;
+      });
+      setError(
+        formatLinkedProductSaleCogsDeleteMessage(linkedProductSaleCogs),
+      );
+      setDeletingId(null);
+      return;
+    }
+
     const { error: deleteError } = await supabase
       .from("expense_register")
       .delete()
       .eq("id", id);
 
     if (deleteError) {
-      setError(deleteError.message);
+      if (isIncomeRegisterCogsExpenseFkError(deleteError)) {
+        try {
+          const fallbackLink = await lookupLinkedProductSaleCogsForExpense(
+            supabase,
+            id,
+          );
+          if (fallbackLink) {
+            setLinkedProductSaleCogsByExpenseId((current) => {
+              const next = new Map(current);
+              next.set(id, fallbackLink);
+              return next;
+            });
+            setError(formatLinkedProductSaleCogsDeleteMessage(fallbackLink));
+          } else {
+            setError(
+              "This expense is linked to a product sale and cannot be deleted directly. Void the original sale from Sales & CRM → Sales Log instead.",
+            );
+          }
+        } catch {
+          setError(
+            "This expense is linked to a product sale and cannot be deleted directly. Void the original sale from Sales & CRM → Sales Log instead.",
+          );
+        }
+      } else {
+        setError(deleteError.message);
+      }
       setDeletingId(null);
       return;
     }
@@ -983,12 +1092,20 @@ export default function ExpenseRegister({
                 visibleEntries.map((entry, index) => {
                   const gross = getExpenseGrossBeforeWht(entry);
                   const autoPosted = isAutoPostedExpenseRegisterEntry(entry);
+                  const linkedProductSaleCogs =
+                    linkedProductSaleCogsByExpenseId.get(entry.id) ?? null;
+                  const systemLinked = autoPosted || linkedProductSaleCogs != null;
                   const showMarkPaid = canMarkAutoPostedExpenseAsPaid(entry);
+                  const deleteBlockedMessage = linkedProductSaleCogs
+                    ? formatLinkedProductSaleCogsDeleteMessage(
+                        linkedProductSaleCogs,
+                      )
+                    : undefined;
 
                   return (
                     <tr
                       key={entry.id}
-                      className={getRegisterRowClassName(index, autoPosted)}
+                      className={getRegisterRowClassName(index, systemLinked)}
                     >
                       <td className="px-4 py-3">{formatDate(entry.date)}</td>
                       <td className="px-4 py-3">{entry.expense_category}</td>
@@ -998,6 +1115,10 @@ export default function ExpenseRegister({
                         {autoPosted ? (
                           <span className="ml-2 text-xs font-medium opacity-80">
                             (auto-posted)
+                          </span>
+                        ) : linkedProductSaleCogs ? (
+                          <span className="ml-2 text-xs font-medium opacity-80">
+                            (product sale COGS)
                           </span>
                         ) : null}
                       </td>
@@ -1011,9 +1132,15 @@ export default function ExpenseRegister({
                       <td className="px-4 py-3">{entry.payment_status}</td>
                       <RegisterRowActions
                         onEdit={() => openEditForm(entry)}
-                        onDelete={() => handleDelete(entry.id)}
+                        onDelete={
+                          linkedProductSaleCogs
+                            ? undefined
+                            : () => handleDelete(entry.id)
+                        }
                         deleting={deletingId === entry.id}
-                        disableEdit={autoPosted}
+                        disableEdit={systemLinked}
+                        disableDelete={linkedProductSaleCogs != null}
+                        deleteDisabledTitle={deleteBlockedMessage}
                         onMarkPaid={
                           showMarkPaid
                             ? () => {

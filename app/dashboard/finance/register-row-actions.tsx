@@ -11,6 +11,7 @@ type RegisterRowActionsProps = {
   markingPaid?: boolean;
   disableEdit?: boolean;
   disableDelete?: boolean;
+  deleteDisabledTitle?: string;
   disableArchive?: boolean;
   disableVoid?: boolean;
   voidLabel?: string;
@@ -77,6 +78,7 @@ export default function RegisterRowActions({
   markingPaid = false,
   disableEdit = false,
   disableDelete = false,
+  deleteDisabledTitle,
   disableArchive = false,
   disableVoid = false,
   voidLabel = "Void Sale",
@@ -140,7 +142,11 @@ export default function RegisterRowActions({
             type="button"
             onClick={onDelete}
             disabled={deleting || disableDelete}
-            title={disableDelete ? "This entry cannot be deleted" : undefined}
+            title={
+              disableDelete
+                ? (deleteDisabledTitle ?? "This entry cannot be deleted")
+                : undefined
+            }
             className={deleteButtonClassName}
           >
             {deleting ? "Deleting…" : "Delete"}
