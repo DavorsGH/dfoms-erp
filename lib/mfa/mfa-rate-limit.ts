@@ -2,6 +2,19 @@ import "server-only";
 
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import {
+  appendSmsResendSend,
+  evaluateSmsResendGate,
+  pruneSmsResendWindow,
+  SMS_RESEND_WINDOW_MS,
+} from "./sms-resend-rate-limit";
+
+export {
+  describeSmsResendSchedule,
+  SMS_RESEND_BACKOFF_MINUTES,
+  SMS_RESEND_MAX_SENDS,
+  SMS_RESEND_WINDOW_MS,
+} from "./sms-resend-rate-limit";
 
 export const MFA_VERIFY_RATE_LIMIT_MESSAGE =
   "Too many verification attempts. Please try again in a few minutes.";
@@ -9,14 +22,19 @@ export const MFA_VERIFY_RATE_LIMIT_MESSAGE =
 export const MFA_RESEND_RATE_LIMIT_MESSAGE =
   "Too many SMS requests. Please wait before requesting another code.";
 
-type MfaLimiters = {
+type MfaVerifyLimiters = {
   verifyEmail: Ratelimit;
   verifyIp: Ratelimit;
-  resendPhone: Ratelimit;
-  resendIp: Ratelimit;
 };
 
-let limiters: MfaLimiters | null = null;
+type SmsResendAccountState = {
+  sends: number[];
+};
+
+let verifyLimiters: MfaVerifyLimiters | null = null;
+let redisClient: Redis | null = null;
+
+const SMS_RESEND_REDIS_PREFIX = "rl:mfa:sms-resend:account";
 
 function isUpstashConfigured(): boolean {
   return Boolean(
@@ -25,14 +43,26 @@ function isUpstashConfigured(): boolean {
   );
 }
 
-function getLimiters(): MfaLimiters | null {
+function getRedis(): Redis | null {
   if (!isUpstashConfigured()) {
     return null;
   }
 
-  if (!limiters) {
-    const redis = Redis.fromEnv();
-    limiters = {
+  if (!redisClient) {
+    redisClient = Redis.fromEnv();
+  }
+
+  return redisClient;
+}
+
+function getVerifyLimiters(): MfaVerifyLimiters | null {
+  if (!isUpstashConfigured()) {
+    return null;
+  }
+
+  if (!verifyLimiters) {
+    const redis = getRedis()!;
+    verifyLimiters = {
       verifyEmail: new Ratelimit({
         redis,
         limiter: Ratelimit.slidingWindow(10, "10 m"),
@@ -45,22 +75,10 @@ function getLimiters(): MfaLimiters | null {
         prefix: "rl:mfa:verify:ip",
         analytics: false,
       }),
-      resendPhone: new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(3, "15 m"),
-        prefix: "rl:mfa:resend:phone",
-        analytics: false,
-      }),
-      resendIp: new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(10, "15 m"),
-        prefix: "rl:mfa:resend:ip",
-        analytics: false,
-      }),
     };
   }
 
-  return limiters;
+  return verifyLimiters;
 }
 
 function normalizeEmail(email: string): string {
@@ -72,15 +90,63 @@ function normalizeIp(ip: string): string {
   return trimmed.length > 0 ? trimmed : "unknown";
 }
 
-function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, "");
+function smsResendRedisKey(authUid: string): string {
+  return `${SMS_RESEND_REDIS_PREFIX}:${authUid}`;
+}
+
+function normalizeSmsResendState(raw: unknown): SmsResendAccountState {
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "sends" in raw &&
+    Array.isArray((raw as SmsResendAccountState).sends)
+  ) {
+    return {
+      sends: (raw as SmsResendAccountState).sends.filter(
+        (value): value is number => typeof value === "number" && Number.isFinite(value),
+      ),
+    };
+  }
+
+  return { sends: [] };
+}
+
+async function loadSmsResendState(authUid: string): Promise<SmsResendAccountState> {
+  const redis = getRedis();
+  if (!redis) {
+    return { sends: [] };
+  }
+
+  const raw = await redis.get<SmsResendAccountState>(smsResendRedisKey(authUid));
+  const state = normalizeSmsResendState(raw);
+  return { sends: pruneSmsResendWindow(state.sends) };
+}
+
+async function saveSmsResendState(
+  authUid: string,
+  state: SmsResendAccountState,
+): Promise<void> {
+  const redis = getRedis();
+  if (!redis) {
+    return;
+  }
+
+  const pruned = pruneSmsResendWindow(state.sends);
+  const ttlSeconds = Math.ceil(SMS_RESEND_WINDOW_MS / 1000) + 60;
+
+  if (pruned.length === 0) {
+    await redis.del(smsResendRedisKey(authUid));
+    return;
+  }
+
+  await redis.set(smsResendRedisKey(authUid), { sends: pruned }, { ex: ttlSeconds });
 }
 
 export async function assertMfaVerifyAllowed(
   email: string,
   ip: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const active = getLimiters();
+  const active = getVerifyLimiters();
   if (!active) return { ok: true };
 
   const emailKey = normalizeEmail(email);
@@ -109,7 +175,7 @@ export async function recordFailedMfaVerifyAttempt(
   email: string,
   ip: string,
 ): Promise<void> {
-  const active = getLimiters();
+  const active = getVerifyLimiters();
   if (!active) return;
 
   const emailKey = normalizeEmail(email);
@@ -129,49 +195,25 @@ export async function recordFailedMfaVerifyAttempt(
   }
 }
 
-function resendAvailableInSecondsFromResets(resetTimestampsMs: number[]): number {
-  if (resetTimestampsMs.length === 0) {
-    return 60;
-  }
-
-  const latestResetMs = Math.max(...resetTimestampsMs);
-  return Math.max(1, Math.ceil((latestResetMs - Date.now()) / 1000));
-}
-
 export async function assertMfaResendAllowed(
-  phoneE164: string,
-  ip: string,
+  authUid: string,
 ): Promise<
   { ok: true } | { ok: false; error: string; resendAvailableInSeconds: number }
 > {
-  const active = getLimiters();
-  if (!active) return { ok: true };
-
-  const phoneKey = normalizePhone(phoneE164);
-  const ipKey = normalizeIp(ip);
-  if (!phoneKey) return { ok: true };
+  if (!authUid.trim()) return { ok: true };
 
   try {
-    const [phoneBudget, ipBudget] = await Promise.all([
-      active.resendPhone.getRemaining(phoneKey),
-      active.resendIp.getRemaining(ipKey),
-    ]);
-    if (phoneBudget.remaining <= 0 || ipBudget.remaining <= 0) {
-      const blockedResetsMs: number[] = [];
-      if (phoneBudget.remaining <= 0) {
-        blockedResetsMs.push(phoneBudget.reset);
-      }
-      if (ipBudget.remaining <= 0) {
-        blockedResetsMs.push(ipBudget.reset);
-      }
+    const state = await loadSmsResendState(authUid);
+    const gate = evaluateSmsResendGate(state.sends);
 
+    if (!gate.allowed) {
       return {
         ok: false,
         error: MFA_RESEND_RATE_LIMIT_MESSAGE,
-        resendAvailableInSeconds:
-          resendAvailableInSecondsFromResets(blockedResetsMs),
+        resendAvailableInSeconds: gate.resendAvailableInSeconds,
       };
     }
+
     return { ok: true };
   } catch (error) {
     console.error(
@@ -182,26 +224,24 @@ export async function assertMfaResendAllowed(
   }
 }
 
-export async function recordMfaResend(
-  phoneE164: string,
-  ip: string,
-): Promise<void> {
-  const active = getLimiters();
-  if (!active) return;
-
-  const phoneKey = normalizePhone(phoneE164);
-  const ipKey = normalizeIp(ip);
-  if (!phoneKey) return;
+export async function recordMfaResend(authUid: string): Promise<void> {
+  if (!authUid.trim()) return;
 
   try {
-    await Promise.all([
-      active.resendPhone.limit(phoneKey),
-      active.resendIp.limit(ipKey),
-    ]);
+    const state = await loadSmsResendState(authUid);
+    const updated = appendSmsResendSend(state.sends);
+    await saveSmsResendState(authUid, { sends: updated });
   } catch (error) {
     console.error(
       "[mfa-rate-limit] resend record failed:",
       error instanceof Error ? error.message : error,
     );
   }
+}
+
+/** Staging/test helper — clears account SMS resend state in Redis. */
+export async function resetMfaResendStateForAccount(authUid: string): Promise<void> {
+  const redis = getRedis();
+  if (!redis || !authUid.trim()) return;
+  await redis.del(smsResendRedisKey(authUid));
 }

@@ -108,7 +108,7 @@ export async function sendMfaLoginSmsOtp(
   const headerStore = await headers();
   const ip = getRequestIp(headerStore);
 
-  const allowed = await assertMfaResendAllowed(phoneE164, ip);
+  const allowed = await assertMfaResendAllowed(auth.user.id);
   if (!allowed.ok) return allowed;
 
   const sent = await createAndSendSmsOtpChallenge({
@@ -122,7 +122,7 @@ export async function sendMfaLoginSmsOtp(
     return sent;
   }
 
-  await recordMfaResend(phoneE164, ip);
+  await recordMfaResend(auth.user.id);
   return { ok: true };
 }
 
