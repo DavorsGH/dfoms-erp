@@ -48,9 +48,18 @@ function normalizeSmsResendState(raw: unknown): SmsResendAccountState {
     Array.isArray((raw as SmsResendAccountState).sends)
   ) {
     return {
-      sends: (raw as SmsResendAccountState).sends.filter(
-        (value): value is number => typeof value === "number" && Number.isFinite(value),
-      ),
+      sends: (raw as SmsResendAccountState).sends
+        .map((value: unknown) => {
+          if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+          }
+          if (typeof value === "string" && value.trim().length > 0) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
+          }
+          return null;
+        })
+        .filter((value): value is number => value != null),
     };
   }
 
