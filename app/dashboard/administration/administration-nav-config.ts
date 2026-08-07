@@ -105,6 +105,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Billing Settings",
         href: "/dashboard/administration/billing",
       },
+      {
+        label: "Report a Problem",
+        href: "/dashboard/administration/report-a-problem",
+      },
     ],
   },
   {
@@ -126,6 +130,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
       {
         label: "System Event Log",
         href: "/dashboard/administration/system-events",
+      },
+      {
+        label: "Support Tickets",
+        href: "/dashboard/administration/support-tickets",
       },
     ],
   },
