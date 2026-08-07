@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logSystemEvent } from "@/lib/system-event-log";
 import { generateRentLedger } from "@/utils/generate-rent-ledger";
 
 export const runtime = "nodejs";
@@ -28,6 +29,23 @@ async function handleCron(request: Request) {
 
   try {
     const result = await generateRentLedger({ billingMonth, asOf });
+    const errorCount = result.errors;
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: "generate-rent-ledger",
+      status: errorCount > 0 ? "warning" : "success",
+      message: `created ${result.created}, skipped ${result.skipped}, overdue updated ${result.overdueUpdated}, errors ${errorCount}`,
+      metadata: {
+        billingMonth: result.billingMonth,
+        periodStart: result.periodStart,
+        periodEnd: result.periodEnd,
+        asOfDate: result.asOfDate,
+        created: result.created,
+        skipped: result.skipped,
+        overdueUpdated: result.overdueUpdated,
+        errorCount,
+      },
+    });
     return NextResponse.json({
       success: true,
       billingMonth: result.billingMonth,
@@ -43,6 +61,12 @@ async function handleCron(request: Request) {
     const message =
       error instanceof Error ? error.message : "Rent ledger generation failed";
     console.error("[generate-rent-ledger] fatal", message);
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: "generate-rent-ledger",
+      status: "failure",
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

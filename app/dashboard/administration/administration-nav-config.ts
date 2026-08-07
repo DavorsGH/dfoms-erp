@@ -123,6 +123,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Platform Unit Pricing",
         href: "/dashboard/administration/platform-unit-pricing",
       },
+      {
+        label: "System Event Log",
+        href: "/dashboard/administration/system-events",
+      },
     ],
   },
 ] as const;

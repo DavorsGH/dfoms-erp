@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logSystemEvent } from "@/lib/system-event-log";
 import { runPlatformOnlyUnitMonthlyBilling } from "@/utils/platform-only-unit-monthly-billing";
 
 export const runtime = "nodejs";
@@ -27,6 +28,24 @@ async function handleCron(request: Request) {
 
   try {
     const result = await runPlatformOnlyUnitMonthlyBilling({ billingMonth });
+    const errorCount = result.errors;
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: "platform-unit-billing",
+      status: errorCount > 0 || result.failed > 0 ? "warning" : "success",
+      message: `charged ${result.charged}, failed ${result.failed}, skipped trial ${result.skippedTrial}, errors ${errorCount}`,
+      metadata: {
+        billingMonth: result.billingMonth,
+        periodStart: result.periodStart,
+        periodEnd: result.periodEnd,
+        charged: result.charged,
+        failed: result.failed,
+        skippedTrial: result.skippedTrial,
+        skippedZeroUnits: result.skippedZeroUnits,
+        skippedAlreadyBilled: result.skippedAlreadyBilled,
+        errorCount,
+      },
+    });
     return NextResponse.json({
       success: true,
       billingMonth: result.billingMonth,
@@ -46,6 +65,12 @@ async function handleCron(request: Request) {
         ? error.message
         : "Platform unit monthly billing failed";
     console.error("[platform-unit-billing] fatal", message);
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: "platform-unit-billing",
+      status: "failure",
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

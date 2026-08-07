@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logSystemEvent } from "@/lib/system-event-log";
 import { runRentDueReminders } from "@/utils/rent-due-reminders";
 
 export const runtime = "nodejs";
@@ -28,6 +29,21 @@ async function handleCron(request: Request) {
 
   try {
     const result = await runRentDueReminders({ asOf, tenantId });
+    const errorCount = result.errors;
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: "rent-due-reminders",
+      status: errorCount > 0 ? "warning" : "success",
+      message: `considered ${result.considered}, notified ${result.notified}, skipped ${result.skipped}, errors ${errorCount}`,
+      metadata: {
+        asOfDate: result.asOfDate,
+        windowEndDate: result.windowEndDate,
+        considered: result.considered,
+        notified: result.notified,
+        skipped: result.skipped,
+        errorCount,
+      },
+    });
     return NextResponse.json({
       success: true,
       asOfDate: result.asOfDate,
@@ -42,6 +58,12 @@ async function handleCron(request: Request) {
     const message =
       error instanceof Error ? error.message : "Rent due reminders failed";
     console.error("[rent-due-reminders] fatal", message);
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: "rent-due-reminders",
+      status: "failure",
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -664,3 +664,115 @@ export async function chargePaystackAuthorization(options: {
     };
   }
 }
+
+export type PaystackListedTransaction = {
+  reference: string;
+  amountPesewas: number;
+  status: string;
+  paidAt: string | null;
+};
+
+type PaystackListTransactionsPayload = {
+  status?: boolean;
+  message?: string;
+  data?: Array<{
+    reference?: string;
+    amount?: number;
+    status?: string;
+    paid_at?: string;
+    created_at?: string;
+  }>;
+  meta?: {
+    page?: number;
+    pageCount?: number;
+    perPage?: number;
+    total?: number;
+  };
+};
+
+/** GET /transaction — list transactions in a date window (paginated). */
+export async function listPaystackTransactions(options: {
+  from: string;
+  to: string;
+  status?: string;
+  perPage?: number;
+}): Promise<
+  | { ok: true; transactions: PaystackListedTransaction[] }
+  | { ok: false; error: string }
+> {
+  const auth = requireSecretKey();
+  if (!auth.ok) {
+    return auth;
+  }
+
+  const perPage = options.perPage ?? 100;
+  const transactions: PaystackListedTransaction[] = [];
+  let page = 1;
+  let pageCount = 1;
+
+  try {
+    while (page <= pageCount) {
+      const params = new URLSearchParams({
+        from: options.from,
+        to: options.to,
+        perPage: String(perPage),
+        page: String(page),
+      });
+      if (options.status?.trim()) {
+        params.set("status", options.status.trim());
+      }
+
+      const response = await fetch(`${PAYSTACK_BASE}/transaction?${params}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${auth.secretKey}`,
+        },
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | PaystackListTransactionsPayload
+        | null;
+
+      if (!response.ok || payload?.status === false) {
+        return {
+          ok: false,
+          error:
+            payload?.message ??
+            `Paystack transaction list failed (${response.status}).`,
+        };
+      }
+
+      for (const row of payload?.data ?? []) {
+        const reference = row.reference?.trim() ?? "";
+        const amountPesewas =
+          typeof row.amount === "number" && Number.isFinite(row.amount)
+            ? row.amount
+            : null;
+        const status = row.status?.trim() ?? "";
+        if (!reference || amountPesewas == null || !status) {
+          continue;
+        }
+
+        transactions.push({
+          reference,
+          amountPesewas,
+          status,
+          paidAt: row.paid_at?.trim() || row.created_at?.trim() || null,
+        });
+      }
+
+      pageCount = payload?.meta?.pageCount ?? page;
+      page += 1;
+    }
+
+    return { ok: true, transactions };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Paystack transaction list request failed.",
+    };
+  }
+}
