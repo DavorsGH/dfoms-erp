@@ -2,6 +2,30 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+/** Friendly name used when enrolling TOTP via `auth.mfa.enroll`. */
+export const TOTP_ENROLLMENT_FRIENDLY_NAME = "Authenticator app";
+
+/**
+ * Remove incomplete TOTP enrollments left behind when a user closes the
+ * setup screen before entering their first verification code.
+ */
+export async function clearStaleTotpEnrollmentFactors(
+  supabase: SupabaseClient,
+): Promise<void> {
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error || !data) {
+    return;
+  }
+
+  const stale = data.all.filter(
+    (factor) =>
+      factor.factor_type === "totp" && factor.status === "unverified",
+  );
+  for (const factor of stale) {
+    await supabase.auth.mfa.unenroll({ factorId: factor.id });
+  }
+}
+
 export async function isTotpMfaSatisfied(
   supabase: SupabaseClient,
 ): Promise<boolean> {

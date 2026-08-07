@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { MfaPersona } from "@/lib/mfa/types";
 
@@ -48,6 +49,7 @@ export default function MfaSettingsPanel({
   onSendDisableSmsOtp,
 }: Props) {
   void persona;
+  const router = useRouter();
   const [method, setMethod] = useState(initialSettings?.method ?? "none");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -103,6 +105,7 @@ export default function MfaSettingsPanel({
     setTotpCode("");
     setSuccess("Authenticator app two-factor is now enabled.");
     setLoading(false);
+    router.refresh();
   }
 
   async function handleSendSms() {
@@ -135,6 +138,7 @@ export default function MfaSettingsPanel({
     setSmsCode("");
     setSuccess("SMS two-factor is now enabled.");
     setLoading(false);
+    router.refresh();
   }
 
   async function handleDisable(e: React.FormEvent) {
@@ -151,6 +155,7 @@ export default function MfaSettingsPanel({
     setDisableCode("");
     setSuccess("Two-factor authentication has been disabled.");
     setLoading(false);
+    router.refresh();
   }
 
   const cardClass =

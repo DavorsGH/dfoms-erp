@@ -13,12 +13,18 @@ import {
 } from "./mfa-rate-limit";
 import { revokeLoginMfaSessions } from "./mfa-session";
 import { toGhanaE164 } from "./phone-utils";
+import { persistUserMfaSettings } from "./persist-settings";
 import { resolveSmsPhoneForPersona } from "./sms-phone";
 import {
   createAndSendSmsOtpChallenge,
   verifySmsOtpChallenge,
 } from "./sms-otp";
-import { getVerifiedTotpFactorId, verifyTotpLoginCode } from "./totp";
+import {
+  clearStaleTotpEnrollmentFactors,
+  getVerifiedTotpFactorId,
+  TOTP_ENROLLMENT_FRIENDLY_NAME,
+  verifyTotpLoginCode,
+} from "./totp";
 import type { MfaActionResult, MfaPersona } from "./types";
 
 async function resolveSmsEnrollmentPhoneE164(
@@ -120,13 +126,26 @@ export async function startTotpEnrollment(): Promise<
     };
   }
 
+  await clearStaleTotpEnrollmentFactors(supabase);
+
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: "totp",
-    friendlyName: "Authenticator app",
+    friendlyName: TOTP_ENROLLMENT_FRIENDLY_NAME,
   });
 
   if (error || !data || data.type !== "totp") {
-    return { ok: false, error: error?.message ?? "Could not start TOTP enrollment." };
+    const message = error?.message ?? "Could not start TOTP enrollment.";
+    if (
+      message.includes("friendly name") &&
+      message.includes("already exists")
+    ) {
+      return {
+        ok: false,
+        error:
+          "A previous authenticator setup was not finished. Click “Set up authenticator app” again to start over.",
+      };
+    }
+    return { ok: false, error: message };
   }
 
   return {
@@ -158,19 +177,16 @@ export async function confirmTotpEnrollment(
   }
 
   const now = new Date().toISOString();
-  const { error: upsertError } = await supabase.from("user_mfa_settings").upsert(
-    {
-      auth_uid: user.id,
-      method: "totp",
-      sms_phone_e164: null,
-      sms_phone_verified_at: null,
-      totp_enrolled_at: now,
-    },
-    { onConflict: "auth_uid" },
-  );
+  const persisted = await persistUserMfaSettings({
+    authUid: user.id,
+    method: "totp",
+    smsPhoneE164: null,
+    smsPhoneVerifiedAt: null,
+    totpEnrolledAt: now,
+  });
 
-  if (upsertError) {
-    return { ok: false, error: upsertError.message };
+  if (!persisted.ok) {
+    return persisted;
   }
 
   await revokeLoginMfaSessions(user.id);
@@ -285,19 +301,16 @@ export async function confirmSmsEnrollment(
   }
 
   const now = new Date().toISOString();
-  const { error: upsertError } = await supabase.from("user_mfa_settings").upsert(
-    {
-      auth_uid: user.id,
-      method: "sms",
-      sms_phone_e164: phoneE164,
-      sms_phone_verified_at: now,
-      totp_enrolled_at: null,
-    },
-    { onConflict: "auth_uid" },
-  );
+  const persisted = await persistUserMfaSettings({
+    authUid: user.id,
+    method: "sms",
+    smsPhoneE164: phoneE164,
+    smsPhoneVerifiedAt: now,
+    totpEnrolledAt: null,
+  });
 
-  if (upsertError) {
-    return { ok: false, error: upsertError.message };
+  if (!persisted.ok) {
+    return persisted;
   }
 
   await revokeLoginMfaSessions(user.id);
