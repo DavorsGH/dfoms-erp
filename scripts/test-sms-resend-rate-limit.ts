@@ -139,7 +139,7 @@ async function runRedisIntegration(authUid: string) {
     assertMfaResendAllowed,
     recordMfaResend,
     resetMfaResendStateForAccount,
-  } = await import("../lib/mfa/mfa-rate-limit");
+  } = await import("../lib/mfa/sms-resend-rate-limit-store");
 
   if (
     !process.env.UPSTASH_REDIS_REST_URL?.trim() ||
