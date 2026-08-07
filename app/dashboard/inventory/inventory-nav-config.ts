@@ -39,12 +39,12 @@ export const INVENTORY_GROUPS: readonly InventoryNavGroup[] = [
     id: "purchasing",
     label: "Purchasing",
     items: [
-      { label: "Suppliers", href: "/dashboard/inventory/suppliers" },
+      { label: "Purchases", href: "/dashboard/inventory/product-purchases" },
       {
         label: "Purchase Orders",
         href: "/dashboard/inventory/purchase-orders",
       },
-      { label: "Purchases", href: "/dashboard/inventory/product-purchases" },
+      { label: "Suppliers", href: "/dashboard/inventory/suppliers" },
     ],
   },
 ] as const;
