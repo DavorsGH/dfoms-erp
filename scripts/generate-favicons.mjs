@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import toIco from "to-ico";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const logoPath = path.join(root, "public", "logo.jpg");
@@ -10,6 +9,52 @@ const appDir = path.join(root, "app");
 const publicDir = path.join(root, "public");
 
 const WHITE_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 };
+
+/** Pack PNG buffers into a single .ico (PNG-in-ICO, Vista+). */
+function pngBuffersToIco(pngBuffers) {
+  const count = pngBuffers.length;
+  const headerSize = 6 + count * 16;
+  let dataOffset = headerSize;
+
+  const entries = pngBuffers.map((buffer) => {
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    const entry = {
+      width: width >= 256 ? 0 : width,
+      height: height >= 256 ? 0 : height,
+      size: buffer.length,
+      offset: dataOffset,
+    };
+    dataOffset += buffer.length;
+    return entry;
+  });
+
+  const ico = Buffer.alloc(dataOffset);
+  ico.writeUInt16LE(0, 0);
+  ico.writeUInt16LE(1, 2);
+  ico.writeUInt16LE(count, 4);
+
+  let entryOffset = 6;
+  for (const entry of entries) {
+    ico.writeUInt8(entry.width, entryOffset);
+    ico.writeUInt8(entry.height, entryOffset + 1);
+    ico.writeUInt8(0, entryOffset + 2);
+    ico.writeUInt8(0, entryOffset + 3);
+    ico.writeUInt16LE(1, entryOffset + 4);
+    ico.writeUInt16LE(32, entryOffset + 6);
+    ico.writeUInt32LE(entry.size, entryOffset + 8);
+    ico.writeUInt32LE(entry.offset, entryOffset + 12);
+    entryOffset += 16;
+  }
+
+  let writeOffset = headerSize;
+  for (const buffer of pngBuffers) {
+    buffer.copy(ico, writeOffset);
+    writeOffset += buffer.length;
+  }
+
+  return ico;
+}
 
 async function buildFaviconPipeline(cropRatio) {
   const metadata = await sharp(logoPath).metadata();
@@ -35,6 +80,7 @@ async function renderIcon(pipeline, size, { sharpen = false } = {}) {
       fit: "contain",
       background: WHITE_BACKGROUND,
     })
+    .ensureAlpha()
     .png();
 
   if (sharpen) {
@@ -54,7 +100,7 @@ async function generateFavicons() {
     renderIcon(standardSource, 48),
   ]);
 
-  fs.writeFileSync(path.join(appDir, "favicon.ico"), await toIco(icoBuffers));
+  fs.writeFileSync(path.join(appDir, "favicon.ico"), pngBuffersToIco(icoBuffers));
 
   await renderIcon(smallSource, 32, { sharpen: true }).then((buffer) =>
     fs.writeFileSync(path.join(appDir, "icon.png"), buffer),
