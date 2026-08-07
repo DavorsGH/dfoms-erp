@@ -8,6 +8,7 @@ import {
   isActiveIncomeForReporting,
   resolveProfitLossRevenueCategory,
 } from "./income-register-utils";
+import { STATUTORY_REMITTANCE_EXPENSE_CATEGORY } from "./tax-ledger-remit";
 
 export const MONTH_LABELS = [
   "Jan",
@@ -176,6 +177,59 @@ const EXPENSE_SECTIONS = [
   },
 ] as const;
 
+export type PnlExpenseSectionCategory =
+  (typeof EXPENSE_SECTIONS)[number]["category"];
+
+/** Categories that map 1:1 into an EXPENSE_SECTIONS row (excludes fallback). */
+export function isMappedProfitLossExpenseCategory(
+  expenseCategory: string | null | undefined,
+): boolean {
+  const normalized = normalizeCategoryName(expenseCategory ?? "");
+  if (!normalized) {
+    return false;
+  }
+
+  return EXPENSE_SECTIONS.some(
+    (section) => normalizeCategoryName(section.category) === normalized,
+  );
+}
+
+/**
+ * Resolve expense_register.expense_category to a P&L section category.
+ * Unmapped lookup values (e.g. tenant-specific categories) fall back to Other.
+ */
+export function resolveProfitLossExpenseSectionCategory(
+  expenseCategory: string | null | undefined,
+): PnlExpenseSectionCategory {
+  const normalized = normalizeCategoryName(expenseCategory ?? "");
+  if (!normalized) {
+    return "Other";
+  }
+
+  for (const section of EXPENSE_SECTIONS) {
+    if (normalizeCategoryName(section.category) === normalized) {
+      return section.category;
+    }
+  }
+
+  return "Other";
+}
+
+/** Liability-settlement rows that must never hit P&L (even via Other fallback). */
+export function shouldIncludeExpenseInProfitLoss(
+  expenseCategory: string | null | undefined,
+): boolean {
+  const normalized = normalizeCategoryName(expenseCategory ?? "");
+  if (!normalized) {
+    return true;
+  }
+
+  return (
+    normalized !==
+    normalizeCategoryName(STATUTORY_REMITTANCE_EXPENSE_CATEGORY)
+  );
+}
+
 export function createEmptyMonthlyTotals(): MonthlyTotals {
   return Array.from({ length: 13 }, () => 0);
 }
@@ -236,7 +290,10 @@ export function normalizeCategoryName(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function resolveProfitLossExpenseLineLabel(entry: ProfitLossExpenseEntry): string {
+function resolveProfitLossExpenseLineLabel(
+  entry: ProfitLossExpenseEntry,
+  sectionCategory: string,
+): string {
   const subCategory = entry.sub_category?.trim() || "Uncategorized";
 
   if (normalizeCategoryName(subCategory) === "payroll") {
@@ -244,6 +301,16 @@ function resolveProfitLossExpenseLineLabel(entry: ProfitLossExpenseEntry): strin
     if (category) {
       return category;
     }
+  }
+
+  const originalCategory = entry.expense_category?.trim();
+  if (
+    normalizeCategoryName(sectionCategory) ===
+      normalizeCategoryName("Other") &&
+    originalCategory &&
+    !isMappedProfitLossExpenseCategory(originalCategory)
+  ) {
+    return `${originalCategory} — ${subCategory}`;
   }
 
   return subCategory;
@@ -290,7 +357,14 @@ function groupExpensesBySubCategory(
   const grouped = new Map<string, MonthlyTotals>();
 
   for (const entry of entries) {
-    if (normalizeCategoryName(entry.expense_category) !== targetCategory) {
+    if (!shouldIncludeExpenseInProfitLoss(entry.expense_category)) {
+      continue;
+    }
+
+    const resolvedSection = resolveProfitLossExpenseSectionCategory(
+      entry.expense_category,
+    );
+    if (normalizeCategoryName(resolvedSection) !== targetCategory) {
       continue;
     }
 
@@ -299,7 +373,7 @@ function groupExpensesBySubCategory(
       continue;
     }
 
-    const lineLabel = resolveProfitLossExpenseLineLabel(entry);
+    const lineLabel = resolveProfitLossExpenseLineLabel(entry, expenseCategory);
     const totals = grouped.get(lineLabel) ?? createEmptyMonthlyTotals();
     addAmountToMonth(totals, monthIndex, getTaxExclusiveExpenseAmount(entry));
     grouped.set(lineLabel, totals);
