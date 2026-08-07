@@ -129,10 +129,21 @@ export async function recordFailedMfaVerifyAttempt(
   }
 }
 
+function resendAvailableInSecondsFromResets(resetTimestampsMs: number[]): number {
+  if (resetTimestampsMs.length === 0) {
+    return 60;
+  }
+
+  const latestResetMs = Math.max(...resetTimestampsMs);
+  return Math.max(1, Math.ceil((latestResetMs - Date.now()) / 1000));
+}
+
 export async function assertMfaResendAllowed(
   phoneE164: string,
   ip: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<
+  { ok: true } | { ok: false; error: string; resendAvailableInSeconds: number }
+> {
   const active = getLimiters();
   if (!active) return { ok: true };
 
@@ -146,7 +157,20 @@ export async function assertMfaResendAllowed(
       active.resendIp.getRemaining(ipKey),
     ]);
     if (phoneBudget.remaining <= 0 || ipBudget.remaining <= 0) {
-      return { ok: false, error: MFA_RESEND_RATE_LIMIT_MESSAGE };
+      const blockedResetsMs: number[] = [];
+      if (phoneBudget.remaining <= 0) {
+        blockedResetsMs.push(phoneBudget.reset);
+      }
+      if (ipBudget.remaining <= 0) {
+        blockedResetsMs.push(ipBudget.reset);
+      }
+
+      return {
+        ok: false,
+        error: MFA_RESEND_RATE_LIMIT_MESSAGE,
+        resendAvailableInSeconds:
+          resendAvailableInSecondsFromResets(blockedResetsMs),
+      };
     }
     return { ok: true };
   } catch (error) {

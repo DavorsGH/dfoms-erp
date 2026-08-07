@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { MfaPersona } from "@/lib/mfa/types";
+import { formatMfaActionError } from "@/lib/mfa/format-sms-resend-wait";
+import type { MfaActionResult, MfaPersona } from "@/lib/mfa/types";
 
 type Settings = {
   method: string;
@@ -25,17 +26,13 @@ type Props = {
     factorId: string,
     code: string,
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
-  onSendSmsOtp: (
-    phoneOverride?: string,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  onSendSmsOtp: (phoneOverride?: string) => Promise<MfaActionResult>;
   onConfirmSms: (
     code: string,
     phoneOverride?: string,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
-  onDisable: (
-    code: string,
-  ) => Promise<{ ok: true } | { ok: false; error: string }>;
-  onSendDisableSmsOtp: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  ) => Promise<MfaActionResult>;
+  onDisable: (code: string) => Promise<MfaActionResult>;
+  onSendDisableSmsOtp: () => Promise<MfaActionResult>;
 };
 
 export default function MfaSettingsPanel({
@@ -115,7 +112,7 @@ export default function MfaSettingsPanel({
       staffManualPhoneEntry && !profilePhone ? manualPhone : undefined;
     const result = await onSendSmsOtp(phoneOverride);
     if (!result.ok) {
-      setError(result.error);
+      setError(formatMfaActionError(result));
     } else {
       setSuccess("Verification code sent by SMS.");
     }
@@ -323,7 +320,7 @@ export default function MfaSettingsPanel({
                 setLoading(true);
                 setError(null);
                 const result = await onSendDisableSmsOtp();
-                if (!result.ok) setError(result.error);
+                if (!result.ok) setError(formatMfaActionError(result));
                 else setSuccess("SMS code sent.");
                 setLoading(false);
               }}

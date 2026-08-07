@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { formatMfaActionError } from "@/lib/mfa/format-sms-resend-wait";
+import type { MfaActionResult, MfaPersona } from "@/lib/mfa/types";
 import { getSafeNext } from "@/utils/safe-redirect";
-import type { MfaPersona } from "@/lib/mfa/types";
 
 type ChallengeActions = {
   getContext: () => Promise<
@@ -15,10 +16,10 @@ type ChallengeActions = {
       }
     | { ok: false; error: string }
   >;
-  verifyTotp: (code: string) => Promise<{ ok: true } | { ok: false; error: string }>;
-  sendSms: () => Promise<{ ok: true } | { ok: false; error: string }>;
-  verifySms: (code: string) => Promise<{ ok: true } | { ok: false; error: string }>;
-  cancel: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  verifyTotp: (code: string) => Promise<MfaActionResult>;
+  sendSms: () => Promise<MfaActionResult>;
+  verifySms: (code: string) => Promise<MfaActionResult>;
+  cancel: () => Promise<MfaActionResult>;
 };
 
 type Props = {
@@ -65,7 +66,7 @@ export default function MfaLoginChallengeForm({
         if (!cancelled && sent.ok) {
           setSmsSent(true);
         } else if (!cancelled && !sent.ok) {
-          setError(sent.error);
+          setError(formatMfaActionError(sent));
         }
       }
     })();
@@ -110,7 +111,7 @@ export default function MfaLoginChallengeForm({
     setSubmitting(true);
     const sent = await actions.sendSms();
     if (!sent.ok) {
-      setError(sent.error);
+      setError(formatMfaActionError(sent));
     } else {
       setSmsSent(true);
     }
