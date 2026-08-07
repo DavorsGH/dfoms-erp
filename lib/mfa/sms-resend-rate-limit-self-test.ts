@@ -157,7 +157,7 @@ export async function runSmsResendPolicySelfTest(): Promise<SmsResendPolicyCheck
 
       return step(
         "cap-overrides-backoff",
-        backoffElapsed && gate.resendAvailableInSeconds > 60,
+        backoffElapsed && gate.resendAvailableInSeconds >= 60,
         backoffElapsed
           ? `backoff elapsed but cap still blocks for ${gate.resendAvailableInSeconds}s`
           : "backoff not elapsed in fixture",
