@@ -9,7 +9,6 @@ import {
   recordFailedLoginAttempt,
 } from "@/utils/login-rate-limit";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
-import { mfaDebugLog } from "@/lib/mfa/debug-log";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type LandlordPortalLoginActionResult = LoginWithMfaResult;
@@ -71,20 +70,7 @@ export async function landlordPortalLoginWithPassword(
   }
 
   // Login is allowed for pending/approved/rejected; data access is gated separately.
-  mfaDebugLog("landlord.login.actions.beforeMfaEval", {
-    email: trimmedEmail,
-    authUid: signInData.user.id,
-    pathname: "landlord-portal",
-  });
-
-  const mfa = await evaluatePostPasswordMfa(signInData.user.id, trimmedEmail);
-
-  mfaDebugLog("landlord.login.actions.afterMfaEval", {
-    email: trimmedEmail,
-    authUid: signInData.user.id,
-    mfa,
-  });
-
+  const mfa = await evaluatePostPasswordMfa(signInData.user.id);
   if (mfa.mfaRequired) {
     return {
       ok: true,

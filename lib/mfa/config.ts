@@ -1,5 +1,3 @@
-import { mfaDebugLog } from "./debug-log";
-
 /**
  * Read MFA_ENFORCEMENT at runtime using bracket access so Next.js 16 does not
  * inline the build-time value into Edge/Node bundles.
@@ -20,13 +18,7 @@ export function isMfaEnforcementEnabled(): boolean {
 export async function isMfaEnforcementEnabledAtRuntime(): Promise<boolean> {
   const { connection } = await import("next/server");
   await connection();
-  const raw = readMfaEnforcementRaw();
-  const enabled = raw === "true";
-  mfaDebugLog("config.isMfaEnforcementEnabledAtRuntime", {
-    raw: raw ?? "(unset)",
-    enabled,
-  });
-  return enabled;
+  return readMfaEnforcementRaw() === "true";
 }
 
 export function getMfaEnforcementEnvDebug(): {

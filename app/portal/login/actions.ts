@@ -10,7 +10,6 @@ import {
 } from "@/utils/login-rate-limit";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
-import { mfaDebugLog } from "@/lib/mfa/debug-log";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type PortalLoginActionResult = LoginWithMfaResult;
@@ -85,20 +84,7 @@ export async function portalLoginWithPassword(
     };
   }
 
-  mfaDebugLog("portal.login.actions.beforeMfaEval", {
-    email: trimmedEmail,
-    authUid: signInData.user.id,
-    pathname: "portal",
-  });
-
-  const mfa = await evaluatePostPasswordMfa(signInData.user.id, trimmedEmail);
-
-  mfaDebugLog("portal.login.actions.afterMfaEval", {
-    email: trimmedEmail,
-    authUid: signInData.user.id,
-    mfa,
-  });
-
+  const mfa = await evaluatePostPasswordMfa(signInData.user.id);
   if (mfa.mfaRequired) {
     return {
       ok: true,

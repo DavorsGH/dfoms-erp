@@ -8,7 +8,6 @@ import {
   recordFailedLoginAttempt,
 } from "@/utils/login-rate-limit";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
-import { mfaDebugLog } from "@/lib/mfa/debug-log";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type LoginActionResult = LoginWithMfaResult;
@@ -73,19 +72,7 @@ export async function loginWithPassword(
   } = await supabase.auth.getUser();
 
   if (user) {
-    mfaDebugLog("login.actions.loginWithPassword.beforeMfaEval", {
-      email: trimmedEmail,
-      authUid: user.id,
-      pathname: "staff",
-    });
-
-    const mfa = await evaluatePostPasswordMfa(user.id, trimmedEmail);
-
-    mfaDebugLog("login.actions.loginWithPassword.afterMfaEval", {
-      email: trimmedEmail,
-      authUid: user.id,
-      mfa,
-    });
+    const mfa = await evaluatePostPasswordMfa(user.id);
 
     if (mfa.mfaRequired) {
       return {
