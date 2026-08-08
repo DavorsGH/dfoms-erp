@@ -16,6 +16,8 @@ import {
   MANUAL_ENTRY_FIELD_DESCRIPTIONS,
   MANUAL_ENTRY_FIELD_SECTIONS,
   MANUAL_ENTRY_LIST_COLUMNS,
+  MANUAL_ENTRY_PAIRING_NOTE,
+  MANUAL_ENTRY_SECTION_STYLES,
   buildPeriodMonth,
   emptyManualEntryForm,
   entryToForm,
@@ -365,34 +367,52 @@ export default function ManualFinancialEntries({
               </div>
             </div>
 
-            {MANUAL_ENTRY_FIELD_SECTIONS.map((section) => (
-              <div key={section.title} className="space-y-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-                  {section.title}
-                </h3>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {section.fields.map((field) => (
-                    <div key={field.key}>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">
-                        {field.label}
-                      </label>
-                      <p className="mb-2 text-xs text-slate-500">
-                        {MANUAL_ENTRY_FIELD_DESCRIPTIONS[field.key]}
-                      </p>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={form[field.key]}
-                        onChange={(event) =>
-                          updateField(field.key, event.target.value)
-                        }
-                        className={inputClassName}
-                      />
-                    </div>
-                  ))}
+            <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <span className="font-medium text-[#0f2744]">Pairing rule:</span>{" "}
+              {MANUAL_ENTRY_PAIRING_NOTE}
+            </p>
+
+            {MANUAL_ENTRY_FIELD_SECTIONS.map((section) => {
+              const styles = MANUAL_ENTRY_SECTION_STYLES[section.variant];
+
+              return (
+                <div
+                  key={section.title}
+                  className={`space-y-4 ${styles.sectionClassName}`}
+                >
+                  <div className="space-y-1">
+                    <h3
+                      className={`text-sm font-semibold uppercase tracking-wide ${styles.headerClassName}`}
+                    >
+                      {section.title}
+                    </h3>
+                    <p className="text-xs text-slate-600">{styles.groupLabel}</p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {section.fields.map((field) => (
+                      <div key={field.key} className={styles.fieldClassName}>
+                        <label className="mb-1 block text-sm font-medium text-slate-800">
+                          {field.label}
+                        </label>
+                        <p className="mb-2 text-xs text-slate-600">
+                          {MANUAL_ENTRY_FIELD_DESCRIPTIONS[field.key]}
+                        </p>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={form[field.key]}
+                          onChange={(event) =>
+                            updateField(field.key, event.target.value)
+                          }
+                          aria-label={field.label}
+                          className={`${inputClassName} ${styles.inputClassName}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             <div className="flex gap-3">
               <button

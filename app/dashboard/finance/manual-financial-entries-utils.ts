@@ -35,10 +35,47 @@ export type ManualFinancialEntryRecord = {
 
 export type ManualEntryFieldSection = {
   title: string;
+  /** Visual grouping for the form (liability vs cash-flow pairing). */
+  variant: "liabilities" | "cashFlow";
   fields: Array<{
     key: ManualEntryFormFieldKey;
     label: string;
   }>;
+};
+
+export const MANUAL_ENTRY_PAIRING_NOTE =
+  "If you record a liability (like Bank Loans or Director's Loan), also record the matching amount under Loan Proceeds so the Balance Sheet stays balanced — unless it's a non-cash adjustment.";
+
+export const MANUAL_ENTRY_SECTION_STYLES: Record<
+  ManualEntryFieldSection["variant"],
+  {
+    sectionClassName: string;
+    headerClassName: string;
+    fieldClassName: string;
+    inputClassName: string;
+    groupLabel: string;
+  }
+> = {
+  liabilities: {
+    sectionClassName:
+      "rounded-lg border border-amber-200 bg-amber-50/50 p-4 sm:p-5",
+    headerClassName: "text-amber-950",
+    fieldClassName:
+      "rounded-md border border-amber-200/90 border-l-4 border-l-amber-500 bg-amber-50/80 p-3",
+    inputClassName:
+      "border-amber-200 bg-white focus:border-amber-700 focus:ring-amber-700",
+    groupLabel: "Liability — increases what you owe",
+  },
+  cashFlow: {
+    sectionClassName:
+      "rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 sm:p-5",
+    headerClassName: "text-emerald-950",
+    fieldClassName:
+      "rounded-md border border-emerald-200/90 border-l-4 border-l-emerald-500 bg-emerald-50/80 p-3",
+    inputClassName:
+      "border-emerald-200 bg-white focus:border-emerald-700 focus:ring-emerald-700",
+    groupLabel: "Cash movement — changes what you hold",
+  },
 };
 
 export const MANUAL_ENTRY_FIELD_DESCRIPTIONS: Record<
@@ -61,6 +98,7 @@ export const MANUAL_ENTRY_FIELD_DESCRIPTIONS: Record<
 export const MANUAL_ENTRY_FIELD_SECTIONS: ManualEntryFieldSection[] = [
   {
     title: "Balance Sheet — Liabilities",
+    variant: "liabilities",
     fields: [
       { key: "bank_loans", label: "Bank Loans" },
       {
@@ -72,6 +110,7 @@ export const MANUAL_ENTRY_FIELD_SECTIONS: ManualEntryFieldSection[] = [
   },
   {
     title: "Cash Flow Inputs",
+    variant: "cashFlow",
     fields: [
       { key: "loan_proceeds", label: "Loan Proceeds" },
       { key: "loan_repayments", label: "Loan Repayments" },
