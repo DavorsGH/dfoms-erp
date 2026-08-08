@@ -149,7 +149,7 @@ export function calculateInventoryByMonth(
   finishedProductAverageCosts: FinishedProductAverageCostRow[],
   config: InventoryBalanceConfig | null,
   financialYear: number,
-  referenceDate = new Date(),
+  _referenceDate = new Date(),
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   if (!config?.go_live_date) {
@@ -157,10 +157,6 @@ export function calculateInventoryByMonth(
   }
 
   const goLiveMonthIndex = getEntryMonthIndex(config.go_live_date, financialYear);
-  const currentMonthIndex = getEntryMonthIndex(
-    normalizeDate(referenceDate.toISOString()),
-    financialYear,
-  );
 
   if (goLiveMonthIndex === null) {
     return totals;
@@ -172,17 +168,11 @@ export function calculateInventoryByMonth(
     finishedProductAverageCosts,
   );
 
-  for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
-    if (monthIndex < goLiveMonthIndex) {
-      totals[monthIndex] = 0;
-      continue;
-    }
-
-    if (currentMonthIndex !== null && monthIndex > currentMonthIndex) {
-      totals[monthIndex] = 0;
-      continue;
-    }
-
+  // From go-live through FY-end, use the current stock valuation for every month.
+  // Historical months already use liveValue (not point-in-time snapshots); projecting
+  // the same value through remaining FY months keeps inventory aligned with other BS
+  // lines (capital, RE, AR) that are not zeroed for future months in the FY view.
+  for (let monthIndex = goLiveMonthIndex; monthIndex < 12; monthIndex += 1) {
     totals[monthIndex] = liveValue;
   }
 

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { isDavorsPlatformSuperAdmin } from "@/utils/dashboard-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { fetchBalanceSheetIntegritySummary } from "@/utils/balance-sheet-integrity-summary";
 import {
   parseSystemEventPage,
   parseSystemEventStatusFilter,
@@ -50,6 +51,8 @@ export default async function SystemEventsPage({ searchParams }: PageProps) {
 
   const { data, error, count } = await query;
 
+  const outOfBalanceSummary = await fetchBalanceSheetIntegritySummary(admin);
+
   return (
     <>
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
@@ -64,6 +67,7 @@ export default async function SystemEventsPage({ searchParams }: PageProps) {
           eventTypeFilter={eventTypeFilter}
           statusFilter={statusFilter}
           fetchError={error?.message ?? null}
+          outOfBalanceSummary={outOfBalanceSummary}
         />
       </Suspense>
     </>

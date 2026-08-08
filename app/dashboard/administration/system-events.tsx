@@ -13,6 +13,8 @@ import type {
   SystemEventStatus,
   SystemEventType,
 } from "@/utils/system-event-log-types";
+import type { BalanceSheetIntegritySummaryRow } from "@/utils/balance-sheet-integrity-summary";
+import { BS_INTEGRITY_EVENT_NAME } from "@/utils/balance-sheet-integrity-constants";
 
 type SystemEventsViewerProps = {
   rows: SystemEventLogRow[];
@@ -22,6 +24,7 @@ type SystemEventsViewerProps = {
   eventTypeFilter: SystemEventType | "";
   statusFilter: SystemEventStatus | "";
   fetchError: string | null;
+  outOfBalanceSummary: BalanceSheetIntegritySummaryRow[];
 };
 
 const EVENT_TYPES: Array<{ value: SystemEventType | ""; label: string }> = [
@@ -94,6 +97,7 @@ export default function SystemEventsViewer({
   eventTypeFilter,
   statusFilter,
   fetchError,
+  outOfBalanceSummary,
 }: SystemEventsViewerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -113,6 +117,83 @@ export default function SystemEventsViewer({
 
   return (
     <div className="space-y-4">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-base font-semibold text-[#0f2744]">
+              Tenants currently out of balance
+            </h3>
+            <p className="text-sm text-slate-600">
+              Latest nightly{" "}
+              <span className="font-medium">{BS_INTEGRITY_EVENT_NAME}</span>{" "}
+              results (closed months only).
+            </p>
+          </div>
+          <Link
+            href={buildHref({
+              page: 1,
+              eventType: "cron",
+              status: "failure",
+            })}
+            className="text-sm font-medium text-[#0f2744] hover:underline"
+          >
+            View failure events
+          </Link>
+        </div>
+
+        {outOfBalanceSummary.length === 0 ? (
+          <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            No tenants are currently flagged out of balance by the nightly check.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-slate-600">
+                  <th className="px-3 py-2 font-medium">Tenant</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Max diff</th>
+                  <th className="px-3 py-2 font-medium">Months</th>
+                  <th className="px-3 py-2 font-medium">Last checked</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outOfBalanceSummary.map((row) => (
+                  <tr key={row.tenantId} className="border-b border-slate-100">
+                    <td className="px-3 py-2 font-medium text-slate-900">
+                      {row.tenantName}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${statusBadgeClass(row.status)}`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-slate-800">
+                      GHS {Math.abs(row.maxAbsDiff).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-700">
+                      {row.imbalances.length > 0
+                        ? row.imbalances
+                            .map(
+                              (month) =>
+                                `${month.monthLabel}: ${month.diff.toFixed(2)}`,
+                            )
+                            .join("; ")
+                        : (row.message ?? "—")}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                      {formatTimestamp(row.checkedAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       {fetchError ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {fetchError}
