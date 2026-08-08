@@ -13,6 +13,7 @@ export default async function FixedAssetsPage() {
     { data, error },
     { data: assetCategories, error: assetCategoriesError },
     { data: depreciationMethods, error: depreciationMethodsError },
+    { data: paymentMethods, error: paymentMethodsError },
   ] = await Promise.all([
     supabase.from("fixed_assets").select("*").order("asset_id", { ascending: true }),
     supabase.from("asset_categories").select("name").order("name", { ascending: true }),
@@ -20,12 +21,14 @@ export default async function FixedAssetsPage() {
       .from("depreciation_methods")
       .select("name")
       .order("name", { ascending: true }),
+    supabase.from("payment_methods").select("name").order("name", { ascending: true }),
   ]);
 
   const fetchError =
     error?.message ??
     assetCategoriesError?.message ??
     depreciationMethodsError?.message ??
+    paymentMethodsError?.message ??
     null;
 
   return (
@@ -41,6 +44,7 @@ export default async function FixedAssetsPage() {
         initialDepreciationMethods={
           (depreciationMethods as NamedLookup[] | null) ?? []
         }
+        initialPaymentMethods={(paymentMethods as NamedLookup[] | null) ?? []}
         fetchError={fetchError}
       />
     </div>

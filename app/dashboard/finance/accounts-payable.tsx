@@ -10,9 +10,12 @@ import {
   formatDate,
   formatGHS,
   getPayableGrossBeforeWht,
+  getRemainingPayableBalance,
   normalizeAccountsPayableEntry,
   type AccountsPayableEntry,
+  type AccountsPayablePaymentSource,
 } from "./accounts-payable-utils";
+import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import {
   computePurchaseTaxAmounts,
   computeWhtAmount,
@@ -56,7 +59,6 @@ type PayableFormState = {
   invoice_date: string;
   due_date: string;
   amount: string;
-  amount_paid: string;
   wht_rate: string;
   wht_amount: string;
   input_vat_amount: string;
@@ -72,7 +74,6 @@ const emptyForm: PayableFormState = {
   invoice_date: "",
   due_date: "",
   amount: "",
-  amount_paid: "",
   wht_rate: "0",
   wht_amount: "",
   input_vat_amount: "",
@@ -122,6 +123,16 @@ export default function AccountsPayable({
   const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [paymentEntry, setPaymentEntry] = useState<AccountsPayableEntry | null>(
+    null,
+  );
+  const [paymentForm, setPaymentForm] = useState({
+    payment_date: "",
+    amount: "",
+    payment_source: "company_cash" as AccountsPayablePaymentSource,
+    notes: "",
+  });
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
 
@@ -226,7 +237,6 @@ export default function AccountsPayable({
       due_date: toDateInputValue(entry.due_date),
       // Form amount is invoice gross before WHT.
       amount: String(getPayableGrossBeforeWht(entry)),
-      amount_paid: String(entry.amount_paid),
       wht_rate: formatRateValue(entry.wht_rate ?? 0),
       wht_amount: entry.wht_amount == null ? "" : String(entry.wht_amount),
       input_vat_amount:
@@ -283,7 +293,10 @@ export default function AccountsPayable({
     setError(null);
 
     const grossBeforeWht = Number(form.amount) || 0;
-    const amountPaid = Number(form.amount_paid) || 0;
+    const existingEntry = editingId
+      ? entries.find((entry) => entry.id === editingId)
+      : null;
+    const amountPaid = existingEntry?.amount_paid ?? 0;
     const whtRate = Number(form.wht_rate) || 0;
     const whtAmount = Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0));
     const inputVatAmount = Math.max(
@@ -379,6 +392,93 @@ export default function AccountsPayable({
     setLoading(false);
   }
 
+  function openRecordPayment(entry: AccountsPayableEntry) {
+    setPaymentEntry(entry);
+    setPaymentForm({
+      payment_date: new Date().toISOString().slice(0, 10),
+      amount: "",
+      payment_source: "company_cash",
+      notes: "",
+    });
+  }
+
+  function closeRecordPayment() {
+    setPaymentEntry(null);
+    setPaymentForm({
+      payment_date: "",
+      amount: "",
+      payment_source: "company_cash",
+      notes: "",
+    });
+  }
+
+  async function handleRecordPayment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!paymentEntry) {
+      return;
+    }
+
+    setRecordingPayment(true);
+    setError(null);
+
+    const amount = Number(paymentForm.amount) || 0;
+    if (amount <= 0) {
+      setError("Payment amount must be greater than zero.");
+      setRecordingPayment(false);
+      return;
+    }
+
+    const remaining = getRemainingPayableBalance(paymentEntry);
+    if (amount > remaining + 0.005) {
+      setError(
+        `Payment exceeds balance due (${formatGHS(remaining)} remaining).`,
+      );
+      setRecordingPayment(false);
+      return;
+    }
+
+    const { tenantId, error: tenantError } =
+      await resolveSessionTenantId(supabase);
+    if (tenantError || !tenantId) {
+      setError(tenantError ?? "Unable to resolve workspace.");
+      setRecordingPayment(false);
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from("accounts_payable_payments")
+      .insert({
+        tenant_id: tenantId,
+        accounts_payable_id: paymentEntry.id,
+        payment_date: paymentForm.payment_date,
+        amount,
+        payment_source: paymentForm.payment_source,
+        notes: paymentForm.notes.trim() || null,
+      });
+
+    if (insertError) {
+      setError(insertError.message);
+      setRecordingPayment(false);
+      return;
+    }
+
+    const { error: recomputeError } = await supabase.rpc(
+      "recompute_accounts_payable_from_payments",
+      { p_ap_id: paymentEntry.id },
+    );
+
+    closeRecordPayment();
+    await refreshEntries();
+
+    if (recomputeError) {
+      setError(
+        `Payment recorded but payable totals could not be refreshed: ${recomputeError.message}`,
+      );
+    }
+
+    setRecordingPayment(false);
+  }
+
   function updateField(field: keyof PayableFormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -418,7 +518,9 @@ export default function AccountsPayable({
   });
   const previewBalanceDue = calculateBalanceDue(
     previewPurchaseTax.netPaidToSupplier,
-    Number(form.amount_paid) || 0,
+    editingId
+      ? (entries.find((entry) => entry.id === editingId)?.amount_paid ?? 0)
+      : 0,
   );
   const previewDaysOutstanding = form.due_date
     ? calculateDaysOutstanding(form.due_date)
@@ -558,24 +660,8 @@ export default function AccountsPayable({
                   className={inputClassName}
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Supplier invoice total before WHT.
-                </p>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Amount Paid
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  value={form.amount_paid}
-                  onChange={(e) => updateField("amount_paid", e.target.value)}
-                  className={inputClassName}
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Cash paid to the supplier (toward net after WHT).
+                  Supplier invoice total before WHT. Settlements are recorded
+                  separately via Record Payment.
                 </p>
               </div>
               <div>
@@ -721,6 +807,117 @@ export default function AccountsPayable({
         </section>
       )}
 
+      {paymentEntry ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
+            Record Payment — {paymentEntry.vendor_name} (
+            {paymentEntry.invoice_number})
+          </h2>
+          <p className="mb-4 text-sm text-slate-600">
+            Balance due:{" "}
+            <span className="font-medium text-[#0f2744]">
+              {formatGHS(getRemainingPayableBalance(paymentEntry))}
+            </span>
+            . Record multiple partial payments with different sources if needed.
+          </p>
+          <form onSubmit={handleRecordPayment} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Payment Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={paymentForm.payment_date}
+                  onChange={(e) =>
+                    setPaymentForm((current) => ({
+                      ...current,
+                      payment_date: e.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Amount
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  value={paymentForm.amount}
+                  onChange={(e) =>
+                    setPaymentForm((current) => ({
+                      ...current,
+                      amount: e.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Payment Source
+                </label>
+                <select
+                  required
+                  value={paymentForm.payment_source}
+                  onChange={(e) =>
+                    setPaymentForm((current) => ({
+                      ...current,
+                      payment_source: e.target
+                        .value as AccountsPayablePaymentSource,
+                    }))
+                  }
+                  className={inputClassName}
+                >
+                  <option value="company_cash">Company cash</option>
+                  <option value="directors_loan">
+                    Director (personal funds)
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Notes
+                </label>
+                <input
+                  type="text"
+                  value={paymentForm.notes}
+                  onChange={(e) =>
+                    setPaymentForm((current) => ({
+                      ...current,
+                      notes: e.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={recordingPayment}
+                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {recordingPayment ? "Recording…" : "Record Payment"}
+              </button>
+              <button
+                type="button"
+                onClick={closeRecordPayment}
+                disabled={recordingPayment}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
       <ScrollableTable>
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
@@ -799,6 +996,12 @@ export default function AccountsPayable({
                       <RegisterRowActions
                         onEdit={() => openEditForm(entry)}
                         onDelete={() => handleDelete(entry.id)}
+                        onMarkPaid={
+                          getRemainingPayableBalance(entry) > 0
+                            ? () => openRecordPayment(entry)
+                            : undefined
+                        }
+                        markPaidLabel="Record Payment"
                         deleting={deletingId === entry.id}
                       />
                     </tr>

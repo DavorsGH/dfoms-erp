@@ -14,6 +14,8 @@ import {
   type BalanceSheetRow,
   type BalanceSheetTaxLedgerEntry,
   type InventoryBalanceSheetInput,
+  type AccountsPayablePaymentRow,
+  type DirectorsLoanRepaymentRow,
 } from "./balance-sheet-utils";
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type {
@@ -34,10 +36,13 @@ import ScrollableTable, {
 } from "../scrollable-table";
 
 type BalanceSheetProps = {
+  tenantId: string;
   initialIncomeEntries: BalanceSheetIncomeEntry[];
   initialExpenseEntries: ProfitLossExpenseEntry[];
   initialFixedAssets: ProfitLossAssetEntry[];
   initialPayableEntries: BalanceSheetAccountsPayableEntry[];
+  initialAccountsPayablePayments: AccountsPayablePaymentRow[];
+  initialDirectorsLoanRepayments: DirectorsLoanRepaymentRow[];
   initialCapitalContributions: CapitalContributionEntry[];
   initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
   initialPayrollHistory: PayrollHistoryWagesEntry[];
@@ -119,10 +124,13 @@ function BalanceCheckSummary({
 }
 
 export default function BalanceSheet({
+  tenantId,
   initialIncomeEntries,
   initialExpenseEntries,
   initialFixedAssets,
   initialPayableEntries,
+  initialAccountsPayablePayments,
+  initialDirectorsLoanRepayments,
   initialCapitalContributions,
   initialCashFlowExpenseEntries,
   initialPayrollHistory,
@@ -152,12 +160,20 @@ export default function BalanceSheet({
         initialInventoryBalanceSheet,
         initialManualEntries,
         initialTaxLedgerEntries,
+        {
+          tenantId,
+          accountsPayablePayments: initialAccountsPayablePayments,
+          directorsLoanRepayments: initialDirectorsLoanRepayments,
+        },
       ),
     [
+      tenantId,
       initialIncomeEntries,
       initialExpenseEntries,
       initialFixedAssets,
       initialPayableEntries,
+      initialAccountsPayablePayments,
+      initialDirectorsLoanRepayments,
       initialCapitalContributions,
       initialCashFlowExpenseEntries,
       initialPayrollHistory,

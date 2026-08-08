@@ -21,6 +21,37 @@ export type AccountsPayableEntry = {
 
 export type PayableStatus = "Paid" | "Overdue" | "Outstanding";
 
+export type AccountsPayablePaymentSource = "company_cash" | "directors_loan";
+
+export type AccountsPayablePaymentRecord = {
+  id: string;
+  tenant_id: string;
+  accounts_payable_id: string;
+  payment_date: string;
+  amount: number;
+  payment_source: AccountsPayablePaymentSource;
+  notes: string | null;
+};
+
+export function formatPaymentSourceLabel(
+  source: AccountsPayablePaymentSource,
+): string {
+  return source === "directors_loan"
+    ? "Director (personal)"
+    : "Company cash";
+}
+
+export function getRemainingPayableBalance(entry: {
+  amount: number;
+  amount_paid: number;
+  balance_due?: number | null;
+}): number {
+  if (entry.balance_due != null) {
+    return Math.max(Number(entry.balance_due) || 0, 0);
+  }
+  return Math.max((Number(entry.amount) || 0) - (Number(entry.amount_paid) || 0), 0);
+}
+
 function toNullableNumber(value: unknown): number | null {
   return value == null ? null : Number(value) || 0;
 }

@@ -15,6 +15,8 @@ import {
   isReducingBalanceMethod,
   type FixedAssetEntry,
 } from "./fixed-assets-utils";
+import { isCreditPaymentMethod } from "../inventory/inventory-balance-sheet-utils";
+import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import { allocateAssetId } from "./asset-id-api";
 import RegisterRowActions, {
   confirmDeleteEntry,
@@ -31,6 +33,7 @@ type FixedAssetsProps = {
   initialAssets: FixedAssetEntry[];
   initialAssetCategories: NamedLookup[];
   initialDepreciationMethods: NamedLookup[];
+  initialPaymentMethods: NamedLookup[];
   fetchError: string | null;
 };
 
@@ -45,6 +48,8 @@ const emptyForm = {
   depreciation_method: "",
   location: "",
   notes: "",
+  payment_method: "Cash",
+  vendor_name: "",
 };
 
 const inputClassName =
@@ -54,6 +59,7 @@ export default function FixedAssets({
   initialAssets,
   initialAssetCategories,
   initialDepreciationMethods,
+  initialPaymentMethods,
   fetchError,
 }: FixedAssetsProps) {
   const supabase = createClient();
@@ -62,6 +68,7 @@ export default function FixedAssets({
   const [depreciationMethods, setDepreciationMethods] = useState(
     initialDepreciationMethods,
   );
+  const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -80,6 +87,7 @@ export default function FixedAssets({
       const [
         { data: categories, error: categoriesError },
         { data: methods, error: methodsError },
+        { data: payments, error: paymentsError },
       ] = await Promise.all([
         client
           .from("asset_categories")
@@ -89,10 +97,17 @@ export default function FixedAssets({
           .from("depreciation_methods")
           .select("name")
           .order("name", { ascending: true }),
+        client
+          .from("payment_methods")
+          .select("name")
+          .order("name", { ascending: true }),
       ]);
 
       const lookupError =
-        categoriesError?.message ?? methodsError?.message ?? null;
+        categoriesError?.message ??
+        methodsError?.message ??
+        paymentsError?.message ??
+        null;
 
       if (lookupError) {
         setError(lookupError);
@@ -101,6 +116,7 @@ export default function FixedAssets({
 
       setAssetCategories(categories ?? []);
       setDepreciationMethods(methods ?? []);
+      setPaymentMethods(payments ?? []);
     }
 
     loadLookups();
@@ -146,6 +162,8 @@ export default function FixedAssets({
       depreciation_method: asset.depreciation_method,
       location: asset.location,
       notes: asset.notes ?? "",
+      payment_method: asset.payment_method ?? "Cash",
+      vendor_name: asset.vendor_name ?? "",
     });
     setShowForm(true);
   }
@@ -157,6 +175,19 @@ export default function FixedAssets({
 
     setDeletingId(assetId);
     setError(null);
+
+    const existing = assets.find((asset) => asset.asset_id === assetId);
+    if (existing?.accounts_payable_id) {
+      const { error: reverseError } = await supabase.rpc(
+        "reverse_fixed_asset_payable",
+        { p_payable_id: existing.accounts_payable_id },
+      );
+      if (reverseError) {
+        setError(reverseError.message);
+        setDeletingId(null);
+        return;
+      }
+    }
 
     const { error: deleteError } = await supabase
       .from("fixed_assets")
@@ -239,6 +270,16 @@ export default function FixedAssets({
       form.depreciation_method,
     );
 
+    const paymentMethod = form.payment_method.trim() || "Cash";
+    if (
+      isCreditPaymentMethod(paymentMethod) &&
+      !form.vendor_name.trim()
+    ) {
+      setError("Vendor name is required for credit / on-account purchases.");
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       asset_id: form.asset_id.trim(),
       asset_name: form.asset_name,
@@ -254,7 +295,22 @@ export default function FixedAssets({
       net_book_value: netBookValue,
       location: form.location,
       notes: form.notes || null,
+      payment_method: paymentMethod,
+      vendor_name: form.vendor_name.trim() || null,
     };
+
+    const { tenantId, error: tenantError } =
+      await resolveSessionTenantId(supabase);
+    if (tenantError || !tenantId) {
+      setError(tenantError ?? "Unable to resolve workspace.");
+      setLoading(false);
+      return;
+    }
+
+    const existingAsset = editingId
+      ? assets.find((asset) => asset.asset_id === editingId)
+      : null;
+    let savedAssetId = editingId;
 
     if (editingId) {
       const { error: saveError } = await supabase
@@ -273,6 +329,8 @@ export default function FixedAssets({
           net_book_value: payload.net_book_value,
           location: payload.location,
           notes: payload.notes,
+          payment_method: payload.payment_method,
+          vendor_name: payload.vendor_name,
         })
         .eq("asset_id", editingId);
 
@@ -289,6 +347,8 @@ export default function FixedAssets({
         return;
       }
 
+      savedAssetId = allocated.assetId;
+
       const { error: saveError } = await supabase.from("fixed_assets").insert({
         ...payload,
         asset_id: allocated.assetId,
@@ -296,6 +356,39 @@ export default function FixedAssets({
 
       if (saveError) {
         setError(saveError.message);
+        setLoading(false);
+        return;
+      }
+    }
+
+    const { data: payableId, error: syncError } = await supabase.rpc(
+      "sync_fixed_asset_payable",
+      {
+        p_tenant_id: tenantId,
+        p_asset_id: savedAssetId,
+        p_vendor_name: payload.vendor_name,
+        p_purchase_date: payload.purchase_date,
+        p_payment_method: payload.payment_method,
+        p_total_cost: payload.total_cost,
+        p_asset_name: payload.asset_name,
+        p_existing_payable_id: existingAsset?.accounts_payable_id ?? null,
+      },
+    );
+
+    if (syncError) {
+      setError(`Asset saved but linked payable sync failed: ${syncError.message}`);
+      setLoading(false);
+      return;
+    }
+
+    if (savedAssetId) {
+      const { error: linkError } = await supabase
+        .from("fixed_assets")
+        .update({ accounts_payable_id: payableId ?? null })
+        .eq("asset_id", savedAssetId);
+
+      if (linkError) {
+        setError(`Asset saved but payable link update failed: ${linkError.message}`);
         setLoading(false);
         return;
       }
@@ -470,6 +563,43 @@ export default function FixedAssets({
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Payment Method
+                </label>
+                <select
+                  required
+                  value={form.payment_method}
+                  onChange={(e) =>
+                    updateField("payment_method", e.target.value)
+                  }
+                  className={inputClassName}
+                >
+                  <option value="">Select method</option>
+                  {(paymentMethods.length > 0
+                    ? paymentMethods
+                    : [{ name: "Cash" }, { name: "Supplier Credit" }]
+                  ).map((method) => (
+                    <option key={method.name} value={method.name}>
+                      {method.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {isCreditPaymentMethod(form.payment_method) ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Vendor Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={form.vendor_name}
+                    onChange={(e) => updateField("vendor_name", e.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Location

@@ -39,11 +39,19 @@ import {
 } from "../hr-payroll/payroll-live-recalc-utils";
 import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
 
+import type {
+  AccountsPayablePaymentRow,
+  DirectorsLoanRepaymentRow,
+} from "./directors-loan-utils";
+
 export type BalanceSheetPageData = {
+  tenantId: string;
   initialIncomeEntries: BalanceSheetIncomeEntry[];
   initialExpenseEntries: ProfitLossExpenseEntry[];
   initialFixedAssets: ProfitLossAssetEntry[];
   initialPayableEntries: BalanceSheetAccountsPayableEntry[];
+  initialAccountsPayablePayments: AccountsPayablePaymentRow[];
+  initialDirectorsLoanRepayments: DirectorsLoanRepaymentRow[];
   initialCapitalContributions: CapitalContributionEntry[];
   initialCashFlowIncomeEntries: CashFlowIncomeEntry[];
   initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
@@ -177,6 +185,8 @@ export async function fetchBalanceSheetPageData(
     { data: expenseEntries, error: expenseError },
     { data: fixedAssets, error: fixedAssetsError },
     { data: payableEntries, error: payableError },
+    { data: apPayments, error: apPaymentsError },
+    { data: directorsLoanRepayments, error: directorsLoanRepaymentsError },
     { data: capitalContributions, error: capitalContributionsError },
     { data: manualEntries, error: manualError },
     { data: payrollHistory, error: payrollHistoryError },
@@ -191,46 +201,67 @@ export async function fetchBalanceSheetPageData(
       .select(
         "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
       )
+      .eq("tenant_id", tenantId)
       .order("date", { ascending: true }),
     supabase
       .from("expense_register")
       .select(
         "date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
       )
+      .eq("tenant_id", tenantId)
       .order("date", { ascending: true }),
     supabase
       .from("fixed_assets")
       .select(
-        "original_cost, quantity, useful_life_years, purchase_date, depreciation_method",
+        "tenant_id, original_cost, quantity, useful_life_years, purchase_date, depreciation_method, payment_method",
       )
+      .eq("tenant_id", tenantId)
       .order("asset_id", { ascending: true }),
     supabase
       .from("accounts_payable")
       .select(
         "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
       )
+      .eq("tenant_id", tenantId)
       .order("invoice_date", { ascending: true }),
+    supabase
+      .from("accounts_payable_payments")
+      .select("tenant_id, payment_date, amount, payment_source")
+      .eq("tenant_id", tenantId)
+      .order("payment_date", { ascending: true }),
+    supabase
+      .from("directors_loan_repayments")
+      .select(
+        "tenant_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
+      )
+      .eq("tenant_id", tenantId)
+      .order("repayment_date", { ascending: true }),
     supabase
       .from("capital_contributions")
       .select("id, date, contributed_by, amount, description, notes")
+      .eq("tenant_id", tenantId)
       .order("date", { ascending: true }),
     supabase
       .from("manual_financial_entries")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("period_month", { ascending: true }),
     supabase
       .from("payroll_history")
       .select("payroll_month, net_pay, net_only_adjustment")
+      .eq("tenant_id", tenantId)
       .order("payroll_month", { ascending: true }),
     // Full processing rows: open-month Accrued Wages live-recalc needs manuals.
     // Display-only — never written back from this report path.
     supabase
       .from("payroll_processing")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("payroll_month", { ascending: true }),
     supabase
       .from("month_end_close")
       .select("month, total_net_pay")
+      .eq("tenant_id", tenantId)
       .order("month", { ascending: true }),
     supabase
       .from("tax_ledger_entries")
@@ -239,7 +270,7 @@ export async function fetchBalanceSheetPageData(
       .eq("status", "open")
       .order("entry_date", { ascending: true }),
     fetchInventoryBalanceSheetInput(supabase, tenantId),
-    fetchPayrollLiveRecalcBundle(supabase),
+    fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
   ]);
 
   const cashFlowIncomeEntries =
@@ -263,10 +294,15 @@ export async function fetchBalanceSheetPageData(
     })) ?? [];
 
   return {
+    tenantId,
     initialIncomeEntries: incomeEntries ?? [],
     initialExpenseEntries: expenseEntries ?? [],
     initialFixedAssets: fixedAssets ?? [],
     initialPayableEntries: payableEntries ?? [],
+    initialAccountsPayablePayments:
+      (apPayments as AccountsPayablePaymentRow[] | null) ?? [],
+    initialDirectorsLoanRepayments:
+      (directorsLoanRepayments as DirectorsLoanRepaymentRow[] | null) ?? [],
     initialCapitalContributions:
       (capitalContributions as CapitalContributionEntry[] | null) ?? [],
     initialCashFlowIncomeEntries: cashFlowIncomeEntries,
@@ -299,6 +335,8 @@ export async function fetchBalanceSheetPageData(
       expenseError?.message ??
       fixedAssetsError?.message ??
       payableError?.message ??
+      apPaymentsError?.message ??
+      directorsLoanRepaymentsError?.message ??
       capitalContributionsError?.message ??
       manualError?.message ??
       payrollHistoryError?.message ??

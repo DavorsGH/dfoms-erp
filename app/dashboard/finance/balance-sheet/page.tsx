@@ -16,10 +16,13 @@ export default async function BalanceSheetPage() {
 
   const data = await fetchBalanceSheetPageData(supabase, tenantId);
   const {
+    tenantId: resolvedTenantId,
     initialIncomeEntries,
     initialExpenseEntries,
     initialFixedAssets,
     initialPayableEntries,
+    initialAccountsPayablePayments,
+    initialDirectorsLoanRepayments,
     initialCapitalContributions,
     initialCashFlowExpenseEntries,
     initialPayrollHistory,
@@ -34,10 +37,13 @@ export default async function BalanceSheetPage() {
   return (
     <BalanceSheetShell>
       <BalanceSheet
+        tenantId={resolvedTenantId}
         initialIncomeEntries={initialIncomeEntries}
         initialExpenseEntries={initialExpenseEntries}
         initialFixedAssets={initialFixedAssets}
         initialPayableEntries={initialPayableEntries}
+        initialAccountsPayablePayments={initialAccountsPayablePayments}
+        initialDirectorsLoanRepayments={initialDirectorsLoanRepayments}
         initialCapitalContributions={initialCapitalContributions}
         initialCashFlowExpenseEntries={initialCashFlowExpenseEntries}
         initialPayrollHistory={initialPayrollHistory}

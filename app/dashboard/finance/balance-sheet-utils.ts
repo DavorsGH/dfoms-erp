@@ -52,6 +52,22 @@ import type {
   TaxLedgerDirection,
   TaxLedgerStatus,
 } from "./tax-ledger-utils";
+import {
+  calculateDirectorsLoanNetByMonth,
+  type AccountsPayablePaymentRow,
+  type DirectorsLoanRepaymentRow,
+} from "./directors-loan-utils";
+
+export type BalanceSheetReportOptions = {
+  tenantId: string;
+  accountsPayablePayments?: AccountsPayablePaymentRow[];
+  directorsLoanRepayments?: DirectorsLoanRepaymentRow[];
+};
+
+export type {
+  AccountsPayablePaymentRow,
+  DirectorsLoanRepaymentRow,
+} from "./directors-loan-utils";
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
 export { calculateFixedAssetPurchaseOutflowsByMonth } from "./fixed-assets-utils";
@@ -213,7 +229,7 @@ type ManualLiabilityStockField =
  * Values carry forward to later months within the FY until a newer manual row
  * overrides (including 0 for repayment). Full-year column uses December.
  */
-function calculateManualLiabilityStockByMonth(
+export function calculateManualLiabilityStockByMonth(
   manualEntries: CashMovementManualEntry[],
   field: ManualLiabilityStockField,
   financialYear: number,
@@ -396,9 +412,11 @@ function calculateCashAndCashEquivalentsByMonth(
   payableEntries: BalanceSheetAccountsPayableEntry[],
   financialYear: number,
   staffSalaryNetByPayrollMonth?: Map<string, number>,
+  options: BalanceSheetReportOptions = { tenantId: "" },
 ): MonthlyTotals {
   const components = buildMonthlyCashComponents(
     {
+      tenantId: options.tenantId,
       incomeEntries,
       expenseEntries,
       capitalContributions,
@@ -408,6 +426,8 @@ function calculateCashAndCashEquivalentsByMonth(
       inventoryConfig,
       manualEntries,
       accountsPayableSettlements: payableEntries,
+      accountsPayablePayments: options.accountsPayablePayments,
+      directorsLoanRepayments: options.directorsLoanRepayments,
       staffSalaryNetByPayrollMonth,
     },
     financialYear,
@@ -481,6 +501,7 @@ export function buildBalanceSheetReport(
   },
   manualEntries: CashMovementManualEntry[] = [],
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[] = [],
+  options: BalanceSheetReportOptions = { tenantId: "" },
 ): BalanceSheetReport {
   const staffSalaryNetByPayrollMonth = buildNetPayByPayrollMonth(
     payrollHistory,
@@ -498,6 +519,7 @@ export function buildBalanceSheetReport(
     payableEntries,
     financialYear,
     staffSalaryNetByPayrollMonth,
+    options,
   );
   const accountsReceivable = roundMonthlyTotals(
     calculateAccountsReceivableByMonth(incomeEntries, financialYear),
@@ -551,11 +573,20 @@ export function buildBalanceSheetReport(
     "other_long_term_liabilities",
     financialYear,
   );
-  const directorsLoan = calculateManualLiabilityStockByMonth(
+  const manualDirectorsLoan = calculateManualLiabilityStockByMonth(
     manualEntries,
     "directors_loan",
     financialYear,
   );
+  const directorsLoan = options.tenantId
+    ? calculateDirectorsLoanNetByMonth(
+        manualDirectorsLoan,
+        options.accountsPayablePayments ?? [],
+        options.directorsLoanRepayments ?? [],
+        options.tenantId,
+        financialYear,
+      )
+    : manualDirectorsLoan;
   const totalLiabilities = roundMonthlyTotals(
     sumMonthlyTotals([
       accountsPayable,

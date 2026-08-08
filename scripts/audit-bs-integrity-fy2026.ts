@@ -138,7 +138,8 @@ async function fetchLegacyCashFlowInventoryPurchaseInput(
 
 const STAGING = "wieflwbfdmjtsdnwbfii";
 const PRODUCTION = "tvcurcnmasnocwdxzgvz";
-const TENANT = "00000001-0000-4000-8000-000000000001";
+const DAVORS_TENANT_ID = "00000001-0000-4000-8000-000000000001";
+const CAANTA_TENANT_ID = "61e8e5d9-9cdb-4b8d-9e44-ed0acc23d87b";
 const YEAR = 2026;
 const MONTHS = [
   "Jan",
@@ -182,20 +183,22 @@ function parseArgs(argv: string[]) {
   let allowProduction = false;
   let legacyInventory = false;
   let fixedCf = false;
+  let tenantId = DAVORS_TENANT_ID;
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--env-file") envFile = argv[++i] ?? envFile;
     else if (argv[i] === "--label") label = argv[++i] ?? label;
     else if (argv[i] === "--allow-production") allowProduction = true;
     else if (argv[i] === "--legacy-inventory") legacyInventory = true;
     else if (argv[i] === "--fixed-cf") fixedCf = true;
+    else if (argv[i] === "--tenant-id") tenantId = argv[++i] ?? tenantId;
   }
   if (label.includes("after")) fixedCf = true;
   if (label.includes("before")) legacyInventory = true;
-  return { envFile, label, allowProduction, legacyInventory, fixedCf };
+  return { envFile, label, allowProduction, legacyInventory, fixedCf, tenantId };
 }
 
 async function main() {
-  const { envFile, label, allowProduction, legacyInventory, fixedCf } =
+  const { envFile, label, allowProduction, legacyInventory, fixedCf, tenantId } =
     parseArgs(process.argv.slice(2));
   loadEnvForce(resolve(process.cwd(), envFile));
 
@@ -210,7 +213,13 @@ async function main() {
   }
   if (!key) throw new Error("missing service role");
 
-  console.log(`=== ${label} | ref=${ref} | Davors FY${YEAR} ===`);
+  const tenantLabel =
+    tenantId === DAVORS_TENANT_ID
+      ? "Davors"
+      : tenantId === CAANTA_TENANT_ID
+        ? "Caanta"
+        : tenantId.slice(0, 8);
+  console.log(`=== ${label} | ref=${ref} | ${tenantLabel} FY${YEAR} ===`);
   console.log(
     `Inventory path: ${legacyInventory ? "legacy (unfiltered)" : "tenant-filtered"}`,
   );
@@ -231,6 +240,8 @@ async function main() {
     { data: expenses, error: expenseError },
     { data: fixedAssets, error: faError },
     { data: payables, error: apError },
+    { data: apPayments, error: apPaymentsError },
+    { data: directorsLoanRepayments, error: dlrError },
     { data: capital, error: capitalError },
     { data: manual, error: manualError },
     { data: payrollProcessing },
@@ -246,27 +257,37 @@ async function main() {
       .select(
         "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
       )
-      .eq("tenant_id", TENANT),
+      .eq("tenant_id", tenantId),
     admin
       .from("expense_register")
       .select(
         "date, amount, payment_status, expense_category, sub_category, receipt_no, notes, net_of_tax_amount, wht_amount, input_vat_amount, description",
       )
-      .eq("tenant_id", TENANT),
-    admin.from("fixed_assets").select("*").eq("tenant_id", TENANT),
-    admin.from("accounts_payable").select("*").eq("tenant_id", TENANT),
-    admin.from("capital_contributions").select("*").eq("tenant_id", TENANT),
-    admin.from("manual_financial_entries").select("*").eq("tenant_id", TENANT),
-    admin.from("payroll_processing").select("*").eq("tenant_id", TENANT),
-    admin.from("month_end_close").select("*").eq("tenant_id", TENANT),
-    admin.from("tax_ledger_entries").select("*").eq("tenant_id", TENANT),
+      .eq("tenant_id", tenantId),
+    admin.from("fixed_assets").select("*").eq("tenant_id", tenantId),
+    admin.from("accounts_payable").select("*").eq("tenant_id", tenantId),
+    admin
+      .from("accounts_payable_payments")
+      .select("tenant_id, payment_date, amount, payment_source")
+      .eq("tenant_id", tenantId),
+    admin
+      .from("directors_loan_repayments")
+      .select(
+        "tenant_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
+      )
+      .eq("tenant_id", tenantId),
+    admin.from("capital_contributions").select("*").eq("tenant_id", tenantId),
+    admin.from("manual_financial_entries").select("*").eq("tenant_id", tenantId),
+    admin.from("payroll_processing").select("*").eq("tenant_id", tenantId),
+    admin.from("month_end_close").select("*").eq("tenant_id", tenantId),
+    admin.from("tax_ledger_entries").select("*").eq("tenant_id", tenantId),
     admin
       .from("payroll_history")
       .select("payroll_month, net_pay")
-      .eq("tenant_id", TENANT),
-    fetchPayrollLiveRecalcBundle(admin, { tenantId: TENANT }),
-    loadInv(admin, TENANT),
-    loadCfInv(admin, TENANT),
+      .eq("tenant_id", tenantId),
+    fetchPayrollLiveRecalcBundle(admin, { tenantId }),
+    loadInv(admin, tenantId),
+    loadCfInv(admin, tenantId),
   ]);
 
   for (const [name, err] of [
@@ -274,6 +295,8 @@ async function main() {
     ["expenses", expenseError],
     ["fa", faError],
     ["ap", apError],
+    ["ap_payments", apPaymentsError],
+    ["dl_repayments", dlrError],
     ["capital", capitalError],
     ["manual", manualError],
     ["tax", taxError],
@@ -304,6 +327,12 @@ async function main() {
     notes: entry.notes ?? null,
   }));
 
+  const reportOptions = {
+    tenantId,
+    accountsPayablePayments: apPayments ?? [],
+    directorsLoanRepayments: directorsLoanRepayments ?? [],
+  };
+
   const bs = buildBalanceSheetReport(
     income ?? [],
     expenses ?? [],
@@ -317,6 +346,7 @@ async function main() {
     inv,
     manual ?? [],
     taxLedger ?? [],
+    reportOptions,
   );
 
   const staffMap = buildNetPayByPayrollMonth(wages, monthEndClose ?? []);
@@ -350,6 +380,7 @@ async function main() {
         capital ?? [],
         staffMap,
         payables ?? [],
+        reportOptions,
       )
     : buildCashFlowReport(
         incomeForCf,
@@ -361,6 +392,7 @@ async function main() {
         capital ?? [],
         undefined,
         payables ?? [],
+        reportOptions,
       );
 
   const cashRow = bs.rows.find((r) => r.key === "cash");
