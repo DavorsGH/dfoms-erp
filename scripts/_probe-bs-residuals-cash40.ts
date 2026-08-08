@@ -80,7 +80,7 @@ async function main() {
     .eq("tenant_id", TENANT);
 
   console.log("\n=== July FA purchase outflows ===");
-  const faOut = calculateFixedAssetPurchaseOutflowsByMonth(fas ?? [], FY);
+  const faOut = calculateFixedAssetPurchaseOutflowsByMonth(fas ?? [], tenantId, FY);
   console.log("FA outflows by month [5,6]:", faOut[5], faOut[6]);
   for (const a of fas ?? []) {
     if (String(a.purchase_date).startsWith("2026-07")) {

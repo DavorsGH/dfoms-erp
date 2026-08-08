@@ -76,15 +76,18 @@ async function main() {
   const financialYear = years.sort((a, b) => b - a)[0];
 
   const mapped = tenantAssets.map((a) => ({
+    tenant_id: a.tenant_id,
     original_cost: Number(a.original_cost) || 0,
     quantity: Number(a.quantity) || 0,
     useful_life_years: Number(a.useful_life_years) || 1,
     purchase_date: a.purchase_date,
     depreciation_method: a.depreciation_method ?? "straight_line",
+    payment_method: (a as { payment_method?: string }).payment_method ?? "Cash",
   }));
 
   const bsOutflows = calculateFixedAssetPurchaseOutflowsByMonth(
     mapped,
+    tenantId,
     financialYear,
   );
 
@@ -95,6 +98,10 @@ async function main() {
     financialYear,
     undefined,
     mapped,
+    [],
+    undefined,
+    [],
+    { tenantId, accountsPayablePayments: [], directorsLoanRepayments: [] },
   );
   const cfRow = cfReport.rows.find((r) => r.key === "purchase-fixed-assets");
   assert(cfRow, "CF missing purchase-fixed-assets row");

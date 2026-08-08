@@ -14,6 +14,10 @@ import type {
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type { ProfitLossAssetEntry } from "./profit-loss-utils";
 import type { BalanceSheetAccountsPayableEntry } from "./balance-sheet-ap-cash-utils";
+import type {
+  AccountsPayablePaymentRow,
+  DirectorsLoanRepaymentRow,
+} from "./directors-loan-utils";
 import {
   buildNetPayByPayrollMonth,
   type MonthEndCloseNetPayEntry,
@@ -33,6 +37,7 @@ import ScrollableTable, {
 } from "../scrollable-table";
 
 type CashFlowProps = {
+  tenantId: string;
   initialIncomeEntries: CashFlowIncomeEntry[];
   initialExpenseEntries: CashFlowExpenseEntry[];
   initialManualEntries: ManualFinancialEntry[];
@@ -40,6 +45,8 @@ type CashFlowProps = {
   initialFixedAssets: ProfitLossAssetEntry[];
   initialCapitalContributions: CapitalContributionEntry[];
   initialPayableEntries?: BalanceSheetAccountsPayableEntry[];
+  initialAccountsPayablePayments?: AccountsPayablePaymentRow[];
+  initialDirectorsLoanRepayments?: DirectorsLoanRepaymentRow[];
   /** Same payroll inputs Balance Sheet uses to build the staff-salary net map. */
   initialPayrollHistory?: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
@@ -79,6 +86,7 @@ function getFullYearAmount(row: CashFlowRow): number {
 }
 
 export default function CashFlow({
+  tenantId,
   initialIncomeEntries,
   initialExpenseEntries,
   initialManualEntries,
@@ -86,6 +94,8 @@ export default function CashFlow({
   initialFixedAssets,
   initialCapitalContributions,
   initialPayableEntries = [],
+  initialAccountsPayablePayments = [],
+  initialDirectorsLoanRepayments = [],
   initialPayrollHistory = [],
   initialMonthEndCloseNetPay = [],
   availableYears,
@@ -122,14 +132,22 @@ export default function CashFlow({
         initialCapitalContributions,
         staffSalaryNetByPayrollMonth,
         initialPayableEntries,
+        {
+          tenantId,
+          accountsPayablePayments: initialAccountsPayablePayments,
+          directorsLoanRepayments: initialDirectorsLoanRepayments,
+        },
       ),
     [
+      tenantId,
       initialIncomeEntries,
       initialExpenseEntries,
       initialCapitalContributions,
       initialFixedAssets,
       initialInventoryPurchases,
       initialPayableEntries,
+      initialAccountsPayablePayments,
+      initialDirectorsLoanRepayments,
       staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       selectedYear,

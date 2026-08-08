@@ -32,8 +32,18 @@ import {
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
 
+import DirectorsLoanRepaymentsPanel, {
+  type DirectorsLoanRepaymentRecord,
+} from "./directors-loan-repayments-panel";
+import type { AccountsPayablePaymentRow } from "./directors-loan-utils";
+import type { CashMovementManualEntry } from "./cash-movement-utils";
+
 type ManualFinancialEntriesProps = {
+  tenantId: string;
   initialEntries: ManualFinancialEntryRecord[];
+  initialManualCashEntries: CashMovementManualEntry[];
+  initialApPayments: AccountsPayablePaymentRow[];
+  initialDirectorsLoanRepayments: DirectorsLoanRepaymentRecord[];
   fetchError: string | null;
 };
 
@@ -56,7 +66,11 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 export default function ManualFinancialEntries({
+  tenantId,
   initialEntries,
+  initialManualCashEntries,
+  initialApPayments,
+  initialDirectorsLoanRepayments,
   fetchError,
 }: ManualFinancialEntriesProps) {
   const router = useRouter();
@@ -493,6 +507,13 @@ export default function ManualFinancialEntries({
           </tbody>
         </table>
       </ScrollableTable>
+
+      <DirectorsLoanRepaymentsPanel
+        tenantId={tenantId}
+        manualEntries={initialManualCashEntries}
+        apPayments={initialApPayments}
+        initialRepayments={initialDirectorsLoanRepayments}
+      />
     </div>
   );
 }

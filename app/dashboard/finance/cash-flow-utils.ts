@@ -26,9 +26,19 @@ import type {
 } from "../inventory/inventory-balance-sheet-utils";
 import type { BalanceSheetAccountsPayableEntry } from "./balance-sheet-ap-cash-utils";
 import type {
+  AccountsPayablePaymentRow,
+  DirectorsLoanRepaymentRow,
+} from "./directors-loan-utils";
+import type {
   IncomeEntryType,
   ProductSaleStatus,
 } from "./income-register-utils";
+
+export type CashFlowReportOptions = {
+  tenantId: string;
+  accountsPayablePayments?: AccountsPayablePaymentRow[];
+  directorsLoanRepayments?: DirectorsLoanRepaymentRow[];
+};
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
 export { getCurrentFinancialYear } from "./finance-year-utils";
@@ -197,6 +207,7 @@ export function buildCashFlowReport(
    * AP settlements (amount_paid) — cash-only; mirrors Balance Sheet cash engine.
    */
   accountsPayableSettlements: BalanceSheetAccountsPayableEntry[] = [],
+  options: CashFlowReportOptions = { tenantId: "" },
 ): CashFlowReport {
   const rows: CashFlowRow[] = [];
 
@@ -215,6 +226,7 @@ export function buildCashFlowReport(
 
   const components = buildMonthlyCashComponents(
     {
+      tenantId: options.tenantId,
       incomeEntries,
       expenseEntries: expenseForCash,
       capitalContributions,
@@ -224,6 +236,8 @@ export function buildCashFlowReport(
       inventoryConfig: inventoryPurchases.inventoryConfig,
       manualEntries,
       accountsPayableSettlements,
+      accountsPayablePayments: options.accountsPayablePayments,
+      directorsLoanRepayments: options.directorsLoanRepayments,
       staffSalaryNetByPayrollMonth,
     },
     financialYear,
@@ -300,11 +314,24 @@ export function buildCashFlowReport(
     },
   ].filter((row) => row.amounts.some((amount) => amount !== 0));
 
+  const directorsLoanRepaymentRows: CashFlowRow[] =
+    components.directorsLoanRepayments.some((amount) => amount !== 0)
+      ? [
+          {
+            key: "outflow-directors-loan-repayments",
+            label: "Director's Loan Repayments",
+            amounts: components.directorsLoanRepayments,
+            kind: "data" as const,
+          },
+        ]
+      : [];
+
   const totalCashOutflows = sumMonthlyTotals([
     ...outflowRows.map((row) => row.amounts),
     components.rawMaterialPurchases,
     components.productPurchases,
     components.accountsPayableSettlements,
+    components.directorsLoanRepayments,
   ]);
 
   rows.push({
@@ -313,7 +340,7 @@ export function buildCashFlowReport(
     amounts: createEmptyMonthlyTotals(),
     kind: "section",
   });
-  rows.push(...outflowRows, ...inventoryOutflowRows);
+  rows.push(...outflowRows, ...inventoryOutflowRows, ...directorsLoanRepaymentRows);
   rows.push({
     key: "total-outflows",
     label: "TOTAL CASH OUTFLOWS",
@@ -348,8 +375,11 @@ export function buildCashFlowReport(
 
   const loanProceeds = components.loanProceeds;
   const loanRepayments = components.loanRepayments;
+  const directorsLoanRepayments = components.directorsLoanRepayments;
   const netFinancing = loanProceeds.map((value, index) =>
-    (value ?? 0) - (loanRepayments[index] ?? 0),
+    (value ?? 0) -
+    (loanRepayments[index] ?? 0) -
+    (directorsLoanRepayments[index] ?? 0),
   );
 
   rows.push({
@@ -369,6 +399,12 @@ export function buildCashFlowReport(
       key: "loan-repayments",
       label: "Loan Repayments",
       amounts: loanRepayments,
+      kind: "data",
+    },
+    {
+      key: "directors-loan-repayments",
+      label: "Director's Loan Repayments",
+      amounts: directorsLoanRepayments,
       kind: "data",
     },
     {

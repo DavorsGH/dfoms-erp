@@ -39,6 +39,12 @@ import {
   isStatutoryRemittancePayable,
   type BalanceSheetAccountsPayableEntry,
 } from "./balance-sheet-ap-cash-utils";
+import {
+  calculateAccountsPayableCashOutflowsFromPayments,
+  calculateDirectorsLoanRepaymentOutflowsByMonth,
+  type AccountsPayablePaymentRow,
+  type DirectorsLoanRepaymentRow,
+} from "./directors-loan-utils";
 
 export {
   parseCashPaidFromExpenseNotes,
@@ -81,6 +87,7 @@ export type CashMovementManualEntry = {
 };
 
 export type CashMovementInputs = {
+  tenantId: string;
   incomeEntries: CashMovementIncomeEntry[];
   expenseEntries: BalanceSheetCashExpenseEntry[];
   capitalContributions: CapitalContributionEntry[];
@@ -89,10 +96,11 @@ export type CashMovementInputs = {
   productCashPurchases: ProductPurchaseCashEntry[];
   inventoryConfig: InventoryBalanceConfig | null;
   manualEntries: CashMovementManualEntry[];
-  /**
-   * AP settlements (cumulative amount_paid). Cash-only — never a second P&L hit.
-   */
+  /** Legacy AP rows — used when payment ledger is empty (pre-migration fallback). */
   accountsPayableSettlements?: BalanceSheetAccountsPayableEntry[];
+  /** AP payment ledger — preferred source for cash vs director-personal settlements. */
+  accountsPayablePayments?: AccountsPayablePaymentRow[];
+  directorsLoanRepayments?: DirectorsLoanRepaymentRow[];
   /**
    * Fallback for Paid PAYROLL-SAL cash when notes lack cash_paid=<amount>.
    * Prefer actual bank cash_paid from expense notes over this map.
@@ -110,6 +118,7 @@ export type MonthlyCashComponents = {
   rawMaterialPurchases: MonthlyTotals;
   productPurchases: MonthlyTotals;
   accountsPayableSettlements: MonthlyTotals;
+  directorsLoanRepayments: MonthlyTotals;
   fixedAssetPurchases: MonthlyTotals;
   /** Signed net movement per month (inflows − outflows). */
   netMovement: MonthlyTotals;
@@ -348,13 +357,27 @@ export function buildMonthlyCashComponents(
       financialYear,
     ),
   );
-  const accountsPayableSettlements = calculateAccountsPayableCashOutflowsByMonth(
-    inputs.accountsPayableSettlements ?? [],
+  const paymentLedger = inputs.accountsPayablePayments ?? [];
+  const accountsPayableSettlements =
+    paymentLedger.length > 0
+      ? calculateAccountsPayableCashOutflowsFromPayments(
+          paymentLedger,
+          inputs.tenantId,
+          financialYear,
+        )
+      : calculateAccountsPayableCashOutflowsByMonth(
+          inputs.accountsPayableSettlements ?? [],
+          financialYear,
+        );
+  const directorsLoanRepayments = calculateDirectorsLoanRepaymentOutflowsByMonth(
+    inputs.directorsLoanRepayments ?? [],
+    inputs.tenantId,
     financialYear,
   );
   const fixedAssetPurchases = roundMonthlyTotals(
     calculateFixedAssetPurchaseOutflowsByMonth(
       inputs.fixedAssets,
+      inputs.tenantId,
       financialYear,
     ),
   );
@@ -370,12 +393,15 @@ export function buildMonthlyCashComponents(
     addMonthlyTotals(
       addMonthlyTotals(
         addMonthlyTotals(
-          addMonthlyTotals(paidExpenses, loanRepayments),
-          rawMaterialPurchases,
+          addMonthlyTotals(
+            addMonthlyTotals(paidExpenses, loanRepayments),
+            rawMaterialPurchases,
+          ),
+          productPurchases,
         ),
-        productPurchases,
+        accountsPayableSettlements,
       ),
-      accountsPayableSettlements,
+      directorsLoanRepayments,
     ),
     fixedAssetPurchases,
   );
@@ -391,6 +417,7 @@ export function buildMonthlyCashComponents(
     rawMaterialPurchases,
     productPurchases,
     accountsPayableSettlements,
+    directorsLoanRepayments,
     fixedAssetPurchases,
     netMovement,
   };

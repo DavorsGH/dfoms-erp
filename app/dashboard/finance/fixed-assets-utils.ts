@@ -1,3 +1,5 @@
+import { isCashPaymentMethod } from "../inventory/inventory-balance-sheet-utils";
+
 export type FixedAssetEntry = {
   asset_id: string;
   asset_name: string;
@@ -13,6 +15,10 @@ export type FixedAssetEntry = {
   net_book_value: number | null;
   location: string;
   notes: string | null;
+  payment_method?: string | null;
+  vendor_name?: string | null;
+  accounts_payable_id?: string | null;
+  tenant_id?: string | null;
 };
 
 export function formatGHS(value: number): string {
@@ -433,15 +439,25 @@ export function calculateMonthlyNetBookValueTotals(
  */
 export function calculateFixedAssetPurchaseOutflowsByMonth(
   fixedAssets: Array<{
+    tenant_id?: string | null;
     original_cost: number;
     quantity: number;
     purchase_date: string;
+    payment_method?: string | null;
   }>,
+  tenantId: string,
   financialYear: number,
 ): number[] {
   const totals = Array.from({ length: 13 }, () => 0);
 
   for (const asset of fixedAssets) {
+    if (asset.tenant_id && asset.tenant_id !== tenantId) {
+      continue;
+    }
+    if (!isCashPaymentMethod(asset.payment_method ?? "Cash")) {
+      continue;
+    }
+
     const purchaseDate = String(asset.purchase_date ?? "").slice(0, 10);
     const match = /^(\d{4})-(\d{2})/.exec(purchaseDate);
     if (!match) continue;
