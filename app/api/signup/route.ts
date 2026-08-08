@@ -18,6 +18,7 @@ import {
   validateSignupInput,
   type SignupRequestBody,
 } from "@/utils/tenant-signup";
+import { provisionSignupOwnerEmployeeAndApprovers } from "@/utils/tenant-signup-owner-provisioning";
 import { seedTenantPaymentMethodsFromDavorsTemplate } from "@/utils/tenant-payment-methods-seed";
 
 type SignupRollbackState = {
@@ -49,6 +50,17 @@ async function rollbackSignup(
   }
 
   if (state.tenantId) {
+    await admin
+      .from("leave_approver_config")
+      .delete()
+      .eq("tenant_id", state.tenantId);
+    await admin.from("approvers").delete().eq("tenant_id", state.tenantId);
+    await admin.from("employees").delete().eq("tenant_id", state.tenantId);
+    await admin
+      .from("positions")
+      .delete()
+      .eq("tenant_id", state.tenantId)
+      .eq("position_title", "Administrator");
     await admin
       .from("payment_methods")
       .delete()
@@ -217,6 +229,21 @@ export async function POST(request: Request) {
       { error: paymentMethodsSeed.error },
       { status: 400 },
     );
+  }
+
+  const ownerProvisioning = await provisionSignupOwnerEmployeeAndApprovers(
+    admin,
+    {
+      tenantId: tenantRow.id,
+      authUid: authData.user.id,
+      adminFullName,
+      adminEmail,
+      signupDate,
+    },
+  );
+  if (ownerProvisioning.error) {
+    await rollbackSignup(admin, rollbackState);
+    return NextResponse.json({ error: ownerProvisioning.error }, { status: 400 });
   }
 
   const { error: customerError } = await admin.from("customers").insert({
