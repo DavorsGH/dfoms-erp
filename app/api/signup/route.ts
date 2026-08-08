@@ -18,6 +18,7 @@ import {
   validateSignupInput,
   type SignupRequestBody,
 } from "@/utils/tenant-signup";
+import { seedTenantPaymentMethodsFromDavorsTemplate } from "@/utils/tenant-payment-methods-seed";
 
 type SignupRollbackState = {
   authUserId: string | null;
@@ -48,6 +49,10 @@ async function rollbackSignup(
   }
 
   if (state.tenantId) {
+    await admin
+      .from("payment_methods")
+      .delete()
+      .eq("tenant_id", state.tenantId);
     await admin
       .from("inventory_balance_config")
       .delete()
@@ -198,6 +203,18 @@ export async function POST(request: Request) {
     await rollbackSignup(admin, rollbackState);
     return NextResponse.json(
       { error: inventoryConfigError.message },
+      { status: 400 },
+    );
+  }
+
+  const paymentMethodsSeed = await seedTenantPaymentMethodsFromDavorsTemplate(
+    admin,
+    tenantRow.id,
+  );
+  if (paymentMethodsSeed.error) {
+    await rollbackSignup(admin, rollbackState);
+    return NextResponse.json(
+      { error: paymentMethodsSeed.error },
       { status: 400 },
     );
   }
