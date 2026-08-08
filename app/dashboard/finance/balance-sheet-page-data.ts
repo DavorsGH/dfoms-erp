@@ -38,6 +38,7 @@ import {
   mergePayrollWagesWithLiveOpenMonths,
 } from "../hr-payroll/payroll-live-recalc-utils";
 import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
+import type { MonthEndCloseRecord } from "../hr-payroll/payroll-period-utils";
 
 import type {
   AccountsPayablePaymentRow,
@@ -60,6 +61,15 @@ export type BalanceSheetPageData = {
   initialManualEntries: ManualFinancialEntry[];
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   initialTaxLedgerEntries: BalanceSheetTaxLedgerEntry[];
+  /** Full month-end rows (Dashboard lock status / payroll widgets). */
+  initialMonthEndCloseRecords: MonthEndCloseRecord[];
+  /** Open-period payroll processing rows (Dashboard gross-pay trend). */
+  initialPayrollProcessingRows: PayrollProcessingRow[];
+  /** Stamped gross pay by month (Dashboard payroll cost trend). */
+  initialPayrollHistoryGrossEntries: Array<{
+    payroll_month: string;
+    gross_pay: number;
+  }>;
   availableYears: number[];
   fetchError: string | null;
 };
@@ -199,7 +209,7 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("income_register")
       .select(
-        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
+        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, description, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
       )
       .eq("tenant_id", tenantId)
       .order("date", { ascending: true }),
@@ -248,7 +258,7 @@ export async function fetchBalanceSheetPageData(
       .order("period_month", { ascending: true }),
     supabase
       .from("payroll_history")
-      .select("payroll_month, net_pay, net_only_adjustment")
+      .select("payroll_month, net_pay, net_only_adjustment, gross_pay")
       .eq("tenant_id", tenantId)
       .order("payroll_month", { ascending: true }),
     // Full processing rows: open-month Accrued Wages live-recalc needs manuals.
@@ -260,12 +270,14 @@ export async function fetchBalanceSheetPageData(
       .order("payroll_month", { ascending: true }),
     supabase
       .from("month_end_close")
-      .select("month, total_net_pay")
+      .select("*")
       .eq("tenant_id", tenantId)
-      .order("month", { ascending: true }),
+      .order("month", { ascending: false }),
     supabase
       .from("tax_ledger_entries")
-      .select("entry_date, direction, tax_component, tax_amount, status")
+      .select(
+        "entry_date, period_month, direction, tax_component, tax_amount, status",
+      )
       .eq("tenant_id", tenantId)
       .eq("status", "open")
       .order("entry_date", { ascending: true }),
@@ -315,6 +327,15 @@ export async function fetchBalanceSheetPageData(
     ),
     initialMonthEndCloseNetPay:
       (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? [],
+    initialMonthEndCloseRecords:
+      (monthEndCloseRecords as MonthEndCloseRecord[] | null) ?? [],
+    initialPayrollProcessingRows:
+      (payrollProcessing as PayrollProcessingRow[] | null) ?? [],
+    initialPayrollHistoryGrossEntries:
+      (payrollHistory ?? []).map((entry) => ({
+        payroll_month: entry.payroll_month,
+        gross_pay: Number(entry.gross_pay) || 0,
+      })),
     initialManualEntries: manualEntries ?? [],
     initialInventoryBalanceSheet: inventoryBalanceSheet,
     initialTaxLedgerEntries:

@@ -3,6 +3,7 @@ import {
   getBalanceCheckForPeriod,
   type BalanceSheetAccountsPayableEntry,
   type BalanceSheetIncomeEntry,
+  type BalanceSheetReportOptions,
   type BalanceSheetTaxLedgerEntry,
   type InventoryBalanceSheetInput,
 } from "./finance/balance-sheet-utils";
@@ -316,6 +317,7 @@ function buildMonthSnapshot(input: {
   taxLedgerEntries?: Array<
     BalanceSheetTaxLedgerEntry & Partial<Pick<TaxLedgerBalanceSource, "period_month">>
   >;
+  balanceSheetReportOptions: BalanceSheetReportOptions;
   year: number;
   month: number;
   referenceDate?: Date;
@@ -339,6 +341,7 @@ function buildMonthSnapshot(input: {
     input.monthEndCloseNetPay,
     input.year,
     input.inventoryBalanceSheetInput,
+    input.balanceSheetReportOptions,
     input.referenceDate,
     input.manualEntries,
     input.taxLedgerEntries ?? [],
@@ -544,6 +547,7 @@ function buildBalanceSheetReportForYear(
   monthEndCloseNetPay: MonthEndCloseNetPayEntry[],
   financialYear: number,
   inventoryBalanceSheetInput: InventoryBalanceSheetInput,
+  reportOptions: BalanceSheetReportOptions,
   referenceDate?: Date,
   manualEntries: ManualFinancialEntry[] = [],
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[] = [],
@@ -564,6 +568,7 @@ function buildBalanceSheetReportForYear(
     },
     manualEntries,
     taxLedgerEntries,
+    reportOptions,
   );
 }
 
@@ -688,6 +693,7 @@ export function buildDashboardViewModel(input: {
   taxLedgerEntries?: Array<
     BalanceSheetTaxLedgerEntry & Partial<Pick<TaxLedgerBalanceSource, "period_month">>
   >;
+  balanceSheetReportOptions: BalanceSheetReportOptions;
   lowStockRawMaterialCount?: number;
   referenceDate?: Date;
 }): DashboardViewModel {
@@ -749,6 +755,7 @@ export function buildDashboardViewModel(input: {
       input.monthEndCloseNetPay,
       point.year,
       input.inventoryBalanceSheetInput,
+      input.balanceSheetReportOptions,
       referenceDate,
       input.manualEntries,
       input.taxLedgerEntries ?? [],

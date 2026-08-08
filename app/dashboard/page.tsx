@@ -32,14 +32,8 @@ import {
 } from "./crm/sales/sales-utils";
 import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
-import type { CapitalContributionEntry } from "./finance/capital-contributions-utils";
-import {
-  fetchPayrollLiveRecalcBundle,
-  mergePayrollWagesWithLiveOpenMonths,
-} from "./hr-payroll/payroll-live-recalc-utils";
-import type { PayrollProcessingRow } from "./hr-payroll/payroll-processing-utils";
+import { fetchBalanceSheetPageData } from "./finance/balance-sheet-page-data";
 import { countLowStockRawMaterials } from "./reports/inventory-reports-utils";
-import { fetchInventoryBalanceSheetInput } from "./finance/balance-sheet-page-data";
 
 export default async function DashboardPage() {
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -229,76 +223,12 @@ export default async function DashboardPage() {
     throw new Error("Unable to resolve the current workspace.");
   }
 
-  const { data: incomeEntries, error: incomeError } = await supabase
-    .from("income_register")
-    .select(
-      "tenant_id, date, amount, amount_received, outstanding_balance, wht_amount, service_category, description, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
-    )
-    .order("date", { ascending: true });
-
-  const { data: expenseEntries, error: expenseError } = await supabase
-    .from("expense_register")
-    .select(
-      "tenant_id, date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
-    )
-    .order("date", { ascending: true });
-
   const [
-    { data: fixedAssets, error: fixedAssetsError },
-    { data: payableEntries, error: payableError },
-    { data: capitalContributions, error: capitalContributionsError },
-    { data: manualEntries, error: manualError },
-    { data: payrollHistoryRows, error: payrollHistoryError },
-    { data: monthEndCloseRecords, error: monthEndCloseError },
-    { data: payrollProcessingEntries, error: payrollProcessingError },
-    { data: taxLedgerEntries, error: taxLedgerError },
+    balanceSheetData,
     { data: productSaleRows, error: productSaleError },
     { data: webhookSaleRows, error: webhookSaleError },
-    inventoryBalanceSheetInput,
-    livePayrollBundle,
   ] = await Promise.all([
-    supabase
-      .from("fixed_assets")
-      .select(
-        "original_cost, quantity, useful_life_years, purchase_date, depreciation_method",
-      )
-      .order("asset_id", { ascending: true }),
-    // One AP query covers balance-sheet totals (statutory SSNIT/GRA rows are
-    // excluded in BS utils; remittance SoR is tax_ledger_entries).
-    supabase
-      .from("accounts_payable")
-      .select(
-        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category, status, description",
-      )
-      .order("invoice_date", { ascending: true }),
-    supabase
-      .from("capital_contributions")
-      .select("id, date, contributed_by, amount, description, notes")
-      .order("date", { ascending: true }),
-    supabase
-      .from("manual_financial_entries")
-      .select("*")
-      .order("period_month", { ascending: true }),
-    // One payroll_history query covers both net (wages) and gross (cost trend).
-    supabase
-      .from("payroll_history")
-      .select("payroll_month, net_pay, gross_pay")
-      .order("payroll_month", { ascending: true }),
-    supabase.from("month_end_close").select("*").order("month", { ascending: false }),
-    // Full processing rows for display-only live open-month recalc (never written back).
-    supabase
-      .from("payroll_processing")
-      .select("*")
-      .order("payroll_month", { ascending: true }),
-    supabase
-      .from("tax_ledger_entries")
-      .select(
-        "entry_date, period_month, direction, tax_component, tax_amount, status",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("status", "open")
-      .order("entry_date", { ascending: true }),
-    // Same Product Sales / Sales Log sources as CRM tabs (RLS tenant-scoped).
+    fetchBalanceSheetPageData(supabase, tenantId),
     supabase
       .from("income_register")
       .select(CRM_PRODUCT_SALE_SELECT)
@@ -308,58 +238,37 @@ export default async function DashboardPage() {
       .from("crm_sales")
       .select(CRM_WEBHOOK_SALE_SELECT)
       .order("sale_date", { ascending: false }),
-    // Inventory input already loads raw_materials; derive low-stock count from it.
-    fetchInventoryBalanceSheetInput(supabase, tenantId),
-    fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
   ]);
 
+  const {
+    initialIncomeEntries: incomeEntries,
+    initialExpenseEntries: expenseEntries,
+    initialFixedAssets: fixedAssets,
+    initialPayableEntries: payableEntries,
+    initialAccountsPayablePayments: accountsPayablePayments,
+    initialDirectorsLoanRepayments: directorsLoanRepayments,
+    initialCapitalContributions: capitalContributions,
+    initialCashFlowExpenseEntries: cashFlowExpenseEntries,
+    initialPayrollHistory: payrollHistoryWages,
+    initialMonthEndCloseNetPay: monthEndCloseNetPay,
+    initialMonthEndCloseRecords: monthEndCloseRecords,
+    initialPayrollProcessingRows: payrollProcessingEntries,
+    initialPayrollHistoryGrossEntries: payrollHistoryGrossEntries,
+    initialManualEntries: manualEntries,
+    initialInventoryBalanceSheet: inventoryBalanceSheetInput,
+    initialTaxLedgerEntries: taxLedgerEntries,
+    fetchError: balanceSheetFetchError,
+  } = balanceSheetData;
+
   const fetchError =
-    incomeError?.message ??
-    expenseError?.message ??
-    fixedAssetsError?.message ??
-    payableError?.message ??
-    capitalContributionsError?.message ??
-    manualError?.message ??
-    payrollHistoryError?.message ??
-    monthEndCloseError?.message ??
-    payrollProcessingError?.message ??
-    taxLedgerError?.message ??
+    balanceSheetFetchError ??
     productSaleError?.message ??
     webhookSaleError?.message ??
-    livePayrollBundle.error ??
     null;
 
-  const payrollHistoryWages =
-    payrollHistoryRows?.map((entry) => ({
-      payroll_month: entry.payroll_month,
-      net_pay: Number(entry.net_pay) || 0,
-    })) ?? [];
-  const payrollHistoryEntries =
-    payrollHistoryRows?.map((entry) => ({
-      payroll_month: entry.payroll_month,
-      gross_pay: Number(entry.gross_pay) || 0,
-    })) ?? [];
   const lowStockRawMaterialCount = countLowStockRawMaterials(
     inventoryBalanceSheetInput.rawMaterials,
   );
-
-  const cashFlowIncomeEntries =
-    incomeEntries?.map((entry) => ({
-      date: entry.date,
-      amount_received: entry.amount_received,
-    })) ?? [];
-
-  const cashFlowExpenseEntries =
-    expenseEntries?.map((entry) => ({
-      date: entry.date,
-      expense_category: entry.expense_category,
-      sub_category: entry.sub_category,
-      amount: entry.amount,
-      payment_status: entry.payment_status,
-      description: entry.description ?? null,
-      receipt_no: entry.receipt_no ?? null,
-      notes: (entry as { notes?: string | null }).notes ?? null,
-    })) ?? [];
 
   const salesAnalysisEntries = toSalesAnalysisRows(
     mergeSalesLogEntries(
@@ -370,6 +279,12 @@ export default async function DashboardPage() {
         []).map((row) => normalizeWebhookSale(row)),
     ),
   );
+
+  const balanceSheetReportOptions = {
+    tenantId,
+    accountsPayablePayments,
+    directorsLoanRepayments,
+  };
 
   const dashboardData = buildDashboardViewModel({
     incomeEntries:
@@ -386,59 +301,47 @@ export default async function DashboardPage() {
           sale_status: entry.sale_status,
         })) ?? [],
     profitLossIncomeEntries:
-      incomeEntries?.map((entry) => ({
-        date: entry.date,
-        service_category: entry.service_category,
-        amount: entry.amount,
-        entry_type: entry.entry_type,
-        sale_status: entry.sale_status,
-        net_of_tax_amount: entry.net_of_tax_amount,
-        output_vat_amount: entry.output_vat_amount,
-      })) ?? [],
+      incomeEntries?.map((entry) => {
+        const row = entry as typeof entry & {
+          net_of_tax_amount?: number | null;
+          output_vat_amount?: number | null;
+        };
+        return {
+          date: row.date,
+          service_category: row.service_category,
+          amount: row.amount,
+          entry_type: row.entry_type,
+          sale_status: row.sale_status,
+          net_of_tax_amount: row.net_of_tax_amount,
+          output_vat_amount: row.output_vat_amount,
+        };
+      }) ?? [],
     balanceSheetIncomeEntries: incomeEntries ?? [],
     expenseEntries:
       expenseEntries?.map((entry) => ({
         date: entry.date,
         amount: entry.amount,
       })) ?? [],
-    profitLossExpenseEntries:
-      expenseEntries?.map((entry) => ({
-        date: entry.date,
-        expense_category: entry.expense_category,
-        sub_category: entry.sub_category,
-        amount: entry.amount,
-        net_of_tax_amount: entry.net_of_tax_amount,
-        input_vat_amount: entry.input_vat_amount,
-      })) ?? [],
+    profitLossExpenseEntries: expenseEntries ?? [],
     fixedAssets: fixedAssets ?? [],
     payableEntries: payableEntries ?? [],
-    capitalContributions:
-      (capitalContributions as CapitalContributionEntry[] | null) ?? [],
-    cashFlowIncomeEntries,
+    capitalContributions: capitalContributions ?? [],
+    cashFlowIncomeEntries: balanceSheetData.initialCashFlowIncomeEntries,
     cashFlowExpenseEntries,
-    payrollHistoryWages: mergePayrollWagesWithLiveOpenMonths(
-      payrollHistoryWages,
-      (payrollProcessingEntries as PayrollProcessingRow[] | null) ?? [],
-      livePayrollBundle.employees,
-      livePayrollBundle.liveContext,
-    ),
-    monthEndCloseNetPay:
-      monthEndCloseRecords?.map((record) => ({
-        month: record.month,
-        total_net_pay: record.total_net_pay,
-      })) ?? [],
+    payrollHistoryWages,
+    monthEndCloseNetPay,
     manualEntries: manualEntries ?? [],
     monthEndCloseRecords: monthEndCloseRecords ?? [],
-    // Cost-trend chart uses stamped processing gross (not Accrued Wages).
     payrollProcessingEntries:
       payrollProcessingEntries?.map((entry) => ({
         payroll_month: entry.payroll_month,
         gross_pay: Number(entry.gross_pay) || 0,
       })) ?? [],
-    payrollHistoryEntries,
+    payrollHistoryEntries: payrollHistoryGrossEntries,
     lowStockRawMaterialCount,
     inventoryBalanceSheetInput,
     taxLedgerEntries: taxLedgerEntries ?? [],
+    balanceSheetReportOptions,
   });
 
   return (
