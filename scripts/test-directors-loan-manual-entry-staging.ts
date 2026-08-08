@@ -317,7 +317,91 @@ function runInMemoryProof() {
   console.log("PASS in-memory Directors Loan + bank_loans + other LTL wiring");
 }
 
-async function buildStagingSnapshot(admin) {
+function runInMemoryCarryForwardProof() {
+  console.log("\n=== In-memory: August entry carries Director's Loan Sep–Dec ===");
+  const emptyInv = {
+    config: null,
+    rawMaterials: [],
+    finishedProducts: [],
+    finishedProductAverageCosts: [],
+    cashPurchases: [],
+    productCashPurchases: [],
+  };
+  const CARRY_AMOUNT = 1600;
+
+  const report = buildBalanceSheetReport(
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    YEAR,
+    emptyInv,
+    [
+      {
+        period_month: "2026-08-01",
+        loan_proceeds: CARRY_AMOUNT,
+        directors_loan: CARRY_AMOUNT,
+      },
+    ],
+    [],
+  );
+
+  const augIndex = 7;
+  const augDl = rowAmount(report, "directors-loan", augIndex);
+  assert(almostEqual(augDl, CARRY_AMOUNT), `Aug directors_loan=${augDl}`);
+
+  for (const monthIndex of [8, 9, 10, 11]) {
+    const dl = rowAmount(report, "directors-loan", monthIndex);
+    const check = getBalanceCheckForPeriod(report, monthIndex);
+    assert(
+      almostEqual(dl, CARRY_AMOUNT),
+      `Month ${monthIndex + 1} directors_loan=${dl}, expected ${CARRY_AMOUNT}`,
+    );
+    assert(
+      check.isBalanced,
+      `Month ${monthIndex + 1} BS should balance; diff=${check.difference}`,
+    );
+  }
+
+  // Explicit Sep zero clears liability for rest of FY
+  const cleared = buildBalanceSheetReport(
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    YEAR,
+    emptyInv,
+    [
+      {
+        period_month: "2026-08-01",
+        loan_proceeds: CARRY_AMOUNT,
+        directors_loan: CARRY_AMOUNT,
+      },
+      { period_month: "2026-09-01", directors_loan: 0 },
+    ],
+    [],
+  );
+  for (const monthIndex of [8, 9, 10, 11]) {
+    assert(
+      almostEqual(rowAmount(cleared, "directors-loan", monthIndex), 0),
+      `Sep–Dec after repayment month ${monthIndex + 1} should be 0`,
+    );
+  }
+
+  console.log("PASS in-memory carry-forward Aug→Sep–Dec + Sep zero override");
+}
+
+async function buildStagingSnapshot(admin, options: { year?: number; monthIndex?: number } = {}) {
+  const year = options.year ?? YEAR;
+  const monthIndex = options.monthIndex ?? MONTH_INDEX;
   const [
     { data: income, error: incomeError },
     { data: expenses, error: expenseError },
@@ -452,18 +536,18 @@ async function buildStagingSnapshot(admin) {
     cashFlowExpenses,
     payrollMerged,
     monthEndClose ?? [],
-    YEAR,
+    year,
     inventoryInput,
     manual ?? [],
     taxLedger ?? [],
   );
 
-  const check = getBalanceCheckForPeriod(bs, MONTH_INDEX);
+  const check = getBalanceCheckForPeriod(bs, monthIndex);
   return {
-    cash: rowAmount(bs, "cash", MONTH_INDEX),
-    directorsLoan: rowAmount(bs, "directors-loan", MONTH_INDEX),
-    bankLoans: rowAmount(bs, "bank-loans", MONTH_INDEX),
-    otherLtl: rowAmount(bs, "other-long-term-liabilities", MONTH_INDEX),
+    cash: rowAmount(bs, "cash", monthIndex),
+    directorsLoan: rowAmount(bs, "directors-loan", monthIndex),
+    bankLoans: rowAmount(bs, "bank-loans", monthIndex),
+    otherLtl: rowAmount(bs, "other-long-term-liabilities", monthIndex),
     bsDiff: check.difference,
     bsBalanced: check.isBalanced,
     hasDirectorsRow: Boolean(bs.rows.find((r) => r.key === "directors-loan")),
@@ -471,7 +555,98 @@ async function buildStagingSnapshot(admin) {
     hasOtherLtlRow: Boolean(
       bs.rows.find((r) => r.key === "other-long-term-liabilities"),
     ),
+    report: bs,
   };
+}
+
+async function runLiveCarryForwardStagingTest(admin) {
+  const EPHEMERAL_YEAR = 2099;
+  const AUG_PERIOD = `${EPHEMERAL_YEAR}-08-01`;
+  const CARRY_AMOUNT = 7777.01;
+  const STAMP = `DL-CARRY-FWD-${Date.now()}`;
+
+  console.log("\n=== Live staging: Aug 2099 entry → Sep–Dec carry-forward ===");
+
+  const { data: existing, error: existingErr } = await admin
+    .from("manual_financial_entries")
+    .select("*")
+    .eq("tenant_id", TENANT)
+    .eq("period_month", AUG_PERIOD)
+    .maybeSingle();
+  assert(!existingErr, `lookup Aug 2099: ${existingErr?.message}`);
+
+  const prior = existing
+    ? {
+        loan_proceeds: Number(existing.loan_proceeds) || 0,
+        directors_loan: Number(existing.directors_loan) || 0,
+        notes: existing.notes ?? null,
+      }
+    : null;
+
+  try {
+    if (prior) {
+      const { error: updErr } = await admin
+        .from("manual_financial_entries")
+        .update({
+          loan_proceeds: CARRY_AMOUNT,
+          directors_loan: CARRY_AMOUNT,
+          notes: STAMP,
+        })
+        .eq("tenant_id", TENANT)
+        .eq("period_month", AUG_PERIOD);
+      assert(!updErr, `update Aug 2099: ${updErr?.message}`);
+    } else {
+      const { error: insErr } = await admin.from("manual_financial_entries").insert({
+        tenant_id: TENANT,
+        period_month: AUG_PERIOD,
+        loan_proceeds: CARRY_AMOUNT,
+        directors_loan: CARRY_AMOUNT,
+        notes: STAMP,
+      });
+      assert(!insErr, `insert Aug 2099: ${insErr?.message}`);
+    }
+
+    const aug = await buildStagingSnapshot(admin, {
+      year: EPHEMERAL_YEAR,
+      monthIndex: 7,
+    });
+    assert(
+      almostEqual(aug.directorsLoan, CARRY_AMOUNT),
+      `Aug directors_loan=${aug.directorsLoan}`,
+    );
+
+    for (const monthIndex of [8, 9, 10, 11]) {
+      const snap = await buildStagingSnapshot(admin, {
+        year: EPHEMERAL_YEAR,
+        monthIndex,
+      });
+      assert(
+        almostEqual(snap.directorsLoan, CARRY_AMOUNT),
+        `Month ${monthIndex + 1} directors_loan=${snap.directorsLoan}, want ${CARRY_AMOUNT}`,
+      );
+    }
+
+    console.log("PASS live staging: Director's Loan carried Aug→Sep–Dec 2099");
+  } finally {
+    if (prior) {
+      await admin
+        .from("manual_financial_entries")
+        .update({
+          loan_proceeds: prior.loan_proceeds,
+          directors_loan: prior.directors_loan,
+          notes: prior.notes,
+        })
+        .eq("tenant_id", TENANT)
+        .eq("period_month", AUG_PERIOD);
+    } else {
+      await admin
+        .from("manual_financial_entries")
+        .delete()
+        .eq("tenant_id", TENANT)
+        .eq("period_month", AUG_PERIOD);
+    }
+    console.log("Live carry-forward test cleanup OK");
+  }
 }
 
 async function runLiveLiabilityCashTest(admin, options) {
@@ -625,6 +800,7 @@ async function runLiveLiabilityCashTest(admin, options) {
 
 async function main() {
   runInMemoryProof();
+  runInMemoryCarryForwardProof();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -683,6 +859,8 @@ async function main() {
       "SCHEMA_PENDING: directors_loan column not on staging — in-memory Directors Loan proof passed; live bank_loans+loan_proceeds fallback passed. Apply script 144 then re-run for live Directors Loan.",
     );
   }
+
+  await runLiveCarryForwardStagingTest(admin);
 
   await runLiveLiabilityCashTest(admin, {
     liabilityField: "directors_loan",
