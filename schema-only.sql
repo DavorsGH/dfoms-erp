@@ -6068,7 +6068,9 @@ CREATE TABLE public.manual_financial_entries (
     loan_proceeds numeric(12,2) DEFAULT 0,
     loan_repayments numeric(12,2) DEFAULT 0,
     opening_cash_balance numeric(12,2) DEFAULT 0,
-    notes text
+    other_cash_inflows numeric(12,2) DEFAULT 0,
+    notes text,
+    tenant_id uuid NOT NULL
 );
 
 

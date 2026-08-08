@@ -13,7 +13,9 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import {
+  MANUAL_ENTRY_FIELD_DESCRIPTIONS,
   MANUAL_ENTRY_FIELD_SECTIONS,
+  MANUAL_ENTRY_LIST_COLUMNS,
   buildPeriodMonth,
   emptyManualEntryForm,
   entryToForm,
@@ -23,6 +25,7 @@ import {
   formToPayload,
   getDefaultPeriodSelection,
   getPeriodMonthParts,
+  normalizePeriodMonth,
   type ManualEntryFormFieldKey,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
@@ -60,8 +63,12 @@ export default function ManualFinancialEntries({
 
   const [entries, setEntries] = useState(initialEntries);
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingPeriodMonth, setEditingPeriodMonth] = useState<string | null>(
+    null,
+  );
+  const [deletingPeriodMonth, setDeletingPeriodMonth] = useState<string | null>(
+    null,
+  );
   const [form, setForm] = useState(emptyManualEntryForm);
   const [selectedYear, setSelectedYear] = useState(String(defaultPeriod.year));
   const [selectedMonth, setSelectedMonth] = useState(String(defaultPeriod.month));
@@ -95,8 +102,11 @@ export default function ManualFinancialEntries({
     );
     const existing = findEntryByPeriodMonth(entries, periodMonth);
 
-    if (existing && existing.id !== editingId) {
-      setEditingId(existing.id);
+    if (
+      existing &&
+      normalizePeriodMonth(existing.period_month) !== editingPeriodMonth
+    ) {
+      setEditingPeriodMonth(normalizePeriodMonth(existing.period_month));
       setForm(entryToForm(existing));
       setInfoMessage(
         `An entry already exists for ${formatPeriodMonthLabel(periodMonth)}. Opened in edit mode.`,
@@ -104,15 +114,15 @@ export default function ManualFinancialEntries({
       return;
     }
 
-    if (!existing && editingId) {
-      setEditingId(null);
+    if (!existing && editingPeriodMonth) {
+      setEditingPeriodMonth(null);
       setForm(emptyManualEntryForm);
     }
 
     if (!existing) {
       setInfoMessage(null);
     }
-  }, [showForm, selectedYear, selectedMonth, entries, editingId]);
+  }, [showForm, selectedYear, selectedMonth, entries, editingPeriodMonth]);
 
   async function refreshEntries() {
     const { data, error: refreshError } = await supabase
@@ -142,7 +152,7 @@ export default function ManualFinancialEntries({
       return;
     }
 
-    setEditingId(null);
+    setEditingPeriodMonth(null);
     setForm(emptyManualEntryForm);
     setSelectedYear(String(period.year));
     setSelectedMonth(String(period.month));
@@ -151,7 +161,7 @@ export default function ManualFinancialEntries({
   }
 
   function closeForm() {
-    setEditingId(null);
+    setEditingPeriodMonth(null);
     setForm(emptyManualEntryForm);
     setInfoMessage(null);
     setShowForm(false);
@@ -159,7 +169,7 @@ export default function ManualFinancialEntries({
 
   function openEditForm(entry: ManualFinancialEntryRecord) {
     const parts = getPeriodMonthParts(entry.period_month);
-    setEditingId(entry.id);
+    setEditingPeriodMonth(normalizePeriodMonth(entry.period_month));
     setForm(entryToForm(entry));
     setSelectedYear(String(parts?.year ?? defaultPeriod.year));
     setSelectedMonth(String(parts?.month ?? defaultPeriod.month));
@@ -167,31 +177,37 @@ export default function ManualFinancialEntries({
     setShowForm(true);
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(periodMonth: string, tenantId?: string) {
     if (!confirmDeleteEntry()) {
       return;
     }
 
-    setDeletingId(id);
+    const normalized = normalizePeriodMonth(periodMonth);
+    setDeletingPeriodMonth(normalized);
     setError(null);
 
-    const { error: deleteError } = await supabase
+    let query = supabase
       .from("manual_financial_entries")
       .delete()
-      .eq("id", id);
+      .eq("period_month", normalized);
+    if (tenantId) {
+      query = query.eq("tenant_id", tenantId);
+    }
+
+    const { error: deleteError } = await query;
 
     if (deleteError) {
       setError(deleteError.message);
-      setDeletingId(null);
+      setDeletingPeriodMonth(null);
       return;
     }
 
-    if (editingId === id) {
+    if (editingPeriodMonth === normalized) {
       closeForm();
     }
 
     await refreshEntries();
-    setDeletingId(null);
+    setDeletingPeriodMonth(null);
     router.refresh();
   }
 
@@ -206,15 +222,33 @@ export default function ManualFinancialEntries({
       Number(selectedMonth),
     );
     const existing = findEntryByPeriodMonth(entries, periodMonth);
-    const targetId = editingId ?? existing?.id ?? null;
+    const updateKey =
+      editingPeriodMonth ??
+      (existing ? normalizePeriodMonth(existing.period_month) : null);
+    const updateTenantId =
+      (updateKey &&
+        entries.find(
+          (entry) =>
+            normalizePeriodMonth(entry.period_month) === updateKey,
+        )?.tenant_id) ||
+      existing?.tenant_id;
     const payload = formToPayload(form, periodMonth);
 
-    const { error: saveError } = targetId
-      ? await supabase
-          .from("manual_financial_entries")
-          .update(payload)
-          .eq("id", targetId)
-      : await supabase.from("manual_financial_entries").insert(payload);
+    let saveError;
+    if (updateKey) {
+      let updateQuery = supabase
+        .from("manual_financial_entries")
+        .update(payload)
+        .eq("period_month", updateKey);
+      if (updateTenantId) {
+        updateQuery = updateQuery.eq("tenant_id", updateTenantId);
+      }
+      ({ error: saveError } = await updateQuery);
+    } else {
+      ({ error: saveError } = await supabase
+        .from("manual_financial_entries")
+        .insert(payload));
+    }
 
     if (saveError) {
       if (
@@ -248,13 +282,15 @@ export default function ManualFinancialEntries({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  const listColumnCount = MANUAL_ENTRY_LIST_COLUMNS.length + 2;
+
   return (
     <div className="min-w-0 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-3xl space-y-2 text-sm text-slate-600">
           <p>
-            Enter monthly balance sheet and cash flow figures that are not
-            calculated from other registers. One row per calendar month.
+            Enter monthly liability balances and cash-flow adjustments that are
+            not calculated from other registers. One row per calendar month.
           </p>
           <p>
             Share Capital is managed under{" "}
@@ -288,7 +324,7 @@ export default function ManualFinancialEntries({
       {showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
-            {editingId ? "Edit Manual Entry" : "New Manual Entry"}
+            {editingPeriodMonth ? "Edit Manual Entry" : "New Manual Entry"}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -340,6 +376,9 @@ export default function ManualFinancialEntries({
                       <label className="mb-1 block text-sm font-medium text-slate-700">
                         {field.label}
                       </label>
+                      <p className="mb-2 text-xs text-slate-500">
+                        {MANUAL_ENTRY_FIELD_DESCRIPTIONS[field.key]}
+                      </p>
                       <input
                         type="number"
                         step="0.01"
@@ -363,7 +402,7 @@ export default function ManualFinancialEntries({
               >
                 {loading
                   ? "Saving…"
-                  : editingId
+                  : editingPeriodMonth
                     ? "Save Changes"
                     : "Save Entry"}
               </button>
@@ -385,12 +424,15 @@ export default function ManualFinancialEntries({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Period</th>
-              <th className={scrollableTableThClassName}>Cash on Hand</th>
-              <th className={scrollableTableThClassName}>Bank Balance</th>
-              <th className={scrollableTableThClassName}>Bank Loans</th>
-              <th className={scrollableTableThClassName}>Director&apos;s Loan</th>
-              <th className={scrollableTableThClassName}>Opening Cash</th>
-              <th className={scrollableTableThClassName}>Loan Proceeds</th>
+              {MANUAL_ENTRY_LIST_COLUMNS.map((column) => (
+                <th
+                  key={column.key}
+                  className={scrollableTableThClassName}
+                  title={MANUAL_ENTRY_FIELD_DESCRIPTIONS[column.key]}
+                >
+                  {column.label}
+                </th>
+              ))}
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
           </thead>
@@ -398,35 +440,35 @@ export default function ManualFinancialEntries({
             {entries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={listColumnCount}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No manual financial entries yet.
                 </td>
               </tr>
             ) : (
-              entries.map((entry, index) => (
-                <tr key={entry.id} className={getStripedRowClassName(index)}>
-                  <td className="px-4 py-3 font-medium text-[#0f2744]">
-                    {formatPeriodMonthLabel(entry.period_month)}
-                  </td>
-                  <td className="px-4 py-3">{formatGHS(entry.cash_on_hand ?? 0)}</td>
-                  <td className="px-4 py-3">{formatGHS(entry.bank_balance ?? 0)}</td>
-                  <td className="px-4 py-3">{formatGHS(entry.bank_loans ?? 0)}</td>
-                  <td className="px-4 py-3">
-                    {formatGHS(entry.directors_loan ?? 0)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {formatGHS(entry.opening_cash_balance ?? 0)}
-                  </td>
-                  <td className="px-4 py-3">{formatGHS(entry.loan_proceeds ?? 0)}</td>
-                  <RegisterRowActions
-                    onEdit={() => openEditForm(entry)}
-                    onDelete={() => handleDelete(entry.id)}
-                    deleting={deletingId === entry.id}
-                  />
-                </tr>
-              ))
+              entries.map((entry, index) => {
+                const rowKey = normalizePeriodMonth(entry.period_month);
+                return (
+                  <tr key={rowKey} className={getStripedRowClassName(index)}>
+                    <td className="px-4 py-3 font-medium text-[#0f2744]">
+                      {formatPeriodMonthLabel(entry.period_month)}
+                    </td>
+                    {MANUAL_ENTRY_LIST_COLUMNS.map((column) => (
+                      <td key={column.key} className="px-4 py-3">
+                        {formatGHS(entry[column.key] ?? 0)}
+                      </td>
+                    ))}
+                    <RegisterRowActions
+                      onEdit={() => openEditForm(entry)}
+                      onDelete={() =>
+                        handleDelete(entry.period_month, entry.tenant_id)
+                      }
+                      deleting={deletingPeriodMonth === rowKey}
+                    />
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -3,7 +3,18 @@ import { buildPeriodMonth, getPeriodMonthParts } from "./cash-flow-utils";
 
 export { formatGHS, buildPeriodMonth, getPeriodMonthParts };
 
+/** Fields shown in the form and written on save (consumed by BS / cash engine). */
 export type ManualEntryFormFieldKey =
+  | "bank_loans"
+  | "other_long_term_liabilities"
+  | "directors_loan"
+  | "loan_proceeds"
+  | "loan_repayments"
+  | "opening_cash_balance"
+  | "other_cash_inflows";
+
+/** Legacy columns retained in DB but not edited from the UI. */
+export type ManualEntryLegacyColumnKey =
   | "cash_on_hand"
   | "bank_balance"
   | "prepayments_wht_receivable"
@@ -11,20 +22,16 @@ export type ManualEntryFormFieldKey =
   | "accrued_expenses"
   | "withholding_tax_payable"
   | "vat_payable"
-  | "bank_loans"
-  | "other_long_term_liabilities"
-  | "directors_loan"
   | "retained_earnings_prior_years"
-  | "loan_proceeds"
-  | "loan_repayments"
-  | "opening_cash_balance"
-  | "other_cash_inflows";
+  | "share_capital"
+  | "purchase_of_fixed_assets";
 
 export type ManualFinancialEntryRecord = {
-  id: string;
   period_month: string;
-  share_capital?: number;
-} & Partial<Record<ManualEntryFormFieldKey, number>>;
+  tenant_id?: string;
+} & Partial<Record<ManualEntryFormFieldKey | ManualEntryLegacyColumnKey, number>> & {
+  notes?: string | null;
+};
 
 export type ManualEntryFieldSection = {
   title: string;
@@ -34,40 +41,33 @@ export type ManualEntryFieldSection = {
   }>;
 };
 
+export const MANUAL_ENTRY_FIELD_DESCRIPTIONS: Record<
+  ManualEntryFormFieldKey,
+  string
+> = {
+  bank_loans: "Outstanding balance owed on bank loans.",
+  other_long_term_liabilities:
+    "Any other long-term liability not covered by the other fields.",
+  directors_loan:
+    "Personal money you've contributed to the business, tracked as a repayable loan.",
+  loan_proceeds: "New loan money received this month (increases cash).",
+  loan_repayments: "Loan payments made this month (decreases cash).",
+  opening_cash_balance:
+    "Starting cash balance for the year - only needs to be set once, for January.",
+  other_cash_inflows:
+    "Any other real cash received this month not covered by Sales, Loans, or Capital Contributions.",
+};
+
 export const MANUAL_ENTRY_FIELD_SECTIONS: ManualEntryFieldSection[] = [
-  {
-    title: "Balance Sheet — Assets",
-    fields: [
-      { key: "cash_on_hand", label: "Cash on Hand" },
-      { key: "bank_balance", label: "Bank Balance" },
-      {
-        key: "prepayments_wht_receivable",
-        label: "Prepayments / WHT Receivable",
-      },
-      { key: "inventory_consumables", label: "Inventory / Consumables" },
-    ],
-  },
   {
     title: "Balance Sheet — Liabilities",
     fields: [
-      { key: "accrued_expenses", label: "Accrued Expenses" },
-      { key: "withholding_tax_payable", label: "Withholding Tax Payable" },
-      { key: "vat_payable", label: "VAT Payable" },
       { key: "bank_loans", label: "Bank Loans" },
       {
         key: "other_long_term_liabilities",
         label: "Other Long-Term Liabilities",
       },
       { key: "directors_loan", label: "Director's Loan" },
-    ],
-  },
-  {
-    title: "Balance Sheet — Equity",
-    fields: [
-      {
-        key: "retained_earnings_prior_years",
-        label: "Retained Earnings (Prior Years)",
-      },
     ],
   },
   {
@@ -79,6 +79,19 @@ export const MANUAL_ENTRY_FIELD_SECTIONS: ManualEntryFieldSection[] = [
       { key: "other_cash_inflows", label: "Other Cash Inflows" },
     ],
   },
+];
+
+export const MANUAL_ENTRY_LIST_COLUMNS: Array<{
+  key: ManualEntryFormFieldKey;
+  label: string;
+}> = [
+  { key: "bank_loans", label: "Bank Loans" },
+  { key: "other_long_term_liabilities", label: "Other LTL" },
+  { key: "directors_loan", label: "Director's Loan" },
+  { key: "loan_proceeds", label: "Loan Proceeds" },
+  { key: "loan_repayments", label: "Loan Repayments" },
+  { key: "opening_cash_balance", label: "Opening Cash" },
+  { key: "other_cash_inflows", label: "Other Inflows" },
 ];
 
 export const MANUAL_ENTRY_FORM_FIELD_KEYS = MANUAL_ENTRY_FIELD_SECTIONS.flatMap(
@@ -105,6 +118,10 @@ const MONTH_NAMES = [
   "December",
 ] as const;
 
+export function normalizePeriodMonth(value: string): string {
+  return value.slice(0, 10);
+}
+
 export function formatPeriodMonthLabel(periodMonth: string): string {
   const parts = getPeriodMonthParts(periodMonth);
   if (!parts) {
@@ -118,11 +135,12 @@ export function findEntryByPeriodMonth(
   entries: ManualFinancialEntryRecord[],
   periodMonth: string,
 ): ManualFinancialEntryRecord | null {
-  const normalized = periodMonth.slice(0, 10);
+  const normalized = normalizePeriodMonth(periodMonth);
 
   return (
-    entries.find((entry) => entry.period_month.slice(0, 10) === normalized) ??
-    null
+    entries.find(
+      (entry) => normalizePeriodMonth(entry.period_month) === normalized,
+    ) ?? null
   );
 }
 
@@ -137,16 +155,13 @@ export function entryToForm(
 export function formToPayload(
   form: Record<ManualEntryFormFieldKey, string>,
   periodMonth: string,
-): Omit<ManualFinancialEntryRecord, "id" | "share_capital"> {
+): Pick<ManualFinancialEntryRecord, "period_month" | ManualEntryFormFieldKey> {
   const numericFields = Object.fromEntries(
     MANUAL_ENTRY_FORM_FIELD_KEYS.map((key) => [
       key,
       Number(form[key]) || 0,
     ]),
-  ) as Pick<
-    ManualFinancialEntryRecord,
-    ManualEntryFormFieldKey
-  >;
+  ) as Pick<ManualFinancialEntryRecord, ManualEntryFormFieldKey>;
 
   return {
     period_month: periodMonth,
