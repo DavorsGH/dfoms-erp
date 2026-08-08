@@ -210,7 +210,8 @@ type ManualLiabilityStockField =
 
 /**
  * Month-end outstanding balances from manual_financial_entries (stock).
- * Full-year column uses December (same pattern as AR/AP/tax).
+ * Values carry forward to later months within the FY until a newer manual row
+ * overrides (including 0 for repayment). Full-year column uses December.
  */
 function calculateManualLiabilityStockByMonth(
   manualEntries: CashMovementManualEntry[],
@@ -219,13 +220,26 @@ function calculateManualLiabilityStockByMonth(
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
 
-  for (const entry of manualEntries) {
+  // Explicit month-end overrides for this FY (last row wins if duplicates).
+  const explicitByMonth = new Map<number, number>();
+  const sortedEntries = [...manualEntries].sort((left, right) =>
+    String(left.period_month).localeCompare(String(right.period_month)),
+  );
+
+  for (const entry of sortedEntries) {
     const parts = getPeriodMonthParts(entry.period_month);
     if (!parts || parts.year !== financialYear) {
       continue;
     }
+    explicitByMonth.set(parts.month, Number(entry[field]) || 0);
+  }
 
-    totals[parts.month - 1] = Number(entry[field]) || 0;
+  let running = 0;
+  for (let month = 1; month <= 12; month += 1) {
+    if (explicitByMonth.has(month)) {
+      running = explicitByMonth.get(month) ?? 0;
+    }
+    totals[month - 1] = running;
   }
 
   totals[FULL_YEAR_INDEX] = totals[11];
