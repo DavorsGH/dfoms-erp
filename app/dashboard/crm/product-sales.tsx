@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import FinishedProductPhoto from "@/components/finished-product-photo";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 import { deleteTaxLedgerEntriesForSource } from "../finance/tax-ledger-sync";
 import {
@@ -478,6 +479,11 @@ export default function ProductSales({
     }));
   }
 
+  const selectedProduct = useMemo(
+    () => finishedProducts.find((product) => product.id === form.product_id) ?? null,
+    [finishedProducts, form.product_id],
+  );
+
   async function handleVoidSale(entry: ProductSaleEntry) {
     if (isProductSaleVoided(entry)) {
       return;
@@ -631,21 +637,28 @@ export default function ProductSales({
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Finished Product
                 </label>
-                <select
-                  required
-                  value={form.product_id}
-                  onChange={(e) => handleProductChange(e.target.value)}
-                  className={inputClassName}
-                >
-                  <option value="">Select product</option>
-                  {finishedProducts.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.product_code} — {product.product_name} (
-                      {formatInventoryQuantity(product.current_stock)}{" "}
-                      {product.unit_of_measure} in stock)
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-wrap items-center gap-3">
+                  <FinishedProductPhoto
+                    photoUrl={selectedProduct?.photo_url}
+                    productName={selectedProduct?.product_name}
+                    size="md"
+                  />
+                  <select
+                    required
+                    value={form.product_id}
+                    onChange={(e) => handleProductChange(e.target.value)}
+                    className={`${inputClassName} min-w-[min(100%,280px)] flex-1`}
+                  >
+                    <option value="">Select product</option>
+                    {finishedProducts.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.product_code} — {product.product_name} (
+                        {formatInventoryQuantity(product.current_stock)}{" "}
+                        {product.unit_of_measure} in stock)
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">

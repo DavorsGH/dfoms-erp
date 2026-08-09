@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import {
+  requireAuthenticated,
+  requireDavorsPlatformSuperAdmin,
+} from "@/utils/admin-auth";
+import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { getLandlordPortalSession } from "@/utils/landlord-portal-auth";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -38,11 +42,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid storage path." }, { status: 400 });
   }
 
-  const [portalSession, landlordSession, staffAuth] = await Promise.all([
-    getPortalLesseeSession(),
-    getLandlordPortalSession(),
-    requireDavorsPlatformSuperAdmin(),
-  ]);
+  const [portalSession, landlordSession, staffAuth, staffTenantId, davorsStaff] =
+    await Promise.all([
+      getPortalLesseeSession(),
+      getLandlordPortalSession(),
+      requireAuthenticated(),
+      getCurrentUserTenantId(),
+      requireDavorsPlatformSuperAdmin(),
+    ]);
 
   let authorizedTenantId: string | null = null;
 
@@ -53,7 +60,9 @@ export async function GET(request: Request) {
     landlordSession.tenantId === objectTenantId
   ) {
     authorizedTenantId = landlordSession.tenantId;
-  } else if (staffAuth.ok) {
+  } else if (staffAuth.ok && staffTenantId === objectTenantId) {
+    authorizedTenantId = staffTenantId;
+  } else if (davorsStaff.ok) {
     authorizedTenantId = requestedTenantId || objectTenantId;
     if (authorizedTenantId !== objectTenantId) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });

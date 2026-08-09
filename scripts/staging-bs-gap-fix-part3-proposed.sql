@@ -1,0 +1,79 @@
+-- PROPOSED STAGING-ONLY Part 3 cleanup for Davors FY2026 BS gap
+-- DO NOT RUN without David's approval. Production must NOT be touched.
+--
+-- Tenant: 00000001-0000-4000-8000-000000000001 (Davors)
+-- Staging ref: wieflwbfdmjtsdnwbfii
+--
+-- Context: Options 1B + 2B applied 2026-08-08.
+-- Post-apply audit: Dec diff = -3000.77 (all months Jun–Dec).
+-- Simulation: deleting orphan TAX-REMIT-VAT-2026-06 alone → 0.00 all 12 months.
+--
+-- =============================================================================
+-- PART 3A — REQUIRED: orphan VAT remittance (consequence of Option 1B)
+-- =============================================================================
+--
+-- When INV-2026-06-001 and its tax_ledger_entries were deleted (1B), the
+-- TAX-REMIT-VAT-2026-06 cash expense (GHS 3,000.77) became orphaned — it paid
+-- a VAT liability that no longer exists. This is the entire remaining BS gap.
+--
+-- Simulated Dec diff after this delete: 0.00 (all 12 months balanced).
+-- Open Net VAT Payable remains GHS 68.33 (RE-MGMT-FEE Aug invoice) — legitimate.
+--
+-- BEGIN;
+-- DELETE FROM public.expense_register
+-- WHERE id = '51e5f294-1f33-46ed-baff-08a1aa1633b6'
+--   AND tenant_id = '00000001-0000-4000-8000-000000000001'
+--   AND receipt_no = 'TAX-REMIT-VAT-2026-06';
+-- -- Expected: 1 row
+-- COMMIT;
+--
+-- DO NOT also mark RE-MGMT-FEE open tax as paid — that over-corrects to +68.33.
+-- DO NOT delete TAX-REMIT-PAYE-2026-06 or TAX-REMIT-SSNIT-2026-06 — those are
+-- legitimate payroll remittance scaffolding tied to live payroll data.
+--
+-- =============================================================================
+-- PART 3B — OPTIONAL hygiene: stale manual_financial_entries row
+-- =============================================================================
+--
+-- July 2026 manual entry has legacy vat_payable = 2092.04 and share_capital =
+-- 21379.74 from pre-tax-ledger era. Not read by BS engine today, but removes
+-- confusion in Manual Financial Entries UI.
+--
+-- BEGIN;
+-- UPDATE public.manual_financial_entries
+-- SET
+--   vat_payable = 0,
+--   share_capital = 0,
+--   notes = COALESCE(notes, '') || ' [Staging hygiene — zeroed stale Jul-2026 overrides 2026-08-08]'
+-- WHERE tenant_id = '00000001-0000-4000-8000-000000000001'
+--   AND period_month = '2026-07-01';
+-- COMMIT;
+--
+-- =============================================================================
+-- PART 3C — KEEP (do NOT delete): capital contributions & owner true-ups
+-- =============================================================================
+--
+-- All five capital_contributions rows (total GHS 28,396.92) are intentional
+-- staging scaffolding. Simulations confirm removing any/all of them does NOT
+-- change BS diff — they fund real seed expenses and fixed assets:
+--
+-- | id | date | amount | purpose |
+-- |----|------|--------|---------|
+-- | 434d39bf-f4ac-43db-a2ab-4ab8d0972229 | 2026-06-09 | 6,779.00 | FA purchase funding (Jun 9 cleaning equipment) |
+-- | 69ffa2f8-dcc1-48a7-82e5-60e10c608df0 | 2026-06-30 | 17,475.52 | June operational expenses funding |
+-- | d7d96984-8979-468f-a50f-a51b805c9eb2 | 2026-06-30 | 200.00 | Owner June shortfall true-up |
+-- | 7fc8d9ec-44d2-4255-84e8-7c73fdfed29e | 2026-07-09 | 1,986.00 | July operational expenses funding |
+-- | c0556f0e-e99c-411e-893a-c0bcdd4f4997 | 2026-07-14 | 1,956.40 | Owner July shortfall true-up |
+--
+-- Also KEEP:
+--   • 59 paid Jun/Jul operational expenses (~GHS 30,333)
+--   • 20 fixed_assets rows (~GHS 6,980 NBV)
+--   • RE-MGMT-FEE income (GHS 410 + open VAT 68.33)
+--   • TAX-REMIT-PAYE-2026-06 (275.03) and TAX-REMIT-SSNIT-2026-06 (633.69)
+--
+-- =============================================================================
+-- VERIFICATION (after Part 3A approved and applied)
+-- =============================================================================
+-- npx tsx scripts/audit-bs-integrity-fy2026.ts --env-file .env.staging.local --label staging-post-part3
+--
+-- Target: all 12 months diff = 0.00

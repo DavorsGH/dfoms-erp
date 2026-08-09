@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ImageFileUploadButton from "@/components/image-file-upload-button";
+import FinishedProductPhoto from "@/components/finished-product-photo";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
 import RegisterRowActions, {
@@ -66,6 +68,8 @@ export default function FinishedProducts({
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
 
@@ -105,19 +109,59 @@ export default function FinishedProducts({
   function openAddForm() {
     setEditingProductId(null);
     setForm({ ...emptyForm });
+    setPhotoUrl(null);
     setShowForm(true);
   }
 
   function openEditForm(product: FinishedProductRecord) {
     setEditingProductId(product.id);
     setForm(finishedProductToForm(product));
+    setPhotoUrl(product.photo_url);
     setShowForm(true);
   }
 
   function closeForm() {
     setEditingProductId(null);
     setForm(emptyForm);
+    setPhotoUrl(null);
     setShowForm(false);
+  }
+
+  async function handlePhotoUpload(file: File) {
+    if (!editingProductId) {
+      return;
+    }
+
+    setPhotoUploading(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append("product_id", editingProductId);
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("/api/inventory/finished-products/upload-photo", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        photo_url?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Photo upload failed.");
+      }
+
+      setPhotoUrl(payload.photo_url ?? null);
+      await refreshData();
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error ? uploadError.message : "Photo upload failed.",
+      );
+    } finally {
+      setPhotoUploading(false);
+    }
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -243,6 +287,36 @@ export default function FinishedProducts({
             {editingProductId ? "Edit Finished Product" : "New Finished Product"}
           </h3>
           <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2 flex flex-wrap items-center gap-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <FinishedProductPhoto
+                photoUrl={photoUrl}
+                productName={form.product_name}
+                size="lg"
+              />
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-700">Product photo</p>
+                <ImageFileUploadButton
+                  files={[]}
+                  onChange={(next) => {
+                    const file = next[0];
+                    if (file) {
+                      void handlePhotoUpload(file);
+                    }
+                  }}
+                  multiple={false}
+                  disabled={photoUploading || !editingProductId}
+                  accept="image/jpeg,image/png,image/webp"
+                  addLabel={photoUploading ? "Uploading…" : "Add photo"}
+                  showClear={false}
+                  resetInputAfterSelect
+                  emptyHint={
+                    editingProductId
+                      ? "JPEG, PNG, or WebP. Saved when you upload."
+                      : "Save the product first, then edit it to add a photo."
+                  }
+                />
+              </div>
+            </div>
             {editingProductId ? (
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -403,6 +477,7 @@ export default function FinishedProducts({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
+              <th className={scrollableTableThClassName}>Photo</th>
               <th className={scrollableTableThClassName}>Code</th>
               <th className={scrollableTableThClassName}>Product</th>
               <th className={scrollableTableThClassName}>Unit</th>
@@ -419,7 +494,7 @@ export default function FinishedProducts({
             {products.length === 0 ? (
               <tr>
                 <td
-                  colSpan={readOnly ? 7 : 8}
+                  colSpan={readOnly ? 8 : 9}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No finished products yet.
@@ -433,6 +508,13 @@ export default function FinishedProducts({
 
                 return (
                 <tr key={product.id} className={getStripedRowClassName(index)}>
+                  <td className="px-4 py-3">
+                    <FinishedProductPhoto
+                      photoUrl={product.photo_url}
+                      productName={product.product_name}
+                      size="sm"
+                    />
+                  </td>
                   <td className="px-4 py-3">{product.product_code}</td>
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
                     {product.product_name}

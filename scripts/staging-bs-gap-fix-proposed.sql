@@ -1,0 +1,146 @@
+-- PROPOSED STAGING-ONLY BS gap cleanup for Davors FY2026
+-- DO NOT RUN without David's approval. Production must NOT be touched.
+--
+-- Tenant: 00000001-0000-4000-8000-000000000001 (Davors)
+-- Target: close staging BS gap (-GHS 3,125.77 dashboard / -GHS 3,000.77 as-at 31 Dec 2026)
+--
+-- Investigation date: 2026-08-08
+-- Simulation tool: scripts/simulate-staging-bs-fixes-fy2026.ts
+--
+-- =============================================================================
+-- PART 1 — Open tax_ledger_entries (Net VAT Payable GHS 3,076.39)
+-- =============================================================================
+--
+-- Root cause: Five OPEN tax_ledger_entries with zero open INPUT VAT.
+-- This is NOT a missing Net VAT Receivable case — output exceeds input correctly.
+-- All five rows tie to live income_register sources (no orphan tax legs).
+--
+-- | id | entry_date | direction | component | amount | source |
+-- |----|------------|-----------|-----------|--------|--------|
+-- | 6697a6cd-0956-427c-bce3-51611494a11c | 2026-06-30 | output | vat_bundle | 3000.77 | INV-2026-06-001 |
+-- | 16b35ccb-ba4f-40f6-8ce1-332cd3404b9a | 2026-06-30 | wht_receivable | wht | 1350.35 | INV-2026-06-001 |
+-- | d4b80f19-25a5-474a-9587-6c63cf678bc3 | 2026-08-01 | output | vat_bundle | 68.33 | RE-MGMT-FEE invoice |
+-- | 304cf8e9-e30b-4ade-8e09-f00ab657d69e | 2026-08-05 | output | vfrs | 5.83 | DF-POS-0001 |
+-- | 38e5f56f-9a6b-48aa-8e7c-0d327ffaf4cc | 2026-08-05 | output | vfrs | 1.46 | DF-POS-0002 |
+--
+-- Primary driver: test service invoice INV-2026-06-001 (Central University Contract,
+-- GHS 18,004.64 gross) posted during tax-ledger staging tests.
+--
+-- Recommended fix (Option 1A — simulate Dec gap: -3000.77 → -1274.73):
+-- Mark open tax as remitted so they leave the BS open-balance calculation.
+--
+-- BEGIN;
+-- UPDATE public.tax_ledger_entries
+-- SET
+--   status = 'paid',
+--   notes = COALESCE(notes, '') || ' [Staging BS cleanup — marked paid 2026-08-08]'
+-- WHERE tenant_id = '00000001-0000-4000-8000-000000000001'
+--   AND status = 'open';
+-- -- Expected: 5 rows (output VAT total 3076.39 + WHT receivable 1350.35)
+-- COMMIT;
+--
+-- Alternative fix (Option 1B — remove bogus June seed invoice entirely):
+-- Use when the Central University contract row should never have existed on staging.
+--
+-- BEGIN;
+-- DELETE FROM public.tax_ledger_entries
+-- WHERE id IN (
+--   '6697a6cd-0956-427c-bce3-51611494a11c',
+--   '16b35ccb-ba4f-40f6-8ce1-332cd3404b9a'
+-- );
+-- DELETE FROM public.income_register
+-- WHERE id = '381db9c1-e52e-443d-9b42-c6e352427262'
+--   AND tenant_id = '00000001-0000-4000-8000-000000000001'
+--   AND invoice_no = 'INV-2026-06-001';
+-- COMMIT;
+--
+-- Note: Option 1A alone does NOT reach 0.00 — residual Dec gap ≈ -1274.73 (simulated).
+-- Option 1B + mark remaining Aug tax paid (68.33+5.83+1.46) still leaves ≈ -2925.15
+-- unless paired with Part 2/3 below.
+--
+-- =============================================================================
+-- PART 2 — Soda Water inventory (GHS 125)
+-- =============================================================================
+--
+-- Root cause: Aug 2026 POS/inventory test data, NOT Jan–Aug historical stock.
+-- Product: DF-FP-0004 "Soda Water" (id bb33b3bf-a876-4e15-b34d-afd8da223bbc)
+-- Created 2026-08-05; current_stock 25; WAC GHS 5 → BS inventory asset GHS 125.
+-- inventory_balance_config.opening_inventory_value = 0 (no opening-equity offset).
+--
+-- The engine backfills current inventory value into all go-live→reference months,
+-- so Jan–Jul show GHS 125 even though the product did not exist yet.
+-- The extra -125 in the dashboard (3125.77 vs 3000.77) appears when viewing
+-- Dec 2026 before September (inventory zeroed for "future" months).
+--
+-- Aug 2026 activity (all test):
+--   product_purchases: 4 cash purchases (GHS 50+160+30+60 = 300 total cost)
+--   product sales: DF-POS-0001 (20 units), DF-POS-0002 (5 units), DF-POS-0003 (voided 12 units)
+--   COGS auto-posted: 140 + 35 + 66 − 66 reversal (net 175)
+--   Sep stock zero-out: NOT a stock_movement — Sep–Dec inventory=0 is a reporting
+--   as-at-date artifact when reference date is before those months.
+--
+-- Recommended fix (Option 2A — opening equity offset; fixes January only):
+--
+-- BEGIN;
+-- UPDATE public.inventory_balance_config
+-- SET opening_inventory_value = 125
+-- WHERE tenant_id = '00000001-0000-4000-8000-000000000001';
+-- COMMIT;
+--
+-- Recommended fix (Option 2B — remove Aug POS test chain; preferred for staging hygiene):
+-- Run in dependency order. Review FK cascades before executing.
+--
+-- BEGIN;
+-- -- Voided sale already has COGS reversal; active sales first
+-- DELETE FROM public.expense_register
+-- WHERE tenant_id = '00000001-0000-4000-8000-000000000001'
+--   AND receipt_no IN (
+--     'COGS-DF-POS-0001',
+--     'COGS-DF-POS-0002',
+--     'COGS-DF-POS-0003',
+--     'VOID-COGS-DF-POS-0003'
+--   );
+-- DELETE FROM public.income_register
+-- WHERE tenant_id = '00000001-0000-4000-8000-000000000001'
+--   AND invoice_no IN ('DF-POS-0001', 'DF-POS-0002', 'DF-POS-0003');
+-- DELETE FROM public.stock_movements
+-- WHERE product_id = 'bb33b3bf-a876-4e15-b34d-afd8da223bbc';
+-- DELETE FROM public.product_purchases
+-- WHERE tenant_id = '00000001-0000-4000-8000-000000000001'
+--   AND product_id = 'bb33b3bf-a876-4e15-b34d-afd8da223bbc';
+-- DELETE FROM public.finished_products
+-- WHERE id = 'bb33b3bf-a876-4e15-b34d-afd8da223bbc'
+--   AND tenant_id = '00000001-0000-4000-8000-000000000001';
+-- COMMIT;
+--
+-- =============================================================================
+-- PART 3 — Residual gap after Parts 1+2 (requires approval on scope)
+-- =============================================================================
+--
+-- Simulations show no single Part 1 + Part 2 combination reaches 0.00 on all
+-- 12 months. After Option 1A (mark tax paid), Dec as-at 31-Dec-2026 ≈ -1274.73.
+-- That residual reflects staging test income/expense/capital_contributions
+-- (GHS 28,396.92 share capital from owner true-ups) not fully reconciling with
+-- cash/assets once open tax legs are cleared.
+--
+-- Optional additional cleanup (discuss with David before running):
+--   • Delete INV-2026-06-001 (Option 1B) AND mark remaining Aug tax paid
+--   • Review capital_contributions dated 2026-06-09 / 2026-06-30 / 2026-07-*
+--     (manual owner true-ups totalling GHS 28,396.92)
+--   • Zero legacy manual_financial_entries.vat_payable = 2092.04 on 2026-07-01
+--     (not read by BS today, but removes confusion)
+--
+-- BEGIN;
+-- UPDATE public.manual_financial_entries
+-- SET vat_payable = 0
+-- WHERE tenant_id = '00000001-0000-4000-8000-000000000001'
+--   AND period_month = '2026-07-01';
+-- COMMIT;
+--
+-- =============================================================================
+-- VERIFICATION (after approved fixes applied to staging only)
+-- =============================================================================
+-- npx tsx scripts/audit-bs-integrity-fy2026.ts --env-file .env.staging.local --label staging-post-fix
+--
+-- Target: all 12 months diff = 0.00. If residual remains, escalate to full
+-- Davors FY2026 staging financial data reset (separate approved script).

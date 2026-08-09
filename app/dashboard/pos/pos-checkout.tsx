@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import PromoCodeField from "@/components/promo-code-field";
+import FinishedProductPhoto from "@/components/finished-product-photo";
 import SalesRepSelect from "@/components/sales-rep-select";
 import { PAYMENT_SETTINGS_REQUIRED_CODE } from "@/utils/product-sale-paystack";
 import { redeemLoyaltyPointsForCheckout } from "@/utils/promo-discount-utils";
@@ -984,22 +985,29 @@ export default function PosCheckout({
                   key={product.id}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 px-4 py-3"
                 >
-                  <div>
-                    <p className="font-medium text-[#0f2744]">
-                      {product.product_code} — {product.product_name}
-                    </p>
-                    <p className="text-sm text-slate-600">
-                      Stock:{" "}
-                      <span
-                        className={
-                          outOfStock ? "font-medium text-red-700" : "font-medium"
-                        }
-                      >
-                        {formatInventoryQuantity(available)} {product.unit_of_measure}
-                      </span>
-                      {" · "}
-                      Price: {formatInventoryMoney(product.standard_selling_price)}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <FinishedProductPhoto
+                      photoUrl={product.photo_url}
+                      productName={product.product_name}
+                      size="md"
+                    />
+                    <div className="min-w-0">
+                      <p className="font-medium text-[#0f2744]">
+                        {product.product_code} — {product.product_name}
+                      </p>
+                      <p className="text-sm text-slate-600">
+                        Stock:{" "}
+                        <span
+                          className={
+                            outOfStock ? "font-medium text-red-700" : "font-medium"
+                          }
+                        >
+                          {formatInventoryQuantity(available)} {product.unit_of_measure}
+                        </span>
+                        {" · "}
+                        Price: {formatInventoryMoney(product.standard_selling_price)}
+                      </p>
+                    </div>
                   </div>
                   <button
                     type="button"

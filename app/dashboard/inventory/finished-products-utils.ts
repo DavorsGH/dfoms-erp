@@ -20,6 +20,7 @@ export type FinishedProductRecord = {
   manufacturing_date: string | null;
   /** Soonest lot expiration date (from batches/purchases), not finished_products. */
   expiration_date: string | null;
+  photo_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -44,7 +45,7 @@ export const FINISHED_PRODUCT_SOURCING_OPTIONS = [
 
 /** Master columns only — lot dates live on production_batches / product_purchases. */
 export const FINISHED_PRODUCT_SELECT =
-  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, created_at, updated_at";
+  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, photo_url, created_at, updated_at";
 
 function normalizeDateOnly(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -205,6 +206,7 @@ export function normalizeFinishedProduct(
         : Number(raw.standard_selling_price) || 0,
     sourcing_type: raw.sourcing_type ?? DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
     supplier_id: raw.supplier_id ?? null,
+    photo_url: raw.photo_url ?? null,
     manufacturing_date: normalizeDateOnly(raw.manufacturing_date),
     expiration_date: normalizeDateOnly(raw.expiration_date),
   };
