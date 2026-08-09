@@ -53,16 +53,37 @@ type TaxLeg = {
   tax_amount: string;
 };
 
+type BulkImportRow = {
+  row_number: number;
+  mapped_data: unknown;
+};
+
+/** Same guard as app/api/bulk-import/[job_id]/commit/route.ts parseMappedData. */
+function parseMappedData(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
+async function queryRows<T extends Record<string, unknown>>(
+  client: Client,
+  sql: string,
+  params: unknown[] = [],
+): Promise<T[]> {
+  const result = await client.query(sql, params);
+  return result.rows as T[];
+}
+
 async function matchJobExpenses(input: {
   client: Client;
   jobId: string;
   allExpenses: ExpenseRow[];
   consumedIds: Set<string>;
 }): Promise<{ jobId: string; expenseIds: string[]; unmatchedRows: number[] }> {
-  const importRows = await input.client.query<{
-    row_number: number;
-    mapped_data: Record<string, unknown>;
-  }>(
+  const importRows = await queryRows<BulkImportRow>(
+    input.client,
     `
       SELECT row_number, mapped_data
       FROM public.bulk_import_rows
@@ -75,13 +96,14 @@ async function matchJobExpenses(input: {
   const expenseIds: string[] = [];
   const unmatchedRows: number[] = [];
 
-  for (const row of importRows.rows) {
+  for (const row of importRows) {
+    const mappedData = parseMappedData(row.mapped_data);
     const key = buildExpenseDuplicateKey({
-      date: row.mapped_data.date,
-      vendor: row.mapped_data.vendor,
-      price: row.mapped_data.price,
-      expense_category: row.mapped_data.expense_category,
-      payment_method: row.mapped_data.payment_method,
+      date: mappedData.date,
+      vendor: mappedData.vendor,
+      price: mappedData.price,
+      expense_category: mappedData.expense_category,
+      payment_method: mappedData.payment_method,
     });
 
     if (!key) {
@@ -231,9 +253,9 @@ async function main() {
       console.log(JSON.stringify(job));
     }
 
-    const allExpenses = (
-      await client.query<ExpenseRow>(
-        `
+    const allExpenses = await queryRows<ExpenseRow>(
+      client,
+      `
           SELECT
             id::text AS id,
             date::text AS date,
@@ -247,9 +269,8 @@ async function main() {
           FROM public.expense_register
           WHERE tenant_id = $1
         `,
-        [CAANTA_TENANT_ID],
-      )
-    ).rows;
+      [CAANTA_TENANT_ID],
+    );
 
     console.log(`\n=== Caanta expense_register total (before cleanup): ${allExpenses.length}`);
 
@@ -306,9 +327,9 @@ async function main() {
     const deleteExpenses = allExpenses.filter((row) => deleteIds.includes(row.id));
     const keepExpenses = allExpenses.filter((row) => keepIds.includes(row.id));
 
-    const deleteLegs = (
-      await client.query<TaxLeg>(
-        `
+    const deleteLegs = await queryRows<TaxLeg>(
+      client,
+      `
           SELECT
             id::text AS id,
             source_id::text AS source_id,
@@ -321,13 +342,12 @@ async function main() {
             AND source_id = ANY($2::uuid[])
           ORDER BY source_id, direction, tax_component
         `,
-        [CAANTA_TENANT_ID, deleteIds],
-      )
-    ).rows;
+      [CAANTA_TENANT_ID, deleteIds],
+    );
 
-    const keepLegs = (
-      await client.query<TaxLeg>(
-        `
+    const keepLegs = await queryRows<TaxLeg>(
+      client,
+      `
           SELECT
             id::text AS id,
             source_id::text AS source_id,
@@ -340,9 +360,8 @@ async function main() {
             AND source_id = ANY($2::uuid[])
           ORDER BY source_id, direction, tax_component
         `,
-        [CAANTA_TENANT_ID, keepIds],
-      )
-    ).rows;
+      [CAANTA_TENANT_ID, keepIds],
+    );
 
     console.log("\n=== Tax ledger on DELETE set (jobs 1+2) ===");
     console.log(`Leg count: ${deleteLegs.length}`);
@@ -353,9 +372,9 @@ async function main() {
 
     console.log("\n=== Job 2 tax ledger (for 22-vs-20 explanation) ===");
     const job2Expenses = allExpenses.filter((row) => job2.expenseIds.includes(row.id));
-    const job2Legs = (
-      await client.query<TaxLeg>(
-        `
+    const job2Legs = await queryRows<TaxLeg>(
+      client,
+      `
           SELECT
             id::text AS id,
             source_id::text AS source_id,
@@ -367,9 +386,8 @@ async function main() {
             AND source_type = 'expense_register'
             AND source_id = ANY($2::uuid[])
         `,
-        [CAANTA_TENANT_ID, job2.expenseIds],
-      )
-    ).rows;
+      [CAANTA_TENANT_ID, job2.expenseIds],
+    );
     const job2Tax = analyzeJobTaxLegs(job2Expenses, job2Legs);
     console.log(JSON.stringify(job2Tax, null, 2));
 
