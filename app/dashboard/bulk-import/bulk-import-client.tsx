@@ -29,6 +29,15 @@ const UNMAPPED_VALUE = "";
 
 const FINISHED_PRODUCTS_HREF = "/dashboard/inventory/finished-products";
 const SERVICES_HREF = "/dashboard/crm/services";
+const EMPLOYEES_HREF = "/dashboard/employees";
+
+const IMPORT_TYPE_LABELS: Record<BulkImportType, string> = {
+  product: "product",
+  service: "service",
+  employee: "employee",
+};
+
+const IMPORT_TYPE_OPTIONS = ["product", "service", "employee"] as const satisfies readonly BulkImportType[];
 
 const stepCardClassName =
   "rounded-lg border border-slate-200 bg-white p-6 shadow-sm";
@@ -59,7 +68,7 @@ function ExpectedColumnsCard({
     <div className={stepCardClassName}>
       <p className="mb-2 mt-0 block text-sm leading-5 text-slate-600">
         Include these columns in your spreadsheet for{" "}
-        {importType === "product" ? "product" : "service"} import.
+        {IMPORT_TYPE_LABELS[importType]} import.
       </p>
 
       <ScrollableTable>
@@ -340,7 +349,7 @@ export default function BulkImportClient({
                   Import type
                 </span>
                 <div className="inline-flex rounded-md border border-slate-300 p-0.5">
-                  {(["product", "service"] as const).map((type) => {
+                  {IMPORT_TYPE_OPTIONS.map((type) => {
                     const active = importType === type;
                     return (
                       <button
@@ -408,7 +417,11 @@ export default function BulkImportClient({
           </h2>
           <p className="mb-4 text-sm text-slate-600">
             Match each file column to a{" "}
-            {importType === "product" ? "finished product" : "service catalog"}{" "}
+            {importType === "product"
+              ? "finished product"
+              : importType === "service"
+                ? "service catalog"
+                : "employee"}{" "}
             field, or ignore columns you do not need.
           </p>
 
@@ -551,13 +564,17 @@ export default function BulkImportClient({
                     href={
                       importType === "product"
                         ? FINISHED_PRODUCTS_HREF
-                        : SERVICES_HREF
+                        : importType === "service"
+                          ? SERVICES_HREF
+                          : EMPLOYEES_HREF
                     }
                     className="inline-flex items-center rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#16365c]"
                   >
                     {importType === "product"
                       ? "Go to Finished Products"
-                      : "Go to Services"}
+                      : importType === "service"
+                        ? "Go to Services"
+                        : "Go to Employee Directory"}
                   </Link>
                 </div>
               ) : (

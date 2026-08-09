@@ -124,6 +124,7 @@ export type HeadcountSummary = {
   totalCasual: number;
   totalPartTime: number;
   totalFullTime: number;
+  totalContract: number;
   totalInactiveTerminated: number;
 };
 
@@ -577,6 +578,7 @@ export function buildHeadcountSummary(
   let totalCasual = 0;
   let totalPartTime = 0;
   let totalFullTime = 0;
+  let totalContract = 0;
   let totalInactiveTerminated = 0;
 
   for (const employee of employees) {
@@ -590,6 +592,8 @@ export function buildHeadcountSummary(
         totalPartTime += 1;
       } else if (employmentType === "Full-Time") {
         totalFullTime += 1;
+      } else if (employmentType === "Contract") {
+        totalContract += 1;
       }
     } else {
       totalInactiveTerminated += 1;
@@ -601,6 +605,7 @@ export function buildHeadcountSummary(
     totalCasual,
     totalPartTime,
     totalFullTime,
+    totalContract,
     totalInactiveTerminated,
   };
 }

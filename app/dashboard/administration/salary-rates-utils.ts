@@ -11,6 +11,7 @@ export const SALARY_RATE_EMPLOYMENT_TYPES = [
   "Casual",
   "Part-Time",
   "Full-Time",
+  "Contract",
 ] as const;
 
 /** Includes Night / Rotating for Global Salary Settings (script 117). */

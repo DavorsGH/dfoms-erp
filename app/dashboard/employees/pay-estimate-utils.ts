@@ -162,7 +162,7 @@ export function calculateEstimatedNetMonthlyPay(
     return Math.max(gross - casualTax, 0);
   }
 
-  if (employmentType === "Full-Time" || employmentType === "Part-Time") {
+  if (employmentType === "Full-Time" || employmentType === "Part-Time" || employmentType === "Contract") {
     const employeeSsnit = calculateEmployeeSsnit(
       basicSalary,
       config.ssnitConfig,

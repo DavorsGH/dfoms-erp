@@ -4,12 +4,11 @@ import {
   parseSpreadsheetUpload,
   ROW_INSERT_BATCH_SIZE,
 } from "@/lib/bulk-import/parse-spreadsheet-upload";
-import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
-import { assertTenantHasFeature } from "@/utils/tier-access";
+import { requireBulkImportAccess } from "@/lib/bulk-import/bulk-import-route-auth";
+import type { BulkImportType } from "@/lib/bulk-import/types";
 import { createClient } from "@/utils/supabase/server";
 
-const VALID_IMPORT_TYPES = new Set(["product", "service"]);
+const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service", "employee"]);
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -17,14 +16,24 @@ async function getTenantSupabase() {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
-  if (!auth.ok) {
-    return auth.response;
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return NextResponse.json({ error: "Invalid form data." }, { status: 400 });
   }
 
-  const feature = await assertTenantHasFeature(auth.tenantId, "crm_core");
-  if (!feature.ok) {
-    return feature.response;
+  const importType = String(formData.get("import_type") ?? "").trim() as BulkImportType;
+  if (!VALID_IMPORT_TYPES.has(importType)) {
+    return NextResponse.json(
+      { error: "import_type must be product, service, or employee." },
+      { status: 400 },
+    );
+  }
+
+  const auth = await requireBulkImportAccess(importType);
+  if (!auth.ok) {
+    return auth.response;
   }
 
   const supabase = await getTenantSupabase();
@@ -34,21 +43,6 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let formData: FormData;
-  try {
-    formData = await request.formData();
-  } catch {
-    return NextResponse.json({ error: "Invalid form data." }, { status: 400 });
-  }
-
-  const importType = String(formData.get("import_type") ?? "").trim();
-  if (!VALID_IMPORT_TYPES.has(importType)) {
-    return NextResponse.json(
-      { error: "import_type must be product or service." },
-      { status: 400 },
-    );
   }
 
   const file = formData.get("file");

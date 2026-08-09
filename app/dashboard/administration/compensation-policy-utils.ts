@@ -9,6 +9,7 @@ export const COMPENSATION_EMPLOYMENT_TYPES = [
   "Casual",
   "Part-Time",
   "Full-Time",
+  "Contract",
 ] as const;
 
 /** Expanded shift set: roster uses Morning/Afternoon/Full Day; Night/Rotating are pay-policy. */

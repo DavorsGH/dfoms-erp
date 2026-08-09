@@ -1,15 +1,17 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { Client } from "pg";
+import {
+  BULK_IMPORT_GATE_ROLES,
+  requireBulkImportAccess,
+} from "@/lib/bulk-import/bulk-import-route-auth";
 import { commitImportJobInTransaction } from "@/lib/bulk-import/commit-import-job";
 import type { BulkImportCommitResponse, BulkImportType } from "@/lib/bulk-import/types";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { resolveDatabaseUrl } from "@/utils/database-url";
-import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
-import { assertTenantHasFeature } from "@/utils/tier-access";
 import { createClient } from "@/utils/supabase/server";
 
-const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service"]);
+const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service", "employee"]);
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -24,18 +26,42 @@ function parseMappedData(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+async function resolveChangedByLabel(): Promise<string> {
+  const supabase = await getTenantSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return "Unknown user";
+  }
+
+  const { data } = await supabase
+    .from("user_accounts")
+    .select("email")
+    .eq("auth_uid", user.id)
+    .maybeSingle();
+
+  const accountEmail = (data as { email?: string | null } | null)?.email?.trim();
+  if (accountEmail) {
+    return accountEmail;
+  }
+
+  const authEmail = user.email?.trim();
+  if (authEmail) {
+    return authEmail;
+  }
+
+  return "Unknown user";
+}
+
 export async function POST(
   _request: Request,
   context: { params: Promise<{ job_id: string }> },
 ) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
-  if (!auth.ok) {
-    return auth.response;
-  }
-
-  const feature = await assertTenantHasFeature(auth.tenantId, "crm_core");
-  if (!feature.ok) {
-    return feature.response;
+  const gateAuth = await requireTenantRoleIn(BULK_IMPORT_GATE_ROLES);
+  if (!gateAuth.ok) {
+    return gateAuth.response;
   }
 
   const { job_id: jobId } = await context.params;
@@ -58,7 +84,7 @@ export async function POST(
     .from("bulk_import_jobs")
     .select("id, tenant_id, import_type, status, error_rows")
     .eq("id", trimmedJobId)
-    .eq("tenant_id", auth.tenantId)
+    .eq("tenant_id", gateAuth.tenantId)
     .maybeSingle();
 
   if (jobError) {
@@ -69,7 +95,20 @@ export async function POST(
     return NextResponse.json({ error: "Import job not found." }, { status: 404 });
   }
 
-  if (String(job.tenant_id) !== auth.tenantId) {
+  const importType = String(job.import_type ?? "").trim() as BulkImportType;
+  if (!VALID_IMPORT_TYPES.has(importType)) {
+    return NextResponse.json(
+      { error: "Import job has an invalid import_type." },
+      { status: 400 },
+    );
+  }
+
+  const sectionAuth = await requireBulkImportAccess(importType);
+  if (!sectionAuth.ok) {
+    return sectionAuth.response;
+  }
+
+  if (String(job.tenant_id) !== sectionAuth.tenantId) {
     return NextResponse.json({ error: "Import job not found." }, { status: 404 });
   }
 
@@ -93,20 +132,12 @@ export async function POST(
     );
   }
 
-  const importType = String(job.import_type ?? "").trim() as BulkImportType;
-  if (!VALID_IMPORT_TYPES.has(importType)) {
-    return NextResponse.json(
-      { error: "Import job has an invalid import_type." },
-      { status: 400 },
-    );
-  }
-
   const { data: rows, error: rowsError } = await supabase
     .from("bulk_import_rows")
     .select("id, mapped_data, bulk_import_jobs!inner(tenant_id)")
     .eq("job_id", trimmedJobId)
     .eq("status", "valid")
-    .eq("bulk_import_jobs.tenant_id", auth.tenantId)
+    .eq("bulk_import_jobs.tenant_id", sectionAuth.tenantId)
     .order("row_number", { ascending: true });
 
   if (rowsError) {
@@ -117,6 +148,9 @@ export async function POST(
     id: String(row.id),
     mapped_data: parseMappedData(row.mapped_data),
   }));
+
+  const changedBy =
+    importType === "employee" ? await resolveChangedByLabel() : undefined;
 
   const pgClient = new Client({
     connectionString: databaseUrl,
@@ -131,9 +165,10 @@ export async function POST(
     const committedCount = await commitImportJobInTransaction({
       client: pgClient,
       jobId: trimmedJobId,
-      tenantId: auth.tenantId,
+      tenantId: sectionAuth.tenantId,
       importType,
       rows: validRows,
+      changedBy,
     });
 
     const response: BulkImportCommitResponse = {

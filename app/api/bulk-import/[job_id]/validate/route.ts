@@ -1,7 +1,12 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { ROW_INSERT_BATCH_SIZE } from "@/lib/bulk-import/parse-spreadsheet-upload";
+import {
+  BULK_IMPORT_GATE_ROLES,
+  requireBulkImportAccess,
+} from "@/lib/bulk-import/bulk-import-route-auth";
 import { buildSupplierNameMatchCounts } from "@/lib/bulk-import/supplier-name";
+import { buildTenantNameMatchCounts } from "@/lib/bulk-import/tenant-name-lookup";
 import { validateImportRows } from "@/lib/bulk-import/validate-import-rows";
 import type {
   BulkImportColumnMapping,
@@ -9,11 +14,9 @@ import type {
   BulkImportValidationResponse,
 } from "@/lib/bulk-import/types";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
-import { assertTenantHasFeature } from "@/utils/tier-access";
 import { createClient } from "@/utils/supabase/server";
 
-const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service"]);
+const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service", "employee"]);
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -49,14 +52,9 @@ export async function POST(
   _request: Request,
   context: { params: Promise<{ job_id: string }> },
 ) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
-  if (!auth.ok) {
-    return auth.response;
-  }
-
-  const feature = await assertTenantHasFeature(auth.tenantId, "crm_core");
-  if (!feature.ok) {
-    return feature.response;
+  const gateAuth = await requireTenantRoleIn(BULK_IMPORT_GATE_ROLES);
+  if (!gateAuth.ok) {
+    return gateAuth.response;
   }
 
   const { job_id: jobId } = await context.params;
@@ -71,7 +69,7 @@ export async function POST(
     .from("bulk_import_jobs")
     .select("id, tenant_id, import_type, column_mapping")
     .eq("id", trimmedJobId)
-    .eq("tenant_id", auth.tenantId)
+    .eq("tenant_id", gateAuth.tenantId)
     .maybeSingle();
 
   if (jobError) {
@@ -88,6 +86,11 @@ export async function POST(
       { error: "Import job has an invalid import_type." },
       { status: 400 },
     );
+  }
+
+  const sectionAuth = await requireBulkImportAccess(importType);
+  if (!sectionAuth.ok) {
+    return sectionAuth.response;
   }
 
   const columnMapping = parseColumnMapping(job.column_mapping);
@@ -111,12 +114,13 @@ export async function POST(
   let existingProductCodes = new Set<string>();
   let existingServiceNames = new Set<string>();
   let supplierNameMatchCounts = new Map<string, number>();
+  let employeeLookups;
 
   if (importType === "product") {
     const { data: suppliers, error: suppliersError } = await supabase
       .from("suppliers")
       .select("name")
-      .eq("tenant_id", auth.tenantId);
+      .eq("tenant_id", sectionAuth.tenantId);
 
     if (suppliersError) {
       return NextResponse.json({ error: suppliersError.message }, { status: 500 });
@@ -129,7 +133,7 @@ export async function POST(
     const { data: products, error: productsError } = await supabase
       .from("finished_products")
       .select("product_code")
-      .eq("tenant_id", auth.tenantId);
+      .eq("tenant_id", sectionAuth.tenantId);
 
     if (productsError) {
       return NextResponse.json({ error: productsError.message }, { status: 500 });
@@ -140,11 +144,11 @@ export async function POST(
         .map((row) => String(row.product_code ?? "").trim().toLowerCase())
         .filter(Boolean),
     );
-  } else {
+  } else if (importType === "service") {
     const { data: services, error: servicesError } = await supabase
       .from("service_catalog")
       .select("service_name")
-      .eq("tenant_id", auth.tenantId);
+      .eq("tenant_id", sectionAuth.tenantId);
 
     if (servicesError) {
       return NextResponse.json({ error: servicesError.message }, { status: 500 });
@@ -155,6 +159,78 @@ export async function POST(
         .map((row) => String(row.service_name ?? "").trim().toLowerCase())
         .filter(Boolean),
     );
+  } else {
+    const [
+      departmentsResult,
+      positionsResult,
+      projectsResult,
+      employeesResult,
+      sitesResult,
+    ] = await Promise.all([
+      supabase
+        .from("departments")
+        .select("department_name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("positions")
+        .select("position_title")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("projects")
+        .select("project_name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("employees")
+        .select("full_name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("sites")
+        .select("site_name")
+        .eq("tenant_id", sectionAuth.tenantId),
+    ]);
+
+    const lookupErrors = [
+      departmentsResult.error,
+      positionsResult.error,
+      projectsResult.error,
+      employeesResult.error,
+      sitesResult.error,
+    ].filter(Boolean);
+
+    if (lookupErrors.length > 0) {
+      return NextResponse.json(
+        { error: lookupErrors[0]?.message ?? "Failed to load employee lookup data." },
+        { status: 500 },
+      );
+    }
+
+    employeeLookups = {
+      departmentNameMatchCounts: buildTenantNameMatchCounts(
+        (departmentsResult.data ?? []).map((row) => ({
+          name: String(row.department_name ?? ""),
+        })),
+      ),
+      positionTitleMatchCounts: buildTenantNameMatchCounts(
+        (positionsResult.data ?? []).map((row) => ({
+          name: String(row.position_title ?? ""),
+        })),
+      ),
+      contractProjectNameMatchCounts: buildTenantNameMatchCounts(
+        (projectsResult.data ?? []).map((row) => ({
+          name: String(row.project_name ?? ""),
+        })),
+      ),
+      supervisorNameMatchCounts: buildTenantNameMatchCounts(
+        (employeesResult.data ?? []).map((row) => ({
+          name: String(row.full_name ?? ""),
+        })),
+      ),
+      assignedSiteNameMatchCounts: buildTenantNameMatchCounts(
+        (sitesResult.data ?? []).map((row) => ({
+          name: String(row.site_name ?? ""),
+        })),
+      ),
+    };
   }
 
   const { validatedRows, summary, issueRows } = validateImportRows({
@@ -168,6 +244,7 @@ export async function POST(
     existingProductCodes,
     existingServiceNames,
     supplierNameMatchCounts,
+    employeeLookups,
   });
 
   for (let offset = 0; offset < validatedRows.length; offset += ROW_INSERT_BATCH_SIZE) {
@@ -201,7 +278,7 @@ export async function POST(
       error_rows: summary.error_rows,
     })
     .eq("id", trimmedJobId)
-    .eq("tenant_id", auth.tenantId);
+    .eq("tenant_id", sectionAuth.tenantId);
 
   if (jobUpdateError) {
     return NextResponse.json({ error: jobUpdateError.message }, { status: 500 });

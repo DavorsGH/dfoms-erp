@@ -552,7 +552,8 @@ export function calculatePayrollRow(
     );
   } else if (
     employmentType === "Full-Time" ||
-    employmentType === "Part-Time"
+    employmentType === "Part-Time" ||
+    employmentType === "Contract"
   ) {
     const ssnitConfig = pickLatestByEffectiveDate(taxConfigs.ssnitRows, asOf);
     const insurableBase = Math.min(

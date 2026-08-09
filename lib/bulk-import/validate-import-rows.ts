@@ -10,6 +10,14 @@ import {
 
 import { buildMappedData } from "@/lib/bulk-import/build-mapped-data";
 import { validateSupplierNameLookup } from "@/lib/bulk-import/supplier-name";
+import { validateTenantNameLookup } from "@/lib/bulk-import/tenant-name-lookup";
+import {
+  EMPLOYMENT_STATUS_OPTIONS,
+  EMPLOYMENT_TYPE_OPTIONS,
+  GENDER_OPTIONS,
+  MARITAL_STATUS_OPTIONS,
+  SHIFT_OPTIONS,
+} from "@/app/dashboard/employees/employee-record-utils";
 
 import type {
 
@@ -116,6 +124,21 @@ const NON_NEGATIVE_NUMERIC_FIELDS = new Set([
 
 
 const PRODUCT_DATE_FIELDS = new Set(["manufacturing_date", "expiration_date"]);
+
+const EMPLOYEE_DATE_FIELDS = new Set(["date_hired", "appointment_end_date"]);
+
+export type EmployeeImportLookupContext = {
+  departmentNameMatchCounts: Map<string, number>;
+  positionTitleMatchCounts: Map<string, number>;
+  contractProjectNameMatchCounts: Map<string, number>;
+  supervisorNameMatchCounts: Map<string, number>;
+  assignedSiteNameMatchCounts: Map<string, number>;
+};
+
+type BulkImportValidationLookups = {
+  supplierNameMatchCounts: Map<string, number>;
+  employeeLookups: EmployeeImportLookupContext | null;
+};
 
 
 
@@ -409,10 +432,32 @@ function parseOptionalDate(value: unknown): string | null | "invalid" | "out_of_
 
 
 
+function validateEnumField(
+  fieldKey: string,
+  value: unknown,
+  allowed: readonly string[],
+): string | null {
+  if (isBlank(value)) {
+    return null;
+  }
+
+  const trimmed = String(value).trim();
+  const match = allowed.find(
+    (option) => option.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (!match) {
+    return `${fieldLabel(fieldKey)} must be one of: ${allowed.join(", ")}`;
+  }
+
+  return null;
+}
+
+
+
 function collectFieldErrors(
   importType: BulkImportType,
   mappedData: Record<string, unknown>,
-  supplierNameMatchCounts: Map<string, number>,
+  lookups: BulkImportValidationLookups,
 ): string[] {
 
   const errors: string[] = [];
@@ -492,7 +537,7 @@ function collectFieldErrors(
     if ("supplier_name" in mappedData) {
       const supplierError = validateSupplierNameLookup(
         mappedData.supplier_name,
-        supplierNameMatchCounts,
+        lookups.supplierNameMatchCounts,
       );
       if (supplierError) {
         errors.push(supplierError);
@@ -601,6 +646,79 @@ function collectFieldErrors(
 
     }
 
+  }
+
+
+
+  if (importType === "employee") {
+    const employeeLookups = lookups.employeeLookups;
+    if (!employeeLookups) {
+      throw new Error("Employee import validation requires lookup context.");
+    }
+
+    for (const fieldKey of EMPLOYEE_DATE_FIELDS) {
+      if (!(fieldKey in mappedData)) {
+        continue;
+      }
+
+      const parsed = parseOptionalDate(mappedData[fieldKey]);
+      if (parsed === "invalid") {
+        errors.push(`${fieldLabel(fieldKey)} is not a valid date`);
+      } else if (parsed === "out_of_range") {
+        errors.push(`${fieldLabel(fieldKey)} is outside the allowed date range`);
+      }
+    }
+
+    const enumChecks: Array<[string, readonly string[]]> = [
+      ["employment_type", EMPLOYMENT_TYPE_OPTIONS],
+      ["employment_status", EMPLOYMENT_STATUS_OPTIONS],
+      ["gender", GENDER_OPTIONS],
+      ["marital_status", MARITAL_STATUS_OPTIONS],
+      ["shift", SHIFT_OPTIONS],
+    ];
+
+    for (const [fieldKey, allowedValues] of enumChecks) {
+      if (!(fieldKey in mappedData)) {
+        continue;
+      }
+
+      const enumError = validateEnumField(
+        fieldKey,
+        mappedData[fieldKey],
+        allowedValues,
+      );
+      if (enumError) {
+        errors.push(enumError);
+      }
+    }
+
+    const nameLookups: Array<[string, Map<string, number>, string]> = [
+      ["department_name", employeeLookups.departmentNameMatchCounts, "departments"],
+      ["position_title", employeeLookups.positionTitleMatchCounts, "positions"],
+      [
+        "contract_project_name",
+        employeeLookups.contractProjectNameMatchCounts,
+        "projects",
+      ],
+      ["supervisor_name", employeeLookups.supervisorNameMatchCounts, "employees"],
+      ["assigned_site_name", employeeLookups.assignedSiteNameMatchCounts, "sites"],
+    ];
+
+    for (const [fieldKey, matchCounts, entityLabel] of nameLookups) {
+      if (!(fieldKey in mappedData)) {
+        continue;
+      }
+
+      const lookupError = validateTenantNameLookup(
+        mappedData[fieldKey],
+        matchCounts,
+        fieldKey,
+        entityLabel,
+      );
+      if (lookupError) {
+        errors.push(lookupError);
+      }
+    }
   }
 
 
@@ -760,6 +878,7 @@ export function validateImportRows(input: {
   existingProductCodes?: Set<string>;
   existingServiceNames?: Set<string>;
   supplierNameMatchCounts?: Map<string, number>;
+  employeeLookups?: EmployeeImportLookupContext;
 }): {
 
   validatedRows: BulkImportValidatedRow[];
@@ -778,6 +897,12 @@ export function validateImportRows(input: {
     input.existingServiceNames ?? new Set<string>();
   const supplierNameMatchCounts =
     input.supplierNameMatchCounts ?? new Map<string, number>();
+  const employeeLookups =
+    input.importType === "employee" ? (input.employeeLookups ?? null) : null;
+  const validationLookups: BulkImportValidationLookups = {
+    supplierNameMatchCounts,
+    employeeLookups,
+  };
 
 
 
@@ -818,7 +943,7 @@ export function validateImportRows(input: {
     const hardErrors = collectFieldErrors(
       input.importType,
       row.mapped_data,
-      supplierNameMatchCounts,
+      validationLookups,
     );
 
 

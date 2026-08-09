@@ -863,6 +863,7 @@ export function HeadcountContractExpiryReport({
     { label: "Total Casual", value: summary.totalCasual },
     { label: "Total Part-Time", value: summary.totalPartTime },
     { label: "Total Full-Time", value: summary.totalFullTime },
+    { label: "Total Contract", value: summary.totalContract },
     {
       label: "Total Inactive / Terminated",
       value: summary.totalInactiveTerminated,

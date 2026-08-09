@@ -1,4 +1,4 @@
-export type BulkImportType = "product" | "service";
+export type BulkImportType = "product" | "service" | "employee";
 
 export const BULK_IMPORT_IGNORE_COLUMN = "__ignore__";
 

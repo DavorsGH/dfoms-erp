@@ -9,6 +9,10 @@ function parseInitialImportType(rawType: string | string[] | undefined): BulkImp
   const value = Array.isArray(rawType) ? rawType[0] : rawType;
   const normalized = value?.trim().toLowerCase();
 
+  if (normalized === "employee") {
+    return "employee";
+  }
+
   if (normalized === "service") {
     return "service";
   }
@@ -28,7 +32,7 @@ export default async function BulkImportPage({ searchParams }: BulkImportPagePro
     <div>
       <h1 className="mb-2 text-2xl font-semibold text-[#0f2744]">Bulk Import</h1>
       <p className="mb-6 text-sm text-slate-600">
-        Upload a spreadsheet and map columns to product or service fields.
+        Upload a spreadsheet and map columns to product, service, or employee fields.
       </p>
       <BulkImportClient initialImportType={initialImportType} />
     </div>

@@ -136,12 +136,135 @@ export const FINISHED_PRODUCT_TARGET_FIELDS: readonly BulkImportTargetField[] = 
   },
 ];
 
+/**
+ * employees mappable columns for bulk import (HR migration).
+ *
+ * Excluded: employee_id, staff_id, tenant_id, photo_url, compensation fields,
+ * statutory/payment fields, date_of_birth, residential_address, emergency contacts.
+ *
+ * department_name, position_title, contract_project_name resolve at commit
+ * (lookup or auto-create). supervisor_name and assigned_site_name resolve at
+ * commit when uniquely matched; blank when unmatched.
+ */
+export const EMPLOYEE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
+  {
+    key: "full_name",
+    label: "Full name",
+    required: true,
+    example: "Jane Doe",
+  },
+  {
+    key: "employment_type",
+    label: "Employment type",
+    required: true,
+    example: "Full-Time",
+    mappingHint: "Casual, Part-Time, Full-Time, or Contract",
+  },
+  {
+    key: "gender",
+    label: "Gender",
+    required: false,
+    example: "Female",
+  },
+  {
+    key: "nationality",
+    label: "Nationality",
+    required: false,
+    example: "Ghanaian",
+  },
+  {
+    key: "marital_status",
+    label: "Marital status",
+    required: false,
+    example: "Married",
+  },
+  {
+    key: "phone",
+    label: "Phone",
+    required: false,
+    example: "+233 24 123 4567",
+  },
+  {
+    key: "email",
+    label: "Email",
+    required: false,
+    example: "jane.doe@company.com",
+  },
+  {
+    key: "department_name",
+    label: "Department name",
+    required: false,
+    example: "Operations",
+    mappingHint: "Department name (not code); auto-created at import if missing",
+  },
+  {
+    key: "position_title",
+    label: "Position title",
+    required: false,
+    example: "Site Supervisor",
+    mappingHint: "Position title (not code); auto-created at import if missing",
+  },
+  {
+    key: "supervisor_name",
+    label: "Supervisor name",
+    required: false,
+    example: "John Smith",
+    mappingHint: "Supervisor's full name; left blank at import if not found",
+  },
+  {
+    key: "date_hired",
+    label: "Date hired",
+    required: false,
+    example: "2024-03-01",
+  },
+  {
+    key: "appointment_end_date",
+    label: "Appointment end date",
+    required: false,
+    example: "2025-12-31",
+  },
+  {
+    key: "employment_status",
+    label: "Employment status",
+    required: false,
+    example: "Active",
+    mappingHint: "Active, Inactive, or Terminated (defaults to Active if blank)",
+  },
+  {
+    key: "contract_project_name",
+    label: "Contract project name",
+    required: false,
+    example: "Accra Mall Cleaning",
+    mappingHint: "Project name (not code); auto-created at import if missing",
+  },
+  {
+    key: "shift",
+    label: "Shift",
+    required: false,
+    example: "Morning",
+  },
+  {
+    key: "assigned_site_name",
+    label: "Assigned site name",
+    required: false,
+    example: "Accra Mall",
+    mappingHint: "Site name (not code); left blank at import if not found",
+  },
+  {
+    key: "data_notes",
+    label: "Data notes",
+    required: false,
+    example: "Transferred from Kumasi branch",
+  },
+];
+
 const TARGET_FIELDS_BY_TYPE: Record<
   BulkImportType,
   readonly BulkImportTargetField[]
 > = {
   product: FINISHED_PRODUCT_TARGET_FIELDS,
   service: SERVICE_CATALOG_TARGET_FIELDS,
+  employee: EMPLOYEE_TARGET_FIELDS,
 };
 
 export function getBulkImportTargetFields(

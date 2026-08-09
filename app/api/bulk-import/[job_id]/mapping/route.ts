@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
+  BULK_IMPORT_GATE_ROLES,
+  requireBulkImportAccess,
+} from "@/lib/bulk-import/bulk-import-route-auth";
+import {
   getBulkImportTargetFieldKeys,
   isValidBulkImportTargetField,
 } from "@/lib/bulk-import/target-fields";
@@ -10,11 +14,9 @@ import {
   type BulkImportType,
 } from "@/lib/bulk-import/types";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
-import { assertTenantHasFeature } from "@/utils/tier-access";
 import { createClient } from "@/utils/supabase/server";
 
-const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service"]);
+const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service", "employee"]);
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -58,14 +60,9 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ job_id: string }> },
 ) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
-  if (!auth.ok) {
-    return auth.response;
-  }
-
-  const feature = await assertTenantHasFeature(auth.tenantId, "crm_core");
-  if (!feature.ok) {
-    return feature.response;
+  const gateAuth = await requireTenantRoleIn(BULK_IMPORT_GATE_ROLES);
+  if (!gateAuth.ok) {
+    return gateAuth.response;
   }
 
   const { job_id: jobId } = await context.params;
@@ -95,7 +92,7 @@ export async function PATCH(
     .from("bulk_import_jobs")
     .select("id, tenant_id, import_type")
     .eq("id", trimmedJobId)
-    .eq("tenant_id", auth.tenantId)
+    .eq("tenant_id", gateAuth.tenantId)
     .maybeSingle();
 
   if (jobError) {
@@ -112,6 +109,11 @@ export async function PATCH(
       { error: "Import job has an invalid import_type." },
       { status: 400 },
     );
+  }
+
+  const sectionAuth = await requireBulkImportAccess(importType);
+  if (!sectionAuth.ok) {
+    return sectionAuth.response;
   }
 
   const allowedTargets = new Set(getBulkImportTargetFieldKeys(importType));
@@ -144,7 +146,7 @@ export async function PATCH(
     .from("bulk_import_jobs")
     .update({ column_mapping: parsedBody.column_mapping })
     .eq("id", trimmedJobId)
-    .eq("tenant_id", auth.tenantId);
+    .eq("tenant_id", sectionAuth.tenantId);
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });

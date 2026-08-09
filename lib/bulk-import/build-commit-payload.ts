@@ -1,3 +1,11 @@
+import {
+  DEFAULT_EMPLOYMENT_STATUS,
+  EMPLOYMENT_STATUS_OPTIONS,
+  EMPLOYMENT_TYPE_OPTIONS,
+  GENDER_OPTIONS,
+  MARITAL_STATUS_OPTIONS,
+  SHIFT_OPTIONS,
+} from "@/app/dashboard/employees/employee-record-utils";
 import { FINISHED_PRODUCT_PURCHASED_SOURCING_TYPE } from "@/lib/bulk-import/target-fields";
 
 const DEFAULT_SOURCING_TYPE = "manufactured" as const;
@@ -71,6 +79,44 @@ export type ServiceCatalogCommitInsert = {
   category: string | null;
 };
 
+export type EmployeeCommitInsert = {
+  tenant_id: string;
+  employee_id: string;
+  staff_id: string;
+  full_name: string;
+  gender: string | null;
+  nationality: string | null;
+  marital_status: string | null;
+  phone: string | null;
+  email: string | null;
+  department: string | null;
+  position: string | null;
+  supervisor: string | null;
+  employment_type: string;
+  date_hired: string | null;
+  appointment_end_date: string | null;
+  employment_status: string;
+  contract_project: string | null;
+  shift: string | null;
+  assigned_site_id: string | null;
+  data_notes: string | null;
+};
+
+function resolveCanonicalEnumValue(
+  value: unknown,
+  allowed: readonly string[],
+): string | null {
+  if (isBlank(value)) {
+    return null;
+  }
+
+  const trimmed = String(value).trim();
+  const match = allowed.find(
+    (option) => option.toLowerCase() === trimmed.toLowerCase(),
+  );
+  return match ?? trimmed;
+}
+
 export function buildFinishedProductCommitInsert(
   mappedData: Record<string, unknown>,
   tenantId: string,
@@ -114,5 +160,56 @@ export function buildServiceCatalogCommitInsert(
     default_rate: parseOptionalNumber(mappedData.default_rate),
     billing_unit: nullableText(mappedData.billing_unit),
     category: nullableText(mappedData.category),
+  };
+}
+
+export function buildEmployeeCommitInsert(input: {
+  mappedData: Record<string, unknown>;
+  tenantId: string;
+  employeeId: string;
+  staffId: string;
+  departmentCode: string | null;
+  positionTitle: string | null;
+  projectCode: string | null;
+  supervisorId: string | null;
+  assignedSiteCode: string | null;
+}): EmployeeCommitInsert {
+  const employmentType = resolveCanonicalEnumValue(
+    input.mappedData.employment_type,
+    EMPLOYMENT_TYPE_OPTIONS,
+  );
+
+  if (!employmentType) {
+    throw new Error("employment_type is required.");
+  }
+
+  return {
+    tenant_id: input.tenantId,
+    employee_id: input.employeeId,
+    staff_id: input.staffId,
+    full_name: String(input.mappedData.full_name).trim(),
+    gender: resolveCanonicalEnumValue(input.mappedData.gender, GENDER_OPTIONS),
+    nationality: nullableText(input.mappedData.nationality),
+    marital_status: resolveCanonicalEnumValue(
+      input.mappedData.marital_status,
+      MARITAL_STATUS_OPTIONS,
+    ),
+    phone: nullableText(input.mappedData.phone),
+    email: nullableText(input.mappedData.email),
+    department: input.departmentCode,
+    position: input.positionTitle,
+    supervisor: input.supervisorId,
+    employment_type: employmentType,
+    date_hired: parseOptionalDate(input.mappedData.date_hired),
+    appointment_end_date: parseOptionalDate(input.mappedData.appointment_end_date),
+    employment_status:
+      resolveCanonicalEnumValue(
+        input.mappedData.employment_status,
+        EMPLOYMENT_STATUS_OPTIONS,
+      ) ?? DEFAULT_EMPLOYMENT_STATUS,
+    contract_project: input.projectCode,
+    shift: resolveCanonicalEnumValue(input.mappedData.shift, SHIFT_OPTIONS),
+    assigned_site_id: input.assignedSiteCode,
+    data_notes: nullableText(input.mappedData.data_notes),
   };
 }

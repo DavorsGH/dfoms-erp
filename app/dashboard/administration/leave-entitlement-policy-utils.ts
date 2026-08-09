@@ -16,6 +16,7 @@ export const LEAVE_ENTITLEMENT_EMPLOYMENT_TYPES = [
   "Casual",
   "Part-Time",
   "Full-Time",
+  "Contract",
 ] as const;
 
 export type LeaveEntitlementPolicyRow = {
