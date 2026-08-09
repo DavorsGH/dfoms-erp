@@ -48,6 +48,29 @@ type SidebarProps = {
   onClose?: () => void;
 };
 
+/** Sidebar has ~87 routes; default Link prefetch triggers middleware on each. */
+const SIDEBAR_LINK_PREFETCH = false;
+
+type SidebarLinkProps = {
+  href: string;
+  className: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+};
+
+function SidebarLink({ href, className, onClick, children }: SidebarLinkProps) {
+  return (
+    <Link
+      href={href}
+      prefetch={SIDEBAR_LINK_PREFETCH}
+      onClick={onClick}
+      className={className}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function isActive(pathname: string, href: string) {
   if (href === "/dashboard") {
     return pathname === "/dashboard";
@@ -275,7 +298,7 @@ export default function Sidebar({
               );
 
               return (
-                <Link
+                <SidebarLink
                   key={link.href}
                   href={link.href}
                   onClick={handleNavigate}
@@ -286,7 +309,7 @@ export default function Sidebar({
                   }`}
                 >
                   {link.label}
-                </Link>
+                </SidebarLink>
               );
             })}
           </SidebarExpandableNavSection>
@@ -310,7 +333,7 @@ export default function Sidebar({
               );
 
               return (
-                <Link
+                <SidebarLink
                   key={link.href}
                   href={link.href}
                   onClick={handleNavigate}
@@ -321,7 +344,7 @@ export default function Sidebar({
                   }`}
                 >
                   {link.label}
-                </Link>
+                </SidebarLink>
               );
             })}
           </SidebarExpandableNavSection>
@@ -345,7 +368,7 @@ export default function Sidebar({
               );
 
               return (
-                <Link
+                <SidebarLink
                   key={link.href}
                   href={link.href}
                   onClick={handleNavigate}
@@ -356,7 +379,7 @@ export default function Sidebar({
                   }`}
                 >
                   {link.label}
-                </Link>
+                </SidebarLink>
               );
             })}
           </SidebarExpandableNavSection>
@@ -380,7 +403,7 @@ export default function Sidebar({
               );
 
               return (
-                <Link
+                <SidebarLink
                   key={link.href}
                   href={link.href}
                   onClick={handleNavigate}
@@ -391,7 +414,7 @@ export default function Sidebar({
                   }`}
                 >
                   {link.label}
-                </Link>
+                </SidebarLink>
               );
             })}
           </SidebarExpandableNavSection>
@@ -402,7 +425,7 @@ export default function Sidebar({
     const active = isActive(pathname, item.href);
 
     return (
-      <Link
+      <SidebarLink
         key={item.href}
         href={item.href}
         onClick={handleNavigate}
@@ -413,7 +436,7 @@ export default function Sidebar({
         }`}
       >
         {item.label}
-      </Link>
+      </SidebarLink>
     );
   }
 
