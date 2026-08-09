@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import StayLoggedInCheckbox from "@/components/auth/stay-logged-in-checkbox";
 import PasswordInput from "@/components/password-input";
 import {
   portalAuthCardClassName,
@@ -16,6 +17,7 @@ import { portalLoginWithPassword } from "./actions";
 export default function PortalLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -25,7 +27,7 @@ export default function PortalLoginPage() {
     setLoading(true);
     setError(null);
 
-    const result = await portalLoginWithPassword(email, password);
+    const result = await portalLoginWithPassword(email, password, stayLoggedIn);
 
     if (!result.ok) {
       setError(result.error);
@@ -95,6 +97,11 @@ export default function PortalLoginPage() {
               placeholder="••••••••"
             />
           </div>
+
+          <StayLoggedInCheckbox
+            checked={stayLoggedIn}
+            onChange={setStayLoggedIn}
+          />
 
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
 

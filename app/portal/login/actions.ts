@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
+import { setAuthPersistPreference } from "@/lib/auth/sign-out";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -21,6 +22,7 @@ export type PortalLoginActionResult = LoginWithMfaResult;
 export async function portalLoginWithPassword(
   email: string,
   password: string,
+  stayLoggedIn = false,
 ): Promise<PortalLoginActionResult> {
   const trimmedEmail = email.trim();
   if (!trimmedEmail || !password) {
@@ -36,7 +38,8 @@ export async function portalLoginWithPassword(
   }
 
   const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+  await setAuthPersistPreference(stayLoggedIn);
+  const supabase = createClient(cookieStore, { authPersist: stayLoggedIn });
 
   const { data: signInData, error } = await supabase.auth.signInWithPassword({
     email: trimmedEmail,

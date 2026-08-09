@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { completePlatformSignOut } from "@/lib/auth/sign-out";
 
 type LogoutButtonProps = {
   className?: string;
@@ -9,10 +9,9 @@ type LogoutButtonProps = {
 
 export default function LogoutButton({ className = "" }: LogoutButtonProps) {
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleLogout() {
-    await supabase.auth.signOut();
+    await completePlatformSignOut();
     router.push("/login");
     router.refresh();
   }

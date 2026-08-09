@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies, headers } from "next/headers";
+import { completePlatformSignOut } from "@/lib/auth/sign-out";
 import { createClient } from "@/utils/supabase/server";
 import { getRequestIp } from "@/utils/login-rate-limit";
 import {
@@ -60,7 +61,7 @@ export async function cancelMfaLogin(
     await revokeLoginMfaSessions(userId);
   }
 
-  await supabase.auth.signOut();
+  await completePlatformSignOut();
   return { ok: true };
 }
 

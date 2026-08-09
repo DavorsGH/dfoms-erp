@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  AUTH_PERSIST_FLAG_COOKIE,
+  readAuthPersistEnabled,
+} from "@/lib/auth/session-persistence";
+import { applyAuthCookiePersistence } from "@/utils/supabase/auth-cookie-options";
 import { noStoreFetch } from "@/utils/supabase/no-store-fetch";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -25,11 +30,15 @@ export const createClient = (request: NextRequest) => {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet, headers) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          const persist = readAuthPersistEnabled(
+            request.cookies.get(AUTH_PERSIST_FLAG_COOKIE)?.value,
+          );
+          const adjusted = applyAuthCookiePersistence(cookiesToSet, persist);
+          adjusted.forEach(({ name, value, options }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
-          cookiesToSet.forEach(({ name, value, options }) =>
+          adjusted.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
           for (const [name, value] of Object.entries(headers ?? {})) {

@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
+import { setAuthPersistPreference } from "@/lib/auth/sign-out";
 import { createClient } from "@/utils/supabase/server";
 import {
   assertLoginAllowed,
@@ -20,6 +21,7 @@ export type LoginActionResult = LoginWithMfaResult;
 export async function loginWithPassword(
   email: string,
   password: string,
+  stayLoggedIn = false,
   captchaToken?: string | null,
 ): Promise<LoginActionResult> {
   const trimmedEmail = email.trim();
@@ -36,7 +38,8 @@ export async function loginWithPassword(
   }
 
   const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+  await setAuthPersistPreference(stayLoggedIn);
+  const supabase = createClient(cookieStore, { authPersist: stayLoggedIn });
 
   const trimmedCaptcha = captchaToken?.trim() || undefined;
 

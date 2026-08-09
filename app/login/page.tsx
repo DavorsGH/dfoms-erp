@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import StayLoggedInCheckbox from "@/components/auth/stay-logged-in-checkbox";
 import PasswordInput from "@/components/password-input";
 import { getSafeNext } from "@/utils/safe-redirect";
 import { loginWithPassword } from "./actions";
@@ -10,6 +11,7 @@ import { loginWithPassword } from "./actions";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -20,7 +22,7 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const result = await loginWithPassword(email, password);
+    const result = await loginWithPassword(email, password, stayLoggedIn);
 
     if (!result.ok) {
       setError(result.error);
@@ -95,6 +97,11 @@ export default function LoginPage() {
               placeholder="••••••••"
             />
           </div>
+
+          <StayLoggedInCheckbox
+            checked={stayLoggedIn}
+            onChange={setStayLoggedIn}
+          />
 
           {error && (
             <p className="text-sm text-red-600">{error}</p>

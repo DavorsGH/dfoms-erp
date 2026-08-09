@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
+import { completePlatformSignOut } from "@/lib/auth/sign-out";
 
 type LandlordPortalSignOutButtonProps = {
   variant?: "header" | "topbar" | "menu";
@@ -13,8 +13,7 @@ export default function LandlordPortalSignOutButton({
   const router = useRouter();
 
   async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await completePlatformSignOut();
     router.push("/landlord-portal/login");
     router.refresh();
   }

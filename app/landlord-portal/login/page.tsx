@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import StayLoggedInCheckbox from "@/components/auth/stay-logged-in-checkbox";
 import PasswordInput from "@/components/password-input";
 import {
   portalAuthCardClassName,
@@ -16,6 +17,7 @@ import { landlordPortalLoginWithPassword } from "./actions";
 export default function LandlordPortalLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -25,7 +27,11 @@ export default function LandlordPortalLoginPage() {
     setLoading(true);
     setError(null);
 
-    const result = await landlordPortalLoginWithPassword(email, password);
+    const result = await landlordPortalLoginWithPassword(
+      email,
+      password,
+      stayLoggedIn,
+    );
 
     if (!result.ok) {
       setError(result.error);
@@ -95,6 +101,11 @@ export default function LandlordPortalLoginPage() {
               placeholder="••••••••"
             />
           </div>
+
+          <StayLoggedInCheckbox
+            checked={stayLoggedIn}
+            onChange={setStayLoggedIn}
+          />
 
           {error ? <p className="text-sm text-red-700">{error}</p> : null}
 
