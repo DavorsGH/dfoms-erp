@@ -6,6 +6,7 @@ import {
   resolveLesseeNotificationHref,
   type LesseeNotificationRow,
 } from "@/utils/lessee-notifications-types";
+import { NOTIFICATION_DROPDOWN_PANEL_CLASS } from "@/utils/notification-bell-ui";
 
 const PAGE_SIZE = 20;
 
@@ -281,7 +282,7 @@ export default function PortalNotificationBell() {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg"
+          className={`${NOTIFICATION_DROPDOWN_PANEL_CLASS} text-slate-900`}
         >
           <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
             <h2 className="text-sm font-semibold text-[#0f2744]">
