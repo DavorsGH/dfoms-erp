@@ -97,7 +97,7 @@ function isOpenProcessingStatus(status) {
   return OPEN_STATUSES.has(String(status ?? "").trim().toLowerCase());
 }
 
-/** Service-role-safe mirror of syncProcessingAllowanceLines (includes tenant_id). */
+/** Service-role wrapper — delegates to shared upsert sync. */
 async function syncProcessingAllowanceLinesForTenant(
   admin,
   tenantId,
@@ -105,31 +105,16 @@ async function syncProcessingAllowanceLinesForTenant(
   employeeId,
   allowances,
 ) {
-  const month = payrollMonth.slice(0, 10);
-  const { error: deleteError } = await admin
-    .from("payroll_allowance_lines")
-    .delete()
-    .eq("tenant_id", tenantId)
-    .eq("stage", "processing")
-    .eq("payroll_month", month)
-    .eq("employee_id", employeeId);
-  if (deleteError) return { error: deleteError.message };
-  if (!allowances?.length) return { error: null };
-
-  const rows = allowances.map((line) => ({
-    tenant_id: tenantId,
-    stage: "processing",
-    payroll_month: month,
-    employee_id: employeeId,
-    allowance_type_id: line.allowance_type_id || null,
-    allowance_code: line.allowance_code,
-    allowance_name: line.allowance_name,
-    amount: Math.round((Number(line.amount) || 0) * 100) / 100,
-  }));
-  const { error: insertError } = await admin
-    .from("payroll_allowance_lines")
-    .insert(rows);
-  return { error: insertError?.message ?? null };
+  const { syncProcessingAllowanceLines } = await import(
+    "../app/dashboard/hr-payroll/payroll-allowance-lines-utils"
+  );
+  return syncProcessingAllowanceLines(
+    admin,
+    payrollMonth,
+    employeeId,
+    allowances,
+    { tenantId },
+  );
 }
 
 /** Only update columns that exist on the fetched row (staging schema lag). */

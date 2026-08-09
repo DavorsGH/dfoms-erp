@@ -1,7 +1,7 @@
 "use client";
 
 import { LoadingState } from "@/components/loading-indicator";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { formatGHS, inputClassName, compareStaffIds } from "../employees/employee-record-utils";
 import { filterEmployeesForPayrollPeriod } from "./employee-utils";
@@ -114,6 +114,7 @@ export default function PayrollProcessing({
   fetchError,
 }: PayrollProcessingProps) {
   const supabase = createClient();
+  const workspaceLoadGenerationRef = useRef(0);
   const now = new Date();
   const [knownPayrollMonths, setKnownPayrollMonths] =
     useState(initialPayrollMonths);
@@ -310,6 +311,7 @@ export default function PayrollProcessing({
       period.payrollMonth,
       employee.employee_id,
       policy.allowance_lines,
+      { tenantId },
     );
     if (result.error) {
       setError(result.error);
@@ -398,7 +400,10 @@ export default function PayrollProcessing({
     return (data as MonthEndCloseRecord | null) ?? null;
   }
 
-  async function syncOpenPeriod(period: SelectedPayrollPeriod) {
+  async function syncOpenPeriod(
+    period: SelectedPayrollPeriod,
+    isCancelled: () => boolean = () => false,
+  ) {
     const { data: existingRows, error: existingError } = await supabase
       .from("payroll_processing")
       .select("id, employee_id")
@@ -507,7 +512,14 @@ export default function PayrollProcessing({
 
     // Refresh processing allowance lines for all employees in this open period.
     for (const employee of employeesForPeriod) {
+      if (isCancelled()) {
+        return;
+      }
       await persistAllowanceLines(period, employee);
+    }
+
+    if (isCancelled()) {
+      return;
     }
 
     setKnownPayrollMonths((current) =>
@@ -523,15 +535,23 @@ export default function PayrollProcessing({
       return;
     }
 
+    const loadGeneration = ++workspaceLoadGenerationRef.current;
+    const isStaleLoad = () => workspaceLoadGenerationRef.current !== loadGeneration;
+
     setLoading(true);
     setError(null);
     setExpandedEmployeeId(null);
 
     try {
       const period = resolveSelectedPeriod(parsed.year, parsed.month);
-      setCurrentPeriod(period);
+      if (!isStaleLoad()) {
+        setCurrentPeriod(period);
+      }
 
       const closeRecord = await fetchMonthEndClose(period.payrollMonth);
+      if (isStaleLoad()) {
+        return;
+      }
       setMonthEndClose(closeRecord);
 
       if (!isMonthClosed(closeRecord)) {
@@ -544,8 +564,10 @@ export default function PayrollProcessing({
           throw new Error(staleHistoryError.message);
         }
 
-        setHasStaleHistory((count ?? 0) > 0);
-      } else {
+        if (!isStaleLoad()) {
+          setHasStaleHistory((count ?? 0) > 0);
+        }
+      } else if (!isStaleLoad()) {
         setHasStaleHistory(false);
       }
 
@@ -560,6 +582,10 @@ export default function PayrollProcessing({
           throw new Error(historyError.message);
         }
 
+        if (isStaleLoad()) {
+          return;
+        }
+
         const historyRows = (data as PayrollHistoryRow[] | null) ?? [];
         setPeriodHasProcessingRows(historyRows.length > 0);
         setRows(
@@ -569,7 +595,6 @@ export default function PayrollProcessing({
             ),
           ),
         );
-        setLoading(false);
         return;
       }
 
@@ -583,7 +608,10 @@ export default function PayrollProcessing({
         throw new Error(processingCountError.message);
       }
 
-      await syncOpenPeriod(period);
+      await syncOpenPeriod(period, isStaleLoad);
+      if (isStaleLoad()) {
+        return;
+      }
 
       const { data, error: processingError } = await supabase
         .from("payroll_processing")
@@ -593,6 +621,10 @@ export default function PayrollProcessing({
 
       if (processingError) {
         throw new Error(processingError.message);
+      }
+
+      if (isStaleLoad()) {
+        return;
       }
 
       const processingRows = (data as PayrollProcessingRow[] | null) ?? [];
@@ -612,11 +644,15 @@ export default function PayrollProcessing({
         ),
       );
     } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Failed to load payroll.",
-      );
+      if (!isStaleLoad()) {
+        setError(
+          loadError instanceof Error ? loadError.message : "Failed to load payroll.",
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!isStaleLoad()) {
+        setLoading(false);
+      }
     }
   }
 
