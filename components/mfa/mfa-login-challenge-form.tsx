@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatMfaActionError } from "@/lib/mfa/format-sms-resend-wait";
+import SmsResendCooldownNotice from "@/components/mfa/sms-resend-cooldown-notice";
+import { isSmsResendRateLimited } from "@/lib/mfa/format-sms-resend-wait";
 import type { MfaActionResult, MfaPersona } from "@/lib/mfa/types";
+import { useSmsResendCooldown } from "@/lib/mfa/use-sms-resend-cooldown";
 import { getSafeNext } from "@/utils/safe-redirect";
 
 type ChallengeActions = {
@@ -45,8 +47,35 @@ export default function MfaLoginChallengeForm({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [smsSent, setSmsSent] = useState(false);
+  const [resendCooldownUntilMs, setResendCooldownUntilMs] = useState<
+    number | null
+  >(null);
+
+  const clearResendCooldown = useCallback(() => {
+    setResendCooldownUntilMs(null);
+  }, []);
+
+  const { remainingSeconds, isActive: isResendCooldownActive } =
+    useSmsResendCooldown(resendCooldownUntilMs, clearResendCooldown);
 
   const destination = getSafeNext(searchParams.get("next"), "/dashboard");
+
+  function applySmsSendResult(result: MfaActionResult): boolean {
+    if (result.ok) {
+      setResendCooldownUntilMs(null);
+      return true;
+    }
+
+    if (isSmsResendRateLimited(result)) {
+      setResendCooldownUntilMs(result.resendAvailableAtMs);
+      setError(null);
+      return false;
+    }
+
+    setResendCooldownUntilMs(null);
+    setError(result.error);
+    return false;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -63,10 +92,8 @@ export default function MfaLoginChallengeForm({
       setLoading(false);
       if (ctx.method === "sms") {
         const sent = await actions.sendSms();
-        if (!cancelled && sent.ok) {
+        if (!cancelled && applySmsSendResult(sent)) {
           setSmsSent(true);
-        } else if (!cancelled && !sent.ok) {
-          setError(formatMfaActionError(sent));
         }
       }
     })();
@@ -110,9 +137,7 @@ export default function MfaLoginChallengeForm({
     setError(null);
     setSubmitting(true);
     const sent = await actions.sendSms();
-    if (!sent.ok) {
-      setError(formatMfaActionError(sent));
-    } else {
+    if (applySmsSendResult(sent)) {
       setSmsSent(true);
     }
     setSubmitting(false);
@@ -168,6 +193,9 @@ export default function MfaLoginChallengeForm({
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
+          {isResendCooldownActive && (
+            <SmsResendCooldownNotice remainingSeconds={remainingSeconds} />
+          )}
 
           <button
             type="submit"
@@ -182,8 +210,8 @@ export default function MfaLoginChallengeForm({
           <button
             type="button"
             onClick={handleResendSms}
-            disabled={submitting}
-            className="mt-3 w-full text-sm text-zinc-600 underline hover:text-zinc-900 disabled:opacity-50"
+            disabled={submitting || isResendCooldownActive}
+            className="mt-3 w-full text-sm text-zinc-600 underline hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {smsSent ? "Resend code" : "Send code again"}
           </button>

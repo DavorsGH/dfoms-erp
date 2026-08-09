@@ -25,7 +25,12 @@ export type PostLoginMfaResult =
 
 export type MfaActionResult =
   | { ok: true }
-  | { ok: false; error: string; resendAvailableInSeconds?: number };
+  | {
+      ok: false;
+      error: string;
+      resendAvailableInSeconds?: number;
+      resendAvailableAtMs?: number;
+    };
 
 export type LoginWithMfaResult =
   | { ok: true; mfaRequired?: false }

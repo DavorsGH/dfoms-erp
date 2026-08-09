@@ -100,7 +100,13 @@ async function saveSmsResendState(
 export async function assertMfaResendAllowed(
   authUid: string,
 ): Promise<
-  { ok: true } | { ok: false; error: string; resendAvailableInSeconds: number }
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      resendAvailableInSeconds: number;
+      resendAvailableAtMs: number;
+    }
 > {
   if (!authUid.trim()) return { ok: true };
 
@@ -113,6 +119,7 @@ export async function assertMfaResendAllowed(
         ok: false,
         error: MFA_RESEND_RATE_LIMIT_MESSAGE,
         resendAvailableInSeconds: gate.resendAvailableInSeconds,
+        resendAvailableAtMs: gate.resendAvailableAtMs,
       };
     }
 

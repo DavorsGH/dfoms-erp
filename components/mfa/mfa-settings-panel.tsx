@@ -1,9 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { formatMfaActionError } from "@/lib/mfa/format-sms-resend-wait";
+import { useCallback, useState } from "react";
+import SmsResendCooldownNotice from "@/components/mfa/sms-resend-cooldown-notice";
+import {
+  formatMfaActionError,
+  isSmsResendRateLimited,
+} from "@/lib/mfa/format-sms-resend-wait";
 import type { MfaActionResult, MfaPersona } from "@/lib/mfa/types";
+import { useSmsResendCooldown } from "@/lib/mfa/use-sms-resend-cooldown";
 
 type Settings = {
   method: string;
@@ -60,6 +65,33 @@ export default function MfaSettingsPanel({
   const [smsCode, setSmsCode] = useState("");
   const [manualPhone, setManualPhone] = useState("");
   const [disableCode, setDisableCode] = useState("");
+  const [resendCooldownUntilMs, setResendCooldownUntilMs] = useState<
+    number | null
+  >(null);
+
+  const clearResendCooldown = useCallback(() => {
+    setResendCooldownUntilMs(null);
+  }, []);
+
+  const { remainingSeconds, isActive: isResendCooldownActive } =
+    useSmsResendCooldown(resendCooldownUntilMs, clearResendCooldown);
+
+  function applySmsSendResult(result: MfaActionResult): boolean {
+    if (result.ok) {
+      setResendCooldownUntilMs(null);
+      return true;
+    }
+
+    if (isSmsResendRateLimited(result)) {
+      setResendCooldownUntilMs(result.resendAvailableAtMs);
+      setError(null);
+      return false;
+    }
+
+    setResendCooldownUntilMs(null);
+    setError(formatMfaActionError(result));
+    return false;
+  }
 
   const profilePhone = initialSettings?.profilePhoneE164 ?? null;
   const staffManualPhoneEntry =
@@ -111,11 +143,11 @@ export default function MfaSettingsPanel({
     const phoneOverride =
       staffManualPhoneEntry && !profilePhone ? manualPhone : undefined;
     const result = await onSendSmsOtp(phoneOverride);
-    if (!result.ok) {
-      setError(formatMfaActionError(result));
-    } else {
-      setSuccess("Verification code sent by SMS.");
+    if (!applySmsSendResult(result)) {
+      setLoading(false);
+      return;
     }
+    setSuccess("Verification code sent by SMS.");
     setLoading(false);
   }
 
@@ -163,6 +195,14 @@ export default function MfaSettingsPanel({
       {error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </p>
+      )}
+      {isResendCooldownActive && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3">
+          <SmsResendCooldownNotice
+            remainingSeconds={remainingSeconds}
+            className="text-sm text-red-700"
+          />
         </p>
       )}
       {success && (
@@ -279,7 +319,7 @@ export default function MfaSettingsPanel({
           <button
             type="button"
             onClick={handleSendSms}
-            disabled={loading || !canSendSmsEnrollment}
+            disabled={loading || !canSendSmsEnrollment || isResendCooldownActive}
             className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50 disabled:opacity-50"
           >
             Send verification code
@@ -320,12 +360,13 @@ export default function MfaSettingsPanel({
                 setLoading(true);
                 setError(null);
                 const result = await onSendDisableSmsOtp();
-                if (!result.ok) setError(formatMfaActionError(result));
-                else setSuccess("SMS code sent.");
+                if (applySmsSendResult(result)) {
+                  setSuccess("SMS code sent.");
+                }
                 setLoading(false);
               }}
-              disabled={loading}
-              className="text-sm text-[#0f2744] underline"
+              disabled={loading || isResendCooldownActive}
+              className="text-sm text-[#0f2744] underline disabled:cursor-not-allowed disabled:opacity-50"
             >
               Send SMS code
             </button>

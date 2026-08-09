@@ -20,6 +20,7 @@ export type SmsResendGateResult =
   | {
       allowed: false;
       resendAvailableInSeconds: number;
+      resendAvailableAtMs: number;
       blockReason: "cap" | "backoff";
     };
 
@@ -42,6 +43,7 @@ export function evaluateSmsResendGate(
     return {
       allowed: false,
       resendAvailableInSeconds: secondsUntil(windowResetMs, nowMs),
+      resendAvailableAtMs: windowResetMs,
       blockReason: "cap",
     };
   }
@@ -66,6 +68,7 @@ export function evaluateSmsResendGate(
   return {
     allowed: false,
     resendAvailableInSeconds: secondsUntil(nextAllowedMs, nowMs),
+    resendAvailableAtMs: nextAllowedMs,
     blockReason: "backoff",
   };
 }

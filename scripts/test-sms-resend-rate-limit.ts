@@ -38,6 +38,10 @@ function runUnitTests() {
       gate.resendAvailableInSeconds === 30,
       `expected 30s backoff remainder, got ${gate.resendAvailableInSeconds}`,
     );
+    assert(
+      gate.resendAvailableAtMs === t0 + 60_000,
+      `expected resendAvailableAtMs at 1m mark, got ${gate.resendAvailableAtMs}`,
+    );
   }
 
   gate = evaluateSmsResendGate(sends, t0 + 60_000);
@@ -118,6 +122,10 @@ function runUnitTests() {
       gate.resendAvailableInSeconds === expectedCapWait,
       `cap wait expected ${expectedCapWait}, got ${gate.resendAvailableInSeconds}`,
     );
+    assert(
+      gate.resendAvailableAtMs === t0 + SMS_RESEND_WINDOW_MS,
+      `cap resendAvailableAtMs expected ${t0 + SMS_RESEND_WINDOW_MS}, got ${gate.resendAvailableAtMs}`,
+    );
   }
 
   gate = evaluateSmsResendGate(packed, t0 + SMS_RESEND_WINDOW_MS + 1);
@@ -159,7 +167,11 @@ async function runRedisIntegration(authUid: string) {
   assert(secondEarly.ok === false, "redis: immediate 2nd blocked");
   if (!secondEarly.ok) {
     console.log(
-      `  2nd early block: ${secondEarly.resendAvailableInSeconds}s (${Math.round(secondEarly.resendAvailableInSeconds / 60)}m)`,
+      `  2nd early block: ${secondEarly.resendAvailableInSeconds}s (${Math.round(secondEarly.resendAvailableInSeconds / 60)}m) until ${new Date(secondEarly.resendAvailableAtMs).toISOString()}`,
+    );
+    assert(
+      secondEarly.resendAvailableAtMs > Date.now(),
+      "redis: resendAvailableAtMs is in the future",
     );
   }
 
