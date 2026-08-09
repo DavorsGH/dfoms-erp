@@ -3,6 +3,7 @@ import {
   getBalanceCheckForPeriod,
   type BalanceSheetAccountsPayableEntry,
   type BalanceSheetIncomeEntry,
+  type BalanceSheetReport,
   type BalanceSheetReportOptions,
   type BalanceSheetTaxLedgerEntry,
   type InventoryBalanceSheetInput,
@@ -163,6 +164,70 @@ function createMonthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+/**
+ * Balance Sheet Check for the Dashboard widget — must stay aligned with Finance →
+ * Balance Sheet (`app/dashboard/finance/balance-sheet/page.tsx`), which uses the
+ * same `fetchBalanceSheetPageData` inputs and `buildBalanceSheetReport` engine.
+ */
+export function buildDashboardBalanceSheetCheck(
+  report: BalanceSheetReport,
+  monthIndex: number,
+): { isBalanced: boolean; difference: number } {
+  const check = getBalanceCheckForPeriod(report, monthIndex);
+  return {
+    isBalanced: check.isBalanced,
+    difference: check.difference,
+  };
+}
+
+type CachedFinancialYearReports = {
+  profitLossReport: ReturnType<typeof buildProfitLossReport>;
+  balanceSheetReport: BalanceSheetReport;
+};
+
+function buildCachedReportsForYear(input: {
+  profitLossIncomeEntries: ProfitLossIncomeEntry[];
+  profitLossExpenseEntries: ProfitLossExpenseEntry[];
+  fixedAssets: ProfitLossAssetEntry[];
+  balanceSheetIncomeEntries: BalanceSheetIncomeEntry[];
+  payableEntries: BalanceSheetAccountsPayableEntry[];
+  capitalContributions: CapitalContributionEntry[];
+  cashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
+  payrollHistoryWages: PayrollHistoryWagesEntry[];
+  monthEndCloseNetPay: MonthEndCloseNetPayEntry[];
+  manualEntries: ManualFinancialEntry[];
+  inventoryBalanceSheetInput: InventoryBalanceSheetInput;
+  taxLedgerEntries: BalanceSheetTaxLedgerEntry[];
+  balanceSheetReportOptions: BalanceSheetReportOptions;
+  referenceDate?: Date;
+  year: number;
+}): CachedFinancialYearReports {
+  return {
+    profitLossReport: buildProfitLossReport(
+      input.profitLossIncomeEntries,
+      input.profitLossExpenseEntries,
+      input.fixedAssets,
+      input.year,
+    ),
+    balanceSheetReport: buildBalanceSheetReportForYear(
+      input.balanceSheetIncomeEntries,
+      input.profitLossExpenseEntries,
+      input.fixedAssets,
+      input.payableEntries,
+      input.capitalContributions,
+      input.cashFlowExpenseEntries,
+      input.payrollHistoryWages,
+      input.monthEndCloseNetPay,
+      input.year,
+      input.inventoryBalanceSheetInput,
+      input.balanceSheetReportOptions,
+      input.referenceDate,
+      input.manualEntries,
+      input.taxLedgerEntries,
+    ),
+  };
+}
+
 export function getAvailableDashboardMonths(
   incomeEntries: Array<{ date: string }>,
   expenseEntries: Array<{ date: string }>,
@@ -321,32 +386,33 @@ function buildMonthSnapshot(input: {
   year: number;
   month: number;
   referenceDate?: Date;
+  cachedReports?: CachedFinancialYearReports;
 }): DashboardMonthSnapshot {
   const monthIndex = input.month - 1;
   const periodLabel = formatPeriodLabel(input.year, input.month);
-  const profitLossReport = buildProfitLossReport(
-    input.profitLossIncomeEntries,
-    input.profitLossExpenseEntries,
-    input.fixedAssets,
-    input.year,
+  const { profitLossReport, balanceSheetReport } =
+    input.cachedReports ??
+    buildCachedReportsForYear({
+      profitLossIncomeEntries: input.profitLossIncomeEntries,
+      profitLossExpenseEntries: input.profitLossExpenseEntries,
+      fixedAssets: input.fixedAssets,
+      balanceSheetIncomeEntries: input.balanceSheetIncomeEntries,
+      payableEntries: input.payableEntries,
+      capitalContributions: input.capitalContributions,
+      cashFlowExpenseEntries: input.cashFlowExpenseEntries,
+      payrollHistoryWages: input.payrollHistoryWages,
+      monthEndCloseNetPay: input.monthEndCloseNetPay,
+      manualEntries: input.manualEntries,
+      inventoryBalanceSheetInput: input.inventoryBalanceSheetInput,
+      taxLedgerEntries: input.taxLedgerEntries ?? [],
+      balanceSheetReportOptions: input.balanceSheetReportOptions,
+      referenceDate: input.referenceDate,
+      year: input.year,
+    });
+  const balanceCheck = buildDashboardBalanceSheetCheck(
+    balanceSheetReport,
+    monthIndex,
   );
-  const balanceSheetReport = buildBalanceSheetReportForYear(
-    input.balanceSheetIncomeEntries,
-    input.profitLossExpenseEntries,
-    input.fixedAssets,
-    input.payableEntries,
-    input.capitalContributions,
-    input.cashFlowExpenseEntries,
-    input.payrollHistoryWages,
-    input.monthEndCloseNetPay,
-    input.year,
-    input.inventoryBalanceSheetInput,
-    input.balanceSheetReportOptions,
-    input.referenceDate,
-    input.manualEntries,
-    input.taxLedgerEntries ?? [],
-  );
-  const balanceCheck = getBalanceCheckForPeriod(balanceSheetReport, monthIndex);
   const cashRow = balanceSheetReport.rows.find((row) => row.key === "cash");
   const closeRecord = getCurrentMonthCloseRecord(
     input.monthEndCloseRecords,
@@ -716,23 +782,47 @@ export function buildDashboardViewModel(input: {
   );
   const trendMonths = getLastSixCalendarMonths(referenceDate);
   const monthSnapshots: Record<string, DashboardMonthSnapshot> = {};
+  const reportsByYear = new Map<number, CachedFinancialYearReports>();
+
+  function getReportsForYear(year: number): CachedFinancialYearReports {
+    const existing = reportsByYear.get(year);
+    if (existing) {
+      return existing;
+    }
+
+    const built = buildCachedReportsForYear({
+      profitLossIncomeEntries: input.profitLossIncomeEntries,
+      profitLossExpenseEntries: input.profitLossExpenseEntries,
+      fixedAssets: input.fixedAssets,
+      balanceSheetIncomeEntries: input.balanceSheetIncomeEntries,
+      payableEntries: input.payableEntries,
+      capitalContributions: input.capitalContributions,
+      cashFlowExpenseEntries: input.cashFlowExpenseEntries,
+      payrollHistoryWages: input.payrollHistoryWages,
+      monthEndCloseNetPay: input.monthEndCloseNetPay,
+      manualEntries: input.manualEntries,
+      inventoryBalanceSheetInput: input.inventoryBalanceSheetInput,
+      taxLedgerEntries: input.taxLedgerEntries ?? [],
+      balanceSheetReportOptions: input.balanceSheetReportOptions,
+      referenceDate,
+      year,
+    });
+    reportsByYear.set(year, built);
+    return built;
+  }
 
   for (const option of monthOptions) {
     monthSnapshots[option.key] = buildMonthSnapshot({
       ...input,
       year: option.year,
       month: option.month,
+      cachedReports: getReportsForYear(option.year),
     });
   }
 
   const profitTrend = trendMonths.map((point) => {
     const monthIndex = point.month - 1;
-    const report = buildProfitLossReport(
-      input.profitLossIncomeEntries,
-      input.profitLossExpenseEntries,
-      input.fixedAssets,
-      point.year,
-    );
+    const report = getReportsForYear(point.year).profitLossReport;
 
     return {
       label: point.shortLabel,
@@ -744,22 +834,7 @@ export function buildDashboardViewModel(input: {
 
   const cashTrend = trendMonths.map((point) => {
     const monthIndex = point.month - 1;
-    const report = buildBalanceSheetReportForYear(
-      input.balanceSheetIncomeEntries,
-      input.profitLossExpenseEntries,
-      input.fixedAssets,
-      input.payableEntries,
-      input.capitalContributions,
-      input.cashFlowExpenseEntries,
-      input.payrollHistoryWages,
-      input.monthEndCloseNetPay,
-      point.year,
-      input.inventoryBalanceSheetInput,
-      input.balanceSheetReportOptions,
-      referenceDate,
-      input.manualEntries,
-      input.taxLedgerEntries ?? [],
-    );
+    const report = getReportsForYear(point.year).balanceSheetReport;
     const cashAmounts = report.rows.find((row) => row.key === "cash")?.amounts;
 
     return {

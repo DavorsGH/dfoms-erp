@@ -100,7 +100,9 @@ async function probeTenant(
   tenantId: string,
   tenantName: string,
 ) {
-  const data = await fetchBalanceSheetPageData(admin, tenantId);
+  const data = await fetchBalanceSheetPageData(admin, tenantId, {
+    dateRange: null,
+  });
   const reportOptions = {
     tenantId,
     accountsPayablePayments: data.initialAccountsPayablePayments,

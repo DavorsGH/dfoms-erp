@@ -76,7 +76,7 @@ export async function fetchMonthlyBalanceSheetReportData(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
-  return fetchBalanceSheetPageData(supabase, tenantId);
+  return fetchBalanceSheetPageData(supabase, tenantId, { dateRange: null });
 }
 
 export async function fetchCashFlowReportData(

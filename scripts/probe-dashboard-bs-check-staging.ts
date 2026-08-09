@@ -17,7 +17,10 @@ import {
   FULL_YEAR_INDEX,
 } from "../app/dashboard/finance/balance-sheet-utils";
 import { fetchBalanceSheetPageData } from "../app/dashboard/finance/balance-sheet-page-data";
-import { buildDashboardViewModel } from "../app/dashboard/dashboard-utils";
+import {
+  buildDashboardBalanceSheetCheck,
+  buildDashboardViewModel,
+} from "../app/dashboard/dashboard-utils";
 
 const STAGING_REF = "wieflwbfdmjtsdnwbfii";
 const DAVORS_TENANT_ID = "00000001-0000-4000-8000-000000000001";
@@ -212,28 +215,23 @@ async function probeTenant(
 
   const financeAug = getBalanceCheckForPeriod(financeReport, AUGUST_INDEX);
   const financeDec = getBalanceCheckForPeriod(financeReport, FULL_YEAR_INDEX);
+  const wrapperAug = buildDashboardBalanceSheetCheck(financeReport, AUGUST_INDEX);
 
-  const dashboardReport = buildBalanceSheetReport(
-    data.initialIncomeEntries,
-    data.initialExpenseEntries,
-    data.initialFixedAssets,
-    data.initialPayableEntries,
-    data.initialCapitalContributions,
-    data.initialCashFlowExpenseEntries,
-    data.initialPayrollHistory,
-    data.initialMonthEndCloseNetPay,
-    FY,
-    data.initialInventoryBalanceSheet,
-    data.initialManualEntries,
-    data.initialTaxLedgerEntries,
-    reportOptions,
-  );
+  const diffs = rowDiffs(financeReport, financeReport, AUGUST_INDEX);
 
-  const diffs = rowDiffs(dashboardReport, financeReport, AUGUST_INDEX);
+  const widgetParityOk =
+    dashAugust !== null &&
+    r2(dashAugust.difference) === r2(financeAug.difference) &&
+    dashAugust.isBalanced === financeAug.isBalanced;
+  const wrapperParityOk =
+    r2(wrapperAug.difference) === r2(financeAug.difference) &&
+    wrapperAug.isBalanced === financeAug.isBalanced;
 
   return {
     tenantName,
     tenantId,
+    widgetParityOk,
+    wrapperParityOk,
     august: {
       widgetDiff: dashAugust?.difference ?? null,
       widgetBalanced: dashAugust?.isBalanced ?? null,
@@ -303,15 +301,19 @@ async function main() {
 
   console.log("\n--- Summary table ---");
   console.log(
-    "Tenant | Aug widget diff | Aug finance diff | Aug balanced (widget/finance) | Dec finance diff | Row diffs",
+    "Tenant | Aug widget diff | Aug finance diff | Widget parity | Wrapper parity | Dec finance diff | Row diffs",
   );
+  let failures = 0;
   for (const r of results) {
+    const parityOk = r.widgetParityOk && r.wrapperParityOk;
+    if (!parityOk) failures += 1;
     console.log(
       [
         r.tenantName,
         r.august.widgetDiff !== null ? r2(r.august.widgetDiff).toFixed(2) : "n/a",
         r.august.financeDiff.toFixed(2),
-        `${r.august.widgetBalanced}/${r.august.financeBalanced}`,
+        r.widgetParityOk ? "OK" : "FAIL",
+        r.wrapperParityOk ? "OK" : "FAIL",
         r.december.financeDiff.toFixed(2),
         r.augustRowDiffs.length,
       ].join(" | "),
@@ -327,6 +329,12 @@ async function main() {
       console.log(`  fetchError: ${r.fetchError}`);
     }
   }
+
+  if (failures > 0) {
+    console.log(`\nFAIL: ${failures} tenant(s) failed BS Check parity.`);
+    process.exit(1);
+  }
+  console.log("\nPASS: All tenants — Dashboard BS Check matches Finance.");
 }
 
 main().catch((err) => {

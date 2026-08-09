@@ -39,11 +39,77 @@ import {
 } from "../hr-payroll/payroll-live-recalc-utils";
 import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
 import type { MonthEndCloseRecord } from "../hr-payroll/payroll-period-utils";
+import { normalizePayrollMonthKey } from "./accrued-wages-utils";
 
 import type {
   AccountsPayablePaymentRow,
   DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
+
+/** Columns required for live open-month payroll recalc (display-only; never written back). */
+export const PAYROLL_PROCESSING_SELECT =
+  "id, payroll_month, status, employee_id, basic_salary, housing_allowance, transport_allowance, other_allowances, department, project_contract, daily_rate, days_to_pay, absence_deduction, overtime_amount, loan_repayment, bonuses, arrears, net_only_adjustment, salary_advance, welfare_deduction, other_deductions, gross_pay, employee_ssnit, employer_ssnit, tier2, paye_tax, total_deductions, net_pay";
+
+export const MONTH_END_CLOSE_SELECT =
+  "month, employees_recorded, total_net_pay, lock_status, notes";
+
+export const MANUAL_FINANCIAL_ENTRY_SELECT =
+  "period_month, cash_on_hand, bank_balance, prepayments_wht_receivable, inventory_consumables, accrued_expenses, withholding_tax_payable, vat_payable, bank_loans, other_long_term_liabilities, directors_loan, retained_earnings_prior_years, share_capital, purchase_of_fixed_assets, loan_proceeds, loan_repayments, opening_cash_balance, other_cash_inflows";
+
+export const BALANCE_SHEET_INCOME_SELECT =
+  "date, amount, amount_received, outstanding_balance, wht_amount, service_category, description, entry_type, sale_status, net_of_tax_amount, output_vat_amount, id, invoice_no, client_id, product_id, payment_status, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price)";
+
+export type BalanceSheetDateRange = {
+  from: string;
+  to: string;
+};
+
+export type FetchBalanceSheetPageDataOptions = {
+  /** When omitted, defaults to prior-year Jan 1 through current FY Dec 31. Pass null for no filter. */
+  dateRange?: BalanceSheetDateRange | null;
+  /** When true, always load live-recalc bundle. When false, never. Default auto skips when all processing months are locked. */
+  includePayrollLiveRecalc?: boolean | "auto";
+  /** Optional dev counter — incremented once per Supabase HTTP request in this loader. */
+  requestCounter?: { count: number };
+};
+
+export function getDefaultBalanceSheetDateRange(
+  referenceDate = new Date(),
+): BalanceSheetDateRange {
+  const endYear = referenceDate.getFullYear();
+  return {
+    from: `${endYear - 1}-01-01`,
+    to: `${endYear}-12-31`,
+  };
+}
+
+export function payrollProcessingNeedsLiveRecalc(
+  payrollHistory: Array<{ payroll_month: string }>,
+  payrollProcessing: Array<{ payroll_month: string }>,
+): boolean {
+  const historyMonths = new Set(
+    payrollHistory.map((entry) => normalizePayrollMonthKey(entry.payroll_month)),
+  );
+
+  return payrollProcessing.some(
+    (row) =>
+      !historyMonths.has(normalizePayrollMonthKey(row.payroll_month)),
+  );
+}
+
+function tickRequestCounter(counter: { count: number } | undefined, n = 1): void {
+  if (counter) {
+    counter.count += n;
+  }
+}
+
+function applyDateRangeFilter<T extends { gte: (col: string, val: string) => T; lte: (col: string, val: string) => T }>(
+  query: T,
+  column: string,
+  dateRange: BalanceSheetDateRange,
+): T {
+  return query.gte(column, dateRange.from).lte(column, dateRange.to);
+}
 
 export type BalanceSheetPageData = {
   tenantId: string;
@@ -77,7 +143,10 @@ export type BalanceSheetPageData = {
 export async function fetchInventoryBalanceSheetInput(
   supabase: SupabaseClient,
   tenantId: string,
+  options?: { requestCounter?: { count: number } },
 ): Promise<InventoryBalanceSheetInput> {
+  const counter = options?.requestCounter;
+
   const [
     { data: configRows },
     { data: rawMaterials },
@@ -115,6 +184,10 @@ export async function fetchInventoryBalanceSheetInput(
       .select("purchase_date, total_cost, payment_method, created_at")
       .eq("tenant_id", tenantId),
   ]);
+
+  if (counter) {
+    tickRequestCounter(counter, 6);
+  }
 
   const config = configRows
     ? ({
@@ -189,7 +262,52 @@ export async function fetchCashFlowInventoryPurchaseInput(
 export async function fetchBalanceSheetPageData(
   supabase: SupabaseClient,
   tenantId: string,
+  options: FetchBalanceSheetPageDataOptions = {},
 ): Promise<BalanceSheetPageData> {
+  const dateRange =
+    options.dateRange === undefined
+      ? getDefaultBalanceSheetDateRange()
+      : options.dateRange;
+  const requestCounter = options.requestCounter;
+
+  let incomeQuery = supabase
+    .from("income_register")
+    .select(BALANCE_SHEET_INCOME_SELECT)
+    .eq("tenant_id", tenantId)
+    .order("date", { ascending: true });
+  let expenseQuery = supabase
+    .from("expense_register")
+    .select(
+      "date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
+    )
+    .eq("tenant_id", tenantId)
+    .order("date", { ascending: true });
+  let payrollHistoryQuery = supabase
+    .from("payroll_history")
+    .select("payroll_month, net_pay, net_only_adjustment, gross_pay")
+    .eq("tenant_id", tenantId)
+    .order("payroll_month", { ascending: true });
+  let payrollProcessingQuery = supabase
+    .from("payroll_processing")
+    .select(PAYROLL_PROCESSING_SELECT)
+    .eq("tenant_id", tenantId)
+    .order("payroll_month", { ascending: true });
+
+  if (dateRange) {
+    incomeQuery = applyDateRangeFilter(incomeQuery, "date", dateRange);
+    expenseQuery = applyDateRangeFilter(expenseQuery, "date", dateRange);
+    payrollHistoryQuery = applyDateRangeFilter(
+      payrollHistoryQuery,
+      "payroll_month",
+      dateRange,
+    );
+    payrollProcessingQuery = applyDateRangeFilter(
+      payrollProcessingQuery,
+      "payroll_month",
+      dateRange,
+    );
+  }
+
   const [
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
@@ -204,22 +322,9 @@ export async function fetchBalanceSheetPageData(
     { data: monthEndCloseRecords, error: monthEndCloseError },
     { data: taxLedgerEntries, error: taxLedgerError },
     inventoryBalanceSheet,
-    livePayrollBundle,
   ] = await Promise.all([
-    supabase
-      .from("income_register")
-      .select(
-        "date, amount, amount_received, outstanding_balance, wht_amount, service_category, description, entry_type, sale_status, net_of_tax_amount, output_vat_amount",
-      )
-      .eq("tenant_id", tenantId)
-      .order("date", { ascending: true }),
-    supabase
-      .from("expense_register")
-      .select(
-        "date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
-      )
-      .eq("tenant_id", tenantId)
-      .order("date", { ascending: true }),
+    incomeQuery,
+    expenseQuery,
     supabase
       .from("fixed_assets")
       .select(
@@ -253,24 +358,14 @@ export async function fetchBalanceSheetPageData(
       .order("date", { ascending: true }),
     supabase
       .from("manual_financial_entries")
-      .select("*")
+      .select(MANUAL_FINANCIAL_ENTRY_SELECT)
       .eq("tenant_id", tenantId)
       .order("period_month", { ascending: true }),
-    supabase
-      .from("payroll_history")
-      .select("payroll_month, net_pay, net_only_adjustment, gross_pay")
-      .eq("tenant_id", tenantId)
-      .order("payroll_month", { ascending: true }),
-    // Full processing rows: open-month Accrued Wages live-recalc needs manuals.
-    // Display-only — never written back from this report path.
-    supabase
-      .from("payroll_processing")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .order("payroll_month", { ascending: true }),
+    payrollHistoryQuery,
+    payrollProcessingQuery,
     supabase
       .from("month_end_close")
-      .select("*")
+      .select(MONTH_END_CLOSE_SELECT)
       .eq("tenant_id", tenantId)
       .order("month", { ascending: false }),
     supabase
@@ -281,9 +376,54 @@ export async function fetchBalanceSheetPageData(
       .eq("tenant_id", tenantId)
       .eq("status", "open")
       .order("entry_date", { ascending: true }),
-    fetchInventoryBalanceSheetInput(supabase, tenantId),
-    fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
+    fetchInventoryBalanceSheetInput(supabase, tenantId, { requestCounter }),
   ]);
+
+  if (requestCounter) {
+    tickRequestCounter(requestCounter, 12);
+  }
+
+  const payrollHistoryRows =
+    (payrollHistory as PayrollHistoryWagesEntry[] | null) ?? [];
+  const payrollProcessingRows =
+    (payrollProcessing as PayrollProcessingRow[] | null) ?? [];
+
+  const includeLiveRecalc =
+    options.includePayrollLiveRecalc === false
+      ? false
+      : options.includePayrollLiveRecalc === true ||
+        payrollProcessingNeedsLiveRecalc(
+          payrollHistoryRows,
+          payrollProcessingRows,
+        );
+
+  let livePayrollBundle: Awaited<ReturnType<typeof fetchPayrollLiveRecalcBundle>> =
+    {
+      employees: [],
+      liveContext: {
+        attendance: [],
+        overtime: [],
+        loans: [],
+        taxConfigs: {
+          ssnitRows: [],
+          casualRows: [],
+          payeBands: [],
+        },
+        compensationPolicyConfig: {
+          salaryRates: [],
+          allowanceTypes: [],
+          compensationPolicies: [],
+        },
+      },
+      error: null,
+    };
+
+  if (includeLiveRecalc) {
+    livePayrollBundle = await fetchPayrollLiveRecalcBundle(supabase, {
+      tenantId,
+    });
+    tickRequestCounter(requestCounter, 10);
+  }
 
   const cashFlowIncomeEntries =
     incomeEntries?.map((entry) => ({
@@ -320,8 +460,8 @@ export async function fetchBalanceSheetPageData(
     initialCashFlowIncomeEntries: cashFlowIncomeEntries,
     initialCashFlowExpenseEntries: cashFlowExpenseEntries,
     initialPayrollHistory: mergePayrollWagesWithLiveOpenMonths(
-      (payrollHistory as PayrollHistoryWagesEntry[] | null) ?? [],
-      (payrollProcessing as PayrollProcessingRow[] | null) ?? [],
+      payrollHistoryRows,
+      payrollProcessingRows,
       livePayrollBundle.employees,
       livePayrollBundle.liveContext,
     ),
@@ -329,8 +469,7 @@ export async function fetchBalanceSheetPageData(
       (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? [],
     initialMonthEndCloseRecords:
       (monthEndCloseRecords as MonthEndCloseRecord[] | null) ?? [],
-    initialPayrollProcessingRows:
-      (payrollProcessing as PayrollProcessingRow[] | null) ?? [],
+    initialPayrollProcessingRows: payrollProcessingRows,
     initialPayrollHistoryGrossEntries:
       (payrollHistory ?? []).map((entry) => ({
         payroll_month: entry.payroll_month,

@@ -96,7 +96,9 @@ export async function auditTenantBalanceSheetIntegrity(
   const startedAt = Date.now();
   const monthsChecked = resolveClosedMonthIndices(fiscalYear, referenceDate);
 
-  const data = await fetchBalanceSheetPageData(admin, tenant.id);
+  const data = await fetchBalanceSheetPageData(admin, tenant.id, {
+    dateRange: null,
+  });
   if (data.fetchError) {
     return {
       tenantId: tenant.id,

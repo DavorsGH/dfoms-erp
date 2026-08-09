@@ -21,18 +21,9 @@ import {
   toSpendingAnalysisExpenseRows,
   toSpendingAnalysisIncomeRows,
 } from "./dashboard-spending-analysis-utils";
-import { toSalesAnalysisRows } from "./dashboard-sales-analysis-utils";
-import type { ProductSaleEntry } from "./crm/product-sales-utils";
-import {
-  CRM_PRODUCT_SALE_SELECT,
-  CRM_WEBHOOK_SALE_SELECT,
-  mergeSalesLogEntries,
-  normalizeProductSaleForLog,
-  normalizeWebhookSale,
-} from "./crm/sales/sales-utils";
 import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
-import { fetchBalanceSheetPageData } from "./finance/balance-sheet-page-data";
+import { fetchDashboardPageData } from "./dashboard-page-data";
 import { countLowStockRawMaterials } from "./reports/inventory-reports-utils";
 
 export default async function DashboardPage() {
@@ -223,22 +214,7 @@ export default async function DashboardPage() {
     throw new Error("Unable to resolve the current workspace.");
   }
 
-  const [
-    balanceSheetData,
-    { data: productSaleRows, error: productSaleError },
-    { data: webhookSaleRows, error: webhookSaleError },
-  ] = await Promise.all([
-    fetchBalanceSheetPageData(supabase, tenantId),
-    supabase
-      .from("income_register")
-      .select(CRM_PRODUCT_SALE_SELECT)
-      .eq("entry_type", "product_sale")
-      .order("date", { ascending: false }),
-    supabase
-      .from("crm_sales")
-      .select(CRM_WEBHOOK_SALE_SELECT)
-      .order("sale_date", { ascending: false }),
-  ]);
+  const dashboardPageData = await fetchDashboardPageData(supabase, tenantId);
 
   const {
     initialIncomeEntries: incomeEntries,
@@ -257,27 +233,12 @@ export default async function DashboardPage() {
     initialManualEntries: manualEntries,
     initialInventoryBalanceSheet: inventoryBalanceSheetInput,
     initialTaxLedgerEntries: taxLedgerEntries,
-    fetchError: balanceSheetFetchError,
-  } = balanceSheetData;
-
-  const fetchError =
-    balanceSheetFetchError ??
-    productSaleError?.message ??
-    webhookSaleError?.message ??
-    null;
+    salesAnalysisEntries,
+    fetchError,
+  } = dashboardPageData;
 
   const lowStockRawMaterialCount = countLowStockRawMaterials(
     inventoryBalanceSheetInput.rawMaterials,
-  );
-
-  const salesAnalysisEntries = toSalesAnalysisRows(
-    mergeSalesLogEntries(
-      ((productSaleRows as ProductSaleEntry[] | null) ?? []).map((row) =>
-        normalizeProductSaleForLog(row),
-      ),
-      ((webhookSaleRows as Parameters<typeof normalizeWebhookSale>[0][] | null) ??
-        []).map((row) => normalizeWebhookSale(row)),
-    ),
   );
 
   const balanceSheetReportOptions = {
@@ -326,7 +287,7 @@ export default async function DashboardPage() {
     fixedAssets: fixedAssets ?? [],
     payableEntries: payableEntries ?? [],
     capitalContributions: capitalContributions ?? [],
-    cashFlowIncomeEntries: balanceSheetData.initialCashFlowIncomeEntries,
+    cashFlowIncomeEntries: dashboardPageData.initialCashFlowIncomeEntries,
     cashFlowExpenseEntries,
     payrollHistoryWages,
     monthEndCloseNetPay,
