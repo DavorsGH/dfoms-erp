@@ -5,10 +5,21 @@ import {
   ROW_INSERT_BATCH_SIZE,
 } from "@/lib/bulk-import/parse-spreadsheet-upload";
 import { requireBulkImportAccess } from "@/lib/bulk-import/bulk-import-route-auth";
-import type { BulkImportType } from "@/lib/bulk-import/types";
+import type { BulkImportType, BulkImportUploadResponse } from "@/lib/bulk-import/types";
+import {
+  computeBulkImportFileHash,
+  findCommittedBulkImportReuploadMatch,
+} from "@/lib/bulk-import/upload-file-hash";
 import { createClient } from "@/utils/supabase/server";
 
-const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service", "employee"]);
+const VALID_IMPORT_TYPES = new Set<BulkImportType>([
+  "product",
+  "service",
+  "employee",
+  "customer",
+  "expense",
+  "fixed_asset",
+]);
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -26,7 +37,7 @@ export async function POST(request: Request) {
   const importType = String(formData.get("import_type") ?? "").trim() as BulkImportType;
   if (!VALID_IMPORT_TYPES.has(importType)) {
     return NextResponse.json(
-      { error: "import_type must be product, service, or employee." },
+      { error: "import_type must be product, service, employee, customer, expense, or fixed_asset." },
       { status: 400 },
     );
   }
@@ -60,13 +71,32 @@ export async function POST(request: Request) {
   }
 
   let parsed;
+  let fileHash: string;
   try {
     const buffer = await file.arrayBuffer();
+    fileHash = computeBulkImportFileHash(buffer);
     parsed = parseSpreadsheetUpload(fileName, buffer);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to parse upload file.";
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  let reuploadMatch: Awaited<ReturnType<typeof findCommittedBulkImportReuploadMatch>> =
+    null;
+  try {
+    reuploadMatch = await findCommittedBulkImportReuploadMatch({
+      supabase,
+      tenantId: auth.tenantId,
+      importType,
+      fileHash,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to check for a previous import of this file.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   const { headers, dataRows } = parsed;
@@ -78,6 +108,7 @@ export async function POST(request: Request) {
       import_type: importType,
       status: "pending",
       file_name: fileName,
+      file_hash: fileHash,
       uploaded_by: user.id,
       total_rows: dataRows.length,
     })
@@ -115,8 +146,16 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({
+  const response: BulkImportUploadResponse = {
     job_id: jobId,
     headers,
-  });
+  };
+
+  if (reuploadMatch) {
+    response.possibleReupload = true;
+    response.matchingJobId = reuploadMatch.matchingJobId;
+    response.matchingCommittedAt = reuploadMatch.matchingCommittedAt;
+  }
+
+  return NextResponse.json(response);
 }

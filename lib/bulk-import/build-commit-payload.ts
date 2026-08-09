@@ -1,4 +1,22 @@
 import {
+  CUSTOMER_STATUS_OPTIONS,
+  CUSTOMER_TYPE_OPTIONS,
+  DEFAULT_CUSTOMER_STATUS,
+  DEFAULT_CUSTOMER_TYPE,
+} from "@/app/dashboard/crm/customers/customers-utils";
+import { calculateAmount } from "@/app/dashboard/finance/expense-register-utils";
+import {
+  calculateAssetAccumulatedDepreciationAsOf,
+  calculateAssetNetBookValueAsOf,
+  getAssetCalculations,
+  getMonthEndForDate,
+} from "@/app/dashboard/finance/fixed-assets-utils";
+import {
+  computePurchaseTaxAmounts,
+  computeWhtAmount,
+  roundTaxAmount,
+} from "@/app/dashboard/finance/tax-utils";
+import {
   DEFAULT_EMPLOYMENT_STATUS,
   EMPLOYMENT_STATUS_OPTIONS,
   EMPLOYMENT_TYPE_OPTIONS,
@@ -6,6 +24,7 @@ import {
   MARITAL_STATUS_OPTIONS,
   SHIFT_OPTIONS,
 } from "@/app/dashboard/employees/employee-record-utils";
+import { CONTRACT_STATUS_OPTIONS } from "@/app/dashboard/operations/operations-register-utils";
 import { FINISHED_PRODUCT_PURCHASED_SOURCING_TYPE } from "@/lib/bulk-import/target-fields";
 
 const DEFAULT_SOURCING_TYPE = "manufactured" as const;
@@ -100,6 +119,61 @@ export type EmployeeCommitInsert = {
   shift: string | null;
   assigned_site_id: string | null;
   data_notes: string | null;
+};
+
+const EXPENSE_PAYMENT_STATUS_OPTIONS = [
+  "Pending",
+  "Partial",
+  "Paid",
+  "Overdue",
+  "Accrued",
+  "Accrued - Not Yet Paid",
+  "Settled (No Cash Impact)",
+] as const;
+
+export type ExpenseCommitInsert = {
+  tenant_id: string;
+  date: string;
+  expense_category: string;
+  sub_category: string;
+  description: string | null;
+  vendor: string;
+  price: number;
+  quantity: number;
+  amount: number;
+  payment_method: string;
+  approved_by: string;
+  receipt_no: string;
+  payment_status: string;
+  gross_before_wht: number;
+  wht_rate: number | null;
+  wht_amount: number;
+  input_vat_amount: number;
+  net_of_tax_amount: number;
+  notes: string | null;
+  purchaseTax: ReturnType<typeof computePurchaseTaxAmounts>;
+};
+
+export type CustomerCommitInsert = {
+  tenant_id: string;
+  client_id: string;
+  client_name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  gps_location: string | null;
+  contract_number: string;
+  contract_start: string | null;
+  contract_end: string | null;
+  service_frequency: string | null;
+  services_provided: string | null;
+  assigned_supervisor: string | null;
+  contract_status: string;
+  notes: string | null;
+  customer_type: string;
+  status: string;
+  source: "manual";
 };
 
 function resolveCanonicalEnumValue(
@@ -211,5 +285,299 @@ export function buildEmployeeCommitInsert(input: {
     shift: resolveCanonicalEnumValue(input.mappedData.shift, SHIFT_OPTIONS),
     assigned_site_id: input.assignedSiteCode,
     data_notes: nullableText(input.mappedData.data_notes),
+  };
+}
+
+const CUSTOMER_TYPE_VALUES = CUSTOMER_TYPE_OPTIONS.map((option) => option.value);
+const CUSTOMER_STATUS_VALUES = CUSTOMER_STATUS_OPTIONS.map(
+  (option) => option.value,
+);
+
+export function buildCustomerCommitInsert(input: {
+  mappedData: Record<string, unknown>;
+  tenantId: string;
+  clientId: string;
+  contractNumber: string;
+  supervisorId: string | null;
+}): CustomerCommitInsert {
+  const clientName = String(input.mappedData.client_name ?? "").trim();
+  if (!clientName) {
+    throw new Error("client_name is required.");
+  }
+
+  return {
+    tenant_id: input.tenantId,
+    client_id: input.clientId,
+    client_name: clientName,
+    contact_person: nullableText(input.mappedData.contact_person),
+    phone: nullableText(input.mappedData.phone),
+    email: nullableText(input.mappedData.email),
+    address: nullableText(input.mappedData.address),
+    gps_location: nullableText(input.mappedData.gps_location),
+    contract_number: input.contractNumber,
+    contract_start: parseOptionalDate(input.mappedData.contract_start),
+    contract_end: parseOptionalDate(input.mappedData.contract_end),
+    service_frequency: nullableText(input.mappedData.service_frequency),
+    services_provided: nullableText(input.mappedData.services_provided),
+    assigned_supervisor: input.supervisorId,
+    contract_status:
+      resolveCanonicalEnumValue(
+        input.mappedData.contract_status,
+        CONTRACT_STATUS_OPTIONS,
+      ) ?? "Active",
+    notes: nullableText(input.mappedData.notes),
+    customer_type:
+      resolveCanonicalEnumValue(
+        input.mappedData.customer_type,
+        CUSTOMER_TYPE_VALUES,
+      ) ?? DEFAULT_CUSTOMER_TYPE,
+    status:
+      resolveCanonicalEnumValue(input.mappedData.status, CUSTOMER_STATUS_VALUES) ??
+      DEFAULT_CUSTOMER_STATUS,
+    source: "manual",
+  };
+}
+
+function parseRequiredDate(value: unknown, fieldKey: string): string {
+  const parsed = parseOptionalDate(value);
+  if (!parsed) {
+    throw new Error(`${fieldKey} is required.`);
+  }
+
+  return parsed;
+}
+
+function parseExpenseQuantity(value: unknown): number {
+  if (isBlank(value)) {
+    return 1;
+  }
+
+  const parsed = Number(String(value).trim().replace(/,/g, ""));
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("quantity must be a positive number.");
+  }
+
+  return parsed;
+}
+
+export function buildExpenseCommitInsert(input: {
+  mappedData: Record<string, unknown>;
+  tenantId: string;
+  expenseCategory: string;
+  subCategory: string;
+  paymentMethod: string;
+  approvedBy: string;
+  receiptNo: string;
+}): ExpenseCommitInsert {
+  const vendor = String(input.mappedData.vendor ?? "").trim();
+  if (!vendor) {
+    throw new Error("vendor is required.");
+  }
+
+  const priceRaw = input.mappedData.price;
+  if (isBlank(priceRaw)) {
+    throw new Error("price is required.");
+  }
+
+  const price = Number(String(priceRaw).trim().replace(/,/g, ""));
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new Error("price must be a positive number.");
+  }
+
+  const quantity = parseExpenseQuantity(input.mappedData.quantity);
+  const grossBeforeWht = calculateAmount(price, quantity);
+  const whtRate = Number(input.mappedData.wht_rate) || 0;
+  const whtAmount =
+    whtRate > 0 ? computeWhtAmount(grossBeforeWht, whtRate) : 0;
+  const inputVatAmount = Math.max(
+    0,
+    roundTaxAmount(Number(input.mappedData.input_vat_amount) || 0),
+  );
+  const purchaseTax = computePurchaseTaxAmounts({
+    grossBeforeWht,
+    whtRatePct: whtRate,
+    whtAmount,
+    inputVatAmount,
+  });
+
+  const paymentStatus =
+    resolveCanonicalEnumValue(
+      input.mappedData.payment_status,
+      EXPENSE_PAYMENT_STATUS_OPTIONS,
+    ) ?? "Unpaid";
+
+  return {
+    tenant_id: input.tenantId,
+    date: parseRequiredDate(input.mappedData.date, "date"),
+    expense_category: input.expenseCategory,
+    sub_category: input.subCategory,
+    description: nullableText(input.mappedData.description),
+    vendor,
+    price,
+    quantity,
+    amount: purchaseTax.netPaidToSupplier,
+    payment_method: input.paymentMethod,
+    approved_by: input.approvedBy,
+    receipt_no: input.receiptNo,
+    payment_status: paymentStatus,
+    gross_before_wht: purchaseTax.grossBeforeWht,
+    wht_rate: whtRate > 0 ? whtRate : null,
+    wht_amount: purchaseTax.whtAmount,
+    input_vat_amount: purchaseTax.inputVatAmount,
+    net_of_tax_amount: purchaseTax.netOfTaxAmount,
+    notes: nullableText(input.mappedData.notes),
+    purchaseTax,
+  };
+}
+
+export type FixedAssetCommitInsert = {
+  tenant_id: string;
+  asset_id: string;
+  asset_name: string;
+  asset_category: string | null;
+  purchase_date: string;
+  original_cost: number;
+  quantity: number;
+  total_cost: number;
+  useful_life_years: number | null;
+  depreciation_method: string | null;
+  annual_depreciation: number;
+  accumulated_depreciation: number;
+  net_book_value: number;
+  location: string | null;
+  notes: string | null;
+  payment_method: string;
+  vendor_name: string | null;
+};
+
+function parseFixedAssetQuantity(value: unknown): number {
+  if (isBlank(value)) {
+    return 1;
+  }
+
+  const parsed = Number(String(value).trim().replace(/,/g, ""));
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("quantity must be a positive number.");
+  }
+
+  return parsed;
+}
+
+function parseOptionalUsefulLifeYears(value: unknown): number | null {
+  if (isBlank(value)) {
+    return null;
+  }
+
+  const parsed = Number(String(value).trim().replace(/,/g, ""));
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("useful_life_years must be a positive number.");
+  }
+
+  return parsed;
+}
+
+/** Mirrors fixed-assets.tsx getLiveAssetValues() for the same inputs. */
+export function computeFixedAssetLiveValues(input: {
+  originalCost: number;
+  quantity: number;
+  usefulLifeYears: number;
+  purchaseDate: string;
+  depreciationMethod: string;
+}) {
+  const asOfMonthEnd = getMonthEndForDate();
+  const assetInput = {
+    original_cost: input.originalCost,
+    quantity: input.quantity,
+    useful_life_years: input.usefulLifeYears,
+    purchase_date: input.purchaseDate,
+    depreciation_method: input.depreciationMethod,
+  };
+  const referenceDate = new Date(`${asOfMonthEnd}T12:00:00`);
+  const { totalCost, annualDepreciation } = getAssetCalculations(
+    input.originalCost,
+    input.quantity,
+    input.usefulLifeYears,
+    input.purchaseDate,
+    input.depreciationMethod,
+    referenceDate,
+  );
+  const accumulatedDepreciation = calculateAssetAccumulatedDepreciationAsOf(
+    assetInput,
+    asOfMonthEnd,
+  );
+  const netBookValue = calculateAssetNetBookValueAsOf(assetInput, asOfMonthEnd);
+
+  return {
+    totalCost,
+    annualDepreciation,
+    accumulatedDepreciation,
+    netBookValue,
+  };
+}
+
+export function buildFixedAssetCommitInsert(input: {
+  mappedData: Record<string, unknown>;
+  tenantId: string;
+  assetId: string;
+  assetCategory: string | null;
+  depreciationMethod: string | null;
+  paymentMethod: string;
+}): FixedAssetCommitInsert {
+  const assetName = String(input.mappedData.asset_name ?? "").trim();
+  if (!assetName) {
+    throw new Error("asset_name is required.");
+  }
+
+  const originalCostRaw = input.mappedData.original_cost;
+  if (isBlank(originalCostRaw)) {
+    throw new Error("original_cost is required.");
+  }
+
+  const originalCost = Number(String(originalCostRaw).trim().replace(/,/g, ""));
+  if (!Number.isFinite(originalCost) || originalCost <= 0) {
+    throw new Error("original_cost must be a positive number.");
+  }
+
+  const purchaseDate = parseRequiredDate(input.mappedData.purchase_date, "purchase_date");
+  const quantity = parseFixedAssetQuantity(input.mappedData.quantity);
+  const usefulLifeYearsStored = parseOptionalUsefulLifeYears(
+    input.mappedData.useful_life_years,
+  );
+  const depreciationMethodForCalc = input.depreciationMethod ?? "";
+  const usefulLifeYearsForCalc = usefulLifeYearsStored ?? 0;
+
+  const {
+    totalCost,
+    annualDepreciation,
+    accumulatedDepreciation,
+    netBookValue,
+  } = computeFixedAssetLiveValues({
+    originalCost,
+    quantity,
+    usefulLifeYears: usefulLifeYearsForCalc,
+    purchaseDate,
+    depreciationMethod: depreciationMethodForCalc,
+  });
+
+  const vendorRaw = String(input.mappedData.vendor_name ?? "").trim();
+
+  return {
+    tenant_id: input.tenantId,
+    asset_id: input.assetId,
+    asset_name: assetName,
+    asset_category: input.assetCategory,
+    purchase_date: purchaseDate,
+    original_cost: originalCost,
+    quantity,
+    total_cost: totalCost,
+    useful_life_years: usefulLifeYearsStored,
+    depreciation_method: input.depreciationMethod,
+    annual_depreciation: annualDepreciation,
+    accumulated_depreciation: accumulatedDepreciation,
+    net_book_value: netBookValue,
+    location: nullableText(input.mappedData.location),
+    notes: nullableText(input.mappedData.notes),
+    payment_method: input.paymentMethod,
+    vendor_name: vendorRaw || null,
   };
 }

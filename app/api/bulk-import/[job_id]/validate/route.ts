@@ -6,6 +6,10 @@ import {
   requireBulkImportAccess,
 } from "@/lib/bulk-import/bulk-import-route-auth";
 import { buildSupplierNameMatchCounts } from "@/lib/bulk-import/supplier-name";
+import {
+  buildExpenseDuplicateKey,
+  buildFixedAssetDuplicateKey,
+} from "@/lib/bulk-import/expense-duplicate-key";
 import { buildTenantNameMatchCounts } from "@/lib/bulk-import/tenant-name-lookup";
 import { validateImportRows } from "@/lib/bulk-import/validate-import-rows";
 import type {
@@ -16,7 +20,14 @@ import type {
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { createClient } from "@/utils/supabase/server";
 
-const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service", "employee"]);
+const VALID_IMPORT_TYPES = new Set<BulkImportType>([
+  "product",
+  "service",
+  "employee",
+  "customer",
+  "expense",
+  "fixed_asset",
+]);
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -115,6 +126,9 @@ export async function POST(
   let existingServiceNames = new Set<string>();
   let supplierNameMatchCounts = new Map<string, number>();
   let employeeLookups;
+  let customerLookups;
+  let expenseLookups;
+  let fixedAssetLookups;
 
   if (importType === "product") {
     const { data: suppliers, error: suppliersError } = await supabase
@@ -159,7 +173,7 @@ export async function POST(
         .map((row) => String(row.service_name ?? "").trim().toLowerCase())
         .filter(Boolean),
     );
-  } else {
+  } else if (importType === "employee") {
     const [
       departmentsResult,
       positionsResult,
@@ -231,9 +245,190 @@ export async function POST(
         })),
       ),
     };
+  } else if (importType === "customer") {
+    const { data: employees, error: employeesError } = await supabase
+      .from("employees")
+      .select("full_name")
+      .eq("tenant_id", sectionAuth.tenantId);
+
+    if (employeesError) {
+      return NextResponse.json({ error: employeesError.message }, { status: 500 });
+    }
+
+    customerLookups = {
+      supervisorNameMatchCounts: buildTenantNameMatchCounts(
+        (employees ?? []).map((row) => ({
+          name: String(row.full_name ?? ""),
+        })),
+      ),
+    };
+  } else if (importType === "expense") {
+    const [
+      expenseCategoriesResult,
+      expenseSubcategoriesResult,
+      paymentMethodsResult,
+      approversResult,
+      existingExpensesResult,
+    ] = await Promise.all([
+      supabase
+        .from("expense_categories")
+        .select("name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("expense_subcategories")
+        .select("name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("payment_methods")
+        .select("name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("approvers")
+        .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("expense_register")
+        .select("date, vendor, price, expense_category, payment_method")
+        .eq("tenant_id", sectionAuth.tenantId),
+    ]);
+
+    const lookupErrors = [
+      expenseCategoriesResult.error,
+      expenseSubcategoriesResult.error,
+      paymentMethodsResult.error,
+      approversResult.error,
+      existingExpensesResult.error,
+    ].filter(Boolean);
+
+    if (lookupErrors.length > 0) {
+      return NextResponse.json(
+        { error: lookupErrors[0]?.message ?? "Failed to load expense lookup data." },
+        { status: 500 },
+      );
+    }
+
+    const existingExpenseDuplicateKeys = new Set<string>();
+    for (const row of existingExpensesResult.data ?? []) {
+      const key = buildExpenseDuplicateKey({
+        date: row.date,
+        vendor: row.vendor,
+        price: row.price,
+        expense_category: row.expense_category,
+        payment_method: row.payment_method,
+      });
+      if (key) {
+        existingExpenseDuplicateKeys.add(key);
+      }
+    }
+
+    expenseLookups = {
+      expenseCategoryMatchCounts: buildTenantNameMatchCounts(
+        (expenseCategoriesResult.data ?? []).map((row) => ({
+          name: String(row.name ?? ""),
+        })),
+      ),
+      expenseSubcategoryMatchCounts: buildTenantNameMatchCounts(
+        (expenseSubcategoriesResult.data ?? []).map((row) => ({
+          name: String(row.name ?? ""),
+        })),
+      ),
+      paymentMethodMatchCounts: buildTenantNameMatchCounts(
+        (paymentMethodsResult.data ?? []).map((row) => ({
+          name: String(row.name ?? ""),
+        })),
+      ),
+      approverNameMatchCounts: buildTenantNameMatchCounts(
+        (approversResult.data ?? []).map((row) => {
+          const employee = Array.isArray(row.employees)
+            ? row.employees[0]
+            : row.employees;
+          return {
+            name: String(
+              (employee as { full_name?: string | null } | null)?.full_name ??
+                row.employee_id ??
+                "",
+            ),
+          };
+        }),
+      ),
+      existingExpenseDuplicateKeys,
+    };
+  } else if (importType === "fixed_asset") {
+    const [
+      assetCategoriesResult,
+      depreciationMethodsResult,
+      paymentMethodsResult,
+      existingFixedAssetsResult,
+    ] = await Promise.all([
+      supabase
+        .from("asset_categories")
+        .select("name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("depreciation_methods")
+        .select("name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("payment_methods")
+        .select("name")
+        .eq("tenant_id", sectionAuth.tenantId),
+      supabase
+        .from("fixed_assets")
+        .select("asset_name, purchase_date, original_cost")
+        .eq("tenant_id", sectionAuth.tenantId),
+    ]);
+
+    const lookupErrors = [
+      assetCategoriesResult.error,
+      depreciationMethodsResult.error,
+      paymentMethodsResult.error,
+      existingFixedAssetsResult.error,
+    ].filter(Boolean);
+
+    if (lookupErrors.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            lookupErrors[0]?.message ??
+            "Failed to load fixed asset lookup data.",
+        },
+        { status: 500 },
+      );
+    }
+
+    const existingFixedAssetDuplicateKeys = new Set<string>();
+    for (const row of existingFixedAssetsResult.data ?? []) {
+      const key = buildFixedAssetDuplicateKey({
+        asset_name: row.asset_name,
+        purchase_date: row.purchase_date,
+        original_cost: row.original_cost,
+      });
+      if (key) {
+        existingFixedAssetDuplicateKeys.add(key);
+      }
+    }
+
+    fixedAssetLookups = {
+      assetCategoryMatchCounts: buildTenantNameMatchCounts(
+        (assetCategoriesResult.data ?? []).map((row) => ({
+          name: String(row.name ?? ""),
+        })),
+      ),
+      depreciationMethodMatchCounts: buildTenantNameMatchCounts(
+        (depreciationMethodsResult.data ?? []).map((row) => ({
+          name: String(row.name ?? ""),
+        })),
+      ),
+      paymentMethodMatchCounts: buildTenantNameMatchCounts(
+        (paymentMethodsResult.data ?? []).map((row) => ({
+          name: String(row.name ?? ""),
+        })),
+      ),
+      existingFixedAssetDuplicateKeys,
+    };
   }
 
-  const { validatedRows, summary, issueRows } = validateImportRows({
+  const { validatedRows, summary, issueRows, warningRows } = validateImportRows({
     importType,
     columnMapping,
     rows: (rows ?? []).map((row) => ({
@@ -245,6 +440,9 @@ export async function POST(
     existingServiceNames,
     supplierNameMatchCounts,
     employeeLookups,
+    customerLookups,
+    expenseLookups,
+    fixedAssetLookups,
   });
 
   for (let offset = 0; offset < validatedRows.length; offset += ROW_INSERT_BATCH_SIZE) {
@@ -287,6 +485,7 @@ export async function POST(
   const response: BulkImportValidationResponse = {
     ...summary,
     issue_rows: issueRows,
+    warning_rows: warningRows,
   };
 
   return NextResponse.json(response);

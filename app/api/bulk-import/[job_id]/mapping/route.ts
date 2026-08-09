@@ -16,7 +16,14 @@ import {
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { createClient } from "@/utils/supabase/server";
 
-const VALID_IMPORT_TYPES = new Set<BulkImportType>(["product", "service", "employee"]);
+const VALID_IMPORT_TYPES = new Set<BulkImportType>([
+  "product",
+  "service",
+  "employee",
+  "customer",
+  "expense",
+  "fixed_asset",
+]);
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();

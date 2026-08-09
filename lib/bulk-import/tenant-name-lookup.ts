@@ -38,3 +38,33 @@ export function validateTenantNameLookup(
 
   return null;
 }
+
+export function validateTenantNameLookupRequireMatch(
+  value: unknown,
+  matchCounts: Map<string, number>,
+  fieldKey: string,
+  entityLabel: string,
+): string | null {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const ambiguous = validateTenantNameLookup(
+    value,
+    matchCounts,
+    fieldKey,
+    entityLabel,
+  );
+  if (ambiguous) {
+    return ambiguous;
+  }
+
+  const key = normalizeTenantLookupKey(trimmed);
+  const count = matchCounts.get(key) ?? 0;
+  if (count === 0) {
+    return `${fieldKey} not found in ${entityLabel}`;
+  }
+
+  return null;
+}

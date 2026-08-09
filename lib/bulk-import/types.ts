@@ -1,4 +1,10 @@
-export type BulkImportType = "product" | "service" | "employee";
+export type BulkImportType =
+  | "product"
+  | "service"
+  | "employee"
+  | "customer"
+  | "expense"
+  | "fixed_asset";
 
 export const BULK_IMPORT_IGNORE_COLUMN = "__ignore__";
 
@@ -8,6 +14,10 @@ export type BulkImportColumnMapping = Record<string, string>;
 export type BulkImportUploadResponse = {
   job_id: string;
   headers: string[];
+  /** Present when a committed job with the same tenant, type, and file hash exists recently. */
+  possibleReupload?: boolean;
+  matchingJobId?: string;
+  matchingCommittedAt?: string;
 };
 
 /** Conditional required rule for Phase 4 row validation. */
@@ -38,6 +48,8 @@ export type BulkImportValidationResponse = {
   error_rows: number;
   duplicate_rows: number;
   issue_rows: Array<{ row_number: number; error_message: string }>;
+  /** Valid rows with non-blocking warning messages (e.g. possible duplicates). */
+  warning_rows: Array<{ row_number: number; error_message: string }>;
 };
 
 export type BulkImportCommitResponse = {

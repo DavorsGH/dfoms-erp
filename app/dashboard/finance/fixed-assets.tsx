@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { NamedLookup } from "../lookup-types";
@@ -419,17 +420,25 @@ export default function FixedAssets({
 
   return (
     <div className="min-w-0 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
           Track fixed assets, depreciation, and net book values.
         </p>
-        <button
-          type="button"
-          onClick={() => (showForm ? closeForm() : openAddForm())}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          {showForm ? "Cancel" : "Add Entry"}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/dashboard/bulk-import?type=fixed_asset"
+            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+          >
+            Bulk Import
+          </Link>
+          <button
+            type="button"
+            onClick={() => (showForm ? closeForm() : openAddForm())}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+          >
+            {showForm ? "Cancel" : "Add Entry"}
+          </button>
+        </div>
       </div>
 
       {error && (

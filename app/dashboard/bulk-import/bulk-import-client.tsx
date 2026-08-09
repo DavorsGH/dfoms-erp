@@ -30,14 +30,66 @@ const UNMAPPED_VALUE = "";
 const FINISHED_PRODUCTS_HREF = "/dashboard/inventory/finished-products";
 const SERVICES_HREF = "/dashboard/crm/services";
 const EMPLOYEES_HREF = "/dashboard/employees";
+const CUSTOMERS_HREF = "/dashboard/crm/customers";
+const EXPENSES_HREF = "/dashboard/finance/expenses";
+const FIXED_ASSETS_HREF = "/dashboard/finance/fixed-assets";
 
 const IMPORT_TYPE_LABELS: Record<BulkImportType, string> = {
   product: "product",
   service: "service",
   employee: "employee",
+  customer: "customer",
+  expense: "expense",
+  fixed_asset: "fixed asset",
 };
 
-const IMPORT_TYPE_OPTIONS = ["product", "service", "employee"] as const satisfies readonly BulkImportType[];
+const IMPORT_TYPE_FIELD_LABELS: Record<BulkImportType, string> = {
+  product: "finished product",
+  service: "service catalog",
+  employee: "employee",
+  customer: "customer",
+  expense: "expense register",
+  fixed_asset: "fixed asset",
+};
+
+const IMPORT_TYPE_DESTINATION: Record<
+  BulkImportType,
+  { href: string; label: string }
+> = {
+  product: {
+    href: FINISHED_PRODUCTS_HREF,
+    label: "Go to Finished Products",
+  },
+  service: {
+    href: SERVICES_HREF,
+    label: "Go to Services",
+  },
+  employee: {
+    href: EMPLOYEES_HREF,
+    label: "Go to Employee Directory",
+  },
+  customer: {
+    href: CUSTOMERS_HREF,
+    label: "Go to Customer List",
+  },
+  expense: {
+    href: EXPENSES_HREF,
+    label: "Go to Expense Register",
+  },
+  fixed_asset: {
+    href: FIXED_ASSETS_HREF,
+    label: "Go to Fixed Assets",
+  },
+};
+
+const IMPORT_TYPE_OPTIONS = [
+  "product",
+  "service",
+  "employee",
+  "customer",
+  "expense",
+  "fixed_asset",
+] as const satisfies readonly BulkImportType[];
 
 const stepCardClassName =
   "rounded-lg border border-slate-200 bg-white p-6 shadow-sm";
@@ -56,6 +108,29 @@ function formatTargetFieldRequirement(field: BulkImportTargetField): string {
 
 const stepHeadingClassName =
   "text-lg font-semibold text-[#0f2744]";
+
+type PendingReupload = {
+  jobId: string;
+  headers: string[];
+  matchingCommittedAt: string;
+  matchingJobId?: string;
+};
+
+function formatBulkImportTimestamp(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return iso;
+  }
+
+  return parsed.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 
 function ExpectedColumnsCard({
   importType,
@@ -133,6 +208,10 @@ export default function BulkImportClient({
   const [jobId, setJobId] = useState<string | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<MappingDraft>({});
+  const [pendingReupload, setPendingReupload] = useState<PendingReupload | null>(
+    null,
+  );
+  const [cancellingReupload, setCancellingReupload] = useState(false);
 
   const targetFields = useMemo(
     () => getBulkImportTargetFields(importType),
@@ -147,6 +226,14 @@ export default function BulkImportClient({
     setMappingSaved(false);
     setValidationResult(null);
     setCommitResult(null);
+    setPendingReupload(null);
+  }
+
+  function advanceToMapping(nextJobId: string, nextHeaders: string[]) {
+    setJobId(nextJobId);
+    setHeaders(nextHeaders);
+    setMapping(emptyMappingForHeaders(nextHeaders));
+    setPendingReupload(null);
   }
 
   function resetValidationResult() {
@@ -198,9 +285,17 @@ export default function BulkImportClient({
         throw new Error(payload.error ?? "Upload failed.");
       }
 
-      setJobId(payload.job_id);
-      setHeaders(payload.headers ?? []);
-      setMapping(emptyMappingForHeaders(payload.headers ?? []));
+      if (payload.possibleReupload && payload.matchingCommittedAt) {
+        setPendingReupload({
+          jobId: payload.job_id,
+          headers: payload.headers ?? [],
+          matchingCommittedAt: payload.matchingCommittedAt,
+          matchingJobId: payload.matchingJobId,
+        });
+        return;
+      }
+
+      advanceToMapping(payload.job_id, payload.headers ?? []);
     } catch (uploadError) {
       setError(
         uploadError instanceof Error
@@ -209,6 +304,45 @@ export default function BulkImportClient({
       );
     } finally {
       setUploading(false);
+    }
+  }
+
+  function handleContinueReupload() {
+    if (!pendingReupload) {
+      return;
+    }
+
+    advanceToMapping(pendingReupload.jobId, pendingReupload.headers);
+  }
+
+  async function handleCancelReupload() {
+    if (!pendingReupload) {
+      return;
+    }
+
+    setCancellingReupload(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/bulk-import/${pendingReupload.jobId}`,
+        { method: "DELETE" },
+      );
+
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to cancel upload.");
+      }
+
+      setPendingReupload(null);
+    } catch (cancelError) {
+      setError(
+        cancelError instanceof Error
+          ? cancelError.message
+          : "Failed to cancel upload.",
+      );
+    } finally {
+      setCancellingReupload(false);
     }
   }
 
@@ -348,7 +482,7 @@ export default function BulkImportClient({
                 <span className="mb-2 mt-0 block text-sm font-medium leading-5 text-slate-700">
                   Import type
                 </span>
-                <div className="inline-flex rounded-md border border-slate-300 p-0.5">
+                <div className="flex w-full max-w-full flex-wrap rounded-md border border-slate-300 p-0.5">
                   {IMPORT_TYPE_OPTIONS.map((type) => {
                     const active = importType === type;
                     return (
@@ -387,11 +521,49 @@ export default function BulkImportClient({
 
               <button
                 type="submit"
-                disabled={uploading || selectedFiles.length === 0}
+                disabled={
+                  uploading ||
+                  cancellingReupload ||
+                  selectedFiles.length === 0 ||
+                  pendingReupload !== null
+                }
                 className="inline-flex items-center rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#16365c] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {uploading ? "Uploading and parsing…" : "Upload"}
               </button>
+
+              {pendingReupload ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-950">
+                  <p className="font-medium text-amber-950">
+                    This file appears to match one already imported on{" "}
+                    {formatBulkImportTimestamp(pendingReupload.matchingCommittedAt)}
+                    {" — "}continue anyway?
+                  </p>
+                  <p className="mt-2 text-xs text-amber-900">
+                    A previous import with the same file content was committed
+                    recently. Continuing will create a new import job that may
+                    duplicate records.
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleContinueReupload}
+                      disabled={cancellingReupload}
+                      className="inline-flex items-center rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#16365c] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Continue
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleCancelReupload()}
+                      disabled={cancellingReupload}
+                      className="inline-flex items-center rounded-md border border-amber-400 bg-white px-4 py-2 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {cancellingReupload ? "Cancelling…" : "Cancel"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </form>
           </div>
 
@@ -416,12 +588,7 @@ export default function BulkImportClient({
             Step 2 — Map columns
           </h2>
           <p className="mb-4 text-sm text-slate-600">
-            Match each file column to a{" "}
-            {importType === "product"
-              ? "finished product"
-              : importType === "service"
-                ? "service catalog"
-                : "employee"}{" "}
+            Match each file column to a {IMPORT_TYPE_FIELD_LABELS[importType]}{" "}
             field, or ignore columns you do not need.
           </p>
 
@@ -520,8 +687,8 @@ export default function BulkImportClient({
               </div>
 
               {validationResult.issue_rows.length > 0 ? (
-                <div>
-                  <h3 className="mb-2 text-sm font-medium text-slate-800">
+                <div className="overflow-hidden rounded-md border border-red-200 bg-red-50/70">
+                  <h3 className="border-b border-red-200 px-4 py-3 text-sm font-medium text-red-900">
                     Rows to fix
                   </h3>
                   <ScrollableTable>
@@ -535,11 +702,47 @@ export default function BulkImportClient({
                       <tbody>
                         {validationResult.issue_rows.map((issue) => (
                           <tr key={issue.row_number}>
-                            <td className="px-4 py-3 text-sm text-slate-800">
+                            <td className="px-4 py-3 text-sm text-red-950">
                               {issue.row_number}
                             </td>
-                            <td className="px-4 py-3 text-sm text-slate-700">
+                            <td className="px-4 py-3 text-sm text-red-900">
                               {issue.error_message}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </ScrollableTable>
+                </div>
+              ) : null}
+
+              {validationResult.warning_rows.length > 0 ? (
+                <div className="overflow-hidden rounded-md border border-amber-200 bg-amber-50/70">
+                  <div className="border-b border-amber-200 px-4 py-3">
+                    <h3 className="text-sm font-medium text-amber-950">
+                      Rows to review
+                    </h3>
+                    <p className="mt-1 text-xs text-amber-900">
+                      These rows passed validation and can be committed, but may
+                      duplicate existing data or repeat within this file.
+                    </p>
+                  </div>
+                  <ScrollableTable>
+                    <table className={scrollableTableClassName}>
+                      <thead className={scrollableTableHeadClassName}>
+                        <tr>
+                          <th className={scrollableTableThClassName}>Row</th>
+                          <th className={scrollableTableThClassName}>Warning</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {validationResult.warning_rows.map((warning) => (
+                          <tr key={warning.row_number}>
+                            <td className="px-4 py-3 text-sm text-amber-950">
+                              {warning.row_number}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-amber-900">
+                              {warning.error_message}
                             </td>
                           </tr>
                         ))}
@@ -561,20 +764,10 @@ export default function BulkImportClient({
                     {commitResult.committed_count === 1 ? "" : "s"} written.
                   </p>
                   <Link
-                    href={
-                      importType === "product"
-                        ? FINISHED_PRODUCTS_HREF
-                        : importType === "service"
-                          ? SERVICES_HREF
-                          : EMPLOYEES_HREF
-                    }
+                    href={IMPORT_TYPE_DESTINATION[importType].href}
                     className="inline-flex items-center rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#16365c]"
                   >
-                    {importType === "product"
-                      ? "Go to Finished Products"
-                      : importType === "service"
-                        ? "Go to Services"
-                        : "Go to Employee Directory"}
+                    {IMPORT_TYPE_DESTINATION[importType].label}
                   </Link>
                 </div>
               ) : (

@@ -311,13 +311,21 @@ export default function Customers({
             </select>
           </div>
         </div>
-        <button
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/dashboard/bulk-import?type=customer"
+            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+          >
+            Bulk Import
+          </Link>
+          <button
           type="button"
           onClick={() => (showForm ? closeForm() : openAddForm())}
           className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
         >
           {showForm ? "Cancel" : "Add Customer"}
         </button>
+        </div>
       </div>
 
       {error ? (

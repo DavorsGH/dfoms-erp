@@ -2,10 +2,18 @@ import "server-only";
 
 import type { Client } from "pg";
 import {
+  buildCustomerCommitInsert,
   buildEmployeeCommitInsert,
+  buildExpenseCommitInsert,
+  buildFixedAssetCommitInsert,
   buildFinishedProductCommitInsert,
   buildServiceCatalogCommitInsert,
 } from "@/lib/bulk-import/build-commit-payload";
+import {
+  allocateCustomerIdsForCommit,
+  resolveCustomerSupervisorIdForCommit,
+  type CustomerSupervisorResolverCache,
+} from "@/lib/bulk-import/resolve-customer-for-commit";
 import {
   allocateEmployeeIdsForCommit,
   resolveAssignedSiteCodeForCommit,
@@ -20,6 +28,25 @@ import {
   type SupervisorIdResolverCache,
 } from "@/lib/bulk-import/resolve-employee-for-commit";
 import {
+  resolveExpenseApproverNameForCommit,
+  resolveExpenseCategoryForCommit,
+  resolveExpensePaymentMethodForCommit,
+  resolveExpenseReceiptNoForCommit,
+  resolveExpenseSubcategoryForCommit,
+  type ExpenseApproverNameResolverCache,
+  type ExpenseNameResolverCache,
+  type ExpensePaymentMethodResolverCache,
+} from "@/lib/bulk-import/resolve-expense-for-commit";
+import {
+  allocateFixedAssetIdForCommit,
+  resolveAssetCategoryForCommit,
+  resolveDepreciationMethodForCommit,
+  resolveFixedAssetPaymentMethodForCommit,
+  syncFixedAssetPayableForCommit,
+  type FixedAssetNameResolverCache,
+  type FixedAssetPaymentMethodResolverCache,
+} from "@/lib/bulk-import/resolve-fixed-asset-for-commit";
+import {
   resolveSupplierIdForCommit,
   type SupplierIdResolverCache,
 } from "@/lib/bulk-import/resolve-supplier-for-commit";
@@ -29,6 +56,10 @@ import {
   buildEmploymentHistoryInsert,
   snapshotFromPayload,
 } from "@/app/dashboard/employees/employment-history-utils";
+import {
+  buildPurchaseTaxLedgerRows,
+  type TaxLedgerEntryInsert,
+} from "@/app/dashboard/finance/tax-ledger-sync";
 
 export type CommitImportRow = {
   id: string;
@@ -331,6 +362,409 @@ async function insertEmployeeRow(
   );
 }
 
+async function insertCustomerRow(
+  client: Client,
+  tenantId: string,
+  mappedData: Record<string, unknown>,
+  supervisorCache: CustomerSupervisorResolverCache,
+) {
+  const supervisorId = await resolveCustomerSupervisorIdForCommit({
+    client,
+    tenantId,
+    supervisorName: String(mappedData.supervisor_name ?? ""),
+    cache: supervisorCache,
+  });
+
+  const { clientId, contractNumber } = await allocateCustomerIdsForCommit({
+    client,
+    tenantId,
+  });
+
+  const payload = buildCustomerCommitInsert({
+    mappedData,
+    tenantId,
+    clientId,
+    contractNumber,
+    supervisorId,
+  });
+
+  await client.query(
+    `
+      INSERT INTO public.customers (
+        tenant_id,
+        client_id,
+        client_name,
+        contact_person,
+        phone,
+        email,
+        address,
+        gps_location,
+        contract_number,
+        contract_start,
+        contract_end,
+        service_frequency,
+        services_provided,
+        assigned_supervisor,
+        contract_status,
+        notes,
+        customer_type,
+        status,
+        source
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19
+      )
+    `,
+    [
+      payload.tenant_id,
+      payload.client_id,
+      payload.client_name,
+      payload.contact_person,
+      payload.phone,
+      payload.email,
+      payload.address,
+      payload.gps_location,
+      payload.contract_number,
+      payload.contract_start,
+      payload.contract_end,
+      payload.service_frequency,
+      payload.services_provided,
+      payload.assigned_supervisor,
+      payload.contract_status,
+      payload.notes,
+      payload.customer_type,
+      payload.status,
+      payload.source,
+    ],
+  );
+}
+
+async function insertPurchaseTaxLedgerRowsForCommit(
+  client: Client,
+  rows: TaxLedgerEntryInsert[],
+): Promise<void> {
+  for (const row of rows) {
+    if (!row.tenant_id) {
+      throw new Error("tenant_id is required for tax ledger inserts during bulk import.");
+    }
+
+    await client.query(
+      `
+        INSERT INTO public.tax_ledger_entries (
+          tenant_id,
+          entry_date,
+          period_month,
+          direction,
+          tax_component,
+          rate_pct,
+          taxable_base,
+          tax_amount,
+          status,
+          source_type,
+          source_id,
+          counterparty_name,
+          notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `,
+      [
+        row.tenant_id,
+        row.entry_date,
+        row.period_month,
+        row.direction,
+        row.tax_component,
+        row.rate_pct,
+        row.taxable_base,
+        row.tax_amount,
+        row.status,
+        row.source_type,
+        row.source_id,
+        row.counterparty_name,
+        row.notes,
+      ],
+    );
+  }
+}
+
+async function syncPurchaseTaxLedgerForCommit(input: {
+  client: Client;
+  tenantId: string;
+  sourceId: string;
+  entryDate: string;
+  grossBeforeWht: number;
+  whtRatePct: number | null;
+  whtAmount: number;
+  inputTaxComponent: "vat_bundle" | "vfrs" | null;
+  inputVatAmount: number;
+  counterpartyName: string | null;
+  notes: string | null;
+}): Promise<void> {
+  await input.client.query(
+    `
+      DELETE FROM public.tax_ledger_entries
+      WHERE source_type = $1
+        AND source_id = $2::uuid
+        AND tenant_id = $3
+    `,
+    ["expense_register", input.sourceId, input.tenantId],
+  );
+
+  const rows = buildPurchaseTaxLedgerRows({
+    sourceType: "expense_register",
+    sourceId: input.sourceId,
+    entryDate: input.entryDate,
+    grossBeforeWht: input.grossBeforeWht,
+    whtRatePct: input.whtRatePct,
+    whtAmount: input.whtAmount,
+    inputTaxComponent: input.inputTaxComponent,
+    inputTaxRatePct: null,
+    inputVatAmount: input.inputVatAmount,
+    counterpartyName: input.counterpartyName,
+    notes: input.notes,
+    tenantId: input.tenantId,
+  });
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  await insertPurchaseTaxLedgerRowsForCommit(input.client, rows);
+}
+
+async function insertExpenseRow(
+  client: Client,
+  tenantId: string,
+  mappedData: Record<string, unknown>,
+  caches: {
+    expenseCategoryCache: ExpenseNameResolverCache;
+    expenseSubcategoryCache: ExpenseNameResolverCache;
+    paymentMethodCache: ExpensePaymentMethodResolverCache;
+    approverNameCache: ExpenseApproverNameResolverCache;
+  },
+) {
+  const expenseCategory = await resolveExpenseCategoryForCommit({
+    client,
+    tenantId,
+    categoryName: String(mappedData.expense_category ?? ""),
+    cache: caches.expenseCategoryCache,
+  });
+  const subCategory = await resolveExpenseSubcategoryForCommit({
+    client,
+    tenantId,
+    subcategoryName: String(mappedData.sub_category ?? ""),
+    cache: caches.expenseSubcategoryCache,
+  });
+  const paymentMethod = await resolveExpensePaymentMethodForCommit({
+    client,
+    tenantId,
+    paymentMethodName: String(mappedData.payment_method ?? ""),
+    cache: caches.paymentMethodCache,
+  });
+  const approvedBy = await resolveExpenseApproverNameForCommit({
+    client,
+    tenantId,
+    approverName: String(mappedData.approved_by ?? ""),
+    cache: caches.approverNameCache,
+  });
+  const receiptNo = await resolveExpenseReceiptNoForCommit({
+    client,
+    tenantId,
+    suppliedReceiptNo: String(mappedData.receipt_no ?? ""),
+  });
+
+  const payload = buildExpenseCommitInsert({
+    mappedData,
+    tenantId,
+    expenseCategory,
+    subCategory,
+    paymentMethod,
+    approvedBy,
+    receiptNo,
+  });
+
+  const insertResult = await client.query(
+    `
+      INSERT INTO public.expense_register (
+        tenant_id,
+        date,
+        expense_category,
+        sub_category,
+        description,
+        vendor,
+        price,
+        quantity,
+        amount,
+        payment_method,
+        approved_by,
+        receipt_no,
+        payment_status,
+        gross_before_wht,
+        wht_rate,
+        wht_amount,
+        input_vat_amount,
+        net_of_tax_amount,
+        notes
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19
+      )
+      RETURNING id
+    `,
+    [
+      payload.tenant_id,
+      payload.date,
+      payload.expense_category,
+      payload.sub_category,
+      payload.description,
+      payload.vendor,
+      payload.price,
+      payload.quantity,
+      payload.amount,
+      payload.payment_method,
+      payload.approved_by,
+      payload.receipt_no,
+      payload.payment_status,
+      payload.gross_before_wht,
+      payload.wht_rate,
+      payload.wht_amount,
+      payload.input_vat_amount,
+      payload.net_of_tax_amount,
+      payload.notes,
+    ],
+  );
+
+  const expenseId = String(insertResult.rows[0]?.id ?? "").trim();
+  if (!expenseId) {
+    throw new Error("expense_register insert did not return an id.");
+  }
+
+  if (payload.purchaseTax.whtAmount > 0 || payload.purchaseTax.inputVatAmount > 0) {
+    await syncPurchaseTaxLedgerForCommit({
+      client,
+      tenantId,
+      sourceId: expenseId,
+      entryDate: payload.date,
+      grossBeforeWht: payload.purchaseTax.grossBeforeWht,
+      whtRatePct: payload.wht_rate,
+      whtAmount: payload.purchaseTax.whtAmount,
+      inputTaxComponent: payload.purchaseTax.inputTaxComponent,
+      inputVatAmount: payload.purchaseTax.inputVatAmount,
+      counterpartyName: payload.vendor.trim() || null,
+      notes: payload.receipt_no ? `Receipt ${payload.receipt_no}` : null,
+    });
+  }
+}
+
+async function insertFixedAssetRow(
+  client: Client,
+  tenantId: string,
+  mappedData: Record<string, unknown>,
+  caches: {
+    assetCategoryCache: FixedAssetNameResolverCache;
+    depreciationMethodCache: FixedAssetNameResolverCache;
+    paymentMethodCache: FixedAssetPaymentMethodResolverCache;
+  },
+) {
+  const assetId = await allocateFixedAssetIdForCommit({ client, tenantId });
+  const assetCategory = await resolveAssetCategoryForCommit({
+    client,
+    tenantId,
+    categoryName: String(mappedData.asset_category ?? ""),
+    cache: caches.assetCategoryCache,
+  });
+  const depreciationMethod = await resolveDepreciationMethodForCommit({
+    client,
+    tenantId,
+    methodName: String(mappedData.depreciation_method ?? ""),
+    cache: caches.depreciationMethodCache,
+  });
+  const paymentMethod = await resolveFixedAssetPaymentMethodForCommit({
+    client,
+    tenantId,
+    paymentMethodName: String(mappedData.payment_method ?? ""),
+    cache: caches.paymentMethodCache,
+  });
+
+  const payload = buildFixedAssetCommitInsert({
+    mappedData,
+    tenantId,
+    assetId,
+    assetCategory,
+    depreciationMethod,
+    paymentMethod,
+  });
+
+  await client.query(
+    `
+      INSERT INTO public.fixed_assets (
+        tenant_id,
+        asset_id,
+        asset_name,
+        asset_category,
+        purchase_date,
+        original_cost,
+        quantity,
+        total_cost,
+        useful_life_years,
+        depreciation_method,
+        annual_depreciation,
+        accumulated_depreciation,
+        net_book_value,
+        location,
+        notes,
+        payment_method,
+        vendor_name
+      )
+      VALUES (
+        $1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17
+      )
+    `,
+    [
+      payload.tenant_id,
+      payload.asset_id,
+      payload.asset_name,
+      payload.asset_category,
+      payload.purchase_date,
+      payload.original_cost,
+      payload.quantity,
+      payload.total_cost,
+      payload.useful_life_years,
+      payload.depreciation_method,
+      payload.annual_depreciation,
+      payload.accumulated_depreciation,
+      payload.net_book_value,
+      payload.location,
+      payload.notes,
+      payload.payment_method,
+      payload.vendor_name,
+    ],
+  );
+
+  const payableId = await syncFixedAssetPayableForCommit({
+    client,
+    tenantId,
+    assetId: payload.asset_id,
+    vendorName: payload.vendor_name,
+    purchaseDate: payload.purchase_date,
+    paymentMethod: payload.payment_method,
+    totalCost: payload.total_cost,
+    assetName: payload.asset_name,
+  });
+
+  await client.query(
+    `
+      UPDATE public.fixed_assets
+      SET accounts_payable_id = $1::uuid
+      WHERE asset_id = $2
+        AND tenant_id = $3
+    `,
+    [payableId, payload.asset_id, tenantId],
+  );
+}
+
 export async function commitImportJobInTransaction(input: {
   client: Client;
   jobId: string;
@@ -350,13 +784,22 @@ export async function commitImportJobInTransaction(input: {
     const projectCache: ProjectCodeResolverCache = new Map();
     const supervisorCache: SupervisorIdResolverCache = new Map();
     const siteCache: SiteCodeResolverCache = new Map();
+    const customerSupervisorCache: CustomerSupervisorResolverCache = new Map();
+    const expenseCategoryCache: ExpenseNameResolverCache = new Map();
+    const expenseSubcategoryCache: ExpenseNameResolverCache = new Map();
+    const expensePaymentMethodCache: ExpensePaymentMethodResolverCache = new Map();
+    const expenseApproverNameCache: ExpenseApproverNameResolverCache = new Map();
+    const fixedAssetCategoryCache: FixedAssetNameResolverCache = new Map();
+    const fixedAssetDepreciationMethodCache: FixedAssetNameResolverCache = new Map();
+    const fixedAssetPaymentMethodCache: FixedAssetPaymentMethodResolverCache =
+      new Map();
 
     for (const row of rows) {
       if (importType === "product") {
         await insertFinishedProduct(client, tenantId, row.mapped_data, supplierCache);
       } else if (importType === "service") {
         await insertServiceCatalogRow(client, tenantId, row.mapped_data);
-      } else {
+      } else if (importType === "employee") {
         await insertEmployeeRow(
           client,
           tenantId,
@@ -370,6 +813,28 @@ export async function commitImportJobInTransaction(input: {
             siteCache,
           },
         );
+      } else if (importType === "customer") {
+        await insertCustomerRow(
+          client,
+          tenantId,
+          row.mapped_data,
+          customerSupervisorCache,
+        );
+      } else if (importType === "expense") {
+        await insertExpenseRow(client, tenantId, row.mapped_data, {
+          expenseCategoryCache,
+          expenseSubcategoryCache,
+          paymentMethodCache: expensePaymentMethodCache,
+          approverNameCache: expenseApproverNameCache,
+        });
+      } else if (importType === "fixed_asset") {
+        await insertFixedAssetRow(client, tenantId, row.mapped_data, {
+          assetCategoryCache: fixedAssetCategoryCache,
+          depreciationMethodCache: fixedAssetDepreciationMethodCache,
+          paymentMethodCache: fixedAssetPaymentMethodCache,
+        });
+      } else {
+        throw new Error(`Unsupported import type: ${importType}`);
       }
 
       await client.query(

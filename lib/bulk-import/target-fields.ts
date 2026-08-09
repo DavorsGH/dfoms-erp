@@ -258,6 +258,301 @@ export const EMPLOYEE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
   },
 ];
 
+/**
+ * customers mappable columns for bulk import (CRM migration).
+ *
+ * Excluded: client_id, contract_number, tenant_id, email_verified, source.
+ * supervisor_name resolves at commit to assigned_supervisor (employee_id).
+ */
+export const CUSTOMER_TARGET_FIELDS: readonly BulkImportTargetField[] = [
+  {
+    key: "client_name",
+    label: "Client name",
+    required: true,
+    example: "Acme Facilities Ltd",
+  },
+  {
+    key: "contact_person",
+    label: "Contact person",
+    required: false,
+    example: "Jane Doe",
+  },
+  {
+    key: "phone",
+    label: "Phone",
+    required: false,
+    example: "+233 24 123 4567",
+  },
+  {
+    key: "email",
+    label: "Email",
+    required: false,
+    example: "contact@acme.com",
+  },
+  {
+    key: "address",
+    label: "Address",
+    required: false,
+    example: "12 Independence Ave, Accra",
+  },
+  {
+    key: "gps_location",
+    label: "GPS location",
+    required: false,
+    example: "5.6037, -0.1870",
+  },
+  {
+    key: "contract_start",
+    label: "Contract start",
+    required: false,
+    example: "2024-01-01",
+  },
+  {
+    key: "contract_end",
+    label: "Contract end",
+    required: false,
+    example: "2025-12-31",
+  },
+  {
+    key: "service_frequency",
+    label: "Service frequency",
+    required: false,
+    example: "Monthly",
+  },
+  {
+    key: "services_provided",
+    label: "Services provided",
+    required: false,
+    example: "Office cleaning, pest control",
+  },
+  {
+    key: "supervisor_name",
+    label: "Supervisor name",
+    required: false,
+    example: "John Smith",
+    mappingHint: "Supervisor's full name; left blank at import if not found",
+  },
+  {
+    key: "contract_status",
+    label: "Contract status",
+    required: false,
+    example: "Active",
+    mappingHint: "Active, Expired, Terminated, or Pending (defaults to Active if blank)",
+  },
+  {
+    key: "customer_type",
+    label: "Customer type",
+    required: false,
+    example: "service_client",
+    mappingHint: "service_client, digital_subscriber, or both (defaults to service_client if blank)",
+  },
+  {
+    key: "status",
+    label: "Status",
+    required: false,
+    example: "active",
+    mappingHint: "lead, active, or inactive (defaults to active if blank)",
+  },
+  {
+    key: "notes",
+    label: "Notes",
+    required: false,
+    example: "Transferred from legacy CRM",
+  },
+];
+
+/**
+ * expense_register mappable columns for bulk import (finance migration).
+ *
+ * Excluded system/computed columns: tenant_id, amount, gross_before_wht,
+ * wht_amount, net_of_tax_amount (derived at commit via computePurchaseTaxAmounts).
+ *
+ * expense_category, sub_category, approved_by resolve at commit (lookup or
+ * auto-create). payment_method must match an existing tenant payment method.
+ */
+export const EXPENSE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
+  {
+    key: "date",
+    label: "Date",
+    required: true,
+    example: "2024-03-15",
+  },
+  {
+    key: "expense_category",
+    label: "Expense category",
+    required: true,
+    example: "Administrative",
+    mappingHint: "Category name (not code); auto-created at import if missing",
+  },
+  {
+    key: "sub_category",
+    label: "Sub-category",
+    required: true,
+    example: "Office Supplies",
+    mappingHint: "Sub-category name (not code); auto-created at import if missing",
+  },
+  {
+    key: "vendor",
+    label: "Vendor",
+    required: true,
+    example: "ABC Supplies Ltd",
+  },
+  {
+    key: "price",
+    label: "Price",
+    required: true,
+    example: "150.00",
+    mappingHint: "Unit price before WHT (gross line = Price × Quantity)",
+  },
+  {
+    key: "payment_method",
+    label: "Payment method",
+    required: true,
+    example: "Bank Transfer",
+    mappingHint: "Must match an existing payment method for this tenant",
+  },
+  {
+    key: "approved_by",
+    label: "Approved by",
+    required: true,
+    example: "Jane Doe",
+    mappingHint: "Approver full name; auto-created at import if missing",
+  },
+  {
+    key: "payment_status",
+    label: "Payment status",
+    required: true,
+    example: "Paid",
+    mappingHint:
+      "Pending, Partial, Paid, Overdue, Accrued, Accrued - Not Yet Paid, or Settled (No Cash Impact)",
+  },
+  {
+    key: "description",
+    label: "Description",
+    required: false,
+    example: "Monthly stationery order",
+  },
+  {
+    key: "quantity",
+    label: "Quantity",
+    required: false,
+    example: "1",
+    mappingHint: "Defaults to 1 if blank",
+  },
+  {
+    key: "receipt_no",
+    label: "Receipt no.",
+    required: false,
+    example: "INV-2024-001",
+    mappingHint:
+      "Leave blank to auto-assign (e.g. DF-EXP-0001), or enter vendor paper receipt #",
+  },
+  {
+    key: "wht_rate",
+    label: "WHT rate (%)",
+    required: false,
+    example: "7.5",
+  },
+  {
+    key: "input_vat_amount",
+    label: "Input VAT amount",
+    required: false,
+    example: "22.50",
+    mappingHint: "Reclaimable input VAT amount (not a rate)",
+  },
+  {
+    key: "notes",
+    label: "Notes",
+    required: false,
+    example: "Imported from legacy ledger",
+  },
+];
+
+/**
+ * fixed_assets mappable columns for bulk import (finance migration).
+ *
+ * Excluded system/computed columns: asset_id, tenant_id, total_cost,
+ * annual_depreciation, accumulated_depreciation, net_book_value,
+ * annual_dep_rate_pct, accounts_payable_id.
+ *
+ * asset_category and depreciation_method resolve at commit (lookup or
+ * auto-create). payment_method must match an existing tenant payment method.
+ */
+export const FIXED_ASSET_TARGET_FIELDS: readonly BulkImportTargetField[] = [
+  {
+    key: "asset_name",
+    label: "Asset name",
+    required: true,
+    example: "Office desk",
+  },
+  {
+    key: "purchase_date",
+    label: "Purchase date",
+    required: true,
+    example: "2024-03-15",
+  },
+  {
+    key: "original_cost",
+    label: "Original cost",
+    required: true,
+    example: "1500.00",
+    mappingHint: "Unit cost before quantity (numeric 12,2)",
+  },
+  {
+    key: "payment_method",
+    label: "Payment method",
+    required: true,
+    example: "Bank Transfer",
+    mappingHint: "Must match an existing payment method for this tenant",
+  },
+  {
+    key: "asset_category",
+    label: "Asset category",
+    required: false,
+    example: "Furniture",
+    mappingHint: "Category name; auto-created at import if missing",
+  },
+  {
+    key: "quantity",
+    label: "Quantity",
+    required: false,
+    example: "1",
+    mappingHint: "Defaults to 1 if blank",
+  },
+  {
+    key: "useful_life_years",
+    label: "Useful life (years)",
+    required: false,
+    example: "5",
+  },
+  {
+    key: "depreciation_method",
+    label: "Depreciation method",
+    required: false,
+    example: "Straight Line",
+    mappingHint: "Method name; auto-created at import if missing",
+  },
+  {
+    key: "location",
+    label: "Location",
+    required: false,
+    example: "Head Office",
+  },
+  {
+    key: "notes",
+    label: "Notes",
+    required: false,
+    example: "Imported from legacy register",
+  },
+  {
+    key: "vendor_name",
+    label: "Vendor name",
+    required: false,
+    example: "ABC Furniture Ltd",
+    mappingHint: "Required when payment method is credit / on account",
+  },
+];
+
 const TARGET_FIELDS_BY_TYPE: Record<
   BulkImportType,
   readonly BulkImportTargetField[]
@@ -265,6 +560,9 @@ const TARGET_FIELDS_BY_TYPE: Record<
   product: FINISHED_PRODUCT_TARGET_FIELDS,
   service: SERVICE_CATALOG_TARGET_FIELDS,
   employee: EMPLOYEE_TARGET_FIELDS,
+  customer: CUSTOMER_TARGET_FIELDS,
+  expense: EXPENSE_TARGET_FIELDS,
+  fixed_asset: FIXED_ASSET_TARGET_FIELDS,
 };
 
 export function getBulkImportTargetFields(
