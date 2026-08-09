@@ -1,5 +1,8 @@
 /** Global auth session persistence (stay logged in) — platform-wide, no tenant logic. */
 
+/** Browser cookie maxAge when Supabase session time-box is disabled (unlimited). */
+export const AUTH_COOKIE_PERSIST_DEFAULT_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
+
 export const AUTH_PERSIST_FLAG_COOKIE = "dfoms-auth-persist";
 
 export const AUTH_PERSIST_ENABLED_VALUE = "1";
@@ -23,8 +26,7 @@ export function getAuthCookiePersistMaxAgeSeconds(): number {
     return parsed;
   }
 
-  // Supabase default: sessions are indefinite; @supabase/ssr commonly uses ~400-day cookies.
-  return 400 * 24 * 60 * 60;
+  return AUTH_COOKIE_PERSIST_DEFAULT_MAX_AGE_SECONDS;
 }
 
 export function readAuthPersistEnabled(

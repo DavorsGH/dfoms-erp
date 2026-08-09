@@ -6,6 +6,7 @@
  *   npx tsx scripts/probe-supabase-auth-session-config.ts production
  */
 import { resolve } from "node:path";
+import { AUTH_COOKIE_PERSIST_DEFAULT_MAX_AGE_SECONDS } from "../lib/auth/session-persistence";
 import { loadEnvForce } from "./lib/env";
 
 const PROJECT_REFS = {
@@ -68,6 +69,45 @@ function pickSessionFields(config: Record<string, unknown>) {
   return picked;
 }
 
+/** Supabase uses 0 to mean "disabled / unlimited" for time-box settings. */
+function isDisabledSessionLimit(value: unknown): boolean {
+  if (value == null) {
+    return true;
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  return !Number.isFinite(numeric) || numeric <= 0;
+}
+
+function suggestAuthCookiePersistMaxAgeSeconds(
+  sessionFields: Record<string, unknown>,
+): { seconds: number; reason: string } {
+  const candidates: Array<{ key: string; value: unknown }> = [
+    { key: "sessions_timebox", value: sessionFields.sessions_timebox },
+    { key: "session_timebox", value: sessionFields.session_timebox },
+    { key: "refresh_token_lifetime", value: sessionFields.refresh_token_lifetime },
+  ];
+
+  for (const { key, value } of candidates) {
+    if (value == null) {
+      continue;
+    }
+    if (isDisabledSessionLimit(value)) {
+      continue;
+    }
+    const seconds = typeof value === "number" ? value : Number(value);
+    return {
+      seconds,
+      reason: `Supabase ${key}=${seconds}s (${Math.round(seconds / 86400)} days)`,
+    };
+  }
+
+  return {
+    seconds: AUTH_COOKIE_PERSIST_DEFAULT_MAX_AGE_SECONDS,
+    reason:
+      "Supabase session time-box disabled (sessions_timebox/session_timebox/refresh_token_lifetime are 0 or unset) — use long browser-safe default",
+  };
+}
+
 async function main() {
   const target = (process.argv[2] ?? "staging") as Target;
   if (!(target in PROJECT_REFS)) {
@@ -103,20 +143,16 @@ async function main() {
   const sessionFields = pickSessionFields(config);
   console.log(JSON.stringify(sessionFields, null, 2));
 
-  const refreshLifetime =
-    (sessionFields.refresh_token_lifetime as number | undefined) ??
-    (sessionFields.sessions_timebox as number | undefined) ??
-    (sessionFields.session_timebox as number | undefined);
-
-  if (refreshLifetime != null) {
-    console.log(
-      `\nSuggested AUTH_COOKIE_PERSIST_MAX_AGE_SECONDS=${refreshLifetime} (${Math.round(refreshLifetime / 86400)} days)`,
-    );
-  } else {
-    console.log(
-      "\nCould not infer refresh lifetime field — inspect output above for the correct key.",
-    );
-  }
+  const suggestion = suggestAuthCookiePersistMaxAgeSeconds(sessionFields);
+  console.log(
+    `\nSuggested AUTH_COOKIE_PERSIST_MAX_AGE_SECONDS=${suggestion.seconds} (${Math.round(suggestion.seconds / 86400)} days)`,
+  );
+  console.log(`Reason: ${suggestion.reason}`);
+  console.log(
+    suggestion.seconds === AUTH_COOKIE_PERSIST_DEFAULT_MAX_AGE_SECONDS
+      ? "No env override required — app code already uses this default when AUTH_COOKIE_PERSIST_MAX_AGE_SECONDS is unset."
+      : "Set AUTH_COOKIE_PERSIST_MAX_AGE_SECONDS in Vercel if you want to override the app default.",
+  );
 }
 
 main().catch((error) => {
