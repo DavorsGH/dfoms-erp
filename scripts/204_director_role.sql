@@ -216,6 +216,34 @@ CREATE POLICY sites_rbac_write
     )
   );
 
+DROP POLICY IF EXISTS projects_client_select ON projects;
+CREATE POLICY projects_client_select
+  ON projects
+  FOR SELECT
+  TO authenticated
+  USING (
+    tenant_matches(tenant_id)
+    AND (
+      is_super_admin()
+      OR current_user_role() IN (
+        'finance'::app_role,
+        'hr'::app_role,
+        'operations_manager'::app_role,
+        'supervisor'::app_role,
+        'director'::app_role
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM sites s
+        WHERE s.project_id = projects.id
+          AND tenant_matches(s.tenant_id)
+          AND s.client_id = current_user_client_id()
+          AND current_user_role() = 'client'::app_role
+      )
+    )
+    AND tenant_has_feature(tenant_id, 'operations')
+  );
+
 DROP POLICY IF EXISTS corrective_actions_rbac_select ON corrective_actions;
 CREATE POLICY corrective_actions_rbac_select
   ON corrective_actions
