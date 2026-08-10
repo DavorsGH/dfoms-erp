@@ -33,6 +33,7 @@ import {
   type RawMaterialPurchaseRecord,
   type RawMaterialRecord,
 } from "./raw-materials-utils";
+import { isRawMaterialLowStock } from "../reports/inventory-reports-utils";
 import type { NamedLookup } from "../lookup-types";
 
 type RawMaterialsProps = {
@@ -545,6 +546,11 @@ export default function RawMaterials({
                   }
                   className={inputClassName}
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                  The stock level at which this material should be reordered. When
+                  Current Stock drops to or below this number, it will be flagged as
+                  low stock.
+                </p>
               </div>
               <div className="md:col-span-2 flex gap-3">
                 <button
@@ -591,7 +597,10 @@ export default function RawMaterials({
                   </td>
                 </tr>
               ) : (
-                materials.map((material, index) => (
+                materials.map((material, index) => {
+                  const lowStock = isRawMaterialLowStock(material);
+
+                  return (
                   <tr
                     key={material.id}
                     className={getStripedRowClassName(index)}
@@ -601,8 +610,17 @@ export default function RawMaterials({
                       {material.material_name}
                     </td>
                     <td className="px-4 py-3">{material.unit_of_measure}</td>
-                    <td className="px-4 py-3">
-                      {formatInventoryQuantity(material.current_stock)}
+                    <td className={`px-4 py-3 ${lowStock ? "bg-amber-50" : ""}`}>
+                      <span className="inline-flex flex-wrap items-center gap-2">
+                        <span className={lowStock ? "font-medium text-amber-900" : ""}>
+                          {formatInventoryQuantity(material.current_stock)}
+                        </span>
+                        {lowStock ? (
+                          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                            Low Stock
+                          </span>
+                        ) : null}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       {formatInventoryMoney(material.average_cost_per_unit)}
@@ -618,7 +636,8 @@ export default function RawMaterials({
                     />
                     ) : null}
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
