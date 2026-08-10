@@ -1,21 +1,7 @@
-export type ClientEntry = {
-  client_id: string;
-  client_name: string;
-  contact_person: string | null;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-  gps_location: string | null;
-  contract_number: string | null;
-  contract_start: string | null;
-  contract_end: string | null;
-  service_frequency: string | null;
-  services_provided: string | null;
-  assigned_supervisor: string | null;
-  contract_status: string | null;
-  notes: string | null;
-};
-
-export const CLIENT_SELECT = "*";
+/** @deprecated Import from `@/app/dashboard/crm/customers/customers-utils` instead. */
+export {
+  CUSTOMER_SELECT as CLIENT_SELECT,
+  type CustomerEntry as ClientEntry,
+} from "../crm/customers/customers-utils";
 
 export const DEFAULT_CONTRACT_STATUS = "Active";

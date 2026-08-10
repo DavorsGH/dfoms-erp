@@ -59,6 +59,12 @@ export function confirmRawMaterialPurchaseEdit(): boolean {
   );
 }
 
+export function confirmProductPurchaseEdit(): boolean {
+  return window.confirm(
+    "Save changes to this purchase? Stock, average cost, and linked financial postings may be adjusted.",
+  );
+}
+
 const voidButtonClassName =
   "rounded-md border border-amber-200 px-3 py-1.5 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50";
 

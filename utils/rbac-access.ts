@@ -60,6 +60,13 @@ export const CRM_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "operations_manager",
+];
+
+/** Customer List only — supervisors reach /dashboard/crm/customers, not full CRM. */
+export const CRM_CUSTOMER_LIST_ROLES: readonly AppRole[] = [
+  ...CRM_SECTION_ROLES,
+  "supervisor",
 ];
 
 /** Create/edit client quotations (Sales & CRM → Quotations). */
@@ -187,6 +194,17 @@ export function canAccessInventorySection(role: AppRole | null): boolean {
 
 export function canAccessCrmSection(role: AppRole | null): boolean {
   return roleIn(role, CRM_SECTION_ROLES);
+}
+
+export function isCrmCustomerListPath(pathname: string): boolean {
+  return (
+    pathname === "/dashboard/crm/customers" ||
+    pathname.startsWith("/dashboard/crm/customers/")
+  );
+}
+
+export function canAccessCrmCustomerList(role: AppRole | null): boolean {
+  return roleIn(role, CRM_CUSTOMER_LIST_ROLES);
 }
 
 export function canAccessPosSection(role: AppRole | null): boolean {

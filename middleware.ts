@@ -333,9 +333,29 @@ export async function middleware(request: NextRequest) {
   // Trial / suspension enforcement runs in app/dashboard/layout.tsx only — not on
   // /trial-expired, /account-suspended, /login, /signup, or /api/signup.
 
-  response.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
 
-  return response;
+  const nextResponse = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+
+  response.cookies.getAll().forEach((cookie) => {
+    nextResponse.cookies.set(cookie);
+  });
+
+  response.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "set-cookie") {
+      nextResponse.headers.set(key, value);
+    }
+  });
+
+  nextResponse.headers.set(
+    "Cache-Control",
+    "private, no-store, no-cache, must-revalidate",
+  );
+
+  return nextResponse;
 }
 
 export const config = {

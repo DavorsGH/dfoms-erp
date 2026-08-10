@@ -18,7 +18,7 @@ export type CampaignChannel = (typeof CAMPAIGN_CHANNELS)[number];
 export type CampaignAudienceAll = { type: "all" };
 export type CampaignAudienceByCustomerType = {
   type: "customer_type";
-  value: "service_client" | "digital_subscriber" | "both";
+  value: "service_client" | "digital_subscriber" | "product_client" | "all";
 };
 export type CampaignAudienceFilter =
   | CampaignAudienceAll
@@ -102,12 +102,16 @@ export function normalizeAudienceFilter(
   }
 
   if (type === "customer_type") {
-    const customerType =
+    let customerType =
       typeof record.value === "string" ? record.value.trim() : "";
+    if (customerType === "both") {
+      customerType = "all";
+    }
     if (
       customerType === "service_client" ||
       customerType === "digital_subscriber" ||
-      customerType === "both"
+      customerType === "product_client" ||
+      customerType === "all"
     ) {
       return { type: "customer_type", value: customerType };
     }

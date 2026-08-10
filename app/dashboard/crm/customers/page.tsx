@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import { canAccessOperationsSection } from "@/utils/rbac-access";
+import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
   HR_EMPLOYEE_SELECT,
   filterActiveEmployees,
@@ -10,6 +13,7 @@ import Customers from "./customers";
 import type { CustomerEntry } from "./customers-utils";
 
 export default async function CustomersPage() {
+  const role = (await getCurrentUserRole()) as AppRole | null;
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
@@ -23,14 +27,16 @@ export default async function CustomersPage() {
     ]);
 
   const fetchError = error?.message ?? employeesError?.message ?? null;
+  const customerListOnly = role === "supervisor";
 
   return (
-    <CrmShell sectionTitle="Customer List">
+    <CrmShell sectionTitle="Customer List" customerListOnly={customerListOnly}>
       <Customers
         initialCustomers={(data as CustomerEntry[] | null) ?? []}
         initialEmployees={filterActiveEmployees(
           (employees as HrEmployee[] | null) ?? [],
         )}
+        showOperationsColumns={canAccessOperationsSection(role)}
         fetchError={fetchError}
       />
     </CrmShell>

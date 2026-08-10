@@ -78,7 +78,7 @@ async function main() {
 
   // Ensure values are constraint-legal (same as fixed UI)
   assert(
-    ["service_client", "digital_subscriber", "both"].includes(
+    ["service_client", "digital_subscriber", "product_client", "all"].includes(
       payload.customer_type,
     ),
     `unexpected customer_type ${payload.customer_type}`,

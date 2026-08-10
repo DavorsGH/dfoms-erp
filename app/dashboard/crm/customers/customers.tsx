@@ -13,9 +13,15 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../scrollable-table";
-import { inputClassName } from "../../hr-payroll/hr-register-utils";
+import { formatDate, inputClassName } from "../../hr-payroll/hr-register-utils";
+import {
+  getEmployeeDisplayName,
+  type HrEmployee,
+} from "../../hr-payroll/employee-utils";
 import {
   CONTRACT_STATUS_OPTIONS,
+  isContractExpired,
+  isContractRenewalDue,
   nullableText,
 } from "../../operations/operations-register-utils";
 import {
@@ -31,11 +37,11 @@ import {
   allocateClientId,
   allocateContractNumber,
 } from "./customer-contract-api";
-import type { HrEmployee } from "../../hr-payroll/employee-utils";
 
 type CustomersProps = {
   initialCustomers: CustomerEntry[];
   initialEmployees: HrEmployee[];
+  showOperationsColumns?: boolean;
   fetchError: string | null;
 };
 
@@ -62,6 +68,7 @@ const emptyForm = {
 export default function Customers({
   initialCustomers,
   initialEmployees,
+  showOperationsColumns = false,
   fetchError,
 }: CustomersProps) {
   const supabase = createClient();
@@ -74,6 +81,7 @@ export default function Customers({
   const [error, setError] = useState<string | null>(fetchError);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCustomerType, setFilterCustomerType] = useState("");
+  const [filterContractStatus, setFilterContractStatus] = useState("");
 
   useEffect(() => {
     setCustomers(initialCustomers);
@@ -89,9 +97,16 @@ export default function Customers({
         return false;
       }
 
+      if (
+        filterContractStatus &&
+        (customer.contract_status ?? "") !== filterContractStatus
+      ) {
+        return false;
+      }
+
       return true;
     });
-  }, [customers, filterCustomerType, filterStatus]);
+  }, [customers, filterCustomerType, filterContractStatus, filterStatus]);
 
   async function refreshCustomers() {
     const { data, error: refreshError } = await supabase
@@ -310,6 +325,25 @@ export default function Customers({
               ))}
             </select>
           </div>
+          {showOperationsColumns ? (
+            <div className="min-w-[180px]">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Filter by Contract Status
+              </label>
+              <select
+                value={filterContractStatus}
+                onChange={(event) => setFilterContractStatus(event.target.value)}
+                className={inputClassName}
+              >
+                <option value="">All contract statuses</option>
+                {CONTRACT_STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Link
@@ -610,6 +644,15 @@ export default function Customers({
               <th className={scrollableTableThClassName}>Phone</th>
               <th className={scrollableTableThClassName}>Customer Type</th>
               <th className={scrollableTableThClassName}>Status</th>
+              {showOperationsColumns ? (
+                <>
+                  <th className={scrollableTableThClassName}>Contract Status</th>
+                  <th className={scrollableTableThClassName}>Contract End Date</th>
+                  <th className={scrollableTableThClassName}>
+                    Assigned Supervisor
+                  </th>
+                </>
+              ) : null}
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
           </thead>
@@ -617,25 +660,54 @@ export default function Customers({
             {filteredCustomers.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
-                  className="px-4 py-8 text-center text-sm text-slate-500"
-                >
+                    colSpan={showOperationsColumns ? 10 : 7}
+                    className="px-4 py-8 text-center text-sm text-slate-500"
+                  >
                   No customers match the selected filters.
                 </td>
               </tr>
             ) : (
-              filteredCustomers.map((customer, index) => (
+              filteredCustomers.map((customer, index) => {
+                const renewalDue = showOperationsColumns
+                  ? isContractRenewalDue(customer.contract_end)
+                  : false;
+                const expired = showOperationsColumns
+                  ? isContractExpired(customer.contract_end)
+                  : false;
+                const rowClassName =
+                  showOperationsColumns && renewalDue
+                    ? expired
+                      ? "bg-red-50 text-slate-700"
+                      : "bg-amber-50 text-slate-700"
+                    : getStripedRowClassName(index);
+
+                return (
                 <tr
                   key={customer.client_id}
-                  className={getStripedRowClassName(index)}
+                  className={rowClassName}
                 >
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
-                    <Link
-                      href={`/dashboard/crm/customers/${customer.client_id}`}
-                      className="text-[#0f2744] underline-offset-2 hover:underline"
-                    >
-                      {customer.client_name}
-                    </Link>
+                    <span className="inline-flex items-center gap-2">
+                      {showOperationsColumns && renewalDue ? (
+                        <span
+                          aria-hidden
+                          className={expired ? "text-red-600" : "text-amber-600"}
+                          title={
+                            expired
+                              ? "Contract expired — renewal needed"
+                              : "Contract ending within 30 days"
+                          }
+                        >
+                          ⚠
+                        </span>
+                      ) : null}
+                      <Link
+                        href={`/dashboard/crm/customers/${customer.client_id}`}
+                        className="text-[#0f2744] underline-offset-2 hover:underline"
+                      >
+                        {customer.client_name}
+                      </Link>
+                    </span>
                   </td>
                   <td className="px-4 py-3">{customer.contact_person ?? "—"}</td>
                   <td className="px-4 py-3">{customer.email ?? "—"}</td>
@@ -646,13 +718,34 @@ export default function Customers({
                   <td className="px-4 py-3">
                     {getCustomerStatusLabel(customer.status)}
                   </td>
+                  {showOperationsColumns ? (
+                    <>
+                      <td className="px-4 py-3">
+                        {customer.contract_status ?? "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {customer.contract_end
+                          ? formatDate(customer.contract_end)
+                          : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {customer.assigned_supervisor
+                          ? getEmployeeDisplayName(
+                              initialEmployees,
+                              customer.assigned_supervisor,
+                            )
+                          : "—"}
+                      </td>
+                    </>
+                  ) : null}
                   <RegisterRowActions
                     onEdit={() => openEditForm(customer)}
                     onDelete={() => handleDelete(customer.client_id)}
                     deleting={deletingId === customer.client_id}
                   />
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

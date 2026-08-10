@@ -64,7 +64,7 @@ type FormState = {
   name: string;
   template_id: string;
   audienceType: AudienceType;
-  customerType: "service_client" | "digital_subscriber" | "both";
+  customerType: "service_client" | "digital_subscriber" | "product_client" | "all";
   /** Fallback when viewing a non-draft whose template is no longer active. */
   lockedChannel: CampaignChannel | null;
   lockedTemplateName: string | null;
@@ -748,8 +748,8 @@ export default function Campaigns({
                   >
                     {AUDIENCE_CUSTOMER_TYPE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
-                        {option.value === "both"
-                          ? "Service Customer + Digital Subscriber (tagged both)"
+                        {option.value === "all"
+                          ? "All (multi-type customers)"
                           : option.label}
                       </option>
                     ))}

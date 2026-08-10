@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDate } from "../finance/income-register-utils";
 import { inputClassName } from "../employees/employee-record-utils";
-import { getStripedRowClassName } from "../finance/register-row-actions";
+import {
+  confirmProductPurchaseEdit,
+  getStripedRowClassName,
+} from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -61,6 +64,7 @@ export default function ProductPurchases({
   const [suppliers] = useState(initialSuppliers);
   const [paymentMethods] = useState(initialPaymentMethods);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingPurchaseId, setEditingPurchaseId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(() => emptyProductPurchaseForm());
   const [loading, setLoading] = useState(false);
   const [deletingPurchaseId, setDeletingPurchaseId] = useState<string | null>(null);
@@ -104,7 +108,26 @@ export default function ProductPurchases({
   }
 
   function openModal() {
+    setEditingPurchaseId(null);
     setForm(emptyProductPurchaseForm());
+    setModalOpen(true);
+    setError(null);
+    setSuccess(null);
+  }
+
+  function openEditModal(purchase: ProductPurchaseListRow) {
+    setEditingPurchaseId(purchase.id);
+    setForm({
+      product_id: purchase.product_id,
+      supplier_id: purchase.supplier_id ?? "",
+      purchase_date: purchase.purchase_date.slice(0, 10),
+      quantity: String(purchase.quantity),
+      cost_per_unit: String(purchase.cost_per_unit),
+      payment_method: purchase.payment_method,
+      notes: purchase.notes ?? "",
+      manufacturing_date: "",
+      expiration_date: "",
+    });
     setModalOpen(true);
     setError(null);
     setSuccess(null);
@@ -112,6 +135,7 @@ export default function ProductPurchases({
 
   function closeModal() {
     setModalOpen(false);
+    setEditingPurchaseId(null);
     setForm(emptyProductPurchaseForm());
   }
 
@@ -125,6 +149,44 @@ export default function ProductPurchases({
     if (validationError) {
       setError(validationError);
       setLoading(false);
+      return;
+    }
+
+    if (editingPurchaseId) {
+      if (!confirmProductPurchaseEdit()) {
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch(`/api/product-purchases/${editingPurchaseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { product_purchase?: ProductPurchaseListRow; error?: string }
+        | null;
+
+      if (!response.ok) {
+        setError(payload?.error ?? "Unable to update purchase.");
+        setLoading(false);
+        return;
+      }
+
+      if (payload?.product_purchase) {
+        const normalized = normalizeProductPurchaseRow(payload.product_purchase);
+        setPurchases((current) =>
+          current.map((row) => (row.id === normalized.id ? normalized : row)),
+        );
+      } else {
+        await refreshPurchases();
+      }
+
+      setSuccess("Purchase updated.");
+      closeModal();
+      setLoading(false);
+      router.refresh();
       return;
     }
 
@@ -296,20 +358,32 @@ export default function ProductPurchases({
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setError(null);
-                            setSuccess(null);
-                            setConfirmingPurchaseId(purchase.id);
-                          }}
-                          disabled={deletingPurchaseId === purchase.id}
-                          className={deleteButtonClassName}
-                        >
-                          {deletingPurchaseId === purchase.id
-                            ? "Deleting…"
-                            : "Delete"}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(purchase)}
+                            disabled={
+                              deletingPurchaseId === purchase.id || loading
+                            }
+                            className={secondaryButtonClassName}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError(null);
+                              setSuccess(null);
+                              setConfirmingPurchaseId(purchase.id);
+                            }}
+                            disabled={deletingPurchaseId === purchase.id}
+                            className={deleteButtonClassName}
+                          >
+                            {deletingPurchaseId === purchase.id
+                              ? "Deleting…"
+                              : "Delete"}
+                          </button>
+                        </div>
                       )}
                     </td>
                   ) : null}
@@ -334,11 +408,12 @@ export default function ProductPurchases({
                   id="product-purchase-form-title"
                   className="text-lg font-semibold text-[#0f2744]"
                 >
-                  Record Purchase
+                  {editingPurchaseId ? "Edit Purchase" : "Record Purchase"}
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
-                  Creates stock, payable/cash postings, and a purchase history
-                  row via the database RPC.
+                  {editingPurchaseId
+                    ? "Updates stock, payable/cash postings, and purchase history via the database RPC."
+                    : "Creates stock, payable/cash postings, and a purchase history row via the database RPC."}
                 </p>
               </div>
               <button
@@ -364,6 +439,7 @@ export default function ProductPurchases({
                       product_id: event.target.value,
                     }))
                   }
+                  disabled={Boolean(editingPurchaseId)}
                   className={inputClassName}
                 >
                   <option value="">Select purchased product</option>
@@ -546,7 +622,11 @@ export default function ProductPurchases({
                   disabled={loading}
                   className={primaryButtonClassName}
                 >
-                  {loading ? "Saving…" : "Record Purchase"}
+                  {loading
+                  ? "Saving…"
+                  : editingPurchaseId
+                    ? "Save Changes"
+                    : "Record Purchase"}
                 </button>
                 <button
                   type="button"

@@ -136,3 +136,60 @@ export function getUniqueProductCategories(
 
   return [...new Set(categories)].sort((a, b) => a.localeCompare(b));
 }
+
+export type CrmProductFormState = {
+  name: string;
+  product_type: string;
+  category: string;
+  unit_price: string;
+  billing_cycle: string;
+  is_active: boolean;
+};
+
+export const EMPTY_CRM_PRODUCT_FORM: CrmProductFormState = {
+  name: "",
+  product_type: DEFAULT_PRODUCT_TYPE,
+  category: "",
+  unit_price: "",
+  billing_cycle: "",
+  is_active: true,
+};
+
+export function crmProductEntryToForm(product: CrmProductEntry): CrmProductFormState {
+  return {
+    name: product.name,
+    product_type: product.product_type ?? DEFAULT_PRODUCT_TYPE,
+    category: product.category ?? "",
+    unit_price:
+      product.unit_price == null ? "" : String(product.unit_price),
+    billing_cycle: product.billing_cycle ?? "",
+    is_active: product.is_active ?? true,
+  };
+}
+
+export function buildCrmProductSavePayload(form: CrmProductFormState): {
+  name: string;
+  product_type: string;
+  category: string | null;
+  unit_price: number;
+  billing_cycle: string | null;
+  is_active: boolean;
+} {
+  const parsedPrice = Number(form.unit_price);
+
+  return {
+    name: form.name.trim(),
+    product_type: form.product_type,
+    category: form.category.trim() || null,
+    unit_price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
+    billing_cycle: form.billing_cycle.trim() || null,
+    is_active: form.is_active,
+  };
+}
+
+export function isCatalogProductEditable(product: CrmProductEntry): boolean {
+  return (
+    !isErpSuiteCatalogProduct(product) &&
+    !isPlatformUnitActivationCatalogProduct(product)
+  );
+}

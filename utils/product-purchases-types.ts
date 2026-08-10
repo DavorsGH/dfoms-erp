@@ -178,3 +178,6 @@ export function calculateProductPurchaseTotal(
 
 export const PRODUCT_PURCHASE_DELETE_CONFIRM_MESSAGE =
   "Delete this purchase? This will reverse the stock increase and remove the linked payable entry. This cannot be undone.";
+
+export const PRODUCT_PURCHASE_EDIT_CONFIRM_MESSAGE =
+  "Save changes to this purchase? Stock, average cost, and linked financial postings may be adjusted.";

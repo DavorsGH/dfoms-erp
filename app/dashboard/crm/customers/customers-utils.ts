@@ -29,7 +29,8 @@ export const DEFAULT_CUSTOMER_TYPE = "service_client";
 export const CUSTOMER_TYPE_OPTIONS = [
   { value: "service_client", label: "Service Customer" },
   { value: "digital_subscriber", label: "Digital Subscriber" },
-  { value: "both", label: "Both" },
+  { value: "product_client", label: "Product Customer" },
+  { value: "all", label: "All" },
 ] as const;
 
 export const CUSTOMER_STATUS_OPTIONS = [
@@ -40,6 +41,7 @@ export const CUSTOMER_STATUS_OPTIONS = [
 
 export function getCustomerTypeLabel(value: string | null | undefined): string {
   if (!value) return "—";
+  if (value === "both") return "All";
   const match = CUSTOMER_TYPE_OPTIONS.find((option) => option.value === value);
   return match?.label ?? value;
 }

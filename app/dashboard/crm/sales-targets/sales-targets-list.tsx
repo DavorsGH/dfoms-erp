@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
+import { createClient } from "@/utils/supabase/client";
+import RegisterRowActions, {
+  confirmDeleteEntry,
+  getStripedRowClassName,
+} from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -35,10 +40,36 @@ export default function SalesTargetsList({
   initialTargets = [],
   fetchError,
 }: SalesTargetsListProps) {
+  const router = useRouter();
+  const supabase = createClient();
   const targets = initialTargets
     .filter((row): row is SalesTargetListRow => Boolean(row?.id))
     .map(normalizeSalesTargetRow);
-  const [error] = useState<string | null>(fetchError);
+  const [error, setError] = useState<string | null>(fetchError);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDelete(targetId: string) {
+    if (!confirmDeleteEntry()) {
+      return;
+    }
+
+    setDeletingId(targetId);
+    setError(null);
+
+    const { error: deleteError } = await supabase
+      .from("sales_targets")
+      .delete()
+      .eq("id", targetId);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      setDeletingId(null);
+      return;
+    }
+
+    setDeletingId(null);
+    router.refresh();
+  }
 
   return (
     <div className="space-y-6">
@@ -98,14 +129,11 @@ export default function SalesTargetsList({
                     <td className="px-4 py-3 text-sm">
                       {target.unit_target ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      <Link
-                        href={`/dashboard/crm/sales-targets/${target.id}/edit`}
-                        className={secondaryButtonClassName}
-                      >
-                        Edit
-                      </Link>
-                    </td>
+                    <RegisterRowActions
+                      onEdit={() => router.push(`/dashboard/crm/sales-targets/${target.id}/edit`)}
+                      onDelete={() => void handleDelete(target.id)}
+                      deleting={deletingId === target.id}
+                    />
                   </tr>
                 ))
               )}

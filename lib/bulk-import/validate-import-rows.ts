@@ -1022,6 +1022,17 @@ function collectFieldErrors(
         continue;
       }
 
+      if (
+        fieldKey === "customer_type" &&
+        !isBlank(mappedData.customer_type) &&
+        String(mappedData.customer_type).trim().toLowerCase() === "both"
+      ) {
+        errors.push(
+          `${fieldLabel(fieldKey)} value "both" is no longer valid; use "all" instead`,
+        );
+        continue;
+      }
+
       const enumError = validateEnumField(
         fieldKey,
         mappedData[fieldKey],

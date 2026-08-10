@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { label: "Duty Roster", href: "/dashboard/operations/duty-roster" },
   { label: "Roster History", href: "/dashboard/operations/roster-history" },
-  { label: "Customers", href: "/dashboard/operations/clients" },
   { label: "Sites", href: "/dashboard/operations/sites" },
   { label: "Consumables", href: "/dashboard/operations/consumables" },
   { label: "Work Orders", href: "/dashboard/operations/work-orders" },
@@ -32,14 +31,29 @@ const navItems = [
   },
 ] as const;
 
-export default function OperationsNav() {
+type OperationsNavProps = {
+  showCustomerList?: boolean;
+};
+
+export default function OperationsNav({
+  showCustomerList = false,
+}: OperationsNavProps) {
   const pathname = usePathname();
+  const visibleItems = showCustomerList
+    ? [
+        { label: "Customer List", href: "/dashboard/crm/customers" },
+        ...navItems,
+      ]
+    : navItems;
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {navItems.map((item) => {
-          const active = pathname === item.href;
+        {visibleItems.map((item) => {
+          const active =
+            item.href === "/dashboard/crm/customers"
+              ? pathname.startsWith("/dashboard/crm/customers")
+              : pathname === item.href;
 
           return (
             <Link

@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
   getEmployeeDisplayName,
   HR_EMPLOYEE_SELECT,
@@ -45,6 +47,7 @@ type CustomerDetailPageProps = {
 export default async function CustomerDetailPage({
   params,
 }: CustomerDetailPageProps) {
+  const role = (await getCurrentUserRole()) as AppRole | null;
   const { clientId } = await params;
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -132,7 +135,10 @@ export default async function CustomerDetailPage({
     null;
 
   return (
-    <CrmShell sectionTitle="Customer List">
+    <CrmShell
+      sectionTitle="Customer List"
+      customerListOnly={role === "supervisor"}
+    >
       <div className="mb-6 flex items-center justify-between gap-4">
         <h3 className="text-lg font-semibold text-[#0f2744]">Customer 360</h3>
         <Link

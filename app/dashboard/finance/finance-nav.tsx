@@ -8,21 +8,17 @@ const navItems = [
   { label: "Customer Invoices", href: "/dashboard/finance/client-invoices" },
   { label: "Expense Register", href: "/dashboard/finance/expenses" },
   { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
-  { label: "Statutory Ledger", href: "/dashboard/finance/tax-ledger" },
   { label: "Fixed Assets", href: "/dashboard/finance/fixed-assets" },
   {
     label: "Manual Financial Entries",
     href: "/dashboard/finance/manual-financial-entries",
   },
+  { label: "Statutory Ledger", href: "/dashboard/finance/tax-ledger" },
   { label: "Profit & Loss", href: "/dashboard/finance/profit-loss" },
   { label: "Cash Flow", href: "/dashboard/finance/cash-flow" },
   {
     label: "Balance Sheet",
     href: "/dashboard/finance/balance-sheet",
-  },
-  {
-    label: "Inventory Go-Live",
-    href: "/dashboard/finance/inventory-go-live",
   },
 ];
 

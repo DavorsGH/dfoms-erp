@@ -19,7 +19,7 @@ export const QUOTE_STATUSES = [
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 
 export const SALES_QUOTE_LIST_SELECT =
-  "id, tenant_id, client_id, opportunity_id, quote_number, quote_type, quote_date, expiry_date, bill_to_name, subtotal, discount_amount, total_amount, status, created_at, client:customers(client_id, client_name)" as const;
+  "id, tenant_id, client_id, opportunity_id, quote_number, quote_type, quote_date, expiry_date, bill_to_name, subtotal, discount_amount, total_amount, status, converted_invoice_id, created_at, client:customers(client_id, client_name)" as const;
 
 export const SALES_QUOTE_HEADER_SELECT =
   "id, tenant_id, client_id, opportunity_id, quote_number, quote_type, quote_date, expiry_date, bill_to_name, bill_to_address, subtotal, discount_amount, total_amount, status, notes, converted_invoice_id, created_at, updated_at" as const;
@@ -46,6 +46,7 @@ export type SalesQuoteListRow = {
   discount_amount: number;
   total_amount: number;
   status: QuoteStatus;
+  converted_invoice_id: string | null;
   created_at: string;
   client?: SalesQuoteCustomer | SalesQuoteCustomer[] | null;
 };

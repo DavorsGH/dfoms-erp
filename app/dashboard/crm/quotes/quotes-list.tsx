@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { createClient } from "@/utils/supabase/client";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -29,13 +31,67 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+const deleteButtonClassName =
+  "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+function canDeleteQuote(quote: SalesQuoteListRow): boolean {
+  return quote.status !== "converted" && !quote.converted_invoice_id;
+}
+
 export default function QuotesList({
   initialQuotes,
   fetchError,
 }: QuotesListProps) {
+  const router = useRouter();
+  const supabase = createClient();
   const quotes = initialQuotes.map(normalizeSalesQuoteListRow);
   const legacyServiceQuotes = quotes.filter((quote) => quote.quote_type === "service");
-  const [error] = useState<string | null>(fetchError);
+  const [error, setError] = useState<string | null>(fetchError);
+  const [deleteTarget, setDeleteTarget] = useState<SalesQuoteListRow | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDeleteQuote() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    if (!canDeleteQuote(deleteTarget)) {
+      setError(
+        "Cannot delete a quote that has been converted to an invoice or sale.",
+      );
+      setDeleteTarget(null);
+      return;
+    }
+
+    setDeletingId(deleteTarget.id);
+    setError(null);
+
+    const { error: lineDeleteError } = await supabase
+      .from("sales_quote_line_items")
+      .delete()
+      .eq("quote_id", deleteTarget.id);
+
+    if (lineDeleteError) {
+      setError(lineDeleteError.message);
+      setDeletingId(null);
+      return;
+    }
+
+    const { error: quoteDeleteError } = await supabase
+      .from("sales_quotes")
+      .delete()
+      .eq("id", deleteTarget.id);
+
+    if (quoteDeleteError) {
+      setError(quoteDeleteError.message);
+      setDeletingId(null);
+      return;
+    }
+
+    setDeleteTarget(null);
+    setDeletingId(null);
+    router.refresh();
+  }
 
   return (
     <div className="space-y-6">
@@ -95,6 +151,7 @@ export default function QuotesList({
                   const clientName = Array.isArray(quote.client)
                     ? quote.client[0]?.client_name
                     : quote.client?.client_name;
+                  const deleteAllowed = canDeleteQuote(quote);
 
                   return (
                     <tr key={quote.id} className={getStripedRowClassName(index)}>
@@ -136,6 +193,16 @@ export default function QuotesList({
                               Edit
                             </Link>
                           ) : null}
+                          {deleteAllowed ? (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(quote)}
+                              disabled={deletingId === quote.id}
+                              className={deleteButtonClassName}
+                            >
+                              {deletingId === quote.id ? "Deleting…" : "Delete"}
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -146,6 +213,50 @@ export default function QuotesList({
           </table>
         </ScrollableTable>
       </section>
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-quote-title"
+            className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl"
+          >
+            <h3
+              id="delete-quote-title"
+              className="text-lg font-semibold text-[#0f2744]"
+            >
+              Delete quote?
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This will permanently remove quote{" "}
+              <span className="font-medium text-slate-800">
+                {deleteTarget.quote_number}
+              </span>{" "}
+              and its line items. Deletion is blocked once a quote has been converted
+              to an invoice or sale.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={Boolean(deletingId)}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteQuote()}
+                disabled={Boolean(deletingId)}
+                className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingId ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

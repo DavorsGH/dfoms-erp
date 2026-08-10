@@ -23,32 +23,32 @@ export const REPORT_NAV_CATEGORIES: ReportNavCategory[] = [
         href: "/dashboard/reports/finance/monthly-pl",
       },
       {
-        label: "Monthly Balance Sheet",
-        href: "/dashboard/reports/finance/monthly-balance-sheet",
-      },
-      {
         label: "Cash Flow Statement",
         href: "/dashboard/reports/finance/cash-flow",
+      },
+      {
+        label: "Monthly Balance Sheet",
+        href: "/dashboard/reports/finance/monthly-balance-sheet",
       },
       {
         label: "Accounts Receivable Aging",
         href: "/dashboard/reports/finance/ar-aging",
       },
       {
-        label: "Statutory Liabilities Report",
-        href: "/dashboard/reports/finance/statutory-liabilities",
+        label: "Expense Report",
+        href: "/dashboard/reports/finance/expense-report",
       },
       {
         label: "Fixed Asset & Depreciation Schedule",
         href: "/dashboard/reports/finance/fixed-asset-schedule",
       },
       {
-        label: "Capital Contributions Summary",
-        href: "/dashboard/reports/finance/capital-contributions",
+        label: "Statutory Liabilities Report",
+        href: "/dashboard/reports/finance/statutory-liabilities",
       },
       {
-        label: "Expense Report",
-        href: "/dashboard/reports/finance/expense-report",
+        label: "Capital Contributions Summary",
+        href: "/dashboard/reports/finance/capital-contributions",
       },
     ],
   },
