@@ -9,6 +9,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   emptySupplierForm,
   formatSupplierStatus,
@@ -287,6 +288,12 @@ export default function Suppliers({
           </button>
         ) : null}
       </div>
+
+      <FilteredListCount
+        filteredCount={suppliers.length}
+        totalCount={suppliers.length}
+        itemSingular="supplier"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

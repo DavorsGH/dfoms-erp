@@ -14,6 +14,9 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../scrollable-table";
+import FilteredListCount, {
+  anyRegisterColumnFiltersActive,
+} from "../../filtered-list-count";
 import {
   formatSaleAmount,
   formatSaleDate,
@@ -281,6 +284,20 @@ export default function Sales({ initialSales, fetchError }: SalesProps) {
           {fetchError}
         </p>
       ) : null}
+
+      <FilteredListCount
+        filteredCount={visibleSales.length}
+        totalCount={initialSales.length}
+        itemSingular="sale"
+        hasActiveFilters={anyRegisterColumnFiltersActive(
+          customerFilter,
+          productFilter,
+          paymentStatusFilter,
+          paymentMethodFilter,
+          sourceFilter,
+          statusFilter,
+        )}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

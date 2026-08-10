@@ -13,6 +13,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
+import FilteredListCount from "@/app/dashboard/filtered-list-count";
 import {
   formatSalesTargetEmployee,
   formatSalesTargetPeriodRange,
@@ -86,6 +87,14 @@ export default function SalesTargetsList({
       </div>
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <FilteredListCount
+          filteredCount={targets.length}
+          totalCount={targets.length}
+          itemSingular="sales target"
+          itemPlural="sales targets"
+          className="mb-4"
+        />
+
         <ScrollableTable>
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>

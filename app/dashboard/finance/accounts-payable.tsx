@@ -40,6 +40,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 
 type AccountsPayableProps = {
   initialEntries: AccountsPayableEntry[];
@@ -917,6 +918,12 @@ export default function AccountsPayable({
           </form>
         </section>
       ) : null}
+
+      <FilteredListCount
+        filteredCount={entries.length}
+        totalCount={entries.length}
+        itemSingular="entry"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

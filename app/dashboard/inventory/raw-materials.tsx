@@ -18,6 +18,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
@@ -573,6 +574,12 @@ export default function RawMaterials({
           </section>
         ) : null}
 
+        <FilteredListCount
+          filteredCount={materials.length}
+          totalCount={materials.length}
+          itemSingular="material"
+        />
+
         <ScrollableTable>
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
@@ -985,6 +992,12 @@ export default function RawMaterials({
             </form>
           </section>
         ) : null}
+
+        <FilteredListCount
+          filteredCount={purchases.length}
+          totalCount={purchases.length}
+          itemSingular="purchase"
+        />
 
         <ScrollableTable>
           <table className={scrollableTableClassName}>

@@ -12,6 +12,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import { getEmployeeDisplayName, type HrEmployee } from "./employee-utils";
 import {
   APPROVAL_STATUS_OPTIONS,
@@ -438,6 +439,13 @@ export default function LeaveManagement({
           </form>
         </section>
       )}
+
+      <FilteredListCount
+        filteredCount={filteredEntries.length}
+        totalCount={entries.length}
+        itemSingular="request"
+        hasActiveFilters={Boolean(filterEmployee || filterStatus)}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

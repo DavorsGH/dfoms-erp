@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
+import FilteredListCount from "@/app/dashboard/filtered-list-count";
 import {
   formatQuoteDate,
   formatQuoteMoney,
@@ -123,6 +124,13 @@ export default function QuotesList({
       </div>
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <FilteredListCount
+          filteredCount={quotes.length}
+          totalCount={quotes.length}
+          itemSingular="quote"
+          className="mb-4"
+        />
+
         <ScrollableTable>
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>

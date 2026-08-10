@@ -29,6 +29,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 
 type FixedAssetsProps = {
   initialAssets: FixedAssetEntry[];
@@ -707,6 +708,12 @@ export default function FixedAssets({
           </form>
         </section>
       )}
+
+      <FilteredListCount
+        filteredCount={assets.length}
+        totalCount={assets.length}
+        itemSingular="asset"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

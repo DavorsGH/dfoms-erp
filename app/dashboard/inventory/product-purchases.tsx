@@ -13,6 +13,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
@@ -281,6 +282,12 @@ export default function ProductPurchases({
           </button>
         ) : null}
       </div>
+
+      <FilteredListCount
+        filteredCount={purchases.length}
+        totalCount={purchases.length}
+        itemSingular="purchase"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

@@ -27,6 +27,9 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount, {
+  anyRegisterColumnFiltersActive,
+} from "../filtered-list-count";
 import { isPaidStatus } from "../finance/accrued-wages-utils";
 import {
   buildVoidProductSaleConfirmMessage,
@@ -792,6 +795,18 @@ export default function ProductSales({
           </form>
         </section>
       )}
+
+      <FilteredListCount
+        filteredCount={visibleEntries.length}
+        totalCount={entries.length}
+        itemSingular="sale"
+        hasActiveFilters={anyRegisterColumnFiltersActive(
+          customerFilter,
+          productFilter,
+          paymentStatusFilter,
+          statusFilter,
+        )}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

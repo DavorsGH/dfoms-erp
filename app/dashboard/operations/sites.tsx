@@ -11,6 +11,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   getEmployeeDisplayName,
   type HrEmployee,
@@ -480,6 +481,13 @@ export default function Sites({
           </form>
         </section>
       ) : null}
+
+      <FilteredListCount
+        filteredCount={filteredSites.length}
+        totalCount={sites.length}
+        itemSingular="site"
+        hasActiveFilters={Boolean(filterClient || filterRiskLevel)}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

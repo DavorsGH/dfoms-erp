@@ -62,6 +62,7 @@ import {
   type EmploymentHistoryEntry,
 } from "./employment-history-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import FilteredListCount from "../filtered-list-count";
 
 async function resolveChangedByLabel(
   supabase: SupabaseClient,
@@ -443,6 +444,9 @@ export default function EmployeesDirectory({
   const [filterEmploymentType, setFilterEmploymentType] = useState("");
   const [filterPosition, setFilterPosition] = useState("");
   const [filterShift, setFilterShift] = useState("");
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [sortColumn, setSortColumn] = useState<SortColumn>(DEFAULT_SORT_COLUMN);
   const [sortDirection, setSortDirection] = useState<SortDirection>(
     DEFAULT_SORT_DIRECTION,
@@ -643,6 +647,68 @@ export default function EmployeesDirectory({
     sortColumn,
     sortDirection,
   ]);
+
+  const hasActiveFilters = Boolean(
+    searchName.trim() ||
+      filterStatus ||
+      filterDepartment ||
+      filterEmploymentType ||
+      filterPosition ||
+      filterShift,
+  );
+
+  const tableColumnCount = (canViewSalary ? 12 : 9) + 1;
+
+  const allVisibleSelected =
+    displayEmployees.length > 0 &&
+    displayEmployees.every((employee) =>
+      selectedEmployeeIds.has(employee.employee_id),
+    );
+
+  const someVisibleSelected =
+    displayEmployees.some((employee) =>
+      selectedEmployeeIds.has(employee.employee_id),
+    ) && !allVisibleSelected;
+
+  const selectedCount = selectedEmployeeIds.size;
+
+  useEffect(() => {
+    const visibleIds = new Set(
+      displayEmployees.map((employee) => employee.employee_id),
+    );
+    setSelectedEmployeeIds((current) => {
+      const next = new Set(
+        [...current].filter((employeeId) => visibleIds.has(employeeId)),
+      );
+      if (next.size === current.size) {
+        return current;
+      }
+      return next;
+    });
+  }, [displayEmployees]);
+
+  function toggleEmployeeSelection(employeeId: string) {
+    setSelectedEmployeeIds((current) => {
+      const next = new Set(current);
+      if (next.has(employeeId)) {
+        next.delete(employeeId);
+      } else {
+        next.add(employeeId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedEmployeeIds(new Set());
+      return;
+    }
+
+    setSelectedEmployeeIds(
+      new Set(displayEmployees.map((employee) => employee.employee_id)),
+    );
+  }
 
   function handleSort(column: SortColumn) {
     if (sortColumn === column) {
@@ -1034,6 +1100,11 @@ export default function EmployeesDirectory({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {selectedCount > 0 ? (
+            <span className="text-sm font-medium text-slate-700">
+              {selectedCount} selected
+            </span>
+          ) : null}
           <Link
             href="/dashboard/bulk-import?type=employee"
             className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
@@ -1157,6 +1228,13 @@ export default function EmployeesDirectory({
           </select>
         </div>
       </div>
+
+      <FilteredListCount
+        filteredCount={filteredEmployees.length}
+        totalCount={employees.length}
+        itemSingular="employee"
+        hasActiveFilters={hasActiveFilters}
+      />
 
       {showForm && (
         <section
@@ -1853,6 +1931,20 @@ export default function EmployeesDirectory({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
+              <th className={scrollableTableThClassName}>
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  ref={(input) => {
+                    if (input) {
+                      input.indeterminate = someVisibleSelected;
+                    }
+                  }}
+                  onChange={toggleSelectAllVisible}
+                  aria-label="Select all visible employees"
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+              </th>
               <th className={scrollableTableThClassName}>Photo</th>
               <SortableHeader
                 label="Staff ID"
@@ -1936,7 +2028,7 @@ export default function EmployeesDirectory({
             {displayEmployees.length === 0 ? (
               <tr>
                 <td
-                  colSpan={12}
+                  colSpan={tableColumnCount}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No employees match the current filters.
@@ -1947,13 +2039,30 @@ export default function EmployeesDirectory({
                 const listPay =
                   listCompensationByEmployeeId[employee.employee_id];
                 const currentNetPay = netPayByEmployeeId[employee.employee_id];
+                const isSelected = selectedEmployeeIds.has(employee.employee_id);
 
                 return (
                   <tr
                     key={employee.employee_id}
-                    className={`${getStripedRowClassName(index)} cursor-pointer hover:bg-slate-100`}
+                    className={`${getStripedRowClassName(index)} cursor-pointer hover:bg-slate-100 ${
+                      isSelected ? "bg-slate-100" : ""
+                    }`}
                     onClick={() => openEmployeeForm(employee)}
                   >
+                    <td
+                      className="px-4 py-3"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() =>
+                          toggleEmployeeSelection(employee.employee_id)
+                        }
+                        aria-label={`Select ${employee.full_name}`}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <EmployeePhotoAvatar
                         photoUrl={employee.photo_url}

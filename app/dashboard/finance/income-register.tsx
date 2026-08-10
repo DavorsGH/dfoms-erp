@@ -49,6 +49,9 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount, {
+  anyRegisterColumnFiltersActive,
+} from "../filtered-list-count";
 
 type IncomeRegisterProps = {
   initialEntries: IncomeRegisterEntry[];
@@ -782,6 +785,16 @@ export default function IncomeRegister({
           </form>
         </section>
       )}
+
+      <FilteredListCount
+        filteredCount={visibleEntries.length}
+        totalCount={entries.length}
+        itemSingular="entry"
+        hasActiveFilters={anyRegisterColumnFiltersActive(
+          serviceCategoryFilter,
+          customerNameFilter,
+        )}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

@@ -12,6 +12,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   MANUAL_ENTRY_FIELD_DESCRIPTIONS,
   MANUAL_ENTRY_FIELD_SECTIONS,
@@ -452,6 +453,12 @@ export default function ManualFinancialEntries({
           </form>
         </section>
       )}
+
+      <FilteredListCount
+        filteredCount={entries.length}
+        totalCount={entries.length}
+        itemSingular="entry"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

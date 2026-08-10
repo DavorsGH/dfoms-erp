@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { ServiceType } from "../service-types";
+import FilteredListCount from "../filtered-list-count";
 
 type ServiceCategoriesProps = {
   initialCategories: ServiceType[];
@@ -106,6 +107,12 @@ export default function ServiceCategories({
           {loading ? "Adding…" : "Add"}
         </button>
       </form>
+
+      <FilteredListCount
+        filteredCount={categories.length}
+        totalCount={categories.length}
+        itemSingular="category"
+      />
 
       {categories.length === 0 ? (
         <p className="text-sm text-slate-500">No service categories yet.</p>

@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import type {
   ClientOption,
   SiteOption,
@@ -451,6 +452,13 @@ export default function UserAccounts({
           </button>
         </form>
       )}
+
+      <FilteredListCount
+        filteredCount={accounts.length}
+        totalCount={accounts.length}
+        itemSingular="user account"
+        itemPlural="user accounts"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

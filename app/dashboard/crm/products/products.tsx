@@ -11,6 +11,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
+import FilteredListCount from "@/app/dashboard/filtered-list-count";
 import { inputClassName } from "@/app/dashboard/hr-payroll/hr-register-utils";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import ProductsBulkImport from "./products-bulk-import";
@@ -408,6 +409,13 @@ export default function Products({
           </form>
         </section>
       ) : null}
+
+      <FilteredListCount
+        filteredCount={filteredProducts.length}
+        totalCount={catalogProducts.length}
+        itemSingular="product"
+        hasActiveFilters={Boolean(filterCategory)}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

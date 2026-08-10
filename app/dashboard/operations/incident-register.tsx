@@ -14,6 +14,7 @@ import ScrollableTable, {
   scrollableTableWrapTdClassName,
   scrollableTableWrapThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import type { HrEmployee } from "../hr-payroll/employee-utils";
 import { formatDate, inputClassName } from "../hr-payroll/hr-register-utils";
 import type { ClientEntry } from "./clients-utils";
@@ -614,6 +615,15 @@ export default function IncidentRegister({
           </form>
         </section>
       ) : null}
+
+      <FilteredListCount
+        filteredCount={filteredEntries.length}
+        totalCount={entries.length}
+        itemSingular="incident"
+        hasActiveFilters={Boolean(
+          filterClient || filterSeverity || filterStatus,
+        )}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   buildPeriodKey,
   findMonthEndCloseForKey,
@@ -1362,6 +1363,14 @@ export default function PayrollProcessing({
 
       {loading ? (
         <LoadingState label="Loading payroll workspace…" size="md" layout="section" />
+      ) : null}
+
+      {!loading ? (
+        <FilteredListCount
+          filteredCount={rows.length}
+          totalCount={rows.length}
+          itemSingular="employee"
+        />
       ) : null}
 
       <ScrollableTable>

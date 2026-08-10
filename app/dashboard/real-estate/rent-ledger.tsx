@@ -8,6 +8,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { LandlordListRow, LandlordType } from "./landlords-utils";
 import {
@@ -783,6 +784,13 @@ export default function RentLedger({
               </div>
             </form>
           ) : null}
+
+          <FilteredListCount
+            filteredCount={filteredRows.length}
+            totalCount={rows.length}
+            itemSingular="entry"
+            hasActiveFilters={Boolean(statusFilter)}
+          />
 
           <ScrollableTable>
             <table className={scrollableTableClassName}>

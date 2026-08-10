@@ -13,6 +13,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../scrollable-table";
+import FilteredListCount from "../../filtered-list-count";
 import { formatDate, inputClassName } from "../../hr-payroll/hr-register-utils";
 import {
   getEmployeeDisplayName,
@@ -634,6 +635,15 @@ export default function Customers({
           </form>
         </section>
       ) : null}
+
+      <FilteredListCount
+        filteredCount={filteredCustomers.length}
+        totalCount={customers.length}
+        itemSingular="customer"
+        hasActiveFilters={Boolean(
+          filterStatus || filterCustomerType || filterContractStatus,
+        )}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

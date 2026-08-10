@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { LandlordListRow } from "./landlords-utils";
 import {
@@ -708,6 +709,13 @@ export default function Inspections({
               </button>
             </form>
           ) : null}
+
+          <FilteredListCount
+            filteredCount={filteredRows.length}
+            totalCount={rows.length}
+            itemSingular="inspection"
+            hasActiveFilters={Boolean(typeFilter)}
+          />
 
           <ScrollableTable>
             <table className={scrollableTableClassName}>

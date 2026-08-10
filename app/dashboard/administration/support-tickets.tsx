@@ -8,6 +8,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import {
   formatSupportTicketStatus,
@@ -225,9 +226,12 @@ export default function SupportTicketsAdmin({
           </select>
         </label>
 
-        <p className="pb-2 text-sm text-slate-600">
-          {totalCount} ticket{totalCount === 1 ? "" : "s"}
-        </p>
+        <FilteredListCount
+          filteredCount={totalCount}
+          totalCount={totalCount}
+          itemSingular="ticket"
+          hasActiveFilters={Boolean(statusFilter || tenantFilter)}
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">

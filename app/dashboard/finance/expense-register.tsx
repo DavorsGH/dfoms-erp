@@ -60,6 +60,9 @@ import ScrollableTable, {
   scrollableTableWrapTdClassName,
   scrollableTableWrapThClassName,
 } from "../scrollable-table";
+import FilteredListCount, {
+  anyRegisterColumnFiltersActive,
+} from "../filtered-list-count";
 
 type ExpenseRegisterProps = {
   initialEntries: ExpenseRegisterEntry[];
@@ -1041,6 +1044,17 @@ export default function ExpenseRegister({
           </form>
         </section>
       )}
+
+      <FilteredListCount
+        filteredCount={visibleEntries.length}
+        totalCount={entries.length}
+        itemSingular="entry"
+        hasActiveFilters={anyRegisterColumnFiltersActive(
+          categoryFilter,
+          subCategoryFilter,
+          descriptionFilter,
+        )}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

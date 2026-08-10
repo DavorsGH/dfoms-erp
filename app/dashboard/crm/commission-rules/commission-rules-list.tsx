@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
+import FilteredListCount from "@/app/dashboard/filtered-list-count";
 import {
   formatCommissionRate,
   formatCommissionRuleTarget,
@@ -139,6 +140,13 @@ export default function CommissionRulesList({
       ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <FilteredListCount
+          filteredCount={rules.length}
+          totalCount={rules.length}
+          itemSingular="rule"
+          className="mb-4"
+        />
+
         <ScrollableTable>
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>

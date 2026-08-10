@@ -17,6 +17,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   CONSUMABLES_SELECT,
   deriveStockFields,
@@ -497,6 +498,12 @@ export default function ConsumablesRegister({
           </form>
         </section>
       )}
+
+      <FilteredListCount
+        filteredCount={entries.length}
+        totalCount={entries.length}
+        itemSingular="entry"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

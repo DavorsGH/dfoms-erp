@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import {
   LANDLORD_APPROVAL_STATUS_OPTIONS,
@@ -302,6 +303,15 @@ export default function Landlords({
           </div>
         </form>
       ) : null}
+
+      <FilteredListCount
+        filteredCount={filteredRows.length}
+        totalCount={rows.length}
+        itemSingular="landlord"
+        hasActiveFilters={Boolean(
+          filterApprovalStatus || filterLandlordType,
+        )}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

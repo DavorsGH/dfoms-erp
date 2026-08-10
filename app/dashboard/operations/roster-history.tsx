@@ -9,6 +9,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import type { RosterHistoryRecord } from "./duty-roster-utils";
 
 type RosterHistoryEmployee = {
@@ -115,6 +116,13 @@ export default function RosterHistory({
           </select>
         </div>
       </div>
+
+      <FilteredListCount
+        filteredCount={filteredHistory.length}
+        totalCount={initialHistory.length}
+        itemSingular="record"
+        hasActiveFilters={Boolean(rotationFilter || employeeFilter)}
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

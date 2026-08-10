@@ -8,6 +8,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
@@ -530,6 +531,12 @@ export default function ProductionBatches({
           </form>
         </section>
       ) : null}
+
+      <FilteredListCount
+        filteredCount={batches.length}
+        totalCount={batches.length}
+        itemSingular="batch"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

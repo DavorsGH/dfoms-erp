@@ -10,6 +10,7 @@ import ScrollableTable, {
   scrollableTableWrapTdClassName,
   scrollableTableWrapThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { LandlordListRow } from "./landlords-utils";
 import {
@@ -286,7 +287,15 @@ export default function ComplaintsView({
           Select a Davors-managed landlord to view tenant complaints.
         </p>
       ) : (
-        <ScrollableTable>
+        <>
+          <FilteredListCount
+            filteredCount={filteredRows.length}
+            totalCount={rows.length}
+            itemSingular="complaint"
+            hasActiveFilters={Boolean(statusFilter)}
+          />
+
+          <ScrollableTable>
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
@@ -384,6 +393,7 @@ export default function ComplaintsView({
             </tbody>
           </table>
         </ScrollableTable>
+        </>
       )}
     </div>
   );

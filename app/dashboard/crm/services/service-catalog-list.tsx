@@ -7,6 +7,7 @@ import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
 } from "@/app/dashboard/finance/register-row-actions";
+import FilteredListCount from "@/app/dashboard/filtered-list-count";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -311,6 +312,12 @@ export default function ServiceCatalogList({
       ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <FilteredListCount
+          className="mb-4"
+          filteredCount={services.length}
+          totalCount={services.length}
+          itemSingular="service"
+        />
         <ScrollableTable>
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>

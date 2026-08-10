@@ -9,6 +9,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
+import FilteredListCount from "@/app/dashboard/filtered-list-count";
 import {
   formatInvoiceDate,
   formatInvoiceMoney,
@@ -95,6 +96,13 @@ export default function ClientInvoicesList({
       </div>
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <FilteredListCount
+          filteredCount={invoices.length}
+          totalCount={invoices.length}
+          itemSingular="invoice"
+          className="mb-4"
+        />
+
         <ScrollableTable>
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>

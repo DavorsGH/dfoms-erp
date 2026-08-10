@@ -12,6 +12,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import {
   getEmployeeByStaffId,
   type HrEmployee,
@@ -326,11 +327,6 @@ export default function AttendanceRegister({
               ))}
             </select>
           </div>
-          <p className="pb-2 text-sm text-slate-600">
-            {loadingEntries
-              ? "Loading…"
-              : `${entries.length} entr${entries.length === 1 ? "y" : "ies"}`}
-          </p>
         </div>
         <div className="flex gap-2">
           <button
@@ -516,6 +512,12 @@ export default function AttendanceRegister({
           </form>
         </section>
       )}
+
+      <FilteredListCount
+        filteredCount={entries.length}
+        totalCount={entries.length}
+        itemSingular="entry"
+      />
 
       <ScrollableTable>
         <table className={scrollableTableClassName}>

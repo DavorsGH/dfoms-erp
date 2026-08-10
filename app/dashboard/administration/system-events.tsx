@@ -9,6 +9,7 @@ import ScrollableTable, {
   scrollableTableWrapTdClassName,
   scrollableTableWrapThClassName,
 } from "../scrollable-table";
+import FilteredListCount from "../filtered-list-count";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import type {
   SystemEventLogRow,
@@ -241,9 +242,12 @@ export default function SystemEventsViewer({
           </select>
         </label>
 
-        <p className="pb-2 text-sm text-slate-600">
-          {totalCount} event{totalCount === 1 ? "" : "s"}
-        </p>
+        <FilteredListCount
+          filteredCount={totalCount}
+          totalCount={totalCount}
+          itemSingular="event"
+          hasActiveFilters={Boolean(eventTypeFilter || statusFilter)}
+        />
       </div>
 
       <ScrollableTable>
