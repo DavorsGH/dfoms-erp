@@ -74,10 +74,6 @@ export default async function EditClientQuotationPage({
     redirect(`/dashboard/sales-crm/quotations/${id}`);
   }
 
-  if (detail.quotation.status !== "draft") {
-    redirect(`/dashboard/sales-crm/quotations/${id}`);
-  }
-
   const fetchError =
     detail.error ??
     customersError?.message ??
