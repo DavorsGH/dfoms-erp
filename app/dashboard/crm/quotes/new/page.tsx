@@ -49,9 +49,9 @@ export default async function NewQuotePage() {
     null;
 
   return (
-    <CrmShell sectionTitle="Quotes">
+    <CrmShell sectionTitle="Product Quotes">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h3 className="text-lg font-semibold text-[#0f2744]">New Quote</h3>
+        <h3 className="text-lg font-semibold text-[#0f2744]">New Product Quote</h3>
         <Link
           href="/dashboard/crm/quotes"
           className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50"

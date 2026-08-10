@@ -295,7 +295,7 @@ export default function QuoteForm({
       const { data, error: rpcError } = await supabase.rpc("create_sales_quote", {
         p_client_id: form.client_id.trim(),
         p_opportunity_id: form.opportunity_id.trim() || null,
-        p_quote_type: form.quote_type,
+        p_quote_type: "product",
         p_expiry_date: form.expiry_date.trim() || null,
         p_bill_to_name: form.bill_to_name.trim(),
         p_bill_to_address: form.bill_to_address.trim() || null,
@@ -464,20 +464,28 @@ export default function QuoteForm({
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Quote Type *
             </label>
-            <select
-              value={form.quote_type}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  quote_type: event.target.value as QuoteType,
-                }))
-              }
-              disabled={mode === "edit"}
-              className={inputClassName}
-            >
-              <option value="service">Service</option>
-              <option value="product">Product</option>
-            </select>
+            {mode === "edit" && form.quote_type === "service" ? (
+              <input
+                type="text"
+                readOnly
+                value="Service (legacy)"
+                className={`${inputClassName} bg-slate-50 text-slate-600`}
+              />
+            ) : (
+              <select
+                value={form.quote_type}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    quote_type: event.target.value as QuoteType,
+                  }))
+                }
+                disabled={mode === "edit"}
+                className={inputClassName}
+              >
+                <option value="product">Product</option>
+              </select>
+            )}
           </div>
 
           <div>

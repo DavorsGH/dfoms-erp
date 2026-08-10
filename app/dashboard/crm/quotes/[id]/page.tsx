@@ -59,7 +59,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   ).map((row) => normalizeSalesQuoteLineItem(row));
 
   return (
-    <CrmShell sectionTitle="Quotes">
+    <CrmShell sectionTitle="Product Quotes">
       <div className="mb-6 flex items-center justify-between gap-4">
         <h3 className="text-lg font-semibold text-[#0f2744]">
           Quote {normalizedQuote.quote_number}

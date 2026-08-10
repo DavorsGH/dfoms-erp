@@ -19,10 +19,12 @@ import {
   CUSTOMER_360_LOYALTY_TRANSACTION_SELECT,
   CUSTOMER_360_OPPORTUNITY_SELECT,
   CUSTOMER_360_PRODUCT_SALE_SELECT,
+  CUSTOMER_360_QUOTATION_SELECT,
   CUSTOMER_360_QUOTE_SELECT,
   normalizeCustomer360Invoice,
   normalizeCustomer360Opportunity,
   normalizeCustomer360ProductSale,
+  normalizeCustomer360Quotation,
   normalizeCustomer360Quote,
   normalizeLoyaltyAccount,
   normalizeLoyaltyTransaction,
@@ -31,6 +33,7 @@ import {
   type Customer360LoyaltyTransaction,
   type Customer360Opportunity,
   type Customer360ProductSale,
+  type Customer360Quotation,
   type Customer360Quote,
 } from "../customer-360-utils";
 import type { CustomerEntry } from "../customers-utils";
@@ -51,6 +54,7 @@ export default async function CustomerDetailPage({
     { data: employees, error: employeesError },
     { data: opportunities, error: opportunitiesError },
     { data: quotes, error: quotesError },
+    { data: quotations, error: quotationsError },
     { data: invoices, error: invoicesError },
     { data: productSales, error: productSalesError },
     { data: activities, error: activitiesError },
@@ -69,6 +73,11 @@ export default async function CustomerDetailPage({
       .select(CUSTOMER_360_QUOTE_SELECT)
       .eq("client_id", clientId)
       .order("quote_date", { ascending: false }),
+    supabase
+      .from("client_quotations")
+      .select(CUSTOMER_360_QUOTATION_SELECT)
+      .eq("client_id", clientId)
+      .order("issue_date", { ascending: false }),
     supabase
       .from("client_invoices")
       .select(CUSTOMER_360_INVOICE_SELECT)
@@ -114,6 +123,7 @@ export default async function CustomerDetailPage({
     employeesError?.message ??
     opportunitiesError?.message ??
     quotesError?.message ??
+    quotationsError?.message ??
     invoicesError?.message ??
     productSalesError?.message ??
     activitiesError?.message ??
@@ -143,6 +153,11 @@ export default async function CustomerDetailPage({
         quotes={
           ((quotes as Customer360Quote[] | null) ?? []).map((row) =>
             normalizeCustomer360Quote(row),
+          )
+        }
+        quotations={
+          ((quotations as Customer360Quotation[] | null) ?? []).map((row) =>
+            normalizeCustomer360Quotation(row),
           )
         }
         invoices={

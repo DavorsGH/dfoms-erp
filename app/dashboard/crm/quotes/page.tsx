@@ -19,7 +19,7 @@ export default async function QuotesPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <CrmShell sectionTitle="Quotes">
+    <CrmShell sectionTitle="Product Quotes">
       <QuotesList
         initialQuotes={
           ((data as SalesQuoteListRow[] | null) ?? []).map(

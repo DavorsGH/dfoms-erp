@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { label: "Customer List", href: "/dashboard/crm/customers" },
   { label: "Sales Pipeline", href: "/dashboard/crm/sales-pipeline" },
-  { label: "Quotes", href: "/dashboard/crm/quotes" },
+  { label: "Product Quotes", href: "/dashboard/crm/quotes" },
+  { label: "Quotations", href: "/dashboard/sales-crm/quotations" },
   { label: "Services", href: "/dashboard/crm/services" },
   { label: "Discounts", href: "/dashboard/crm/discounts" },
   {

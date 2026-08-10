@@ -62,6 +62,12 @@ export const CRM_SECTION_ROLES: readonly AppRole[] = [
   "hr",
 ];
 
+/** Create/edit client quotations (Sales & CRM → Quotations). */
+export const CRM_QUOTATIONS_EDIT_ROLES: readonly AppRole[] = [
+  ...CRM_SECTION_ROLES,
+  "sales_rep",
+];
+
 export const POS_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",

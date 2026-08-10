@@ -342,7 +342,7 @@ export function emptyQuoteForm(): QuoteFormState {
   return {
     client_id: "",
     opportunity_id: "",
-    quote_type: "service",
+    quote_type: "product",
     expiry_date: defaultQuoteExpiryDate(),
     bill_to_name: "",
     bill_to_address: "",

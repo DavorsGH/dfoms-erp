@@ -34,6 +34,7 @@ export default function QuotesList({
   fetchError,
 }: QuotesListProps) {
   const quotes = initialQuotes.map(normalizeSalesQuoteListRow);
+  const legacyServiceQuotes = quotes.filter((quote) => quote.quote_type === "service");
   const [error] = useState<string | null>(fetchError);
 
   return (
@@ -44,9 +45,24 @@ export default function QuotesList({
         </p>
       ) : null}
 
+      {legacyServiceQuotes.length > 0 ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          You have {legacyServiceQuotes.length} legacy service{" "}
+          {legacyServiceQuotes.length === 1 ? "quote" : "quotes"} on this list. New
+          service quotations should be created in{" "}
+          <Link
+            href="/dashboard/sales-crm/quotations"
+            className="font-medium text-[#0f2744] underline-offset-2 hover:underline"
+          >
+            Quotations
+          </Link>
+          .
+        </div>
+      ) : null}
+
       <div className="flex justify-end">
         <Link href="/dashboard/crm/quotes/new" className={primaryButtonClassName}>
-          New Quote
+          New Product Quote
         </Link>
       </div>
 
@@ -71,7 +87,7 @@ export default function QuotesList({
                     colSpan={7}
                     className="px-4 py-8 text-center text-sm text-slate-500"
                   >
-                    No quotes yet.
+                    No product quotes yet.
                   </td>
                 </tr>
               ) : (

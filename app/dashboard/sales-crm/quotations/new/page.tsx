@@ -3,29 +3,26 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
-import { loadAuthorizedSignerOptions, peekNextInvoiceNumber } from "@/utils/client-invoices-api";
+import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
+import { peekNextQuotationNumber } from "@/utils/client-quotations-api";
 import {
-  defaultDueDate,
-  emptyLineItem,
-  todayIsoDate,
-  type ClientInvoiceSiteOption,
-} from "@/utils/client-invoices-types";
+  emptyQuotationForm,
+  type ClientQuotationSiteOption,
+} from "@/utils/client-quotations-types";
 import { PAYMENT_ACCOUNT_SELECT } from "@/utils/payment-accounts-types";
-import FinanceNav from "../../finance-nav";
-import ClientInvoiceForm from "../client-invoice-form";
+import CrmShell from "@/app/dashboard/crm/crm-shell";
+import ClientQuotationForm from "../client-quotation-form";
 
-export default async function NewClientInvoicePage() {
+export default async function NewClientQuotationPage() {
   const tenantId = await getCurrentUserTenantId();
 
   if (!tenantId) {
     return (
-      <div>
-        <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
-        <FinanceNav />
+      <CrmShell sectionTitle="Quotations">
         <p className="text-sm text-red-700">
           Unable to resolve your workspace. Contact support if this persists.
         </p>
-      </div>
+      </CrmShell>
     );
   }
 
@@ -36,13 +33,15 @@ export default async function NewClientInvoicePage() {
     { data: customers, error: customersError },
     { data: sites, error: sitesError },
     { data: paymentAccounts, error: paymentAccountsError },
-    nextInvoiceNumberResult,
+    { data: opportunities, error: opportunitiesError },
+    nextQuotationNumberResult,
     authorizedSignersResult,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
       .from("sites")
       .select("site_code, site_name, client_id")
+      .eq("tenant_id", tenantId)
       .order("site_name", { ascending: true }),
     supabase
       .from("payment_accounts")
@@ -50,7 +49,11 @@ export default async function NewClientInvoicePage() {
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .order("account_name", { ascending: true }),
-    peekNextInvoiceNumber(supabase, tenantId),
+    supabase
+      .from("sales_opportunities")
+      .select("id, opportunity_name, client_id")
+      .order("opportunity_name", { ascending: true }),
+    peekNextQuotationNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
   ]);
 
@@ -58,52 +61,37 @@ export default async function NewClientInvoicePage() {
     customersError?.message ??
     sitesError?.message ??
     paymentAccountsError?.message ??
-    nextInvoiceNumberResult.error ??
+    opportunitiesError?.message ??
+    nextQuotationNumberResult.error ??
     authorizedSignersResult.error ??
     null;
 
   return (
-    <div>
-      <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
-      <FinanceNav />
+    <CrmShell sectionTitle="Quotations">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold text-[#0f2744]">New Customer Invoice</h2>
+        <h3 className="text-lg font-semibold text-[#0f2744]">New Quotation</h3>
         <Link
-          href="/dashboard/finance/client-invoices"
+          href="/dashboard/sales-crm/quotations"
           className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50"
         >
           Back to list
         </Link>
       </div>
-      <ClientInvoiceForm
+      <ClientQuotationForm
         mode="create"
-        nextInvoiceNumberPreview={nextInvoiceNumberResult.invoiceNumber}
+        nextQuotationNumberPreview={nextQuotationNumberResult.quotationNumber}
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
-        initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
+        initialOpportunities={
+          (opportunities as
+            | { id: string; opportunity_name: string; client_id: string }[]
+            | null) ?? []
+        }
+        initialSites={(sites as ClientQuotationSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
-        initialForm={{
-          client_id: "",
-          invoice_date: todayIsoDate(),
-          due_date: defaultDueDate(),
-          billing_period_start: "",
-          billing_period_end: "",
-          bill_to_name: "",
-          bill_to_address: "",
-          bill_to_phone: "",
-          vat_nhil_getfund_rate: 20,
-          wht_rate: 7.5,
-          status: "draft",
-          amount_received: 0,
-          notes: "",
-          authorized_by_selection: "",
-          authorized_by_other_name: "",
-          authorized_by_other_title: "",
-          payment_account_ids: [],
-          line_items: [emptyLineItem(0)],
-        }}
+        initialForm={emptyQuotationForm()}
         fetchError={fetchError}
       />
-    </div>
+    </CrmShell>
   );
 }

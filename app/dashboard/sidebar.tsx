@@ -97,6 +97,7 @@ function isActive(pathname: string, href: string) {
     // /dashboard/pos.
     return (
       pathname.startsWith("/dashboard/crm") ||
+      pathname.startsWith("/dashboard/sales-crm") ||
       pathname.startsWith("/dashboard/pos")
     );
   }

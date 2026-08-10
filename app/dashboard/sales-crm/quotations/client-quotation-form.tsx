@@ -3,46 +3,44 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/utils/supabase/client";
-import PromoCodeField from "@/components/promo-code-field";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
+import { formatAuthorizedSignerLabel } from "@/utils/client-invoices-types";
+import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import {
   AUTHORIZED_BY_OTHER,
-  computeInvoiceTotals,
   computeLineTotalCost,
-  defaultDueDate,
-  emptyLineItem,
-  formatAuthorizedSignerLabel,
+  computeQuotationTotals,
+  emptyQuotationLineItem,
   formatInvoiceMoney,
-  groupLineItemsByCategory,
   resolveAuthorizedByFields,
-  roundMoney,
-  toNumber,
   type ClientInvoiceAuthorizedSignerOption,
   type ClientInvoiceFormAuthorizedByState,
-  type ClientInvoiceFormLineItem,
-  type ClientInvoiceSiteOption,
-  type ClientInvoiceStatus,
-  type ClientInvoiceWriteBody,
-} from "@/utils/client-invoices-types";
-import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
+  type ClientQuotationDocumentType,
+  type ClientQuotationFormLineItem,
+  type ClientQuotationPipelineOpportunityOption,
+  type ClientQuotationSiteOption,
+  type ClientQuotationStatus,
+  type ClientQuotationWriteBody,
+} from "@/utils/client-quotations-types";
 
-type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> &
+type ClientQuotationFormState = Omit<ClientQuotationWriteBody, "line_items"> &
   ClientInvoiceFormAuthorizedByState & {
-    line_items: ClientInvoiceFormLineItem[];
+    line_items: ClientQuotationFormLineItem[];
   };
 
-type ClientInvoiceFormProps = {
+type ClientQuotationFormProps = {
   mode: "create" | "edit";
-  invoiceId?: string;
-  /** Non-allocating preview of the next server-assigned invoice number (e.g. DF-INV-0001). */
-  nextInvoiceNumberPreview?: string | null;
-  existingInvoiceNumber?: string;
+  quotationId?: string;
+  /** Non-allocating preview of the next server-assigned quotation number. */
+  nextQuotationNumberPreview?: string | null;
+  existingQuotationNumber?: string;
+  isConverted?: boolean;
   initialCustomers: ClientEntry[];
-  initialSites: ClientInvoiceSiteOption[];
+  initialOpportunities: ClientQuotationPipelineOpportunityOption[];
+  initialSites: ClientQuotationSiteOption[];
   initialPaymentAccounts: PaymentAccountRow[];
   initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
-  initialForm: ClientInvoiceFormState;
+  initialForm: ClientQuotationFormState;
   fetchError?: string | null;
 };
 
@@ -58,29 +56,28 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
-function reindexLineItems(lines: ClientInvoiceFormLineItem[]) {
+function reindexLineItems(lines: ClientQuotationFormLineItem[]) {
   return lines.map((line, index) => ({ ...line, sort_order: index }));
 }
 
-export default function ClientInvoiceForm({
+export default function ClientQuotationForm({
   mode,
-  invoiceId,
-  nextInvoiceNumberPreview,
-  existingInvoiceNumber,
+  quotationId,
+  nextQuotationNumberPreview,
+  existingQuotationNumber,
+  isConverted = false,
   initialCustomers,
+  initialOpportunities,
   initialSites,
   initialPaymentAccounts,
   initialAuthorizedSigners,
   initialForm,
   fetchError = null,
-}: ClientInvoiceFormProps) {
+}: ClientQuotationFormProps) {
   const router = useRouter();
-  const supabase = createClient();
-  const [form, setForm] = useState<ClientInvoiceFormState>(initialForm);
+  const [form, setForm] = useState<ClientQuotationFormState>(initialForm);
   const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
-  const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
-  const [promoDiscount, setPromoDiscount] = useState(0);
   const [sitePicker, setSitePicker] = useState("");
 
   const clientSites = useMemo(
@@ -91,9 +88,19 @@ export default function ClientInvoiceForm({
     [form.client_id, initialSites],
   );
 
+  const clientOpportunities = useMemo(
+    () =>
+      form.client_id
+        ? initialOpportunities.filter(
+            (entry) => entry.client_id === form.client_id,
+          )
+        : [],
+    [form.client_id, initialOpportunities],
+  );
+
   const totals = useMemo(
     () =>
-      computeInvoiceTotals(
+      computeQuotationTotals(
         form.line_items,
         form.vat_nhil_getfund_rate,
         form.wht_rate,
@@ -101,25 +108,15 @@ export default function ClientInvoiceForm({
     [form.line_items, form.vat_nhil_getfund_rate, form.wht_rate],
   );
 
-  const invoiceTotalDue = useMemo(
-    () => roundMoney(Math.max(0, totals.total_amount_due - promoDiscount)),
-    [totals.total_amount_due, promoDiscount],
-  );
-
-  const groupedLines = useMemo(
-    () => groupLineItemsByCategory(form.line_items),
-    [form.line_items],
-  );
-
-  const displayInvoiceNumber = useMemo(() => {
+  const displayQuotationNumber = useMemo(() => {
     if (mode === "edit") {
-      return existingInvoiceNumber ?? "";
+      return existingQuotationNumber ?? "";
     }
 
-    return nextInvoiceNumberPreview?.trim() || "Assigned on save";
-  }, [mode, existingInvoiceNumber, nextInvoiceNumberPreview]);
+    return nextQuotationNumberPreview?.trim() || "Assigned on save";
+  }, [mode, existingQuotationNumber, nextQuotationNumberPreview]);
 
-  function updateLineItem(key: string, patch: Partial<ClientInvoiceFormLineItem>) {
+  function updateLineItem(key: string, patch: Partial<ClientQuotationFormLineItem>) {
     setForm((current) => ({
       ...current,
       line_items: current.line_items.map((line) =>
@@ -157,7 +154,7 @@ export default function ClientInvoiceForm({
       ...current,
       line_items: reindexLineItems([
         ...current.line_items,
-        emptyLineItem(current.line_items.length),
+        emptyQuotationLineItem(current.line_items.length),
       ]),
     }));
   }
@@ -173,7 +170,7 @@ export default function ClientInvoiceForm({
       line_items: reindexLineItems([
         ...current.line_items,
         {
-          ...emptyLineItem(current.line_items.length),
+          ...emptyQuotationLineItem(current.line_items.length),
           site_id: site.site_code,
           description: site.site_name,
         },
@@ -187,6 +184,7 @@ export default function ClientInvoiceForm({
     setForm((current) => ({
       ...current,
       client_id: clientId,
+      opportunity_id: "",
       bill_to_name: customer?.client_name ?? "",
       bill_to_address: customer?.address ?? "",
       bill_to_phone: customer?.phone ?? "",
@@ -206,6 +204,10 @@ export default function ClientInvoiceForm({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (isConverted) {
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -216,45 +218,29 @@ export default function ClientInvoiceForm({
       initialAuthorizedSigners,
     );
 
-    const payload: ClientInvoiceWriteBody = {
+    const payload: ClientQuotationWriteBody = {
       client_id: form.client_id,
-      invoice_date: form.invoice_date,
-      due_date: form.due_date,
-      billing_period_start: form.billing_period_start || null,
-      billing_period_end: form.billing_period_end || null,
+      opportunity_id: form.opportunity_id?.trim() || null,
+      document_type: form.document_type,
+      issue_date: form.issue_date,
+      valid_until: form.valid_until || null,
       bill_to_name: form.bill_to_name,
       bill_to_address: form.bill_to_address,
       bill_to_phone: form.bill_to_phone,
       vat_nhil_getfund_rate: form.vat_nhil_getfund_rate,
       wht_rate: form.wht_rate,
       status: form.status,
-      amount_received: form.amount_received ?? 0,
       notes: form.notes,
       authorized_by_name: authorizedBy.authorized_by_name,
       authorized_by_title: authorizedBy.authorized_by_title,
-      line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }, index) =>
-        index === 0 && promoDiscount > 0
-          ? {
-              ...line,
-              discount_amount: roundMoney(
-                toNumber(line.discount_amount) + promoDiscount,
-              ),
-              total_cost: roundMoney(
-                computeLineTotalCost({
-                  ...line,
-                  discount_amount: roundMoney(
-                    toNumber(line.discount_amount) + promoDiscount,
-                  ),
-                }),
-              ),
-            }
-          : line,
-      ),
+      line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => line),
       payment_account_ids: form.payment_account_ids,
     };
 
     const response = await fetch(
-      mode === "create" ? "/api/client-invoices" : `/api/client-invoices/${invoiceId}`,
+      mode === "create"
+        ? "/api/client-quotations"
+        : `/api/client-quotations/${quotationId}`,
       {
         method: mode === "create" ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
@@ -263,16 +249,16 @@ export default function ClientInvoiceForm({
     );
 
     const result = (await response.json().catch(() => null)) as
-      | { client_invoice?: { id: string }; error?: string }
+      | { client_quotation?: { id: string }; error?: string }
       | null;
 
     if (!response.ok) {
-      setError(result?.error ?? "Unable to save invoice.");
+      setError(result?.error ?? "Unable to save quotation.");
       setSaving(false);
       return;
     }
 
-    router.push("/dashboard/finance/client-invoices");
+    router.push("/dashboard/sales-crm/quotations");
     router.refresh();
   }
 
@@ -281,6 +267,12 @@ export default function ClientInvoiceForm({
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </p>
+      ) : null}
+
+      {isConverted ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          This quotation has been converted to an invoice and can no longer be edited.
         </p>
       ) : null}
 
@@ -298,6 +290,7 @@ export default function ClientInvoiceForm({
             </label>
             <select
               required
+              disabled={isConverted}
               value={form.client_id}
               onChange={(event) => handleClientChange(event.target.value)}
               className={inputClassName}
@@ -312,11 +305,35 @@ export default function ClientInvoiceForm({
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
+              Linked Opportunity
+            </label>
+            <select
+              value={form.opportunity_id ?? ""}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  opportunity_id: event.target.value,
+                }))
+              }
+              disabled={!form.client_id || clientOpportunities.length === 0 || isConverted}
+              className={inputClassName}
+            >
+              <option value="">None</option>
+              {clientOpportunities.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.opportunity_name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
               Bill To Name *
             </label>
             <input
               type="text"
               required
+              disabled={isConverted}
               value={form.bill_to_name}
               onChange={(event) =>
                 setForm((current) => ({
@@ -333,6 +350,7 @@ export default function ClientInvoiceForm({
             </label>
             <input
               type="text"
+              disabled={isConverted}
               value={form.bill_to_phone ?? ""}
               onChange={(event) =>
                 setForm((current) => ({
@@ -349,6 +367,7 @@ export default function ClientInvoiceForm({
             </label>
             <textarea
               rows={3}
+              disabled={isConverted}
               value={form.bill_to_address ?? ""}
               onChange={(event) =>
                 setForm((current) => ({
@@ -364,75 +383,76 @@ export default function ClientInvoiceForm({
 
       <section className={cardClassName}>
         <div>
-          <h3 className="text-sm font-medium text-slate-700">Invoice Details</h3>
+          <h3 className="text-sm font-medium text-slate-700">Quotation Details</h3>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Invoice Number
+              Quotation Number
             </label>
             <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-[#0f2744]">
-              {displayInvoiceNumber || "—"}
+              {displayQuotationNumber || "—"}
             </div>
             <p className="mt-1 text-xs text-slate-500">
               {mode === "create"
                 ? "Assigned automatically when you save."
-                : "Invoice number cannot be changed after creation."}
+                : "Quotation number cannot be changed after creation."}
             </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Document Type
+            </label>
+            <select
+              disabled={isConverted}
+              value={form.document_type ?? "quotation"}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  document_type: event.target.value as ClientQuotationDocumentType,
+                }))
+              }
+              className={inputClassName}
+            >
+              <option value="quotation">Quotation</option>
+              <option value="proforma_invoice">Pro-forma Invoice</option>
+            </select>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Status
             </label>
             <select
+              disabled={isConverted}
               value={form.status}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  status: event.target.value as ClientInvoiceStatus,
+                  status: event.target.value as ClientQuotationStatus,
                 }))
               }
               className={inputClassName}
             >
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
-              <option value="partial">Partial</option>
-              <option value="paid">Paid</option>
+              <option value="accepted">Accepted</option>
+              <option value="declined">Declined</option>
+              <option value="expired">Expired</option>
             </select>
           </div>
-          {form.status === "partial" && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Amount Received *
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                value={form.amount_received ?? 0}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    amount_received: Number(event.target.value),
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-          )}
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Invoice Date *
+              Issue Date *
             </label>
             <input
               type="date"
               required
-              value={form.invoice_date}
+              disabled={isConverted}
+              value={form.issue_date}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  invoice_date: event.target.value,
+                  issue_date: event.target.value,
                 }))
               }
               className={inputClassName}
@@ -440,47 +460,16 @@ export default function ClientInvoiceForm({
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Due Date
+              Valid Until
             </label>
             <input
               type="date"
-              value={form.due_date ?? ""}
+              disabled={isConverted}
+              value={form.valid_until ?? ""}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  due_date: event.target.value,
-                }))
-              }
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Billing Period Start
-            </label>
-            <input
-              type="date"
-              value={form.billing_period_start ?? ""}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  billing_period_start: event.target.value,
-                }))
-              }
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Billing Period End
-            </label>
-            <input
-              type="date"
-              value={form.billing_period_end ?? ""}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  billing_period_end: event.target.value,
+                  valid_until: event.target.value,
                 }))
               }
               className={inputClassName}
@@ -501,7 +490,7 @@ export default function ClientInvoiceForm({
             <div className="flex gap-2">
               <select
                 value={sitePicker}
-                disabled={!form.client_id || clientSites.length === 0}
+                disabled={isConverted || !form.client_id}
                 onChange={(event) => {
                   const value = event.target.value;
                   if (value) {
@@ -511,7 +500,11 @@ export default function ClientInvoiceForm({
                 className={inputClassName}
               >
                 <option value="">
-                  {form.client_id ? "Add site line…" : "Select customer first"}
+                  {!form.client_id
+                    ? "Select customer first"
+                    : clientSites.length === 0
+                      ? "No sites for this customer"
+                      : "Add site line…"}
                 </option>
                 {clientSites.map((site) => (
                   <option key={site.site_code} value={site.site_code}>
@@ -522,6 +515,7 @@ export default function ClientInvoiceForm({
             </div>
             <button
               type="button"
+              disabled={isConverted}
               onClick={addManualLine}
               className={secondaryButtonClassName}
             >
@@ -533,141 +527,143 @@ export default function ClientInvoiceForm({
         {form.line_items.length === 0 ? (
           <p className="text-sm text-slate-500">No line items yet.</p>
         ) : (
-          <div className="space-y-6">
-            {groupedLines.map((group) => (
-              <div key={group.label} className="space-y-3">
-                <h4 className="text-sm font-semibold text-[#0f2744]">{group.label}</h4>
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-100 text-slate-700">
-                      <tr>
-                        <th className="px-3 py-2">Description</th>
-                        <th className="px-3 py-2">Category</th>
-                        <th className="px-3 py-2">Service Cost (GHS)</th>
-                        <th className="px-3 py-2">Material Cost (GHS)</th>
-                        <th className="px-3 py-2">Discount</th>
-                        <th className="px-3 py-2">Taxed</th>
-                        <th className="px-3 py-2">Total</th>
-                        <th className="px-3 py-2">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {group.items.map((line) => (
-                        <tr key={line.key}>
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              required
-                              value={line.description}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  description: event.target.value,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={line.category_label ?? ""}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  category_label: event.target.value,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.labour_amount}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  labour_amount: Number(event.target.value) || 0,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.material_amount}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  material_amount: Number(event.target.value) || 0,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.discount_amount}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  discount_amount: Number(event.target.value) || 0,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={line.taxed}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  taxed: event.target.checked,
-                                })
-                              }
-                              className="h-4 w-4 rounded border-slate-300 text-[#0f2744]"
-                            />
-                          </td>
-                          <td className="px-3 py-2 font-medium text-[#0f2744]">
-                            {formatInvoiceMoney(computeLineTotalCost(line))}
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex gap-1">
-                              <button
-                                type="button"
-                                onClick={() => moveLineItem(line.key, -1)}
-                                className={secondaryButtonClassName}
-                              >
-                                Up
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => moveLineItem(line.key, 1)}
-                                className={secondaryButtonClassName}
-                              >
-                                Down
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeLineItem(line.key)}
-                                className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-100 text-slate-700">
+                <tr>
+                  <th className="px-3 py-2">Description</th>
+                  <th className="px-3 py-2">Category</th>
+                  <th className="px-3 py-2">Service Cost (GHS)</th>
+                  <th className="px-3 py-2">Material Cost (GHS)</th>
+                  <th className="px-3 py-2">Discount</th>
+                  <th className="px-3 py-2">Taxed</th>
+                  <th className="px-3 py-2">Total</th>
+                  <th className="px-3 py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {form.line_items.map((line) => (
+                  <tr key={line.key}>
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        required
+                        disabled={isConverted}
+                        value={line.description}
+                        onChange={(event) =>
+                          updateLineItem(line.key, {
+                            description: event.target.value,
+                          })
+                        }
+                        className={inputClassName}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        disabled={isConverted}
+                        value={line.category_label ?? ""}
+                        onChange={(event) =>
+                          updateLineItem(line.key, {
+                            category_label: event.target.value,
+                          })
+                        }
+                        className={inputClassName}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        disabled={isConverted}
+                        value={line.labour_amount}
+                        onChange={(event) =>
+                          updateLineItem(line.key, {
+                            labour_amount: Number(event.target.value) || 0,
+                          })
+                        }
+                        className={inputClassName}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        disabled={isConverted}
+                        value={line.material_amount}
+                        onChange={(event) =>
+                          updateLineItem(line.key, {
+                            material_amount: Number(event.target.value) || 0,
+                          })
+                        }
+                        className={inputClassName}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        disabled={isConverted}
+                        value={line.discount_amount}
+                        onChange={(event) =>
+                          updateLineItem(line.key, {
+                            discount_amount: Number(event.target.value) || 0,
+                          })
+                        }
+                        className={inputClassName}
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        disabled={isConverted}
+                        checked={line.taxed}
+                        onChange={(event) =>
+                          updateLineItem(line.key, {
+                            taxed: event.target.checked,
+                          })
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-[#0f2744]"
+                      />
+                    </td>
+                    <td className="px-3 py-2 font-medium text-[#0f2744]">
+                      {formatInvoiceMoney(computeLineTotalCost(line))}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          disabled={isConverted}
+                          onClick={() => moveLineItem(line.key, -1)}
+                          className={secondaryButtonClassName}
+                        >
+                          Up
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isConverted}
+                          onClick={() => moveLineItem(line.key, 1)}
+                          className={secondaryButtonClassName}
+                        >
+                          Down
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isConverted}
+                          onClick={() => removeLineItem(line.key)}
+                          className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
@@ -676,7 +672,7 @@ export default function ClientInvoiceForm({
         <div>
           <h3 className="text-sm font-medium text-slate-700">Payment Accounts</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Choose one or more active payment profiles to show on this invoice.
+            Choose one or more active payment profiles to show on this quotation.
           </p>
         </div>
         {initialPaymentAccounts.length === 0 ? (
@@ -692,6 +688,7 @@ export default function ClientInvoiceForm({
               >
                 <input
                   type="checkbox"
+                  disabled={isConverted}
                   checked={form.payment_account_ids.includes(account.id)}
                   onChange={() => togglePaymentAccount(account.id)}
                   className="mt-1 h-4 w-4 rounded border-slate-300 text-[#0f2744]"
@@ -716,7 +713,7 @@ export default function ClientInvoiceForm({
         <div>
           <h3 className="text-sm font-medium text-slate-700">Authorized By</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Optional signature block shown on the printed invoice.
+            Optional signature block shown on the printed quotation.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -725,6 +722,7 @@ export default function ClientInvoiceForm({
               Authorized By
             </label>
             <select
+              disabled={isConverted}
               value={form.authorized_by_selection}
               onChange={(event) =>
                 setForm((current) => ({
@@ -751,6 +749,7 @@ export default function ClientInvoiceForm({
                 </label>
                 <input
                   type="text"
+                  disabled={isConverted}
                   value={form.authorized_by_other_name}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -767,6 +766,7 @@ export default function ClientInvoiceForm({
                 </label>
                 <input
                   type="text"
+                  disabled={isConverted}
                   value={form.authorized_by_other_title}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -795,6 +795,7 @@ export default function ClientInvoiceForm({
               type="number"
               min="0"
               step="0.01"
+              disabled={isConverted}
               value={form.vat_nhil_getfund_rate}
               onChange={(event) =>
                 setForm((current) => ({
@@ -813,6 +814,7 @@ export default function ClientInvoiceForm({
               type="number"
               min="0"
               step="0.01"
+              disabled={isConverted}
               value={form.wht_rate}
               onChange={(event) =>
                 setForm((current) => ({
@@ -824,24 +826,6 @@ export default function ClientInvoiceForm({
             />
           </div>
         </div>
-        <PromoCodeField
-          supabase={supabase}
-          clientId={form.client_id.trim() || null}
-          orderAmount={totals.subtotal}
-          sourceType="invoice"
-          sourceReference={invoiceId ?? null}
-          appliedCode={appliedPromoCode}
-          appliedDiscount={promoDiscount}
-          onApplied={(code, discountAmount) => {
-            setAppliedPromoCode(code);
-            setPromoDiscount(discountAmount);
-          }}
-          onClear={() => {
-            setAppliedPromoCode(null);
-            setPromoDiscount(0);
-          }}
-          disabled={saving || totals.subtotal <= 0}
-        />
         <dl className="grid gap-3 md:grid-cols-2">
           <div className="rounded-md bg-slate-50 px-4 py-3">
             <dt className="text-xs uppercase tracking-wide text-slate-500">Subtotal</dt>
@@ -865,32 +849,33 @@ export default function ClientInvoiceForm({
               {formatInvoiceMoney(totals.wht_amount)}
             </dd>
           </div>
-          <div className="rounded-md bg-slate-50 px-4 py-3 md:col-span-2">
-            <dt className="text-xs uppercase tracking-wide text-slate-500">
-              Promo Discount
-            </dt>
-            <dd className="text-lg font-semibold text-emerald-800">
-              {promoDiscount > 0
-                ? `-${formatInvoiceMoney(promoDiscount)} (${appliedPromoCode})`
-                : formatInvoiceMoney(0)}
-            </dd>
-          </div>
           <div className="rounded-md bg-[#0f2744] px-4 py-3 text-white md:col-span-2">
             <dt className="text-xs uppercase tracking-wide text-slate-200">
               Total Amount Due
             </dt>
             <dd className="text-lg font-semibold">
-              {formatInvoiceMoney(invoiceTotalDue)}
+              {formatInvoiceMoney(totals.total_amount_due)}
             </dd>
           </div>
         </dl>
       </section>
 
       <div className="flex flex-wrap gap-3">
-        <button type="submit" disabled={saving} className={primaryButtonClassName}>
-          {saving ? "Saving…" : mode === "create" ? "Save Invoice" : "Update Invoice"}
+        <button
+          type="submit"
+          disabled={saving || isConverted}
+          className={primaryButtonClassName}
+        >
+          {saving
+            ? "Saving…"
+            : mode === "create"
+              ? "Save Quotation"
+              : "Update Quotation"}
         </button>
-        <Link href="/dashboard/finance/client-invoices" className={secondaryButtonClassName}>
+        <Link
+          href="/dashboard/sales-crm/quotations"
+          className={secondaryButtonClassName}
+        >
           Cancel
         </Link>
       </div>

@@ -1,5 +1,10 @@
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
-import { roundMoney, toNumber } from "@/utils/client-invoices-types";
+import {
+  formatQuotationDocumentType,
+  formatQuotationStatus,
+  normalizeQuotationStatus,
+  toNumber as quotationToNumber,
+} from "@/utils/client-quotations-types";
 import {
   getActivityTypeLabel,
   getOpportunityStageLabel,
@@ -17,6 +22,8 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
   formatInvoiceStatus,
+  roundMoney,
+  toNumber,
 } from "@/utils/client-invoices-types";
 import {
   getCustomerStatusLabel,
@@ -76,6 +83,15 @@ export type Customer360Opportunity = {
   updated_at: string;
 };
 
+export type Customer360Quotation = {
+  id: string;
+  quotation_number: string;
+  document_type: string;
+  issue_date: string;
+  status: string;
+  total_amount_due: number;
+};
+
 export type Customer360Quote = {
   id: string;
   quote_number: string;
@@ -122,6 +138,9 @@ export const CUSTOMER_360_OPPORTUNITY_SELECT =
 export const CUSTOMER_360_QUOTE_SELECT =
   "id, quote_number, quote_type, quote_date, status, total_amount";
 
+export const CUSTOMER_360_QUOTATION_SELECT =
+  "id, quotation_number, document_type, issue_date, status, total_amount_due";
+
 export const CUSTOMER_360_INVOICE_SELECT =
   "id, invoice_number, invoice_date, status, total_amount_due, amount_received";
 
@@ -161,6 +180,23 @@ export function normalizeCustomer360Quote(row: Customer360Quote): Customer360Quo
     ...row,
     total_amount: toNumber(row.total_amount),
   };
+}
+
+export function normalizeCustomer360Quotation(
+  row: Customer360Quotation,
+): Customer360Quotation {
+  return {
+    ...row,
+    total_amount_due: quotationToNumber(row.total_amount_due),
+  };
+}
+
+export function formatCustomer360QuotationDocumentType(documentType: string) {
+  return formatQuotationDocumentType(documentType);
+}
+
+export function formatCustomer360QuotationStatus(status: string) {
+  return formatQuotationStatus(normalizeQuotationStatus(status));
 }
 
 export function normalizeCustomer360Invoice(

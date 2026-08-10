@@ -24,6 +24,8 @@ import {
   formatLoyaltyPoints,
   formatLoyaltyTransactionDate,
   formatLoyaltyTransactionType,
+  formatCustomer360QuotationDocumentType,
+  formatCustomer360QuotationStatus,
   formatQuoteMoney,
   formatQuoteStatus,
   formatQuoteType,
@@ -41,6 +43,7 @@ import {
   type Customer360LoyaltyTransaction,
   type Customer360Opportunity,
   type Customer360ProductSale,
+  type Customer360Quotation,
   type Customer360Quote,
   type Customer360TabId,
 } from "./customer-360-utils";
@@ -50,6 +53,7 @@ type Customer360Props = {
   supervisorName: string;
   opportunities: Customer360Opportunity[];
   quotes: Customer360Quote[];
+  quotations: Customer360Quotation[];
   invoices: Customer360Invoice[];
   productSales: Customer360ProductSale[];
   activities: SalesActivity[];
@@ -66,6 +70,7 @@ export default function Customer360({
   supervisorName,
   opportunities,
   quotes,
+  quotations,
   invoices,
   productSales,
   activities,
@@ -204,7 +209,9 @@ export default function Customer360({
           {activeTab === "opportunities" ? (
             <OpportunitiesSection opportunities={opportunities} />
           ) : null}
-          {activeTab === "quotes" ? <QuotesSection quotes={quotes} /> : null}
+          {activeTab === "quotes" ? (
+            <QuotesSection quotes={quotes} quotations={quotations} />
+          ) : null}
           {activeTab === "invoices" ? <InvoicesSection invoices={invoices} /> : null}
           {activeTab === "product-sales" ? (
             <ProductSalesSection productSales={productSales} />
@@ -269,51 +276,109 @@ function OpportunitiesSection({
   );
 }
 
-function QuotesSection({ quotes }: { quotes: Customer360Quote[] }) {
+function QuotesSection({
+  quotes,
+  quotations,
+}: {
+  quotes: Customer360Quote[];
+  quotations: Customer360Quotation[];
+}) {
   return (
-    <ScrollableTable>
-      <table className={scrollableTableClassName}>
-        <thead className={scrollableTableHeadClassName}>
-          <tr>
-            <th className={scrollableTableThClassName}>Quote #</th>
-            <th className={scrollableTableThClassName}>Type</th>
-            <th className={scrollableTableThClassName}>Status</th>
-            <th className={scrollableTableThClassName}>Total</th>
-            <th className={scrollableTableThClassName}>Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-200">
-          {quotes.length === 0 ? (
-            <EmptyRow colSpan={5} message="No quotes for this customer." />
-          ) : (
-            quotes.map((entry, index) => (
-              <tr key={entry.id} className={getStripedRowClassName(index)}>
-                <td className="px-4 py-3 font-medium text-[#0f2744]">
-                  {entry.quote_number}
-                </td>
-                <td className="px-4 py-3">{formatQuoteType(entry.quote_type)}</td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${quoteStatusBadgeClassName(entry.status)}`}
-                  >
-                    {formatQuoteStatus(entry.status)}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{formatQuoteMoney(entry.total_amount)}</td>
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/dashboard/crm/quotes/${entry.id}`}
-                    className={secondaryButtonClassName}
-                  >
-                    View
-                  </Link>
-                </td>
+    <div className="space-y-8">
+      <div>
+        <h4 className="mb-3 text-sm font-semibold text-[#0f2744]">Product Quotes</h4>
+        <ScrollableTable>
+          <table className={scrollableTableClassName}>
+            <thead className={scrollableTableHeadClassName}>
+              <tr>
+                <th className={scrollableTableThClassName}>Quote #</th>
+                <th className={scrollableTableThClassName}>Type</th>
+                <th className={scrollableTableThClassName}>Status</th>
+                <th className={scrollableTableThClassName}>Total</th>
+                <th className={scrollableTableThClassName}>Actions</th>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </ScrollableTable>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {quotes.length === 0 ? (
+                <EmptyRow colSpan={5} message="No product quotes for this customer." />
+              ) : (
+                quotes.map((entry, index) => (
+                  <tr key={entry.id} className={getStripedRowClassName(index)}>
+                    <td className="px-4 py-3 font-medium text-[#0f2744]">
+                      {entry.quote_number}
+                    </td>
+                    <td className="px-4 py-3">{formatQuoteType(entry.quote_type)}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${quoteStatusBadgeClassName(entry.status)}`}
+                      >
+                        {formatQuoteStatus(entry.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{formatQuoteMoney(entry.total_amount)}</td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/dashboard/crm/quotes/${entry.id}`}
+                        className={secondaryButtonClassName}
+                      >
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </ScrollableTable>
+      </div>
+
+      <div>
+        <h4 className="mb-3 text-sm font-semibold text-[#0f2744]">Quotations</h4>
+        <ScrollableTable>
+          <table className={scrollableTableClassName}>
+            <thead className={scrollableTableHeadClassName}>
+              <tr>
+                <th className={scrollableTableThClassName}>Quotation #</th>
+                <th className={scrollableTableThClassName}>Document</th>
+                <th className={scrollableTableThClassName}>Status</th>
+                <th className={scrollableTableThClassName}>Total</th>
+                <th className={scrollableTableThClassName}>Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {quotations.length === 0 ? (
+                <EmptyRow colSpan={5} message="No quotations for this customer." />
+              ) : (
+                quotations.map((entry, index) => (
+                  <tr key={entry.id} className={getStripedRowClassName(index)}>
+                    <td className="px-4 py-3 font-medium text-[#0f2744]">
+                      {entry.quotation_number}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatCustomer360QuotationDocumentType(entry.document_type)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatCustomer360QuotationStatus(entry.status)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatInvoiceMoney(entry.total_amount_due)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/dashboard/sales-crm/quotations/${entry.id}`}
+                        className={secondaryButtonClassName}
+                      >
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </ScrollableTable>
+      </div>
+    </div>
   );
 }
 

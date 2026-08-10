@@ -95,7 +95,7 @@ export default function QuoteView({
 
         <div className="flex flex-wrap gap-2">
           <Link href="/dashboard/crm/quotes" className={secondaryButtonClassName}>
-            Back to list
+            Back to product quotes
           </Link>
           {quote.status === "draft" ? (
             <Link
@@ -295,15 +295,6 @@ export default function QuoteView({
             </>
           ) : null}
 
-          {canConvert && quote.quote_type === "service" ? (
-            <Link
-              href={`/dashboard/finance/client-invoices/new?quoteId=${quote.id}`}
-              className={primaryButtonClassName}
-            >
-              Convert to Invoice
-            </Link>
-          ) : null}
-
           {canConvert && quote.quote_type === "product" ? (
             <Link
               href={`/dashboard/pos?quoteId=${quote.id}`}
@@ -311,6 +302,19 @@ export default function QuoteView({
             >
               Convert to Sale
             </Link>
+          ) : null}
+
+          {canConvert && quote.quote_type === "service" ? (
+            <p className="w-full text-sm text-slate-600">
+              Legacy service quotes convert to invoices via{" "}
+              <Link
+                href="/dashboard/sales-crm/quotations"
+                className="font-medium text-[#0f2744] underline-offset-2 hover:underline"
+              >
+                Quotations
+              </Link>
+              .
+            </p>
           ) : null}
         </div>
       </section>
