@@ -7,6 +7,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { LandlordListRow } from "./landlords-utils";
@@ -290,7 +292,7 @@ export default function ComplaintsView({
               <tr>
                 <th className={scrollableTableThClassName}>Tenant</th>
                 <th className={scrollableTableThClassName}>Unit</th>
-                <th className={scrollableTableThClassName}>Subject</th>
+                <th className={scrollableTableWrapThClassName}>Subject</th>
                 <th className={scrollableTableThClassName}>Filed by</th>
                 <th className={scrollableTableThClassName}>Status</th>
                 <th className={scrollableTableThClassName}>Reported</th>
@@ -321,8 +323,8 @@ export default function ComplaintsView({
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {row.unitLabel}
                       </td>
-                      <td className="max-w-xs px-4 py-3 text-sm text-slate-700">
-                        <span className="line-clamp-2">{row.subject}</span>
+                      <td className={`${scrollableTableWrapTdClassName} text-sm text-slate-700`}>
+                        {row.subject}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {formatLesseeComplaintRaisedBy(row.raisedBy)}

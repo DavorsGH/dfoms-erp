@@ -22,6 +22,35 @@ export const scrollableTableHeadClassName = "bg-[#0f2744] text-white";
 export const scrollableTableThClassName =
   "sticky top-0 z-10 bg-[#0f2744] px-4 py-3 font-medium text-white";
 
+/** Use on description / notes / other long free-text columns in scrollable tables. */
+export const scrollableTableWrapThClassName =
+  `${scrollableTableThClassName} whitespace-normal`;
+
+export const scrollableTableWrapTdClassName =
+  "max-w-md px-4 py-3 whitespace-normal break-words align-top";
+
+/** Long free-text cells outside scrollable register tables (detail views, forms). */
+export const tableWrapCellClassName =
+  "max-w-md whitespace-normal break-words align-top";
+
+const LONG_TEXT_TABLE_HEADINGS = new Set([
+  "Action Taken",
+  "Complaint Details",
+  "Description",
+  "Details",
+  "Issue",
+  "Issue Description",
+  "Message",
+  "Notes",
+  "Problem Description",
+]);
+
+export function scrollableTableHeadingClassName(heading: string): string {
+  return LONG_TEXT_TABLE_HEADINGS.has(heading)
+    ? scrollableTableWrapThClassName
+    : scrollableTableThClassName;
+}
+
 export const scrollableTableBodyClassName = "divide-y divide-slate-200";
 
 /** Viewport-bounded scroll box with sticky column headers. */

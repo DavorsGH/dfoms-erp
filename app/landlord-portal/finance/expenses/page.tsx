@@ -14,6 +14,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "@/app/dashboard/scrollable-table";
 import {
   portalErrorBannerClassName,
@@ -78,7 +80,7 @@ export default async function LandlordPortalExpensesPage() {
                   <th className={scrollableTableThClassName}>Property</th>
                   <th className={scrollableTableThClassName}>Category</th>
                   <th className={scrollableTableThClassName}>Amount</th>
-                  <th className={scrollableTableThClassName}>Description</th>
+                  <th className={scrollableTableWrapThClassName}>Description</th>
                   <th className={scrollableTableThClassName}>Receipt</th>
                 </tr>
               </thead>
@@ -97,7 +99,7 @@ export default async function LandlordPortalExpensesPage() {
                     <td className="px-4 py-3 text-slate-700">
                       {formatExpenseMoney(row.amountGhs)}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className={`${scrollableTableWrapTdClassName} text-slate-700`}>
                       {row.description ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-slate-700">

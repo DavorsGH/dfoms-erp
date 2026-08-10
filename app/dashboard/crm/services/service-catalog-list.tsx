@@ -11,6 +11,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "@/app/dashboard/scrollable-table";
 import { inputClassName } from "@/app/dashboard/hr-payroll/hr-register-utils";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
@@ -314,7 +316,7 @@ export default function ServiceCatalogList({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 <th className={scrollableTableThClassName}>Service name</th>
-                <th className={scrollableTableThClassName}>Description</th>
+                <th className={scrollableTableWrapThClassName}>Description</th>
                 <th className={scrollableTableThClassName}>Default rate</th>
                 <th className={scrollableTableThClassName}>Billing unit</th>
                 <th className={scrollableTableThClassName}>Category</th>
@@ -340,7 +342,7 @@ export default function ServiceCatalogList({
                     <td className="px-4 py-3 text-sm font-medium text-slate-800">
                       {service.service_name}
                     </td>
-                    <td className="max-w-md px-4 py-3 text-sm text-slate-700">
+                    <td className={`${scrollableTableWrapTdClassName} text-sm text-slate-700`}>
                       {service.description ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">

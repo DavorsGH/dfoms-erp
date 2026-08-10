@@ -7,6 +7,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "@/app/dashboard/scrollable-table";
 import { formatInventoryQuantity } from "@/app/dashboard/inventory/inventory-utils";
 import type { SalesActivity } from "../sales-pipeline/sales-pipeline-utils";
@@ -518,7 +520,7 @@ function LoyaltySection({
               <th className={scrollableTableThClassName}>Points</th>
               <th className={scrollableTableThClassName}>Source</th>
               <th className={scrollableTableThClassName}>Reference</th>
-              <th className={scrollableTableThClassName}>Notes</th>
+              <th className={scrollableTableWrapThClassName}>Notes</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -542,7 +544,7 @@ function LoyaltySection({
                   </td>
                   <td className="px-4 py-3">{entry.source_type ?? "—"}</td>
                   <td className="px-4 py-3">{entry.source_reference ?? "—"}</td>
-                  <td className="px-4 py-3">{entry.notes ?? "—"}</td>
+                  <td className={scrollableTableWrapTdClassName}>{entry.notes ?? "—"}</td>
                 </tr>
               ))
             )}
@@ -562,7 +564,7 @@ function ActivitiesSection({ activities }: { activities: SalesActivity[] }) {
             <th className={scrollableTableThClassName}>Type</th>
             <th className={scrollableTableThClassName}>Due Date</th>
             <th className={scrollableTableThClassName}>Status</th>
-            <th className={scrollableTableThClassName}>Notes</th>
+            <th className={scrollableTableWrapThClassName}>Notes</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-200">
@@ -578,7 +580,7 @@ function ActivitiesSection({ activities }: { activities: SalesActivity[] }) {
                 <td className="px-4 py-3">
                   {isActivityComplete(entry) ? "Completed" : "Open"}
                 </td>
-                <td className="px-4 py-3">{entry.notes ?? "—"}</td>
+                <td className={scrollableTableWrapTdClassName}>{entry.notes ?? "—"}</td>
               </tr>
             ))
           )}

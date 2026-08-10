@@ -10,6 +10,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import {
@@ -674,7 +676,7 @@ export default function LesseeDetailView({
                 <tr>
                   <th className={scrollableTableThClassName}>Reported</th>
                   <th className={scrollableTableThClassName}>Unit</th>
-                  <th className={scrollableTableThClassName}>Description</th>
+                  <th className={scrollableTableWrapThClassName}>Description</th>
                   <th className={scrollableTableThClassName}>Status</th>
                   <th className={scrollableTableThClassName}>Cost</th>
                 </tr>
@@ -691,7 +693,7 @@ export default function LesseeDetailView({
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {row.unitLabel}
                     </td>
-                    <td className="max-w-xs truncate px-4 py-3 text-sm text-slate-700">
+                    <td className={`${scrollableTableWrapTdClassName} text-sm text-slate-700`}>
                       {row.description}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">
@@ -729,7 +731,7 @@ export default function LesseeDetailView({
                   <th className={scrollableTableThClassName}>Type</th>
                   <th className={scrollableTableThClassName}>Unit</th>
                   <th className={scrollableTableThClassName}>Conducted by</th>
-                  <th className={scrollableTableThClassName}>Notes</th>
+                  <th className={scrollableTableWrapThClassName}>Notes</th>
                 </tr>
               </thead>
               <tbody>
@@ -750,7 +752,7 @@ export default function LesseeDetailView({
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {row.conductedBy ?? "—"}
                     </td>
-                    <td className="max-w-xs truncate px-4 py-3 text-sm text-slate-700">
+                    <td className={`${scrollableTableWrapTdClassName} text-sm text-slate-700`}>
                       {row.notes ?? "—"}
                     </td>
                   </tr>

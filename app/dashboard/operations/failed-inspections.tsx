@@ -11,6 +11,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import {
   getEmployeeDisplayName,
@@ -30,7 +32,6 @@ import {
 import {
   nullableText,
   SEVERITY_OPTIONS,
-  truncateText,
 } from "./operations-register-utils";
 import { allocateFailedInspectionIssueNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
@@ -502,7 +503,7 @@ export default function FailedInspections({
               <th className={scrollableTableThClassName}>Date Identified</th>
               <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Site</th>
-              <th className={scrollableTableThClassName}>Problem Description</th>
+              <th className={scrollableTableWrapThClassName}>Problem Description</th>
               <th className={scrollableTableThClassName}>Severity</th>
               <th className={scrollableTableThClassName}>Assigned Person</th>
               <th className={scrollableTableThClassName}>Target Date</th>
@@ -543,8 +544,8 @@ export default function FailedInspections({
                       {getFailedInspectionClientName(entry)}
                     </td>
                     <td className="px-4 py-3">{getFailedInspectionSiteName(entry)}</td>
-                    <td className="px-4 py-3">
-                      {truncateText(entry.problem_description)}
+                    <td className={scrollableTableWrapTdClassName}>
+                      {entry.problem_description?.trim() || "—"}
                     </td>
                     <td className="px-4 py-3">{entry.severity ?? "—"}</td>
                     <td className="px-4 py-3">

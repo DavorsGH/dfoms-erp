@@ -9,6 +9,9 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
+  tableWrapCellClassName,
 } from "@/app/dashboard/scrollable-table";
 import {
   formatQuoteDate,
@@ -175,7 +178,7 @@ export default function QuoteView({
               <tr>
                 {quote.quote_type === "service" ? (
                   <>
-                    <th className={scrollableTableThClassName}>Description</th>
+                    <th className={scrollableTableWrapThClassName}>Description</th>
                     <th className={scrollableTableThClassName}>Site</th>
                     <th className={scrollableTableThClassName}>Category</th>
                     <th className={scrollableTableThClassName}>Service Cost (GHS)</th>
@@ -212,7 +215,7 @@ export default function QuoteView({
                   <tr key={line.id} className={getStripedRowClassName(index)}>
                     {quote.quote_type === "service" ? (
                       <>
-                        <td className="px-4 py-3">{line.description}</td>
+                        <td className={`${tableWrapCellClassName} px-4 py-3`}>{line.description}</td>
                         <td className="px-4 py-3">{line.site_id ?? "—"}</td>
                         <td className="px-4 py-3">{line.category_label ?? "—"}</td>
                         <td className="px-4 py-3">
@@ -227,7 +230,7 @@ export default function QuoteView({
                       </>
                     ) : (
                       <>
-                        <td className="px-4 py-3">
+                        <td className={`${tableWrapCellClassName} px-4 py-3`}>
                           {product
                             ? `${product.product_code} — ${product.product_name}`
                             : line.description}

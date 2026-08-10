@@ -38,6 +38,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import {
   AGING_BUCKET_LABELS,
@@ -731,7 +733,7 @@ export function StatutoryLiabilitiesReport({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 <th className={scrollableTableThClassName}>Type</th>
-                <th className={scrollableTableThClassName}>Description</th>
+                <th className={scrollableTableWrapThClassName}>Description</th>
                 <th className={scrollableTableThClassName}>Amount</th>
                 <th className={scrollableTableThClassName}>Due Date</th>
                 <th className={scrollableTableThClassName}>Status</th>
@@ -751,7 +753,7 @@ export function StatutoryLiabilitiesReport({
                 report.rows.map((row, index) => (
                   <tr key={`${row.group}-${row.description}-${index}`} className={getStripedRowClassName(index)}>
                     <td className="px-4 py-3">{row.group}</td>
-                    <td className="px-4 py-3">{row.description}</td>
+                    <td className={scrollableTableWrapTdClassName}>{row.description}</td>
                     <td className="px-4 py-3">
                       {formatReportCurrency(row.amount)}
                     </td>
@@ -980,7 +982,7 @@ export function CapitalContributionsReport({
                 <th className={scrollableTableThClassName}>Date</th>
                 <th className={scrollableTableThClassName}>Contributed By</th>
                 <th className={scrollableTableThClassName}>Amount</th>
-                <th className={scrollableTableThClassName}>Description</th>
+                <th className={scrollableTableWrapThClassName}>Description</th>
                 <th className={scrollableTableThClassName}>Running Total</th>
               </tr>
             </thead>
@@ -1002,7 +1004,7 @@ export function CapitalContributionsReport({
                     <td className="px-4 py-3">
                       {formatReportCurrency(row.amount)}
                     </td>
-                    <td className="px-4 py-3">{row.description}</td>
+                    <td className={scrollableTableWrapTdClassName}>{row.description}</td>
                     <td className="px-4 py-3">
                       {formatReportCurrency(row.runningTotal)}
                     </td>
@@ -1120,7 +1122,7 @@ export function ExpenseReport({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 <th className={scrollableTableThClassName}>Date</th>
-                <th className={scrollableTableThClassName}>Description</th>
+                <th className={scrollableTableWrapThClassName}>Description</th>
                 <th className={scrollableTableThClassName}>Category</th>
                 <th className={scrollableTableThClassName}>Payment Status</th>
                 <th className={`${scrollableTableThClassName} text-right`}>
@@ -1145,7 +1147,7 @@ export function ExpenseReport({
                       <td className="px-4 py-3">
                         {formatReportDate(row.date)}
                       </td>
-                      <td className="px-4 py-3">{row.description}</td>
+                      <td className={scrollableTableWrapTdClassName}>{row.description}</td>
                       <td className="px-4 py-3">{row.category}</td>
                       <td className="px-4 py-3">{row.paymentStatus}</td>
                       <td className="px-4 py-3 text-right">

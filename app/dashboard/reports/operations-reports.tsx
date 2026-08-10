@@ -21,7 +21,9 @@ import type { WorkOrderEntry } from "../operations/work-orders-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableHeadingClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
 } from "../scrollable-table";
 import {
   formatReportPeriodLabel,
@@ -313,7 +315,7 @@ export function QualityKpiSummaryReport({
                   "Pass Rate %",
                   "Score Trend",
                 ].map((heading) => (
-                  <th key={heading} className={scrollableTableThClassName}>
+                  <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                     {heading}
                   </th>
                 ))}
@@ -500,7 +502,7 @@ export function SitePerformanceReport({
                   "Complaints",
                   "Incidents",
                 ].map((heading) => (
-                  <th key={heading} className={scrollableTableThClassName}>
+                  <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                     {heading}
                   </th>
                 ))}
@@ -610,7 +612,7 @@ export function CorrectiveActionStatusReport({
                   "Days Open",
                   "Overdue",
                 ].map((heading) => (
-                  <th key={heading} className={scrollableTableThClassName}>
+                  <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                     {heading}
                   </th>
                 ))}
@@ -626,7 +628,7 @@ export function CorrectiveActionStatusReport({
                 >
                   <td className="px-4 py-3 text-sm text-slate-800">{row.actionNo}</td>
                   <td className="px-4 py-3 text-sm text-slate-700">{row.clientName}</td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
+                  <td className={`${scrollableTableWrapTdClassName} text-sm`}>
                     {row.issueDescription}
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">
@@ -904,7 +906,7 @@ export function MonthlyClientServiceReport({
                       "Fail",
                       "Pass Rate %",
                     ].map((heading) => (
-                      <th key={heading} className={scrollableTableThClassName}>
+                      <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                         {heading}
                       </th>
                     ))}
@@ -960,7 +962,7 @@ export function MonthlyClientServiceReport({
                     <tr>
                       {["Site / Facility", "Required Staff", "Actual Staff"].map(
                         (heading) => (
-                          <th key={heading} className={scrollableTableThClassName}>
+                          <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                             {heading}
                           </th>
                         ),
@@ -996,7 +998,7 @@ export function MonthlyClientServiceReport({
                     <tr>
                       {["Date", "Site", "Type", "Description", "Status", "Resolved"].map(
                         (heading) => (
-                          <th key={heading} className={scrollableTableThClassName}>
+                          <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                             {heading}
                           </th>
                         ),
@@ -1009,7 +1011,7 @@ export function MonthlyClientServiceReport({
                         <td className="px-4 py-2 text-sm">{formatReportDate(row.date)}</td>
                         <td className="px-4 py-2 text-sm">{row.siteName}</td>
                         <td className="px-4 py-2 text-sm">{row.type}</td>
-                        <td className="px-4 py-2 text-sm">{row.description}</td>
+                        <td className={`${scrollableTableWrapTdClassName} text-sm`}>{row.description}</td>
                         <td className="px-4 py-2 text-sm">{row.status}</td>
                         <td className="px-4 py-2 text-sm">
                           {formatReportDate(row.dateResolved)}
@@ -1038,7 +1040,7 @@ export function MonthlyClientServiceReport({
                         "Resolution Date",
                         "Response (days)",
                       ].map((heading) => (
-                        <th key={heading} className={scrollableTableThClassName}>
+                        <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                           {heading}
                         </th>
                       ))}
@@ -1054,7 +1056,7 @@ export function MonthlyClientServiceReport({
                           {formatReportDate(row.dateReceived)}
                         </td>
                         <td className="px-4 py-2 text-sm">{row.siteName}</td>
-                        <td className="px-4 py-2 text-sm">{row.details}</td>
+                        <td className={`${scrollableTableWrapTdClassName} text-sm`}>{row.details}</td>
                         <td className="px-4 py-2 text-sm">{row.status}</td>
                         <td className="px-4 py-2 text-sm">
                           {formatReportDate(row.resolutionDate)}
@@ -1081,7 +1083,7 @@ export function MonthlyClientServiceReport({
                   <thead className={scrollableTableHeadClassName}>
                     <tr>
                       {["Issue", "Action Taken", "Status"].map((heading) => (
-                        <th key={heading} className={scrollableTableThClassName}>
+                        <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                           {heading}
                         </th>
                       ))}
@@ -1090,8 +1092,8 @@ export function MonthlyClientServiceReport({
                   <tbody>
                     {report.correctiveActions.map((row, index) => (
                       <tr key={`${row.issue}-${index}`} className={getStripedRowClassName(index)}>
-                        <td className="px-4 py-2 text-sm">{row.issue}</td>
-                        <td className="px-4 py-2 text-sm">{row.actionTaken}</td>
+                        <td className={`${scrollableTableWrapTdClassName} text-sm`}>{row.issue}</td>
+                        <td className={`${scrollableTableWrapTdClassName} text-sm`}>{row.actionTaken}</td>
                         <td className="px-4 py-2 text-sm">{row.status}</td>
                       </tr>
                     ))}
@@ -1345,7 +1347,7 @@ export function MonthlyIncidentSummaryReport({
                   "Status",
                   "Description",
                 ].map((heading) => (
-                  <th key={heading} className={scrollableTableThClassName}>
+                  <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                     {heading}
                   </th>
                 ))}
@@ -1361,7 +1363,7 @@ export function MonthlyIncidentSummaryReport({
                   <td className="px-4 py-3 text-sm">{row.type}</td>
                   <td className="px-4 py-3 text-sm">{row.severity}</td>
                   <td className="px-4 py-3 text-sm">{row.status}</td>
-                  <td className="px-4 py-3 text-sm">{row.description}</td>
+                  <td className={`${scrollableTableWrapTdClassName} text-sm`}>{row.description}</td>
                 </tr>
               ))}
             </tbody>
@@ -1465,7 +1467,7 @@ export function EscalatedIncidentsReport({
                   "Action Taken",
                   "Days Open",
                 ].map((heading) => (
-                  <th key={heading} className={scrollableTableThClassName}>
+                  <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                     {heading}
                   </th>
                 ))}
@@ -1478,10 +1480,10 @@ export function EscalatedIncidentsReport({
                   <td className="px-4 py-3 text-sm">{row.clientName}</td>
                   <td className="px-4 py-3 text-sm">{row.siteName}</td>
                   <td className="px-4 py-3 text-sm">{row.type}</td>
-                  <td className="px-4 py-3 text-sm">{row.description}</td>
+                  <td className={`${scrollableTableWrapTdClassName} text-sm`}>{row.description}</td>
                   <td className="px-4 py-3 text-sm">{row.severity}</td>
                   <td className="px-4 py-3 text-sm">{row.status}</td>
-                  <td className="px-4 py-3 text-sm">{row.actionTaken}</td>
+                  <td className={`${scrollableTableWrapTdClassName} text-sm`}>{row.actionTaken}</td>
                   <td className="px-4 py-3 text-sm">{row.daysOpen ?? "—"}</td>
                 </tr>
               ))}
@@ -1536,7 +1538,7 @@ export function RecurringIssueTrendReport({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 {["Source", "Site", "Issue", "Count", "Flag"].map((heading) => (
-                  <th key={heading} className={scrollableTableThClassName}>
+                  <th key={heading} className={scrollableTableHeadingClassName(heading)}>
                     {heading}
                   </th>
                 ))}
@@ -1552,7 +1554,7 @@ export function RecurringIssueTrendReport({
                 >
                   <td className="px-4 py-3 text-sm">{row.source}</td>
                   <td className="px-4 py-3 text-sm">{row.siteName}</td>
-                  <td className="px-4 py-3 text-sm">{row.issueLabel}</td>
+                  <td className={`${scrollableTableWrapTdClassName} text-sm`}>{row.issueLabel}</td>
                   <td className="px-4 py-3 text-sm">{row.count}</td>
                   <td className="px-4 py-3 text-sm">
                     {row.isRecurring ? "Recurring Issue" : "—"}

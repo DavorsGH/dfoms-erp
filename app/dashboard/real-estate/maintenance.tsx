@@ -8,6 +8,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { LandlordListRow } from "./landlords-utils";
@@ -572,7 +574,7 @@ export default function Maintenance({
                   <th className={scrollableTableThClassName}>Tenant</th>
                   <th className={scrollableTableThClassName}>Unit</th>
                   <th className={scrollableTableThClassName}>Source</th>
-                  <th className={scrollableTableThClassName}>Description</th>
+                  <th className={scrollableTableWrapThClassName}>Description</th>
                   <th className={scrollableTableThClassName}>Cost</th>
                   <th className={scrollableTableThClassName}>Status</th>
                   <th className={scrollableTableThClassName}>
@@ -609,8 +611,8 @@ export default function Maintenance({
                         {row.reportedBy === "tenant" ? "Tenant" : "Staff"}
                         {row.tenantSelfFix ? " · Self-fix" : ""}
                       </td>
-                      <td className="max-w-xs px-4 py-3 text-sm text-slate-700">
-                        <span className="line-clamp-2">{row.description}</span>
+                      <td className={`${scrollableTableWrapTdClassName} text-sm text-slate-700`}>
+                        {row.description}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-900">
                         {row.tenantSelfFix && row.proposedCostGhs != null

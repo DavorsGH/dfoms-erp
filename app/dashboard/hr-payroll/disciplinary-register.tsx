@@ -11,6 +11,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import { getEmployeeDisplayName, type HrEmployee } from "./employee-utils";
 import {
@@ -318,8 +320,8 @@ export default function DisciplinaryRegister({
               <th className={scrollableTableThClassName}>Employee</th>
               <th className={scrollableTableThClassName}>Incident Date</th>
               <th className={scrollableTableThClassName}>Warning Level</th>
-              <th className={scrollableTableThClassName}>Description</th>
-              <th className={scrollableTableThClassName}>Action Taken</th>
+              <th className={scrollableTableWrapThClassName}>Description</th>
+              <th className={scrollableTableWrapThClassName}>Action Taken</th>
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
           </thead>
@@ -343,10 +345,10 @@ export default function DisciplinaryRegister({
                     {formatDate(entry.incident_date)}
                   </td>
                   <td className="px-4 py-3">{entry.warning_level ?? "—"}</td>
-                  <td className="max-w-xs truncate px-4 py-3">
+                  <td className={scrollableTableWrapTdClassName}>
                     {entry.description ?? "—"}
                   </td>
-                  <td className="max-w-xs truncate px-4 py-3">
+                  <td className={scrollableTableWrapTdClassName}>
                     {entry.action_taken ?? "—"}
                   </td>
                   <RegisterRowActions

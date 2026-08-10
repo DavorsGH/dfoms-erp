@@ -23,6 +23,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 
 export type DirectorsLoanRepaymentRecord = DirectorsLoanRepaymentRow & {
@@ -405,7 +407,7 @@ export default function DirectorsLoanRepaymentsPanel({
               <th className={scrollableTableThClassName}>Amount</th>
               <th className={scrollableTableThClassName}>AP Component</th>
               <th className={scrollableTableThClassName}>Manual Component</th>
-              <th className={scrollableTableThClassName}>Notes</th>
+              <th className={scrollableTableWrapThClassName}>Notes</th>
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
           </thead>
@@ -427,7 +429,7 @@ export default function DirectorsLoanRepaymentsPanel({
                   <td className="px-4 py-3">
                     {formatGHS(Number(row.applied_to_manual_component) || 0)}
                   </td>
-                  <td className="px-4 py-3">{row.notes ?? "—"}</td>
+                  <td className={scrollableTableWrapTdClassName}>{row.notes ?? "—"}</td>
                   <RegisterRowActions
                     onEdit={() => openEditForm(row)}
                     onDelete={() => handleDelete(row.id)}

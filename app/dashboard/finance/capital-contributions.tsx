@@ -19,6 +19,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 
 type CapitalContributionsProps = {
@@ -322,8 +324,8 @@ export default function CapitalContributions({
               <th className={scrollableTableThClassName}>Date</th>
               <th className={scrollableTableThClassName}>Contributed By</th>
               <th className={scrollableTableThClassName}>Amount</th>
-              <th className={scrollableTableThClassName}>Description</th>
-              <th className={scrollableTableThClassName}>Notes</th>
+              <th className={scrollableTableWrapThClassName}>Description</th>
+              <th className={scrollableTableWrapThClassName}>Notes</th>
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
           </thead>
@@ -348,8 +350,8 @@ export default function CapitalContributions({
                   </td>
                   <td className="px-4 py-3">{getContributorName(entry)}</td>
                   <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
-                  <td className="px-4 py-3">{entry.description ?? "—"}</td>
-                  <td className="px-4 py-3">{entry.notes ?? "—"}</td>
+                  <td className={scrollableTableWrapTdClassName}>{entry.description ?? "—"}</td>
+                  <td className={scrollableTableWrapTdClassName}>{entry.notes ?? "—"}</td>
                   <RegisterRowActions
                     onEdit={() => openEditForm(entry)}
                     onDelete={() => handleDelete(entry.id)}

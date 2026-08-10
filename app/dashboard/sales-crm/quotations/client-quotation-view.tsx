@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { pdf } from "@react-pdf/renderer";
 import { LoadingState } from "@/components/loading-indicator";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
+import { tableWrapCellClassName } from "@/app/dashboard/scrollable-table";
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import { resolveQuotationOpportunityName } from "@/utils/client-quotations-types";
 import {
@@ -410,7 +411,7 @@ export default function ClientQuotationView({
 
                           return (
                             <tr key={line.id} className={rowShade}>
-                              <td className="px-3 py-2 text-slate-900">{line.description}</td>
+                              <td className={`${tableWrapCellClassName} px-3 py-2 text-slate-900`}>{line.description}</td>
                               <td className="px-3 py-2 text-right text-slate-900">
                                 {formatInvoiceMoney(line.labour_amount)}
                               </td>

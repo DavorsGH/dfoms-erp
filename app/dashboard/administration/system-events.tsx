@@ -6,6 +6,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import type {
@@ -252,7 +254,7 @@ export default function SystemEventsViewer({
               <th className={scrollableTableThClassName}>Type</th>
               <th className={scrollableTableThClassName}>Name</th>
               <th className={scrollableTableThClassName}>Status</th>
-              <th className={scrollableTableThClassName}>Message</th>
+              <th className={scrollableTableWrapThClassName}>Message</th>
             </tr>
           </thead>
           <tbody>
@@ -284,7 +286,7 @@ export default function SystemEventsViewer({
                       {row.status}
                     </span>
                   </td>
-                  <td className="max-w-xl px-4 py-3 text-sm text-slate-700">
+                  <td className={`${scrollableTableWrapTdClassName} text-sm text-slate-700`}>
                     <div>{row.message ?? "—"}</div>
                     {row.metadata ? (
                       <details className="mt-1">

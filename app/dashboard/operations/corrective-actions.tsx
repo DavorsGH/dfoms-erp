@@ -11,6 +11,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import {
   getEmployeeDisplayName,
@@ -31,7 +33,6 @@ import {
   CORRECTIVE_ACTION_STATUS_OPTIONS,
   DEFAULT_CORRECTIVE_ACTION_STATUS,
   nullableText,
-  truncateText,
 } from "./operations-register-utils";
 import { allocateCorrectiveActionNo } from "./operations-ids-api";
 
@@ -507,7 +508,7 @@ export default function CorrectiveActions({
             <tr>
               <th className={scrollableTableThClassName}>Date Raised</th>
               <th className={scrollableTableThClassName}>Customer</th>
-              <th className={scrollableTableThClassName}>Issue Description</th>
+              <th className={scrollableTableWrapThClassName}>Issue Description</th>
               <th className={scrollableTableThClassName}>Responsible Person</th>
               <th className={scrollableTableThClassName}>Target Date</th>
               <th className={scrollableTableThClassName}>Status</th>
@@ -546,8 +547,8 @@ export default function CorrectiveActions({
                     <td className="px-4 py-3">
                       {getCorrectiveActionClientName(entry)}
                     </td>
-                    <td className="px-4 py-3">
-                      {truncateText(entry.issue_description)}
+                    <td className={scrollableTableWrapTdClassName}>
+                      {entry.issue_description?.trim() || "—"}
                     </td>
                     <td className="px-4 py-3">
                       {entry.responsible_person

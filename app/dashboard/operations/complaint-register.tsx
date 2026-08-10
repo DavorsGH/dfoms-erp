@@ -11,6 +11,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import {
   getEmployeeDisplayName,
@@ -30,7 +32,6 @@ import {
   COMPLAINT_STATUS_OPTIONS,
   DEFAULT_COMPLAINT_STATUS,
   nullableText,
-  truncateText,
 } from "./operations-register-utils";
 import { allocateComplaintNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
@@ -596,7 +597,7 @@ export default function ComplaintRegister({
               <th className={scrollableTableThClassName}>Date Received</th>
               <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Site</th>
-              <th className={scrollableTableThClassName}>Complaint Details</th>
+              <th className={scrollableTableWrapThClassName}>Complaint Details</th>
               <th className={scrollableTableThClassName}>Priority</th>
               <th className={scrollableTableThClassName}>Status</th>
               <th className={scrollableTableThClassName}>Repeat Complaint</th>
@@ -626,8 +627,8 @@ export default function ComplaintRegister({
                   <td className="px-4 py-3">{formatDate(entry.date_received)}</td>
                   <td className="px-4 py-3">{getComplaintClientName(entry)}</td>
                   <td className="px-4 py-3">{getComplaintSiteName(entry)}</td>
-                  <td className="px-4 py-3">
-                    {truncateText(entry.complaint_details)}
+                  <td className={scrollableTableWrapTdClassName}>
+                    {entry.complaint_details?.trim() || "—"}
                   </td>
                   <td className="px-4 py-3">{entry.priority ?? "—"}</td>
                   <td className="px-4 py-3">{entry.status ?? "—"}</td>

@@ -57,6 +57,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 
 type ExpenseRegisterProps = {
@@ -1061,7 +1063,7 @@ export default function ExpenseRegister({
                     onApply={setSubCategoryFilter}
                   />
                 </th>
-                <th className={scrollableTableThClassName}>
+                <th className={scrollableTableWrapThClassName}>
                   <RegisterColumnFilterHeader
                     label="Description"
                     options={descriptionOptions}
@@ -1119,7 +1121,7 @@ export default function ExpenseRegister({
                       <td className="px-4 py-3">{formatDate(entry.date)}</td>
                       <td className="px-4 py-3">{entry.expense_category}</td>
                       <td className="px-4 py-3">{entry.sub_category}</td>
-                      <td className="px-4 py-3">
+                      <td className={scrollableTableWrapTdClassName}>
                         {entry.description ?? "—"}
                         {autoPosted ? (
                           <span className="ml-2 text-xs font-medium opacity-80">

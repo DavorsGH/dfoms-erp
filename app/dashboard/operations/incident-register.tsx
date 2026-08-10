@@ -11,6 +11,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapTdClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import type { HrEmployee } from "../hr-payroll/employee-utils";
 import { formatDate, inputClassName } from "../hr-payroll/hr-register-utils";
@@ -29,7 +31,6 @@ import {
   INCIDENT_TYPE_OPTIONS,
   SEVERITY_OPTIONS,
   nullableText,
-  truncateText,
 } from "./operations-register-utils";
 import { allocateIncidentNo } from "./operations-ids-api";
 import type { SiteEntry } from "./sites-utils";
@@ -621,7 +622,7 @@ export default function IncidentRegister({
               <th className={scrollableTableThClassName}>Date</th>
               <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Site</th>
-              <th className={scrollableTableThClassName}>Description</th>
+              <th className={scrollableTableWrapThClassName}>Description</th>
               <th className={scrollableTableThClassName}>Severity</th>
               <th className={scrollableTableThClassName}>Status</th>
               <th className={scrollableTableThClassName}>Escalated</th>
@@ -656,8 +657,8 @@ export default function IncidentRegister({
                   <td className="px-4 py-3">{formatDate(entry.date)}</td>
                   <td className="px-4 py-3">{getIncidentClientName(entry)}</td>
                   <td className="px-4 py-3">{getIncidentSiteName(entry)}</td>
-                  <td className="px-4 py-3">
-                    {truncateText(entry.description)}
+                  <td className={scrollableTableWrapTdClassName}>
+                    {entry.description?.trim() || "—"}
                   </td>
                   <td className="px-4 py-3">{entry.severity ?? "—"}</td>
                   <td className="px-4 py-3">{entry.status ?? "—"}</td>
