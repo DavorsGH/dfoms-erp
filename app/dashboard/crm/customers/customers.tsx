@@ -24,6 +24,7 @@ import {
   isContractRenewalDue,
   nullableText,
 } from "../../operations/operations-register-utils";
+import { getCustomerDeleteErrorMessage } from "@/utils/customer-delete-errors";
 import {
   CUSTOMER_STATUS_OPTIONS,
   CUSTOMER_TYPE_OPTIONS,
@@ -186,7 +187,7 @@ export default function Customers({
       .eq("client_id", clientId);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(getCustomerDeleteErrorMessage(deleteError));
       setDeletingId(null);
       return;
     }
