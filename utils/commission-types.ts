@@ -5,7 +5,12 @@ import {
   type HrEmployee,
 } from "@/app/dashboard/hr-payroll/employee-utils";
 
-export const COMMISSION_STATUSES = ["pending", "approved", "paid"] as const;
+export const COMMISSION_STATUSES = [
+  "pending",
+  "approved",
+  "paid",
+  "cancelled",
+] as const;
 export type CommissionStatus = (typeof COMMISSION_STATUSES)[number];
 
 export const COMMISSION_RULE_LIST_SELECT =
@@ -116,6 +121,8 @@ export function formatCommissionStatus(status: CommissionStatus) {
       return "Approved";
     case "paid":
       return "Paid";
+    case "cancelled":
+      return "Cancelled";
     default:
       return status;
   }
@@ -129,6 +136,8 @@ export function commissionStatusBadgeClassName(status: CommissionStatus) {
       return "bg-blue-100 text-blue-800";
     case "paid":
       return "bg-emerald-100 text-emerald-800";
+    case "cancelled":
+      return "bg-slate-200 text-slate-700";
     default:
       return "bg-slate-100 text-slate-700";
   }

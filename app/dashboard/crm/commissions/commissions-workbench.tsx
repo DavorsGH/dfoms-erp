@@ -39,6 +39,9 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-3 py-1.5 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+const dangerButtonClassName =
+  "rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
 function monthStartIsoDate(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), 1).toISOString().slice(0, 10);
 }
@@ -266,16 +269,28 @@ export default function CommissionsWorkbench({
           </div>
           <div className="flex flex-wrap gap-3">
             {selectedCalculation.status === "pending" ? (
-              <button
-                type="button"
-                disabled={statusUpdatingId === selectedCalculation.id}
-                onClick={() =>
-                  void handleStatusChange(selectedCalculation.id, "approved")
-                }
-                className={secondaryButtonClassName}
-              >
-                Approve
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={statusUpdatingId === selectedCalculation.id}
+                  onClick={() =>
+                    void handleStatusChange(selectedCalculation.id, "approved")
+                  }
+                  className={secondaryButtonClassName}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  disabled={statusUpdatingId === selectedCalculation.id}
+                  onClick={() =>
+                    void handleStatusChange(selectedCalculation.id, "cancelled")
+                  }
+                  className={dangerButtonClassName}
+                >
+                  Cancel
+                </button>
+              </>
             ) : null}
             {selectedCalculation.status === "approved" ? (
               <button
@@ -348,14 +363,24 @@ export default function CommissionsWorkbench({
                           View
                         </button>
                         {row.status === "pending" ? (
-                          <button
-                            type="button"
-                            disabled={statusUpdatingId === row.id}
-                            onClick={() => void handleStatusChange(row.id, "approved")}
-                            className={secondaryButtonClassName}
-                          >
-                            Approve
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              disabled={statusUpdatingId === row.id}
+                              onClick={() => void handleStatusChange(row.id, "approved")}
+                              className={secondaryButtonClassName}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              disabled={statusUpdatingId === row.id}
+                              onClick={() => void handleStatusChange(row.id, "cancelled")}
+                              className={dangerButtonClassName}
+                            >
+                              Cancel
+                            </button>
+                          </>
                         ) : null}
                         {row.status === "approved" ? (
                           <button

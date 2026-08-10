@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createClient } from "@/utils/supabase/client";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -26,15 +28,55 @@ const primaryButtonClassName =
   "rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]";
 
 const secondaryButtonClassName =
-  "rounded-md border border-[#0f2744] px-3 py-1.5 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50";
+  "rounded-md border border-[#0f2744] px-3 py-1.5 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const dangerButtonClassName =
+  "rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 export default function CommissionRulesList({
   initialEmployees,
   initialRules,
   fetchError,
 }: CommissionRulesListProps) {
-  const rules = initialRules.map(normalizeCommissionRuleRow);
-  const [error] = useState<string | null>(fetchError);
+  const router = useRouter();
+  const supabase = createClient();
+  const [rules, setRules] = useState(
+    initialRules.map(normalizeCommissionRuleRow),
+  );
+  const [error, setError] = useState<string | null>(fetchError);
+  const [deleteTarget, setDeleteTarget] = useState<CommissionRuleListRow | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    setRules(initialRules.map(normalizeCommissionRuleRow));
+  }, [initialRules]);
+
+  async function handleDeleteRule() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+
+    const { error: deleteError } = await supabase
+      .from("commission_rules")
+      .delete()
+      .eq("id", deleteTarget.id);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      setDeleting(false);
+      return;
+    }
+
+    setRules((current) => current.filter((rule) => rule.id !== deleteTarget.id));
+    setDeleteTarget(null);
+    setDeleting(false);
+    router.refresh();
+  }
 
   return (
     <div className="space-y-6">
@@ -49,6 +91,52 @@ export default function CommissionRulesList({
           New Commission Rule
         </Link>
       </div>
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-commission-rule-title"
+            className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl"
+          >
+            <h3
+              id="delete-commission-rule-title"
+              className="text-lg font-semibold text-[#0f2744]"
+            >
+              Delete commission rule?
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This permanently removes the rule for{" "}
+              <span className="font-medium text-slate-800">
+                {formatCommissionRuleTarget(initialEmployees, deleteTarget)}
+              </span>{" "}
+              ({formatCommissionRate(deleteTarget.commission_rate)}). Existing
+              commission calculations keep their saved rate snapshot and are not
+              affected. To stop future use without deleting, use Edit and uncheck
+              Active instead.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className={secondaryButtonClassName}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteRule()}
+                disabled={deleting}
+                className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <ScrollableTable>
@@ -88,12 +176,21 @@ export default function CommissionRulesList({
                       {rule.is_active ? "Active" : "Inactive"}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <Link
-                        href={`/dashboard/crm/commission-rules/${rule.id}/edit`}
-                        className={secondaryButtonClassName}
-                      >
-                        Edit
-                      </Link>
+                      <div className="flex flex-wrap gap-2">
+                        <Link
+                          href={`/dashboard/crm/commission-rules/${rule.id}/edit`}
+                          className={secondaryButtonClassName}
+                        >
+                          Edit
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(rule)}
+                          className={dangerButtonClassName}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

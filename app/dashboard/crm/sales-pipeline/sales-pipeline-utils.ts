@@ -160,3 +160,106 @@ export function groupOpportunitiesByStage(
 export function isActivityComplete(activity: SalesActivity): boolean {
   return Boolean(activity.completed_at);
 }
+
+export type OpportunityFormState = {
+  client_id: string;
+  opportunity_name: string;
+  estimated_value: string;
+  probability: string;
+  expected_close_date: string;
+  source: string;
+  assigned_to: string;
+  notes: string;
+};
+
+export const emptyOpportunityForm = (): OpportunityFormState => ({
+  client_id: "",
+  opportunity_name: "",
+  estimated_value: "",
+  probability: "",
+  expected_close_date: "",
+  source: "",
+  assigned_to: "",
+  notes: "",
+});
+
+export function opportunityToFormState(
+  opportunity: SalesOpportunity,
+): OpportunityFormState {
+  return {
+    client_id: opportunity.client_id,
+    opportunity_name: opportunity.opportunity_name,
+    estimated_value:
+      opportunity.estimated_value == null
+        ? ""
+        : String(opportunity.estimated_value),
+    probability:
+      opportunity.probability == null ? "" : String(opportunity.probability),
+    expected_close_date: opportunity.expected_close_date ?? "",
+    source: opportunity.source ?? "",
+    assigned_to: opportunity.assigned_to ?? "",
+    notes: opportunity.notes ?? "",
+  };
+}
+
+export type ParsedOpportunityForm = {
+  client_id: string;
+  opportunity_name: string;
+  estimated_value: number | null;
+  probability: number | null;
+  expected_close_date: string | null;
+  source: string | null;
+  assigned_to: string | null;
+  notes: string | null;
+};
+
+export function parseOpportunityForm(
+  form: OpportunityFormState,
+): { ok: true; value: ParsedOpportunityForm } | { ok: false; error: string } {
+  const clientId = form.client_id.trim();
+  if (!clientId) {
+    return { ok: false, error: "Select a customer." };
+  }
+
+  const opportunityName = form.opportunity_name.trim();
+  if (!opportunityName) {
+    return { ok: false, error: "Opportunity name is required." };
+  }
+
+  const estimatedValue = form.estimated_value.trim()
+    ? Number.parseFloat(form.estimated_value)
+    : null;
+  if (
+    form.estimated_value.trim() &&
+    (estimatedValue == null || Number.isNaN(estimatedValue) || estimatedValue < 0)
+  ) {
+    return { ok: false, error: "Estimated value must be a valid non-negative number." };
+  }
+
+  const probability = form.probability.trim()
+    ? Number.parseInt(form.probability, 10)
+    : null;
+  if (
+    form.probability.trim() &&
+    (probability == null ||
+      Number.isNaN(probability) ||
+      probability < 0 ||
+      probability > 100)
+  ) {
+    return { ok: false, error: "Probability must be between 0 and 100." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      client_id: clientId,
+      opportunity_name: opportunityName,
+      estimated_value: estimatedValue,
+      probability,
+      expected_close_date: form.expected_close_date.trim() || null,
+      source: form.source.trim() || null,
+      assigned_to: form.assigned_to.trim() || null,
+      notes: form.notes.trim() || null,
+    },
+  };
+}

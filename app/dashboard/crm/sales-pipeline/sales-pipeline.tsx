@@ -14,11 +14,13 @@ import {
 import {
   DEFAULT_CUSTOMER_TYPE,
 } from "../customers/customers-utils";
+import OpportunityFormFields from "./opportunity-form-fields";
 import {
   ACTIVITY_TYPE_OPTIONS,
   OPPORTUNITY_STAGES,
   SALES_ACTIVITY_SELECT,
   SALES_OPPORTUNITY_SELECT,
+  emptyOpportunityForm,
   getActivityTypeLabel,
   getAssignedRepLabel,
   getClientName,
@@ -26,6 +28,9 @@ import {
   isActivityComplete,
   normalizeSalesActivity,
   normalizeSalesOpportunity,
+  opportunityToFormState,
+  parseOpportunityForm,
+  type OpportunityFormState,
   type OpportunityStage,
   type SalesActivity,
   type SalesActivityType,
@@ -38,17 +43,6 @@ type SalesPipelineProps = {
   initialClients: PipelineClient[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
-};
-
-const emptyOpportunityForm = {
-  client_id: "",
-  opportunity_name: "",
-  estimated_value: "",
-  probability: "",
-  expected_close_date: "",
-  source: "",
-  assigned_to: "",
-  notes: "",
 };
 
 const emptyLeadForm = {
@@ -81,8 +75,14 @@ export default function SalesPipeline({
   const [activities, setActivities] = useState(initialActivities);
   const [clients, setClients] = useState(initialClients);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(
+    null,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<SalesOpportunity | null>(null);
   const [createNewLead, setCreateNewLead] = useState(false);
-  const [opportunityForm, setOpportunityForm] = useState(emptyOpportunityForm);
+  const [opportunityForm, setOpportunityForm] = useState<OpportunityFormState>(
+    emptyOpportunityForm(),
+  );
   const [leadForm, setLeadForm] = useState(emptyLeadForm);
   const [expandedOpportunityId, setExpandedOpportunityId] = useState<
     string | null
@@ -179,7 +179,8 @@ export default function SalesPipeline({
   }
 
   function openAddForm() {
-    setOpportunityForm(emptyOpportunityForm);
+    setEditingOpportunityId(null);
+    setOpportunityForm(emptyOpportunityForm());
     setLeadForm(emptyLeadForm);
     setCreateNewLead(false);
     setShowAddForm(true);
@@ -188,13 +189,25 @@ export default function SalesPipeline({
 
   function closeAddForm() {
     setShowAddForm(false);
-    setOpportunityForm(emptyOpportunityForm);
+    setOpportunityForm(emptyOpportunityForm());
     setLeadForm(emptyLeadForm);
     setCreateNewLead(false);
   }
 
+  function openEditForm(opportunity: SalesOpportunity) {
+    setShowAddForm(false);
+    setEditingOpportunityId(opportunity.id);
+    setOpportunityForm(opportunityToFormState(opportunity));
+    setError(null);
+  }
+
+  function closeEditForm() {
+    setEditingOpportunityId(null);
+    setOpportunityForm(emptyOpportunityForm());
+  }
+
   function updateOpportunityField(
-    field: keyof typeof emptyOpportunityForm,
+    field: keyof OpportunityFormState,
     value: string,
   ) {
     setOpportunityForm((current) => ({ ...current, [field]: value }));
@@ -286,36 +299,9 @@ export default function SalesPipeline({
       return;
     }
 
-    const opportunityName = opportunityForm.opportunity_name.trim();
-    if (!opportunityName) {
-      setError("Opportunity name is required.");
-      setLoading(false);
-      return;
-    }
-
-    const estimatedValue = opportunityForm.estimated_value.trim()
-      ? Number.parseFloat(opportunityForm.estimated_value)
-      : null;
-    if (
-      opportunityForm.estimated_value.trim() &&
-      (estimatedValue == null || Number.isNaN(estimatedValue) || estimatedValue < 0)
-    ) {
-      setError("Estimated value must be a valid non-negative number.");
-      setLoading(false);
-      return;
-    }
-
-    const probability = opportunityForm.probability.trim()
-      ? Number.parseInt(opportunityForm.probability, 10)
-      : null;
-    if (
-      opportunityForm.probability.trim() &&
-      (probability == null ||
-        Number.isNaN(probability) ||
-        probability < 0 ||
-        probability > 100)
-    ) {
-      setError("Probability must be between 0 and 100.");
+    const parsed = parseOpportunityForm({ ...opportunityForm, client_id: clientId });
+    if (!parsed.ok) {
+      setError(parsed.error);
       setLoading(false);
       return;
     }
@@ -323,15 +309,14 @@ export default function SalesPipeline({
     const { data, error: rpcError } = await supabase.rpc(
       "create_sales_opportunity",
       {
-        p_client_id: clientId,
-        p_opportunity_name: opportunityName,
-        p_estimated_value: estimatedValue,
-        p_probability: probability,
-        p_expected_close_date:
-          nullableText(opportunityForm.expected_close_date) ?? null,
-        p_source: nullableText(opportunityForm.source),
-        p_assigned_to: nullableText(opportunityForm.assigned_to),
-        p_notes: nullableText(opportunityForm.notes),
+        p_client_id: parsed.value.client_id,
+        p_opportunity_name: parsed.value.opportunity_name,
+        p_estimated_value: parsed.value.estimated_value,
+        p_probability: parsed.value.probability,
+        p_expected_close_date: parsed.value.expected_close_date,
+        p_source: parsed.value.source,
+        p_assigned_to: parsed.value.assigned_to,
+        p_notes: parsed.value.notes,
       },
     );
 
@@ -349,6 +334,75 @@ export default function SalesPipeline({
 
     closeAddForm();
     await refreshOpportunities();
+    setLoading(false);
+  }
+
+  async function handleUpdateOpportunity(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingOpportunityId) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const parsed = parseOpportunityForm(opportunityForm);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      setLoading(false);
+      return;
+    }
+
+    const { error: rpcError } = await supabase.rpc("update_sales_opportunity", {
+      p_opportunity_id: editingOpportunityId,
+      p_client_id: parsed.value.client_id,
+      p_opportunity_name: parsed.value.opportunity_name,
+      p_estimated_value: parsed.value.estimated_value,
+      p_probability: parsed.value.probability,
+      p_expected_close_date: parsed.value.expected_close_date,
+      p_source: parsed.value.source,
+      p_assigned_to: parsed.value.assigned_to,
+      p_notes: parsed.value.notes,
+    });
+
+    if (rpcError) {
+      setError(rpcError.message);
+      setLoading(false);
+      return;
+    }
+
+    closeEditForm();
+    await refreshOpportunities();
+    setLoading(false);
+  }
+
+  async function handleDeleteOpportunity() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const { error: rpcError } = await supabase.rpc("delete_sales_opportunity", {
+      p_opportunity_id: deleteTarget.id,
+    });
+
+    if (rpcError) {
+      setError(rpcError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (expandedOpportunityId === deleteTarget.id) {
+      setExpandedOpportunityId(null);
+    }
+    if (editingOpportunityId === deleteTarget.id) {
+      closeEditForm();
+    }
+
+    setDeleteTarget(null);
+    await Promise.all([refreshOpportunities(), refreshActivities()]);
     setLoading(false);
   }
 
@@ -583,115 +637,13 @@ export default function SalesPipeline({
               </div>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Opportunity Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={opportunityForm.opportunity_name}
-                  onChange={(event) =>
-                    updateOpportunityField("opportunity_name", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Estimated Value (GHS)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={opportunityForm.estimated_value}
-                  onChange={(event) =>
-                    updateOpportunityField("estimated_value", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Probability (%)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={opportunityForm.probability}
-                  onChange={(event) =>
-                    updateOpportunityField("probability", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Expected Close Date
-                </label>
-                <input
-                  type="date"
-                  value={opportunityForm.expected_close_date}
-                  onChange={(event) =>
-                    updateOpportunityField(
-                      "expected_close_date",
-                      event.target.value,
-                    )
-                  }
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Source
-                </label>
-                <input
-                  type="text"
-                  value={opportunityForm.source}
-                  onChange={(event) =>
-                    updateOpportunityField("source", event.target.value)
-                  }
-                  placeholder="Referral, website, cold call…"
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Assigned Rep
-                </label>
-                <select
-                  value={opportunityForm.assigned_to}
-                  onChange={(event) =>
-                    updateOpportunityField("assigned_to", event.target.value)
-                  }
-                  className={inputClassName}
-                >
-                  <option value="">Unassigned</option>
-                  {initialEmployees.map((employee) => (
-                    <option key={employee.employee_id} value={employee.employee_id}>
-                      {employee.staff_id} — {employee.full_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="md:col-span-2 xl:col-span-3">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Notes
-                </label>
-                <textarea
-                  rows={2}
-                  value={opportunityForm.notes}
-                  onChange={(event) =>
-                    updateOpportunityField("notes", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-            </div>
+            <OpportunityFormFields
+              form={opportunityForm}
+              clients={clients}
+              employees={initialEmployees}
+              onFieldChange={updateOpportunityField}
+              showCustomerField={false}
+            />
 
             <div className="flex gap-3">
               <button
@@ -711,6 +663,83 @@ export default function SalesPipeline({
             </div>
           </form>
         </section>
+      ) : null}
+
+      {editingOpportunityId ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
+            Edit Opportunity
+          </h3>
+          <form onSubmit={handleUpdateOpportunity} className="space-y-4">
+            <OpportunityFormFields
+              form={opportunityForm}
+              clients={clients}
+              employees={initialEmployees}
+              onFieldChange={updateOpportunityField}
+            />
+
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? "Saving…" : "Save Changes"}
+              </button>
+              <button
+                type="button"
+                onClick={closeEditForm}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-opportunity-title"
+            className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl"
+          >
+            <h3
+              id="delete-opportunity-title"
+              className="text-lg font-semibold text-[#0f2744]"
+            >
+              Delete opportunity?
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This will permanently remove{" "}
+              <span className="font-medium text-slate-800">
+                {deleteTarget.opportunity_name}
+              </span>{" "}
+              and its follow-up activities. Deletion is blocked if quotations or
+              product quotes are linked to this opportunity.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={loading}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteOpportunity()}
+                disabled={loading}
+                className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <section className="overflow-x-auto pb-2">
@@ -754,9 +783,57 @@ export default function SalesPipeline({
                           className="rounded-md border border-slate-200 bg-white p-3 shadow-sm"
                         >
                           <div className="space-y-2">
-                            <p className="font-medium text-[#0f2744]">
-                              {opportunity.opportunity_name}
-                            </p>
+                            <div className="flex items-start justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditForm(opportunity)}
+                                className="min-w-0 flex-1 text-left"
+                              >
+                                <p className="font-medium text-[#0f2744] hover:underline">
+                                  {opportunity.opportunity_name}
+                                </p>
+                              </button>
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  title="Edit opportunity"
+                                  aria-label={`Edit ${opportunity.opportunity_name}`}
+                                  onClick={() => openEditForm(opportunity)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-slate-100 text-[#3d5a7a] shadow-sm transition-colors hover:border-[#0f2744]/25 hover:bg-[#e8eef4] hover:text-[#0f2744] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#0f2744]"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="m2.695 14.763-1.262 3.154a.5.5 0 0 0 .65.65l3.155-1.262a4 4 0 0 0 1.343-.885L17.5 5.501a2.121 2.121 0 0 0-3-3L3.58 13.42a4 4 0 0 0-.885 1.343Z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Delete opportunity"
+                                  aria-label={`Delete ${opportunity.opportunity_name}`}
+                                  onClick={() => setDeleteTarget(opportunity)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-100 bg-red-50 text-red-600 shadow-sm transition-colors hover:border-red-200 hover:bg-red-100 hover:text-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-red-600"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    className="h-4 w-4"
+                                    aria-hidden="true"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M8.75 1A2.75 2.75 0 0 0 6 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 0 0-.615 1 1.066 1.066 0 0 0-.109.459c0 .298-.032.597-.094.884a.75.75 0 0 0 .686.823c.293-.082.59-.147.884-.195A48.065 48.065 0 0 1 8 4.75v-.15a1.25 1.25 0 0 1 1.25-1.25h1.5A1.25 1.25 0 0 1 12 3.75v.15c.795.077 1.584.176 2.365.298a.75.75 0 0 0 .686-.823 48.065 48.065 0 0 0-.884-.195.75.75 0 0 0-.094-.459 1.066 1.066 0 0 0-.615-1A48.567 48.567 0 0 0 14 4.193V3.75A2.75 2.75 0 0 0 11.25 1h-2.5ZM6 6.75A.75.75 0 0 1 6.75 6h6.5a.75.75 0 0 1 0 1.5h-6.5A.75.75 0 0 1 6 6.75Zm1.5 3.75a.75.75 0 0 0 0 1.5h3a.75.75 0 0 0 0-1.5h-3Z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
                             <p className="text-sm text-slate-600">
                               {getClientName(clients, opportunity.client_id)}
                             </p>
