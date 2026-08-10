@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserFullName } from "@/utils/current-user";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canStartRotation } from "@/utils/rbac-access";
 import {
@@ -26,10 +27,16 @@ import {
   attachDutyRosterProjectRefs,
   fetchDutyRosterEmployeeDisplay,
 } from "@/utils/duty-roster-employees";
+import {
+  ROSTER_ROTATION_METADATA_SELECT,
+  normalizeRosterRotationMetadataRecord,
+  type RosterRotationMetadataRecord,
+} from "../roster-rotation-metadata-utils";
 
 export default async function DutyRosterPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const tenantId = await getCurrentUserTenantId();
 
   const [
     { data: clients, error: clientsError },
@@ -38,7 +45,9 @@ export default async function DutyRosterPage() {
     { data: projects, error: projectsError },
     { data: sites, error: sitesError },
     { data: history, error: historyError },
+    { data: metadataRows, error: metadataError },
     preparedByName,
+    authorizedSignersResult,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", {
       ascending: true,
@@ -57,7 +66,11 @@ export default async function DutyRosterPage() {
       .from("roster_history")
       .select("*")
       .order("effective_date", { ascending: false }),
+    supabase.from("roster_rotation_metadata").select(ROSTER_ROTATION_METADATA_SELECT),
     getCurrentUserFullName(),
+    tenantId
+      ? loadAuthorizedSignerOptions(supabase, tenantId)
+      : Promise.resolve({ signers: [], error: null }),
   ]);
 
   const normalizedProjects =
@@ -72,7 +85,14 @@ export default async function DutyRosterPage() {
     projectsError?.message ??
     sitesError?.message ??
     historyError?.message ??
+    metadataError?.message ??
+    authorizedSignersResult.error ??
     null;
+
+  const rotationMetadata =
+    (metadataRows as Partial<RosterRotationMetadataRecord>[] | null)
+      ?.map((row) => normalizeRosterRotationMetadataRecord(row))
+      .filter((row): row is RosterRotationMetadataRecord => row != null) ?? [];
 
   return (
     <OperationsShell sectionTitle="Duty Roster">
@@ -90,6 +110,8 @@ export default async function DutyRosterPage() {
           ) ?? []
         }
         initialHistory={(history as RosterHistoryRecord[] | null) ?? []}
+        initialRotationMetadata={rotationMetadata}
+        initialAuthorizedSigners={authorizedSignersResult.signers}
         fetchError={fetchError}
         preparedByDefault={preparedByName ?? ""}
         canStartRotation={canStartRotation(

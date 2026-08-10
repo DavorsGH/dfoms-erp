@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { pdf } from "@react-pdf/renderer";
 import type { ClientEntry } from "./clients-utils";
 import { inputClassName } from "../employees/employee-record-utils";
+import { resolveSignatureImageUrl } from "@/app/dashboard/finance/client-invoices/client-invoice-display-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -12,7 +14,9 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import { useTenantBranding } from "../tenant-branding-context";
 import {
+  buildClientAssignmentProjectCodes,
   buildDutyRosterViewModel,
+  filterHistoryForClient,
   formatDutyRosterEffectiveLabel,
   getUnassignedRosterSites,
   type DutyRosterEmployee,
@@ -24,6 +28,27 @@ import {
   type UnassignedRosterSite,
 } from "./duty-roster-utils";
 import { getRosterConfigForClient } from "./roster-config-utils";
+import {
+  formatRotationAuditTimestamp,
+  getRotationMetadataForClient,
+  isRotationApproved,
+  resolveRotationStartAudit,
+  type RosterRotationMetadataRecord,
+} from "./roster-rotation-metadata-utils";
+import {
+  AUTHORIZED_BY_OTHER,
+  formatAuthorizedSignerLabel,
+  resolveAuthorizedByFields,
+  resolveAuthorizedByFormState,
+  type ClientInvoiceAuthorizedSignerOption,
+} from "@/utils/client-invoices-types";
+import {
+  buildDutyRosterPdfFileName,
+  loadTenantSignatureDataUrl,
+  resolveDocumentSignatureImageUrl,
+  type DutyRosterPdfPayload,
+} from "./duty-roster-document-utils";
+import DutyRosterPdfDocument from "./duty-roster-pdf-document";
 
 type DutyRosterProps = {
   initialClients: ClientEntry[];
@@ -32,6 +57,8 @@ type DutyRosterProps = {
   initialProjects: DutyRosterProject[];
   initialSites: DutyRosterSite[];
   initialHistory: RosterHistoryRecord[];
+  initialRotationMetadata: RosterRotationMetadataRecord[];
+  initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
   fetchError: string | null;
   preparedByDefault: string;
   canStartRotation: boolean;
@@ -163,20 +190,29 @@ export default function DutyRoster({
   initialProjects,
   initialSites,
   initialHistory,
+  initialRotationMetadata,
+  initialAuthorizedSigners,
   fetchError,
   preparedByDefault,
   canStartRotation,
 }: DutyRosterProps) {
   const router = useRouter();
-  const { companyLegalName } = useTenantBranding();
+  const { companyLegalName, signatureImageUrl } = useTenantBranding();
   const [selectedClientId, setSelectedClientId] = useState("");
   const [selectedRotationNumber, setSelectedRotationNumber] = useState<
     number | null
   >(null);
   const [preparedBy, setPreparedBy] = useState(preparedByDefault);
-  const [approvedBy, setApprovedBy] = useState("");
+  const [approvedBySelection, setApprovedBySelection] = useState("");
+  const [approvedByOtherName, setApprovedByOtherName] = useState("");
+  const [approvedByOtherTitle, setApprovedByOtherTitle] = useState("");
   const [rosterDate, setRosterDate] = useState(formatTodayLabel());
   const [startingRotation, setStartingRotation] = useState(false);
+  const [approvingRotation, setApprovingRotation] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [printSignatureDataUrl, setPrintSignatureDataUrl] = useState<string | null>(
+    null,
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -237,6 +273,138 @@ export default function DutyRoster({
     );
   }, [data]);
 
+  const clientHistory = useMemo(() => {
+    if (!selectedClientId) {
+      return [];
+    }
+
+    const clientProjectCodes = buildClientAssignmentProjectCodes(
+      initialSites,
+      initialProjects,
+      selectedClientId,
+    );
+
+    return filterHistoryForClient(
+      initialHistory,
+      initialEmployees,
+      clientProjectCodes,
+    );
+  }, [
+    selectedClientId,
+    initialHistory,
+    initialEmployees,
+    initialSites,
+    initialProjects,
+  ]);
+
+  const rotationMetadata = useMemo(() => {
+    if (!selectedClientId || !data) {
+      return null;
+    }
+
+    return getRotationMetadataForClient(
+      initialRotationMetadata,
+      selectedClientId,
+      data.viewRotationNumber,
+    );
+  }, [selectedClientId, data, initialRotationMetadata]);
+
+  const rotationStartAudit = useMemo(() => {
+    if (!data) {
+      return null;
+    }
+
+    return resolveRotationStartAudit(
+      rotationMetadata,
+      clientHistory,
+      data.viewRotationNumber,
+    );
+  }, [rotationMetadata, clientHistory, data]);
+
+  const isRotationApprovedState = isRotationApproved(rotationMetadata);
+  const isSignatureLocked = Boolean(
+    data?.isHistoricalView || isRotationApprovedState,
+  );
+
+  const approvedDisplay = useMemo(() => {
+    if (!isRotationApprovedState || !rotationMetadata) {
+      return null;
+    }
+
+    return {
+      name: rotationMetadata.approved_by_name?.trim() ?? "",
+      title: rotationMetadata.approved_by_title?.trim() ?? "",
+      approvedAt: rotationMetadata.approved_at
+        ? formatRotationAuditTimestamp(rotationMetadata.approved_at)
+        : "",
+    };
+  }, [isRotationApprovedState, rotationMetadata]);
+
+  useEffect(() => {
+    if (!rotationMetadata || !isRotationApprovedState) {
+      setApprovedBySelection("");
+      setApprovedByOtherName("");
+      setApprovedByOtherTitle("");
+      if (!data?.isHistoricalView) {
+        setRosterDate(formatTodayLabel());
+      }
+      return;
+    }
+
+    const formState = resolveAuthorizedByFormState(
+      {
+        authorized_by_name: rotationMetadata.approved_by_name,
+        authorized_by_title: rotationMetadata.approved_by_title,
+      },
+      initialAuthorizedSigners,
+    );
+
+    setApprovedBySelection(formState.authorized_by_selection);
+    setApprovedByOtherName(formState.authorized_by_other_name);
+    setApprovedByOtherTitle(formState.authorized_by_other_title);
+
+    if (rotationMetadata.approved_at) {
+      setRosterDate(formatRotationAuditTimestamp(rotationMetadata.approved_at));
+    }
+  }, [
+    rotationMetadata,
+    isRotationApprovedState,
+    initialAuthorizedSigners,
+    data?.isHistoricalView,
+  ]);
+
+  const resolvedSignatureImageUrl = useMemo(
+    () => resolveSignatureImageUrl(signatureImageUrl),
+    [signatureImageUrl],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPrintSignature() {
+      if (!isRotationApprovedState) {
+        setPrintSignatureDataUrl(null);
+        return;
+      }
+
+      const dataUrl =
+        (await loadTenantSignatureDataUrl()) ??
+        (resolvedSignatureImageUrl
+          ? await resolveDocumentSignatureImageUrl(resolvedSignatureImageUrl)
+          : null);
+
+      if (!cancelled) {
+        setPrintSignatureDataUrl(dataUrl);
+      }
+    }
+
+    void loadPrintSignature();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedSignatureImageUrl, isRotationApprovedState]);
+
   function handleClientChange(clientId: string) {
     setSelectedClientId(clientId);
     setSelectedRotationNumber(null);
@@ -281,6 +449,38 @@ export default function DutyRoster({
       data.summary.cycleEndDate,
     );
   }, [data]);
+
+  const pdfPayload = useMemo((): DutyRosterPdfPayload | null => {
+    if (!data) {
+      return null;
+    }
+
+    return {
+      companyLegalName,
+      clientName: data.clientName,
+      effectiveLabel,
+      rotationLabel: data.summary.currentRotationLabel,
+      morningTime: data.summary.morningTime,
+      afternoonTime: data.summary.afternoonTime,
+      supervisorTime: data.summary.supervisorTime,
+      rows: data.rows,
+      totals: data.totals,
+      preparedBy,
+      approvedByName: approvedDisplay?.name ?? null,
+      approvedByTitle: approvedDisplay?.title ?? null,
+      approvedAt: approvedDisplay?.approvedAt ?? null,
+      rosterDate,
+      signatureImageUrl: resolvedSignatureImageUrl,
+    };
+  }, [
+    data,
+    companyLegalName,
+    effectiveLabel,
+    preparedBy,
+    approvedDisplay,
+    rosterDate,
+    resolvedSignatureImageUrl,
+  ]);
 
   async function handleStartRotation() {
     if (!data || !selectedClientId) {
@@ -328,9 +528,97 @@ export default function DutyRoster({
     }
   }
 
+  async function handleApproveRotation() {
+    if (!data || !selectedClientId || isSignatureLocked) {
+      return;
+    }
+
+    const approvedBy = resolveAuthorizedByFields(
+      approvedBySelection,
+      approvedByOtherName,
+      approvedByOtherTitle,
+      initialAuthorizedSigners,
+    );
+
+    if (!approvedBy.authorized_by_name?.trim()) {
+      setActionError("Select an approver before approving the roster.");
+      return;
+    }
+
+    setApprovingRotation(true);
+    setActionError(null);
+    setActionMessage(null);
+
+    try {
+      const response = await fetch("/api/operations/approve-roster-rotation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: selectedClientId,
+          rotation_number: data.viewRotationNumber,
+          approved_by_selection: approvedBySelection,
+          approved_by_other_name: approvedByOtherName,
+          approved_by_other_title: approvedByOtherTitle,
+        }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        setActionError(payload.error ?? "Failed to approve duty roster.");
+        return;
+      }
+
+      setActionMessage(payload.message ?? "Duty roster approved.");
+      router.refresh();
+    } catch {
+      setActionError("Failed to approve duty roster.");
+    } finally {
+      setApprovingRotation(false);
+    }
+  }
+
   function handlePrint() {
     window.print();
   }
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!pdfPayload || !data) {
+      return;
+    }
+
+    setDownloadingPdf(true);
+    setActionError(null);
+
+    try {
+      const signatureForPdf = await resolveDocumentSignatureImageUrl(
+        pdfPayload.signatureImageUrl,
+      );
+      const blob = await pdf(
+        <DutyRosterPdfDocument
+          {...pdfPayload}
+          signatureImageUrl={signatureForPdf}
+        />,
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = buildDutyRosterPdfFileName(
+        data.clientName,
+        data.viewRotationNumber,
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setActionError("Unable to generate PDF. Try again or use Print.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }, [pdfPayload, data]);
 
   if (fetchError) {
     return (
@@ -343,6 +631,12 @@ export default function DutyRoster({
   return (
     <>
       <style>{`
+        @media not print {
+          #duty-roster-print-area {
+            display: none !important;
+          }
+        }
+
         @media print {
           body * {
             visibility: hidden;
@@ -354,7 +648,7 @@ export default function DutyRoster({
           }
 
           #duty-roster-print-area {
-            display: block;
+            display: block !important;
             position: absolute;
             inset: 0;
             width: 100%;
@@ -362,13 +656,14 @@ export default function DutyRoster({
             background: white;
           }
 
+          #duty-roster-print-area img {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
           .no-print {
             display: none !important;
           }
-        }
-
-        #duty-roster-print-area {
-          display: none;
         }
       `}</style>
 
@@ -430,6 +725,13 @@ export default function DutyRoster({
               </section>
             ) : null}
 
+            {!data.isHistoricalView && isRotationApprovedState ? (
+              <section className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                This rotation has been approved and is locked. Start a new rotation
+                when the next cycle begins.
+              </section>
+            ) : null}
+
             <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-2 xl:grid-cols-4">
               <div className="xl:col-span-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -476,6 +778,13 @@ export default function DutyRoster({
                     →
                   </button>
                 </div>
+                {rotationStartAudit?.startedByName &&
+                rotationStartAudit.startedAt ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    Started by {rotationStartAudit.startedByName} on{" "}
+                    {formatRotationAuditTimestamp(rotationStartAudit.startedAt)}
+                  </p>
+                ) : null}
               </div>
               {!data.isHistoricalView ? (
                 <>
@@ -538,10 +847,11 @@ export default function DutyRoster({
               </button>
               <button
                 type="button"
-                onClick={handlePrint}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                onClick={() => void handleDownloadPdf()}
+                disabled={downloadingPdf}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Download PDF
+                {downloadingPdf ? "Generating PDF…" : "Download PDF"}
               </button>
               <Link
                 href="/dashboard/operations/roster-history"
@@ -585,43 +895,116 @@ export default function DutyRoster({
               </table>
             </ScrollableTable>
 
-            <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Prepared By
-                </label>
-                <input
-                  type="text"
-                  value={preparedBy}
-                  onChange={(event) => setPreparedBy(event.target.value)}
-                  readOnly={data.isHistoricalView}
-                  className={inputClassName}
-                />
+            <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Prepared By
+                  </label>
+                  <input
+                    type="text"
+                    value={preparedBy}
+                    onChange={(event) => setPreparedBy(event.target.value)}
+                    readOnly={isSignatureLocked}
+                    className={inputClassName}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Approved By
+                  </label>
+                  {isSignatureLocked ? (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                      <p className="font-medium">
+                        {approvedDisplay?.name || "—"}
+                      </p>
+                      {approvedDisplay?.title ? (
+                        <p className="mt-1 text-slate-600">{approvedDisplay.title}</p>
+                      ) : null}
+                      {approvedDisplay?.approvedAt ? (
+                        <p className="mt-2 text-sm font-medium text-slate-700">
+                          Approved on {approvedDisplay.approvedAt}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={approvedBySelection}
+                        onChange={(event) =>
+                          setApprovedBySelection(event.target.value)
+                        }
+                        className={inputClassName}
+                      >
+                        <option value="">Select approver</option>
+                        {initialAuthorizedSigners.map((signer) => (
+                          <option key={signer.employee_id} value={signer.employee_id}>
+                            {formatAuthorizedSignerLabel(signer)}
+                          </option>
+                        ))}
+                        <option value={AUTHORIZED_BY_OTHER}>Other</option>
+                      </select>
+                      {approvedBySelection === AUTHORIZED_BY_OTHER ? (
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-600">
+                              Name
+                            </label>
+                            <input
+                              type="text"
+                              value={approvedByOtherName}
+                              onChange={(event) =>
+                                setApprovedByOtherName(event.target.value)
+                              }
+                              className={inputClassName}
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-600">
+                              Title/Role
+                            </label>
+                            <input
+                              type="text"
+                              value={approvedByOtherTitle}
+                              onChange={(event) =>
+                                setApprovedByOtherTitle(event.target.value)
+                              }
+                              className={inputClassName}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Date
+                  </label>
+                  <input
+                    type="text"
+                    value={rosterDate}
+                    onChange={(event) => setRosterDate(event.target.value)}
+                    readOnly={isSignatureLocked}
+                    className={inputClassName}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Approved By
-                </label>
-                <input
-                  type="text"
-                  value={approvedBy}
-                  onChange={(event) => setApprovedBy(event.target.value)}
-                  readOnly={data.isHistoricalView}
-                  className={inputClassName}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Date
-                </label>
-                <input
-                  type="text"
-                  value={rosterDate}
-                  onChange={(event) => setRosterDate(event.target.value)}
-                  readOnly={data.isHistoricalView}
-                  className={inputClassName}
-                />
-              </div>
+
+              {canStartRotation &&
+              !data.isHistoricalView &&
+              !isRotationApprovedState ? (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleApproveRotation}
+                    disabled={approvingRotation || !approvedBySelection}
+                    className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {approvingRotation ? "Approving…" : "Approve Roster"}
+                  </button>
+                </div>
+              ) : null}
             </section>
           </>
         ) : null}
@@ -726,9 +1109,37 @@ export default function DutyRoster({
             </div>
             <div>
               <p className="text-slate-600">Approved By</p>
-              <p className="mt-6 border-b border-slate-400 pb-1 font-medium text-slate-900">
-                {approvedBy || " "}
-              </p>
+              {approvedDisplay?.name ? (
+                <>
+                  {printSignatureDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={printSignatureDataUrl}
+                      alt="Approved signature"
+                      className="mt-2 h-12 max-w-[180px] object-contain"
+                    />
+                  ) : null}
+                  <p
+                    className={`${
+                      printSignatureDataUrl ? "mt-2" : "mt-6"
+                    } border-b border-slate-400 pb-1 font-medium text-slate-900`}
+                  >
+                    {approvedDisplay.name}
+                  </p>
+                  {approvedDisplay.title ? (
+                    <p className="mt-1 text-sm text-slate-700">{approvedDisplay.title}</p>
+                  ) : null}
+                  {approvedDisplay.approvedAt ? (
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      Approved on {approvedDisplay.approvedAt}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="mt-6 border-b border-slate-400 pb-1 font-medium text-slate-900">
+                  {" "}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-slate-600">Date</p>

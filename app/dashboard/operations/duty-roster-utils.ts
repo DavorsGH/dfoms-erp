@@ -509,7 +509,7 @@ export function getUnassignedRosterSites(
     .sort((left, right) => left.siteName.localeCompare(right.siteName));
 }
 
-function buildClientAssignmentProjectCodes(
+export function buildClientAssignmentProjectCodes(
   sites: DutyRosterSite[],
   projects: DutyRosterProject[],
   clientId: string,
@@ -535,7 +535,7 @@ function buildClientAssignmentProjectCodes(
   return codes;
 }
 
-function filterHistoryForClient(
+export function filterHistoryForClient(
   history: RosterHistoryRecord[],
   employees: DutyRosterEmployee[],
   clientProjectCodes: Set<string>,

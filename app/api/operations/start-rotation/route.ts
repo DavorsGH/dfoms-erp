@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { START_ROTATION_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserFullName } from "@/utils/current-user";
 import {
   PROJECT_SELECT,
@@ -51,6 +53,11 @@ export async function POST(request: Request) {
 
   const generatedBy = (await getCurrentUserFullName()) ?? "System";
   const generatedDate = formatTodayIsoDate();
+  const cookieStore = await cookies();
+  const sessionClient = createClient(cookieStore);
+  const {
+    data: { user },
+  } = await sessionClient.auth.getUser();
   const supabase = createAdminClient();
 
   const [
@@ -153,6 +160,25 @@ export async function POST(request: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  const startedAt = new Date().toISOString();
+  const { error: metadataError } = await supabase
+    .from("roster_rotation_metadata")
+    .upsert(
+      {
+        tenant_id: tenantId,
+        client_id: clientId,
+        rotation_number: nextRotationNumber,
+        started_by_name: generatedBy,
+        started_by_auth_uid: user?.id ?? null,
+        started_at: startedAt,
+      },
+      { onConflict: "tenant_id,client_id,rotation_number" },
+    );
+
+  if (metadataError) {
+    return NextResponse.json({ error: metadataError.message }, { status: 500 });
   }
 
   return NextResponse.json({
