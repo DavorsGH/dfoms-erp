@@ -67,6 +67,11 @@ export function roleRequiresSupervisorSites(role: AppRole): boolean {
   return role === "supervisor";
 }
 
+/** Supervisor-only restricted customer list; director and other roles get full CRM. */
+export function isCrmCustomerListOnlyRole(role: AppRole | null): boolean {
+  return role === "supervisor";
+}
+
 export function roleShowsEmployeePicker(role: AppRole): boolean {
   return role !== "client";
 }

@@ -2,6 +2,7 @@ export type AppRole =
   | "super_admin"
   | "finance"
   | "hr"
+  | "director"
   | "operations_manager"
   | "supervisor"
   | "employee"
@@ -27,6 +28,7 @@ export const USER_ROLE_OPTIONS: ReadonlyArray<{
   { value: "super_admin", label: "Admin" },
   { value: "finance", label: "Finance" },
   { value: "hr", label: "HR" },
+  { value: "director", label: "Director" },
   { value: "operations_manager", label: "Operations" },
   { value: "supervisor", label: "Supervisor" },
   { value: "employee", label: "Employee" },

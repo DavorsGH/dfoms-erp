@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
@@ -21,7 +21,7 @@ type UpdateLandlordBody = {
  */
 
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth.response;
   }

@@ -248,7 +248,7 @@ export default function Sidebar({
     if (link.categoryId === "real-estate" && !showRealEstate) {
       return false;
     }
-    return canAccessReportCategory(userRole, link.categoryId);
+    return canAccessReportCategory(userRole, link.categoryId, { showRealEstate });
   });
   const reportsActive = isReportPath(pathname);
   const {

@@ -9,7 +9,7 @@ import {
 } from "@/utils/inventory-balance-config-types";
 import { createClient } from "@/utils/supabase/server";
 
-const INVENTORY_GO_LIVE_ROLES = ["super_admin", "finance"] as const;
+const INVENTORY_GO_LIVE_ROLES = ["super_admin", "finance", "director"] as const;
 
 async function getTenantSupabase() {
   return createClient(await cookies());

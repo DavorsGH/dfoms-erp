@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import { isLesseeStatus } from "@/app/dashboard/real-estate/lessees-utils";
@@ -14,7 +14,7 @@ type CreateLesseeBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth.response;
   }

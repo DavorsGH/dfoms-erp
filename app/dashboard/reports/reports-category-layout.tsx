@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import { getCurrentUserRole, isDavorsPlatformRealEstateStaff } from "@/utils/dashboard-auth";
 import { canAccessReportCategory } from "@/utils/rbac-access";
 import { requireFeatureAccess } from "@/utils/tier-access";
 import ReportsCategoryNav from "./reports-category-nav";
@@ -20,8 +20,9 @@ export default async function ReportsCategoryLayout({
   children,
 }: ReportsCategoryLayoutProps) {
   const role = (await getCurrentUserRole()) as AppRole | null;
+  const showRealEstate = await isDavorsPlatformRealEstateStaff();
 
-  if (!canAccessReportCategory(role, categoryId)) {
+  if (!canAccessReportCategory(role, categoryId, { showRealEstate })) {
     redirect("/dashboard");
   }
 

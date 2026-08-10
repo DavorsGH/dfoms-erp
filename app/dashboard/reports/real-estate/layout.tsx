@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { isDavorsPlatformSuperAdmin } from "@/utils/dashboard-auth";
+import { isDavorsPlatformRealEstateStaff } from "@/utils/dashboard-auth";
 import ReportsCategoryLayout from "../reports-category-layout";
 
 export default async function RealEstateReportsLayout({
@@ -8,7 +8,7 @@ export default async function RealEstateReportsLayout({
   children: React.ReactNode;
 }) {
   // Same gate as `/dashboard/real-estate` staff ops.
-  if (!(await isDavorsPlatformSuperAdmin())) {
+  if (!(await isDavorsPlatformRealEstateStaff())) {
     redirect("/dashboard");
   }
 

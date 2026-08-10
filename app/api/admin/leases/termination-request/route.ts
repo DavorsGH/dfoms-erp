@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import { reviewTerminationRequest } from "@/utils/termination-request-review";
@@ -15,7 +15,7 @@ type TerminationRequestBody = {
  * Approve calls terminateLeaseEarly (same effect as Terminate Lease Early).
  */
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth.response;
   }

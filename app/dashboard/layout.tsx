@@ -1,5 +1,5 @@
 import DashboardShell from "./dashboard-shell";
-import { getCurrentUserRole, hasLeaveApprovalInbox, isDavorsPlatformSuperAdmin, getCurrentAuthUser, getCurrentUserAccount } from "@/utils/dashboard-auth";
+import { getCurrentUserRole, hasLeaveApprovalInbox, isDavorsPlatformSuperAdmin, isDavorsPlatformRealEstateStaff, getCurrentAuthUser, getCurrentUserAccount } from "@/utils/dashboard-auth";
 import { getCurrentTenantBranding } from "@/utils/tenant-branding";
 import { getUserDisplayInfo } from "@/utils/user-display";
 import { ensureTrialAccess } from "@/utils/trial-enforcement";
@@ -16,12 +16,13 @@ export default async function DashboardLayout({
 }>) {
   await ensureTrialAccess();
 
-  const [displayInfo, userRole, showLeaveApprovals, showPlatformSettings, tenantBranding, authUser, account] =
+  const [displayInfo, userRole, showLeaveApprovals, showPlatformSettings, showRealEstate, tenantBranding, authUser, account] =
     await Promise.all([
       getUserDisplayInfo(),
       getCurrentUserRole(),
       hasLeaveApprovalInbox(),
       isDavorsPlatformSuperAdmin(),
+      isDavorsPlatformRealEstateStaff(),
       getCurrentTenantBranding(),
       getCurrentAuthUser(),
       getCurrentUserAccount(),
@@ -36,8 +37,6 @@ export default async function DashboardLayout({
       mfaActionUrl: "/dashboard/my-account/mfa",
     });
   }
-
-  const showRealEstate = showPlatformSettings;
 
   return (
     <DashboardShell

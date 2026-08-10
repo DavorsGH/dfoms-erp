@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserRole } from "@/utils/dashboard-auth";
 import type { AppRole } from "@/app/dashboard/user-account-types";
+import { isCrmCustomerListOnlyRole } from "@/app/dashboard/user-account-role-utils";
 import {
   getEmployeeDisplayName,
   HR_EMPLOYEE_SELECT,
@@ -137,7 +138,7 @@ export default async function CustomerDetailPage({
   return (
     <CrmShell
       sectionTitle="Customer List"
-      customerListOnly={role === "supervisor"}
+      customerListOnly={isCrmCustomerListOnlyRole(role)}
     >
       <div className="mb-6 flex items-center justify-between gap-4">
         <h3 className="text-lg font-semibold text-[#0f2744]">Customer 360</h3>

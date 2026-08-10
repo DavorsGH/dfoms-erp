@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createPendingLandlordTenant } from "@/utils/landlord-create";
 import { notifyStaffLandlordPendingApproval } from "@/utils/real-estate-staff-notifications";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -12,7 +12,7 @@ type CreateLandlordBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth.response;
   }

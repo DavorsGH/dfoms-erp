@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
 import { uploadPropertyPhoto } from "@/utils/property-photo";
 
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth.response;
   }

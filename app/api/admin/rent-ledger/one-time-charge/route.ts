@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import { createOneTimeLeaseCharge } from "@/utils/rent-ledger-one-time";
@@ -19,7 +19,7 @@ type Body = {
  * davors_managed landlords cannot create these themselves — staff acts on their behalf.
  */
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth.response;
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
@@ -48,7 +48,7 @@ function parseTenantIds(body: GenerateBody): string[] {
  * Cron path remains /api/cron/generate-rent-ledger (platform-wide).
  */
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth.response;
   }

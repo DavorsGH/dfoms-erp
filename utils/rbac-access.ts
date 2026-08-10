@@ -4,18 +4,21 @@ export const FINANCE_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "director",
 ];
 
 export const HR_PAYROLL_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "director",
 ];
 
 export const EMPLOYEES_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "director",
   "operations_manager",
   "supervisor",
 ];
@@ -24,17 +27,20 @@ export const EMPLOYEES_EDIT_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "director",
 ];
 
 export const EMPLOYEES_SALARY_VIEW_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "director",
 ];
 
 export const OPERATIONS_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",
+  "director",
   "supervisor",
   "hr",
 ];
@@ -42,11 +48,13 @@ export const OPERATIONS_SECTION_ROLES: readonly AppRole[] = [
 export const OPERATIONS_FULL_EDIT_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",
+  "director",
 ];
 
 export const INVENTORY_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",
+  "director",
   "finance",
   "sales_rep",
 ];
@@ -54,12 +62,14 @@ export const INVENTORY_SECTION_ROLES: readonly AppRole[] = [
 export const INVENTORY_EDIT_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",
+  "director",
 ];
 
 export const CRM_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "director",
   "operations_manager",
 ];
 
@@ -79,29 +89,34 @@ export const POS_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "director",
   "sales_rep",
 ];
 
 export const PAYROLL_PERIOD_MANAGE_ROLES: readonly AppRole[] = [
   "super_admin",
   "hr",
+  "director",
 ];
 
 /** HR/admin roles for employee announcement templates and campaigns. */
 export const EMPLOYEE_ANNOUNCEMENTS_ROLES: readonly AppRole[] = [
   "super_admin",
   "hr",
+  "director",
 ];
 
 export const START_ROTATION_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",
+  "director",
 ];
 
 export const SELF_SERVICE_SECTION_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
+  "director",
   "operations_manager",
   "supervisor",
   "employee",
@@ -112,17 +127,18 @@ export const CLIENT_PORTAL_SECTION_ROLES: readonly AppRole[] = ["client"];
 export const LEAVE_BALANCE_MANAGE_ROLES: readonly AppRole[] = [
   "super_admin",
   "hr",
+  "director",
 ];
 
 export const REPORT_CATEGORY_ROLES: Record<string, readonly AppRole[]> = {
-  finance: ["super_admin", "finance", "hr"],
-  "hr-payroll": ["super_admin", "finance", "hr"],
-  operations: ["super_admin", "operations_manager", "supervisor"],
-  inventory: ["super_admin", "operations_manager", "finance"],
+  finance: ["super_admin", "finance", "hr", "director"],
+  "hr-payroll": ["super_admin", "finance", "hr", "director"],
+  operations: ["super_admin", "operations_manager", "director", "supervisor"],
+  inventory: ["super_admin", "operations_manager", "director", "finance"],
   sales: CRM_SECTION_ROLES,
   "client-facing": ["super_admin"],
-  incidents: ["super_admin", "operations_manager", "supervisor"],
-  /** Same audience as Real Estate staff ops (`isDavorsPlatformSuperAdmin`). */
+  incidents: ["super_admin", "operations_manager", "director", "supervisor"],
+  /** Gated by `isDavorsPlatformRealEstateStaff()` — not a flat global role list. */
   "real-estate": ["super_admin"],
 };
 
@@ -222,21 +238,35 @@ export function canManagePayrollPeriod(role: AppRole | null): boolean {
 export function canAccessReportCategory(
   role: AppRole | null,
   categoryId: string,
+  options?: { showRealEstate?: boolean },
 ): boolean {
+  if (categoryId === "real-estate") {
+    return options?.showRealEstate === true;
+  }
+
   const allowed = REPORT_CATEGORY_ROLES[categoryId];
   return allowed ? roleIn(role, allowed) : false;
 }
 
-export function getAccessibleReportCategoryIds(role: AppRole | null): string[] {
+export function getAccessibleReportCategoryIds(
+  role: AppRole | null,
+  options?: { showRealEstate?: boolean },
+): string[] {
   return Object.entries(REPORT_CATEGORY_ROLES)
-    .filter(([, allowed]) => roleIn(role, allowed))
+    .filter(([categoryId, allowed]) => {
+      if (categoryId === "real-estate") {
+        return options?.showRealEstate === true;
+      }
+      return roleIn(role, allowed);
+    })
     .map(([categoryId]) => categoryId);
 }
 
 export function getFirstAccessibleReportCategoryId(
   role: AppRole | null,
+  options?: { showRealEstate?: boolean },
 ): string {
-  return getAccessibleReportCategoryIds(role)[0] ?? "finance";
+  return getAccessibleReportCategoryIds(role, options)[0] ?? "finance";
 }
 
 export function getDashboardVisibility(role: AppRole | null): DashboardVisibility {
@@ -246,6 +276,7 @@ export function getDashboardVisibility(role: AppRole | null): DashboardVisibilit
   const showInventoryAlerts =
     role === "super_admin" ||
     role === "operations_manager" ||
+    role === "director" ||
     role === "finance";
 
   return {

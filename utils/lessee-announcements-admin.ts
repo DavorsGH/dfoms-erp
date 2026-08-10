@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -35,7 +35,7 @@ export function readTenantIdFromSearchParams(
 export async function requireLesseeAnnouncementAdmin(
   tenantIdRaw: string,
 ): Promise<LesseeAnnouncementAdminContext> {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth;
   }

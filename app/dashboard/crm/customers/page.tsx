@@ -3,6 +3,7 @@ import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserRole } from "@/utils/dashboard-auth";
 import { canAccessOperationsSection } from "@/utils/rbac-access";
 import type { AppRole } from "@/app/dashboard/user-account-types";
+import { isCrmCustomerListOnlyRole } from "@/app/dashboard/user-account-role-utils";
 import {
   HR_EMPLOYEE_SELECT,
   filterActiveEmployees,
@@ -27,7 +28,7 @@ export default async function CustomersPage() {
     ]);
 
   const fetchError = error?.message ?? employeesError?.message ?? null;
-  const customerListOnly = role === "supervisor";
+  const customerListOnly = isCrmCustomerListOnlyRole(role);
 
   return (
     <CrmShell sectionTitle="Customer List" customerListOnly={customerListOnly}>

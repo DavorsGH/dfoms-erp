@@ -127,3 +127,12 @@ export async function isDavorsPlatformSuperAdmin(): Promise<boolean> {
     account.tenant_id === DAVORS_TENANT_ID
   );
 }
+
+/** Real Estate staff on the Davors platform tenant (super_admin or director). */
+export async function isDavorsPlatformRealEstateStaff(): Promise<boolean> {
+  const account = await getCurrentUserAccount();
+  return (
+    (account?.role === "super_admin" || account?.role === "director") &&
+    account.tenant_id === DAVORS_TENANT_ID
+  );
+}

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
 import { isMaintenanceStatus } from "@/app/dashboard/real-estate/maintenance-utils";
@@ -12,7 +12,7 @@ type UpdateStatusBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireDavorsPlatformSuperAdmin();
+  const auth = await requireDavorsPlatformRealEstateStaff();
   if (!auth.ok) {
     return auth.response;
   }

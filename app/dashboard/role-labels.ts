@@ -4,6 +4,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: "Admin",
   finance: "Finance",
   hr: "HR",
+  director: "Director",
   operations_manager: "Operations",
   supervisor: "Supervisor",
   employee: "Employee",
