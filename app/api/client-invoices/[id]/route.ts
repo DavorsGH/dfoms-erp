@@ -13,6 +13,7 @@ import {
 } from "@/utils/client-invoices-types";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
 import { PAYMENT_ACCOUNT_SELECT, type PaymentAccountRow } from "@/utils/payment-accounts-types";
+import { loadClientReceiptsForInvoice } from "@/utils/client-invoice-payments-api";
 import { createClient } from "@/utils/supabase/server";
 
 type RouteContext = {
@@ -71,11 +72,22 @@ export async function GET(_request: Request, context: RouteContext) {
     paymentAccounts = (data as PaymentAccountRow[] | null) ?? [];
   }
 
+  const receiptsResult = await loadClientReceiptsForInvoice(
+    supabase,
+    auth.tenantId,
+    id,
+  );
+
+  if (receiptsResult.error) {
+    return NextResponse.json({ error: receiptsResult.error }, { status: 500 });
+  }
+
   return NextResponse.json({
     client_invoice: detail.invoice,
     line_items: detail.line_items,
     payment_account_ids: detail.payment_account_ids,
     payment_accounts: paymentAccounts,
+    receipts: receiptsResult.receipts,
   });
 }
 

@@ -18,6 +18,7 @@ import {
   normalizeClientInvoiceDetail,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
+  resolveSignatureImageUrl,
   resolveInvoiceCompanyName,
   sumLineItemColumns,
   tenantHeaderContactLines,
@@ -26,10 +27,17 @@ import {
   type ClientInvoiceDetailPayload,
 } from "./client-invoice-display-utils";
 import ClientInvoicePdfDocument from "./client-invoice-pdf-document";
+import RecordPaymentDialog from "./record-payment-dialog";
+import {
+  formatReceiptMoney,
+} from "@/utils/client-receipts-types";
+import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
+import { toNumber } from "@/utils/client-invoices-types";
 
 type ClientInvoiceViewProps = {
   invoiceId: string;
   billingSettings: BillingSettingsHeaderFields | null;
+  paymentMethods: string[];
 };
 
 const primaryButtonClassName =
@@ -70,51 +78,47 @@ function ClientInvoicePrintStyles() {
 export default function ClientInvoiceView({
   invoiceId,
   billingSettings,
+  paymentMethods,
 }: ClientInvoiceViewProps) {
   const branding = useTenantBranding();
   const [payload, setPayload] = useState<ClientInvoiceDetailPayload | null>(null);
+  const [receipts, setReceipts] = useState<ClientReceiptHeaderRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [showRecordPayment, setShowRecordPayment] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadInvoice = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
-    async function loadInvoice() {
-      setLoading(true);
-      setError(null);
+    const response = await fetch(`/api/client-invoices/${invoiceId}`);
+    const body = (await response.json().catch(() => null)) as
+      | (ClientInvoiceDetailPayload & { error?: string })
+      | null;
 
-      const response = await fetch(`/api/client-invoices/${invoiceId}`);
-      const body = (await response.json().catch(() => null)) as
-        | (ClientInvoiceDetailPayload & { error?: string })
-        | null;
-
-      if (cancelled) {
-        return;
-      }
-
-      if (!response.ok || !body?.client_invoice) {
-        setError(body?.error ?? "Unable to load invoice.");
-        setPayload(null);
-        setLoading(false);
-        return;
-      }
-
-      setPayload({
-        client_invoice: body.client_invoice,
-        line_items: body.line_items ?? [],
-        payment_account_ids: body.payment_account_ids ?? [],
-        payment_accounts: body.payment_accounts ?? [],
-      });
+    if (!response.ok || !body?.client_invoice) {
+      setError(body?.error ?? "Unable to load invoice.");
+      setPayload(null);
+      setReceipts([]);
       setLoading(false);
+      return;
     }
 
-    void loadInvoice();
-
-    return () => {
-      cancelled = true;
-    };
+    setPayload({
+      client_invoice: body.client_invoice,
+      line_items: body.line_items ?? [],
+      payment_account_ids: body.payment_account_ids ?? [],
+      payment_accounts: body.payment_accounts ?? [],
+      receipts: body.receipts ?? [],
+    });
+    setReceipts(body.receipts ?? []);
+    setLoading(false);
   }, [invoiceId]);
+
+  useEffect(() => {
+    void loadInvoice();
+  }, [loadInvoice]);
 
   const display = useMemo(() => {
     if (!payload) {
@@ -175,8 +179,13 @@ export default function ClientInvoiceView({
 
     try {
       const logoUrl = resolveBrandingLogoUrl(display.branding.workspaceLogoUrl);
+      const signatureImageUrl = resolveSignatureImageUrl(display.branding.signatureImageUrl);
       const blob = await pdf(
-        <ClientInvoicePdfDocument {...display} logoUrl={logoUrl} />,
+        <ClientInvoicePdfDocument
+          {...display}
+          logoUrl={logoUrl}
+          signatureImageUrl={signatureImageUrl}
+        />,
       ).toBlob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -206,6 +215,9 @@ export default function ClientInvoiceView({
   }
 
   const { invoice, paymentAccounts } = display;
+  const signatureImageUrl = resolveSignatureImageUrl(display.branding.signatureImageUrl);
+  const canRecordPayment =
+    invoice.status !== "draft" && invoice.status !== "paid";
 
   return (
     <div className="space-y-4">
@@ -227,6 +239,15 @@ export default function ClientInvoiceView({
         >
           {downloading ? "Generating PDF…" : "Download PDF"}
         </button>
+        {canRecordPayment ? (
+          <button
+            type="button"
+            onClick={() => setShowRecordPayment(true)}
+            className={primaryButtonClassName}
+          >
+            Record Payment
+          </button>
+        ) : null}
         <Link
           href={`/dashboard/finance/client-invoices/${invoiceId}/edit`}
           className={secondaryButtonClassName}
@@ -240,6 +261,46 @@ export default function ClientInvoiceView({
           Back to list
         </Link>
       </div>
+
+      {receipts.length > 0 ? (
+        <section className="no-print rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-semibold text-[#0f2744]">Receipts issued</h3>
+          <ul className="divide-y divide-slate-100">
+            {receipts.map((receipt) => (
+              <li
+                key={receipt.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+              >
+                <span>
+                  {receipt.receipt_number} — {formatInvoiceDate(receipt.receipt_date)} —{" "}
+                  {formatReceiptMoney(receipt.amount)}
+                </span>
+                <Link
+                  href={`/dashboard/finance/client-receipts/${receipt.id}`}
+                  className={secondaryButtonClassName}
+                >
+                  View receipt
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {showRecordPayment ? (
+        <RecordPaymentDialog
+          invoiceId={invoiceId}
+          invoiceNumber={invoice.invoice_number}
+          totalDue={toNumber(invoice.total_amount_due)}
+          amountReceived={toNumber(invoice.amount_received ?? 0)}
+          paymentMethods={paymentMethods}
+          onClose={() => setShowRecordPayment(false)}
+          onSuccess={() => {
+            setShowRecordPayment(false);
+            void loadInvoice();
+          }}
+        />
+      ) : null}
 
       <div
         id={CLIENT_INVOICE_PRINT_AREA_ID}
@@ -490,6 +551,14 @@ export default function ClientInvoiceView({
         {hasAuthorizedBySignature(invoice) ? (
           <section className="pt-4 text-left">
             <p className="text-xs font-medium text-slate-600">Authorized By:</p>
+            {signatureImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={signatureImageUrl}
+                alt="Authorized signature"
+                className="mt-2 h-12 max-w-[180px] object-contain"
+              />
+            ) : null}
             <p className="mt-1 text-sm font-bold text-[#0f2744]">
               {invoice.authorized_by_name?.trim()}
             </p>
@@ -497,15 +566,25 @@ export default function ClientInvoiceView({
               {invoice.authorized_by_title?.trim() ? (
                 <>
                   <span>{invoice.authorized_by_title.trim()},</span>
-                  <span className="ml-3">Signature:</span>
+                  {!signatureImageUrl ? (
+                    <>
+                      <span className="ml-3">Signature:</span>
+                      <span
+                        className="ml-1.5 mb-1 inline-block h-0 w-[180px] min-w-[180px] shrink-0 border-b border-solid border-[#0f2744]"
+                        aria-hidden="true"
+                      />
+                    </>
+                  ) : null}
                 </>
-              ) : (
-                <span>Signature:</span>
-              )}
-              <span
-                className="ml-1.5 mb-1 inline-block h-0 w-[180px] min-w-[180px] shrink-0 border-b border-solid border-[#0f2744]"
-                aria-hidden="true"
-              />
+              ) : !signatureImageUrl ? (
+                <>
+                  <span>Signature:</span>
+                  <span
+                    className="ml-1.5 mb-1 inline-block h-0 w-[180px] min-w-[180px] shrink-0 border-b border-solid border-[#0f2744]"
+                    aria-hidden="true"
+                  />
+                </>
+              ) : null}
             </div>
           </section>
         ) : null}

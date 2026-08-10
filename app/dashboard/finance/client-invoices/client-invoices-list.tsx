@@ -14,12 +14,15 @@ import {
   formatInvoiceMoney,
   formatInvoiceStatus,
   normalizeClientInvoiceListRow,
+  toNumber,
   type ClientInvoiceListRow,
 } from "@/utils/client-invoices-types";
+import RecordPaymentDialog from "./record-payment-dialog";
 
 type ClientInvoicesListProps = {
   initialInvoices: ClientInvoiceListRow[];
   fetchError: string | null;
+  paymentMethods: string[];
 };
 
 const primaryButtonClassName =
@@ -34,6 +37,7 @@ const dangerButtonClassName =
 export default function ClientInvoicesList({
   initialInvoices,
   fetchError,
+  paymentMethods,
 }: ClientInvoicesListProps) {
   const router = useRouter();
   const [invoices, setInvoices] = useState(
@@ -42,6 +46,9 @@ export default function ClientInvoicesList({
   const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [recordingInvoice, setRecordingInvoice] = useState<ClientInvoiceListRow | null>(
+    null,
+  );
 
   async function handleDelete(invoice: ClientInvoiceListRow) {
     setConfirmingId(null);
@@ -142,6 +149,16 @@ export default function ClientInvoicesList({
                           >
                             Edit
                           </Link>
+                          {invoice.status !== "draft" &&
+                          invoice.status !== "paid" ? (
+                            <button
+                              type="button"
+                              onClick={() => setRecordingInvoice(invoice)}
+                              className={secondaryButtonClassName}
+                            >
+                              Record Payment
+                            </button>
+                          ) : null}
                           {confirmingId === invoice.id ? (
                             <span className="inline-flex items-center gap-2">
                               <span className="text-sm text-red-700">
@@ -185,6 +202,21 @@ export default function ClientInvoicesList({
           </table>
         </ScrollableTable>
       </section>
+
+      {recordingInvoice ? (
+        <RecordPaymentDialog
+          invoiceId={recordingInvoice.id}
+          invoiceNumber={recordingInvoice.invoice_number}
+          totalDue={toNumber(recordingInvoice.total_amount_due)}
+          amountReceived={toNumber(recordingInvoice.amount_received ?? 0)}
+          paymentMethods={paymentMethods}
+          onClose={() => setRecordingInvoice(null)}
+          onSuccess={() => {
+            setRecordingInvoice(null);
+            router.refresh();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

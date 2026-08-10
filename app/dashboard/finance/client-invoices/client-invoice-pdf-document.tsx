@@ -305,6 +305,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: C.navy,
   },
+  signatureImage: {
+    width: 140,
+    height: 48,
+    objectFit: "contain",
+    marginBottom: 6,
+  },
   notes: {
     fontSize: 9,
     color: C.textDark,
@@ -313,6 +319,7 @@ const styles = StyleSheet.create({
 
 type ClientInvoicePdfDocumentProps = ClientInvoiceDisplayProps & {
   logoUrl: string;
+  signatureImageUrl?: string | null;
 };
 
 export default function ClientInvoicePdfDocument({
@@ -322,6 +329,7 @@ export default function ClientInvoicePdfDocument({
   branding,
   billingSettings,
   logoUrl,
+  signatureImageUrl,
 }: ClientInvoicePdfDocumentProps) {
   const groupedLines = buildClientInvoiceGroups(lineItems);
   const lineColumnTotals = sumLineItemColumns(lineItems);
@@ -527,6 +535,9 @@ export default function ClientInvoicePdfDocument({
         {hasAuthorizedBySignature(invoice) ? (
           <View style={styles.signatureBlock}>
             <Text style={styles.signatureLabel}>Authorized By:</Text>
+            {signatureImageUrl ? (
+              <Image src={signatureImageUrl} style={styles.signatureImage} />
+            ) : null}
             <Text style={styles.signatureName}>
               {invoice.authorized_by_name?.trim()}
             </Text>
@@ -539,10 +550,12 @@ export default function ClientInvoicePdfDocument({
                   <View style={styles.signatureTitleSpacer} />
                 </>
               ) : null}
-              <View style={styles.signaturePromptGroup}>
-                <Text style={styles.signaturePrompt}>Signature:</Text>
-                <View style={styles.signatureLine} />
-              </View>
+              {!signatureImageUrl ? (
+                <View style={styles.signaturePromptGroup}>
+                  <Text style={styles.signaturePrompt}>Signature:</Text>
+                  <View style={styles.signatureLine} />
+                </View>
+              ) : null}
             </View>
           </View>
         ) : null}

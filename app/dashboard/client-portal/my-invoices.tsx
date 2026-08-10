@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -11,13 +12,20 @@ import {
 } from "../finance/income-register-utils";
 import type { IncomeRegisterEntry } from "../finance/income-register-utils";
 
+type InvoiceReceiptSummary = {
+  id: string;
+  receipt_number: string;
+};
+
 type MyInvoicesProps = {
   initialEntries: IncomeRegisterEntry[];
+  receiptsByInvoiceId: Record<string, InvoiceReceiptSummary[]>;
   fetchError: string | null;
 };
 
 export default function MyInvoices({
   initialEntries,
+  receiptsByInvoiceId,
   fetchError,
 }: MyInvoicesProps) {
   if (fetchError) {
@@ -48,10 +56,16 @@ export default function MyInvoices({
             <th className={scrollableTableThClassName}>Outstanding</th>
             <th className={scrollableTableThClassName}>Status</th>
             <th className={scrollableTableThClassName}>Due Date</th>
+            <th className={scrollableTableThClassName}>Receipts</th>
           </tr>
         </thead>
         <tbody>
-          {initialEntries.map((entry) => (
+          {initialEntries.map((entry) => {
+            const linkedReceipts = entry.client_invoice_id
+              ? receiptsByInvoiceId[entry.client_invoice_id] ?? []
+              : [];
+
+            return (
             <tr key={entry.id} className="border-b border-slate-100">
               <td className="px-4 py-3 text-sm text-slate-900">
                 {entry.invoice_no}
@@ -74,8 +88,26 @@ export default function MyInvoices({
               <td className="px-4 py-3 text-sm text-slate-700">
                 {formatDate(entry.due_date)}
               </td>
+              <td className="px-4 py-3 text-sm text-slate-700">
+                {linkedReceipts.length === 0 ? (
+                  <span className="text-slate-400">—</span>
+                ) : (
+                  <span className="flex flex-col gap-1">
+                    {linkedReceipts.map((receipt) => (
+                      <Link
+                        key={receipt.id}
+                        href={`/dashboard/client-portal/receipts/${receipt.id}`}
+                        className="font-medium text-[#0f2744] hover:underline"
+                      >
+                        {receipt.receipt_number}
+                      </Link>
+                    ))}
+                  </span>
+                )}
+              </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </ScrollableTable>

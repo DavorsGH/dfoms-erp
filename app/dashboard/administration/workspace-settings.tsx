@@ -7,11 +7,15 @@ import ImageFileUploadButton from "@/components/image-file-upload-button";
 import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import { DEFAULT_WORKSPACE_LOGO } from "@/utils/tenant-branding-types";
 import { uploadTenantLogo } from "@/utils/tenant-logo";
+import { uploadTenantSignature } from "@/utils/tenant-signature";
 
 type WorkspaceSettingsProps = {
   tenantId: string;
   initialName: string;
   initialLogoUrl: string | null;
+  initialSignatureUrl: string | null;
+  initialSignatureAuthorName: string | null;
+  initialSignatureAuthorTitle: string | null;
   initialAddress: string | null;
   initialPhone: string | null;
   initialEmail: string | null;
@@ -25,6 +29,9 @@ export default function WorkspaceSettings({
   tenantId,
   initialName,
   initialLogoUrl,
+  initialSignatureUrl,
+  initialSignatureAuthorName,
+  initialSignatureAuthorTitle,
   initialAddress,
   initialPhone,
   initialEmail,
@@ -38,10 +45,19 @@ export default function WorkspaceSettings({
   const [workspacePhone, setWorkspacePhone] = useState(initialPhone ?? "");
   const [workspaceEmail, setWorkspaceEmail] = useState(initialEmail ?? "");
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
+  const [signatureUrl, setSignatureUrl] = useState(initialSignatureUrl);
+  const [signatureAuthorName, setSignatureAuthorName] = useState(
+    initialSignatureAuthorName ?? "",
+  );
+  const [signatureAuthorTitle, setSignatureAuthorTitle] = useState(
+    initialSignatureAuthorTitle ?? "",
+  );
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
   const [savingName, setSavingName] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingSignature, setUploadingSignature] = useState(false);
+  const [savingSignatureDetails, setSavingSignatureDetails] = useState(false);
 
   async function handleDetailsSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -126,8 +142,75 @@ export default function WorkspaceSettings({
     router.refresh();
   }
 
+  async function handleSignatureUpload(file: File) {
+    setUploadingSignature(true);
+    setError(null);
+    setSuccess(null);
+
+    const uploadResult = await uploadTenantSignature(supabase, tenantId, file);
+
+    if ("error" in uploadResult) {
+      setError(uploadResult.error);
+      setUploadingSignature(false);
+      return;
+    }
+
+    const nextSignatureUrl = uploadResult.storagePath;
+
+    const { error: updateError } = await supabase
+      .from("tenants")
+      .update({
+        signature_url: nextSignatureUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", tenantId);
+
+    if (updateError) {
+      setError(updateError.message);
+      setUploadingSignature(false);
+      return;
+    }
+
+    setSignatureUrl(nextSignatureUrl);
+    setSuccess("Signature image updated.");
+    setUploadingSignature(false);
+    router.refresh();
+  }
+
+  async function handleSignatureDetailsSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingSignatureDetails(true);
+    setError(null);
+    setSuccess(null);
+
+    const trimmedName = signatureAuthorName.trim();
+    const trimmedTitle = signatureAuthorTitle.trim();
+
+    const { error: updateError } = await supabase
+      .from("tenants")
+      .update({
+        signature_author_name: trimmedName || null,
+        signature_author_title: trimmedTitle || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", tenantId);
+
+    if (updateError) {
+      setError(updateError.message);
+      setSavingSignatureDetails(false);
+      return;
+    }
+
+    setSignatureAuthorName(trimmedName);
+    setSignatureAuthorTitle(trimmedTitle);
+    setSuccess("Signature author details saved.");
+    setSavingSignatureDetails(false);
+    router.refresh();
+  }
+
   const previewLogoUrl = logoUrl?.trim() || DEFAULT_WORKSPACE_LOGO;
   const usesStorageLogo = Boolean(logoUrl?.trim());
+  const usesStorageSignature = Boolean(signatureUrl?.trim());
 
   return (
     <div className="max-w-lg space-y-8">
@@ -269,6 +352,90 @@ export default function WorkspaceSettings({
             resetInputAfterSelect
           />
         </div>
+      </section>
+
+      <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-slate-700">Authorized signature</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Used on customer invoice and payment receipt PDFs above the printed
+            name and title.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {usesStorageSignature ? (
+            <TenantLogosMediaImage
+              reference={signatureUrl!}
+              tenantId={tenantId}
+              alt="Signature preview"
+              className="h-16 max-w-[200px] shrink-0 rounded-sm border border-slate-200 object-contain bg-white p-1"
+            />
+          ) : (
+            <div className="flex h-16 w-[200px] shrink-0 items-center justify-center rounded-sm border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500">
+              No signature uploaded
+            </div>
+          )}
+          <ImageFileUploadButton
+            files={[]}
+            onChange={(next) => {
+              const file = next[0];
+              if (file) {
+                void handleSignatureUpload(file);
+              }
+            }}
+            multiple={false}
+            disabled={uploadingSignature}
+            addLabel={uploadingSignature ? "Uploading…" : "Upload signature"}
+            showClear={false}
+            resetInputAfterSelect
+          />
+        </div>
+
+        <form
+          onSubmit={(event) => void handleSignatureDetailsSubmit(event)}
+          className="space-y-4 border-t border-slate-100 pt-4"
+        >
+          <div>
+            <label
+              htmlFor="signature_author_name"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Signature name (receipts)
+            </label>
+            <input
+              id="signature_author_name"
+              type="text"
+              value={signatureAuthorName}
+              onChange={(event) => setSignatureAuthorName(event.target.value)}
+              className={inputClassName}
+              placeholder="Printed name on payment receipts"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="signature_author_title"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Signature title (receipts)
+            </label>
+            <input
+              id="signature_author_title"
+              type="text"
+              value={signatureAuthorTitle}
+              onChange={(event) => setSignatureAuthorTitle(event.target.value)}
+              className={inputClassName}
+              placeholder="e.g. Finance Manager"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={savingSignatureDetails}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {savingSignatureDetails ? "Saving…" : "Save signature details"}
+          </button>
+        </form>
       </section>
     </div>
   );

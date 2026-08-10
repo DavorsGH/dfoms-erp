@@ -11,6 +11,9 @@ export type TenantBranding = {
   address: string | null;
   phone: string | null;
   email: string | null;
+  signatureImageUrl: string | null;
+  signatureAuthorName: string | null;
+  signatureAuthorTitle: string | null;
 };
 
 export const DEFAULT_TENANT_BRANDING: TenantBranding = {
@@ -20,4 +23,7 @@ export const DEFAULT_TENANT_BRANDING: TenantBranding = {
   address: null,
   phone: null,
   email: null,
+  signatureImageUrl: null,
+  signatureAuthorName: null,
+  signatureAuthorTitle: null,
 };

@@ -71,6 +71,9 @@ export function normalizeClientQuotationDetail(
       address: null,
       phone: null,
       email: null,
+      signatureImageUrl: null,
+      signatureAuthorName: null,
+      signatureAuthorTitle: null,
     },
     billingSettings: null,
   };

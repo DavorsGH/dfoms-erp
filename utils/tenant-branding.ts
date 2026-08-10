@@ -35,7 +35,9 @@ export const getCurrentTenantBranding = cache(
 
     const { data, error } = await supabase
       .from("tenants")
-      .select("name, logo_url, address, phone, email")
+      .select(
+        "name, logo_url, signature_url, signature_author_name, signature_author_title, address, phone, email",
+      )
       .eq("id", tenantId)
       .maybeSingle();
 
@@ -51,6 +53,14 @@ export const getCurrentTenantBranding = cache(
         (await createTenantLogosSignedUrl(admin, rawLogoUrl)) ?? rawLogoUrl;
     }
 
+    const rawSignatureUrl = data.signature_url?.trim() || "";
+    let signatureImageUrl: string | null = null;
+    if (rawSignatureUrl) {
+      const admin = createAdminClient();
+      signatureImageUrl =
+        (await createTenantLogosSignedUrl(admin, rawSignatureUrl)) ?? rawSignatureUrl;
+    }
+
     return {
       workspaceName: data.name?.trim() || DEFAULT_WORKSPACE_NAME,
       workspaceLogoUrl,
@@ -58,6 +68,9 @@ export const getCurrentTenantBranding = cache(
       address: data.address?.trim() || null,
       phone: data.phone?.trim() || null,
       email: data.email?.trim() || null,
+      signatureImageUrl,
+      signatureAuthorName: data.signature_author_name?.trim() || null,
+      signatureAuthorTitle: data.signature_author_title?.trim() || null,
     };
   },
 );

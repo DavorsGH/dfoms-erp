@@ -284,7 +284,29 @@ export async function findClientInvoiceIncomeRegisterId(
   return { incomeId: (data as { id: string } | null)?.id ?? null, error: null };
 }
 
-async function syncIncomeRegisterFromClientInvoice(
+export async function sumClientInvoicePayments(
+  supabase: DbClient,
+  tenantId: string,
+  invoiceId: string,
+): Promise<{ total: number; error: string | null }> {
+  const { data, error } = await supabase
+    .from("client_invoice_payments")
+    .select("amount")
+    .eq("tenant_id", tenantId)
+    .eq("invoice_id", invoiceId);
+
+  if (error) {
+    return { total: 0, error: error.message };
+  }
+
+  const total = roundMoney(
+    (data ?? []).reduce((sum, row) => sum + toNumber(row.amount), 0),
+  );
+
+  return { total, error: null };
+}
+
+export async function syncIncomeRegisterFromClientInvoice(
   supabase: DbClient,
   tenantId: string,
   invoice: ClientInvoiceHeaderRow,
@@ -324,11 +346,9 @@ async function syncIncomeRegisterFromClientInvoice(
 
   const amount = toNumber(invoice.total_amount_due);
   const amountReceived =
-    invoice.status === "paid"
-      ? amount
-      : invoice.status === "partial"
-        ? toNumber(invoice.amount_received)
-        : 0;
+    invoice.status === "paid" || invoice.status === "partial"
+      ? toNumber(invoice.amount_received)
+      : 0;
   // total_amount_due = subtotal + tax_due, so the Income Register amount is
   // tax-inclusive and its net-of-tax base is the invoice subtotal.
   const outputVatAmount = roundMoney(toNumber(invoice.tax_due));
@@ -503,9 +523,42 @@ export async function updateClientInvoice(
     return { invoice: null, error: taxBasisError };
   }
 
+  let writeBody = body;
+  const { total: paymentsTotal, error: paymentsSumError } =
+    await sumClientInvoicePayments(supabase, tenantId, invoiceId);
+
+  if (paymentsSumError) {
+    return { invoice: null, error: paymentsSumError };
+  }
+
+  if (paymentsTotal > 0) {
+    const { data: existingInvoice, error: existingError } = await supabase
+      .from("client_invoices")
+      .select("total_amount_due")
+      .eq("id", invoiceId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (existingError || !existingInvoice) {
+      return { invoice: null, error: existingError?.message ?? "Invoice not found." };
+    }
+
+    const totalDue = toNumber(existingInvoice.total_amount_due);
+    writeBody = {
+      ...body,
+      amount_received: paymentsTotal,
+      status:
+        paymentsTotal >= totalDue
+          ? "paid"
+          : paymentsTotal > 0
+            ? "partial"
+            : body.status,
+    };
+  }
+
   const headerPayload = buildHeaderPayload(
     tenantId,
-    body,
+    writeBody,
     existingSequence,
     existingInvoiceNumber,
     salesTaxBasis,

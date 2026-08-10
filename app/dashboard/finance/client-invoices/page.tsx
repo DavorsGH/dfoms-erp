@@ -34,6 +34,15 @@ export default async function ClientInvoicesPage() {
     .order("invoice_date", { ascending: false })
     .order("invoice_sequence", { ascending: false });
 
+  const { data: paymentMethodRows } = await supabase
+    .from("payment_methods")
+    .select("name")
+    .eq("tenant_id", tenantId)
+    .order("name", { ascending: true });
+
+  const paymentMethods =
+    paymentMethodRows?.map((row) => row.name).filter(Boolean) ?? [];
+
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
@@ -46,6 +55,7 @@ export default async function ClientInvoicesPage() {
           )
         }
         fetchError={error?.message ?? null}
+        paymentMethods={paymentMethods}
       />
     </div>
   );

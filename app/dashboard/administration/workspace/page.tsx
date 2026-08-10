@@ -23,7 +23,9 @@ export default async function WorkspaceSettingsPage() {
 
   const { data, error } = await supabase
     .from("tenants")
-    .select("name, logo_url, address, phone, email")
+    .select(
+      "name, logo_url, signature_url, signature_author_name, signature_author_title, address, phone, email",
+    )
     .eq("id", tenantId)
     .maybeSingle();
 
@@ -36,6 +38,9 @@ export default async function WorkspaceSettingsPage() {
         tenantId={tenantId}
         initialName={data?.name ?? ""}
         initialLogoUrl={data?.logo_url ?? null}
+        initialSignatureUrl={data?.signature_url ?? null}
+        initialSignatureAuthorName={data?.signature_author_name ?? null}
+        initialSignatureAuthorTitle={data?.signature_author_title ?? null}
         initialAddress={data?.address ?? null}
         initialPhone={data?.phone ?? null}
         initialEmail={data?.email ?? null}

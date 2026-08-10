@@ -10,6 +10,7 @@ import {
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
+import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
 
 export const CLIENT_INVOICE_PRINT_AREA_ID = "client-invoice-print-area";
 
@@ -18,6 +19,7 @@ export type ClientInvoiceDetailPayload = {
   line_items: ClientInvoiceLineItemRow[];
   payment_account_ids: string[];
   payment_accounts: PaymentAccountRow[];
+  receipts?: ClientReceiptHeaderRow[];
 };
 
 export type ClientInvoiceDisplayProps = {
@@ -118,6 +120,9 @@ export function normalizeClientInvoiceDetail(
       address: null,
       phone: null,
       email: null,
+      signatureImageUrl: null,
+      signatureAuthorName: null,
+      signatureAuthorTitle: null,
     },
     billingSettings: null,
   };
@@ -137,6 +142,14 @@ export function resolveBrandingLogoUrl(logoUrl: string) {
   }
 
   return logoUrl;
+}
+
+export function resolveSignatureImageUrl(signatureImageUrl: string | null | undefined) {
+  if (!signatureImageUrl?.trim()) {
+    return null;
+  }
+
+  return resolveBrandingLogoUrl(signatureImageUrl);
 }
 
 export function paymentAccountDetailLines(account: PaymentAccountRow) {

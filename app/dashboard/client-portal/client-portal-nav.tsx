@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const navItems = [
   { label: "My Invoices", href: "/dashboard/client-portal/invoices" },
+  { label: "Receipts", href: "/dashboard/client-portal/receipts" },
   {
     label: "My Service Report",
     href: "/dashboard/client-portal/service-report",
@@ -22,7 +23,10 @@ export default function ClientPortalNav() {
     <nav className="mb-6 border-b border-slate-200 pb-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
         {navItems.map((item) => {
-          const active = pathname === item.href;
+          const active =
+            pathname === item.href ||
+            (item.href === "/dashboard/client-portal/receipts" &&
+              pathname.startsWith("/dashboard/client-portal/receipts/"));
 
           return (
             <Link

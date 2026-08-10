@@ -53,6 +53,7 @@ export type IncomeRegisterEntry = {
   cogs_reversal_expense_id?: string | null;
   client?: IncomeRegisterClient | null;
   product?: IncomeRegisterProduct | null;
+  client_invoice_id?: string | null;
 };
 
 export const SERVICE_INCOME_REGISTER_SELECT =
