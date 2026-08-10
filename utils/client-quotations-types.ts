@@ -13,6 +13,10 @@ import {
   type ClientInvoiceAuthorizedSignerOption,
   type ClientInvoiceFormAuthorizedByState,
 } from "@/utils/client-invoices-types";
+import {
+  DEFAULT_SALES_TAX_BASIS,
+  type SalesTaxBasis,
+} from "@/app/dashboard/finance/tax-utils";
 
 export {
   AUTHORIZED_BY_OTHER,
@@ -202,8 +206,9 @@ export function computeQuotationTotals(
   lineItems: ClientQuotationLineItemInput[],
   vatRate: unknown,
   whtRate: unknown,
+  taxBasis: SalesTaxBasis = DEFAULT_SALES_TAX_BASIS,
 ) {
-  return computeInvoiceTotals(lineItems, vatRate, whtRate);
+  return computeInvoiceTotals(lineItems, vatRate, whtRate, taxBasis);
 }
 
 export function formatQuotationDocumentType(documentType: string) {

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadTenantSalesTaxBasis, type SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { createClientInvoice } from "@/utils/client-invoices-api";
 import type { ClientInvoiceWriteBody } from "@/utils/client-invoices-types";
 import {
@@ -29,11 +30,13 @@ function buildHeaderPayload(
   body: ClientQuotationWriteBody,
   quotationSequence: number,
   quotationNumber: string,
+  taxBasis: SalesTaxBasis,
 ) {
   const totals = computeQuotationTotals(
     body.line_items,
     body.vat_nhil_getfund_rate ?? 20,
     body.wht_rate ?? 7.5,
+    taxBasis,
   );
 
   return {
@@ -251,11 +254,20 @@ export async function createClientQuotation(
     return { quotation: null, error: sequenceError };
   }
 
+  const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
+    supabase,
+    tenantId,
+  );
+  if (taxBasisError) {
+    return { quotation: null, error: taxBasisError };
+  }
+
   const headerPayload = buildHeaderPayload(
     tenantId,
     body,
     sequence,
     quotationNumber,
+    salesTaxBasis,
   );
 
   const { data: quotation, error: insertError } = await supabase
@@ -298,11 +310,20 @@ export async function updateClientQuotation(
   existingSequence: number,
   existingQuotationNumber: string,
 ) {
+  const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
+    supabase,
+    tenantId,
+  );
+  if (taxBasisError) {
+    return { quotation: null, error: taxBasisError };
+  }
+
   const headerPayload = buildHeaderPayload(
     tenantId,
     body,
     existingSequence,
     existingQuotationNumber,
+    salesTaxBasis,
   );
 
   const { data: quotation, error: updateError } = await supabase

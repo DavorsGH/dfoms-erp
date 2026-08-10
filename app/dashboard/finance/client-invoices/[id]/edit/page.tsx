@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadClientInvoiceDetail, loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import {
   clientInvoiceToFormState,
@@ -45,6 +46,7 @@ export default async function EditClientInvoicePage({
     { data: sites, error: sitesError },
     { data: paymentAccounts, error: paymentAccountsError },
     authorizedSignersResult,
+    salesTaxBasisResult,
   ] = await Promise.all([
     loadClientInvoiceDetail(supabase, tenantId, id),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
@@ -59,6 +61,7 @@ export default async function EditClientInvoicePage({
       .eq("is_active", true)
       .order("account_name", { ascending: true }),
     loadAuthorizedSignerOptions(supabase, tenantId),
+    loadTenantSalesTaxBasis(supabase, tenantId),
   ]);
 
   if (!detail.invoice) {
@@ -71,6 +74,7 @@ export default async function EditClientInvoicePage({
     sitesError?.message ??
     paymentAccountsError?.message ??
     authorizedSignersResult.error ??
+    salesTaxBasisResult.error ??
     null;
 
   const initialForm = clientInvoiceToFormState(
@@ -103,6 +107,7 @@ export default async function EditClientInvoicePage({
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
+        salesTaxBasis={salesTaxBasisResult.salesTaxBasis}
         initialForm={initialForm}
         fetchError={fetchError}
       />

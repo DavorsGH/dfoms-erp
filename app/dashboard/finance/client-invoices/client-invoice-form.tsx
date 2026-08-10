@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import PromoCodeField from "@/components/promo-code-field";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
+import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import {
   AUTHORIZED_BY_OTHER,
   computeInvoiceTotals,
@@ -43,6 +44,7 @@ type ClientInvoiceFormProps = {
   initialPaymentAccounts: PaymentAccountRow[];
   initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
   initialForm: ClientInvoiceFormState;
+  salesTaxBasis: SalesTaxBasis;
   fetchError?: string | null;
 };
 
@@ -72,6 +74,7 @@ export default function ClientInvoiceForm({
   initialPaymentAccounts,
   initialAuthorizedSigners,
   initialForm,
+  salesTaxBasis,
   fetchError = null,
 }: ClientInvoiceFormProps) {
   const router = useRouter();
@@ -97,8 +100,9 @@ export default function ClientInvoiceForm({
         form.line_items,
         form.vat_nhil_getfund_rate,
         form.wht_rate,
+        salesTaxBasis,
       ),
-    [form.line_items, form.vat_nhil_getfund_rate, form.wht_rate],
+    [form.line_items, form.vat_nhil_getfund_rate, form.wht_rate, salesTaxBasis],
   );
 
   const invoiceTotalDue = useMemo(

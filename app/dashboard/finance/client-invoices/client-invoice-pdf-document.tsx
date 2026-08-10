@@ -8,7 +8,7 @@ import {
 } from "@react-pdf/renderer";
 import {
   CLIENT_INVOICE_COLORS,
-  CLIENT_INVOICE_LABOUR_TAX_NOTE,
+  clientInvoiceTaxBasisNote,
   CLIENT_INVOICE_PAYMENT_FOOTER,
   buildClientInvoiceGroups,
   formatBillingPeriodLabel,
@@ -331,6 +331,7 @@ export default function ClientInvoicePdfDocument({
     invoice.billing_period_start,
     invoice.billing_period_end,
   );
+  const taxBasisNote = clientInvoiceTaxBasisNote(invoice, lineItems);
 
   let lineRowIndex = 0;
 
@@ -459,7 +460,7 @@ export default function ClientInvoicePdfDocument({
               <Text style={styles.totalLabel}>
                 VAT/NHIL/GETFund ({invoice.vat_nhil_getfund_rate}%)
               </Text>
-              <Text style={styles.totalNote}>{CLIENT_INVOICE_LABOUR_TAX_NOTE}</Text>
+              <Text style={styles.totalNote}>{taxBasisNote}</Text>
             </View>
             <Text style={styles.totalValue}>{formatInvoiceMoney(invoice.tax_due)}</Text>
           </View>
@@ -468,7 +469,7 @@ export default function ClientInvoicePdfDocument({
               <Text style={styles.totalLabel}>
                 WHT ({invoice.wht_rate}%)
               </Text>
-              <Text style={styles.totalNote}>{CLIENT_INVOICE_LABOUR_TAX_NOTE}</Text>
+              <Text style={styles.totalNote}>{taxBasisNote}</Text>
               <Text style={styles.totalNote}>
                 For your records — not deducted from total
               </Text>

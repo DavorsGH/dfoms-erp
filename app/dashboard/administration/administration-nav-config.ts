@@ -33,6 +33,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration/payment-accounts",
       },
       {
+        label: "VAT/WHT Calculation Basis",
+        href: "/dashboard/administration/sales-tax-basis",
+      },
+      {
         label: "Asset Categories",
         href: "/dashboard/administration/asset-categories",
       },

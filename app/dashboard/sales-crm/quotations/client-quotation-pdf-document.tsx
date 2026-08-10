@@ -8,7 +8,7 @@ import {
 } from "@react-pdf/renderer";
 import {
   CLIENT_INVOICE_COLORS,
-  CLIENT_INVOICE_LABOUR_TAX_NOTE,
+  clientInvoiceTaxBasisNote,
   buildClientQuotationGroups,
   formatInvoiceDate,
   formatInvoiceMoney,
@@ -330,6 +330,7 @@ export default function ClientQuotationPdfDocument({
   const companyContactLines = tenantHeaderContactLines(branding, billingSettings);
   const printTitle = quotationPrintTitle(quotation.document_type);
   const opportunityName = resolveQuotationOpportunityName(quotation);
+  const taxBasisNote = clientInvoiceTaxBasisNote(quotation, lineItems);
 
   let lineRowIndex = 0;
 
@@ -459,14 +460,14 @@ export default function ClientQuotationPdfDocument({
               <Text style={styles.totalLabel}>
                 VAT/NHIL/GETFund ({quotation.vat_nhil_getfund_rate}%)
               </Text>
-              <Text style={styles.totalNote}>{CLIENT_INVOICE_LABOUR_TAX_NOTE}</Text>
+              <Text style={styles.totalNote}>{taxBasisNote}</Text>
             </View>
             <Text style={styles.totalValue}>{formatInvoiceMoney(quotation.tax_due)}</Text>
           </View>
           <View style={styles.totalRow}>
             <View>
               <Text style={styles.totalLabel}>WHT ({quotation.wht_rate}%)</Text>
-              <Text style={styles.totalNote}>{CLIENT_INVOICE_LABOUR_TAX_NOTE}</Text>
+              <Text style={styles.totalNote}>{taxBasisNote}</Text>
               <Text style={styles.totalNote}>
                 For your records — not deducted from total
               </Text>

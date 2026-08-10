@@ -13,6 +13,8 @@ import type { TenantBranding } from "@/utils/tenant-branding-types";
 import {
   CLIENT_INVOICE_COLORS,
   CLIENT_INVOICE_LABOUR_TAX_NOTE,
+  CLIENT_INVOICE_TOTAL_COST_TAX_NOTE,
+  clientInvoiceTaxBasisNote,
   hasAuthorizedBySignature,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
@@ -112,6 +114,8 @@ export function quotationValidityFooter(validUntil: string | null | undefined) {
 export {
   CLIENT_INVOICE_COLORS,
   CLIENT_INVOICE_LABOUR_TAX_NOTE,
+  CLIENT_INVOICE_TOTAL_COST_TAX_NOTE,
+  clientInvoiceTaxBasisNote,
   formatInvoiceDate,
   formatInvoiceMoney,
   hasAuthorizedBySignature,

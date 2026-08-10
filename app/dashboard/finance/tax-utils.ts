@@ -1,6 +1,23 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import type { IncomeEntryType } from "./income-register-utils";
 
 export type TaxKind = "wht" | "vat_bundle" | "vfrs";
+
+export type SalesTaxBasis = "service_only" | "total_cost";
+
+export const DEFAULT_SALES_TAX_BASIS: SalesTaxBasis = "service_only";
+
+export const SALES_TAX_BASIS_OPTIONS: Array<{
+  value: SalesTaxBasis;
+  label: string;
+}> = [
+  { value: "service_only", label: "Service Cost Only (default)" },
+  {
+    value: "total_cost",
+    label: "Total Cost (Service + Material)",
+  },
+];
 
 export type OutputTaxComponent = "vat_bundle" | "vfrs";
 
@@ -14,11 +31,11 @@ export const DEFAULT_TIER2_RETURN_DUE_DAY = 14;
 
 /** Slim select for Income / Expense / AP forms (defaults + VAT flag). */
 export const TAX_SETTINGS_SELECT =
-  "tenant_id, vat_registered, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate";
+  "tenant_id, vat_registered, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis";
 
 /** Full select for the Statutory Ledger settings editor. */
 export const TAX_SETTINGS_FULL_SELECT =
-  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled";
+  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled";
 
 export const TAX_RATE_CATALOG_SELECT =
   "id, tenant_id, tax_kind, code, label, rate_pct, is_active, sort_order";
@@ -32,6 +49,7 @@ export type TaxSettings = {
   default_vat_bundle_rate: number;
   default_vfrs_rate: number;
   default_wht_rate: number;
+  sales_tax_basis: SalesTaxBasis;
   vat_return_period: VatReturnPeriod;
   vat_return_due_day: number | null;
   wht_return_due_day: number | null;
@@ -65,6 +83,10 @@ export function roundTaxRate(value: number): number {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+export function normalizeSalesTaxBasis(value: unknown): SalesTaxBasis {
+  return value === "total_cost" ? "total_cost" : "service_only";
+}
+
 export function emptyTaxSettings(tenantId: string): TaxSettings {
   return {
     tenant_id: tenantId,
@@ -73,6 +95,7 @@ export function emptyTaxSettings(tenantId: string): TaxSettings {
     default_vat_bundle_rate: DEFAULT_VAT_BUNDLE_RATE,
     default_vfrs_rate: DEFAULT_VFRS_RATE,
     default_wht_rate: DEFAULT_WHT_RATE,
+    sales_tax_basis: DEFAULT_SALES_TAX_BASIS,
     vat_return_period: "monthly",
     vat_return_due_day: null,
     wht_return_due_day: null,
@@ -142,6 +165,7 @@ export function normalizeTaxSettings(
       Number(raw.default_vat_bundle_rate) || DEFAULT_VAT_BUNDLE_RATE,
     default_vfrs_rate: Number(raw.default_vfrs_rate) || DEFAULT_VFRS_RATE,
     default_wht_rate: Number(raw.default_wht_rate) || DEFAULT_WHT_RATE,
+    sales_tax_basis: normalizeSalesTaxBasis(raw.sales_tax_basis),
     vat_return_period: normalizeVatReturnPeriod(raw.vat_return_period),
     vat_return_due_day: normalizeOptionalDay(raw.vat_return_due_day),
     wht_return_due_day: normalizeOptionalDay(raw.wht_return_due_day),
@@ -209,6 +233,28 @@ export function selectTaxRateOptions(
 
 export function resolveDefaultWhtRate(settings: TaxSettings | null): number {
   return settings ? settings.default_wht_rate : DEFAULT_WHT_RATE;
+}
+
+export async function loadTenantSalesTaxBasis(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<{ salesTaxBasis: SalesTaxBasis; error: string | null }> {
+  const { data, error } = await supabase
+    .from("tax_settings")
+    .select("sales_tax_basis")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) {
+    return { salesTaxBasis: DEFAULT_SALES_TAX_BASIS, error: error.message };
+  }
+
+  return {
+    salesTaxBasis: normalizeSalesTaxBasis(
+      (data as { sales_tax_basis?: string } | null)?.sales_tax_basis,
+    ),
+    error: null,
+  };
 }
 
 export function resolveOutputTaxComponent(

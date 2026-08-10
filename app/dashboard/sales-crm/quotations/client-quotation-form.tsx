@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
+import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { formatAuthorizedSignerLabel } from "@/utils/client-invoices-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import {
@@ -41,6 +42,7 @@ type ClientQuotationFormProps = {
   initialPaymentAccounts: PaymentAccountRow[];
   initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
   initialForm: ClientQuotationFormState;
+  salesTaxBasis: SalesTaxBasis;
   fetchError?: string | null;
 };
 
@@ -72,6 +74,7 @@ export default function ClientQuotationForm({
   initialPaymentAccounts,
   initialAuthorizedSigners,
   initialForm,
+  salesTaxBasis,
   fetchError = null,
 }: ClientQuotationFormProps) {
   const router = useRouter();
@@ -104,8 +107,9 @@ export default function ClientQuotationForm({
         form.line_items,
         form.vat_nhil_getfund_rate,
         form.wht_rate,
+        salesTaxBasis,
       ),
-    [form.line_items, form.vat_nhil_getfund_rate, form.wht_rate],
+    [form.line_items, form.vat_nhil_getfund_rate, form.wht_rate, salesTaxBasis],
   );
 
   const displayQuotationNumber = useMemo(() => {

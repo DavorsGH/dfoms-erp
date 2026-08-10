@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateIncomeOutstanding } from "@/app/dashboard/finance/income-register-utils";
 import {
+  loadTenantSalesTaxBasis,
+  type SalesTaxBasis,
+} from "@/app/dashboard/finance/tax-utils";
+import {
   deleteTaxLedgerEntriesForSource,
   syncIncomeRegisterTaxLedger,
 } from "@/app/dashboard/finance/tax-ledger-sync";
@@ -32,11 +36,13 @@ function buildHeaderPayload(
   body: ClientInvoiceWriteBody,
   invoiceSequence: number,
   invoiceNumber: string,
+  taxBasis: SalesTaxBasis,
 ) {
   const totals = computeInvoiceTotals(
     body.line_items,
     body.vat_nhil_getfund_rate ?? 20,
     body.wht_rate ?? 7.5,
+    taxBasis,
   );
 
   return {
@@ -428,11 +434,20 @@ export async function createClientInvoice(
     return { invoice: null, error: sequenceError };
   }
 
+  const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
+    supabase,
+    tenantId,
+  );
+  if (taxBasisError) {
+    return { invoice: null, error: taxBasisError };
+  }
+
   const headerPayload = buildHeaderPayload(
     tenantId,
     body,
     sequence,
     invoiceNumber,
+    salesTaxBasis,
   );
   const { data: invoice, error: insertError } = await supabase
     .from("client_invoices")
@@ -480,11 +495,20 @@ export async function updateClientInvoice(
   existingSequence: number,
   existingInvoiceNumber: string,
 ) {
+  const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
+    supabase,
+    tenantId,
+  );
+  if (taxBasisError) {
+    return { invoice: null, error: taxBasisError };
+  }
+
   const headerPayload = buildHeaderPayload(
     tenantId,
     body,
     existingSequence,
     existingInvoiceNumber,
+    salesTaxBasis,
   );
   const { data: invoice, error: updateError } = await supabase
     .from("client_invoices")

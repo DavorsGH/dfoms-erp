@@ -234,6 +234,61 @@ export function hasAuthorizedBySignature(
 
 export const CLIENT_INVOICE_LABOUR_TAX_NOTE = "Calculated on Service cost only";
 
+export const CLIENT_INVOICE_TOTAL_COST_TAX_NOTE =
+  "Calculated on Total Cost (Service + Material)";
+
+function taxAmountsMatch(actual: number, expected: number): boolean {
+  return Math.abs(actual - expected) < 0.011;
+}
+
+export function inferDocumentSalesTaxBasis(
+  header: {
+    subtotal: unknown;
+    tax_due: unknown;
+    vat_nhil_getfund_rate: unknown;
+  },
+  lineItems: Array<{
+    labour_amount: unknown;
+  }>,
+): "service_only" | "total_cost" {
+  const rate = toNumber(header.vat_nhil_getfund_rate);
+  const taxDue = toNumber(header.tax_due);
+  if (rate <= 0 || taxDue <= 0) {
+    return "service_only";
+  }
+
+  const labourTotal = roundMoney(
+    lineItems.reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
+  );
+  const subtotal = toNumber(header.subtotal);
+  const serviceTax = roundMoney((labourTotal * rate) / 100);
+  const totalCostTax = roundMoney((subtotal * rate) / 100);
+
+  if (
+    taxAmountsMatch(taxDue, totalCostTax) &&
+    !taxAmountsMatch(taxDue, serviceTax)
+  ) {
+    return "total_cost";
+  }
+
+  return "service_only";
+}
+
+export function clientInvoiceTaxBasisNote(
+  header: {
+    subtotal: unknown;
+    tax_due: unknown;
+    vat_nhil_getfund_rate: unknown;
+  },
+  lineItems: Array<{
+    labour_amount: unknown;
+  }>,
+): string {
+  return inferDocumentSalesTaxBasis(header, lineItems) === "total_cost"
+    ? CLIENT_INVOICE_TOTAL_COST_TAX_NOTE
+    : CLIENT_INVOICE_LABOUR_TAX_NOTE;
+}
+
 /** Shared invoice palette — keep view + PDF in sync. */
 export const CLIENT_INVOICE_COLORS = {
   navy: "#0f2744",

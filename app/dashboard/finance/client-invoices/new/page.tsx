@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadAuthorizedSignerOptions, peekNextInvoiceNumber } from "@/utils/client-invoices-api";
 import {
   defaultDueDate,
@@ -38,6 +39,7 @@ export default async function NewClientInvoicePage() {
     { data: paymentAccounts, error: paymentAccountsError },
     nextInvoiceNumberResult,
     authorizedSignersResult,
+    salesTaxBasisResult,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
@@ -52,6 +54,7 @@ export default async function NewClientInvoicePage() {
       .order("account_name", { ascending: true }),
     peekNextInvoiceNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
+    loadTenantSalesTaxBasis(supabase, tenantId),
   ]);
 
   const fetchError =
@@ -60,6 +63,7 @@ export default async function NewClientInvoicePage() {
     paymentAccountsError?.message ??
     nextInvoiceNumberResult.error ??
     authorizedSignersResult.error ??
+    salesTaxBasisResult.error ??
     null;
 
   return (
@@ -82,6 +86,7 @@ export default async function NewClientInvoicePage() {
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
+        salesTaxBasis={salesTaxBasisResult.salesTaxBasis}
         initialForm={{
           client_id: "",
           invoice_date: todayIsoDate(),

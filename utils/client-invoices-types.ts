@@ -1,4 +1,8 @@
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
+import {
+  DEFAULT_SALES_TAX_BASIS,
+  type SalesTaxBasis,
+} from "@/app/dashboard/finance/tax-utils";
 
 export const CLIENT_INVOICE_STATUSES = ["draft", "sent", "partial", "paid"] as const;
 export type ClientInvoiceStatus = (typeof CLIENT_INVOICE_STATUSES)[number];
@@ -285,6 +289,7 @@ export function computeInvoiceTotals(
   lineItems: ClientInvoiceLineItemInput[],
   vatRate: unknown,
   whtRate: unknown,
+  taxBasis: SalesTaxBasis = DEFAULT_SALES_TAX_BASIS,
 ) {
   const normalizedLines = lineItems.map((line) => ({
     ...line,
@@ -297,8 +302,10 @@ export function computeInvoiceTotals(
   const labourTotal = roundMoney(
     normalizedLines.reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
   );
-  const vat = roundMoney((labourTotal * toNumber(vatRate)) / 100);
-  const wht = roundMoney((labourTotal * toNumber(whtRate)) / 100);
+  const taxBase =
+    taxBasis === "total_cost" ? subtotal : labourTotal;
+  const vat = roundMoney((taxBase * toNumber(vatRate)) / 100);
+  const wht = roundMoney((taxBase * toNumber(whtRate)) / 100);
   const totalAmountDue = roundMoney(subtotal + vat);
 
   return {
@@ -308,6 +315,7 @@ export function computeInvoiceTotals(
     wht_amount: wht,
     total_amount_due: totalAmountDue,
     labour_total: labourTotal,
+    tax_base: taxBase,
   };
 }
 

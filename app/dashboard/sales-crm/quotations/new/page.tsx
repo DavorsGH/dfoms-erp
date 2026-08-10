@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import { peekNextQuotationNumber } from "@/utils/client-quotations-api";
 import {
@@ -36,6 +37,7 @@ export default async function NewClientQuotationPage() {
     { data: opportunities, error: opportunitiesError },
     nextQuotationNumberResult,
     authorizedSignersResult,
+    salesTaxBasisResult,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
@@ -55,6 +57,7 @@ export default async function NewClientQuotationPage() {
       .order("opportunity_name", { ascending: true }),
     peekNextQuotationNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
+    loadTenantSalesTaxBasis(supabase, tenantId),
   ]);
 
   const fetchError =
@@ -64,6 +67,7 @@ export default async function NewClientQuotationPage() {
     opportunitiesError?.message ??
     nextQuotationNumberResult.error ??
     authorizedSignersResult.error ??
+    salesTaxBasisResult.error ??
     null;
 
   return (
@@ -89,6 +93,7 @@ export default async function NewClientQuotationPage() {
         initialSites={(sites as ClientQuotationSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
+        salesTaxBasis={salesTaxBasisResult.salesTaxBasis}
         initialForm={emptyQuotationForm()}
         fetchError={fetchError}
       />

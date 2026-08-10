@@ -11,6 +11,7 @@ import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types
 import { resolveQuotationOpportunityName } from "@/utils/client-quotations-types";
 import {
   CLIENT_INVOICE_LABOUR_TAX_NOTE,
+  clientInvoiceTaxBasisNote,
   CLIENT_QUOTATION_PRINT_AREA_ID,
   buildClientQuotationGroups,
   formatInvoiceDate,
@@ -141,6 +142,14 @@ export default function ClientQuotationView({
 
   const lineColumnTotals = useMemo(
     () => (display ? sumQuotationLineItemColumns(display.lineItems) : null),
+    [display],
+  );
+
+  const taxBasisNote = useMemo(
+    () =>
+      display
+        ? clientInvoiceTaxBasisNote(display.quotation, display.lineItems)
+        : CLIENT_INVOICE_LABOUR_TAX_NOTE,
     [display],
   );
 
@@ -466,7 +475,7 @@ export default function ClientQuotationView({
                 <dt className="text-slate-700">
                   VAT/NHIL/GETFund ({quotation.vat_nhil_getfund_rate}%)
                   <span className="mt-1 block text-xs text-slate-600">
-                    {CLIENT_INVOICE_LABOUR_TAX_NOTE}
+                    {taxBasisNote}
                   </span>
                 </dt>
                 <dd className="font-semibold text-[#0f2744]">
@@ -477,7 +486,7 @@ export default function ClientQuotationView({
                 <dt className="text-slate-700">
                   WHT ({quotation.wht_rate}%)
                   <span className="mt-1 block text-xs text-slate-600">
-                    {CLIENT_INVOICE_LABOUR_TAX_NOTE}
+                    {taxBasisNote}
                   </span>
                   <span className="mt-1 block text-xs text-slate-600">
                     For your records — not deducted from total

@@ -21,6 +21,7 @@ import {
   resolveInvoiceCompanyName,
   sumLineItemColumns,
   tenantHeaderContactLines,
+  clientInvoiceTaxBasisNote,
   CLIENT_INVOICE_LABOUR_TAX_NOTE,
   type ClientInvoiceDetailPayload,
 } from "./client-invoice-display-utils";
@@ -135,6 +136,14 @@ export default function ClientInvoiceView({
 
   const lineColumnTotals = useMemo(
     () => (display ? sumLineItemColumns(display.lineItems) : null),
+    [display],
+  );
+
+  const taxBasisNote = useMemo(
+    () =>
+      display
+        ? clientInvoiceTaxBasisNote(display.invoice, display.lineItems)
+        : CLIENT_INVOICE_LABOUR_TAX_NOTE,
     [display],
   );
 
@@ -399,7 +408,7 @@ export default function ClientInvoiceView({
               <dt className="text-slate-700">
                 VAT/NHIL/GETFund ({invoice.vat_nhil_getfund_rate}%)
                 <span className="mt-1 block text-xs text-slate-600">
-                  {CLIENT_INVOICE_LABOUR_TAX_NOTE}
+                  {taxBasisNote}
                 </span>
               </dt>
               <dd className="font-semibold text-[#0f2744]">
@@ -410,7 +419,7 @@ export default function ClientInvoiceView({
               <dt className="text-slate-700">
                 WHT ({invoice.wht_rate}%)
                 <span className="mt-1 block text-xs text-slate-600">
-                  {CLIENT_INVOICE_LABOUR_TAX_NOTE}
+                  {taxBasisNote}
                 </span>
                 <span className="mt-1 block text-xs text-slate-600">
                   For your records — not deducted from total
