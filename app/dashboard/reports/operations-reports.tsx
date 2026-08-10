@@ -974,7 +974,7 @@ export function MonthlyClientServiceReport({
                       <tr
                         key={row.siteCode}
                         className={`${getStripedRowClassName(index)} ${
-                          row.isStaffingMismatch ? "bg-amber-50" : ""
+                          row.isUnderStaffed ? "bg-amber-50" : ""
                         }`}
                       >
                         <td className="px-4 py-2 text-sm">{row.facilityName}</td>

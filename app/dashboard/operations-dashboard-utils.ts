@@ -145,7 +145,7 @@ export async function buildOperationsDashboardSummary(
     });
 
     totalRosterSites += viewModel.rows.length;
-    understaffedSites += viewModel.rows.filter((row) => row.isStaffingMismatch)
+    understaffedSites += viewModel.rows.filter((row) => row.isUnderStaffed)
       .length;
   }
 

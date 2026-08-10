@@ -71,29 +71,61 @@ function renderRosterRows(rows: DutyRosterViewModel["rows"]) {
   return rows.map((row) => (
     <tr
       key={row.siteCode}
-      className={row.isStaffingMismatch ? "bg-red-50" : undefined}
+      className={row.isUnderStaffed ? "bg-amber-50" : undefined}
     >
       <td className="px-4 py-3 font-medium text-[#0f2744]">
-        <span className="inline-flex items-center gap-2">
-          {row.isStaffingMismatch ? (
-            <span
-              aria-hidden
-              className="text-red-600"
-              title="Staffing mismatch"
-            >
-              ⚠
+        <span className="inline-flex flex-wrap items-center gap-2">
+          {row.facilityName}
+          {row.isUnderStaffed ? (
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+              Short staffed
             </span>
           ) : null}
-          {row.facilityName}
         </span>
       </td>
       <td className="px-4 py-3 text-sm text-slate-700">{row.morningShift}</td>
       <td className="px-4 py-3 text-sm text-slate-700">{row.afternoonShift}</td>
       <td className="px-4 py-3 text-sm text-slate-700">{row.supervisors}</td>
       <td className="px-4 py-3 text-sm text-slate-700">{row.requiredStaff}</td>
-      <td className="px-4 py-3 text-sm text-slate-700">{row.totalStaff}</td>
+      <td
+        className={`px-4 py-3 text-sm ${
+          row.isUnderStaffed ? "font-medium text-amber-900" : "text-slate-700"
+        }`}
+      >
+        {row.totalStaff}
+      </td>
     </tr>
   ));
+}
+
+function renderRosterTotalsRow(totals: DutyRosterViewModel["totals"]) {
+  return (
+    <tr
+      className={`font-semibold text-[#0f2744] ${
+        totals.isUnderStaffed ? "bg-amber-100" : "bg-slate-100"
+      }`}
+    >
+      <td className="px-4 py-3">
+        <span className="inline-flex flex-wrap items-center gap-2">
+          TOTAL
+          {totals.isUnderStaffed ? (
+            <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+              Short staffed
+            </span>
+          ) : null}
+        </span>
+      </td>
+      <td className="px-4 py-3" colSpan={3} />
+      <td className="px-4 py-3">{totals.requiredStaff}</td>
+      <td
+        className={`px-4 py-3 ${
+          totals.isUnderStaffed ? "font-semibold text-amber-900" : ""
+        }`}
+      >
+        {totals.totalStaff}
+      </td>
+    </tr>
+  );
 }
 
 function UnassignedSitesNotice({
@@ -138,6 +170,9 @@ export default function DutyRoster({
   const router = useRouter();
   const { companyLegalName } = useTenantBranding();
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [selectedRotationNumber, setSelectedRotationNumber] = useState<
+    number | null
+  >(null);
   const [preparedBy, setPreparedBy] = useState(preparedByDefault);
   const [approvedBy, setApprovedBy] = useState("");
   const [rosterDate, setRosterDate] = useState(formatTodayLabel());
@@ -181,6 +216,7 @@ export default function DutyRoster({
       projects: initialProjects,
       sites: initialSites,
       history: initialHistory,
+      viewRotationNumber: selectedRotationNumber,
     });
   }, [
     selectedClient,
@@ -189,7 +225,51 @@ export default function DutyRoster({
     initialProjects,
     initialSites,
     initialHistory,
+    selectedRotationNumber,
   ]);
+
+  const rotationIndex = useMemo(() => {
+    if (!data) {
+      return -1;
+    }
+    return data.rotationOptions.findIndex(
+      (option) => option.rotationNumber === data.viewRotationNumber,
+    );
+  }, [data]);
+
+  function handleClientChange(clientId: string) {
+    setSelectedClientId(clientId);
+    setSelectedRotationNumber(null);
+  }
+
+  function handleRotationSelect(rotationNumber: number) {
+    if (!data) {
+      return;
+    }
+    setSelectedRotationNumber(
+      rotationNumber === data.currentRotationNumber ? null : rotationNumber,
+    );
+  }
+
+  function handlePreviousRotation() {
+    if (!data || rotationIndex < 0) {
+      return;
+    }
+    const nextOption = data.rotationOptions[rotationIndex + 1];
+    if (nextOption) {
+      handleRotationSelect(nextOption.rotationNumber);
+    }
+  }
+
+  function handleNextRotation() {
+    if (!data || rotationIndex <= 0) {
+      return;
+    }
+    const nextOption = data.rotationOptions[rotationIndex - 1];
+    if (nextOption) {
+      handleRotationSelect(nextOption.rotationNumber);
+    }
+  }
 
   const effectiveLabel = useMemo(() => {
     if (!data) {
@@ -300,7 +380,7 @@ export default function DutyRoster({
             </label>
               <select
               value={selectedClientId}
-              onChange={(event) => setSelectedClientId(event.target.value)}
+              onChange={(event) => handleClientChange(event.target.value)}
               className={inputClassName}
             >
               <option value="">Select customer</option>
@@ -342,45 +422,104 @@ export default function DutyRoster({
               </p>
             ) : null}
 
+            {data.isHistoricalView ? (
+              <section className="rounded-md border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                Viewing a past rotation in read-only mode. Assignment changes are
+                reconstructed from roster history; employees with no history rows
+                keep their current assignment as a fallback.
+              </section>
+            ) : null}
+
             <section className="grid gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-2 xl:grid-cols-4">
-              <div>
+              <div className="xl:col-span-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Current Rotation
+                  {data.isHistoricalView ? "Rotation" : "Current Rotation"}
                 </p>
-                <p className="mt-1 text-sm font-medium text-[#0f2744]">
-                  {data.summary.currentRotationLabel}
-                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePreviousRotation}
+                    disabled={
+                      rotationIndex < 0 ||
+                      rotationIndex >= data.rotationOptions.length - 1
+                    }
+                    className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Previous rotation"
+                  >
+                    ←
+                  </button>
+                  <select
+                    value={String(data.viewRotationNumber)}
+                    onChange={(event) =>
+                      handleRotationSelect(Number(event.target.value))
+                    }
+                    className={`${inputClassName} min-w-[min(100%,320px)] flex-1`}
+                    aria-label="Select rotation"
+                  >
+                    {data.rotationOptions.map((option) => (
+                      <option
+                        key={option.rotationNumber}
+                        value={option.rotationNumber}
+                      >
+                        {option.label}
+                        {option.isCurrent ? " (current)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleNextRotation}
+                    disabled={rotationIndex <= 0}
+                    className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Next rotation"
+                  >
+                    →
+                  </button>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Next Rotation
-                </p>
-                <p className="mt-1 text-sm font-medium text-[#0f2744]">
-                  {formatShortDate(data.summary.nextRotationDate)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Days to Rotation
-                </p>
-                <p className="mt-1 text-sm font-medium text-[#0f2744]">
-                  {data.summary.daysToRotation} day
-                  {data.summary.daysToRotation === 1 ? "" : "s"}
-                </p>
-              </div>
+              {!data.isHistoricalView ? (
+                <>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Next Rotation
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-[#0f2744]">
+                      {formatShortDate(data.summary.nextRotationDate)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Days to Rotation
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-[#0f2744]">
+                      {data.summary.daysToRotation} day
+                      {data.summary.daysToRotation === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="md:col-span-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Effective Period
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-[#0f2744]">
+                    {effectiveLabel}
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Staff Assigned
                 </p>
                 <p className="mt-1 text-sm font-medium text-[#0f2744]">
                   {data.summary.staffAssignedCount} of {data.summary.totalActiveCount}{" "}
-                  ({data.summary.staffAssignedPercent}%)
+                  required ({data.summary.staffAssignedPercent}%)
                 </p>
               </div>
             </section>
 
             <div className="flex flex-wrap items-center gap-3">
-              {canStartRotation ? (
+              {canStartRotation && !data.isHistoricalView ? (
               <button
                 type="button"
                 onClick={handleStartRotation}
@@ -441,14 +580,7 @@ export default function DutyRoster({
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {renderRosterRows(data.rows)}
-                  {data.rows.length > 0 ? (
-                    <tr className="bg-slate-100 font-semibold text-[#0f2744]">
-                      <td className="px-4 py-3">TOTAL</td>
-                      <td className="px-4 py-3" colSpan={3} />
-                      <td className="px-4 py-3">{data.totals.requiredStaff}</td>
-                      <td className="px-4 py-3">{data.totals.totalStaff}</td>
-                    </tr>
-                  ) : null}
+                  {data.rows.length > 0 ? renderRosterTotalsRow(data.totals) : null}
                 </tbody>
               </table>
             </ScrollableTable>
@@ -462,6 +594,7 @@ export default function DutyRoster({
                   type="text"
                   value={preparedBy}
                   onChange={(event) => setPreparedBy(event.target.value)}
+                  readOnly={data.isHistoricalView}
                   className={inputClassName}
                 />
               </div>
@@ -473,6 +606,7 @@ export default function DutyRoster({
                   type="text"
                   value={approvedBy}
                   onChange={(event) => setApprovedBy(event.target.value)}
+                  readOnly={data.isHistoricalView}
                   className={inputClassName}
                 />
               </div>
@@ -484,6 +618,7 @@ export default function DutyRoster({
                   type="text"
                   value={rosterDate}
                   onChange={(event) => setRosterDate(event.target.value)}
+                  readOnly={data.isHistoricalView}
                   className={inputClassName}
                 />
               </div>
@@ -564,7 +699,11 @@ export default function DutyRoster({
                 </tr>
               ))}
               {data.rows.length > 0 ? (
-                <tr className="bg-slate-100 font-semibold">
+                <tr
+                  className={`font-semibold ${
+                    data.totals.isUnderStaffed ? "bg-amber-100" : "bg-slate-100"
+                  }`}
+                >
                   <td className="border border-slate-400 px-2 py-2">TOTAL</td>
                   <td className="border border-slate-400 px-2 py-2" colSpan={3} />
                   <td className="border border-slate-400 px-2 py-2 text-right">
