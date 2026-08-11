@@ -8,7 +8,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { REMITTED_STATUS } from "../app/dashboard/finance/tax-ledger-utils";
 
@@ -71,7 +71,7 @@ function r2(n: number) {
   return Math.round(Number(n || 0) * 100) / 100;
 }
 
-async function fetchAllIncome(admin: ReturnType<typeof createClient>) {
+async function fetchAllIncome(admin: SupabaseClient) {
   const pageSize = 1000;
   const rows: IncomeRow[] = [];
   let from = 0;
@@ -99,7 +99,7 @@ async function fetchAllIncome(admin: ReturnType<typeof createClient>) {
 }
 
 async function fetchLedgerForIncomeIds(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient,
   incomeIds: string[],
 ) {
   const ledgerBySource = new Map<string, LedgerRow[]>();
@@ -141,7 +141,7 @@ async function main() {
 
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-  });
+  }) as SupabaseClient;
 
   const incomeRows = await fetchAllIncome(admin);
   const incomeIds = incomeRows.map((row) => row.id);

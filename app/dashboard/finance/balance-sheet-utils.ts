@@ -86,6 +86,7 @@ export type { BalanceSheetAccountsPayableEntry } from "./balance-sheet-ap-cash-u
 export { isStatutoryRemittancePayable } from "./balance-sheet-ap-cash-utils";
 
 export type BalanceSheetIncomeEntry = {
+  id?: string;
   date: string;
   amount: number;
   amount_received: number;
@@ -94,6 +95,8 @@ export type BalanceSheetIncomeEntry = {
   service_category: string;
   entry_type?: "service" | "product_sale" | null;
   sale_status?: "active" | "voided" | null;
+  net_of_tax_amount?: number | null;
+  output_vat_amount?: number | null;
 };
 
 /**

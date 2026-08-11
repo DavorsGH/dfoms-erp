@@ -89,7 +89,7 @@ function buildReport(
       return row;
     }
 
-    const patch = BEFORE_PATCH[row.id];
+    const patch = row.id ? BEFORE_PATCH[row.id] : undefined;
     if (!patch) {
       return row;
     }
