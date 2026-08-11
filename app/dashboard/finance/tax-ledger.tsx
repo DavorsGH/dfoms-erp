@@ -56,6 +56,7 @@ import {
   type RemitTaxKind,
 } from "./tax-ledger-remit";
 import { isPaidStatus } from "./accrued-wages-utils";
+import ProductSalesTaxRateSettings from "./product-sales-tax-rate-settings";
 
 type TaxLedgerProps = {
   tenantId: string;
@@ -70,7 +71,6 @@ type SettingsForm = {
   vat_registered: boolean;
   gra_tin: string;
   default_vat_bundle_rate: string;
-  default_vfrs_rate: string;
   default_wht_rate: string;
   vat_return_period: VatReturnPeriod;
   vat_return_due_day: string;
@@ -115,7 +115,6 @@ function settingsToForm(settings: TaxSettings): SettingsForm {
     vat_registered: settings.vat_registered,
     gra_tin: settings.gra_tin ?? "",
     default_vat_bundle_rate: String(settings.default_vat_bundle_rate),
-    default_vfrs_rate: String(settings.default_vfrs_rate),
     default_wht_rate: String(settings.default_wht_rate),
     vat_return_period: settings.vat_return_period,
     vat_return_due_day:
@@ -670,7 +669,6 @@ export default function TaxLedger({
       vat_registered: form.vat_registered,
       gra_tin: form.gra_tin.trim() || null,
       default_vat_bundle_rate: Number(form.default_vat_bundle_rate) || 0,
-      default_vfrs_rate: Number(form.default_vfrs_rate) || 0,
       default_wht_rate: Number(form.default_wht_rate) || 0,
       vat_return_period: form.vat_return_period,
       vat_return_due_day: vatDueDay,
@@ -1127,6 +1125,7 @@ export default function TaxLedger({
         )}
 
       {activeTab === "settings" && (
+        <div className="space-y-6">
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             Statutory Settings
@@ -1181,23 +1180,6 @@ export default function TaxLedger({
                       "default_vat_bundle_rate",
                       event.target.value,
                     )
-                  }
-                  className={inputClassName}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Default VFRS Rate (%)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  value={form.default_vfrs_rate}
-                  onChange={(event) =>
-                    updateFormField("default_vfrs_rate", event.target.value)
                   }
                   className={inputClassName}
                 />
@@ -1422,6 +1404,12 @@ export default function TaxLedger({
             </button>
           </form>
         </section>
+
+        <ProductSalesTaxRateSettings
+          tenantId={tenantId}
+          initialProductSalesTaxRate={settings.product_sales_tax_rate}
+        />
+        </div>
       )}
     </div>
   );
