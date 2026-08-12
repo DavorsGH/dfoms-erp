@@ -1,0 +1,17 @@
+﻿
+Path                                                                                                     
+----                                                                                                     
+C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source Code\dfoms-erp-app
+
+
+
+
+    Directory: C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source 
+    Code\dfoms-erp-app\scripts
+
+
+Mode                 LastWriteTime         Length Name                                                                 
+----                 -------------         ------ ----                                                                 
+-a----         8/10/2026   9:14 PM           1148 205_duty_roster_director_projects_rls.sql                            
+
+

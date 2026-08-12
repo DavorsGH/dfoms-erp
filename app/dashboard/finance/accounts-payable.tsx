@@ -15,6 +15,7 @@ import {
   type AccountsPayableEntry,
   type AccountsPayablePaymentSource,
 } from "./accounts-payable-utils";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import {
   computePurchaseTaxAmounts,
@@ -363,6 +364,12 @@ export default function AccountsPayable({
       }
 
       savedId = (inserted as { id: string }).id;
+
+      requestTenantAdminDirectorNotification({
+        title: "Accounts payable recorded",
+        detail: formatGHS(amount),
+        actionUrl: "/dashboard/finance/accounts-payable",
+      });
     }
 
     const { error: ledgerError } = await syncPurchaseTaxLedger(supabase, {

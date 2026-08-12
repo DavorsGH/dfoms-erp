@@ -63,6 +63,7 @@ import {
 } from "./employment-history-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import FilteredListCount from "../filtered-list-count";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 
 async function resolveChangedByLabel(
   supabase: SupabaseClient,
@@ -1043,6 +1044,12 @@ export default function EmployeesDirectory({
         setLoading(false);
         return;
       }
+
+      requestTenantAdminDirectorNotification({
+        title: "New employee added",
+        detail: payload.full_name.trim() || allocated.employeeId,
+        actionUrl: "/dashboard/employees",
+      });
 
       // Forward-only: create current-year leave balances from entitlement policy
       // (Annual=15 / Sick=0 / Unpaid=0 fallback when no policy row).

@@ -13,6 +13,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import { getEmployeeDisplayName, type HrEmployee } from "./employee-utils";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import {
   EXIT_MANAGEMENT_SELECT,
   EXIT_REASON_OPTIONS,
@@ -197,6 +198,12 @@ export default function ExitManagementRegister({
         setLoading(false);
         return;
       }
+
+      requestTenantAdminDirectorNotification({
+        title: "Employee exit recorded",
+        detail: getEmployeeDisplayName(employees, form.employee_id),
+        actionUrl: "/dashboard/hr-payroll/exit-management",
+      });
     }
 
     closeForm();

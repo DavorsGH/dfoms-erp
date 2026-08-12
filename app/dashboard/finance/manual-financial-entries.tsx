@@ -32,6 +32,7 @@ import {
   type ManualEntryFormFieldKey,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 
 import DirectorsLoanRepaymentsPanel, {
   type DirectorsLoanRepaymentRecord,
@@ -265,6 +266,14 @@ export default function ManualFinancialEntries({
       ({ error: saveError } = await supabase
         .from("manual_financial_entries")
         .insert(payload));
+
+      if (!saveError) {
+        requestTenantAdminDirectorNotification({
+          title: "Director's loan entry recorded",
+          detail: formatGHS(Number(form.directors_loan) || 0),
+          actionUrl: "/dashboard/finance/manual-financial-entries",
+        });
+      }
     }
 
     if (saveError) {

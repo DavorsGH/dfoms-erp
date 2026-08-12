@@ -15,6 +15,7 @@ import ScrollableTable, {
   scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import { getEmployeeDisplayName, type HrEmployee } from "./employee-utils";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import {
   DISCIPLINARY_SELECT,
   WARNING_LEVEL_OPTIONS,
@@ -177,6 +178,12 @@ export default function DisciplinaryRegister({
         setLoading(false);
         return;
       }
+
+      requestTenantAdminDirectorNotification({
+        title: "Disciplinary record recorded",
+        detail: getEmployeeDisplayName(employees, form.employee_id),
+        actionUrl: "/dashboard/hr-payroll/disciplinary",
+      });
     }
 
     closeForm();

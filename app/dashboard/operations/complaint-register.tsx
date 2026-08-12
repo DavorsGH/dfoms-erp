@@ -28,6 +28,7 @@ import {
   normalizeComplaintRegisterEntry,
   type ComplaintRegisterEntry,
 } from "./complaint-register-utils";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import {
   COMPLAINT_PRIORITY_OPTIONS,
   COMPLAINT_STATUS_OPTIONS,
@@ -281,6 +282,18 @@ export default function ComplaintRegister({
         setLoading(false);
         return;
       }
+
+      const complaintDetail =
+        initialClients.find((client) => client.client_id === payload.client_id)
+          ?.client_name ||
+        payload.complaint_details?.trim() ||
+        allocated.complaintNo;
+
+      requestTenantAdminDirectorNotification({
+        title: "New complaint recorded",
+        detail: complaintDetail,
+        actionUrl: "/dashboard/operations/complaint-register",
+      });
     }
 
     closeForm();

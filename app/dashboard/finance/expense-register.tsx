@@ -13,6 +13,7 @@ import {
   normalizeExpenseRegisterEntry,
   type ExpenseRegisterEntry,
 } from "./expense-register-utils";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { resolveManualExpenseReceiptNo } from "./expense-register-api";
 import {
   canMarkAutoPostedExpenseAsPaid,
@@ -626,6 +627,12 @@ export default function ExpenseRegister({
       }
 
       savedId = (inserted as { id: string }).id;
+
+      requestTenantAdminDirectorNotification({
+        title: "New expense recorded",
+        detail: formatGHS(purchaseTax.netPaidToSupplier),
+        actionUrl: "/dashboard/finance/expenses",
+      });
     }
 
     const { error: ledgerError } = await syncPurchaseTaxLedger(supabase, {

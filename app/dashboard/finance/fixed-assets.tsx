@@ -30,6 +30,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 
 type FixedAssetsProps = {
   initialAssets: FixedAssetEntry[];
@@ -361,6 +362,12 @@ export default function FixedAssets({
         setLoading(false);
         return;
       }
+
+      requestTenantAdminDirectorNotification({
+        title: "New fixed asset recorded",
+        detail: payload.asset_name.trim() || allocated.assetId,
+        actionUrl: "/dashboard/finance/fixed-assets",
+      });
     }
 
     const { data: payableId, error: syncError } = await supabase.rpc(
