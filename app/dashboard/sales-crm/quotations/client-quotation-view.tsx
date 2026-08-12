@@ -11,7 +11,6 @@ import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types
 import { resolveQuotationOpportunityName } from "@/utils/client-quotations-types";
 import {
   CLIENT_INVOICE_LABOUR_TAX_NOTE,
-  clientInvoiceTaxBasisNote,
   CLIENT_QUOTATION_PRINT_AREA_ID,
   buildClientQuotationGroups,
   formatInvoiceDate,
@@ -20,6 +19,7 @@ import {
   normalizeClientQuotationDetail,
   paymentAccountDetailLines,
   quotationPrintTitle,
+  quotationTaxBasisNote,
   quotationValidityFooter,
   resolveBrandingLogoUrl,
   resolveInvoiceCompanyName,
@@ -33,6 +33,9 @@ type ClientQuotationViewProps = {
   quotationId: string;
   billingSettings: BillingSettingsHeaderFields | null;
   canConvertToInvoice?: boolean;
+  backHref?: string;
+  backLabel?: string;
+  showStaffActions?: boolean;
 };
 
 const primaryButtonClassName =
@@ -74,6 +77,9 @@ export default function ClientQuotationView({
   quotationId,
   billingSettings,
   canConvertToInvoice = false,
+  backHref = "/dashboard/sales-crm/quotations",
+  backLabel = "Back to list",
+  showStaffActions = true,
 }: ClientQuotationViewProps) {
   const router = useRouter();
   const branding = useTenantBranding();
@@ -148,7 +154,7 @@ export default function ClientQuotationView({
   const taxBasisNote = useMemo(
     () =>
       display
-        ? clientInvoiceTaxBasisNote(display.quotation, display.lineItems)
+        ? quotationTaxBasisNote(display.quotation)
         : CLIENT_INVOICE_LABOUR_TAX_NOTE,
     [display],
   );
@@ -249,6 +255,7 @@ export default function ClientQuotationView({
 
   const { quotation, paymentAccounts } = display;
   const showConvertButton =
+    showStaffActions &&
     canConvertToInvoice &&
     quotation.status === "accepted" &&
     !quotation.converted_invoice_id;
@@ -289,7 +296,7 @@ export default function ClientQuotationView({
             {converting ? "Converting…" : "Convert to Invoice"}
           </button>
         ) : null}
-        {!quotation.converted_invoice_id ? (
+        {showStaffActions && !quotation.converted_invoice_id ? (
           <Link
             href={`/dashboard/sales-crm/quotations/${quotationId}/edit`}
             className={secondaryButtonClassName}
@@ -297,11 +304,8 @@ export default function ClientQuotationView({
             Edit
           </Link>
         ) : null}
-        <Link
-          href="/dashboard/sales-crm/quotations"
-          className={secondaryButtonClassName}
-        >
-          Back to list
+        <Link href={backHref} className={secondaryButtonClassName}>
+          {backLabel}
         </Link>
       </div>
 
@@ -465,6 +469,24 @@ export default function ClientQuotationView({
 
           <section className="flex justify-end">
             <dl className="w-full max-w-md space-y-2 text-sm">
+              {quotation.header_discount_amount > 0 ? (
+                <div className="flex items-center justify-between border-b border-slate-200 py-2">
+                  <dt className="text-slate-700">Line Subtotal</dt>
+                  <dd className="font-semibold text-[#0f2744]">
+                    {formatInvoiceMoney(
+                      quotation.subtotal + quotation.header_discount_amount,
+                    )}
+                  </dd>
+                </div>
+              ) : null}
+              {quotation.header_discount_amount > 0 ? (
+                <div className="flex items-center justify-between border-b border-slate-200 py-2">
+                  <dt className="text-slate-700">Header Discount</dt>
+                  <dd className="font-semibold text-red-700">
+                    -{formatInvoiceMoney(quotation.header_discount_amount)}
+                  </dd>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between border-b border-slate-200 py-2">
                 <dt className="text-slate-700">Subtotal</dt>
                 <dd className="font-semibold text-[#0f2744]">

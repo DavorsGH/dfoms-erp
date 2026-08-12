@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { requireRoleIn, requireTenantRoleIn } from "@/utils/admin-auth";
 import {
   loadClientQuotationDetail,
   updateClientQuotation,
@@ -9,9 +9,13 @@ import {
   validateClientQuotationBody,
   type ClientQuotationWriteBody,
 } from "@/utils/client-quotations-types";
-import { CRM_QUOTATIONS_EDIT_ROLES } from "@/utils/rbac-access";
+import {
+  CLIENT_PORTAL_SECTION_ROLES,
+  CRM_QUOTATIONS_EDIT_ROLES,
+} from "@/utils/rbac-access";
 import { PAYMENT_ACCOUNT_SELECT, type PaymentAccountRow } from "@/utils/payment-accounts-types";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -33,8 +37,30 @@ function rejectClientTenantId(body: unknown): NextResponse | null {
   return null;
 }
 
+async function authorizeQuotationAccess() {
+  const staffAuth = await requireTenantRoleIn(CRM_QUOTATIONS_EDIT_ROLES);
+  if (staffAuth.ok) {
+    return { ok: true as const, tenantId: staffAuth.tenantId, isClientPortal: false };
+  }
+
+  const clientAuth = await requireRoleIn(CLIENT_PORTAL_SECTION_ROLES);
+  if (!clientAuth.ok) {
+    return { ok: false as const, response: clientAuth.response };
+  }
+
+  const tenantId = await getCurrentUserTenantId();
+  if (!tenantId) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  return { ok: true as const, tenantId, isClientPortal: true };
+}
+
 export async function GET(_request: Request, context: RouteContext) {
-  const auth = await requireTenantRoleIn(CRM_QUOTATIONS_EDIT_ROLES);
+  const auth = await authorizeQuotationAccess();
   if (!auth.ok) {
     return auth.response;
   }
@@ -48,6 +74,10 @@ export async function GET(_request: Request, context: RouteContext) {
       { error: detail.error ?? "Quotation not found." },
       { status: detail.error === "Quotation not found." ? 404 : 500 },
     );
+  }
+
+  if (auth.isClientPortal && detail.quotation.status === "draft") {
+    return NextResponse.json({ error: "Quotation not found." }, { status: 404 });
   }
 
   let paymentAccounts: PaymentAccountRow[] = [];

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadTenantSalesTaxBasis, type SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
+import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { createClientInvoice } from "@/utils/client-invoices-api";
 import type { ClientInvoiceWriteBody } from "@/utils/client-invoices-types";
 import {
@@ -8,13 +8,17 @@ import {
   CLIENT_QUOTATION_LINE_ITEM_SELECT,
   computeQuotationTotals,
   formatGeneratedInvoiceNumber,
+  isProductCatalogLine,
   normalizeDocumentType,
   normalizeQuotationStatus,
+  normalizeQuotationType,
+  resolveQuotationTaxBasis,
   quotationToInvoiceWriteBody,
   roundMoney,
   toNumber,
   type ClientQuotationHeaderRow,
   type ClientQuotationLineItemInput,
+  type ClientQuotationType,
   type ClientQuotationWriteBody,
 } from "@/utils/client-quotations-types";
 
@@ -30,13 +34,16 @@ function buildHeaderPayload(
   body: ClientQuotationWriteBody,
   quotationSequence: number,
   quotationNumber: string,
-  taxBasis: SalesTaxBasis,
 ) {
+  const quotationType = normalizeQuotationType(body.quotation_type);
+  const taxBasis = resolveQuotationTaxBasis(body.tax_basis, quotationType);
   const totals = computeQuotationTotals(
     body.line_items,
     body.vat_nhil_getfund_rate ?? 20,
     body.wht_rate ?? 7.5,
     taxBasis,
+    body.header_discount_amount ?? 0,
+    quotationType,
   );
 
   return {
@@ -46,6 +53,8 @@ function buildHeaderPayload(
     quotation_number: quotationNumber,
     quotation_sequence: quotationSequence,
     document_type: normalizeDocumentType(body.document_type),
+    quotation_type: quotationType,
+    tax_basis: taxBasis,
     issue_date: body.issue_date,
     valid_until: nullableText(body.valid_until ?? null),
     bill_to_name: body.bill_to_name.trim(),
@@ -56,6 +65,7 @@ function buildHeaderPayload(
     tax_due: totals.tax_due,
     wht_rate: roundMoney(toNumber(body.wht_rate ?? 7.5)),
     wht_amount: totals.wht_amount,
+    header_discount_amount: totals.header_discount_amount,
     total_amount_due: totals.total_amount_due,
     status: normalizeQuotationStatus(body.status),
     notes: nullableText(body.notes ?? null),
@@ -69,22 +79,45 @@ function buildLineItemRows(
   tenantId: string,
   quotationId: string,
   lineItems: ClientQuotationLineItemInput[],
+  quotationType: ClientQuotationType,
+  vatRate: number,
+  whtRate: number,
+  taxBasis: SalesTaxBasis,
+  headerDiscountAmount: number,
 ) {
-  const totals = computeQuotationTotals(lineItems, 20, 7.5);
+  const totals = computeQuotationTotals(
+    lineItems,
+    vatRate,
+    whtRate,
+    taxBasis,
+    headerDiscountAmount,
+    quotationType,
+  );
 
-  return totals.line_items.map((line, index) => ({
-    quotation_id: quotationId,
-    tenant_id: tenantId,
-    site_id: nullableText(line.site_id ?? null),
-    category_label: nullableText(line.category_label ?? null),
-    description: line.description.trim(),
-    labour_amount: roundMoney(toNumber(line.labour_amount)),
-    material_amount: roundMoney(toNumber(line.material_amount)),
-    discount_amount: roundMoney(toNumber(line.discount_amount)),
-    taxed: line.taxed ?? true,
-    total_cost: line.total_cost,
-    sort_order: line.sort_order ?? index,
-  }));
+  return totals.line_items.map((line, index) => {
+    const isCatalogProduct = quotationType === "product" && isProductCatalogLine(line);
+
+    return {
+      quotation_id: quotationId,
+      tenant_id: tenantId,
+      site_id: nullableText(line.site_id ?? null),
+      category_label: nullableText(line.category_label ?? null),
+      description: line.description.trim(),
+      labour_amount: isCatalogProduct
+        ? 0
+        : roundMoney(toNumber(line.labour_amount)),
+      material_amount: isCatalogProduct
+        ? roundMoney(toNumber(line.quantity) * toNumber(line.unit_price))
+        : roundMoney(toNumber(line.material_amount)),
+      discount_amount: roundMoney(toNumber(line.discount_amount)),
+      taxed: line.taxed ?? true,
+      total_cost: line.total_cost,
+      product_id: isCatalogProduct ? line.product_id?.trim() ?? null : null,
+      quantity: isCatalogProduct ? toNumber(line.quantity) : null,
+      unit_price: isCatalogProduct ? roundMoney(toNumber(line.unit_price)) : null,
+      sort_order: line.sort_order ?? index,
+    };
+  });
 }
 
 async function replaceLineItemsAndPaymentAccounts(
@@ -93,6 +126,12 @@ async function replaceLineItemsAndPaymentAccounts(
   quotationId: string,
   body: ClientQuotationWriteBody,
 ) {
+  const quotationType = normalizeQuotationType(body.quotation_type);
+  const taxBasis = resolveQuotationTaxBasis(body.tax_basis, quotationType);
+  const vatRate = toNumber(body.vat_nhil_getfund_rate ?? 20);
+  const whtRate = toNumber(body.wht_rate ?? 7.5);
+  const headerDiscountAmount = toNumber(body.header_discount_amount ?? 0);
+
   const { error: deleteLinesError } = await supabase
     .from("client_quotation_line_items")
     .delete()
@@ -113,7 +152,16 @@ async function replaceLineItemsAndPaymentAccounts(
     return { error: deleteLinksError.message };
   }
 
-  const lineRows = buildLineItemRows(tenantId, quotationId, body.line_items);
+  const lineRows = buildLineItemRows(
+    tenantId,
+    quotationId,
+    body.line_items,
+    quotationType,
+    vatRate,
+    whtRate,
+    taxBasis,
+    headerDiscountAmount,
+  );
   if (lineRows.length > 0) {
     const { error: insertLinesError } = await supabase
       .from("client_quotation_line_items")
@@ -254,20 +302,11 @@ export async function createClientQuotation(
     return { quotation: null, error: sequenceError };
   }
 
-  const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
-    supabase,
-    tenantId,
-  );
-  if (taxBasisError) {
-    return { quotation: null, error: taxBasisError };
-  }
-
   const headerPayload = buildHeaderPayload(
     tenantId,
     body,
     sequence,
     quotationNumber,
-    salesTaxBasis,
   );
 
   const { data: quotation, error: insertError } = await supabase
@@ -310,20 +349,11 @@ export async function updateClientQuotation(
   existingSequence: number,
   existingQuotationNumber: string,
 ) {
-  const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
-    supabase,
-    tenantId,
-  );
-  if (taxBasisError) {
-    return { quotation: null, error: taxBasisError };
-  }
-
   const headerPayload = buildHeaderPayload(
     tenantId,
     body,
     existingSequence,
     existingQuotationNumber,
-    salesTaxBasis,
   );
 
   const { data: quotation, error: updateError } = await supabase
@@ -434,6 +464,7 @@ export async function convertClientQuotationToInvoice(
     };
   }
 
+  const quotationType = normalizeQuotationType(quotation.quotation_type);
   const lineItems: ClientQuotationLineItemInput[] = detail.line_items.map((line) => ({
     site_id: line.site_id,
     category_label: line.category_label,
@@ -443,6 +474,9 @@ export async function convertClientQuotationToInvoice(
     discount_amount: toNumber(line.discount_amount),
     taxed: line.taxed,
     sort_order: line.sort_order,
+    product_id: line.product_id,
+    quantity: line.quantity != null ? toNumber(line.quantity) : null,
+    unit_price: line.unit_price != null ? toNumber(line.unit_price) : null,
   }));
 
   const invoiceBody: ClientInvoiceWriteBody = quotationToInvoiceWriteBody(
@@ -455,6 +489,14 @@ export async function convertClientQuotationToInvoice(
     supabase,
     tenantId,
     invoiceBody,
+    {
+      fixedHeaderTotals: {
+        subtotal: toNumber(quotation.subtotal),
+        tax_due: toNumber(quotation.tax_due),
+        wht_amount: toNumber(quotation.wht_amount),
+        total_amount_due: toNumber(quotation.total_amount_due),
+      },
+    },
   );
 
   if (createError || !invoice) {

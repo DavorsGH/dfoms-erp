@@ -15,6 +15,7 @@ import {
   formatInvoiceMoney,
   formatQuotationDocumentType,
   formatQuotationStatus,
+  formatQuotationType,
   normalizeClientQuotationListRow,
   type ClientQuotationListRow,
 } from "@/utils/client-quotations-types";
@@ -105,7 +106,8 @@ export default function ClientQuotationsList({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 <th className={scrollableTableThClassName}>Quotation #</th>
-                <th className={scrollableTableThClassName}>Type</th>
+                <th className={scrollableTableThClassName}>Document Type</th>
+                <th className={scrollableTableThClassName}>Quotation Type</th>
                 <th className={scrollableTableThClassName}>Customer</th>
                 <th className={scrollableTableThClassName}>Issue Date</th>
                 <th className={scrollableTableThClassName}>Valid Until</th>
@@ -118,7 +120,7 @@ export default function ClientQuotationsList({
             <tbody className="divide-y divide-slate-200">
               {quotations.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
                     No quotations yet.
                   </td>
                 </tr>
@@ -136,6 +138,9 @@ export default function ClientQuotationsList({
                       </td>
                       <td className="px-4 py-3">
                         {formatQuotationDocumentType(quotation.document_type)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatQuotationType(quotation.quotation_type)}
                       </td>
                       <td className="px-4 py-3">{clientName ?? quotation.client_id}</td>
                       <td className="px-4 py-3">

@@ -8,13 +8,13 @@ import {
 } from "@react-pdf/renderer";
 import {
   CLIENT_INVOICE_COLORS,
-  clientInvoiceTaxBasisNote,
   buildClientQuotationGroups,
   formatInvoiceDate,
   formatInvoiceMoney,
   hasAuthorizedBySignature,
   paymentAccountDetailLines,
   quotationPrintTitle,
+  quotationTaxBasisNote,
   quotationValidityFooter,
   resolveInvoiceCompanyName,
   sumQuotationLineItemColumns,
@@ -330,7 +330,7 @@ export default function ClientQuotationPdfDocument({
   const companyContactLines = tenantHeaderContactLines(branding, billingSettings);
   const printTitle = quotationPrintTitle(quotation.document_type);
   const opportunityName = resolveQuotationOpportunityName(quotation);
-  const taxBasisNote = clientInvoiceTaxBasisNote(quotation, lineItems);
+  const taxBasisNote = quotationTaxBasisNote(quotation);
 
   let lineRowIndex = 0;
 
@@ -451,6 +451,24 @@ export default function ClientQuotationPdfDocument({
         </View>
 
         <View style={styles.totalsBlock}>
+          {quotation.header_discount_amount > 0 ? (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Line Subtotal</Text>
+              <Text style={styles.totalValue}>
+                {formatInvoiceMoney(
+                  quotation.subtotal + quotation.header_discount_amount,
+                )}
+              </Text>
+            </View>
+          ) : null}
+          {quotation.header_discount_amount > 0 ? (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Header Discount</Text>
+              <Text style={styles.totalValue}>
+                -{formatInvoiceMoney(quotation.header_discount_amount)}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Subtotal</Text>
             <Text style={styles.totalValue}>{formatInvoiceMoney(quotation.subtotal)}</Text>

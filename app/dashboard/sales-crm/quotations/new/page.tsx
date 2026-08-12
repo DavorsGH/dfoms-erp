@@ -3,8 +3,12 @@ import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
-import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
+import {
+  FINISHED_PRODUCT_SELECT,
+  normalizeFinishedProduct,
+  type FinishedProductRecord,
+} from "@/app/dashboard/inventory/finished-products-utils";
 import { peekNextQuotationNumber } from "@/utils/client-quotations-api";
 import {
   emptyQuotationForm,
@@ -35,9 +39,9 @@ export default async function NewClientQuotationPage() {
     { data: sites, error: sitesError },
     { data: paymentAccounts, error: paymentAccountsError },
     { data: opportunities, error: opportunitiesError },
+    { data: products, error: productsError },
     nextQuotationNumberResult,
     authorizedSignersResult,
-    salesTaxBasisResult,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
@@ -55,9 +59,13 @@ export default async function NewClientQuotationPage() {
       .from("sales_opportunities")
       .select("id, opportunity_name, client_id")
       .order("opportunity_name", { ascending: true }),
+    supabase
+      .from("finished_products")
+      .select(FINISHED_PRODUCT_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("product_name", { ascending: true }),
     peekNextQuotationNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
-    loadTenantSalesTaxBasis(supabase, tenantId),
   ]);
 
   const fetchError =
@@ -65,9 +73,9 @@ export default async function NewClientQuotationPage() {
     sitesError?.message ??
     paymentAccountsError?.message ??
     opportunitiesError?.message ??
+    productsError?.message ??
     nextQuotationNumberResult.error ??
     authorizedSignersResult.error ??
-    salesTaxBasisResult.error ??
     null;
 
   return (
@@ -93,7 +101,10 @@ export default async function NewClientQuotationPage() {
         initialSites={(sites as ClientQuotationSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
-        salesTaxBasis={salesTaxBasisResult.salesTaxBasis}
+        initialProducts={
+          ((products as Omit<FinishedProductRecord, "manufacturing_date" | "expiration_date">[] | null) ??
+            []).map((row) => normalizeFinishedProduct(row))
+        }
         initialForm={emptyQuotationForm()}
         fetchError={fetchError}
       />

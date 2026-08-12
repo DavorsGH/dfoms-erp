@@ -14,7 +14,6 @@ const navItems = [
   { label: "Discounts", href: "/dashboard/crm/discounts" },
   { label: "Sales Pipeline", href: "/dashboard/crm/sales-pipeline" },
   { label: "Quotations", href: "/dashboard/sales-crm/quotations" },
-  { label: "Product Quotes", href: "/dashboard/crm/quotes" },
   { label: "Product Sales", href: "/dashboard/crm/product-sales" },
   { label: "POS", href: "/dashboard/pos" },
   { label: "Sales Log", href: "/dashboard/crm/sales" },

@@ -2,6 +2,10 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
   groupLineItemsByCategory,
+  mapQuotationLineForDisplay,
+  normalizeQuotationType,
+  quotationPrintTitle,
+  resolveQuotationTaxBasis,
   roundMoney,
   toNumber,
   type ClientQuotationHeaderRow,
@@ -44,25 +48,37 @@ export function normalizeClientQuotationDetail(
 ): ClientQuotationDisplayProps {
   const quotation = payload.client_quotation;
 
+  const quotationType = normalizeQuotationType(quotation.quotation_type);
+
   return {
     quotation: {
       ...quotation,
+      quotation_type: quotationType,
+      tax_basis: resolveQuotationTaxBasis(quotation.tax_basis, quotationType),
       subtotal: toNumber(quotation.subtotal),
       vat_nhil_getfund_rate: toNumber(quotation.vat_nhil_getfund_rate) || 20,
       tax_due: toNumber(quotation.tax_due),
       wht_rate: toNumber(quotation.wht_rate) || 7.5,
       wht_amount: toNumber(quotation.wht_amount),
+      header_discount_amount: toNumber(quotation.header_discount_amount),
       total_amount_due: toNumber(quotation.total_amount_due),
     },
     lineItems: [...payload.line_items]
       .sort((a, b) => a.sort_order - b.sort_order)
-      .map((line) => ({
-        ...line,
-        labour_amount: toNumber(line.labour_amount),
-        material_amount: toNumber(line.material_amount),
-        discount_amount: toNumber(line.discount_amount),
-        total_cost: toNumber(line.total_cost),
-      })),
+      .map((line) =>
+        mapQuotationLineForDisplay(
+          {
+            ...line,
+            labour_amount: toNumber(line.labour_amount),
+            material_amount: toNumber(line.material_amount),
+            discount_amount: toNumber(line.discount_amount),
+            total_cost: toNumber(line.total_cost),
+            quantity: line.quantity != null ? toNumber(line.quantity) : null,
+            unit_price: line.unit_price != null ? toNumber(line.unit_price) : null,
+          },
+          quotationType,
+        ),
+      ),
     paymentAccounts: payload.payment_accounts,
     branding: {
       workspaceName: "",
@@ -102,9 +118,20 @@ export function sumQuotationLineItemColumns(lineItems: ClientQuotationLineItemRo
   };
 }
 
-export function quotationPrintTitle(documentType: string) {
-  return documentType === "proforma_invoice" ? "PRO-FORMA INVOICE" : "QUOTATION";
+export function quotationTaxBasisNote(
+  quotation: Pick<ClientQuotationHeaderRow, "tax_basis" | "quotation_type">,
+) {
+  const taxBasis = resolveQuotationTaxBasis(
+    quotation.tax_basis,
+    normalizeQuotationType(quotation.quotation_type),
+  );
+
+  return taxBasis === "total_cost"
+    ? CLIENT_INVOICE_TOTAL_COST_TAX_NOTE
+    : CLIENT_INVOICE_LABOUR_TAX_NOTE;
 }
+
+export { quotationPrintTitle };
 
 export function quotationValidityFooter(validUntil: string | null | undefined) {
   if (!validUntil) {

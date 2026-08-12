@@ -318,14 +318,7 @@ function QuotesSection({
                       </span>
                     </td>
                     <td className="px-4 py-3">{formatQuoteMoney(entry.total_amount)}</td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/dashboard/crm/quotes/${entry.id}`}
-                        className={secondaryButtonClassName}
-                      >
-                        View
-                      </Link>
-                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">Legacy record</td>
                   </tr>
                 ))
               )}

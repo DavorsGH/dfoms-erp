@@ -4,8 +4,12 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
-import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
+import {
+  FINISHED_PRODUCT_SELECT,
+  normalizeFinishedProduct,
+  type FinishedProductRecord,
+} from "@/app/dashboard/inventory/finished-products-utils";
 import { loadClientQuotationDetail } from "@/utils/client-quotations-api";
 import {
   clientQuotationToFormState,
@@ -45,8 +49,8 @@ export default async function EditClientQuotationPage({
     { data: sites, error: sitesError },
     { data: paymentAccounts, error: paymentAccountsError },
     { data: opportunities, error: opportunitiesError },
+    { data: products, error: productsError },
     authorizedSignersResult,
-    salesTaxBasisResult,
   ] = await Promise.all([
     loadClientQuotationDetail(supabase, tenantId, id),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
@@ -65,8 +69,12 @@ export default async function EditClientQuotationPage({
       .from("sales_opportunities")
       .select("id, opportunity_name, client_id")
       .order("opportunity_name", { ascending: true }),
+    supabase
+      .from("finished_products")
+      .select(FINISHED_PRODUCT_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("product_name", { ascending: true }),
     loadAuthorizedSignerOptions(supabase, tenantId),
-    loadTenantSalesTaxBasis(supabase, tenantId),
   ]);
 
   if (!detail.quotation) {
@@ -83,8 +91,8 @@ export default async function EditClientQuotationPage({
     sitesError?.message ??
     paymentAccountsError?.message ??
     opportunitiesError?.message ??
+    productsError?.message ??
     authorizedSignersResult.error ??
-    salesTaxBasisResult.error ??
     null;
 
   const initialForm = clientQuotationToFormState(
@@ -120,7 +128,10 @@ export default async function EditClientQuotationPage({
         initialSites={(sites as ClientQuotationSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
-        salesTaxBasis={salesTaxBasisResult.salesTaxBasis}
+        initialProducts={
+          ((products as Omit<FinishedProductRecord, "manufacturing_date" | "expiration_date">[] | null) ??
+            []).map((row) => normalizeFinishedProduct(row))
+        }
         initialForm={initialForm}
         fetchError={fetchError}
       />

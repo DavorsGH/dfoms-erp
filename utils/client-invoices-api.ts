@@ -26,6 +26,15 @@ import {
 
 type DbClient = SupabaseClient;
 
+export type CreateClientInvoiceOptions = {
+  fixedHeaderTotals?: {
+    subtotal: number;
+    tax_due: number;
+    wht_amount: number;
+    total_amount_due: number;
+  };
+};
+
 function nullableText(value: string | null | undefined) {
   const trimmed = (value ?? "").trim();
   return trimmed ? trimmed : null;
@@ -37,13 +46,21 @@ function buildHeaderPayload(
   invoiceSequence: number,
   invoiceNumber: string,
   taxBasis: SalesTaxBasis,
+  fixedHeaderTotals?: CreateClientInvoiceOptions["fixedHeaderTotals"],
 ) {
-  const totals = computeInvoiceTotals(
-    body.line_items,
-    body.vat_nhil_getfund_rate ?? 20,
-    body.wht_rate ?? 7.5,
-    taxBasis,
-  );
+  const totals = fixedHeaderTotals
+    ? {
+        subtotal: roundMoney(toNumber(fixedHeaderTotals.subtotal)),
+        tax_due: roundMoney(toNumber(fixedHeaderTotals.tax_due)),
+        wht_amount: roundMoney(toNumber(fixedHeaderTotals.wht_amount)),
+        total_amount_due: roundMoney(toNumber(fixedHeaderTotals.total_amount_due)),
+      }
+    : computeInvoiceTotals(
+        body.line_items,
+        body.vat_nhil_getfund_rate ?? 20,
+        body.wht_rate ?? 7.5,
+        taxBasis,
+      );
 
   return {
     tenant_id: tenantId,
@@ -430,6 +447,7 @@ export async function createClientInvoice(
   supabase: DbClient,
   tenantId: string,
   body: ClientInvoiceWriteBody,
+  options?: CreateClientInvoiceOptions,
 ) {
   // Display/stored invoice_number comes from the shared atomic allocator.
   // invoice_sequence stays a separate tenant-unique integer (ordering / legacy UNIQUE).
@@ -468,6 +486,7 @@ export async function createClientInvoice(
     sequence,
     invoiceNumber,
     salesTaxBasis,
+    options?.fixedHeaderTotals,
   );
   const { data: invoice, error: insertError } = await supabase
     .from("client_invoices")
