@@ -107,6 +107,22 @@ export async function POST(request: Request) {
     );
   }
 
+  if (quotation.status === "sent") {
+    void import("@/utils/client-document-notifications").then(
+      ({ notifyClientQuotationSent }) => {
+        void notifyClientQuotationSent({
+          tenantId: auth.tenantId,
+          clientId: quotation.client_id,
+          quotationId: quotation.id,
+          quotationNumber: quotation.quotation_number,
+          customerName: quotation.bill_to_name?.trim() || quotation.client_id,
+          amount: String(quotation.total_amount_due ?? ""),
+          validUntil: quotation.valid_until ?? "",
+        });
+      },
+    );
+  }
+
   void import("@/utils/tenant-admin-director-tier2-notifications").then(
     ({ notifyAdminsDirectorsNewQuotation }) => {
       void notifyAdminsDirectorsNewQuotation(

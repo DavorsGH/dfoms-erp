@@ -15,6 +15,7 @@ import {
   formatReceiptMoney,
   hasReceiptAuthorizedBy,
   normalizeClientReceiptDetail,
+  resolveAuthorizedByDisplayTitle,
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
   tenantHeaderContactLines,
@@ -159,6 +160,10 @@ export default function ClientReceiptView({
   }
 
   const { receipt, invoice } = display;
+  const authorizedByTitle = resolveAuthorizedByDisplayTitle(
+    receipt.authorized_by_title,
+    display.branding,
+  );
   const companyName = resolveInvoiceCompanyName(display.branding, display.billingSettings);
   const companyContactLines = tenantHeaderContactLines(
     display.branding,
@@ -282,8 +287,8 @@ export default function ClientReceiptView({
               <p className="mt-2 text-sm font-bold text-[#0f2744]">
                 {receipt.authorized_by_name?.trim()}
               </p>
-              {receipt.authorized_by_title?.trim() ? (
-                <p className="text-sm text-slate-700">{receipt.authorized_by_title.trim()}</p>
+              {authorizedByTitle ? (
+                <p className="text-sm text-slate-700">{authorizedByTitle}</p>
               ) : null}
             </section>
           ) : null}

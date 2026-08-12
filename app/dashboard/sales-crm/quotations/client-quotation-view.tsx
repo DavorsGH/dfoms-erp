@@ -17,11 +17,14 @@ import {
   formatInvoiceMoney,
   hasAuthorizedBySignature,
   normalizeClientQuotationDetail,
+  resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   quotationPrintTitle,
+  quotationNumberMetaLabel,
   quotationTaxBasisNote,
   quotationValidityFooter,
   resolveBrandingLogoUrl,
+  resolveConvertedInvoiceLink,
   resolveInvoiceCompanyName,
   sumQuotationLineItemColumns,
   tenantHeaderContactLines,
@@ -43,6 +46,9 @@ const primaryButtonClassName =
 
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const traceabilityBadgeClassName =
+  "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100";
 
 function ClientQuotationPrintStyles() {
   return (
@@ -171,6 +177,14 @@ export default function ClientQuotationView({
     ? quotationPrintTitle(display.quotation.document_type)
     : "QUOTATION";
 
+  const numberMetaLabel = display
+    ? quotationNumberMetaLabel(display.quotation.document_type)
+    : "Quotation #: ";
+
+  const convertedInvoice = display
+    ? resolveConvertedInvoiceLink(display.quotation)
+    : null;
+
   const opportunityName = display
     ? resolveQuotationOpportunityName(display.quotation)
     : null;
@@ -254,6 +268,10 @@ export default function ClientQuotationView({
   }
 
   const { quotation, paymentAccounts } = display;
+  const authorizedByTitle = resolveAuthorizedByDisplayTitle(
+    quotation.authorized_by_title,
+    display.branding,
+  );
   const showConvertButton =
     showStaffActions &&
     canConvertToInvoice &&
@@ -268,6 +286,17 @@ export default function ClientQuotationView({
         <p className="no-print rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
+      ) : null}
+
+      {convertedInvoice ? (
+        <div className="no-print">
+          <Link
+            href={`/dashboard/finance/client-invoices/${convertedInvoice.id}`}
+            className={traceabilityBadgeClassName}
+          >
+            Converted → {convertedInvoice.invoice_number}
+          </Link>
+        </div>
       ) : null}
 
       <div className="no-print flex flex-wrap gap-3">
@@ -337,7 +366,7 @@ export default function ClientQuotationView({
               </p>
               <dl className="mt-3 space-y-1 text-sm text-slate-800">
                 <div>
-                  <dt className="inline font-semibold text-[#0f2744]">Quotation #: </dt>
+                  <dt className="inline font-semibold text-[#0f2744]">{numberMetaLabel}</dt>
                   <dd className="inline text-slate-900">{quotation.quotation_number}</dd>
                 </div>
                 <div>
@@ -583,9 +612,9 @@ export default function ClientQuotationView({
                 {quotation.authorized_by_name?.trim()}
               </p>
               <div className="mt-2 flex flex-wrap items-end text-sm text-slate-700">
-                {quotation.authorized_by_title?.trim() ? (
+                {authorizedByTitle ? (
                   <>
-                    <span>{quotation.authorized_by_title.trim()},</span>
+                    <span>{authorizedByTitle},</span>
                     <span className="ml-3">Signature:</span>
                   </>
                 ) : (

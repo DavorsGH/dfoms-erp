@@ -5,7 +5,9 @@ import {
   mapQuotationLineForDisplay,
   normalizeQuotationType,
   quotationPrintTitle,
+  quotationNumberMetaLabel,
   resolveQuotationTaxBasis,
+  resolveConvertedInvoiceLink,
   roundMoney,
   toNumber,
   type ClientQuotationHeaderRow,
@@ -20,6 +22,7 @@ import {
   CLIENT_INVOICE_TOTAL_COST_TAX_NOTE,
   clientInvoiceTaxBasisNote,
   hasAuthorizedBySignature,
+  resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
   resolveInvoiceCompanyName,
@@ -62,6 +65,9 @@ export function normalizeClientQuotationDetail(
       wht_amount: toNumber(quotation.wht_amount),
       header_discount_amount: toNumber(quotation.header_discount_amount),
       total_amount_due: toNumber(quotation.total_amount_due),
+      converted_invoice: Array.isArray(quotation.converted_invoice)
+        ? (quotation.converted_invoice[0] ?? null)
+        : (quotation.converted_invoice ?? null),
     },
     lineItems: [...payload.line_items]
       .sort((a, b) => a.sort_order - b.sort_order)
@@ -131,7 +137,7 @@ export function quotationTaxBasisNote(
     : CLIENT_INVOICE_LABOUR_TAX_NOTE;
 }
 
-export { quotationPrintTitle };
+export { quotationPrintTitle, quotationNumberMetaLabel, resolveConvertedInvoiceLink };
 
 export function quotationValidityFooter(validUntil: string | null | undefined) {
   if (!validUntil) {
@@ -149,6 +155,7 @@ export {
   formatInvoiceDate,
   formatInvoiceMoney,
   hasAuthorizedBySignature,
+  resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
   resolveInvoiceCompanyName,

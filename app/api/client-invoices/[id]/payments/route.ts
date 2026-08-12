@@ -58,6 +58,24 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
+  if (result.receipt && result.invoice) {
+    void import("@/utils/client-document-notifications").then(
+      ({ notifyClientReceiptIssued }) => {
+        void notifyClientReceiptIssued({
+          tenantId: auth.tenantId,
+          clientId: result.invoice!.client_id,
+          receiptId: result.receipt!.id,
+          receiptNumber: result.receipt!.receipt_number,
+          invoiceNumber: result.invoice!.invoice_number,
+          customerName:
+            result.invoice!.bill_to_name?.trim() || result.invoice!.client_id,
+          amount: String(result.receipt!.amount ?? ""),
+          paymentDate: result.receipt!.receipt_date ?? "",
+        });
+      },
+    );
+  }
+
   return NextResponse.json({
     payment: result.payment,
     receipt: result.receipt,

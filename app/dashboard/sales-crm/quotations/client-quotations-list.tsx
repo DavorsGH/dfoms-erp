@@ -17,6 +17,7 @@ import {
   formatQuotationStatus,
   formatQuotationType,
   normalizeClientQuotationListRow,
+  resolveConvertedInvoiceLink,
   type ClientQuotationListRow,
 } from "@/utils/client-quotations-types";
 
@@ -30,6 +31,9 @@ const primaryButtonClassName =
 
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const traceabilityBadgeClassName =
+  "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100";
 
 const dangerButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -130,6 +134,7 @@ export default function ClientQuotationsList({
                     ? quotation.client[0]?.client_name
                     : quotation.client?.client_name;
                   const isConverted = Boolean(quotation.converted_invoice_id);
+                  const convertedInvoice = resolveConvertedInvoiceLink(quotation);
 
                   return (
                     <tr key={quotation.id} className={getStripedRowClassName(index)}>
@@ -156,19 +161,19 @@ export default function ClientQuotationsList({
                         {formatQuotationStatus(quotation.status)}
                       </td>
                       <td className="px-4 py-3">
-                        {isConverted ? (
+                        {convertedInvoice ? (
                           <Link
-                            href={`/dashboard/finance/client-invoices/${quotation.converted_invoice_id}`}
-                            className="text-sm font-medium text-emerald-700 hover:underline"
+                            href={`/dashboard/finance/client-invoices/${convertedInvoice.id}`}
+                            className={traceabilityBadgeClassName}
                           >
-                            Yes
+                            Converted → {convertedInvoice.invoice_number}
                           </Link>
                         ) : (
                           <span className="text-sm text-slate-500">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="inline-flex flex-nowrap items-center gap-2">
                           <Link
                             href={`/dashboard/sales-crm/quotations/${quotation.id}`}
                             className={secondaryButtonClassName}
@@ -185,7 +190,7 @@ export default function ClientQuotationsList({
                           ) : null}
                           {!isConverted ? (
                             confirmingId === quotation.id ? (
-                              <span className="inline-flex items-center gap-2">
+                              <span className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap">
                                 <span className="text-sm text-red-700">
                                   Delete {quotation.quotation_number}?
                                 </span>

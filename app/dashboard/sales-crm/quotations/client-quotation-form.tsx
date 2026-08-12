@@ -515,7 +515,7 @@ export default function ClientQuotationForm({
               className={inputClassName}
             >
               <option value="quotation">Quotation</option>
-              <option value="proforma_invoice">Invoice</option>
+              <option value="proforma_invoice">Pro-forma Invoice</option>
             </select>
           </div>
           <div>

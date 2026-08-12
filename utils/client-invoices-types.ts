@@ -8,10 +8,10 @@ export const CLIENT_INVOICE_STATUSES = ["draft", "sent", "partial", "paid"] as c
 export type ClientInvoiceStatus = (typeof CLIENT_INVOICE_STATUSES)[number];
 
 export const CLIENT_INVOICE_LIST_SELECT =
-  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, amount_received, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name)" as const;
+  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, amount_received, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name), source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number)" as const;
 
 export const CLIENT_INVOICE_HEADER_SELECT =
-  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, authorized_by_name, authorized_by_title, created_at, updated_at" as const;
+  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, authorized_by_name, authorized_by_title, created_at, updated_at, source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number)" as const;
 
 export const AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT =
   "auth_uid, employee_id, employees!user_accounts_employee_id_fkey(full_name, position)" as const;
@@ -155,6 +155,11 @@ export type ClientInvoiceCustomer = {
   client_name: string;
 };
 
+export type ClientInvoiceSourceQuotation = {
+  id: string;
+  quotation_number: string;
+};
+
 export type ClientInvoiceListRow = {
   id: string;
   tenant_id: string;
@@ -172,6 +177,7 @@ export type ClientInvoiceListRow = {
   status: ClientInvoiceStatus;
   created_at: string;
   client?: ClientInvoiceCustomer | ClientInvoiceCustomer[] | null;
+  source_quotation?: ClientInvoiceSourceQuotation | ClientInvoiceSourceQuotation[] | null;
 };
 
 export type ClientInvoiceLineItemRow = {
@@ -215,6 +221,7 @@ export type ClientInvoiceHeaderRow = {
   authorized_by_title: string | null;
   created_at: string;
   updated_at: string;
+  source_quotation?: ClientInvoiceSourceQuotation | ClientInvoiceSourceQuotation[] | null;
 };
 
 export type ClientInvoiceLineItemInput = {
@@ -391,6 +398,20 @@ export function emptyLineItem(sortOrder: number): ClientInvoiceFormLineItem {
   };
 }
 
+export function resolveSourceQuotationLink(
+  invoice: Pick<ClientInvoiceListRow, "source_quotation">,
+) {
+  const embedded = Array.isArray(invoice.source_quotation)
+    ? (invoice.source_quotation[0] ?? null)
+    : (invoice.source_quotation ?? null);
+
+  if (!embedded?.id || !embedded.quotation_number) {
+    return null;
+  }
+
+  return embedded;
+}
+
 export function normalizeClientInvoiceListRow(row: ClientInvoiceListRow): ClientInvoiceListRow {
   return {
     ...row,
@@ -400,6 +421,9 @@ export function normalizeClientInvoiceListRow(row: ClientInvoiceListRow): Client
     total_amount_due: toNumber(row.total_amount_due),
     amount_received: toNumber(row.amount_received),
     client: Array.isArray(row.client) ? row.client[0] ?? null : row.client ?? null,
+    source_quotation: Array.isArray(row.source_quotation)
+      ? (row.source_quotation[0] ?? null)
+      : (row.source_quotation ?? null),
   };
 }
 

@@ -102,6 +102,10 @@ export function normalizeClientInvoiceDetail(
       wht_rate: toNumber(invoice.wht_rate) || 7.5,
       wht_amount: toNumber(invoice.wht_amount),
       total_amount_due: toNumber(invoice.total_amount_due),
+      amount_received: toNumber(invoice.amount_received),
+      source_quotation: Array.isArray(invoice.source_quotation)
+        ? (invoice.source_quotation[0] ?? null)
+        : (invoice.source_quotation ?? null),
     },
     lineItems: [...payload.line_items]
       .sort((a, b) => a.sort_order - b.sort_order)
@@ -243,6 +247,14 @@ export function hasAuthorizedBySignature(
   invoice: Pick<ClientInvoiceHeaderRow, "authorized_by_name">,
 ) {
   return Boolean(invoice.authorized_by_name?.trim());
+}
+
+/** Workspace Settings title wins over document/receipt snapshot for display. */
+export function resolveAuthorizedByDisplayTitle(
+  documentTitle: string | null | undefined,
+  branding: Pick<TenantBranding, "signatureAuthorTitle">,
+) {
+  return branding.signatureAuthorTitle?.trim() || documentTitle?.trim() || "";
 }
 
 export const CLIENT_INVOICE_LABOUR_TAX_NOTE = "Calculated on Service cost only";

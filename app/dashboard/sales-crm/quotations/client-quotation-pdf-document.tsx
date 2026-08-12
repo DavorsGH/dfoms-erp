@@ -12,8 +12,10 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
   hasAuthorizedBySignature,
+  resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   quotationPrintTitle,
+  quotationNumberMetaLabel,
   quotationTaxBasisNote,
   quotationValidityFooter,
   resolveInvoiceCompanyName,
@@ -42,14 +44,22 @@ const styles = StyleSheet.create({
   },
   companyBlock: {
     flexDirection: "row",
-    gap: 12,
-    maxWidth: "58%",
+    alignItems: "flex-start",
+    flex: 1,
+    maxWidth: "60%",
+    minWidth: 0,
   },
   logo: {
     width: 56,
     height: 56,
     objectFit: "cover",
     borderRadius: 4,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  companyTextBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   companyName: {
     fontSize: 14,
@@ -69,7 +79,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     padding: 12,
     alignItems: "flex-end",
+    flexShrink: 0,
     maxWidth: "38%",
+    marginLeft: 12,
   },
   documentTitle: {
     fontSize: 22,
@@ -254,13 +266,17 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#334155",
   },
-  footer: {
+  documentClosingBlock: {
     marginTop: 24,
+  },
+  footerBox: {
     padding: 12,
     borderWidth: 2,
     borderColor: `${C.navy}40`,
     backgroundColor: C.tealLight,
     borderRadius: 4,
+  },
+  footerNoticeText: {
     fontSize: 9,
     color: C.textDark,
   },
@@ -306,6 +322,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: C.navy,
   },
+  signatureImage: {
+    width: 140,
+    height: 48,
+    objectFit: "contain",
+    marginBottom: 6,
+  },
   notes: {
     fontSize: 9,
     color: C.textDark,
@@ -314,6 +336,7 @@ const styles = StyleSheet.create({
 
 type ClientQuotationPdfDocumentProps = ClientQuotationDisplayProps & {
   logoUrl: string;
+  signatureImageUrl?: string | null;
 };
 
 export default function ClientQuotationPdfDocument({
@@ -323,14 +346,20 @@ export default function ClientQuotationPdfDocument({
   branding,
   billingSettings,
   logoUrl,
+  signatureImageUrl,
 }: ClientQuotationPdfDocumentProps) {
   const groupedLines = buildClientQuotationGroups(lineItems);
   const lineColumnTotals = sumQuotationLineItemColumns(lineItems);
   const companyName = resolveInvoiceCompanyName(branding, billingSettings);
   const companyContactLines = tenantHeaderContactLines(branding, billingSettings);
   const printTitle = quotationPrintTitle(quotation.document_type);
+  const numberMetaLabel = quotationNumberMetaLabel(quotation.document_type);
   const opportunityName = resolveQuotationOpportunityName(quotation);
   const taxBasisNote = quotationTaxBasisNote(quotation);
+  const authorizedByTitle = resolveAuthorizedByDisplayTitle(
+    quotation.authorized_by_title,
+    branding,
+  );
 
   let lineRowIndex = 0;
 
@@ -343,7 +372,7 @@ export default function ClientQuotationPdfDocument({
               // eslint-disable-next-line jsx-a11y/alt-text -- PDF Image has no alt prop
               <Image src={logoUrl} style={styles.logo} />
             ) : null}
-            <View>
+            <View style={styles.companyTextBlock}>
               <Text style={styles.companyName}>{companyName}</Text>
               {companyContactLines.map((line, index) => (
                 <Text key={`contact-${index}`} style={styles.companyMeta}>
@@ -355,7 +384,7 @@ export default function ClientQuotationPdfDocument({
           <View style={styles.metaBox}>
             <Text style={styles.documentTitle}>{printTitle}</Text>
             <Text style={styles.metaLine}>
-              <Text style={styles.metaLabel}>Quotation #: </Text>
+              <Text style={styles.metaLabel}>{numberMetaLabel}</Text>
               <Text style={styles.metaValue}>{quotation.quotation_number}</Text>
             </Text>
             <Text style={styles.metaLine}>
@@ -538,30 +567,37 @@ export default function ClientQuotationPdfDocument({
           </View>
         ) : null}
 
-        <Text style={styles.footer}>{quotationValidityFooter(quotation.valid_until)}</Text>
+        <View wrap={false} style={styles.documentClosingBlock}>
+          <Text style={[styles.footerBox, styles.footerNoticeText]} wrap={false}>
+            {quotationValidityFooter(quotation.valid_until)}
+          </Text>
 
-        {hasAuthorizedBySignature(quotation) ? (
-          <View style={styles.signatureBlock}>
-            <Text style={styles.signatureLabel}>Authorized By:</Text>
-            <Text style={styles.signatureName}>
-              {quotation.authorized_by_name?.trim()}
-            </Text>
-            <View style={styles.signatureTitleRow}>
-              {quotation.authorized_by_title?.trim() ? (
-                <>
-                  <Text style={styles.signatureTitle}>
-                    {quotation.authorized_by_title.trim()},
-                  </Text>
-                  <View style={styles.signatureTitleSpacer} />
-                </>
+          {hasAuthorizedBySignature(quotation) ? (
+            <View style={styles.signatureBlock}>
+              <Text style={styles.signatureLabel}>Authorized By:</Text>
+              {signatureImageUrl ? (
+                <Image src={signatureImageUrl} style={styles.signatureImage} />
               ) : null}
-              <View style={styles.signaturePromptGroup}>
-                <Text style={styles.signaturePrompt}>Signature:</Text>
-                <View style={styles.signatureLine} />
+              <Text style={styles.signatureName}>
+                {quotation.authorized_by_name?.trim()}
+              </Text>
+              <View style={styles.signatureTitleRow}>
+                {authorizedByTitle ? (
+                  <>
+                    <Text style={styles.signatureTitle}>{authorizedByTitle},</Text>
+                    <View style={styles.signatureTitleSpacer} />
+                  </>
+                ) : null}
+                {!signatureImageUrl ? (
+                  <View style={styles.signaturePromptGroup}>
+                    <Text style={styles.signaturePrompt}>Signature:</Text>
+                    <View style={styles.signatureLine} />
+                  </View>
+                ) : null}
               </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
+        </View>
       </Page>
     </Document>
   );

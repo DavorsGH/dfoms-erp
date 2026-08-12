@@ -4,6 +4,22 @@ export type SendEmailResult =
   | { ok: true; id: string | null }
   | { ok: false; error: string };
 
+export type ResendEmailAttachment = {
+  filename: string;
+  /** Raw bytes or a base64-encoded string. */
+  content: Buffer | Uint8Array | string;
+  contentType?: string;
+};
+
+function attachmentContentBase64(
+  content: Buffer | Uint8Array | string,
+): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  return Buffer.from(content).toString("base64");
+}
+
 /**
  * Minimal Resend sender. Env: RESEND_API_KEY
  * From: Davors Facilities ERP <noreply@davorsfacilities.com>
@@ -14,6 +30,7 @@ export async function sendResendEmail(options: {
   html: string;
   text?: string;
   from?: string;
+  attachments?: ResendEmailAttachment[];
 }): Promise<SendEmailResult> {
   const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
   if (!apiKey) {
@@ -37,6 +54,16 @@ export async function sendResendEmail(options: {
         subject: options.subject,
         html: options.html,
         text: options.text ?? undefined,
+        attachments:
+          options.attachments && options.attachments.length > 0
+            ? options.attachments.map((attachment) => ({
+                filename: attachment.filename,
+                content: attachmentContentBase64(attachment.content),
+                ...(attachment.contentType
+                  ? { content_type: attachment.contentType }
+                  : {}),
+              }))
+            : undefined,
       }),
     });
 

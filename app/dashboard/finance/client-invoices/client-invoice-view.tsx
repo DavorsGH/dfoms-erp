@@ -16,6 +16,7 @@ import {
   formatInvoiceMoney,
   hasAuthorizedBySignature,
   normalizeClientInvoiceDetail,
+  resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
   resolveSignatureImageUrl,
@@ -32,7 +33,7 @@ import {
   formatReceiptMoney,
 } from "@/utils/client-receipts-types";
 import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
-import { toNumber } from "@/utils/client-invoices-types";
+import { toNumber, resolveSourceQuotationLink } from "@/utils/client-invoices-types";
 
 type ClientInvoiceViewProps = {
   invoiceId: string;
@@ -45,6 +46,9 @@ const primaryButtonClassName =
 
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const traceabilityBadgeClassName =
+  "inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm font-medium text-sky-800 transition-colors hover:bg-sky-100";
 
 function ClientInvoicePrintStyles() {
   return (
@@ -216,12 +220,28 @@ export default function ClientInvoiceView({
 
   const { invoice, paymentAccounts } = display;
   const signatureImageUrl = resolveSignatureImageUrl(display.branding.signatureImageUrl);
+  const authorizedByTitle = resolveAuthorizedByDisplayTitle(
+    invoice.authorized_by_title,
+    display.branding,
+  );
+  const sourceQuotation = resolveSourceQuotationLink(invoice);
   const canRecordPayment =
     invoice.status !== "draft" && invoice.status !== "paid";
 
   return (
     <div className="space-y-4">
       <ClientInvoicePrintStyles />
+
+      {sourceQuotation ? (
+        <div className="no-print">
+          <Link
+            href={`/dashboard/sales-crm/quotations/${sourceQuotation.id}`}
+            className={traceabilityBadgeClassName}
+          >
+            From Quotation {sourceQuotation.quotation_number}
+          </Link>
+        </div>
+      ) : null}
 
       <div className="no-print flex flex-wrap gap-3">
         <button
@@ -563,9 +583,9 @@ export default function ClientInvoiceView({
               {invoice.authorized_by_name?.trim()}
             </p>
             <div className="mt-2 flex flex-wrap items-end text-sm text-slate-700">
-              {invoice.authorized_by_title?.trim() ? (
+              {authorizedByTitle ? (
                 <>
-                  <span>{invoice.authorized_by_title.trim()},</span>
+                  <span>{authorizedByTitle},</span>
                   {!signatureImageUrl ? (
                     <>
                       <span className="ml-3">Signature:</span>

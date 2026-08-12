@@ -15,6 +15,7 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
   hasAuthorizedBySignature,
+  resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   resolveInvoiceCompanyName,
   sumLineItemColumns,
@@ -253,13 +254,17 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#334155",
   },
-  footer: {
+  documentClosingBlock: {
     marginTop: 24,
+  },
+  footerBox: {
     padding: 12,
     borderWidth: 2,
     borderColor: `${C.navy}40`,
     backgroundColor: C.tealLight,
     borderRadius: 4,
+  },
+  footerNoticeText: {
     fontSize: 9,
     color: C.textDark,
   },
@@ -340,6 +345,10 @@ export default function ClientInvoicePdfDocument({
     invoice.billing_period_end,
   );
   const taxBasisNote = clientInvoiceTaxBasisNote(invoice, lineItems);
+  const authorizedByTitle = resolveAuthorizedByDisplayTitle(
+    invoice.authorized_by_title,
+    branding,
+  );
 
   let lineRowIndex = 0;
 
@@ -530,35 +539,37 @@ export default function ClientInvoicePdfDocument({
           </View>
         ) : null}
 
-        <Text style={styles.footer}>{CLIENT_INVOICE_PAYMENT_FOOTER}</Text>
+        <View wrap={false} style={styles.documentClosingBlock}>
+          <Text style={[styles.footerBox, styles.footerNoticeText]} wrap={false}>
+            {CLIENT_INVOICE_PAYMENT_FOOTER}
+          </Text>
 
-        {hasAuthorizedBySignature(invoice) ? (
-          <View style={styles.signatureBlock}>
-            <Text style={styles.signatureLabel}>Authorized By:</Text>
-            {signatureImageUrl ? (
-              <Image src={signatureImageUrl} style={styles.signatureImage} />
-            ) : null}
-            <Text style={styles.signatureName}>
-              {invoice.authorized_by_name?.trim()}
-            </Text>
-            <View style={styles.signatureTitleRow}>
-              {invoice.authorized_by_title?.trim() ? (
-                <>
-                  <Text style={styles.signatureTitle}>
-                    {invoice.authorized_by_title.trim()},
-                  </Text>
-                  <View style={styles.signatureTitleSpacer} />
-                </>
+          {hasAuthorizedBySignature(invoice) ? (
+            <View style={styles.signatureBlock}>
+              <Text style={styles.signatureLabel}>Authorized By:</Text>
+              {signatureImageUrl ? (
+                <Image src={signatureImageUrl} style={styles.signatureImage} />
               ) : null}
-              {!signatureImageUrl ? (
-                <View style={styles.signaturePromptGroup}>
-                  <Text style={styles.signaturePrompt}>Signature:</Text>
-                  <View style={styles.signatureLine} />
-                </View>
-              ) : null}
+              <Text style={styles.signatureName}>
+                {invoice.authorized_by_name?.trim()}
+              </Text>
+              <View style={styles.signatureTitleRow}>
+                {authorizedByTitle ? (
+                  <>
+                    <Text style={styles.signatureTitle}>{authorizedByTitle},</Text>
+                    <View style={styles.signatureTitleSpacer} />
+                  </>
+                ) : null}
+                {!signatureImageUrl ? (
+                  <View style={styles.signaturePromptGroup}>
+                    <Text style={styles.signaturePrompt}>Signature:</Text>
+                    <View style={styles.signatureLine} />
+                  </View>
+                ) : null}
+              </View>
             </View>
-          </View>
-        ) : null}
+          ) : null}
+        </View>
       </Page>
     </Document>
   );

@@ -15,6 +15,7 @@ import {
   formatInvoiceMoney,
   formatInvoiceStatus,
   normalizeClientInvoiceListRow,
+  resolveSourceQuotationLink,
   toNumber,
   type ClientInvoiceListRow,
 } from "@/utils/client-invoices-types";
@@ -34,6 +35,9 @@ const secondaryButtonClassName =
 
 const dangerButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const traceabilityBadgeClassName =
+  "inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800 hover:bg-sky-100";
 
 export default function ClientInvoicesList({
   initialInvoices,
@@ -114,13 +118,14 @@ export default function ClientInvoicesList({
                 <th className={scrollableTableThClassName}>Due</th>
                 <th className={scrollableTableThClassName}>Total Due</th>
                 <th className={scrollableTableThClassName}>Status</th>
+                <th className={scrollableTableThClassName}>Source</th>
                 <th className={scrollableTableThClassName}>Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-500">
                     No customer invoices yet.
                   </td>
                 </tr>
@@ -129,6 +134,7 @@ export default function ClientInvoicesList({
                   const clientName = Array.isArray(invoice.client)
                     ? invoice.client[0]?.client_name
                     : invoice.client?.client_name;
+                  const sourceQuotation = resolveSourceQuotationLink(invoice);
 
                   return (
                     <tr key={invoice.id} className={getStripedRowClassName(index)}>
@@ -144,7 +150,19 @@ export default function ClientInvoicesList({
                       </td>
                       <td className="px-4 py-3">{formatInvoiceStatus(invoice.status)}</td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
+                        {sourceQuotation ? (
+                          <Link
+                            href={`/dashboard/sales-crm/quotations/${sourceQuotation.id}`}
+                            className={traceabilityBadgeClassName}
+                          >
+                            From Quotation {sourceQuotation.quotation_number}
+                          </Link>
+                        ) : (
+                          <span className="text-sm text-slate-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="inline-flex flex-nowrap items-center gap-2">
                           <Link
                             href={`/dashboard/finance/client-invoices/${invoice.id}`}
                             className={secondaryButtonClassName}
@@ -168,7 +186,7 @@ export default function ClientInvoicesList({
                             </button>
                           ) : null}
                           {confirmingId === invoice.id ? (
-                            <span className="inline-flex items-center gap-2">
+                            <span className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap">
                               <span className="text-sm text-red-700">
                                 Delete {invoice.invoice_number}?
                               </span>

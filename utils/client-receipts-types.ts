@@ -116,3 +116,10 @@ export function hasReceiptAuthorizedBy(
 ) {
   return Boolean(receipt.authorized_by_name?.trim());
 }
+
+export function shouldShowReceiptSignatureBlock(options: {
+  receipt: Pick<ClientReceiptHeaderRow, "authorized_by_name">;
+  signatureImageUrl?: string | null;
+}) {
+  return hasReceiptAuthorizedBy(options.receipt) || Boolean(options.signatureImageUrl?.trim());
+}

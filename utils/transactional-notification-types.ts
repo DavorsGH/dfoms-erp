@@ -2,6 +2,8 @@ export const TRANSACTIONAL_EVENT_TYPES = [
   "sale_completed",
   "payment_received",
   "invoice_created",
+  "quotation_sent",
+  "receipt_issued",
   "payment_due_reminder",
 ] as const;
 
@@ -12,6 +14,8 @@ export const TRANSACTIONAL_EVENT_LABELS: Record<TransactionalEventType, string> 
     sale_completed: "Sale Completed",
     payment_received: "Payment Received",
     invoice_created: "Invoice Created",
+    quotation_sent: "Quotation Sent",
+    receipt_issued: "Receipt Issued",
     payment_due_reminder: "Payment Due Reminder",
   };
 
@@ -52,7 +56,7 @@ export function validateRuleUpsert(
   if (
     !(TRANSACTIONAL_EVENT_TYPES as readonly string[]).includes(eventType)
   ) {
-    return "event_type must be sale_completed, payment_received, invoice_created, or payment_due_reminder.";
+    return "event_type must be sale_completed, payment_received, invoice_created, quotation_sent, receipt_issued, or payment_due_reminder.";
   }
 
   const templateId = body.template_id?.trim() ?? "";

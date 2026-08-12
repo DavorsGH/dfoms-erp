@@ -87,6 +87,7 @@ export default function DashboardShell({
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <TopBar
+          userRole={userRole}
           userLabel={userLabel}
           userPhotoUrl={userPhotoUrl}
           userFullName={userFullName}

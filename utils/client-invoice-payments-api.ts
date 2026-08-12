@@ -342,6 +342,87 @@ export async function recordClientInvoicePayment(
   };
 }
 
+export async function voidClientInvoicePayment(
+  supabase: DbClient,
+  tenantId: string,
+  paymentId: string,
+): Promise<{
+  invoice: ClientInvoiceHeaderRow | null;
+  voidedReceiptNumber: string | null;
+  error: string | null;
+}> {
+  const { data: payment, error: paymentError } = await supabase
+    .from("client_invoice_payments")
+    .select("id, invoice_id")
+    .eq("id", paymentId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (paymentError) {
+    return { invoice: null, voidedReceiptNumber: null, error: paymentError.message };
+  }
+
+  if (!payment) {
+    return { invoice: null, voidedReceiptNumber: null, error: "Payment not found." };
+  }
+
+  const { data: receipt, error: receiptError } = await supabase
+    .from("client_receipts")
+    .select("receipt_number")
+    .eq("payment_id", payment.id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (receiptError) {
+    return { invoice: null, voidedReceiptNumber: null, error: receiptError.message };
+  }
+
+  const { data: invoice, error: invoiceError } = await supabase
+    .from("client_invoices")
+    .select(CLIENT_INVOICE_HEADER_SELECT)
+    .eq("id", payment.invoice_id)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (invoiceError || !invoice) {
+    return {
+      invoice: null,
+      voidedReceiptNumber: null,
+      error: invoiceError?.message ?? "Linked invoice not found.",
+    };
+  }
+
+  const { error: deleteError } = await supabase
+    .from("client_invoice_payments")
+    .delete()
+    .eq("id", payment.id)
+    .eq("tenant_id", tenantId);
+
+  if (deleteError) {
+    return { invoice: null, voidedReceiptNumber: null, error: deleteError.message };
+  }
+
+  const recompute = await recomputeClientInvoiceFromPayments(
+    supabase,
+    tenantId,
+    invoice as ClientInvoiceHeaderRow,
+  );
+
+  if (recompute.error || !recompute.invoice) {
+    return {
+      invoice: recompute.invoice,
+      voidedReceiptNumber: receipt?.receipt_number ?? null,
+      error: recompute.error ?? "Payment voided but invoice totals could not be updated.",
+    };
+  }
+
+  return {
+    invoice: recompute.invoice,
+    voidedReceiptNumber: receipt?.receipt_number ?? null,
+    error: null,
+  };
+}
+
 export async function loadClientReceiptDetail(
   supabase: DbClient,
   tenantId: string,

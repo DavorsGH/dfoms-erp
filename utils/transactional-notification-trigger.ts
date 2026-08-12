@@ -5,7 +5,7 @@ import {
   substituteTemplatePlaceholders,
   templateBodyToEmailHtml,
 } from "@/utils/message-template-render";
-import { sendResendEmail } from "@/utils/resend-email";
+import { sendResendEmail, type ResendEmailAttachment } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -28,6 +28,9 @@ export async function fireTransactionalNotification(
   eventType: TransactionalEventType | string,
   customerId: string | null | undefined,
   variables: Record<string, string>,
+  options?: {
+    emailAttachments?: ResendEmailAttachment[];
+  },
 ): Promise<void> {
   try {
     if (!tenantId?.trim()) {
@@ -168,6 +171,7 @@ export async function fireTransactionalNotification(
           subject,
           html,
           text: rawBody,
+          attachments: options?.emailAttachments,
         });
         if (!result.ok) {
           console.error(

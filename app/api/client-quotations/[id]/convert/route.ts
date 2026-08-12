@@ -42,5 +42,19 @@ export async function POST(_request: Request, context: RouteContext) {
     },
   );
 
+  void import("@/utils/client-document-notifications").then(
+    ({ notifyClientInvoiceCreated }) => {
+      void notifyClientInvoiceCreated({
+        tenantId: auth.tenantId,
+        clientId: invoice.client_id,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoice_number,
+        customerName: invoice.bill_to_name?.trim() || invoice.client_id,
+        amount: String(invoice.total_amount_due ?? ""),
+        dueDate: invoice.due_date ?? "",
+      });
+    },
+  );
+
   return NextResponse.json({ client_invoice: invoice });
 }

@@ -5,9 +5,11 @@ import {
   formatInvoiceDate,
   formatReceiptMoney,
   hasReceiptAuthorizedBy,
+  shouldShowReceiptSignatureBlock,
 } from "@/utils/client-receipts-types";
 import {
   CLIENT_INVOICE_COLORS,
+  resolveAuthorizedByDisplayTitle,
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
   tenantHeaderContactLines,
@@ -47,6 +49,8 @@ export {
   formatInvoiceDate,
   formatReceiptMoney,
   hasReceiptAuthorizedBy,
+  resolveAuthorizedByDisplayTitle,
+  shouldShowReceiptSignatureBlock,
   CLIENT_INVOICE_COLORS,
   resolveInvoiceCompanyName,
   tenantHeaderContactLines,

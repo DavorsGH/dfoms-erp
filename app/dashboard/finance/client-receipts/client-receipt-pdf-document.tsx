@@ -11,7 +11,8 @@ import {
   CLIENT_RECEIPT_PRINT_AREA_ID,
   formatInvoiceDate,
   formatReceiptMoney,
-  hasReceiptAuthorizedBy,
+  resolveAuthorizedByDisplayTitle,
+  shouldShowReceiptSignatureBlock,
   resolveInvoiceCompanyName,
   tenantHeaderContactLines,
   type ClientReceiptDisplayProps,
@@ -115,34 +116,52 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   signatureBlock: {
-    marginTop: 24,
+    marginTop: 16,
+    alignSelf: "flex-start",
   },
   signatureLabel: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: C.textMuted,
+  },
+  signatureName: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: C.navy,
+    marginTop: 4,
+  },
+  signatureTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    flexWrap: "wrap",
+    marginTop: 6,
+  },
+  signatureTitle: {
     fontSize: 9,
     color: C.textMuted,
-    marginBottom: 4,
+  },
+  signatureTitleSpacer: {
+    width: 12,
+  },
+  signaturePromptGroup: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  signaturePrompt: {
+    fontSize: 9,
+    color: C.textMuted,
+  },
+  signatureLine: {
+    width: 120,
+    borderBottomWidth: 2,
+    borderBottomColor: C.navy,
   },
   signatureImage: {
     width: 140,
     height: 48,
     objectFit: "contain",
     marginBottom: 6,
-  },
-  signatureName: {
-    fontSize: 11,
-    fontWeight: "bold",
-    color: C.navy,
-  },
-  signatureTitle: {
-    fontSize: 10,
-    color: C.textDark,
-    marginTop: 2,
-  },
-  signatureLine: {
-    marginTop: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: C.navy,
-    width: 180,
   },
 });
 
@@ -161,6 +180,16 @@ export default function ClientReceiptPdfDocument({
 }: ClientReceiptPdfDocumentProps) {
   const companyName = resolveInvoiceCompanyName(branding, billingSettings);
   const contactLines = tenantHeaderContactLines(branding, billingSettings);
+  const authorizedByName =
+    receipt.authorized_by_name?.trim() || branding.signatureAuthorName?.trim() || "";
+  const authorizedByTitle = resolveAuthorizedByDisplayTitle(
+    receipt.authorized_by_title,
+    branding,
+  );
+  const showSignatureBlock = shouldShowReceiptSignatureBlock({
+    receipt,
+    signatureImageUrl,
+  });
 
   return (
     <Document title={receipt.receipt_number}>
@@ -228,18 +257,29 @@ export default function ClientReceiptPdfDocument({
           <Text style={styles.amountValue}>{formatReceiptMoney(receipt.amount)}</Text>
         </View>
 
-        {hasReceiptAuthorizedBy(receipt) ? (
-          <View style={styles.signatureBlock}>
+        {showSignatureBlock ? (
+          <View style={styles.signatureBlock} wrap={false}>
             <Text style={styles.signatureLabel}>Authorized By:</Text>
             {signatureImageUrl ? (
               <Image src={signatureImageUrl} style={styles.signatureImage} />
-            ) : (
-              <View style={styles.signatureLine} />
-            )}
-            <Text style={styles.signatureName}>{receipt.authorized_by_name?.trim()}</Text>
-            {receipt.authorized_by_title?.trim() ? (
-              <Text style={styles.signatureTitle}>{receipt.authorized_by_title.trim()}</Text>
             ) : null}
+            {authorizedByName ? (
+              <Text style={styles.signatureName}>{authorizedByName}</Text>
+            ) : null}
+            <View style={styles.signatureTitleRow}>
+              {authorizedByTitle ? (
+                <>
+                  <Text style={styles.signatureTitle}>{authorizedByTitle},</Text>
+                  <View style={styles.signatureTitleSpacer} />
+                </>
+              ) : null}
+              {!signatureImageUrl ? (
+                <View style={styles.signaturePromptGroup}>
+                  <Text style={styles.signaturePrompt}>Signature:</Text>
+                  <View style={styles.signatureLine} />
+                </View>
+              ) : null}
+            </View>
           </View>
         ) : null}
       </Page>

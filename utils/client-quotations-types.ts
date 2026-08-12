@@ -54,10 +54,10 @@ export const CLIENT_QUOTATION_STATUSES = [
 export type ClientQuotationStatus = (typeof CLIENT_QUOTATION_STATUSES)[number];
 
 export const CLIENT_QUOTATION_LIST_SELECT =
-  "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, converted_invoice_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name)" as const;
+  "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, converted_invoice_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
 
 export const CLIENT_QUOTATION_HEADER_SELECT =
-  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, total_amount_due, status, notes, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name)" as const;
+  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, total_amount_due, status, notes, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
 
 export const CLIENT_QUOTATION_LINE_ITEM_SELECT =
   "id, quotation_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, product_id, quantity, unit_price, sort_order" as const;
@@ -68,6 +68,11 @@ export const CLIENT_QUOTATION_PORTAL_LIST_SELECT =
 export type ClientQuotationCustomer = {
   client_id: string;
   client_name: string;
+};
+
+export type ClientQuotationConvertedInvoice = {
+  id: string;
+  invoice_number: string;
 };
 
 export type ClientQuotationListRow = {
@@ -89,6 +94,7 @@ export type ClientQuotationListRow = {
   converted_invoice_id: string | null;
   created_at: string;
   client?: ClientQuotationCustomer | ClientQuotationCustomer[] | null;
+  converted_invoice?: ClientQuotationConvertedInvoice | ClientQuotationConvertedInvoice[] | null;
 };
 
 export type ClientQuotationPortalListRow = {
@@ -156,6 +162,7 @@ export type ClientQuotationHeaderRow = {
     | ClientQuotationOpportunityRelation
     | ClientQuotationOpportunityRelation[]
     | null;
+  converted_invoice?: ClientQuotationConvertedInvoice | ClientQuotationConvertedInvoice[] | null;
 };
 
 export type ClientQuotationLineItemInput = {
@@ -397,11 +404,41 @@ export function formatQuotationType(quotationType: string) {
 }
 
 export function formatQuotationDocumentType(documentType: string) {
-  return documentType === "proforma_invoice" ? "Invoice" : "Quotation";
+  return documentType === "proforma_invoice" ? "Pro-forma Invoice" : "Quotation";
 }
 
 export function quotationPrintTitle(documentType: string) {
-  return documentType === "proforma_invoice" ? "INVOICE" : "QUOTATION";
+  return documentType === "proforma_invoice" ? "PRO-FORMA INVOICE" : "QUOTATION";
+}
+
+export function quotationNumberMetaLabel(documentType: string) {
+  return documentType === "proforma_invoice" ? "Pro-forma Invoice #: " : "Quotation #: ";
+}
+
+function firstEmbeddedRelation<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) {
+    return null;
+  }
+
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+export function resolveConvertedInvoiceLink(
+  quotation: Pick<ClientQuotationListRow, "converted_invoice_id" | "converted_invoice">,
+) {
+  const embedded = firstEmbeddedRelation(quotation.converted_invoice);
+  if (embedded?.id && embedded.invoice_number) {
+    return embedded;
+  }
+
+  if (!quotation.converted_invoice_id) {
+    return null;
+  }
+
+  return {
+    id: quotation.converted_invoice_id,
+    invoice_number: quotation.converted_invoice_id,
+  };
 }
 
 export function formatQuotationStatus(status: string) {
@@ -476,6 +513,9 @@ export function normalizeClientQuotationListRow(
     wht_amount: toNumber(row.wht_amount),
     total_amount_due: toNumber(row.total_amount_due),
     client: Array.isArray(row.client) ? row.client[0] ?? null : row.client ?? null,
+    converted_invoice: Array.isArray(row.converted_invoice)
+      ? (row.converted_invoice[0] ?? null)
+      : (row.converted_invoice ?? null),
   };
 }
 

@@ -166,6 +166,27 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
+  void import("@/utils/client-document-notifications").then(
+    ({ notifyClientQuotationSent, shouldFireQuotationSentNotification }) => {
+      if (
+        shouldFireQuotationSentNotification(
+          existing.quotation.status,
+          quotation.status,
+        )
+      ) {
+        void notifyClientQuotationSent({
+          tenantId: auth.tenantId,
+          clientId: quotation.client_id,
+          quotationId: quotation.id,
+          quotationNumber: quotation.quotation_number,
+          customerName: quotation.bill_to_name?.trim() || quotation.client_id,
+          amount: String(quotation.total_amount_due ?? ""),
+          validUntil: quotation.valid_until ?? "",
+        });
+      }
+    },
+  );
+
   return NextResponse.json({ client_quotation: quotation });
 }
 

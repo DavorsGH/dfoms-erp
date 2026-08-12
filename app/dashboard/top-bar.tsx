@@ -1,9 +1,12 @@
 "use client";
 
+import type { AppRole } from "@/app/dashboard/user-account-types";
+import ClientNotificationBell from "./client-notification-bell";
 import NotificationBell from "./notification-bell";
 import UserAccountMenu from "./user-account-menu";
 
 type TopBarProps = {
+  userRole: AppRole | null;
   userLabel: string;
   userPhotoUrl?: string | null;
   userFullName?: string | null;
@@ -29,6 +32,7 @@ function MenuIcon() {
 }
 
 export default function TopBar({
+  userRole,
   userLabel,
   userPhotoUrl,
   userFullName,
@@ -50,7 +54,7 @@ export default function TopBar({
       <div className="hidden md:block" aria-hidden />
 
       <div className="flex items-center gap-1 md:gap-2">
-        <NotificationBell />
+        {userRole === "client" ? <ClientNotificationBell /> : <NotificationBell />}
         <UserAccountMenu
           userLabel={userLabel}
           userPhotoUrl={userPhotoUrl}

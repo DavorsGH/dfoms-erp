@@ -107,19 +107,17 @@ export async function POST(request: Request) {
     );
   }
 
-  void import("@/utils/transactional-notification-trigger").then(
-    ({ fireTransactionalNotification }) => {
-      void fireTransactionalNotification(
-        auth.tenantId,
-        "invoice_created",
-        invoice.client_id,
-        {
-          customer_name: invoice.bill_to_name?.trim() || invoice.client_id,
-          invoice_number: invoice.invoice_number,
-          amount: String(invoice.total_amount_due ?? ""),
-          due_date: invoice.due_date ?? "",
-        },
-      );
+  void import("@/utils/client-document-notifications").then(
+    ({ notifyClientInvoiceCreated }) => {
+      void notifyClientInvoiceCreated({
+        tenantId: auth.tenantId,
+        clientId: invoice.client_id,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoice_number,
+        customerName: invoice.bill_to_name?.trim() || invoice.client_id,
+        amount: String(invoice.total_amount_due ?? ""),
+        dueDate: invoice.due_date ?? "",
+      });
     },
   );
 
