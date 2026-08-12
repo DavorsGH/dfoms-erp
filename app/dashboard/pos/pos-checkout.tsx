@@ -53,6 +53,7 @@ import {
   openPaystackInlineWithAccessCode,
 } from "./paystack-inline";
 import { recordQuoteSaleConversions } from "@/utils/sales-quotes-types";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -584,6 +585,13 @@ export default function PosCheckout({
       amountReceived,
       summary.invoiceNo,
     );
+
+    requestTenantAdminDirectorNotification({
+      title: "Large product sale recorded",
+      detail: formatGHS(amountReceived),
+      thresholdAmount: amountReceived,
+      actionUrl: "/dashboard/pos",
+    });
 
     // Cash / non-Paystack POS: sale_completed only (no separate payment_received).
     if (trimmedClientId) {

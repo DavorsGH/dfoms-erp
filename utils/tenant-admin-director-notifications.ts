@@ -101,3 +101,78 @@ export async function notifyTenantAdminsAndDirectors(
     );
   }
 }
+
+export const DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD = 2000;
+
+export async function loadProductSaleNotificationThreshold(
+  tenantId: string,
+): Promise<number> {
+  const normalizedTenantId = tenantId.trim();
+  if (!normalizedTenantId) {
+    return DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD;
+  }
+
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("tax_settings")
+      .select("product_sale_notification_threshold")
+      .eq("tenant_id", normalizedTenantId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(
+        "[tenant-admin-director-notifications] threshold lookup failed:",
+        error.message,
+      );
+      return DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD;
+    }
+
+    const parsed = Number(data?.product_sale_notification_threshold);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.error(
+      "[tenant-admin-director-notifications] threshold lookup failed:",
+      error instanceof Error ? error.message : error,
+    );
+    return DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD;
+  }
+}
+
+/**
+ * Notify Admins/Directors when a product sale meets the tenant threshold.
+ * Best-effort — never throws.
+ */
+export async function maybeNotifyLargeProductSale(
+  tenantId: string,
+  saleAmount: number,
+  recordedBy: string,
+  actionUrl = "/dashboard/crm/product-sales",
+): Promise<void> {
+  const amount = Math.round((Number(saleAmount) || 0) * 100) / 100;
+  if (amount <= 0) {
+    return;
+  }
+
+  const threshold = await loadProductSaleNotificationThreshold(tenantId);
+  if (amount < threshold) {
+    return;
+  }
+
+  const creator = recordedBy.trim() || "Unknown user";
+  const formattedAmount = `GHS ${amount.toLocaleString("en-GH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+  await notifyTenantAdminsAndDirectors(
+    tenantId,
+    "Large product sale recorded",
+    `${formattedAmount} recorded by ${creator}`,
+    actionUrl,
+  );
+}

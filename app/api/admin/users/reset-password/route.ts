@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireTenantSuperAdmin } from "@/utils/admin-auth";
+import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
   mapSupabasePasswordError,
@@ -64,6 +65,8 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  await recordPasswordUpdatedAt(auth_uid);
 
   return NextResponse.json({ success: true });
 }

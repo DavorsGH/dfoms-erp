@@ -12,6 +12,20 @@ export const DEFAULT_SALES_TAX_BASIS: SalesTaxBasis = "service_only";
 
 export const DEFAULT_PRODUCT_SALES_TAX_RATE: ProductSalesTaxRate = 0;
 
+export const DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD = 2000;
+
+export const PRODUCT_SALE_NOTIFICATION_THRESHOLD_OPTIONS: Array<{
+  value: number;
+  label: string;
+}> = [
+  { value: 1000, label: "GHS 1,000" },
+  { value: 2000, label: "GHS 2,000 (default)" },
+  { value: 5000, label: "GHS 5,000" },
+  { value: 10000, label: "GHS 10,000" },
+  { value: 25000, label: "GHS 25,000" },
+  { value: 50000, label: "GHS 50,000" },
+];
+
 export const PRODUCT_SALES_TAX_RATE_OPTIONS: Array<{
   value: ProductSalesTaxRate;
   label: string;
@@ -43,11 +57,11 @@ export const DEFAULT_TIER2_RETURN_DUE_DAY = 14;
 
 /** Slim select for Income / Expense / AP forms (defaults + VAT flag). */
 export const TAX_SETTINGS_SELECT =
-  "tenant_id, vat_registered, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, product_sales_tax_rate";
+  "tenant_id, vat_registered, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, product_sales_tax_rate, product_sale_notification_threshold";
 
 /** Full select for the Statutory Ledger settings editor. */
 export const TAX_SETTINGS_FULL_SELECT =
-  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, product_sales_tax_rate, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled";
+  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, product_sales_tax_rate, product_sale_notification_threshold, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled";
 
 export const TAX_RATE_CATALOG_SELECT =
   "id, tenant_id, tax_kind, code, label, rate_pct, is_active, sort_order";
@@ -63,6 +77,7 @@ export type TaxSettings = {
   default_wht_rate: number;
   sales_tax_basis: SalesTaxBasis;
   product_sales_tax_rate: ProductSalesTaxRate;
+  product_sale_notification_threshold: number;
   vat_return_period: VatReturnPeriod;
   vat_return_due_day: number | null;
   wht_return_due_day: number | null;
@@ -104,6 +119,14 @@ export function normalizeProductSalesTaxRate(value: unknown): ProductSalesTaxRat
   return Number(value) === 3 ? 3 : 0;
 }
 
+export function normalizeProductSaleNotificationThreshold(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD;
+  }
+  return Math.round(parsed * 100) / 100;
+}
+
 export function emptyTaxSettings(tenantId: string): TaxSettings {
   return {
     tenant_id: tenantId,
@@ -114,6 +137,7 @@ export function emptyTaxSettings(tenantId: string): TaxSettings {
     default_wht_rate: DEFAULT_WHT_RATE,
     sales_tax_basis: DEFAULT_SALES_TAX_BASIS,
     product_sales_tax_rate: DEFAULT_PRODUCT_SALES_TAX_RATE,
+    product_sale_notification_threshold: DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD,
     vat_return_period: "monthly",
     vat_return_due_day: null,
     wht_return_due_day: null,
@@ -186,6 +210,9 @@ export function normalizeTaxSettings(
     sales_tax_basis: normalizeSalesTaxBasis(raw.sales_tax_basis),
     product_sales_tax_rate: normalizeProductSalesTaxRate(
       raw.product_sales_tax_rate,
+    ),
+    product_sale_notification_threshold: normalizeProductSaleNotificationThreshold(
+      raw.product_sale_notification_threshold,
     ),
     vat_return_period: normalizeVatReturnPeriod(raw.vat_return_period),
     vat_return_due_day: normalizeOptionalDay(raw.vat_return_due_day),

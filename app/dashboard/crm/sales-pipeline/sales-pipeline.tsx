@@ -14,6 +14,7 @@ import {
 import {
   DEFAULT_CUSTOMER_TYPE,
 } from "../customers/customers-utils";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import OpportunityFormFields from "./opportunity-form-fields";
 import {
   ACTIVITY_TYPE_OPTIONS,
@@ -272,6 +273,13 @@ export default function SalesPipeline({
       setError(insertError.message);
       return null;
     }
+
+    requestTenantAdminDirectorNotification({
+      title: "New customer added",
+      detail: clientName,
+      bodyFormat: "added_by",
+      actionUrl: "/dashboard/crm/customers",
+    });
 
     await refreshClients();
     return clientAllocated.clientId;

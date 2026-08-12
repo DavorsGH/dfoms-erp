@@ -14,6 +14,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../../scrollable-table";
 import FilteredListCount from "../../filtered-list-count";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { formatDate, inputClassName } from "../../hr-payroll/hr-register-utils";
 import {
   getEmployeeDisplayName,
@@ -282,6 +283,13 @@ export default function Customers({
         setLoading(false);
         return;
       }
+
+      requestTenantAdminDirectorNotification({
+        title: "New customer added",
+        detail: payload.client_name,
+        bodyFormat: "added_by",
+        actionUrl: "/dashboard/crm/customers",
+      });
     }
 
     closeForm();

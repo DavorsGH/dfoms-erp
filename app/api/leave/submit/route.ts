@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireRoleIn } from "@/utils/admin-auth";
+import { notifyAdminsDirectorsLeaveRequestSubmitted } from "@/utils/tenant-admin-director-tier2-notifications";
 import { createClient } from "@/utils/supabase/server";
 import { SELF_SERVICE_SECTION_ROLES } from "@/utils/rbac-access";
 
@@ -50,6 +51,10 @@ export async function POST(request: Request) {
     .select("exceeds_balance")
     .eq("id", requestId)
     .maybeSingle();
+
+  if (requestId) {
+    void notifyAdminsDirectorsLeaveRequestSubmitted(String(requestId));
+  }
 
   return NextResponse.json({
     requestId,

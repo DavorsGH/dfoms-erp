@@ -123,5 +123,15 @@ export async function POST(request: Request) {
     },
   );
 
+  void import("@/utils/tenant-admin-director-tier2-notifications").then(
+    ({ notifyAdminsDirectorsNewInvoice }) => {
+      void notifyAdminsDirectorsNewInvoice(
+        auth.tenantId,
+        invoice.bill_to_name,
+        Number(invoice.total_amount_due) || 0,
+      );
+    },
+  );
+
   return NextResponse.json({ client_invoice: invoice });
 }

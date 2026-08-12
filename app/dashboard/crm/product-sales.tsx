@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
+import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { deleteTaxLedgerEntriesForSource } from "../finance/tax-ledger-sync";
 import {
   FINISHED_PRODUCT_SELECT,
@@ -30,7 +31,7 @@ import ScrollableTable, {
 import FilteredListCount, {
   anyRegisterColumnFiltersActive,
 } from "../filtered-list-count";
-import { isPaidStatus } from "../finance/accrued-wages-utils";
+import { resolveIncomeOutstandingBalance } from "../finance/income-register-utils";
 import {
   buildVoidProductSaleConfirmMessage,
   calculateOutstanding,
@@ -45,6 +46,7 @@ import {
   type ProductSaleEntry,
 } from "./product-sales-utils";
 import ProductSalesBulkImport from "./product-sales-bulk-import";
+import RecordProductSalePaymentDialog from "./record-product-sale-payment-dialog";
 import {
   buildProductSaleReceiptData,
   ProductSaleReceiptPanel,
@@ -59,6 +61,7 @@ type ProductSalesProps = {
   initialEntries: ProductSaleEntry[];
   initialClients: ClientEntry[];
   initialFinishedProducts: FinishedProductRecord[];
+  initialPaymentMethods: string[];
   fetchError: string | null;
 };
 
@@ -81,6 +84,7 @@ export default function ProductSales({
   initialEntries,
   initialClients,
   initialFinishedProducts,
+  initialPaymentMethods,
   fetchError,
 }: ProductSalesProps) {
   const supabase = createClient();
@@ -105,6 +109,11 @@ export default function ProductSales({
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [receipt, setReceipt] = useState<ProductSaleReceiptData | null>(null);
+  const [recordPaymentEntry, setRecordPaymentEntry] =
+    useState<ProductSaleEntry | null>(null);
+  const [recordingPaymentId, setRecordingPaymentId] = useState<string | null>(
+    null,
+  );
 
   const calculatedAmount = useMemo(() => {
     const quantity = Number.parseFloat(form.sale_quantity);
@@ -447,6 +456,13 @@ export default function ProductSales({
       return;
     }
 
+    requestTenantAdminDirectorNotification({
+      title: "Large product sale recorded",
+      detail: formatGHS(amount),
+      thresholdAmount: amount,
+      actionUrl: "/dashboard/crm/product-sales",
+    });
+
     // VFRS output tax + tax ledger for the new sale. Non-fatal: the sale is
     // already posted, so a tax sync problem is surfaced as a warning.
     const { error: taxError } = await syncProductSaleVfrsTax(
@@ -563,6 +579,24 @@ export default function ProductSales({
           receipt={receipt}
           onPrint={() => window.print()}
           onClose={() => setReceipt(null)}
+        />
+      ) : null}
+
+      {recordPaymentEntry ? (
+        <RecordProductSalePaymentDialog
+          incomeId={recordPaymentEntry.id}
+          invoiceNo={recordPaymentEntry.invoice_no}
+          outstanding={resolveIncomeOutstandingBalance({
+            amount: Number(recordPaymentEntry.amount) || 0,
+            amount_received: Number(recordPaymentEntry.amount_received) || 0,
+            outstanding_balance: recordPaymentEntry.outstanding_balance,
+          })}
+          paymentMethods={initialPaymentMethods}
+          onClose={() => setRecordPaymentEntry(null)}
+          onSuccess={() => {
+            setRecordingPaymentId(recordPaymentEntry.id);
+            void refreshEntries().finally(() => setRecordingPaymentId(null));
+          }}
         />
       ) : null}
 
@@ -877,10 +911,12 @@ export default function ProductSales({
             ) : (
               visibleEntries.map((entry, index) => {
                 const voided = isProductSaleVoided(entry);
-                const outstanding = calculateOutstanding(
-                  Number(entry.amount) || 0,
-                  Number(entry.amount_received) || 0,
-                );
+                const outstanding = resolveIncomeOutstandingBalance({
+                  amount: Number(entry.amount) || 0,
+                  amount_received: Number(entry.amount_received) || 0,
+                  outstanding_balance: entry.outstanding_balance,
+                });
+                const canRecordPayment = !voided && outstanding > 0;
 
                 return (
                 <tr
@@ -922,22 +958,20 @@ export default function ProductSales({
                   </td>
                   <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
                   <RegisterRowActions
-                    onEdit={() =>
-                      setError(
-                        "Product sales cannot be edited after posting. Void the sale instead if it was recorded in error.",
-                      )
-                    }
                     onPrint={() =>
                       setReceipt(
                         buildProductSaleReceiptData(entry, initialClients),
                       )
                     }
-                    onVoid={() => void handleVoidSale(entry)}
-                    disableEdit={
-                      voided || isPaidStatus(entry.payment_status)
+                    onRecordPayment={
+                      canRecordPayment
+                        ? () => setRecordPaymentEntry(entry)
+                        : undefined
                     }
+                    onVoid={() => void handleVoidSale(entry)}
                     disableVoid={voided}
                     voiding={voidingId === entry.id}
+                    recordingPayment={recordingPaymentId === entry.id}
                   />
                 </tr>
                 );

@@ -5,6 +5,7 @@ import {
   mapSupabasePasswordError,
   validatePasswordLength,
 } from "@/utils/password-policy";
+import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
 
 /** Long-lived Auth ban — blocks new sign-in / refresh without deleting the Auth user. */
 const PORTAL_BAN_DURATION = "876000h";
@@ -131,5 +132,7 @@ export async function resetLesseePortalPassword(
   if (error) {
     return { ok: false, error: mapSupabasePasswordError(error) };
   }
+
+  await recordPasswordUpdatedAt(authUserId);
   return { ok: true };
 }

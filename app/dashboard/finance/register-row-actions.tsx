@@ -1,14 +1,16 @@
 type RegisterRowActionsProps = {
-  onEdit: () => void;
+  onEdit?: () => void;
   onDelete?: () => void;
   onArchive?: () => void;
   onVoid?: () => void;
   onPrint?: () => void;
   onMarkPaid?: () => void;
+  onRecordPayment?: () => void;
   deleting?: boolean;
   archiving?: boolean;
   voiding?: boolean;
   markingPaid?: boolean;
+  recordingPayment?: boolean;
   disableEdit?: boolean;
   disableDelete?: boolean;
   deleteDisabledTitle?: string;
@@ -18,6 +20,7 @@ type RegisterRowActionsProps = {
   archiveLabel?: string;
   printLabel?: string;
   markPaidLabel?: string;
+  recordPaymentLabel?: string;
 };
 
 const editButtonClassName =
@@ -78,10 +81,12 @@ export default function RegisterRowActions({
   onVoid,
   onPrint,
   onMarkPaid,
+  onRecordPayment,
   deleting = false,
   archiving = false,
   voiding = false,
   markingPaid = false,
+  recordingPayment = false,
   disableEdit = false,
   disableDelete = false,
   deleteDisabledTitle,
@@ -91,6 +96,7 @@ export default function RegisterRowActions({
   archiveLabel = "Archive",
   printLabel = "Print Receipt",
   markPaidLabel = "Mark as Paid",
+  recordPaymentLabel = "Record Payment",
 }: RegisterRowActionsProps) {
   return (
     <td className="px-4 py-3 whitespace-nowrap">
@@ -104,6 +110,16 @@ export default function RegisterRowActions({
             {printLabel}
           </button>
         ) : null}
+        {onRecordPayment ? (
+          <button
+            type="button"
+            onClick={onRecordPayment}
+            disabled={recordingPayment}
+            className={markPaidButtonClassName}
+          >
+            {recordingPayment ? "Recording…" : recordPaymentLabel}
+          </button>
+        ) : null}
         {onMarkPaid ? (
           <button
             type="button"
@@ -114,7 +130,7 @@ export default function RegisterRowActions({
             {markingPaid ? "Marking…" : markPaidLabel}
           </button>
         ) : null}
-        {!disableEdit ? (
+        {onEdit && !disableEdit ? (
           <button
             type="button"
             onClick={onEdit}

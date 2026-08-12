@@ -57,6 +57,7 @@ import {
 } from "./tax-ledger-remit";
 import { isPaidStatus } from "./accrued-wages-utils";
 import ProductSalesTaxRateSettings from "./product-sales-tax-rate-settings";
+import ProductSaleNotificationThresholdSettings from "./product-sale-notification-threshold-settings";
 
 type TaxLedgerProps = {
   tenantId: string;
@@ -1408,6 +1409,11 @@ export default function TaxLedger({
         <ProductSalesTaxRateSettings
           tenantId={tenantId}
           initialProductSalesTaxRate={settings.product_sales_tax_rate}
+        />
+
+        <ProductSaleNotificationThresholdSettings
+          tenantId={tenantId}
+          initialThreshold={settings.product_sale_notification_threshold}
         />
         </div>
       )}

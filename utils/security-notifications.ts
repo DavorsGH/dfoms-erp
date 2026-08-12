@@ -51,11 +51,11 @@ async function hasUnreadSecurityNotification(
   return Boolean(data);
 }
 
-async function needsMfaEnrollmentNudge(authUid: string): Promise<boolean> {
+async function isMfaEnrolled(authUid: string): Promise<boolean> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("user_mfa_settings")
-    .select("method")
+    .select("method, totp_enrolled_at, sms_phone_verified_at")
     .eq("auth_uid", authUid)
     .maybeSingle();
 
@@ -64,8 +64,28 @@ async function needsMfaEnrollmentNudge(authUid: string): Promise<boolean> {
     return false;
   }
 
-  const method = data?.method ?? "none";
-  return method === "none";
+  if (!data) {
+    return false;
+  }
+
+  const method = data.method ?? "none";
+  if (method !== "none") {
+    return true;
+  }
+
+  if (data.totp_enrolled_at?.trim()) {
+    return true;
+  }
+
+  if (data.sms_phone_verified_at?.trim()) {
+    return true;
+  }
+
+  return false;
+}
+
+async function needsMfaEnrollmentNudge(authUid: string): Promise<boolean> {
+  return !(await isMfaEnrolled(authUid));
 }
 
 async function ensureStaffNotification(options: {
@@ -99,7 +119,8 @@ async function ensureStaffNotification(options: {
 
 /**
  * Best-effort security nudges into each persona's existing in-app notification inbox.
- * Dedupes by unread row with the same title.
+ * Skips insert when the user is already compliant (password policy / MFA enrolled).
+ * Dedupes by unread row with the same title when a nudge is still warranted.
  */
 export async function ensureSecurityNotifications(
   options: EnsureOptions,

@@ -428,6 +428,17 @@ export async function fulfillPosCartSnapshotPaymentRequest(
     },
   );
 
+  void import("@/utils/tenant-admin-director-tier2-notifications").then(
+    ({ notifyAdminsDirectorsLargeProductSaleWithLabel }) => {
+      void notifyAdminsDirectorsLargeProductSaleWithLabel(
+        requestRow.tenant_id,
+        paidAmount,
+        "Mobile Money checkout",
+        "/dashboard/pos",
+      );
+    },
+  );
+
   return {
     invoiceNo: allocatedInvoiceNo,
     incomeIds,

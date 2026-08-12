@@ -22,6 +22,7 @@ export default async function ProductSalesPage() {
     { data, error },
     { data: clients, error: clientsError },
     { data: finishedProducts, error: finishedProductsError },
+    { data: paymentMethods, error: paymentMethodsError },
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -33,10 +34,15 @@ export default async function ProductSalesPage() {
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
       .order("product_name", { ascending: true }),
+    supabase.from("payment_methods").select("name").order("name", { ascending: true }),
   ]);
 
   const fetchError =
-    error?.message ?? clientsError?.message ?? finishedProductsError?.message ?? null;
+    error?.message ??
+    clientsError?.message ??
+    finishedProductsError?.message ??
+    paymentMethodsError?.message ??
+    null;
 
   return (
     <CrmShell sectionTitle="Product Sales">
@@ -50,6 +56,11 @@ export default async function ProductSalesPage() {
         initialFinishedProducts={
           ((finishedProducts as FinishedProductRecord[] | null) ?? []).map(
             (product) => normalizeFinishedProduct(product),
+          )
+        }
+        initialPaymentMethods={
+          ((paymentMethods as { name: string }[] | null) ?? []).map(
+            (row) => row.name,
           )
         }
         fetchError={fetchError}

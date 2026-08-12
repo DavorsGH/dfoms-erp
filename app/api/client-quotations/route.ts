@@ -107,5 +107,15 @@ export async function POST(request: Request) {
     );
   }
 
+  void import("@/utils/tenant-admin-director-tier2-notifications").then(
+    ({ notifyAdminsDirectorsNewQuotation }) => {
+      void notifyAdminsDirectorsNewQuotation(
+        auth.tenantId,
+        quotation.bill_to_name,
+        Number(quotation.total_amount_due) || 0,
+      );
+    },
+  );
+
   return NextResponse.json({ client_quotation: quotation });
 }

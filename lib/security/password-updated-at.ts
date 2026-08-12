@@ -42,12 +42,22 @@ export async function getPasswordUpdatedAt(
   return data?.password_updated_at ?? null;
 }
 
+/** True when password_updated_at is on or after the policy rollout cutoff. */
+export function isPasswordUpdatedAtCompliant(
+  passwordUpdatedAt: string | null | undefined,
+): boolean {
+  if (!passwordUpdatedAt?.trim()) {
+    return false;
+  }
+  const updatedMs = new Date(passwordUpdatedAt).getTime();
+  if (Number.isNaN(updatedMs)) {
+    return false;
+  }
+  return updatedMs >= getPasswordPolicyRolloutDate().getTime();
+}
+
 /** True when the user has not set a password since the policy rollout date. */
 export async function needsPasswordUpdateNudge(authUid: string): Promise<boolean> {
   const updatedAt = await getPasswordUpdatedAt(authUid);
-  if (!updatedAt) {
-    return true;
-  }
-  const rollout = getPasswordPolicyRolloutDate();
-  return new Date(updatedAt).getTime() < rollout.getTime();
+  return !isPasswordUpdatedAtCompliant(updatedAt);
 }
