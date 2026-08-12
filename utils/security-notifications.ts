@@ -88,6 +88,58 @@ async function needsMfaEnrollmentNudge(authUid: string): Promise<boolean> {
   return !(await isMfaEnrolled(authUid));
 }
 
+function notificationTableForPersona(
+  persona: SecurityPersona,
+): "employee_notifications" | "lessee_notifications" | "landlord_notifications" {
+  switch (persona) {
+    case "staff":
+      return "employee_notifications";
+    case "lessee":
+      return "lessee_notifications";
+    case "landlord":
+      return "landlord_notifications";
+  }
+}
+
+/** Mark unread password/MFA nudge rows as read when the user is now compliant (preserves history). */
+async function markStaleSecurityNudgesAsRead(options: {
+  authUid: string;
+  persona: SecurityPersona;
+  tenantId: string;
+  passwordCompliant: boolean;
+  mfaEnrolled: boolean;
+}): Promise<void> {
+  const titlesToMark: string[] = [];
+  if (options.passwordCompliant) {
+    titlesToMark.push(SECURITY_NOTIFICATION.passwordTitle);
+  }
+  if (options.mfaEnrolled) {
+    titlesToMark.push(SECURITY_NOTIFICATION.mfaTitle);
+  }
+  if (titlesToMark.length === 0) {
+    return;
+  }
+
+  const admin = createAdminClient();
+  const table = notificationTableForPersona(options.persona);
+  const nowIso = new Date().toISOString();
+
+  const { error } = await admin
+    .from(table)
+    .update({ read_at: nowIso })
+    .eq("recipient_user_id", options.authUid)
+    .eq("tenant_id", options.tenantId)
+    .in("title", titlesToMark)
+    .is("read_at", null);
+
+  if (error) {
+    console.error(
+      `[security-notifications] mark stale nudges read failed (${options.persona}):`,
+      error.message,
+    );
+  }
+}
+
 async function ensureStaffNotification(options: {
   authUid: string;
   tenantId: string;
@@ -119,6 +171,7 @@ async function ensureStaffNotification(options: {
 
 /**
  * Best-effort security nudges into each persona's existing in-app notification inbox.
+ * Marks stale unread password/MFA nudges as read when the user is now compliant.
  * Skips insert when the user is already compliant (password policy / MFA enrolled).
  * Dedupes by unread row with the same title when a nudge is still warranted.
  */
@@ -130,6 +183,14 @@ export async function ensureSecurityNotifications(
       needsPasswordUpdateNudge(options.authUid),
       needsMfaEnrollmentNudge(options.authUid),
     ]);
+
+    await markStaleSecurityNudgesAsRead({
+      authUid: options.authUid,
+      persona: options.persona,
+      tenantId: options.tenantId,
+      passwordCompliant: !passwordNudge,
+      mfaEnrolled: !mfaNudge,
+    });
 
     if (passwordNudge) {
       if (options.persona === "staff") {
