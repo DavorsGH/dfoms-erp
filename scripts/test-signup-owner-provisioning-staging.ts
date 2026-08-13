@@ -157,6 +157,21 @@ async function simulateSignupProvisioning(admin: SupabaseClient, stamp: string) 
   });
   assert(!ownerSeed.error && ownerSeed.employeeId, ownerSeed.error ?? "owner seed failed");
 
+  const { data: tenantContact, error: tenantContactError } = await admin
+    .from("tenants")
+    .select("email, phone")
+    .eq("id", tenantRow.id)
+    .single();
+  assert(!tenantContactError && tenantContact, tenantContactError?.message ?? "tenant contact missing");
+  assert(
+    tenantContact.email === adminEmail,
+    `expected tenants.email=${adminEmail}, got ${tenantContact.email}`,
+  );
+  assert(
+    tenantContact.phone === null,
+    `expected tenants.phone null at signup without employee phone, got ${tenantContact.phone}`,
+  );
+
   return {
     tenantId: tenantRow.id,
     authUid: authData.user.id,
@@ -243,6 +258,21 @@ async function main() {
       "user_accounts.employee_id not linked to owner employee",
     );
     console.log("PASS user_accounts.employee_id linked");
+
+    const { data: tenantWorkspace, error: tenantWorkspaceError } = await admin
+      .from("tenants")
+      .select("email, phone")
+      .eq("id", created.tenantId)
+      .single();
+    assert(
+      !tenantWorkspaceError && tenantWorkspace,
+      tenantWorkspaceError?.message ?? "tenant workspace contact missing",
+    );
+    assert(
+      tenantWorkspace.email === created.adminEmail,
+      `tenants.email not persisted: ${tenantWorkspace.email}`,
+    );
+    console.log("PASS tenants.email persisted at signup");
 
     const employee = Array.isArray(linkedAccount.employees)
       ? linkedAccount.employees[0]

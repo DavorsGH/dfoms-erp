@@ -4,6 +4,7 @@ import {
   STAFF_ID_ENTITY_TYPE,
   toPlainStaffId,
 } from "@/app/dashboard/employees/employee-ids-api";
+import { buildSignupWorkspaceContactPatch } from "@/utils/workspace-contact-utils";
 
 export const SIGNUP_OWNER_EMPLOYMENT_TYPE = "Full-Time";
 export const SIGNUP_OWNER_POSITION = "Administrator";
@@ -163,6 +164,34 @@ export async function provisionSignupOwnerEmployeeAndApprovers(
 
   if (leaveApproverError) {
     return { employeeId, staffId, error: leaveApproverError.message };
+  }
+
+  const { data: employeeContact, error: employeeContactError } = await admin
+    .from("employees")
+    .select("phone, momo_number")
+    .eq("tenant_id", tenantId)
+    .eq("employee_id", employeeId)
+    .maybeSingle();
+
+  if (employeeContactError) {
+    return { employeeId, staffId, error: employeeContactError.message };
+  }
+
+  const workspaceContact = buildSignupWorkspaceContactPatch(
+    adminEmail,
+    employeeContact,
+  );
+
+  const { error: tenantContactError } = await admin
+    .from("tenants")
+    .update({
+      email: workspaceContact.email,
+      phone: workspaceContact.phone,
+    })
+    .eq("id", tenantId);
+
+  if (tenantContactError) {
+    return { employeeId, staffId, error: tenantContactError.message };
   }
 
   return { employeeId, staffId, error: null };
