@@ -198,6 +198,11 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           subtitle={asOfLabel}
           value={formatGHS(summary.cashPosition)}
           href="/dashboard/finance/balance-sheet"
+          valueClassName={
+            summary.cashPosition < 0
+              ? "mt-2 text-2xl font-semibold tabular-nums text-red-700"
+              : undefined
+          }
         />
         <SummaryCard
           title="Balance Sheet Check"

@@ -43,7 +43,7 @@ export default function SalesRepDashboard({
       <div>
         <h1 className="text-2xl font-semibold text-[#0f2744]">Dashboard</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Product sales summary for {summary.periodLabel}.
+          Product sales and POS summary for {summary.periodLabel}.
         </p>
       </div>
 
@@ -55,13 +55,13 @@ export default function SalesRepDashboard({
 
       <div className="grid gap-4 md:grid-cols-2">
         <SummaryCard
-          title="Today's Sales"
+          title="Today's Product Sales / POS"
           subtitle={`${summary.todaysSaleCount} sale${summary.todaysSaleCount === 1 ? "" : "s"} on ${summary.todayLabel}`}
           value={formatGHS(summary.todaysSalesTotal)}
           href="/dashboard/pos"
         />
         <SummaryCard
-          title="This Month's Sales"
+          title="This Month's Product Sales / POS"
           subtitle={`${summary.monthSaleCount} sale${summary.monthSaleCount === 1 ? "" : "s"} in ${summary.periodLabel}`}
           value={formatGHS(summary.monthSalesTotal)}
           href="/dashboard/pos"

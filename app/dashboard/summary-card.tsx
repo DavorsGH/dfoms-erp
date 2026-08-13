@@ -6,6 +6,9 @@ export type SummaryCardTone = "default" | "success" | "danger" | "ytd";
 const breakdownValueBase =
   "shrink-0 whitespace-nowrap text-right tabular-nums";
 
+const defaultValueClassName =
+  "mt-2 text-2xl font-semibold tabular-nums text-[#0f2744]";
+
 export function SummaryCard({
   title,
   subtitle,
@@ -14,6 +17,7 @@ export function SummaryCard({
   showTotal = true,
   href,
   tone = "default",
+  valueClassName,
 }: {
   title: string;
   subtitle?: string;
@@ -23,7 +27,10 @@ export function SummaryCard({
   showTotal?: boolean;
   href: string;
   tone?: SummaryCardTone;
+  /** Overrides default navy value styling (e.g. text-red-700 for negative amounts). */
+  valueClassName?: string;
 }) {
+  const resolvedValueClassName = valueClassName ?? defaultValueClassName;
   const toneClasses =
     tone === "success"
       ? "border-emerald-200 bg-emerald-50"
@@ -75,9 +82,7 @@ export function SummaryCard({
           ) : null}
         </div>
       ) : (
-        <p className="mt-2 text-2xl font-semibold tabular-nums text-[#0f2744]">
-          {value}
-        </p>
+        <p className={resolvedValueClassName}>{value}</p>
       )}
     </Link>
   );
