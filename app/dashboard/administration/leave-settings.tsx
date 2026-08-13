@@ -13,8 +13,13 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import type { LeaveApproverConfig } from "../self-service/leave-request-utils";
 import {
+  LEAVE_ENTITLEMENT_DEFAULT_EMPLOYMENT_TYPE,
+  LEAVE_ENTITLEMENT_DEFAULT_LABEL,
+  LEAVE_ENTITLEMENT_DEFAULT_POSITION,
   LEAVE_ENTITLEMENT_EMPLOYMENT_TYPES,
   LEAVE_ENTITLEMENT_TYPES,
+  defaultLeaveEntitlementDraftValues,
+  isLeaveEntitlementDefaultPolicyRow,
   type LeaveEntitlementPolicyRow,
 } from "./leave-entitlement-policy-utils";
 
@@ -72,14 +77,53 @@ export default function LeaveSettings({
   const [editingEntitlementKey, setEditingEntitlementKey] = useState<
     string | null
   >(null);
+  const [defaultDaysDrafts, setDefaultDaysDrafts] = useState<
+    Record<string, string>
+  >(() => defaultLeaveEntitlementDraftValues());
+  const [defaultEntitlementDirty, setDefaultEntitlementDirty] = useState(false);
+  const [savingDefaultEntitlement, setSavingDefaultEntitlement] =
+    useState(false);
 
   useEffect(() => {
     setPolicies(initialPolicies);
   }, [initialPolicies]);
 
+  useEffect(() => {
+    const drafts = defaultLeaveEntitlementDraftValues();
+    for (const leaveType of LEAVE_ENTITLEMENT_TYPES) {
+      const match = initialPolicies.find(
+        (row) =>
+          isLeaveEntitlementDefaultPolicyRow(row) &&
+          row.leave_type === leaveType,
+      );
+      if (match) {
+        drafts[leaveType] = String(Number(match.entitled_days) || 0);
+      }
+    }
+    setDefaultDaysDrafts(drafts);
+    setDefaultEntitlementDirty(false);
+  }, [initialPolicies]);
+
   const positionOptions = useMemo(
-    () => [...new Set(positions.filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    () =>
+      [...new Set(positions.filter(Boolean))]
+        .filter(
+          (position) =>
+            position !== LEAVE_ENTITLEMENT_DEFAULT_POSITION &&
+            position !== LEAVE_ENTITLEMENT_DEFAULT_LABEL,
+        )
+        .sort((a, b) => a.localeCompare(b)),
     [positions],
+  );
+
+  const positionSpecificPolicies = useMemo(
+    () => policies.filter((row) => !isLeaveEntitlementDefaultPolicyRow(row)),
+    [policies],
+  );
+
+  const hasSavedDefaultEntitlement = useMemo(
+    () => policies.some((row) => isLeaveEntitlementDefaultPolicyRow(row)),
+    [policies],
   );
 
   const entitlementGroups = useMemo(() => {
@@ -93,7 +137,7 @@ export default function LeaveSettings({
       }
     >();
 
-    for (const row of policies) {
+    for (const row of positionSpecificPolicies) {
       const key = `${row.position}|${row.employment_type}`;
       let group = map.get(key);
       if (!group) {
@@ -113,7 +157,7 @@ export default function LeaveSettings({
         `${b.position}${b.employment_type}`,
       ),
     );
-  }, [policies]);
+  }, [positionSpecificPolicies]);
 
   const currentLabel =
     currentApprover?.user_accounts?.employees?.full_name ??
@@ -248,6 +292,47 @@ export default function LeaveSettings({
     closeEntitlementForm();
     await refreshPolicies();
     setEntitlementLoading(false);
+  }
+
+  async function handleSaveDefaultEntitlement(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingDefaultEntitlement(true);
+    setEntitlementError(null);
+
+    const { error: deleteError } = await supabase
+      .from("leave_entitlement_policy")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("position", LEAVE_ENTITLEMENT_DEFAULT_POSITION)
+      .eq("employment_type", LEAVE_ENTITLEMENT_DEFAULT_EMPLOYMENT_TYPE);
+
+    if (deleteError) {
+      setEntitlementError(deleteError.message);
+      setSavingDefaultEntitlement(false);
+      return;
+    }
+
+    const inserts = LEAVE_ENTITLEMENT_TYPES.map((leaveType) => ({
+      tenant_id: tenantId,
+      position: LEAVE_ENTITLEMENT_DEFAULT_POSITION,
+      employment_type: LEAVE_ENTITLEMENT_DEFAULT_EMPLOYMENT_TYPE,
+      leave_type: leaveType,
+      entitled_days: Number(defaultDaysDrafts[leaveType]) || 0,
+    }));
+
+    const { error: insertError } = await supabase
+      .from("leave_entitlement_policy")
+      .insert(inserts);
+
+    if (insertError) {
+      setEntitlementError(insertError.message);
+      setSavingDefaultEntitlement(false);
+      return;
+    }
+
+    setDefaultEntitlementDirty(false);
+    await refreshPolicies();
+    setSavingDefaultEntitlement(false);
   }
 
   async function handleDeleteEntitlementGroup(
@@ -411,8 +496,9 @@ export default function LeaveSettings({
             <p className="text-sm text-slate-600">
               Default leave days by Position × Employment Type. Applied only when
               creating new leave balance rows (on hire, new year, or first
-              approval). Missing policy falls back to Annual Leave 15 / Sick 0 /
-              Unpaid 0. Existing balances are never overwritten.
+              approval). Positions without a specific row use{" "}
+              <span className="font-medium">{LEAVE_ENTITLEMENT_DEFAULT_LABEL}</span>{" "}
+              below. Existing balances are never overwritten.
             </p>
             <button
               type="button"
@@ -434,6 +520,62 @@ export default function LeaveSettings({
               {entitlementError}
             </p>
           ) : null}
+
+          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-[#0f2744]">
+                  {LEAVE_ENTITLEMENT_DEFAULT_LABEL}
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Used when no position-specific entitlement row matches.
+                  {!hasSavedDefaultEntitlement
+                    ? " Values below start from the system fallback (Annual 15 / Sick 0 / Unpaid 0) until you save."
+                    : null}
+                </p>
+              </div>
+            </div>
+            <form
+              onSubmit={(e) => void handleSaveDefaultEntitlement(e)}
+              className="space-y-4"
+            >
+              <div className="grid gap-4 md:grid-cols-3">
+                {LEAVE_ENTITLEMENT_TYPES.map((leaveType) => (
+                  <div key={leaveType}>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      {leaveType} (days)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      required
+                      value={defaultDaysDrafts[leaveType] ?? "0"}
+                      onChange={(event) => {
+                        setDefaultEntitlementDirty(true);
+                        setDefaultDaysDrafts((current) => ({
+                          ...current,
+                          [leaveType]: event.target.value,
+                        }));
+                      }}
+                      className={inputClassName}
+                    />
+                  </div>
+                ))}
+              </div>
+              <button
+                type="submit"
+                disabled={
+                  savingDefaultEntitlement ||
+                  entitlementLoading ||
+                  (!defaultEntitlementDirty && hasSavedDefaultEntitlement)
+                }
+                className="rounded-md bg-[#0f2744] px-5 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:opacity-50"
+              >
+                {savingDefaultEntitlement ? "Saving…" : "Save Default"}
+              </button>
+            </form>
+          </section>
 
           {showEntitlementForm ? (
             <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -562,8 +704,9 @@ export default function LeaveSettings({
                         colSpan={3 + LEAVE_ENTITLEMENT_TYPES.length}
                         className="px-4 py-6 text-center text-sm text-slate-500"
                       >
-                        No leave entitlement policies yet. Without a row, new
-                        balances use Annual Leave 15 / Sick 0 / Unpaid 0.
+                        No position-specific leave entitlements yet. New balances
+                        for unmatched positions use{" "}
+                        {LEAVE_ENTITLEMENT_DEFAULT_LABEL} above.
                       </td>
                     </tr>
                   ) : (

@@ -38,6 +38,7 @@ import {
   calculateLoanRepaymentForEmployee,
   calculatePayrollRow,
   countAbsencesForStaff,
+  findMissingBasicSalaryWarnings,
   formatPayrollPaymentMethodDisplay,
   formatPayrollMomoNameDisplay,
   resolvePayrollPolicyCompensation,
@@ -174,6 +175,18 @@ export default function PayrollProcessing({
     () => new Set(periodEmployees.map((employee) => employee.employee_id)),
     [periodEmployees],
   );
+
+  const missingBasicSalaryWarnings = useMemo(() => {
+    if (!currentPeriod) {
+      return [];
+    }
+
+    return findMissingBasicSalaryWarnings(
+      employees,
+      compensationPolicyConfig,
+      currentPeriod,
+    );
+  }, [employees, compensationPolicyConfig, currentPeriod]);
 
   const isPeriodClosed = isMonthClosed(monthEndClose);
   const isPartiallyLocked = isPartiallyLockedMonth(monthEndClose);
@@ -1311,6 +1324,23 @@ export default function PayrollProcessing({
               ? "This period is permanently locked — view only. Use Release to Open if this was locked by mistake before month-end."
               : "This period is locked — view only."}
         </p>
+      ) : null}
+
+      {missingBasicSalaryWarnings.length > 0 ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-medium">
+            Missing basic salary in Salary Settings — affected employees will
+            show GHS 0 basic pay until configured:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {missingBasicSalaryWarnings.map((warning) => (
+              <li key={warning.employee_id}>
+                {warning.full_name} ({warning.staff_id}) — {warning.position} /{" "}
+                {warning.employment_type} / {warning.shift}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {partialLockDialogOpen ? (

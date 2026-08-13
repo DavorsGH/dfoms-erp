@@ -12,6 +12,7 @@ import {
   type CompensationPolicyRow,
   type ResolvedAllowanceLine,
 } from "../administration/compensation-policy-utils";
+import { filterEmployeesForPayrollPeriod } from "./employee-utils";
 import { calculateLoanOutstanding } from "./hr-register-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 import {
@@ -95,6 +96,62 @@ export type PayrollCompensationPolicyConfig = {
   allowanceTypes: AllowanceTypeRow[];
   compensationPolicies: CompensationPolicyRow[];
 };
+
+export type MissingBasicSalaryWarning = {
+  employee_id: string;
+  staff_id: string;
+  full_name: string;
+  position: string;
+  employment_type: string;
+  shift: string;
+};
+
+/** Employees in the period whose Position × Type × Shift has no salary_rate_config row. */
+export function findMissingBasicSalaryWarnings(
+  employees: PayrollEmployeeSource[],
+  config: PayrollCompensationPolicyConfig | null | undefined,
+  period: SelectedPayrollPeriod,
+): MissingBasicSalaryWarning[] {
+  if (!config) {
+    return [];
+  }
+
+  const asOf = new Date(getPeriodEndDate(period.year, period.month));
+  const warnings: MissingBasicSalaryWarning[] = [];
+
+  for (const employee of filterEmployeesForPayrollPeriod(
+    employees,
+    period.year,
+    period.month,
+  )) {
+    const resolved = resolveEmployeeCompensation(
+      config.salaryRates,
+      config.compensationPolicies,
+      config.allowanceTypes,
+      employee.position,
+      employee.employment_type,
+      employee.shift,
+      asOf,
+    );
+
+    if (!resolved.missing_basic) {
+      continue;
+    }
+
+    warnings.push({
+      employee_id: employee.employee_id,
+      staff_id: employee.staff_id,
+      full_name: employee.full_name,
+      position: (employee.position ?? "").trim() || "—",
+      employment_type: (employee.employment_type ?? "").trim() || "—",
+      shift: (employee.shift ?? "").trim() || "—",
+    });
+  }
+
+  return warnings.sort((left, right) =>
+    left.staff_id.localeCompare(right.staff_id),
+  );
+}
 
 export function resolvePayrollPolicyCompensation(
   employee: Pick<

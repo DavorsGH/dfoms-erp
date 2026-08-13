@@ -1,8 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+
+/** Generic payment-method names seeded for new tenants (excludes Crypto Currency). */
+export const DEFAULT_TENANT_PAYMENT_METHOD_NAMES = [
+  "Bank Transfer",
+  "Cash",
+  "Cheque",
+  "Credit",
+  "Mobile Money",
+  "POS",
+] as const;
 
 /**
- * One-time-style seed: copy Davors' current payment_methods names to a tenant
+ * One-time-style seed: insert canonical payment method names for a tenant
  * that has none yet. Existing tenant rows are never modified or deleted.
  */
 export async function seedTenantPaymentMethodsFromDavorsTemplate(
@@ -22,27 +31,9 @@ export async function seedTenantPaymentMethodsFromDavorsTemplate(
     return { inserted: 0, skipped: true, error: null };
   }
 
-  const { data: templateRows, error: templateError } = await admin
-    .from("payment_methods")
-    .select("name")
-    .eq("tenant_id", DAVORS_TENANT_ID)
-    .order("name", { ascending: true });
-
-  if (templateError) {
-    return { inserted: 0, skipped: false, error: templateError.message };
-  }
-
-  if (!templateRows?.length) {
-    return {
-      inserted: 0,
-      skipped: false,
-      error: "Davors payment_methods template is empty.",
-    };
-  }
-
-  const payload = templateRows.map((row) => ({
+  const payload = DEFAULT_TENANT_PAYMENT_METHOD_NAMES.map((name) => ({
     tenant_id: tenantId,
-    name: row.name,
+    name,
   }));
 
   const { error: insertError } = await admin.from("payment_methods").insert(payload);

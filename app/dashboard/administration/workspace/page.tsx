@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getCurrentAuthUser,
+  getCurrentUserAccount,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import WorkspaceSettings from "../workspace-settings";
 
 export default async function WorkspaceSettingsPage() {
@@ -29,6 +33,37 @@ export default async function WorkspaceSettingsPage() {
     .eq("id", tenantId)
     .maybeSingle();
 
+  let initialPhone = data?.phone ?? null;
+  let initialEmail = data?.email ?? null;
+
+  const needsPhonePrefill = !initialPhone?.trim();
+  const needsEmailPrefill = !initialEmail?.trim();
+
+  if (needsPhonePrefill || needsEmailPrefill) {
+    const [authUser, account] = await Promise.all([
+      getCurrentAuthUser(),
+      getCurrentUserAccount(),
+    ]);
+
+    if (needsEmailPrefill && authUser?.email?.trim()) {
+      initialEmail = authUser.email.trim();
+    }
+
+    if (needsPhonePrefill && account?.employee_id) {
+      const { data: employee } = await supabase
+        .from("employees")
+        .select("phone, momo_number")
+        .eq("employee_id", account.employee_id)
+        .maybeSingle();
+
+      const employeePhone =
+        employee?.phone?.trim() || employee?.momo_number?.trim() || "";
+      if (employeePhone) {
+        initialPhone = employeePhone;
+      }
+    }
+  }
+
   return (
     <>
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
@@ -42,8 +77,8 @@ export default async function WorkspaceSettingsPage() {
         initialSignatureAuthorName={data?.signature_author_name ?? null}
         initialSignatureAuthorTitle={data?.signature_author_title ?? null}
         initialAddress={data?.address ?? null}
-        initialPhone={data?.phone ?? null}
-        initialEmail={data?.email ?? null}
+        initialPhone={initialPhone}
+        initialEmail={initialEmail}
         fetchError={error?.message ?? null}
       />
     </>

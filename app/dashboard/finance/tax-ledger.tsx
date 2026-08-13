@@ -15,6 +15,7 @@ import type { TaxSettings, VatReturnPeriod } from "./tax-utils";
 import {
   TAX_SETTINGS_FULL_SELECT,
   emptyTaxSettings,
+  isGraTinConfigured,
   normalizeTaxSettings,
 } from "./tax-utils";
 import {
@@ -542,6 +543,8 @@ export default function TaxLedger({
     [settings],
   );
 
+  const graTinMissing = !isGraTinConfigured(settings);
+
   function openRemitCandidates(kind: RemitTaxKind) {
     if (!filters.periodMonth) {
       return [];
@@ -1000,16 +1003,36 @@ export default function TaxLedger({
       </div>
 
       {activeTab === "overview" && (
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="mb-1 text-lg font-semibold text-[#0f2744]">
-            Open Balances — All Time
-          </h3>
-          <p className="mb-4 text-sm text-slate-600">
-            Open statutory ledger entries across every period (current month
-            bucket: {formatPeriodMonthLabel(currentPeriodMonth)}).
-          </p>
-          <OverviewCards summary={allTimeSummary} />
-        </section>
+        <>
+          {graTinMissing ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-medium">Recommended setup: GRA TIN</p>
+              <p className="mt-1">
+                Add your Ghana Revenue Authority TIN in{" "}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("settings")}
+                  className="font-medium text-[#0f2744] underline underline-offset-2 hover:text-[#18365c]"
+                >
+                  Statutory Settings
+                </button>{" "}
+                so tax records are complete. This is optional — invoices and
+                statutory filings are not blocked if it is left blank.
+              </p>
+            </div>
+          ) : null}
+
+          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-1 text-lg font-semibold text-[#0f2744]">
+              Open Balances — All Time
+            </h3>
+            <p className="mb-4 text-sm text-slate-600">
+              Open statutory ledger entries across every period (current month
+              bucket: {formatPeriodMonthLabel(currentPeriodMonth)}).
+            </p>
+            <OverviewCards summary={allTimeSummary} />
+          </section>
+        </>
       )}
 
       {activeTab === "gra" &&
@@ -1153,7 +1176,12 @@ export default function TaxLedger({
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  GRA TIN
+                  GRA TIN{" "}
+                  {!isGraTinConfigured(settings) ? (
+                    <span className="font-normal text-amber-700">
+                      (recommended)
+                    </span>
+                  ) : null}
                 </label>
                 <input
                   type="text"
@@ -1164,6 +1192,12 @@ export default function TaxLedger({
                   className={inputClassName}
                   placeholder="GRA taxpayer identification number"
                 />
+                {!isGraTinConfigured(settings) ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    Optional. Used for tax filing records; leaving this blank
+                    does not block invoices or statutory remittances.
+                  </p>
+                ) : null}
               </div>
 
               <div>

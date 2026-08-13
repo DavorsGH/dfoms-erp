@@ -223,6 +223,7 @@ export default function Sites({
       const { error: saveError } = await supabase.from("sites").insert({
         ...payload,
         site_code: allocated.siteCode,
+        required_staff: 0,
       });
 
       if (saveError) {

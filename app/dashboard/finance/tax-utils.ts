@@ -119,6 +119,12 @@ export function normalizeProductSalesTaxRate(value: unknown): ProductSalesTaxRat
   return Number(value) === 3 ? 3 : 0;
 }
 
+export function isGraTinConfigured(
+  settings: Pick<TaxSettings, "gra_tin">,
+): boolean {
+  return Boolean(settings.gra_tin?.trim());
+}
+
 export function normalizeProductSaleNotificationThreshold(value: unknown): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {

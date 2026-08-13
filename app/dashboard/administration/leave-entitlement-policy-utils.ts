@@ -1,6 +1,7 @@
 /**
  * Leave entitlement policy — defaults by Position × Employment Type × Leave Type.
- * Fallback matches current product behavior: Annual Leave 15, Sick/Unpaid 0.
+ * Tenant-wide fallback: position __DEFAULT__ / employment_type __ALL__ (Leave Settings UI).
+ * Legacy hardcoded fallback when no row exists: Annual Leave 15, Sick/Unpaid 0.
  * Forward-only: only used when creating new employee_leave_balances rows.
  */
 
@@ -28,14 +29,55 @@ export type LeaveEntitlementPolicyRow = {
   entitled_days: number;
 };
 
+/** Sentinel values for tenant-wide default entitlements (Leave Settings UI). */
+export const LEAVE_ENTITLEMENT_DEFAULT_POSITION = "__DEFAULT__";
+export const LEAVE_ENTITLEMENT_DEFAULT_EMPLOYMENT_TYPE = "__ALL__";
+export const LEAVE_ENTITLEMENT_DEFAULT_LABEL = "Default (all positions)";
+
 export type LeaveTypeCatalogRow = {
   id: string;
   type_name: string;
 };
 
-/** Fallback when no leave_entitlement_policy row exists (matches script 55 / seed). */
+export function isLeaveEntitlementDefaultPolicyRow(
+  row: Pick<LeaveEntitlementPolicyRow, "position" | "employment_type">,
+): boolean {
+  return (
+    row.position === LEAVE_ENTITLEMENT_DEFAULT_POSITION &&
+    row.employment_type === LEAVE_ENTITLEMENT_DEFAULT_EMPLOYMENT_TYPE
+  );
+}
+
+/** Hardcoded fallback when no position-specific or tenant-default row exists. */
 export function leaveEntitlementFallback(leaveType: string): number {
   return leaveType.trim() === "Annual Leave" ? 15 : 0;
+}
+
+export function defaultLeaveEntitlementDraftValues(): Record<
+  LeaveEntitlementType,
+  string
+> {
+  return {
+    "Annual Leave": "15",
+    "Sick Leave": "0",
+    "Unpaid Leave": "0",
+  };
+}
+
+export function resolveLeaveEntitlementDefaultFromPolicies(
+  policies: LeaveEntitlementPolicyRow[],
+  leaveType: string,
+): number | null {
+  const lt = leaveType.trim();
+  const match = policies.find(
+    (row) => isLeaveEntitlementDefaultPolicyRow(row) && row.leave_type === lt,
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  return Math.round((Number(match.entitled_days) || 0) * 100) / 100;
 }
 
 export function resolveLeaveEntitlement(
@@ -58,6 +100,11 @@ export function resolveLeaveEntitlement(
     if (match) {
       return Math.round((Number(match.entitled_days) || 0) * 100) / 100;
     }
+  }
+
+  const tenantDefault = resolveLeaveEntitlementDefaultFromPolicies(policies, lt);
+  if (tenantDefault !== null) {
+    return tenantDefault;
   }
 
   return leaveEntitlementFallback(lt);
