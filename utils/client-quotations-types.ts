@@ -1,6 +1,7 @@
 import {
   AUTHORIZED_BY_OTHER,
   computeLineTotalCost,
+  isLineTaxedForSalesTax,
   formatGeneratedInvoiceNumber,
   formatInvoiceDate,
   formatInvoiceMoney,
@@ -293,7 +294,18 @@ export function computeQuotationTotals(
   const labourTotal = roundMoney(
     normalizedLines.reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
   );
-  const taxBase = taxBasis === "total_cost" ? subtotal : labourTotal;
+  const taxedLineSubtotal = roundMoney(
+    normalizedLines
+      .filter((line) => isLineTaxedForSalesTax(line.taxed))
+      .reduce((sum, line) => sum + line.total_cost, 0),
+  );
+  const taxedLabourTotal = roundMoney(
+    normalizedLines
+      .filter((line) => isLineTaxedForSalesTax(line.taxed))
+      .reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
+  );
+  const taxBase =
+    taxBasis === "total_cost" ? taxedLineSubtotal : taxedLabourTotal;
   const vat = roundMoney((taxBase * toNumber(vatRate)) / 100);
   const wht = roundMoney((taxBase * toNumber(whtRate)) / 100);
   const totalAmountDue = roundMoney(subtotal + vat);

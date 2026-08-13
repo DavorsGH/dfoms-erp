@@ -292,6 +292,11 @@ export function computeLineTotalCost(line: {
   );
 }
 
+/** Missing/undefined taxed defaults to true (matches line-item save + empty row defaults). */
+export function isLineTaxedForSalesTax(taxed: boolean | undefined | null): boolean {
+  return taxed !== false;
+}
+
 export function computeInvoiceTotals(
   lineItems: ClientInvoiceLineItemInput[],
   vatRate: unknown,
@@ -309,8 +314,18 @@ export function computeInvoiceTotals(
   const labourTotal = roundMoney(
     normalizedLines.reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
   );
+  const taxedLineSubtotal = roundMoney(
+    normalizedLines
+      .filter((line) => isLineTaxedForSalesTax(line.taxed))
+      .reduce((sum, line) => sum + line.total_cost, 0),
+  );
+  const taxedLabourTotal = roundMoney(
+    normalizedLines
+      .filter((line) => isLineTaxedForSalesTax(line.taxed))
+      .reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
+  );
   const taxBase =
-    taxBasis === "total_cost" ? subtotal : labourTotal;
+    taxBasis === "total_cost" ? taxedLineSubtotal : taxedLabourTotal;
   const vat = roundMoney((taxBase * toNumber(vatRate)) / 100);
   const wht = roundMoney((taxBase * toNumber(whtRate)) / 100);
   const totalAmountDue = roundMoney(subtotal + vat);
