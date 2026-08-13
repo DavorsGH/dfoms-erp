@@ -61,7 +61,7 @@ export const TAX_SETTINGS_SELECT =
 
 /** Full select for the Statutory Ledger settings editor. */
 export const TAX_SETTINGS_FULL_SELECT =
-  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, product_sales_tax_rate, product_sale_notification_threshold, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled";
+  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, product_sales_tax_rate, product_sale_notification_threshold, sales_tax_basis_reviewed_at, product_sales_tax_rate_reviewed_at, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled";
 
 export const TAX_RATE_CATALOG_SELECT =
   "id, tenant_id, tax_kind, code, label, rate_pct, is_active, sort_order";
@@ -90,6 +90,8 @@ export type TaxSettings = {
   next_ssnit_due_date: string | null;
   next_tier2_due_date: string | null;
   reminder_enabled: boolean;
+  sales_tax_basis_reviewed_at: string | null;
+  product_sales_tax_rate_reviewed_at: string | null;
 };
 
 export type TaxRateCatalogEntry = {
@@ -125,6 +127,42 @@ export function isGraTinConfigured(
   return Boolean(settings.gra_tin?.trim());
 }
 
+export function formatSalesTaxBasisReviewLabel(basis: SalesTaxBasis): string {
+  const match = SALES_TAX_BASIS_OPTIONS.find((option) => option.value === basis);
+  return match?.label ?? basis;
+}
+
+export function formatProductSalesTaxRateReviewLabel(
+  rate: ProductSalesTaxRate,
+): string {
+  const match = PRODUCT_SALES_TAX_RATE_OPTIONS.find(
+    (option) => option.value === rate,
+  );
+  return match?.label ?? `${rate}%`;
+}
+
+export function isSalesTaxBasisReviewed(
+  settings: Pick<TaxSettings, "sales_tax_basis_reviewed_at">,
+): boolean {
+  return Boolean(settings.sales_tax_basis_reviewed_at);
+}
+
+export function isProductSalesTaxRateReviewed(
+  settings: Pick<TaxSettings, "product_sales_tax_rate_reviewed_at">,
+): boolean {
+  return Boolean(settings.product_sales_tax_rate_reviewed_at);
+}
+
+function normalizeOptionalTimestamp(
+  value: string | null | undefined,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return value;
+}
+
 export function normalizeProductSaleNotificationThreshold(value: unknown): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -156,6 +194,8 @@ export function emptyTaxSettings(tenantId: string): TaxSettings {
     next_ssnit_due_date: null,
     next_tier2_due_date: null,
     reminder_enabled: true,
+    sales_tax_basis_reviewed_at: null,
+    product_sales_tax_rate_reviewed_at: null,
   };
 }
 
@@ -241,6 +281,12 @@ export function normalizeTaxSettings(
     next_ssnit_due_date: normalizeOptionalDate(raw.next_ssnit_due_date),
     next_tier2_due_date: normalizeOptionalDate(raw.next_tier2_due_date),
     reminder_enabled: raw.reminder_enabled ?? true,
+    sales_tax_basis_reviewed_at: normalizeOptionalTimestamp(
+      raw.sales_tax_basis_reviewed_at,
+    ),
+    product_sales_tax_rate_reviewed_at: normalizeOptionalTimestamp(
+      raw.product_sales_tax_rate_reviewed_at,
+    ),
   };
 }
 
@@ -292,20 +338,34 @@ export function resolveDefaultWhtRate(settings: TaxSettings | null): number {
 export async function loadTenantSalesTaxBasis(
   supabase: SupabaseClient,
   tenantId: string,
-): Promise<{ salesTaxBasis: SalesTaxBasis; error: string | null }> {
+): Promise<{
+  salesTaxBasis: SalesTaxBasis;
+  salesTaxBasisReviewedAt: string | null;
+  error: string | null;
+}> {
   const { data, error } = await supabase
     .from("tax_settings")
-    .select("sales_tax_basis")
+    .select("sales_tax_basis, sales_tax_basis_reviewed_at")
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
   if (error) {
-    return { salesTaxBasis: DEFAULT_SALES_TAX_BASIS, error: error.message };
+    return {
+      salesTaxBasis: DEFAULT_SALES_TAX_BASIS,
+      salesTaxBasisReviewedAt: null,
+      error: error.message,
+    };
   }
 
+  const row = data as {
+    sales_tax_basis?: string;
+    sales_tax_basis_reviewed_at?: string | null;
+  } | null;
+
   return {
-    salesTaxBasis: normalizeSalesTaxBasis(
-      (data as { sales_tax_basis?: string } | null)?.sales_tax_basis,
+    salesTaxBasis: normalizeSalesTaxBasis(row?.sales_tax_basis),
+    salesTaxBasisReviewedAt: normalizeOptionalTimestamp(
+      row?.sales_tax_basis_reviewed_at,
     ),
     error: null,
   };

@@ -15,6 +15,7 @@ import type { TaxSettings, VatReturnPeriod } from "./tax-utils";
 import {
   TAX_SETTINGS_FULL_SELECT,
   emptyTaxSettings,
+  formatProductSalesTaxRateReviewLabel,
   isGraTinConfigured,
   normalizeTaxSettings,
 } from "./tax-utils";
@@ -59,6 +60,7 @@ import {
 import { isPaidStatus } from "./accrued-wages-utils";
 import ProductSalesTaxRateSettings from "./product-sales-tax-rate-settings";
 import ProductSaleNotificationThresholdSettings from "./product-sale-notification-threshold-settings";
+import TaxSettingReviewBanner from "./tax-setting-review-banner";
 
 type TaxLedgerProps = {
   tenantId: string;
@@ -1022,6 +1024,19 @@ export default function TaxLedger({
             </div>
           ) : null}
 
+          <TaxSettingReviewBanner
+            tenantId={tenantId}
+            title="Review Product Sales Tax Rate"
+            body="New workspaces default product sales and POS checkout tax treatment. Confirm or change it before processing product sales — this does not block sales."
+            currentSettingLabel={formatProductSalesTaxRateReviewLabel(
+              settings.product_sales_tax_rate,
+            )}
+            reviewedAt={settings.product_sales_tax_rate_reviewed_at}
+            reviewField="product_sales_tax_rate_reviewed_at"
+            onGoToSettings={() => setActiveTab("settings")}
+            settingsLinkLabel="Open Statutory Settings"
+          />
+
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <h3 className="mb-1 text-lg font-semibold text-[#0f2744]">
               Open Balances — All Time
@@ -1150,6 +1165,17 @@ export default function TaxLedger({
 
       {activeTab === "settings" && (
         <div className="space-y-6">
+        <TaxSettingReviewBanner
+          tenantId={tenantId}
+          title="Review Product Sales Tax Rate"
+          body="Confirm the default output tax rate for Product Sales and POS checkout, or change it below."
+          currentSettingLabel={formatProductSalesTaxRateReviewLabel(
+            settings.product_sales_tax_rate,
+          )}
+          reviewedAt={settings.product_sales_tax_rate_reviewed_at}
+          reviewField="product_sales_tax_rate_reviewed_at"
+        />
+
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             Statutory Settings

@@ -6,13 +6,16 @@ import { createClient } from "@/utils/supabase/client";
 import {
   DEFAULT_SALES_TAX_BASIS,
   SALES_TAX_BASIS_OPTIONS,
+  formatSalesTaxBasisReviewLabel,
   normalizeSalesTaxBasis,
   type SalesTaxBasis,
 } from "@/app/dashboard/finance/tax-utils";
+import TaxSettingReviewBanner from "@/app/dashboard/finance/tax-setting-review-banner";
 
 type SalesTaxBasisSettingsProps = {
   tenantId: string;
   initialSalesTaxBasis: SalesTaxBasis;
+  initialSalesTaxBasisReviewedAt: string | null;
   fetchError?: string | null;
 };
 
@@ -25,6 +28,7 @@ const primaryButtonClassName =
 export default function SalesTaxBasisSettings({
   tenantId,
   initialSalesTaxBasis,
+  initialSalesTaxBasisReviewedAt,
   fetchError = null,
 }: SalesTaxBasisSettingsProps) {
   const router = useRouter();
@@ -63,7 +67,17 @@ export default function SalesTaxBasisSettings({
   }
 
   return (
-    <section className="max-w-2xl rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="max-w-2xl space-y-4">
+      <TaxSettingReviewBanner
+        tenantId={tenantId}
+        title="Review VAT/WHT calculation basis"
+        body="New workspaces start with a default basis for Client Invoices and Quotations. Confirm or change it before you start invoicing — this does not block document creation."
+        currentSettingLabel={formatSalesTaxBasisReviewLabel(salesTaxBasis)}
+        reviewedAt={initialSalesTaxBasisReviewedAt}
+        reviewField="sales_tax_basis_reviewed_at"
+      />
+
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error ? (
           <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -116,6 +130,7 @@ export default function SalesTaxBasisSettings({
           {saving ? "Saving…" : "Save Setting"}
         </button>
       </form>
-    </section>
+      </section>
+    </div>
   );
 }

@@ -15,7 +15,6 @@ const CRYPTO_METHOD = "Crypto Currency";
 
 const TRANSACTION_TABLES = [
   { table: "expense_register", column: "payment_method" },
-  { table: "income_register", column: "payment_method" },
   { table: "raw_material_purchases", column: "payment_method" },
   { table: "product_purchases", column: "payment_method" },
   { table: "fixed_assets", column: "payment_method" },

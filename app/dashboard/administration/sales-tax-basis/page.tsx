@@ -26,10 +26,8 @@ export default async function SalesTaxBasisPage() {
     { onConflict: "tenant_id", ignoreDuplicates: true },
   );
 
-  const { salesTaxBasis, error } = await loadTenantSalesTaxBasis(
-    supabase,
-    tenantId,
-  );
+  const { salesTaxBasis, salesTaxBasisReviewedAt, error } =
+    await loadTenantSalesTaxBasis(supabase, tenantId);
 
   return (
     <>
@@ -44,6 +42,7 @@ export default async function SalesTaxBasisPage() {
       <SalesTaxBasisSettings
         tenantId={tenantId}
         initialSalesTaxBasis={salesTaxBasis}
+        initialSalesTaxBasisReviewedAt={salesTaxBasisReviewedAt}
         fetchError={error}
       />
     </>
