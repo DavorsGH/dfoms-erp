@@ -4,12 +4,14 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import { fetchLandlordTypeForTenant } from "@/utils/rent-ledger-management";
 import {
+  formatRentPaymentMethod,
   isManualPaymentMethod,
   isRentLedgerStatus,
   resolveManualPaymentVerificationStatus,
   resolveRentStatusAfterPayment,
   type RentLedgerStatus,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
+import { voidNotifyRentPaymentSuccess } from "@/utils/real-estate-document-notifications";
 
 type RecordPaymentBody = {
   tenant_id?: string;
@@ -80,14 +82,17 @@ export async function POST(request: Request) {
 
   const { landlordType, fetchError: landlordTypeError } =
     await fetchLandlordTypeForTenant(admin, landlord.tenantId);
-  if (landlordTypeError) {
-    return NextResponse.json({ error: landlordTypeError }, { status: 400 });
+  if (landlordTypeError || !landlordType) {
+    return NextResponse.json(
+      { error: landlordTypeError ?? "Landlord type not configured." },
+      { status: 400 },
+    );
   }
 
   const { data: entry, error: entryError } = await admin
     .from("rent_ledger")
     .select(
-      "entry_id, amount_due_ghs, amount_paid_ghs, credit_ghs, status, notes, verification_status",
+      "entry_id, lease_id, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, status, notes, verification_status",
     )
     .eq("tenant_id", landlord.tenantId)
     .eq("entry_id", entryId)
@@ -155,6 +160,31 @@ export async function POST(request: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
+  }
+
+  const leaseId = (entry.lease_id as string | null)?.trim() ?? "";
+  if (leaseId) {
+    const { data: lease } = await admin
+      .from("leases")
+      .select("lessee_id")
+      .eq("tenant_id", landlord.tenantId)
+      .eq("lease_id", leaseId)
+      .maybeSingle();
+
+    const lesseeId = (lease?.lessee_id as string | null)?.trim() ?? "";
+    if (lesseeId) {
+      voidNotifyRentPaymentSuccess({
+        tenantId: landlord.tenantId,
+        landlordType,
+        amountGhs: paymentAmount,
+        periodStart: entry.period_start as string,
+        periodEnd: entry.period_end as string,
+        paymentMethod: formatRentPaymentMethod(paymentMethod),
+        lesseeId,
+        primaryEntryId: entryId,
+        notifyStaff: true,
+      });
+    }
   }
 
   return NextResponse.json({

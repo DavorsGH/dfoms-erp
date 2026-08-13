@@ -7,6 +7,7 @@ import {
   isLateFeeType,
   suggestAdvanceRentAmountGhs,
 } from "@/app/dashboard/real-estate/leases-utils";
+import { voidNotifySecurityDepositCollected } from "@/utils/real-estate-document-notifications";
 
 export type CreateLeaseInput = {
   tenantId: string;
@@ -372,6 +373,12 @@ export async function createLeaseForLandlord(
   if (depositError) {
     return { ok: false, error: depositError.message, status: 400 };
   }
+
+  voidNotifySecurityDepositCollected({
+    tenantId: landlord.tenantId,
+    depositId,
+    leaseId,
+  });
 
   if (applicationId) {
     await admin

@@ -4,6 +4,10 @@ import {
   acknowledgeLeaseParty,
   markLeaseSent,
 } from "@/utils/lease-signature";
+import {
+  voidNotifyLeaseFullySigned,
+  voidNotifyLeaseSent,
+} from "@/utils/real-estate-document-notifications";
 
 export const runtime = "nodejs";
 
@@ -63,6 +67,12 @@ export async function POST(request: Request) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+    if (result.changed) {
+      voidNotifyLeaseSent({
+        tenantId: auth.session.tenantId,
+        leaseId,
+      });
+    }
     return NextResponse.json({ ok: true, status: result.status });
   }
 
@@ -75,6 +85,12 @@ export async function POST(request: Request) {
   });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+  if (result.status === "signed") {
+    voidNotifyLeaseFullySigned({
+      tenantId: auth.session.tenantId,
+      leaseId,
+    });
   }
   return NextResponse.json({ ok: true, status: result.status });
 }

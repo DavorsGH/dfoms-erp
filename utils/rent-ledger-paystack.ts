@@ -2,10 +2,8 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { sendResendEmail } from "@/utils/resend-email";
-import { sendHubtelSms } from "@/utils/hubtel-sms";
-import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { fetchEscrowBalanceForLandlord } from "@/utils/payout-management";
+import { voidNotifyRentPaymentSuccess } from "@/utils/real-estate-document-notifications";
 import { roundPayoutMoney } from "@/app/dashboard/real-estate/payouts-utils";
 import {
   formatRentMoney,
@@ -19,9 +17,6 @@ import {
   type RentVerificationStatus,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
-import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
-import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
-import { notifyStaffRentPaymentReceived } from "@/utils/real-estate-staff-notifications";
 import { postRentPaystackFee } from "@/utils/paystack-finance-posting";
 
 export const RENT_LEDGER_PAYSTACK_CONTEXT = "rent_ledger" as const;
@@ -442,187 +437,6 @@ async function insertEscrowCollection(options: {
   return balanceAfter;
 }
 
-async function notifyRentPaystackSuccess(options: {
-  tenantId: string;
-  landlordType: LandlordType;
-  amountGhs: number;
-  periodStart: string;
-  periodEnd: string;
-  paymentMethod: string;
-  escrowBalanceAfterGhs: number | null;
-  lesseeId: string;
-  primaryEntryId: string;
-}): Promise<void> {
-  const admin = createAdminClient();
-  const periodLabel = formatRentPeriod(options.periodStart, options.periodEnd);
-  const amountLabel = formatRentMoney(options.amountGhs);
-
-  const [{ data: lessee }, { data: landlordTenant }] = await Promise.all([
-    admin
-      .from("lessees")
-      .select("full_name, email, phone")
-      .eq("tenant_id", options.tenantId)
-      .eq("lessee_id", options.lesseeId)
-      .maybeSingle(),
-    admin
-      .from("tenants")
-      .select("name, email, phone")
-      .eq("id", options.tenantId)
-      .maybeSingle(),
-  ]);
-
-  const lesseeName = lessee?.full_name?.trim() || "Tenant";
-  const landlordName = landlordTenant?.name?.trim() || "Landlord";
-
-  // 1) Tenant receipt
-  const tenantSubject = `Rent payment receipt — ${periodLabel}`;
-  const tenantText = [
-    `Hi ${lesseeName},`,
-    "",
-    `We received your rent payment of ${amountLabel}.`,
-    `Period: ${periodLabel}`,
-    `Method: ${options.paymentMethod}`,
-    "",
-    "Thank you.",
-    "Davors Facilities",
-  ].join("\n");
-  const tenantHtml = `<p>Hi ${escapeHtml(lesseeName)},</p>
-<p>We received your rent payment of <strong>${escapeHtml(amountLabel)}</strong>.</p>
-<p>Period: ${escapeHtml(periodLabel)}<br/>Method: ${escapeHtml(options.paymentMethod)}</p>
-<p>Thank you.<br/>Davors Facilities</p>`;
-
-  const lesseeEmail = asString(lessee?.email);
-  if (lesseeEmail) {
-    const emailResult = await sendResendEmail({
-      to: lesseeEmail,
-      subject: tenantSubject,
-      html: tenantHtml,
-      text: tenantText,
-    });
-    if (!emailResult.ok) {
-      console.error(
-        "[rent-ledger-paystack] tenant receipt email failed:",
-        emailResult.error,
-      );
-    }
-  }
-
-  const lesseePhone = normalizeGhanaPhone(lessee?.phone);
-  if (lesseePhone) {
-    const smsResult = await sendHubtelSms({
-      to: lesseePhone,
-      content: `Davors: Rent payment of ${amountLabel} received for ${periodLabel} via ${options.paymentMethod}. Thank you.`,
-    });
-    if (!smsResult.ok) {
-      console.error(
-        "[rent-ledger-paystack] tenant receipt SMS failed:",
-        smsResult.error,
-      );
-    }
-  }
-
-  const tenantInAppBody = [
-    `We received your rent payment of ${amountLabel}.`,
-    `Period: ${periodLabel}`,
-    `Method: ${options.paymentMethod}`,
-  ].join("\n");
-  await insertLesseePortalNotification({
-    landlordTenantId: options.tenantId,
-    lesseeId: options.lesseeId,
-    title: "Rent payment receipt",
-    body: tenantInAppBody,
-    actionUrl: `/portal/payments/${options.primaryEntryId}`,
-    context: `rent-receipt-tenant:${options.lesseeId}:${periodLabel}`,
-  });
-
-  // 2) Landlord "rent received" (sole landlord in-app path for rent payments)
-  const escrowLine =
-    options.landlordType === "davors_managed" &&
-    options.escrowBalanceAfterGhs != null
-      ? `Updated escrow balance: ${formatRentMoney(options.escrowBalanceAfterGhs)}.`
-      : null;
-
-  const landlordSubject = `Rent received — ${lesseeName}`;
-  const landlordText = [
-    `Hi ${landlordName},`,
-    "",
-    `Rent of ${amountLabel} was received from ${lesseeName}.`,
-    `Period: ${periodLabel}`,
-    `Method: ${options.paymentMethod}`,
-    escrowLine,
-    "",
-    "Davors Facilities",
-  ]
-    .filter(Boolean)
-    .join("\n");
-  const landlordHtml = `<p>Hi ${escapeHtml(landlordName)},</p>
-<p>Rent of <strong>${escapeHtml(amountLabel)}</strong> was received from ${escapeHtml(lesseeName)}.</p>
-<p>Period: ${escapeHtml(periodLabel)}<br/>Method: ${escapeHtml(options.paymentMethod)}${
-    escrowLine ? `<br/>${escapeHtml(escrowLine)}` : ""
-  }</p>
-<p>Davors Facilities</p>`;
-
-  const landlordEmail = asString(landlordTenant?.email);
-  if (landlordEmail) {
-    const emailResult = await sendResendEmail({
-      to: landlordEmail,
-      subject: landlordSubject,
-      html: landlordHtml,
-      text: landlordText,
-    });
-    if (!emailResult.ok) {
-      console.error(
-        "[rent-ledger-paystack] landlord notice email failed:",
-        emailResult.error,
-      );
-    }
-  }
-
-  const landlordPhone = normalizeGhanaPhone(landlordTenant?.phone);
-  if (landlordPhone) {
-    const smsParts = [
-      `Davors: Rent ${amountLabel} received from ${lesseeName} (${periodLabel}) via ${options.paymentMethod}.`,
-    ];
-    if (escrowLine) {
-      smsParts.push(escrowLine);
-    }
-    const smsResult = await sendHubtelSms({
-      to: landlordPhone,
-      content: smsParts.join(" "),
-    });
-    if (!smsResult.ok) {
-      console.error(
-        "[rent-ledger-paystack] landlord notice SMS failed:",
-        smsResult.error,
-      );
-    }
-  }
-
-  const landlordInAppBody = [
-    `Rent of ${amountLabel} was received from ${lesseeName}.`,
-    `Period: ${periodLabel}`,
-    `Method: ${options.paymentMethod}`,
-    escrowLine,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  await insertLandlordPortalNotification({
-    landlordTenantId: options.tenantId,
-    title: "Rent payment received",
-    body: landlordInAppBody,
-    actionUrl: "/landlord-portal/finance/rent-ledger",
-    context: `rent-receipt-landlord:${options.lesseeId}:${periodLabel}`,
-  });
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /**
  * Apply a verified Paystack charge to one or more rent_ledger rows.
  * Idempotent via notes marker `[paystack:reference]` on each applied row.
@@ -915,44 +729,18 @@ export async function fulfillRentLedgerPaystackPayment(
     primaryEntry.period_end;
 
   if (!options.skipNotify && lesseeId) {
-    try {
-      await notifyRentPaystackSuccess({
-        tenantId,
-        landlordType,
-        amountGhs: totalApplied,
-        periodStart: notifyPeriodStart,
-        periodEnd: notifyPeriodEnd,
-        paymentMethod: paymentMethodLabel,
-        escrowBalanceAfterGhs,
-        lesseeId,
-        primaryEntryId: primaryEntry.entry_id,
-      });
-    } catch (error) {
-      console.error(
-        "[rent-ledger-paystack] notification failed:",
-        error instanceof Error ? error.message : error,
-      );
-    }
-  }
-
-  if (!options.skipNotify) {
-    try {
-      await notifyStaffRentPaymentReceived({
-        landlordTenantId: tenantId,
-        leaseId,
-        entryId: primaryEntry.entry_id,
-        amountGhs: totalApplied,
-        periodStart: notifyPeriodStart,
-        periodEnd: notifyPeriodEnd,
-        paymentMethod: paymentMethodLabel,
-        reference,
-      });
-    } catch (error) {
-      console.error(
-        "[rent-ledger-paystack] staff notification failed:",
-        error instanceof Error ? error.message : error,
-      );
-    }
+    voidNotifyRentPaymentSuccess({
+      tenantId,
+      landlordType,
+      amountGhs: totalApplied,
+      periodStart: notifyPeriodStart,
+      periodEnd: notifyPeriodEnd,
+      paymentMethod: paymentMethodLabel,
+      escrowBalanceAfterGhs,
+      lesseeId,
+      primaryEntryId: primaryEntry.entry_id,
+      paymentReference: reference,
+    });
   }
 
   return {

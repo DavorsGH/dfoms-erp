@@ -1,9 +1,12 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { RentPaymentReceiptData } from "@/utils/rent-payment-receipt";
+import RealEstatePdfSignatureBlock, {
+  type RealEstatePdfSignatureBlockProps,
+} from "./real-estate-pdf-signature-block";
 
 export type RentPaymentReceiptPdfProps = {
   receipt: RentPaymentReceiptData;
-};
+} & RealEstatePdfSignatureBlockProps;
 
 const styles = StyleSheet.create({
   page: {
@@ -82,6 +85,9 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 export default function RentPaymentReceiptPdfDocument({
   receipt,
+  authorizedByName,
+  authorizedByTitle,
+  signatureImageUrl,
 }: RentPaymentReceiptPdfProps) {
   const periodLabel =
     receipt.chargeType === "one_time"
@@ -116,6 +122,12 @@ export default function RentPaymentReceiptPdfDocument({
         {receipt.notes ? (
           <DetailRow label="Notes" value={receipt.notes} />
         ) : null}
+
+        <RealEstatePdfSignatureBlock
+          authorizedByName={authorizedByName}
+          authorizedByTitle={authorizedByTitle}
+          signatureImageUrl={signatureImageUrl}
+        />
 
         <Text style={styles.footer}>
           Generated from Davors Facilities. Keep this receipt for your records.

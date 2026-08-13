@@ -1048,6 +1048,10 @@ export type LandlordPortalWorkspaceProfile = {
   phone: string | null;
   address: string | null;
   logoUrl: string | null;
+  landlordType: LandlordType | null;
+  signatureUrl: string | null;
+  signatureAuthorName: string | null;
+  signatureAuthorTitle: string | null;
 };
 
 export type LandlordPortalLesseeAccountPortalStatus =
@@ -1937,7 +1941,9 @@ export async function fetchLandlordPortalWorkspaceProfile(
       .maybeSingle(),
     admin
       .from("landlords")
-      .select("notification_phone, logo_url")
+      .select(
+        "notification_phone, logo_url, landlord_type, signature_url, signature_author_name, signature_author_title",
+      )
       .eq("tenant_id", session.tenantId)
       .maybeSingle(),
   ]);
@@ -1968,6 +1974,24 @@ export async function fetchLandlordPortalWorkspaceProfile(
     ? (await createTenantLogosSignedUrl(admin, rawLogoUrl)) ?? rawLogoUrl
     : null;
 
+  const landlordType =
+    landlordResult.data?.landlord_type === "davors_managed"
+      ? "davors_managed"
+      : landlordResult.data?.landlord_type === "platform_only"
+        ? "platform_only"
+        : session.landlordType;
+
+  const isPlatformOnly = landlordType === "platform_only";
+  const rawSignatureUrl =
+    isPlatformOnly &&
+    typeof landlordResult.data?.signature_url === "string" &&
+    landlordResult.data.signature_url.trim()
+      ? landlordResult.data.signature_url.trim()
+      : null;
+  const signatureUrl = rawSignatureUrl
+    ? (await createTenantLogosSignedUrl(admin, rawSignatureUrl)) ?? rawSignatureUrl
+    : null;
+
   return {
     data: {
       name: typeof data.name === "string" ? data.name : session.fullName,
@@ -1976,6 +2000,18 @@ export async function fetchLandlordPortalWorkspaceProfile(
       phone: notificationPhone ?? tenantPhone,
       address: typeof data.address === "string" ? data.address : null,
       logoUrl,
+      landlordType,
+      signatureUrl: isPlatformOnly ? signatureUrl : null,
+      signatureAuthorName: isPlatformOnly
+        ? (typeof landlordResult.data?.signature_author_name === "string"
+            ? landlordResult.data.signature_author_name.trim() || null
+            : null)
+        : null,
+      signatureAuthorTitle: isPlatformOnly
+        ? (typeof landlordResult.data?.signature_author_title === "string"
+            ? landlordResult.data.signature_author_title.trim() || null
+            : null)
+        : null,
     },
     error: null,
   };

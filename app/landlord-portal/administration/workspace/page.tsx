@@ -49,6 +49,10 @@ export default async function LandlordPortalWorkspacePage() {
           initialPhone={data.phone}
           initialAddress={data.address}
           initialLogoUrl={data.logoUrl}
+          landlordType={data.landlordType}
+          initialSignatureUrl={data.signatureUrl}
+          initialSignatureAuthorName={data.signatureAuthorName}
+          initialSignatureAuthorTitle={data.signatureAuthorTitle}
         />
       ) : null}
     </section>

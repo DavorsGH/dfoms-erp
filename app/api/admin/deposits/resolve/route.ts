@@ -6,6 +6,7 @@ import {
   isDepositStatus,
   type DepositStatus,
 } from "@/app/dashboard/real-estate/leases-utils";
+import { voidNotifySecurityDepositResolved } from "@/utils/real-estate-document-notifications";
 
 type ResolveDepositBody = {
   tenant_id?: string;
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
 
   const { data: deposit, error: depositError } = await admin
     .from("security_deposits")
-    .select("deposit_id, amount_ghs, status")
+    .select("deposit_id, lease_id, amount_ghs, status")
     .eq("tenant_id", landlord.tenantId)
     .eq("deposit_id", depositId)
     .maybeSingle();
@@ -117,6 +118,16 @@ export async function POST(request: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  const leaseId = (deposit.lease_id as string | null)?.trim() ?? "";
+  if (leaseId) {
+    voidNotifySecurityDepositResolved({
+      tenantId: landlord.tenantId,
+      depositId,
+      leaseId,
+      status,
+    });
   }
 
   return NextResponse.json({ success: true });

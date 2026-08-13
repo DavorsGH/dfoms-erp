@@ -93,7 +93,10 @@ export async function markLeaseSent(options: {
   admin: SupabaseClient;
   tenantId: string;
   leaseId: string;
-}): Promise<{ ok: true; status: LeaseSignatureStatus } | { ok: false; error: string }> {
+}): Promise<
+  | { ok: true; status: LeaseSignatureStatus; changed: boolean }
+  | { ok: false; error: string }
+> {
   const { data: lease, error } = await options.admin
     .from("leases")
     .select(
@@ -122,7 +125,7 @@ export async function markLeaseSent(options: {
   }
 
   if (current === "sent") {
-    return { ok: true, status: "sent" };
+    return { ok: true, status: "sent", changed: false };
   }
 
   const now = new Date().toISOString();
@@ -139,7 +142,7 @@ export async function markLeaseSent(options: {
     return { ok: false, error: updateError.message };
   }
 
-  return { ok: true, status: "sent" };
+  return { ok: true, status: "sent", changed: true };
 }
 
 export async function acknowledgeLeaseParty(options: {
@@ -149,7 +152,7 @@ export async function acknowledgeLeaseParty(options: {
   party: "landlord" | "tenant";
   acknowledgedBy: string;
 }): Promise<
-  | { ok: true; status: LeaseSignatureStatus }
+  | { ok: true; status: LeaseSignatureStatus; changed: boolean }
   | { ok: false; error: string }
 > {
   const { data: lease, error } = await options.admin
@@ -226,5 +229,5 @@ export async function acknowledgeLeaseParty(options: {
     return { ok: false, error: updateError.message };
   }
 
-  return { ok: true, status: nextStatus };
+  return { ok: true, status: nextStatus, changed: true };
 }

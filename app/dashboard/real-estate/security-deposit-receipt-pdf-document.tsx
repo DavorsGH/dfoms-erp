@@ -1,13 +1,16 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { SecurityDepositReceiptData } from "@/utils/security-deposit-receipt";
 import { formatDepositStatus } from "./leases-utils";
+import RealEstatePdfSignatureBlock, {
+  type RealEstatePdfSignatureBlockProps,
+} from "./real-estate-pdf-signature-block";
 
 export type SecurityDepositReceiptPdfKind = "collection" | "resolution";
 
 export type SecurityDepositReceiptPdfProps = {
   receipt: SecurityDepositReceiptData;
   kind: SecurityDepositReceiptPdfKind;
-};
+} & RealEstatePdfSignatureBlockProps;
 
 const styles = StyleSheet.create({
   page: {
@@ -88,6 +91,9 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 export default function SecurityDepositReceiptPdfDocument({
   receipt,
   kind,
+  authorizedByName,
+  authorizedByTitle,
+  signatureImageUrl,
 }: SecurityDepositReceiptPdfProps) {
   const title =
     kind === "collection"
@@ -144,6 +150,12 @@ export default function SecurityDepositReceiptPdfDocument({
             />
           </>
         )}
+
+        <RealEstatePdfSignatureBlock
+          authorizedByName={authorizedByName}
+          authorizedByTitle={authorizedByTitle}
+          signatureImageUrl={signatureImageUrl}
+        />
 
         <Text style={styles.footer}>
           Generated from Davors Facilities. Keep this document for your records.

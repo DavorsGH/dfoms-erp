@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { acknowledgeLeaseParty } from "@/utils/lease-signature";
+import { voidNotifyLeaseFullySigned } from "@/utils/real-estate-document-notifications";
 
 export const runtime = "nodejs";
 
@@ -65,6 +66,13 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+
+  if (result.status === "signed") {
+    voidNotifyLeaseFullySigned({
+      tenantId: session.tenantId,
+      leaseId: lease.lease_id,
+    });
   }
 
   return NextResponse.json({ ok: true, status: result.status });

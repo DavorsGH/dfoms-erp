@@ -1,5 +1,8 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { DEFAULT_LEASE_NOTICE_PERIOD_LABEL } from "./leases-utils";
+import RealEstatePdfSignatureBlock, {
+  type RealEstatePdfSignatureBlockProps,
+} from "./real-estate-pdf-signature-block";
 
 export {
   DEFAULT_LEASE_NOTICE_PERIOD_LABEL,
@@ -36,7 +39,7 @@ export type LeasePdfDocumentProps = {
   depositAmountGhs: number | null;
   /** Display string e.g. "3 months" from leases.termination_notice_months */
   noticePeriodLabel: string;
-};
+} & RealEstatePdfSignatureBlockProps;
 
 const styles = StyleSheet.create({
   page: {
@@ -394,6 +397,12 @@ export default function LeasePdfDocument(props: LeasePdfDocumentProps) {
           </Text>
           <Text style={styles.sheetRow}>WITNESS FOR TENANT</Text>
         </View>
+
+        <RealEstatePdfSignatureBlock
+          authorizedByName={props.authorizedByName}
+          authorizedByTitle={props.authorizedByTitle}
+          signatureImageUrl={props.signatureImageUrl}
+        />
       </Page>
 
       <Page size="A4" style={styles.page}>
