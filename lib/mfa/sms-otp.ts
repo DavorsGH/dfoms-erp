@@ -87,6 +87,7 @@ export async function createAndSendSmsOtpChallenge(options: {
   const smsResult = await sendHubtelSms({
     to: options.phoneE164,
     content: `Your Davors ${label} code is ${otp}. It expires in ${OTP_TTL_MINUTES} minutes.`,
+    purpose: "otp",
   });
 
   if (!smsResult.ok) {

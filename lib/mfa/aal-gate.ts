@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@supabase/supabase-js";
-import { isMfaEnforcementEnabled } from "./config";
+import { isMfaEnforcementEnabled, isMfaSmsLoginBypassEnabled } from "./config";
 import { hasValidLoginMfaSession } from "./mfa-session";
 import { isTotpMfaSatisfied } from "./totp";
 import type { MfaGateStatus, MfaMethod, UserMfaSettingsRow } from "./types";
@@ -58,6 +58,10 @@ export async function getMfaGateStatus(
   }
 
   if (method === "sms") {
+    if (isMfaSmsLoginBypassEnabled()) {
+      return "not_required";
+    }
+
     if (!sessionKey) {
       return "pending";
     }

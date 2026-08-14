@@ -31,3 +31,25 @@ export function getMfaEnforcementEnvDebug(): {
     enabled: raw === "true",
   };
 }
+
+/**
+ * Emergency bypass when SMS OTP delivery is unavailable (e.g. Hubtel outage).
+ * When true, accounts with method=sms can log in with password only; stored
+ * preference is unchanged. TOTP and method=none are unaffected.
+ *
+ * Set MFA_SMS_LOGIN_BYPASS=true on Vercel, redeploy, then revert when SMS works.
+ */
+export function readMfaSmsLoginBypassRaw(): string | undefined {
+  return process.env["MFA_SMS_LOGIN_BYPASS"];
+}
+
+/** Sync — safe for Edge Middleware. */
+export function isMfaSmsLoginBypassEnabled(): boolean {
+  return readMfaSmsLoginBypassRaw() === "true";
+}
+
+export async function isMfaSmsLoginBypassEnabledAtRuntime(): Promise<boolean> {
+  const { connection } = await import("next/server");
+  await connection();
+  return readMfaSmsLoginBypassRaw() === "true";
+}

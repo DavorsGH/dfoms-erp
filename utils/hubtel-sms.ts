@@ -1,8 +1,21 @@
 import "server-only";
 
+/** OTP/auth SMS always send. Everything else respects NON_OTP_SMS_ENABLED. */
+export type SmsSendPurpose = "otp" | "transactional";
+
 export type SendSmsResult =
   | { ok: true; id: string | null }
   | { ok: false; error: string };
+
+/**
+ * Temporary kill switch during Hubtel → new provider migration.
+ * Default false: non-OTP SMS short-circuit at sendHubtelSms (no Hubtel call).
+ * OTP/login/enrollment codes (purpose=otp) are always sent regardless.
+ * Set NON_OTP_SMS_ENABLED=true to re-enable transactional SMS after migration.
+ */
+export function isNonOtpSmsSendingEnabled(): boolean {
+  return process.env["NON_OTP_SMS_ENABLED"] === "true";
+}
 
 type HubtelSendResponse = {
   status?: unknown;
@@ -21,7 +34,22 @@ export async function sendHubtelSms(options: {
   to: string;
   content: string;
   from?: string;
+  /** otp = MFA/login codes; transactional = all tenant notifications (default). */
+  purpose?: SmsSendPurpose;
 }): Promise<SendSmsResult> {
+  const purpose = options.purpose ?? "transactional";
+
+  if (purpose !== "otp" && !isNonOtpSmsSendingEnabled()) {
+    console.warn(
+      `[hubtel-sms] Non-OTP SMS suppressed (purpose=${purpose}, to=${options.to.trim()}). NON_OTP_SMS_ENABLED is not true.`,
+    );
+    return {
+      ok: false,
+      error:
+        "Non-OTP SMS disabled (NON_OTP_SMS_ENABLED=false; temporary Hubtel migration kill switch).",
+    };
+  }
+
   const clientId = (process.env.HUBTEL_CLIENT_ID ?? "").trim();
   const clientSecret = (process.env.HUBTEL_CLIENT_SECRET ?? "").trim();
   const from =

@@ -1,5 +1,8 @@
 import { getUserMfaSettings } from "./aal-gate";
-import { isMfaEnforcementEnabledAtRuntime } from "./config";
+import {
+  isMfaEnforcementEnabledAtRuntime,
+  isMfaSmsLoginBypassEnabledAtRuntime,
+} from "./config";
 import { maskPhoneE164 } from "./phone-utils";
 import { resolveEnrolledSmsPhone } from "./sms-phone";
 import type { PostLoginMfaResult } from "./types";
@@ -25,6 +28,13 @@ export async function evaluatePostPasswordMfa(
   }
 
   if (method === "sms") {
+    if (await isMfaSmsLoginBypassEnabledAtRuntime()) {
+      console.warn(
+        `[mfa] SMS login bypass active for auth_uid=${authUid} (Hubtel/outage workaround).`,
+      );
+      return { mfaRequired: false };
+    }
+
     const enrolledPhone = await resolveEnrolledSmsPhone(authUid);
     return {
       mfaRequired: true,

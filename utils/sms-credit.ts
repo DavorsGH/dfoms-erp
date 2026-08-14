@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/utils/supabase/admin";
+import { isNonOtpSmsSendingEnabled } from "@/utils/hubtel-sms";
 
 /**
  * Debit one SMS credit for the tenant. Returns true when the debit succeeds
@@ -9,6 +10,13 @@ import { createAdminClient } from "@/utils/supabase/admin";
  * SMS; false → skip SMS (do not call Hubtel).
  */
 export async function tryDebitSmsCredit(tenantId: string): Promise<boolean> {
+  if (!isNonOtpSmsSendingEnabled()) {
+    console.warn(
+      `[sms-credit] debit skipped — NON_OTP_SMS_ENABLED is not true (tenant ${tenantId?.trim() ?? "(missing)"}).`,
+    );
+    return false;
+  }
+
   const cleaned = tenantId?.trim() ?? "";
   if (!cleaned) {
     console.error("[sms-credit] debit_sms_credit skipped: missing tenantId.");
