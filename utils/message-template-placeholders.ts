@@ -46,10 +46,27 @@ export const CUSTOMER_TEMPLATE_PLACEHOLDERS = [
   "status",
 ] as const;
 
+/** From fireTransactionalNotification client-document events. */
+export const CLIENT_DOCUMENT_TEMPLATE_PLACEHOLDERS = [
+  "tenant_name",
+  "customer_name",
+  "quotation_number",
+  "invoice_number",
+  "receipt_number",
+  "amount",
+  "valid_until",
+  "due_date",
+  "payment_date",
+  "portal_quotations_url",
+  "portal_invoices_url",
+  "portal_receipts_url",
+] as const;
+
 export type TemplatePlaceholderName =
   | (typeof LESSEE_TEMPLATE_PLACEHOLDERS)[number]
   | (typeof EMPLOYEE_TEMPLATE_PLACEHOLDERS)[number]
-  | (typeof CUSTOMER_TEMPLATE_PLACEHOLDERS)[number];
+  | (typeof CUSTOMER_TEMPLATE_PLACEHOLDERS)[number]
+  | (typeof CLIENT_DOCUMENT_TEMPLATE_PLACEHOLDERS)[number];
 
 export function formatTemplatePlaceholder(name: string): string {
   return `{{${name}}}`;

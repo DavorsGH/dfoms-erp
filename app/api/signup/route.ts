@@ -22,6 +22,10 @@ import { mapSupabasePasswordError } from "@/utils/password-policy";
 import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
 import { provisionSignupOwnerEmployeeAndApprovers } from "@/utils/tenant-signup-owner-provisioning";
 import { seedTenantPaymentMethodsFromDavorsTemplate } from "@/utils/tenant-payment-methods-seed";
+import {
+  rollbackTenantClientDocumentNotifications,
+  seedTenantClientDocumentNotifications,
+} from "@/utils/tenant-client-document-notifications-seed";
 
 type SignupRollbackState = {
   authUserId: string | null;
@@ -52,6 +56,7 @@ async function rollbackSignup(
   }
 
   if (state.tenantId) {
+    await rollbackTenantClientDocumentNotifications(admin, state.tenantId);
     await admin
       .from("leave_approver_config")
       .delete()
@@ -247,6 +252,18 @@ export async function POST(request: Request) {
   if (ownerProvisioning.error) {
     await rollbackSignup(admin, rollbackState);
     return NextResponse.json({ error: ownerProvisioning.error }, { status: 400 });
+  }
+
+  const clientDocNotificationsSeed = await seedTenantClientDocumentNotifications(
+    admin,
+    tenantRow.id,
+  );
+  if (clientDocNotificationsSeed.error) {
+    await rollbackSignup(admin, rollbackState);
+    return NextResponse.json(
+      { error: clientDocNotificationsSeed.error },
+      { status: 400 },
+    );
   }
 
   const { error: customerError } = await admin.from("customers").insert({

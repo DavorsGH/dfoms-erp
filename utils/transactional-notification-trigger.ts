@@ -8,6 +8,8 @@ import {
 import { sendResendEmail, type ResendEmailAttachment } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { buildClientDocumentPortalUrlVars } from "@/utils/client-document-notification-templates";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 import {
   TRANSACTIONAL_EVENT_TYPES,
   type TransactionalEventType,
@@ -122,12 +124,16 @@ export async function fireTransactionalNotification(
       return;
     }
 
+    const tenantName = await resolveTenantDisplayName(admin, tenantId);
+
     const vars: Record<string, string> = {
+      tenant_name: tenantName,
       customer_name:
         customer.client_name?.trim() ||
         variables.customer_name ||
         customer.client_id,
       customer_id: customer.client_id,
+      ...buildClientDocumentPortalUrlVars(),
       ...variables,
     };
 
