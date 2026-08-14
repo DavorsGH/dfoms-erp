@@ -1,5 +1,5 @@
 import type { MessageTemplateChannel } from "@/utils/message-templates-types";
-import { CUSTOMER_TYPE_OPTIONS } from "@/app/dashboard/crm/customers/customers-utils";
+import { CUSTOMER_TYPE_FILTER_OPTIONS } from "@/app/dashboard/crm/customers/customers-utils";
 
 export const CAMPAIGN_CODE_ENTITY_TYPE = "CAMP";
 
@@ -67,7 +67,7 @@ export const AUDIENCE_TYPE_OPTIONS = [
   { value: "customer_type", label: "By Customer Type" },
 ] as const;
 
-export const AUDIENCE_CUSTOMER_TYPE_OPTIONS = CUSTOMER_TYPE_OPTIONS;
+export const AUDIENCE_CUSTOMER_TYPE_OPTIONS = CUSTOMER_TYPE_FILTER_OPTIONS;
 
 export function isDraftStatus(status: string): boolean {
   return status === "draft";

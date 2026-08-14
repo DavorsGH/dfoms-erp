@@ -1,0 +1,45 @@
+﻿=== 1. Get-PSDrive -PSProvider FileSystem ===
+C: Used=237.13 GB, Free=N/A GB, Root=C:\
+D: Used=134.08 GB, Free=342.84 GB, Root=D:\
+
+=== 2. Path sizes (GB) ===
+C:\Users\HP\OneDrive : 2.78 GB
+C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source Code\dfoms-erp-app\.next : 0.41 GB
+C:\Users\HP\OneDrive\3. Davors Facilities\Davors Web Portal DevOps\DFOMS ERP\08 Source Code\dfoms-erp-app\node_modules : 0.66 GB
+NOT FOUND: C:\Users\HP\.npm
+C:\Users\HP\AppData\Local\npm-cache : 1.11 GB
+C:\Users\HP\AppData\Local\Temp : 4.03 GB
+C:\Users\HP\.cursor : 0.18 GB
+
+=== 3. Top-level subfolders of dfoms-erp-app (MB) ===
+673.3 MB - node_modules
+422.28 MB - .next
+11.72 MB - .git
+5.27 MB - app
+3.61 MB - scripts
+1.15 MB - utils
+0.95 MB - backups
+0.88 MB - public
+0.2 MB - tmp-screenshots
+0.19 MB - lib
+0.08 MB - .agents
+0.05 MB - components
+0.04 MB - docs
+0 MB - .vercel
+0 MB - types
+0 MB - .build-isolate-stash
+
+=== 4. Project folders under 08 Source Code ===
+1.1 GB - dfoms-erp-app
+0.85 GB - dfoms-staging-verify-20260809211130
+
+=== 5. wmic logicaldisk ===
+Caption  FreeSpace     Size          
+
+C:       0             254618365952  
+
+D:       368126459904  512092274688  
+
+
+
+

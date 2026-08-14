@@ -344,7 +344,7 @@ export const CUSTOMER_TARGET_FIELDS: readonly BulkImportTargetField[] = [
     label: "Customer type",
     required: false,
     example: "service_client",
-    mappingHint: "service_client, digital_subscriber, product_client, or all (defaults to service_client if blank)",
+    mappingHint: "service_client, digital_subscriber, or product_client (defaults to service_client if blank)",
   },
   {
     key: "status",

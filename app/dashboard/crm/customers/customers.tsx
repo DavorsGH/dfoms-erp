@@ -28,10 +28,11 @@ import {
 } from "../../operations/operations-register-utils";
 import { getCustomerDeleteErrorMessage } from "@/utils/customer-delete-errors";
 import {
+  CUSTOMER_RECORD_TYPE_OPTIONS,
   CUSTOMER_STATUS_OPTIONS,
-  CUSTOMER_TYPE_OPTIONS,
   DEFAULT_CUSTOMER_STATUS,
   DEFAULT_CUSTOMER_TYPE,
+  normalizeCustomerRecordType,
   getCustomerStatusLabel,
   getCustomerTypeLabel,
   type CustomerEntry,
@@ -165,7 +166,7 @@ export default function Customers({
       assigned_supervisor: customer.assigned_supervisor ?? "",
       contract_status: customer.contract_status ?? "Active",
       notes: customer.notes ?? "",
-      customer_type: customer.customer_type ?? DEFAULT_CUSTOMER_TYPE,
+      customer_type: normalizeCustomerRecordType(customer.customer_type),
       status: customer.status ?? DEFAULT_CUSTOMER_STATUS,
     });
     setShowForm(true);
@@ -223,7 +224,9 @@ export default function Customers({
       assigned_supervisor: nullableText(form.assigned_supervisor),
       contract_status: nullableText(form.contract_status) ?? "Active",
       notes: nullableText(form.notes),
-      customer_type: nullableText(form.customer_type) ?? DEFAULT_CUSTOMER_TYPE,
+      customer_type: normalizeCustomerRecordType(
+        nullableText(form.customer_type) ?? DEFAULT_CUSTOMER_TYPE,
+      ),
       status: nullableText(form.status) ?? DEFAULT_CUSTOMER_STATUS,
     };
 
@@ -328,7 +331,7 @@ export default function Customers({
               className={inputClassName}
             >
               <option value="">All types</option>
-              {CUSTOMER_TYPE_OPTIONS.map((type) => (
+              {CUSTOMER_RECORD_TYPE_OPTIONS.map((type) => (
                 <option key={type.value} value={type.value}>
                   {type.label}
                 </option>
@@ -458,7 +461,7 @@ export default function Customers({
                   }
                   className={inputClassName}
                 >
-                  {CUSTOMER_TYPE_OPTIONS.map((type) => (
+                  {CUSTOMER_RECORD_TYPE_OPTIONS.map((type) => (
                     <option key={type.value} value={type.value}>
                       {type.label}
                     </option>

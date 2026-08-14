@@ -5,6 +5,7 @@ import {
   substituteTemplatePlaceholders,
   templateBodyToEmailHtml,
 } from "@/utils/message-template-render";
+import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { sendResendEmail, type ResendEmailAttachment } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -189,10 +190,11 @@ export async function fireTransactionalNotification(
     }
 
     if (sendSms) {
-      const to = (customer.phone ?? "").trim();
+      const rawPhone = (customer.phone ?? "").trim();
+      const to = normalizeGhanaPhone(rawPhone);
       if (!to) {
         console.warn(
-          `[transactional-notification] ${eventType}: no phone on file for ${clientId}.`,
+          `[transactional-notification] ${eventType}: no valid phone on file for ${clientId}.`,
         );
       } else {
         const content = substituteTemplatePlaceholders(

@@ -1,0 +1,59 @@
+﻿Name: dfoms-staging-verify-20260809211130
+Created: 08/09/2026 21:11:30
+LastWrite: 08/09/2026 21:28:25
+LastAccess: 08/14/2026 11:53:43
+SizeGB: 0.85
+Top-level entries:
+  .agents  dir  0.1 MB  LastWrite=8/9/2026 9:16:00 PM
+  .next  dir  376.2 MB  LastWrite=8/9/2026 9:35:46 PM
+  app  dir  4.9 MB  LastWrite=8/9/2026 9:15:59 PM
+  components  dir  0.0 MB  LastWrite=8/9/2026 9:15:59 PM
+  docs  dir  0.0 MB  LastWrite=8/9/2026 9:15:59 PM
+  lib  dir  0.1 MB  LastWrite=8/9/2026 9:16:00 PM
+  node_modules  dir  481.8 MB  LastWrite=8/9/2026 9:35:46 PM
+  public  dir  0.9 MB  LastWrite=8/9/2026 9:16:00 PM
+  scripts  dir  3.3 MB  LastWrite=8/9/2026 9:16:00 PM
+  tmp-screenshots  dir  0.2 MB  LastWrite=8/9/2026 9:16:00 PM
+  types  dir  0.0 MB  LastWrite=8/9/2026 9:16:00 PM
+  utils  dir  1.0 MB  LastWrite=8/9/2026 9:16:00 PM
+  .env.local  file 0.0 MB  LastWrite=8/9/2026 8:46:49 PM
+  .env.staging.local  file 0.0 MB  LastWrite=8/9/2026 8:46:49 PM
+  .git  file 0.0 MB  LastWrite=8/9/2026 9:11:30 PM
+  .gitignore  file 0.0 MB  LastWrite=8/9/2026 9:11:30 PM
+  AGENTS.md  file 0.0 MB  LastWrite=8/9/2026 9:11:30 PM
+  CLAUDE.md  file 0.0 MB  LastWrite=8/9/2026 9:11:30 PM
+  drop-tenant-defaults.sql  file 0.0 MB  LastWrite=8/9/2026 9:11:34 PM
+  eslint.config.mjs  file 0.0 MB  LastWrite=8/9/2026 9:11:34 PM
+  middleware.ts  file 0.0 MB  LastWrite=8/9/2026 9:11:34 PM
+  next-env.d.ts  file 0.0 MB  LastWrite=8/9/2026 9:17:51 PM
+  next.config.ts  file 0.0 MB  LastWrite=8/9/2026 9:11:34 PM
+  package-lock.json  file 0.3 MB  LastWrite=8/9/2026 9:11:34 PM
+  package.json  file 0.0 MB  LastWrite=8/9/2026 9:11:34 PM
+  postcss.config.mjs  file 0.0 MB  LastWrite=8/9/2026 9:11:34 PM
+  README.md  file 0.0 MB  LastWrite=8/9/2026 9:11:30 PM
+  schema-only.sql  file 0.3 MB  LastWrite=8/9/2026 9:11:34 PM
+  set-tenant-defaults.sql  file 0.0 MB  LastWrite=8/9/2026 9:11:36 PM
+  skills-lock.json  file 0.0 MB  LastWrite=8/9/2026 9:11:36 PM
+  tsc-filtered-errors.txt  file 0.0 MB  LastWrite=8/9/2026 9:11:36 PM
+  tsc-lease-check.txt  file 0.0 MB  LastWrite=8/9/2026 9:11:36 PM
+  tsconfig.json  file 0.0 MB  LastWrite=8/9/2026 9:11:36 PM
+  vercel.json  file 0.0 MB  LastWrite=8/9/2026 9:11:36 PM
+  _g3.txt  file 0.0 MB  LastWrite=8/9/2026 9:11:30 PM
+  _g4.txt  file 0.0 MB  LastWrite=8/9/2026 9:11:30 PM
+  _git2.txt  file 0.0 MB  LastWrite=8/9/2026 9:11:30 PM
+HAS package.json
+{
+  "name": "dfoms-erp-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+HAS .git directory
+README excerpt:
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:

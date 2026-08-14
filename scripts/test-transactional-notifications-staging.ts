@@ -219,6 +219,11 @@ async function main() {
     sendLog.some((e) => e.kind === "sms"),
     "payment_received should SMS despite sms_opt_in=false",
   );
+  const smsEntry = sendLog.find((e) => e.kind === "sms");
+  assert(
+    smsEntry?.to === "+233244999001",
+    `SMS must normalize local phone to E.164, got ${smsEntry?.to ?? "none"}`,
+  );
   console.log("OK opt-out bypass: transactional SMS sent despite sms_opt_in=false");
 
   // --- Disable rule ---

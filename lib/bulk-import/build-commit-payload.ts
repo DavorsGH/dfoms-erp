@@ -1,6 +1,6 @@
 import {
+  CUSTOMER_RECORD_TYPE_VALUES,
   CUSTOMER_STATUS_OPTIONS,
-  CUSTOMER_TYPE_OPTIONS,
   DEFAULT_CUSTOMER_STATUS,
   DEFAULT_CUSTOMER_TYPE,
 } from "@/app/dashboard/crm/customers/customers-utils";
@@ -288,7 +288,7 @@ export function buildEmployeeCommitInsert(input: {
   };
 }
 
-const CUSTOMER_TYPE_VALUES = CUSTOMER_TYPE_OPTIONS.map((option) => option.value);
+const CUSTOMER_TYPE_VALUES = [...CUSTOMER_RECORD_TYPE_VALUES];
 const CUSTOMER_STATUS_VALUES = CUSTOMER_STATUS_OPTIONS.map(
   (option) => option.value,
 );

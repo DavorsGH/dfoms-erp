@@ -26,12 +26,44 @@ export const DEFAULT_CUSTOMER_STATUS = "active";
 /** Matches DB check: customers_customer_type_check */
 export const DEFAULT_CUSTOMER_TYPE = "service_client";
 
-export const CUSTOMER_TYPE_OPTIONS = [
+/** Persisted on customers.customer_type — must match DB check constraint. */
+export const CUSTOMER_RECORD_TYPE_VALUES = [
+  "service_client",
+  "digital_subscriber",
+  "product_client",
+] as const;
+
+export type CustomerRecordType = (typeof CUSTOMER_RECORD_TYPE_VALUES)[number];
+
+export const CUSTOMER_RECORD_TYPE_OPTIONS = [
   { value: "service_client", label: "Service Customer" },
   { value: "digital_subscriber", label: "Digital Subscriber" },
   { value: "product_client", label: "Product Customer" },
+] as const;
+
+/** Filter/audience-only — includes "all"; never save on a customer row. */
+export const CUSTOMER_TYPE_FILTER_OPTIONS = [
+  ...CUSTOMER_RECORD_TYPE_OPTIONS,
   { value: "all", label: "All" },
 ] as const;
+
+export function isValidCustomerRecordType(
+  value: string | null | undefined,
+): value is CustomerRecordType {
+  return (
+    typeof value === "string" &&
+    (CUSTOMER_RECORD_TYPE_VALUES as readonly string[]).includes(value)
+  );
+}
+
+export function normalizeCustomerRecordType(
+  value: string | null | undefined,
+): CustomerRecordType {
+  if (isValidCustomerRecordType(value)) {
+    return value;
+  }
+  return DEFAULT_CUSTOMER_TYPE;
+}
 
 export const CUSTOMER_STATUS_OPTIONS = [
   { value: "lead", label: "Lead" },
@@ -42,7 +74,9 @@ export const CUSTOMER_STATUS_OPTIONS = [
 export function getCustomerTypeLabel(value: string | null | undefined): string {
   if (!value) return "—";
   if (value === "both") return "All";
-  const match = CUSTOMER_TYPE_OPTIONS.find((option) => option.value === value);
+  const match = CUSTOMER_TYPE_FILTER_OPTIONS.find(
+    (option) => option.value === value,
+  );
   return match?.label ?? value;
 }
 

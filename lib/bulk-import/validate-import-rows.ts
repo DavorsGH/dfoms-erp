@@ -23,8 +23,8 @@ import {
   validateTenantNameLookupRequireMatch,
 } from "@/lib/bulk-import/tenant-name-lookup";
 import {
+  CUSTOMER_RECORD_TYPE_VALUES,
   CUSTOMER_STATUS_OPTIONS,
-  CUSTOMER_TYPE_OPTIONS,
 } from "@/app/dashboard/crm/customers/customers-utils";
 import {
   EMPLOYMENT_STATUS_OPTIONS,
@@ -165,7 +165,7 @@ const EXPENSE_AUTO_POST_CATEGORY_PATTERNS = [
   "fixed assets",
 ] as const;
 
-const CUSTOMER_TYPE_VALUES = CUSTOMER_TYPE_OPTIONS.map((option) => option.value);
+const CUSTOMER_TYPE_VALUES = [...CUSTOMER_RECORD_TYPE_VALUES];
 const CUSTOMER_STATUS_VALUES = CUSTOMER_STATUS_OPTIONS.map(
   (option) => option.value,
 );
@@ -1028,7 +1028,18 @@ function collectFieldErrors(
         String(mappedData.customer_type).trim().toLowerCase() === "both"
       ) {
         errors.push(
-          `${fieldLabel(fieldKey)} value "both" is no longer valid; use "all" instead`,
+          `${fieldLabel(fieldKey)} value "both" is no longer valid; use service_client, digital_subscriber, or product_client`,
+        );
+        continue;
+      }
+
+      if (
+        fieldKey === "customer_type" &&
+        !isBlank(mappedData.customer_type) &&
+        String(mappedData.customer_type).trim().toLowerCase() === "all"
+      ) {
+        errors.push(
+          `${fieldLabel(fieldKey)} value "all" is for filtering only; use service_client, digital_subscriber, or product_client`,
         );
         continue;
       }
