@@ -7,6 +7,7 @@ import {
   type LandlordNotificationRow,
 } from "@/utils/landlord-notifications-types";
 import { NOTIFICATION_DROPDOWN_PANEL_CLASS } from "@/utils/notification-bell-ui";
+import NotificationBellPushPrompt from "@/components/notification-bell-push-prompt";
 
 const PAGE_SIZE = 20;
 
@@ -315,6 +316,8 @@ export default function LandlordNotificationBell() {
               ) : null}
             </div>
           </div>
+
+          <NotificationBellPushPrompt persona="landlord" open={open} />
 
           <div className="max-h-96 overflow-y-auto">
             {error ? (

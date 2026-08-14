@@ -25,6 +25,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Web Push VAPID public key — no auth; used before subscribe permission prompt.
+  if (pathname === "/api/push/vapid-public-key") {
+    return NextResponse.next();
+  }
+
   // Vercel Cron jobs — authenticated inside each route via CRON_SECRET.
   if (pathname.startsWith("/api/cron/")) {
     return NextResponse.next();

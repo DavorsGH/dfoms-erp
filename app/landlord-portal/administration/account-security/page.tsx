@@ -9,6 +9,7 @@ import {
 } from "../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../pending-approval-view";
 import LandlordPortalChangePasswordForm from "./change-password-form";
+import PushNotificationsSettings from "@/components/push-notifications-settings";
 
 export default async function LandlordPortalAccountSecurityPage() {
   const session = await getLandlordPortalSession();
@@ -40,7 +41,10 @@ export default async function LandlordPortalAccountSecurityPage() {
           Manage two-factor authentication
         </a>
       </p>
-      <LandlordPortalChangePasswordForm />
+      <div className="mt-6 space-y-6">
+        <PushNotificationsSettings persona="landlord" />
+        <LandlordPortalChangePasswordForm />
+      </div>
     </section>
   );
 }

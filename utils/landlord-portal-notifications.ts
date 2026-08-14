@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/utils/supabase/admin";
+import { sendWebPushForRecipient } from "@/utils/web-push-send";
 
 /**
  * Best-effort landlord portal in-app insert (service_role).
@@ -40,14 +41,18 @@ export async function insertLandlordPortalNotification(options: {
       return false;
     }
 
-    const { error } = await admin.from("landlord_notifications").insert({
-      tenant_id: options.landlordTenantId,
-      recipient_user_id: authUserId,
-      announcement_id: null,
-      title: options.title,
-      body: options.body,
-      action_url: options.actionUrl,
-    });
+    const { data: inserted, error } = await admin
+      .from("landlord_notifications")
+      .insert({
+        tenant_id: options.landlordTenantId,
+        recipient_user_id: authUserId,
+        announcement_id: null,
+        title: options.title,
+        body: options.body,
+        action_url: options.actionUrl,
+      })
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       console.error(
@@ -56,6 +61,19 @@ export async function insertLandlordPortalNotification(options: {
       );
       return false;
     }
+
+    if (inserted?.id) {
+      await sendWebPushForRecipient({
+        persona: "landlord",
+        recipientUserId: authUserId,
+        tenantId: options.landlordTenantId,
+        title: options.title,
+        body: options.body,
+        actionUrl: options.actionUrl,
+        notificationId: inserted.id,
+      });
+    }
+
     return true;
   } catch (error) {
     console.error(

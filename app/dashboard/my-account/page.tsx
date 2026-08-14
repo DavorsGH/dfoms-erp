@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { getRoleLabel } from "../role-labels";
 import ChangePasswordForm from "./change-password-form";
+import PushNotificationsSettings from "@/components/push-notifications-settings";
 
 export default async function MyAccountPage() {
   const cookieStore = await cookies();
@@ -58,6 +59,8 @@ export default async function MyAccountPage() {
           </div>
         </dl>
       </section>
+
+      <PushNotificationsSettings persona="staff" />
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-2 text-lg font-semibold text-[#0f2744]">

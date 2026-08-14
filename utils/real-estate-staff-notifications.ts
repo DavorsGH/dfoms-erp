@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/utils/supabase/admin";
+import { insertEmployeeInAppNotifications } from "@/utils/employee-in-app-notifications";
 import { sendResendEmail } from "@/utils/resend-email";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
@@ -329,29 +330,11 @@ async function insertInAppNotifications(
       action_url: actionUrl,
     }));
 
-    let { error } = await admin.from("employee_notifications").insert(rows);
-    // Pre-migration fallback: column missing — embed destination in body (legacy).
-    if (
-      error &&
-      actionUrl &&
-      /action_url/i.test(error.message) &&
-      /does not exist|could not find|schema cache|column/i.test(error.message)
-    ) {
-      const legacyRows = recipientIds.map((recipient_user_id) => ({
-        tenant_id: DAVORS_TENANT_ID,
-        recipient_user_id,
-        announcement_id: null,
-        title,
-        body: `${body}\n${staffDashboardUrl(actionUrl)}`,
-      }));
-      ({ error } = await admin.from("employee_notifications").insert(legacyRows));
-    }
-    if (error) {
-      console.error(
-        `[real-estate-staff-notifications] in-app insert failed (${context}):`,
-        error.message,
-      );
-    }
+    await insertEmployeeInAppNotifications({
+      rows,
+      context,
+      supabase: admin,
+    });
   } catch (error) {
     console.error(
       `[real-estate-staff-notifications] in-app failed (${context}):`,

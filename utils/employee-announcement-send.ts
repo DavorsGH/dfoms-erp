@@ -16,6 +16,7 @@ import {
 } from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
+import { insertEmployeeInAppNotification } from "@/utils/employee-in-app-notifications";
 
 export const ANNOUNCEMENT_SEND_BATCH_SIZE = 50;
 
@@ -594,24 +595,26 @@ export async function processAnnouncementSendBatch(
         continue;
       }
 
-      const { error: notifError } = await supabase
-        .from("employee_notifications")
-        .insert({
+      const inserted = await insertEmployeeInAppNotification({
+        row: {
           tenant_id: options.tenantId,
           recipient_user_id: login.auth_uid,
           announcement_id: announcement.id,
           title: resolvedSubject || announcement.name,
           body: resolvedBody,
-        });
+        },
+        context: "employee-announcement-send",
+        supabase,
+      });
 
-      if (notifError) {
+      if (!inserted) {
         await supabase.from("employee_announcement_recipients").insert({
           tenant_id: options.tenantId,
           announcement_id: announcement.id,
           employee_id: employee.employee_id,
           channel: "in_app",
           status: "failed",
-          error_detail: notifError.message.slice(0, 1000),
+          error_detail: "In-app notification insert failed.",
         });
         failed += 1;
         continue;

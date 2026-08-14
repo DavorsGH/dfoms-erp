@@ -1,4 +1,4 @@
-const CACHE_NAME = "davors-erp-shell-v1";
+const CACHE_NAME = "davors-erp-shell-v2";
 
 const PRECACHE_URLS = [
   "/manifest.json",
@@ -78,6 +78,65 @@ self.addEventListener("fetch", (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return response;
       });
+    }),
+  );
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {
+    title: "Davors ERP",
+    body: "You have a new notification.",
+    url: "/",
+    tag: "dfoms-notification",
+    notificationId: null,
+  };
+
+  try {
+    if (event.data) {
+      payload = { ...payload, ...event.data.json() };
+    }
+  } catch {
+    // Keep defaults when payload is malformed.
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: "/icons/icon-192x192.png",
+      badge: "/icons/icon-192x192.png",
+      tag: payload.tag || payload.notificationId || "dfoms-notification",
+      data: {
+        url: payload.url || "/",
+        notificationId: payload.notificationId,
+      },
+      silent: false,
+      renotify: true,
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl =
+    (event.notification.data && event.notification.data.url) || "/";
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ("focus" in client && client.url.startsWith(self.location.origin)) {
+          if ("navigate" in client && typeof client.navigate === "function") {
+            return client.focus().then(() => client.navigate(targetUrl));
+          }
+          return client.focus();
+        }
+      }
+
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+
+      return undefined;
     }),
   );
 });

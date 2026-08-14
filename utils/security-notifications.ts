@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/utils/supabase/admin";
+import { insertEmployeeInAppNotification } from "@/utils/employee-in-app-notifications";
 import { needsPasswordUpdateNudge } from "@/lib/security/password-updated-at";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
@@ -155,18 +156,18 @@ async function ensureStaffNotification(options: {
   if (already) return;
 
   const admin = createAdminClient();
-  const { error } = await admin.from("employee_notifications").insert({
-    tenant_id: options.tenantId,
-    recipient_user_id: options.authUid,
-    announcement_id: null,
-    title: options.title,
-    body: options.body,
-    action_url: options.actionUrl,
+  await insertEmployeeInAppNotification({
+    row: {
+      tenant_id: options.tenantId,
+      recipient_user_id: options.authUid,
+      announcement_id: null,
+      title: options.title,
+      body: options.body,
+      action_url: options.actionUrl,
+    },
+    context: "security-nudge",
+    supabase: admin,
   });
-
-  if (error) {
-    console.error("[security-notifications] staff insert failed:", error.message);
-  }
 }
 
 /**

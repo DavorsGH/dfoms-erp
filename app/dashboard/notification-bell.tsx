@@ -8,6 +8,7 @@ import {
   type EmployeeNotificationRow,
 } from "@/utils/employee-notifications-types";
 import { NOTIFICATION_DROPDOWN_PANEL_CLASS } from "@/utils/notification-bell-ui";
+import NotificationBellPushPrompt from "@/components/notification-bell-push-prompt";
 
 const PAGE_SIZE = 20;
 
@@ -314,6 +315,8 @@ export default function NotificationBell() {
               ) : null}
             </div>
           </div>
+
+          <NotificationBellPushPrompt persona="staff" open={open} />
 
           <div className="max-h-96 overflow-y-auto">
             {error ? (

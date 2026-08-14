@@ -16,6 +16,7 @@ import {
 } from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
+import { sendWebPushForRecipient } from "@/utils/web-push-send";
 
 export const LESSEE_ANNOUNCEMENT_SEND_BATCH_SIZE = 50;
 
@@ -524,7 +525,7 @@ export async function processLesseeAnnouncementSendBatch(
         continue;
       }
 
-      const { error: notifError } = await supabase
+      const { data: inserted, error: notifError } = await supabase
         .from("lessee_notifications")
         .insert({
           tenant_id: options.tenantId,
@@ -533,20 +534,35 @@ export async function processLesseeAnnouncementSendBatch(
           announcement_id: announcement.id,
           title: resolvedSubject || announcement.name,
           body: resolvedBody,
-        });
+        })
+        .select("id")
+        .maybeSingle();
 
-      if (notifError) {
+      if (notifError || !inserted?.id) {
         await supabase.from("lessee_announcement_recipients").insert({
           tenant_id: options.tenantId,
           announcement_id: announcement.id,
           lessee_id: lessee.lessee_id,
           channel: "in_app",
           status: "failed",
-          error_detail: notifError.message.slice(0, 1000),
+          error_detail: (notifError?.message ?? "In-app notification insert failed.").slice(
+            0,
+            1000,
+          ),
         });
         failed += 1;
         continue;
       }
+
+      await sendWebPushForRecipient({
+        persona: "lessee",
+        recipientUserId: authUserId,
+        tenantId: options.tenantId,
+        title: resolvedSubject || announcement.name,
+        body: resolvedBody,
+        actionUrl: null,
+        notificationId: inserted.id,
+      });
 
       await supabase.from("lessee_announcement_recipients").insert({
         tenant_id: options.tenantId,

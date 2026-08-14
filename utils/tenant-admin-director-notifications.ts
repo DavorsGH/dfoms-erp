@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/utils/supabase/admin";
-import { isMissingActionUrlColumnError } from "@/utils/employee-notifications-types";
+import { insertEmployeeInAppNotifications } from "@/utils/employee-in-app-notifications";
 
 const ADMIN_DIRECTOR_ROLES = ["super_admin", "director"] as const;
 
@@ -69,31 +69,10 @@ export async function notifyTenantAdminsAndDirectors(
       action_url: normalizedActionUrl,
     }));
 
-    let { error } = await admin.from("employee_notifications").insert(rows);
-
-    if (
-      error &&
-      normalizedActionUrl &&
-      isMissingActionUrlColumnError(error.message)
-    ) {
-      const legacyRows = recipientIds.map((recipient_user_id) => ({
-        tenant_id: normalizedTenantId,
-        recipient_user_id,
-        announcement_id: null,
-        title: normalizedTitle,
-        body: normalizedActionUrl
-          ? `${normalizedBody}\n${normalizedActionUrl}`
-          : normalizedBody,
-      }));
-      ({ error } = await admin.from("employee_notifications").insert(legacyRows));
-    }
-
-    if (error) {
-      console.error(
-        "[tenant-admin-director-notifications] insert failed:",
-        error.message,
-      );
-    }
+    await insertEmployeeInAppNotifications({
+      rows,
+      context: "tenant-admin-director",
+    });
   } catch (error) {
     console.error(
       "[tenant-admin-director-notifications] failed:",
