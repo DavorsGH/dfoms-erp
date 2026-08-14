@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
+import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import type { FinishedProductRecord } from "@/app/dashboard/inventory/finished-products-utils";
 import { formatAuthorizedSignerLabel } from "@/utils/client-invoices-types";
@@ -17,11 +19,14 @@ import {
   formatInvoiceMoney,
   isProductCatalogLine,
   isProductPickerLine,
+  normalizeQuotationDiscountType,
   normalizeQuotationType,
+  quotationHeaderDiscountLabel,
   QUOTATION_TAX_BASIS_OPTIONS,
   resolveAuthorizedByFields,
   resolveQuotationTaxBasis,
   type ClientInvoiceAuthorizedSignerOption,
+  type ClientQuotationDiscountType,
   type ClientInvoiceFormAuthorizedByState,
   type ClientQuotationDocumentType,
   type ClientQuotationFormLineItem,
@@ -31,6 +36,10 @@ import {
   type ClientQuotationType,
   type ClientQuotationWriteBody,
 } from "@/utils/client-quotations-types";
+import {
+  buildClientQuotationPreviewDisplay,
+} from "./client-quotation-display-utils";
+import ClientQuotationPreviewDialog from "./client-quotation-preview-dialog";
 
 type ClientQuotationFormState = Omit<ClientQuotationWriteBody, "line_items"> &
   ClientInvoiceFormAuthorizedByState & {
@@ -39,11 +48,13 @@ type ClientQuotationFormState = Omit<ClientQuotationWriteBody, "line_items"> &
 
 type ClientQuotationFormProps = {
   mode: "create" | "edit";
+  tenantId: string;
   quotationId?: string;
   /** Non-allocating preview of the next server-assigned quotation number. */
   nextQuotationNumberPreview?: string | null;
   existingQuotationNumber?: string;
   isConverted?: boolean;
+  billingSettings?: BillingSettingsHeaderFields | null;
   initialCustomers: ClientEntry[];
   initialOpportunities: ClientQuotationPipelineOpportunityOption[];
   initialSites: ClientQuotationSiteOption[];
@@ -72,10 +83,12 @@ function reindexLineItems(lines: ClientQuotationFormLineItem[]) {
 
 export default function ClientQuotationForm({
   mode,
+  tenantId,
   quotationId,
   nextQuotationNumberPreview,
   existingQuotationNumber,
   isConverted = false,
+  billingSettings = null,
   initialCustomers,
   initialOpportunities,
   initialSites,
@@ -86,9 +99,12 @@ export default function ClientQuotationForm({
   fetchError = null,
 }: ClientQuotationFormProps) {
   const router = useRouter();
+  const branding = useTenantBranding();
   const [form, setForm] = useState<ClientQuotationFormState>(initialForm);
   const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [sitePicker, setSitePicker] = useState("");
 
   const clientSites = useMemo(
@@ -123,6 +139,8 @@ export default function ClientQuotationForm({
         ),
         form.header_discount_amount ?? 0,
         normalizeQuotationType(form.quotation_type),
+        normalizeQuotationDiscountType(form.discount_type),
+        form.discount_percentage ?? 0,
       ),
     [
       form.line_items,
@@ -130,9 +148,18 @@ export default function ClientQuotationForm({
       form.wht_rate,
       form.tax_basis,
       form.header_discount_amount,
+      form.discount_type,
+      form.discount_percentage,
       form.quotation_type,
     ],
   );
+
+  const discountType = normalizeQuotationDiscountType(form.discount_type);
+  const headerDiscountPreviewLabel = quotationHeaderDiscountLabel({
+    discount_type: discountType,
+    header_discount_amount: totals.header_discount_amount,
+    discount_percentage: form.discount_percentage ?? 0,
+  });
 
   const displayQuotationNumber = useMemo(() => {
     if (mode === "edit") {
@@ -141,6 +168,80 @@ export default function ClientQuotationForm({
 
     return nextQuotationNumberPreview?.trim() || "Assigned on save";
   }, [mode, existingQuotationNumber, nextQuotationNumberPreview]);
+
+  const previewDisplay = useMemo(() => {
+    if (!previewOpen) {
+      return null;
+    }
+
+    const authorizedBy = resolveAuthorizedByFields(
+      form.authorized_by_selection,
+      form.authorized_by_other_name,
+      form.authorized_by_other_title,
+      initialAuthorizedSigners,
+    );
+    const opportunity = clientOpportunities.find(
+      (entry) => entry.id === form.opportunity_id,
+    );
+
+    return buildClientQuotationPreviewDisplay({
+      tenantId,
+      quotationNumber: displayQuotationNumber || "Draft",
+      form: {
+        client_id: form.client_id,
+        opportunity_id: form.opportunity_id?.trim() || null,
+        document_type: form.document_type,
+        quotation_type: normalizeQuotationType(form.quotation_type),
+        tax_basis: resolveQuotationTaxBasis(
+          form.tax_basis,
+          normalizeQuotationType(form.quotation_type),
+        ),
+        issue_date: form.issue_date,
+        valid_until: form.valid_until || null,
+        bill_to_name: form.bill_to_name,
+        bill_to_address: form.bill_to_address,
+        bill_to_phone: form.bill_to_phone,
+        vat_nhil_getfund_rate: form.vat_nhil_getfund_rate,
+        wht_rate: form.wht_rate,
+        header_discount_amount: isProductQuotation
+          ? form.header_discount_amount ?? 0
+          : 0,
+        discount_type: isProductQuotation ? discountType : "flat",
+        discount_percentage: isProductQuotation
+          ? form.discount_percentage ?? 0
+          : null,
+        status: form.status,
+        notes: form.notes,
+        commercial_terms: form.commercial_terms?.trim() || null,
+        authorized_by_name: authorizedBy.authorized_by_name,
+        authorized_by_title: authorizedBy.authorized_by_title,
+        line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => ({
+          ...line,
+          product_id: line.product_id?.trim() ? line.product_id.trim() : null,
+          quantity: line.quantity != null ? line.quantity : null,
+          unit_price: line.unit_price != null ? line.unit_price : null,
+        })),
+        payment_account_ids: form.payment_account_ids,
+      },
+      paymentAccounts: initialPaymentAccounts,
+      opportunityName: opportunity?.opportunity_name ?? null,
+      authorizedBy,
+      branding,
+      billingSettings,
+    });
+  }, [
+    previewOpen,
+    form,
+    tenantId,
+    displayQuotationNumber,
+    isProductQuotation,
+    discountType,
+    clientOpportunities,
+    initialAuthorizedSigners,
+    initialPaymentAccounts,
+    branding,
+    billingSettings,
+  ]);
 
   function updateLineItem(key: string, patch: Partial<ClientQuotationFormLineItem>) {
     setForm((current) => ({
@@ -201,12 +302,46 @@ export default function ClientQuotationForm({
       quotation_type: nextType,
       tax_basis: defaultTaxBasisForQuotationType(nextType),
       header_discount_amount: nextType === "product" ? current.header_discount_amount ?? 0 : 0,
+      discount_type: nextType === "product" ? current.discount_type ?? "flat" : "flat",
+      discount_percentage: nextType === "product" ? current.discount_percentage ?? 0 : 0,
       line_items:
         nextType === "product"
           ? [emptyProductQuotationLineItem(0)]
           : [emptyQuotationLineItem(0)],
     }));
     setSitePicker("");
+  }
+
+  function handlePreview() {
+    setPreviewError(null);
+
+    if (!form.client_id.trim()) {
+      setPreviewError("Select a customer before previewing.");
+      return;
+    }
+
+    if (!form.bill_to_name.trim()) {
+      setPreviewError("Bill-to name is required before previewing.");
+      return;
+    }
+
+    if (!form.issue_date) {
+      setPreviewError("Issue date is required before previewing.");
+      return;
+    }
+
+    if (form.line_items.length === 0) {
+      setPreviewError("Add at least one line item before previewing.");
+      return;
+    }
+
+    const hasInvalidLine = form.line_items.some((line) => !line.description.trim());
+    if (hasInvalidLine) {
+      setPreviewError("Each line item needs a description before previewing.");
+      return;
+    }
+
+    setPreviewOpen(true);
   }
 
   function updateProductLine(
@@ -324,8 +459,14 @@ export default function ClientQuotationForm({
       header_discount_amount: isProductQuotation
         ? form.header_discount_amount ?? 0
         : 0,
+      discount_type: isProductQuotation ? discountType : "flat",
+      discount_percentage:
+        isProductQuotation && discountType === "percentage"
+          ? form.discount_percentage ?? 0
+          : null,
       status: form.status,
       notes: form.notes,
+      commercial_terms: form.commercial_terms?.trim() || null,
       authorized_by_name: authorizedBy.authorized_by_name,
       authorized_by_title: authorizedBy.authorized_by_title,
       line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => ({
@@ -367,6 +508,12 @@ export default function ClientQuotationForm({
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </p>
+      ) : null}
+
+      {previewError ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {previewError}
         </p>
       ) : null}
 
@@ -1196,27 +1343,96 @@ export default function ClientQuotationForm({
           </div>
         </div>
         {isProductQuotation ? (
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Header Discount (GHS)
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              disabled={isConverted}
-              value={form.header_discount_amount ?? 0}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  header_discount_amount: Number(event.target.value) || 0,
-                }))
-              }
-              className={inputClassName}
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Optional quote-level discount applied after line totals.
-            </p>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Header Discount
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={isConverted}
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      discount_type: "flat" as ClientQuotationDiscountType,
+                    }))
+                  }
+                  className={
+                    discountType === "flat"
+                      ? primaryButtonClassName
+                      : secondaryButtonClassName
+                  }
+                >
+                  Flat (GHS)
+                </button>
+                <button
+                  type="button"
+                  disabled={isConverted}
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      discount_type: "percentage" as ClientQuotationDiscountType,
+                    }))
+                  }
+                  className={
+                    discountType === "percentage"
+                      ? primaryButtonClassName
+                      : secondaryButtonClassName
+                  }
+                >
+                  Percentage (%)
+                </button>
+              </div>
+            </div>
+            {discountType === "percentage" ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Header Discount (%)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  disabled={isConverted}
+                  value={form.discount_percentage ?? 0}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      discount_percentage: Number(event.target.value) || 0,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Optional quote-level percentage discount applied after line totals.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Header Discount (GHS)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  disabled={isConverted}
+                  value={form.header_discount_amount ?? 0}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      header_discount_amount: Number(event.target.value) || 0,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Optional quote-level discount applied after line totals.
+                </p>
+              </div>
+            )}
           </div>
         ) : null}
         <dl className="grid gap-3 md:grid-cols-2">
@@ -1236,7 +1452,9 @@ export default function ClientQuotationForm({
                 Header Discount
               </dt>
               <dd className="text-lg font-semibold text-red-700">
-                -{formatInvoiceMoney(totals.header_discount_amount)}
+                {discountType === "percentage" && headerDiscountPreviewLabel
+                  ? `${headerDiscountPreviewLabel} (−${formatInvoiceMoney(totals.header_discount_amount)})`
+                  : `−${formatInvoiceMoney(totals.header_discount_amount)}`}
               </dd>
             </div>
           ) : null}
@@ -1273,6 +1491,28 @@ export default function ClientQuotationForm({
         </dl>
       </section>
 
+      <section className={cardClassName}>
+        <div>
+          <h3 className="text-sm font-medium text-slate-700">Commercial Terms</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Optional footnote shown below the signature block on the printed document.
+          </p>
+        </div>
+        <textarea
+          rows={4}
+          disabled={isConverted}
+          value={form.commercial_terms ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              commercial_terms: event.target.value,
+            }))
+          }
+          placeholder="Payment terms, delivery conditions, or other commercial notes…"
+          className={inputClassName}
+        />
+      </section>
+
       <div className="flex flex-wrap gap-3">
         <button
           type="submit"
@@ -1285,6 +1525,14 @@ export default function ClientQuotationForm({
               ? "Save Quotation"
               : "Update Quotation"}
         </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={handlePreview}
+          className={secondaryButtonClassName}
+        >
+          Preview
+        </button>
         <Link
           href="/dashboard/sales-crm/quotations"
           className={secondaryButtonClassName}
@@ -1292,6 +1540,12 @@ export default function ClientQuotationForm({
           Cancel
         </Link>
       </div>
+
+      <ClientQuotationPreviewDialog
+        open={previewOpen}
+        display={previewDisplay}
+        onClose={() => setPreviewOpen(false)}
+      />
     </form>
   );
 }

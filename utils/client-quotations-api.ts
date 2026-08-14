@@ -10,6 +10,7 @@ import {
   formatGeneratedInvoiceNumber,
   isProductCatalogLine,
   normalizeDocumentType,
+  normalizeQuotationDiscountType,
   normalizeQuotationStatus,
   normalizeQuotationType,
   resolveQuotationTaxBasis,
@@ -37,6 +38,10 @@ function buildHeaderPayload(
 ) {
   const quotationType = normalizeQuotationType(body.quotation_type);
   const taxBasis = resolveQuotationTaxBasis(body.tax_basis, quotationType);
+  const discountType =
+    quotationType === "product"
+      ? normalizeQuotationDiscountType(body.discount_type)
+      : "flat";
   const totals = computeQuotationTotals(
     body.line_items,
     body.vat_nhil_getfund_rate ?? 20,
@@ -44,6 +49,8 @@ function buildHeaderPayload(
     taxBasis,
     body.header_discount_amount ?? 0,
     quotationType,
+    discountType,
+    body.discount_percentage ?? 0,
   );
 
   return {
@@ -66,9 +73,15 @@ function buildHeaderPayload(
     wht_rate: roundMoney(toNumber(body.wht_rate ?? 7.5)),
     wht_amount: totals.wht_amount,
     header_discount_amount: totals.header_discount_amount,
+    discount_type: discountType,
+    discount_percentage:
+      quotationType === "product" && discountType === "percentage"
+        ? roundMoney(toNumber(body.discount_percentage ?? 0))
+        : null,
     total_amount_due: totals.total_amount_due,
     status: normalizeQuotationStatus(body.status),
     notes: nullableText(body.notes ?? null),
+    commercial_terms: nullableText(body.commercial_terms ?? null),
     authorized_by_name: nullableText(body.authorized_by_name ?? null),
     authorized_by_title: nullableText(body.authorized_by_title ?? null),
     updated_at: new Date().toISOString(),
@@ -84,6 +97,8 @@ function buildLineItemRows(
   whtRate: number,
   taxBasis: SalesTaxBasis,
   headerDiscountAmount: number,
+  discountType: ReturnType<typeof normalizeQuotationDiscountType>,
+  discountPercentage: number,
 ) {
   const totals = computeQuotationTotals(
     lineItems,
@@ -92,6 +107,8 @@ function buildLineItemRows(
     taxBasis,
     headerDiscountAmount,
     quotationType,
+    discountType,
+    discountPercentage,
   );
 
   return totals.line_items.map((line, index) => {
@@ -131,6 +148,11 @@ async function replaceLineItemsAndPaymentAccounts(
   const vatRate = toNumber(body.vat_nhil_getfund_rate ?? 20);
   const whtRate = toNumber(body.wht_rate ?? 7.5);
   const headerDiscountAmount = toNumber(body.header_discount_amount ?? 0);
+  const discountType =
+    quotationType === "product"
+      ? normalizeQuotationDiscountType(body.discount_type)
+      : "flat";
+  const discountPercentage = toNumber(body.discount_percentage ?? 0);
 
   const { error: deleteLinesError } = await supabase
     .from("client_quotation_line_items")
@@ -161,6 +183,8 @@ async function replaceLineItemsAndPaymentAccounts(
     whtRate,
     taxBasis,
     headerDiscountAmount,
+    discountType,
+    discountPercentage,
   );
   if (lineRows.length > 0) {
     const { error: insertLinesError } = await supabase

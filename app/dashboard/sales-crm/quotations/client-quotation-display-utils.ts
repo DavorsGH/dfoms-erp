@@ -1,9 +1,12 @@
 import {
+  computeQuotationTotals,
   formatInvoiceDate,
   formatInvoiceMoney,
   groupLineItemsByCategory,
   mapQuotationLineForDisplay,
+  normalizeQuotationDiscountType,
   normalizeQuotationType,
+  quotationHeaderDiscountLabel,
   quotationPrintTitle,
   quotationNumberMetaLabel,
   resolveQuotationTaxBasis,
@@ -11,7 +14,9 @@ import {
   roundMoney,
   toNumber,
   type ClientQuotationHeaderRow,
+  type ClientQuotationLineItemInput,
   type ClientQuotationLineItemRow,
+  type ClientQuotationWriteBody,
 } from "@/utils/client-quotations-types";
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
@@ -64,7 +69,13 @@ export function normalizeClientQuotationDetail(
       wht_rate: toNumber(quotation.wht_rate) || 7.5,
       wht_amount: toNumber(quotation.wht_amount),
       header_discount_amount: toNumber(quotation.header_discount_amount),
+      discount_type: normalizeQuotationDiscountType(quotation.discount_type),
+      discount_percentage:
+        quotation.discount_percentage != null
+          ? toNumber(quotation.discount_percentage)
+          : null,
       total_amount_due: toNumber(quotation.total_amount_due),
+      commercial_terms: quotation.commercial_terms ?? null,
       converted_invoice: Array.isArray(quotation.converted_invoice)
         ? (quotation.converted_invoice[0] ?? null)
         : (quotation.converted_invoice ?? null),
@@ -137,7 +148,7 @@ export function quotationTaxBasisNote(
     : CLIENT_INVOICE_LABOUR_TAX_NOTE;
 }
 
-export { quotationPrintTitle, quotationNumberMetaLabel, resolveConvertedInvoiceLink };
+export { quotationPrintTitle, quotationNumberMetaLabel, resolveConvertedInvoiceLink, quotationHeaderDiscountLabel };
 
 export function quotationValidityFooter(validUntil: string | null | undefined) {
   if (!validUntil) {
@@ -145,6 +156,114 @@ export function quotationValidityFooter(validUntil: string | null | undefined) {
   }
 
   return `This document is valid until ${formatInvoiceDate(validUntil)} unless otherwise agreed in writing.`;
+}
+
+export function buildClientQuotationPreviewDisplay(input: {
+  tenantId: string;
+  quotationNumber: string;
+  form: ClientQuotationWriteBody;
+  paymentAccounts: PaymentAccountRow[];
+  opportunityName?: string | null;
+  authorizedBy: {
+    authorized_by_name: string | null;
+    authorized_by_title: string | null;
+  };
+  branding: TenantBranding;
+  billingSettings: BillingSettingsHeaderFields | null;
+}): ClientQuotationDisplayProps {
+  const quotationType = normalizeQuotationType(input.form.quotation_type);
+  const taxBasis = resolveQuotationTaxBasis(input.form.tax_basis, quotationType);
+  const discountType =
+    quotationType === "product"
+      ? normalizeQuotationDiscountType(input.form.discount_type)
+      : "flat";
+  const totals = computeQuotationTotals(
+    input.form.line_items,
+    input.form.vat_nhil_getfund_rate ?? 20,
+    input.form.wht_rate ?? 7.5,
+    taxBasis,
+    input.form.header_discount_amount ?? 0,
+    quotationType,
+    discountType,
+    input.form.discount_percentage ?? 0,
+  );
+
+  const lineItems: ClientQuotationLineItemRow[] = totals.line_items.map(
+    (line, index) =>
+      mapQuotationLineForDisplay(
+        {
+          id: `preview-line-${index}`,
+          quotation_id: "preview",
+          tenant_id: input.tenantId,
+          site_id: line.site_id ?? null,
+          category_label: line.category_label ?? null,
+          description: line.description,
+          labour_amount: toNumber(line.labour_amount),
+          material_amount: toNumber(line.material_amount),
+          discount_amount: toNumber(line.discount_amount),
+          taxed: line.taxed ?? true,
+          total_cost: line.total_cost,
+          product_id: line.product_id ?? null,
+          quantity: line.quantity != null ? toNumber(line.quantity) : null,
+          unit_price: line.unit_price != null ? toNumber(line.unit_price) : null,
+          sort_order: line.sort_order ?? index,
+        },
+        quotationType,
+      ),
+  );
+
+  const quotation: ClientQuotationHeaderRow = {
+    id: "preview",
+    tenant_id: input.tenantId,
+    client_id: input.form.client_id,
+    opportunity_id: input.form.opportunity_id ?? null,
+    quotation_number: input.quotationNumber,
+    quotation_sequence: 0,
+    document_type: input.form.document_type ?? "quotation",
+    quotation_type: quotationType,
+    tax_basis: taxBasis,
+    issue_date: input.form.issue_date,
+    valid_until: input.form.valid_until ?? null,
+    bill_to_name: input.form.bill_to_name,
+    bill_to_address: input.form.bill_to_address ?? null,
+    bill_to_phone: input.form.bill_to_phone ?? null,
+    subtotal: totals.subtotal,
+    vat_nhil_getfund_rate: toNumber(input.form.vat_nhil_getfund_rate) || 20,
+    tax_due: totals.tax_due,
+    wht_rate: toNumber(input.form.wht_rate) || 7.5,
+    wht_amount: totals.wht_amount,
+    header_discount_amount: totals.header_discount_amount,
+    discount_type: discountType,
+    discount_percentage:
+      discountType === "percentage"
+        ? toNumber(input.form.discount_percentage ?? 0)
+        : null,
+    total_amount_due: totals.total_amount_due,
+    status: input.form.status ?? "draft",
+    notes: input.form.notes ?? null,
+    commercial_terms: input.form.commercial_terms ?? null,
+    authorized_by_name: input.authorizedBy.authorized_by_name,
+    authorized_by_title: input.authorizedBy.authorized_by_title,
+    converted_invoice_id: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    opportunity: input.opportunityName
+      ? {
+          id: input.form.opportunity_id ?? "",
+          opportunity_name: input.opportunityName,
+        }
+      : null,
+  };
+
+  return {
+    quotation,
+    lineItems,
+    paymentAccounts: input.paymentAccounts.filter((account) =>
+      input.form.payment_account_ids.includes(account.id),
+    ),
+    branding: input.branding,
+    billingSettings: input.billingSettings,
+  };
 }
 
 export {

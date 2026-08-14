@@ -101,6 +101,37 @@ assert(!isLineTaxedForSalesTax(false), "false is not taxed");
   console.log("PASS product quotation header discount does not inflate tax base");
 }
 
+// 4b. Product quotation percentage header discount
+{
+  const items = [
+    line({
+      description: "Product A",
+      labour_amount: 0,
+      material_amount: 1000,
+      taxed: true,
+      product_id: "p1",
+      quantity: 1,
+      unit_price: 1000,
+    }),
+  ];
+  const totals = computeQuotationTotals(
+    items,
+    20,
+    7.5,
+    "total_cost",
+    0,
+    "product",
+    "percentage",
+    10,
+  );
+  assert(totals.line_subtotal === 1000, `line subtotal: ${totals.line_subtotal}`);
+  assert(totals.header_discount_amount === 100, `10% of 1000: ${totals.header_discount_amount}`);
+  assert(totals.subtotal === 900, `subtotal after percentage discount: ${totals.subtotal}`);
+  assert(totals.tax_base === 1000, `tax base taxed product only: ${totals.tax_base}`);
+  assert(totals.tax_due === 200, `VAT: ${totals.tax_due}`);
+  console.log("PASS product quotation percentage header discount");
+}
+
 // 5. Invoice — same behaviour
 {
   const items = [

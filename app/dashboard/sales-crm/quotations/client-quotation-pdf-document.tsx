@@ -23,7 +23,11 @@ import {
   tenantHeaderContactLines,
   type ClientQuotationDisplayProps,
 } from "./client-quotation-display-utils";
-import { resolveQuotationOpportunityName } from "@/utils/client-quotations-types";
+import {
+  normalizeQuotationDiscountType,
+  quotationHeaderDiscountLabel,
+  resolveQuotationOpportunityName,
+} from "@/utils/client-quotations-types";
 
 const C = CLIENT_INVOICE_COLORS;
 
@@ -360,6 +364,9 @@ export default function ClientQuotationPdfDocument({
     quotation.authorized_by_title,
     branding,
   );
+  const headerDiscountLabel = quotationHeaderDiscountLabel(quotation);
+  const isPercentageDiscount =
+    normalizeQuotationDiscountType(quotation.discount_type) === "percentage";
 
   let lineRowIndex = 0;
 
@@ -480,7 +487,7 @@ export default function ClientQuotationPdfDocument({
         </View>
 
         <View style={styles.totalsBlock}>
-          {quotation.header_discount_amount > 0 ? (
+          {headerDiscountLabel ? (
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Line Subtotal</Text>
               <Text style={styles.totalValue}>
@@ -490,12 +497,14 @@ export default function ClientQuotationPdfDocument({
               </Text>
             </View>
           ) : null}
-          {quotation.header_discount_amount > 0 ? (
+          {headerDiscountLabel ? (
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Header Discount</Text>
-              <Text style={styles.totalValue}>
-                -{formatInvoiceMoney(quotation.header_discount_amount)}
-              </Text>
+              <Text style={styles.totalLabel}>{headerDiscountLabel}</Text>
+              {isPercentageDiscount ? (
+                <Text style={styles.totalValue}>
+                  -{formatInvoiceMoney(quotation.header_discount_amount)}
+                </Text>
+              ) : null}
             </View>
           ) : null}
           <View style={styles.totalRow}>
@@ -598,6 +607,17 @@ export default function ClientQuotationPdfDocument({
             </View>
           ) : null}
         </View>
+
+        {quotation.commercial_terms?.trim() ? (
+          <View style={[styles.sectionBox, { marginTop: 18 }]}>
+            <View style={styles.sectionBar}>
+              <Text style={styles.sectionBarText}>Commercial Terms</Text>
+            </View>
+            <View style={styles.sectionBody}>
+              <Text style={styles.notes}>{quotation.commercial_terms.trim()}</Text>
+            </View>
+          </View>
+        ) : null}
       </Page>
     </Document>
   );

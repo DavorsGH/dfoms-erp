@@ -54,11 +54,15 @@ export const CLIENT_QUOTATION_STATUSES = [
 ] as const;
 export type ClientQuotationStatus = (typeof CLIENT_QUOTATION_STATUSES)[number];
 
+export const CLIENT_QUOTATION_DISCOUNT_TYPES = ["flat", "percentage"] as const;
+export type ClientQuotationDiscountType =
+  (typeof CLIENT_QUOTATION_DISCOUNT_TYPES)[number];
+
 export const CLIENT_QUOTATION_LIST_SELECT =
   "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, converted_invoice_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
 
 export const CLIENT_QUOTATION_HEADER_SELECT =
-  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, total_amount_due, status, notes, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
+  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, notes, commercial_terms, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
 
 export const CLIENT_QUOTATION_LINE_ITEM_SELECT =
   "id, quotation_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, product_id, quantity, unit_price, sort_order" as const;
@@ -151,9 +155,12 @@ export type ClientQuotationHeaderRow = {
   wht_rate: number;
   wht_amount: number;
   header_discount_amount: number;
+  discount_type: ClientQuotationDiscountType;
+  discount_percentage: number | null;
   total_amount_due: number;
   status: ClientQuotationStatus;
   notes: string | null;
+  commercial_terms: string | null;
   authorized_by_name: string | null;
   authorized_by_title: string | null;
   converted_invoice_id: string | null;
@@ -194,8 +201,11 @@ export type ClientQuotationWriteBody = {
   vat_nhil_getfund_rate?: number;
   wht_rate?: number;
   header_discount_amount?: number;
+  discount_type?: ClientQuotationDiscountType;
+  discount_percentage?: number | null;
   status?: ClientQuotationStatus;
   notes?: string | null;
+  commercial_terms?: string | null;
   authorized_by_name?: string | null;
   authorized_by_title?: string | null;
   line_items: ClientQuotationLineItemInput[];
@@ -272,6 +282,45 @@ export function computeQuotationLineTotalCost(
   return computeLineTotalCost(line);
 }
 
+export function normalizeQuotationDiscountType(
+  value: unknown,
+): ClientQuotationDiscountType {
+  return value === "percentage" ? "percentage" : "flat";
+}
+
+export function resolveQuotationHeaderDiscountAmount(
+  lineSubtotal: number,
+  discountType: ClientQuotationDiscountType,
+  headerDiscountAmount: unknown,
+  discountPercentage: unknown,
+): number {
+  if (discountType === "percentage") {
+    const percentage = Math.max(0, toNumber(discountPercentage));
+    return roundMoney((lineSubtotal * percentage) / 100);
+  }
+
+  return roundMoney(Math.max(0, toNumber(headerDiscountAmount)));
+}
+
+export function quotationHeaderDiscountLabel(
+  quotation: Pick<
+    ClientQuotationHeaderRow,
+    "discount_type" | "header_discount_amount" | "discount_percentage"
+  >,
+): string | null {
+  const amount = toNumber(quotation.header_discount_amount);
+  if (amount <= 0) {
+    return null;
+  }
+
+  if (normalizeQuotationDiscountType(quotation.discount_type) === "percentage") {
+    const percentage = toNumber(quotation.discount_percentage);
+    return `Discount: ${percentage}%`;
+  }
+
+  return `Discount: ${formatInvoiceMoney(amount)}`;
+}
+
 export function computeQuotationTotals(
   lineItems: ClientQuotationLineItemInput[],
   vatRate: unknown,
@@ -279,6 +328,8 @@ export function computeQuotationTotals(
   taxBasis: SalesTaxBasis = DEFAULT_SALES_TAX_BASIS,
   headerDiscountAmount: unknown = 0,
   quotationType: ClientQuotationType = "service",
+  discountType: ClientQuotationDiscountType = "flat",
+  discountPercentage: unknown = 0,
 ) {
   const normalizedLines = lineItems.map((line) => ({
     ...line,
@@ -288,7 +339,12 @@ export function computeQuotationTotals(
   const lineSubtotal = roundMoney(
     normalizedLines.reduce((sum, line) => sum + line.total_cost, 0),
   );
-  const headerDiscount = roundMoney(Math.max(0, toNumber(headerDiscountAmount)));
+  const headerDiscount = resolveQuotationHeaderDiscountAmount(
+    lineSubtotal,
+    discountType,
+    headerDiscountAmount,
+    discountPercentage,
+  );
   const subtotal = roundMoney(Math.max(0, lineSubtotal - headerDiscount));
 
   const labourTotal = roundMoney(
@@ -619,8 +675,11 @@ export function emptyQuotationForm() {
     vat_nhil_getfund_rate: 20,
     wht_rate: 7.5,
     header_discount_amount: 0,
+    discount_type: "flat" as ClientQuotationDiscountType,
+    discount_percentage: null,
     status: "draft" as ClientQuotationStatus,
     notes: "",
+    commercial_terms: "",
     payment_account_ids: [] as string[],
     line_items: [emptyQuotationLineItem(0)],
   };
@@ -651,8 +710,14 @@ export function clientQuotationToFormState(
     vat_nhil_getfund_rate: toNumber(quotation.vat_nhil_getfund_rate) || 20,
     wht_rate: toNumber(quotation.wht_rate) || 7.5,
     header_discount_amount: toNumber(quotation.header_discount_amount),
+    discount_type: normalizeQuotationDiscountType(quotation.discount_type),
+    discount_percentage:
+      quotation.discount_percentage != null
+        ? toNumber(quotation.discount_percentage)
+        : null,
     status: normalizeQuotationStatus(quotation.status),
     notes: quotation.notes ?? "",
+    commercial_terms: quotation.commercial_terms ?? "",
     payment_account_ids: paymentAccountIds,
     line_items: [...lineItems]
       .sort((a, b) => a.sort_order - b.sort_order)

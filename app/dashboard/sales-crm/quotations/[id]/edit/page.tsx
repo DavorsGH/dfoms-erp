@@ -11,6 +11,7 @@ import {
   type FinishedProductRecord,
 } from "@/app/dashboard/inventory/finished-products-utils";
 import { loadClientQuotationDetail } from "@/utils/client-quotations-api";
+import { getCurrentTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
 import {
   clientQuotationToFormState,
   type ClientQuotationLineItemRow,
@@ -51,6 +52,7 @@ export default async function EditClientQuotationPage({
     { data: opportunities, error: opportunitiesError },
     { data: products, error: productsError },
     authorizedSignersResult,
+    billingSettings,
   ] = await Promise.all([
     loadClientQuotationDetail(supabase, tenantId, id),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
@@ -75,6 +77,7 @@ export default async function EditClientQuotationPage({
       .eq("tenant_id", tenantId)
       .order("product_name", { ascending: true }),
     loadAuthorizedSignerOptions(supabase, tenantId),
+    getCurrentTenantBillingSettingsHeader(),
   ]);
 
   if (!detail.quotation) {
@@ -117,8 +120,10 @@ export default async function EditClientQuotationPage({
       </div>
       <ClientQuotationForm
         mode="edit"
+        tenantId={tenantId}
         quotationId={id}
         existingQuotationNumber={detail.quotation.quotation_number}
+        billingSettings={billingSettings}
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
         initialOpportunities={
           (opportunities as
