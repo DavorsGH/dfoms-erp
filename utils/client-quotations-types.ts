@@ -58,11 +58,23 @@ export const CLIENT_QUOTATION_DISCOUNT_TYPES = ["flat", "percentage"] as const;
 export type ClientQuotationDiscountType =
   (typeof CLIENT_QUOTATION_DISCOUNT_TYPES)[number];
 
+export const CLIENT_QUOTATION_PAYMENT_TERMS_OPTIONS = [
+  "Due on Receipt",
+  "Net 15",
+  "Net 30",
+  "Net 60",
+] as const;
+export type ClientQuotationPaymentTerms =
+  (typeof CLIENT_QUOTATION_PAYMENT_TERMS_OPTIONS)[number];
+
+export const DEFAULT_CLIENT_QUOTATION_PAYMENT_TERMS: ClientQuotationPaymentTerms =
+  "Net 30";
+
 export const CLIENT_QUOTATION_LIST_SELECT =
   "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, converted_invoice_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
 
 export const CLIENT_QUOTATION_HEADER_SELECT =
-  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, notes, commercial_terms, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
+  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
 
 export const CLIENT_QUOTATION_LINE_ITEM_SELECT =
   "id, quotation_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, product_id, quantity, unit_price, sort_order" as const;
@@ -149,6 +161,9 @@ export type ClientQuotationHeaderRow = {
   bill_to_name: string;
   bill_to_address: string | null;
   bill_to_phone: string | null;
+  ship_to_name: string | null;
+  ship_to_address: string | null;
+  ship_to_phone: string | null;
   subtotal: number;
   vat_nhil_getfund_rate: number;
   tax_due: number;
@@ -161,6 +176,8 @@ export type ClientQuotationHeaderRow = {
   status: ClientQuotationStatus;
   notes: string | null;
   commercial_terms: string | null;
+  internal_notes: string | null;
+  payment_terms: string | null;
   authorized_by_name: string | null;
   authorized_by_title: string | null;
   converted_invoice_id: string | null;
@@ -198,6 +215,9 @@ export type ClientQuotationWriteBody = {
   bill_to_name: string;
   bill_to_address?: string | null;
   bill_to_phone?: string | null;
+  ship_to_name?: string | null;
+  ship_to_address?: string | null;
+  ship_to_phone?: string | null;
   vat_nhil_getfund_rate?: number;
   wht_rate?: number;
   header_discount_amount?: number;
@@ -206,6 +226,8 @@ export type ClientQuotationWriteBody = {
   status?: ClientQuotationStatus;
   notes?: string | null;
   commercial_terms?: string | null;
+  internal_notes?: string | null;
+  payment_terms?: string | null;
   authorized_by_name?: string | null;
   authorized_by_title?: string | null;
   line_items: ClientQuotationLineItemInput[];
@@ -530,6 +552,54 @@ export function defaultValidUntil(fromDate = new Date()) {
   return valid.toISOString().slice(0, 10);
 }
 
+function normalizeQuotationAddressField(value: string | null | undefined) {
+  return (value ?? "").trim();
+}
+
+export function quotationHasDistinctShipTo(
+  quotation: Pick<
+    ClientQuotationHeaderRow,
+    | "bill_to_name"
+    | "bill_to_address"
+    | "bill_to_phone"
+    | "ship_to_name"
+    | "ship_to_address"
+    | "ship_to_phone"
+  >,
+) {
+  const shipName = normalizeQuotationAddressField(quotation.ship_to_name);
+  const shipAddress = normalizeQuotationAddressField(quotation.ship_to_address);
+  const shipPhone = normalizeQuotationAddressField(quotation.ship_to_phone);
+
+  if (!shipName && !shipAddress && !shipPhone) {
+    return false;
+  }
+
+  return (
+    shipName !== normalizeQuotationAddressField(quotation.bill_to_name) ||
+    shipAddress !== normalizeQuotationAddressField(quotation.bill_to_address) ||
+    shipPhone !== normalizeQuotationAddressField(quotation.bill_to_phone)
+  );
+}
+
+export function normalizeClientQuotationPaymentTerms(
+  value: unknown,
+): ClientQuotationPaymentTerms {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return (CLIENT_QUOTATION_PAYMENT_TERMS_OPTIONS as readonly string[]).includes(
+    trimmed,
+  )
+    ? (trimmed as ClientQuotationPaymentTerms)
+    : DEFAULT_CLIENT_QUOTATION_PAYMENT_TERMS;
+}
+
+export function quotationPaymentTermsLabel(
+  paymentTerms: string | null | undefined,
+) {
+  const trimmed = normalizeQuotationAddressField(paymentTerms);
+  return trimmed || DEFAULT_CLIENT_QUOTATION_PAYMENT_TERMS;
+}
+
 export function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -672,6 +742,10 @@ export function emptyQuotationForm() {
     bill_to_name: "",
     bill_to_address: "",
     bill_to_phone: "",
+    ship_to_same_as_billing: true,
+    ship_to_name: "",
+    ship_to_address: "",
+    ship_to_phone: "",
     vat_nhil_getfund_rate: 20,
     wht_rate: 7.5,
     header_discount_amount: 0,
@@ -680,6 +754,8 @@ export function emptyQuotationForm() {
     status: "draft" as ClientQuotationStatus,
     notes: "",
     commercial_terms: "",
+    internal_notes: "",
+    payment_terms: DEFAULT_CLIENT_QUOTATION_PAYMENT_TERMS,
     payment_account_ids: [] as string[],
     line_items: [emptyQuotationLineItem(0)],
   };
@@ -707,6 +783,10 @@ export function clientQuotationToFormState(
     bill_to_name: quotation.bill_to_name,
     bill_to_address: quotation.bill_to_address ?? "",
     bill_to_phone: quotation.bill_to_phone ?? "",
+    ship_to_same_as_billing: !quotationHasDistinctShipTo(quotation),
+    ship_to_name: quotation.ship_to_name ?? "",
+    ship_to_address: quotation.ship_to_address ?? "",
+    ship_to_phone: quotation.ship_to_phone ?? "",
     vat_nhil_getfund_rate: toNumber(quotation.vat_nhil_getfund_rate) || 20,
     wht_rate: toNumber(quotation.wht_rate) || 7.5,
     header_discount_amount: toNumber(quotation.header_discount_amount),
@@ -718,6 +798,8 @@ export function clientQuotationToFormState(
     status: normalizeQuotationStatus(quotation.status),
     notes: quotation.notes ?? "",
     commercial_terms: quotation.commercial_terms ?? "",
+    internal_notes: quotation.internal_notes ?? "",
+    payment_terms: normalizeClientQuotationPaymentTerms(quotation.payment_terms),
     payment_account_ids: paymentAccountIds,
     line_items: [...lineItems]
       .sort((a, b) => a.sort_order - b.sort_order)

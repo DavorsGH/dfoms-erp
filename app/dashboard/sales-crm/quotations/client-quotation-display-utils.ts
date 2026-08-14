@@ -7,6 +7,7 @@ import {
   normalizeQuotationDiscountType,
   normalizeQuotationType,
   quotationHeaderDiscountLabel,
+  quotationPaymentTermsLabel,
   quotationPrintTitle,
   quotationNumberMetaLabel,
   resolveQuotationTaxBasis,
@@ -76,6 +77,11 @@ export function normalizeClientQuotationDetail(
           : null,
       total_amount_due: toNumber(quotation.total_amount_due),
       commercial_terms: quotation.commercial_terms ?? null,
+      internal_notes: quotation.internal_notes ?? null,
+      payment_terms: quotation.payment_terms ?? null,
+      ship_to_name: quotation.ship_to_name ?? null,
+      ship_to_address: quotation.ship_to_address ?? null,
+      ship_to_phone: quotation.ship_to_phone ?? null,
       converted_invoice: Array.isArray(quotation.converted_invoice)
         ? (quotation.converted_invoice[0] ?? null)
         : (quotation.converted_invoice ?? null),
@@ -158,6 +164,15 @@ export function quotationValidityFooter(validUntil: string | null | undefined) {
   return `This document is valid until ${formatInvoiceDate(validUntil)} unless otherwise agreed in writing.`;
 }
 
+export function quotationValidityAndPaymentFooter(
+  validUntil: string | null | undefined,
+  paymentTerms: string | null | undefined,
+) {
+  const validity = quotationValidityFooter(validUntil);
+  const terms = quotationPaymentTermsLabel(paymentTerms);
+  return `${validity} Payment terms: ${terms}.`;
+}
+
 export function buildClientQuotationPreviewDisplay(input: {
   tenantId: string;
   quotationNumber: string;
@@ -227,6 +242,9 @@ export function buildClientQuotationPreviewDisplay(input: {
     bill_to_name: input.form.bill_to_name,
     bill_to_address: input.form.bill_to_address ?? null,
     bill_to_phone: input.form.bill_to_phone ?? null,
+    ship_to_name: input.form.ship_to_name ?? null,
+    ship_to_address: input.form.ship_to_address ?? null,
+    ship_to_phone: input.form.ship_to_phone ?? null,
     subtotal: totals.subtotal,
     vat_nhil_getfund_rate: toNumber(input.form.vat_nhil_getfund_rate) || 20,
     tax_due: totals.tax_due,
@@ -242,6 +260,8 @@ export function buildClientQuotationPreviewDisplay(input: {
     status: input.form.status ?? "draft",
     notes: input.form.notes ?? null,
     commercial_terms: input.form.commercial_terms ?? null,
+    internal_notes: input.form.internal_notes ?? null,
+    payment_terms: input.form.payment_terms ?? null,
     authorized_by_name: input.authorizedBy.authorized_by_name,
     authorized_by_title: input.authorizedBy.authorized_by_title,
     converted_invoice_id: null,

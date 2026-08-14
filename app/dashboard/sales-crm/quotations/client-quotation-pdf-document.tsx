@@ -17,7 +17,7 @@ import {
   quotationPrintTitle,
   quotationNumberMetaLabel,
   quotationTaxBasisNote,
-  quotationValidityFooter,
+  quotationValidityAndPaymentFooter,
   resolveInvoiceCompanyName,
   sumQuotationLineItemColumns,
   tenantHeaderContactLines,
@@ -25,6 +25,7 @@ import {
 } from "./client-quotation-display-utils";
 import {
   normalizeQuotationDiscountType,
+  quotationHasDistinctShipTo,
   quotationHeaderDiscountLabel,
   resolveQuotationOpportunityName,
 } from "@/utils/client-quotations-types";
@@ -114,6 +115,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: "hidden",
     marginBottom: 18,
+  },
+  addressColumns: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 18,
+  },
+  addressColumn: {
+    flex: 1,
+    marginBottom: 0,
   },
   sectionBar: {
     backgroundColor: C.navy,
@@ -367,6 +377,7 @@ export default function ClientQuotationPdfDocument({
   const headerDiscountLabel = quotationHeaderDiscountLabel(quotation);
   const isPercentageDiscount =
     normalizeQuotationDiscountType(quotation.discount_type) === "percentage";
+  const showDistinctShipTo = quotationHasDistinctShipTo(quotation);
 
   let lineRowIndex = 0;
 
@@ -411,20 +422,56 @@ export default function ClientQuotationPdfDocument({
           </View>
         </View>
 
-        <View style={styles.sectionBox}>
-          <View style={styles.sectionBar}>
-            <Text style={styles.sectionBarText}>Bill To</Text>
+        {showDistinctShipTo ? (
+          <View style={styles.addressColumns}>
+            <View style={[styles.sectionBox, styles.addressColumn]}>
+              <View style={styles.sectionBar}>
+                <Text style={styles.sectionBarText}>Bill To</Text>
+              </View>
+              <View style={styles.sectionBody}>
+                <Text style={styles.billToText}>{quotation.bill_to_name}</Text>
+                {quotation.bill_to_address?.trim() ? (
+                  <Text style={styles.billToText}>{quotation.bill_to_address.trim()}</Text>
+                ) : null}
+                {quotation.bill_to_phone?.trim() ? (
+                  <Text style={styles.billToText}>{quotation.bill_to_phone.trim()}</Text>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={[styles.sectionBox, styles.addressColumn]}>
+              <View style={styles.sectionBar}>
+                <Text style={styles.sectionBarText}>Ship To</Text>
+              </View>
+              <View style={styles.sectionBody}>
+                {quotation.ship_to_name?.trim() ? (
+                  <Text style={styles.billToText}>{quotation.ship_to_name.trim()}</Text>
+                ) : null}
+                {quotation.ship_to_address?.trim() ? (
+                  <Text style={styles.billToText}>{quotation.ship_to_address.trim()}</Text>
+                ) : null}
+                {quotation.ship_to_phone?.trim() ? (
+                  <Text style={styles.billToText}>{quotation.ship_to_phone.trim()}</Text>
+                ) : null}
+              </View>
+            </View>
           </View>
-          <View style={styles.sectionBody}>
-            <Text style={styles.billToText}>{quotation.bill_to_name}</Text>
-            {quotation.bill_to_address?.trim() ? (
-              <Text style={styles.billToText}>{quotation.bill_to_address.trim()}</Text>
-            ) : null}
-            {quotation.bill_to_phone?.trim() ? (
-              <Text style={styles.billToText}>{quotation.bill_to_phone.trim()}</Text>
-            ) : null}
+        ) : (
+          <View style={styles.sectionBox}>
+            <View style={styles.sectionBar}>
+              <Text style={styles.sectionBarText}>Bill To</Text>
+            </View>
+            <View style={styles.sectionBody}>
+              <Text style={styles.billToText}>{quotation.bill_to_name}</Text>
+              {quotation.bill_to_address?.trim() ? (
+                <Text style={styles.billToText}>{quotation.bill_to_address.trim()}</Text>
+              ) : null}
+              {quotation.bill_to_phone?.trim() ? (
+                <Text style={styles.billToText}>{quotation.bill_to_phone.trim()}</Text>
+              ) : null}
+            </View>
           </View>
-        </View>
+        )}
 
         <View style={styles.section}>
           <View style={[styles.sectionBar, { borderTopLeftRadius: 4, borderTopRightRadius: 4 }]}>
@@ -578,7 +625,10 @@ export default function ClientQuotationPdfDocument({
 
         <View wrap={false} style={styles.documentClosingBlock}>
           <Text style={[styles.footerBox, styles.footerNoticeText]} wrap={false}>
-            {quotationValidityFooter(quotation.valid_until)}
+            {quotationValidityAndPaymentFooter(
+              quotation.valid_until,
+              quotation.payment_terms,
+            )}
           </Text>
 
           {hasAuthorizedBySignature(quotation) ? (

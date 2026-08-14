@@ -11,6 +11,7 @@ import { formatAuthorizedSignerLabel } from "@/utils/client-invoices-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import {
   AUTHORIZED_BY_OTHER,
+  CLIENT_QUOTATION_PAYMENT_TERMS_OPTIONS,
   computeQuotationLineTotalCost,
   computeQuotationTotals,
   defaultTaxBasisForQuotationType,
@@ -19,6 +20,7 @@ import {
   formatInvoiceMoney,
   isProductCatalogLine,
   isProductPickerLine,
+  normalizeClientQuotationPaymentTerms,
   normalizeQuotationDiscountType,
   normalizeQuotationType,
   quotationHeaderDiscountLabel,
@@ -41,9 +43,16 @@ import {
 } from "./client-quotation-display-utils";
 import ClientQuotationPreviewDialog from "./client-quotation-preview-dialog";
 
-type ClientQuotationFormState = Omit<ClientQuotationWriteBody, "line_items"> &
+type ClientQuotationFormState = Omit<
+  ClientQuotationWriteBody,
+  "line_items" | "ship_to_name" | "ship_to_address" | "ship_to_phone"
+> &
   ClientInvoiceFormAuthorizedByState & {
     line_items: ClientQuotationFormLineItem[];
+    ship_to_same_as_billing: boolean;
+    ship_to_name: string;
+    ship_to_address: string;
+    ship_to_phone: string;
   };
 
 type ClientQuotationFormProps = {
@@ -79,6 +88,22 @@ const secondaryButtonClassName =
 
 function reindexLineItems(lines: ClientQuotationFormLineItem[]) {
   return lines.map((line, index) => ({ ...line, sort_order: index }));
+}
+
+function resolveShipToPayload(form: ClientQuotationFormState) {
+  if (form.ship_to_same_as_billing) {
+    return {
+      ship_to_name: null,
+      ship_to_address: null,
+      ship_to_phone: null,
+    };
+  }
+
+  return {
+    ship_to_name: form.ship_to_name.trim() || null,
+    ship_to_address: form.ship_to_address.trim() || null,
+    ship_to_phone: form.ship_to_phone.trim() || null,
+  };
 }
 
 export default function ClientQuotationForm({
@@ -201,6 +226,7 @@ export default function ClientQuotationForm({
         bill_to_name: form.bill_to_name,
         bill_to_address: form.bill_to_address,
         bill_to_phone: form.bill_to_phone,
+        ...resolveShipToPayload(form),
         vat_nhil_getfund_rate: form.vat_nhil_getfund_rate,
         wht_rate: form.wht_rate,
         header_discount_amount: isProductQuotation
@@ -213,6 +239,8 @@ export default function ClientQuotationForm({
         status: form.status,
         notes: form.notes,
         commercial_terms: form.commercial_terms?.trim() || null,
+        internal_notes: form.internal_notes?.trim() || null,
+        payment_terms: normalizeClientQuotationPaymentTerms(form.payment_terms),
         authorized_by_name: authorizedBy.authorized_by_name,
         authorized_by_title: authorizedBy.authorized_by_title,
         line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => ({
@@ -454,6 +482,7 @@ export default function ClientQuotationForm({
       bill_to_name: form.bill_to_name,
       bill_to_address: form.bill_to_address,
       bill_to_phone: form.bill_to_phone,
+      ...resolveShipToPayload(form),
       vat_nhil_getfund_rate: form.vat_nhil_getfund_rate,
       wht_rate: form.wht_rate,
       header_discount_amount: isProductQuotation
@@ -467,6 +496,8 @@ export default function ClientQuotationForm({
       status: form.status,
       notes: form.notes,
       commercial_terms: form.commercial_terms?.trim() || null,
+      internal_notes: form.internal_notes?.trim() || null,
+      payment_terms: normalizeClientQuotationPaymentTerms(form.payment_terms),
       authorized_by_name: authorizedBy.authorized_by_name,
       authorized_by_title: authorizedBy.authorized_by_title,
       line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => ({
@@ -626,6 +657,83 @@ export default function ClientQuotationForm({
             />
           </div>
         </div>
+
+        <div className="space-y-4 border-t border-slate-200 pt-4">
+          <div>
+            <h4 className="text-sm font-medium text-slate-700">Ship To</h4>
+            <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                disabled={isConverted}
+                checked={form.ship_to_same_as_billing}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    ship_to_same_as_billing: event.target.checked,
+                  }))
+                }
+                className="rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+              />
+              Same as billing
+            </label>
+          </div>
+
+          {!form.ship_to_same_as_billing ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Ship To Name
+                </label>
+                <input
+                  type="text"
+                  disabled={isConverted}
+                  value={form.ship_to_name}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      ship_to_name: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Ship To Phone
+                </label>
+                <input
+                  type="text"
+                  disabled={isConverted}
+                  value={form.ship_to_phone}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      ship_to_phone: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Ship To Address
+                </label>
+                <textarea
+                  rows={3}
+                  disabled={isConverted}
+                  value={form.ship_to_address}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      ship_to_address: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className={cardClassName}>
@@ -721,6 +829,31 @@ export default function ClientQuotationForm({
               }
               className={inputClassName}
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Payment Terms
+            </label>
+            <select
+              disabled={isConverted}
+              value={normalizeClientQuotationPaymentTerms(form.payment_terms)}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  payment_terms: event.target.value,
+                }))
+              }
+              className={inputClassName}
+            >
+              {CLIENT_QUOTATION_PAYMENT_TERMS_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Shown on the printed quotation near the validity notice.
+            </p>
           </div>
         </div>
       </section>
@@ -1489,6 +1622,28 @@ export default function ClientQuotationForm({
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section className={cardClassName}>
+        <div>
+          <h3 className="text-sm font-medium text-slate-700">Internal Notes</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Staff-only notes for your team. Never shown on the printed quotation or client portal.
+          </p>
+        </div>
+        <textarea
+          rows={4}
+          disabled={isConverted}
+          value={form.internal_notes ?? ""}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              internal_notes: event.target.value,
+            }))
+          }
+          placeholder="Follow-up reminders, pricing rationale, approval notes…"
+          className={inputClassName}
+        />
       </section>
 
       <section className={cardClassName}>

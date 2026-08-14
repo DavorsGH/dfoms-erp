@@ -257,6 +257,18 @@ export default function ClientQuotationView({
         </Link>
       </div>
 
+      {showStaffActions && display.quotation.internal_notes?.trim() ? (
+        <section className="no-print rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <h3 className="text-sm font-semibold text-amber-900">Internal Notes</h3>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-amber-950">
+            {display.quotation.internal_notes.trim()}
+          </p>
+          <p className="mt-2 text-xs text-amber-800">
+            Staff only — not shown on print/PDF or client portal.
+          </p>
+        </section>
+      ) : null}
+
       <ClientQuotationPrintLayout
         display={display}
         printAreaId={CLIENT_QUOTATION_PRINT_AREA_ID}

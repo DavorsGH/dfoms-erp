@@ -3,6 +3,7 @@
 import { tableWrapCellClassName } from "@/app/dashboard/scrollable-table";
 import {
   normalizeQuotationDiscountType,
+  quotationHasDistinctShipTo,
   quotationHeaderDiscountLabel,
   resolveQuotationOpportunityName,
 } from "@/utils/client-quotations-types";
@@ -15,7 +16,7 @@ import {
   quotationNumberMetaLabel,
   quotationPrintTitle,
   quotationTaxBasisNote,
-  quotationValidityFooter,
+  quotationValidityAndPaymentFooter,
   resolveAuthorizedByDisplayTitle,
   resolveInvoiceCompanyName,
   sumQuotationLineItemColumns,
@@ -48,6 +49,7 @@ export default function ClientQuotationPrintLayout({
     branding,
   );
   const headerDiscountLabel = quotationHeaderDiscountLabel(quotation);
+  const showDistinctShipTo = quotationHasDistinctShipTo(quotation);
   const isPercentageDiscount =
     normalizeQuotationDiscountType(quotation.discount_type) === "percentage";
 
@@ -102,20 +104,49 @@ export default function ClientQuotationPrintLayout({
       </header>
 
       <div className="space-y-8 p-8">
-        <section className="overflow-hidden rounded-lg border border-[#0f2744]/25">
-          <h4 className="bg-[#0f2744] px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white">
-            Bill To
-          </h4>
-          <div className="border-t border-[#0f2744]/10 bg-[#e8f4f8]/50 px-4 py-3">
-            <p className="text-sm font-medium text-slate-900">{quotation.bill_to_name}</p>
-            {quotation.bill_to_address?.trim() ? (
-              <p className="text-sm text-slate-800">{quotation.bill_to_address.trim()}</p>
-            ) : null}
-            {quotation.bill_to_phone?.trim() ? (
-              <p className="text-sm text-slate-800">{quotation.bill_to_phone.trim()}</p>
-            ) : null}
-          </div>
-        </section>
+        <div
+          className={
+            showDistinctShipTo
+              ? "grid gap-6 md:grid-cols-2"
+              : "space-y-0"
+          }
+        >
+          <section className="overflow-hidden rounded-lg border border-[#0f2744]/25">
+            <h4 className="bg-[#0f2744] px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white">
+              Bill To
+            </h4>
+            <div className="border-t border-[#0f2744]/10 bg-[#e8f4f8]/50 px-4 py-3">
+              <p className="text-sm font-medium text-slate-900">{quotation.bill_to_name}</p>
+              {quotation.bill_to_address?.trim() ? (
+                <p className="text-sm text-slate-800">{quotation.bill_to_address.trim()}</p>
+              ) : null}
+              {quotation.bill_to_phone?.trim() ? (
+                <p className="text-sm text-slate-800">{quotation.bill_to_phone.trim()}</p>
+              ) : null}
+            </div>
+          </section>
+
+          {showDistinctShipTo ? (
+            <section className="overflow-hidden rounded-lg border border-[#0f2744]/25">
+              <h4 className="bg-[#0f2744] px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white">
+                Ship To
+              </h4>
+              <div className="border-t border-[#0f2744]/10 bg-[#e8f4f8]/50 px-4 py-3">
+                {quotation.ship_to_name?.trim() ? (
+                  <p className="text-sm font-medium text-slate-900">
+                    {quotation.ship_to_name.trim()}
+                  </p>
+                ) : null}
+                {quotation.ship_to_address?.trim() ? (
+                  <p className="text-sm text-slate-800">{quotation.ship_to_address.trim()}</p>
+                ) : null}
+                {quotation.ship_to_phone?.trim() ? (
+                  <p className="text-sm text-slate-800">{quotation.ship_to_phone.trim()}</p>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+        </div>
 
         <section className="space-y-4">
           <h4 className="rounded-t-lg bg-[#0f2744] px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white">
@@ -308,7 +339,10 @@ export default function ClientQuotationPrintLayout({
         ) : null}
 
         <footer className="rounded-lg border-2 border-[#0f2744]/25 bg-[#e8f4f8] px-4 py-3 text-sm text-slate-800">
-          {quotationValidityFooter(quotation.valid_until)}
+          {quotationValidityAndPaymentFooter(
+            quotation.valid_until,
+            quotation.payment_terms,
+          )}
         </footer>
 
         {hasAuthorizedBySignature(quotation) ? (

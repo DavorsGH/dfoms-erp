@@ -100,7 +100,10 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   return NextResponse.json({
-    client_quotation: detail.quotation,
+    client_quotation: auth.isClientPortal
+      ? (({ internal_notes: _internalNotes, ...clientSafeQuotation }) =>
+          clientSafeQuotation)(detail.quotation)
+      : detail.quotation,
     line_items: detail.line_items,
     payment_account_ids: detail.payment_account_ids,
     payment_accounts: paymentAccounts,
