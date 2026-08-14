@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import {
   substituteTemplatePlaceholders,
@@ -19,6 +20,32 @@ import {
 
 function isEventType(value: string): value is TransactionalEventType {
   return (TRANSACTIONAL_EVENT_TYPES as readonly string[]).includes(value);
+}
+
+async function persistTransactionalSmsLog(
+  admin: SupabaseClient,
+  options: {
+    tenantId: string;
+    eventType: string;
+    customerId: string;
+    phone: string;
+    hubtelMessageId: string | null;
+  },
+): Promise<void> {
+  const { error } = await admin.from("transactional_notification_sms_log").insert({
+    tenant_id: options.tenantId,
+    event_type: options.eventType,
+    customer_id: options.customerId,
+    phone: options.phone,
+    hubtel_message_id: options.hubtelMessageId,
+  });
+
+  if (error) {
+    console.error(
+      `[transactional-notification] Failed to persist SMS log (${options.eventType}/${options.customerId}):`,
+      error.message,
+    );
+  }
 }
 
 /**
@@ -144,8 +171,8 @@ export async function fireTransactionalNotification(
     if (wantsSms) {
       smsCreditAvailable = await tryDebitSmsCredit(tenantId);
       if (!smsCreditAvailable) {
-        console.warn(
-          `[transactional-notification] ${eventType}: no SMS credits for tenant ${tenantId}; falling back to email when needed.`,
+        console.error(
+          `[transactional-notification] SMS credit debit failed for tenant ${tenantId}, event ${eventType} - SMS NOT attempted`,
         );
       }
     }
@@ -200,13 +227,27 @@ export async function fireTransactionalNotification(
         const content = substituteTemplatePlaceholders(
           template.body_sms ?? "",
           vars,
-        );
-        const result = await sendHubtelSms({ to, content });
-        if (!result.ok) {
-          console.error(
-            `[transactional-notification] SMS failed (${eventType}/${clientId}):`,
-            result.error,
+        ).trim();
+        if (!content) {
+          console.warn(
+            `[transactional-notification] ${eventType}: SMS template body_sms is empty after substitution for ${clientId} (template ${template.id}); SMS NOT attempted.`,
           );
+        } else {
+          const result = await sendHubtelSms({ to, content });
+          if (!result.ok) {
+            console.error(
+              `[transactional-notification] SMS failed (${eventType}/${clientId}):`,
+              result.error,
+            );
+          } else {
+            await persistTransactionalSmsLog(admin, {
+              tenantId,
+              eventType,
+              customerId: clientId,
+              phone: to,
+              hubtelMessageId: result.id,
+            });
+          }
         }
       }
     }

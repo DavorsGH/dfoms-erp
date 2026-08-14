@@ -224,6 +224,23 @@ async function main() {
     smsEntry?.to === "+233244999001",
     `SMS must normalize local phone to E.164, got ${smsEntry?.to ?? "none"}`,
   );
+  const { data: smsLogRows, error: smsLogError } = await admin
+    .from("transactional_notification_sms_log")
+    .select("hubtel_message_id, phone, event_type")
+    .eq("tenant_id", CAANTA)
+    .eq("customer_id", customerId)
+    .eq("event_type", "payment_received")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  assert(!smsLogError, smsLogError?.message ?? "sms log query failed");
+  assert(
+    smsLogRows?.[0]?.phone === "+233244999001",
+    "SMS log must record normalized phone",
+  );
+  assert(
+    smsLogRows?.[0]?.hubtel_message_id === "stub-sms",
+    "SMS log must persist Hubtel message id on success",
+  );
   console.log("OK opt-out bypass: transactional SMS sent despite sms_opt_in=false");
 
   // --- Disable rule ---
@@ -423,6 +440,11 @@ async function main() {
       "id",
       templates.map((t) => t.id),
     );
+  await admin
+    .from("transactional_notification_sms_log")
+    .delete()
+    .eq("tenant_id", CAANTA)
+    .eq("customer_id", customerId);
   await admin
     .from("customer_comm_preferences")
     .delete()
