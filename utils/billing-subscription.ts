@@ -2,7 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 import { createAdminClient } from "@/utils/supabase/admin";
-import type { CrmSubscriptionStatus } from "@/utils/tenant-signup";
+import { DAVORS_TENANT_ID, type CrmSubscriptionStatus } from "@/utils/tenant-signup";
 
 export type TenantBillingSubscription = {
   subscriptionStatus: CrmSubscriptionStatus | null;
@@ -89,3 +89,26 @@ export const getTenantBillingSubscription = cache(
     };
   },
 );
+
+/** Latest Paystack subscription code for a linked tenant's ERP subscription row. */
+export async function getLinkedTenantPaystackSubscriptionCode(
+  linkedTenantId: string,
+): Promise<string | null> {
+  const admin = createAdminClient();
+
+  const { data, error } = await admin
+    .from("crm_subscriptions")
+    .select("paystack_subscription_id")
+    .eq("tenant_id", DAVORS_TENANT_ID)
+    .eq("linked_tenant_id", linkedTenantId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const code = data?.paystack_subscription_id?.trim() ?? "";
+  return code || null;
+}

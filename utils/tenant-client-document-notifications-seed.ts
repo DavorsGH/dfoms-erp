@@ -42,7 +42,6 @@ async function findTemplateByName(
 export async function seedTenantClientDocumentNotifications(
   admin: SupabaseClient,
   tenantId: string,
-  options?: { forceRefreshTemplates?: boolean },
 ): Promise<SeedClientDocumentNotificationsResult> {
   const specs = buildClientDocumentTemplateSpecs();
   const templateIds: string[] = [];
@@ -65,7 +64,7 @@ export async function seedTenantClientDocumentNotifications(
 
     let templateId = existing.template?.id ?? null;
 
-    if (templateId && options?.forceRefreshTemplates) {
+    if (templateId) {
       const { error: updateError } = await admin
         .from("message_templates")
         .update({
@@ -91,7 +90,7 @@ export async function seedTenantClientDocumentNotifications(
         };
       }
       templatesUpdated += 1;
-    } else if (!templateId) {
+    } else {
       const { data: created, error: insertError } = await admin
         .from("message_templates")
         .insert({

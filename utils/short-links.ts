@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 
 const CODE_ALPHABET =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
@@ -9,10 +10,7 @@ const CODE_LENGTH = 8;
 const MAX_INSERT_ATTEMPTS = 8;
 
 function siteBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-    "https://portal.davorsfacilities.com"
-  ).replace(/\/$/, "");
+  return resolvePublicSiteUrl();
 }
 
 function generateShortCode(length = CODE_LENGTH): string {

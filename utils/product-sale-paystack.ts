@@ -2,6 +2,9 @@ import {
   calculateIncomeOutstanding,
   resolveIncomeOutstandingBalance,
 } from "@/app/dashboard/finance/income-register-utils";
+import { resolveSiteUrlFromRequest } from "@/utils/public-site-url";
+
+export { resolveSiteUrlFromRequest };
 
 export const PRODUCT_SALE_PAYSTACK_CONTEXT = "product_sale" as const;
 
@@ -170,20 +173,4 @@ export function allocatePaymentAcrossLines(
       nextPaymentStatus,
     };
   });
-}
-
-export function resolveSiteUrlFromRequest(request: Request): string {
-  const configured = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
-  if (configured) {
-    return configured;
-  }
-
-  const host =
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  const proto = request.headers.get("x-forwarded-proto") ?? "http";
-  if (host) {
-    return `${proto}://${host}`;
-  }
-
-  return "http://localhost:3000";
 }

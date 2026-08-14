@@ -153,17 +153,17 @@ export async function fireTransactionalNotification(
     }
 
     const tenantName = await resolveTenantDisplayName(admin, tenantId);
+    const customerCompanyName =
+      customer.client_name?.trim() || customer.client_id;
 
     const vars: Record<string, string> = {
       tenant_name: tenantName,
-      customer_name:
-        customer.client_name?.trim() ||
-        variables.customer_name ||
-        customer.client_id,
       customer_id: customer.client_id,
       ...buildClientDocumentPortalUrlVars(),
       ...variables,
     };
+    // CRM company name (customers.client_name) — not bill_to_name / contact person.
+    vars.customer_name = customerCompanyName;
 
     const wantsSms = channel === "sms" || channel === "both";
     let smsCreditAvailable = false;

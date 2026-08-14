@@ -135,6 +135,40 @@ function formatSmsPackPrice(priceGhs: number): string {
   })}`;
 }
 
+type SubscriptionPaymentMethod = {
+  last4: string | null;
+  brand: string | null;
+  exp_month: string | null;
+  exp_year: string | null;
+  channel: string | null;
+  reusable: boolean | null;
+};
+
+function formatPaymentMethodBrand(brand: string | null): string {
+  if (!brand?.trim()) {
+    return "Card";
+  }
+  return brand.trim().replace(/_/g, " ");
+}
+
+function formatPaymentMethodExpiry(
+  expMonth: string | null,
+  expYear: string | null,
+): string | null {
+  if (!expMonth || !expYear) {
+    return null;
+  }
+  const month = expMonth.padStart(2, "0");
+  const year = expYear.length === 2 ? `20${expYear}` : expYear;
+  return `${month}/${year}`;
+}
+
+function subscriptionPaymentMethodOnFile(
+  paymentMethod: SubscriptionPaymentMethod | null,
+): boolean {
+  return Boolean(paymentMethod?.last4?.trim() || paymentMethod?.brand?.trim());
+}
+
 export default function BillingSettings({
   subscription,
   workspaceName,
@@ -166,10 +200,66 @@ export default function BillingSettings({
   const [cancelReasonDetail, setCancelReasonDetail] = useState("");
   const [cancelNameConfirmation, setCancelNameConfirmation] = useState("");
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] =
+    useState<SubscriptionPaymentMethod | null>(null);
+  const [paymentMethodLoading, setPaymentMethodLoading] = useState(false);
+  const [manageLinkLoading, setManageLinkLoading] = useState(false);
 
   useEffect(() => {
     setWalletBalance(smsCreditBalance);
   }, [smsCreditBalance]);
+
+  useEffect(() => {
+    if (!subscription.paystackSubscriptionId) {
+      setPaymentMethod(null);
+      setPaymentMethodLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPaymentMethod() {
+      setPaymentMethodLoading(true);
+      try {
+        const response = await fetch("/api/billing/subscription/payment-method");
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+          needs_checkout?: boolean;
+          payment_method?: SubscriptionPaymentMethod | null;
+        } | null;
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.ok) {
+          setError(
+            payload?.error ??
+              "Unable to load subscription payment method from Paystack.",
+          );
+          setPaymentMethod(null);
+          return;
+        }
+
+        setPaymentMethod(payload?.payment_method ?? null);
+      } catch {
+        if (!cancelled) {
+          setError("Unable to load subscription payment method from Paystack.");
+          setPaymentMethod(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setPaymentMethodLoading(false);
+        }
+      }
+    }
+
+    void loadPaymentMethod();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [subscription.paystackSubscriptionId]);
 
   const planState = formatBillingPlanState(
     subscription.subscriptionStatus,
@@ -200,6 +290,40 @@ export default function BillingSettings({
     cancelReason !== "other" || cancelReasonDetail.trim().length > 0;
   const cancelSubmitEnabled =
     cancelNameMatches && cancelReasonValid && !cancelLoading;
+  const hasPaystackSubscription = Boolean(subscription.paystackSubscriptionId);
+  const paymentMethodOnFile = subscriptionPaymentMethodOnFile(paymentMethod);
+  const cardExpiryLabel = formatPaymentMethodExpiry(
+    paymentMethod?.exp_month ?? null,
+    paymentMethod?.exp_year ?? null,
+  );
+
+  async function handleManageSubscriptionPaymentMethod() {
+    setManageLinkLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch(
+      "/api/billing/subscription/payment-method/manage-link",
+      { method: "POST" },
+    );
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      link?: string;
+      needs_checkout?: boolean;
+    } | null;
+
+    if (!response.ok || !payload?.link) {
+      setManageLinkLoading(false);
+      setError(
+        payload?.error ??
+          "Unable to open Paystack card management. Try again or contact support.",
+      );
+      return;
+    }
+
+    window.location.assign(payload.link);
+  }
 
   function resetCancelModal() {
     setCancelModalOpen(false);
@@ -618,18 +742,65 @@ export default function BillingSettings({
         <div>
           <h3 className="text-sm font-medium text-slate-700">Payment Methods</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Saved cards and payment methods for automatic billing.
+            Saved card for automatic subscription renewals across your
+            workspace.
           </p>
         </div>
-        <p className="text-sm text-slate-600">No payment methods</p>
-        <button
-          type="button"
-          disabled
-          title="Coming soon"
-          className={secondaryButtonClassName}
-        >
-          Add new card
-        </button>
+
+        {!hasPaystackSubscription ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Choose a plan first to set up subscription billing.
+            </p>
+            <button
+              type="button"
+              onClick={() => setPlanModalOpen(true)}
+              className={secondaryButtonClassName}
+              disabled={changePlanDisabled}
+            >
+              Change Plan
+            </button>
+          </div>
+        ) : paymentMethodLoading ? (
+          <p className="text-sm text-slate-500">Loading payment method…</p>
+        ) : paymentMethodOnFile ? (
+          <div className="space-y-3">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-sm font-medium text-[#0f2744]">
+                {formatPaymentMethodBrand(paymentMethod?.brand ?? null)}
+                {paymentMethod?.last4 ? ` •••• ${paymentMethod.last4}` : ""}
+                {cardExpiryLabel ? (
+                  <span className="ml-2 font-normal text-slate-600">
+                    Exp {cardExpiryLabel}
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Used for subscription renewals
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleManageSubscriptionPaymentMethod()}
+              disabled={manageLinkLoading}
+              className={secondaryButtonClassName}
+            >
+              {manageLinkLoading ? "Opening Paystack…" : "Replace card"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">No payment method on file</p>
+            <button
+              type="button"
+              onClick={() => void handleManageSubscriptionPaymentMethod()}
+              disabled={manageLinkLoading}
+              className={secondaryButtonClassName}
+            >
+              {manageLinkLoading ? "Opening Paystack…" : "Add card"}
+            </button>
+          </div>
+        )}
       </section>
 
       <section className={cardClassName}>

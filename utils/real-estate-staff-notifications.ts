@@ -4,6 +4,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { sendResendEmail } from "@/utils/resend-email";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import { createShortLinkUrl } from "@/utils/short-links";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
@@ -57,12 +58,8 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Same base-URL convention as portal invite / signup emails. */
 function siteBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-    "https://portal.davorsfacilities.com"
-  );
+  return resolvePublicSiteUrl();
 }
 
 function staffDashboardUrl(path: string): string {

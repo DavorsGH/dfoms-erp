@@ -433,12 +433,71 @@ export function verifyPaystackWebhookSignature(
   }
 }
 
+export type PaystackSubscriptionAuthorization = {
+  last4: string | null;
+  brand: string | null;
+  expMonth: string | null;
+  expYear: string | null;
+  channel: string | null;
+  reusable: boolean | null;
+};
+
 export type PaystackSubscriptionDetails = {
   subscriptionCode: string;
   emailToken: string | null;
   status: string | null;
   nextPaymentDate: string | null;
+  authorization: PaystackSubscriptionAuthorization | null;
 };
+
+function parsePaystackSubscriptionAuthorization(
+  raw: unknown,
+): PaystackSubscriptionAuthorization | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+
+  const authorization = raw as Record<string, unknown>;
+  const last4 =
+    typeof authorization.last4 === "string" && authorization.last4.trim()
+      ? authorization.last4.trim()
+      : null;
+  const brand =
+    (typeof authorization.brand === "string" && authorization.brand.trim()
+      ? authorization.brand.trim()
+      : null) ??
+    (typeof authorization.card_type === "string" &&
+    authorization.card_type.trim()
+      ? authorization.card_type.trim()
+      : null);
+  const expMonth =
+    authorization.exp_month != null
+      ? String(authorization.exp_month).trim() || null
+      : null;
+  const expYear =
+    authorization.exp_year != null
+      ? String(authorization.exp_year).trim() || null
+      : null;
+  const channel =
+    typeof authorization.channel === "string" && authorization.channel.trim()
+      ? authorization.channel.trim()
+      : null;
+  const reusable =
+    typeof authorization.reusable === "boolean" ? authorization.reusable : null;
+
+  if (!last4 && !brand && !expMonth && !expYear && !channel) {
+    return null;
+  }
+
+  return {
+    last4,
+    brand,
+    expMonth,
+    expYear,
+    channel,
+    reusable,
+  };
+}
 
 /** GET /subscription/:code_or_id */
 export async function fetchPaystackSubscription(
@@ -474,6 +533,7 @@ export async function fetchPaystackSubscription(
         email_token?: string;
         status?: string;
         next_payment_date?: string | null;
+        authorization?: unknown;
       };
     } | null;
 
@@ -497,6 +557,9 @@ export async function fetchPaystackSubscription(
         emailToken,
         status: payload.data.status ?? null,
         nextPaymentDate: payload.data.next_payment_date ?? null,
+        authorization: parsePaystackSubscriptionAuthorization(
+          payload.data.authorization,
+        ),
       },
     };
   } catch (error) {
@@ -506,6 +569,67 @@ export async function fetchPaystackSubscription(
         error instanceof Error
           ? error.message
           : "Paystack subscription fetch request failed.",
+    };
+  }
+}
+
+/** GET /subscription/:code/manage/link — hosted page to add or replace subscription card. */
+export async function fetchPaystackSubscriptionManageLink(
+  subscriptionCodeOrId: string,
+): Promise<{ ok: true; link: string } | { ok: false; error: string }> {
+  const auth = requireSecretKey();
+  if (!auth.ok) {
+    return auth;
+  }
+
+  const trimmed = subscriptionCodeOrId.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Missing Paystack subscription code." };
+  }
+
+  try {
+    const response = await fetch(
+      `${PAYSTACK_BASE}/subscription/${encodeURIComponent(trimmed)}/manage/link`,
+      {
+        headers: {
+          Authorization: `Bearer ${auth.secretKey}`,
+        },
+      },
+    );
+
+    const payload = (await response.json().catch(() => null)) as {
+      status?: boolean;
+      message?: string;
+      data?: {
+        link?: string;
+      };
+    } | null;
+
+    if (!response.ok || payload?.status === false || !payload?.data) {
+      return {
+        ok: false,
+        error:
+          payload?.message ??
+          `Paystack subscription manage link failed (${response.status}).`,
+      };
+    }
+
+    const link = payload.data.link?.trim() ?? "";
+    if (!link) {
+      return {
+        ok: false,
+        error: "Paystack manage link response missing link URL.",
+      };
+    }
+
+    return { ok: true, link };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Paystack subscription manage link request failed.",
     };
   }
 }

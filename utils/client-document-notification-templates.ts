@@ -1,4 +1,5 @@
 import type { TransactionalEventType } from "@/utils/transactional-notification-types";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 
 export const CLIENT_DOCUMENT_NOTIFICATION_EVENTS = [
   "quotation_sent",
@@ -20,10 +21,7 @@ export type ClientDocumentTemplateSpec = {
 
 /** Shared ERP portal base URL for client-document email links. */
 export function resolveClientPortalBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-    "https://portal.davorsfacilities.com"
-  ).replace(/\/$/, "");
+  return resolvePublicSiteUrl();
 }
 
 export function buildClientDocumentPortalUrlVars(): Record<string, string> {
@@ -52,7 +50,7 @@ Valid until: {{valid_until}}
 
 View your quotations: ${portal.portal_quotations_url}`,
       body_sms:
-        "Quotation {{quotation_number}} sent. Amount {{amount}}. Valid until {{valid_until}}.",
+        "{{tenant_name}}: Quotation {{quotation_number}} for {{customer_name}} has been sent. Amount {{amount}}. Valid until {{valid_until}}.",
       variables: [
         "tenant_name",
         "customer_name",
@@ -74,7 +72,7 @@ Due: {{due_date}}
 
 View your invoices: ${portal.portal_invoices_url}`,
       body_sms:
-        "Invoice {{invoice_number}} issued. Amount {{amount}}. Due {{due_date}}.",
+        "{{tenant_name}}: Invoice {{invoice_number}} for {{customer_name}} issued. Amount {{amount}}. Due {{due_date}}.",
       variables: [
         "tenant_name",
         "customer_name",
@@ -97,7 +95,7 @@ Date: {{payment_date}}
 
 View your receipts: ${portal.portal_receipts_url}`,
       body_sms:
-        "Receipt {{receipt_number}} for invoice {{invoice_number}}. Amount {{amount}}.",
+        "{{tenant_name}}: Receipt {{receipt_number}} for {{customer_name}} (invoice {{invoice_number}}). Amount {{amount}}.",
       variables: [
         "tenant_name",
         "customer_name",
