@@ -28,11 +28,21 @@ type LandlordPortalBillingSettingsProps = {
   subscriptionTier: string | null;
   subscriptionStatus: string | null;
   trialEndsAt: string | null;
+  billingCycle: "monthly" | "annual" | null;
+  pendingBillingCycle: "monthly" | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  activeUnitCount: number;
+  monthlyUnitPriceGhs: number;
+  annualUnitPriceGhs: number;
+  nextChargeDate: string | null;
+  nextChargeSummary: string | null;
   smsCreditBalance: number;
   smsCreditPacks: LandlordBillingSmsPack[];
   billingEmail: string | null;
   paystackSubaccountStatus: PaystackSubaccountStatus;
   showPaymentSettings: boolean;
+  showBillingCycleControls: boolean;
   fetchError: string | null;
   initialTab?: BillingTab;
 };
@@ -69,15 +79,40 @@ function formatPlanStatus(
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatIsoDate(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  return new Date(`${value.slice(0, 10)}T00:00:00Z`).toLocaleDateString(
+    "en-GB",
+    {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    },
+  );
+}
+
 export default function LandlordPortalBillingSettings({
   subscriptionTier,
   subscriptionStatus,
   trialEndsAt,
+  billingCycle,
+  pendingBillingCycle,
+  currentPeriodStart,
+  currentPeriodEnd,
+  activeUnitCount,
+  monthlyUnitPriceGhs,
+  annualUnitPriceGhs,
+  nextChargeDate,
+  nextChargeSummary,
   smsCreditBalance,
   smsCreditPacks,
   billingEmail,
   paystackSubaccountStatus,
   showPaymentSettings,
+  showBillingCycleControls,
   fetchError,
   initialTab = "billing",
 }: LandlordPortalBillingSettingsProps) {
@@ -95,6 +130,9 @@ export default function LandlordPortalBillingSettings({
     null,
   );
   const [walletBalance, setWalletBalance] = useState(smsCreditBalance);
+  const [cycleLoading, setCycleLoading] = useState<"monthly" | "annual" | null>(
+    null,
+  );
 
   useEffect(() => {
     setWalletBalance(smsCreditBalance);
@@ -104,6 +142,61 @@ export default function LandlordPortalBillingSettings({
     ? formatLandlordTier(subscriptionTier)
     : "No plan assigned";
   const planState = formatPlanStatus(subscriptionStatus, subscriptionTier);
+  const cycleLabel =
+    billingCycle === "annual" ? "Annual (per unit / year)" : "Monthly (per unit / month)";
+  const formattedTrialEnd = formatIsoDate(trialEndsAt);
+  const formattedNextCharge = formatIsoDate(nextChargeDate);
+  const formattedPeriodEnd = formatIsoDate(currentPeriodEnd);
+
+  async function handleBillingCycleSwitch(targetCycle: "monthly" | "annual") {
+    setError(null);
+    setSuccess(null);
+    setCycleLoading(targetCycle);
+
+    const confirmMessage =
+      targetCycle === "annual"
+        ? subscriptionStatus === "trialing"
+          ? "Switch to annual billing after your trial? No charge until your trial ends."
+          : `Switch to annual billing now? You will be charged GHS ${(activeUnitCount * annualUnitPriceGhs).toFixed(2)} immediately (${activeUnitCount} active unit${activeUnitCount === 1 ? "" : "s"} × GHS ${annualUnitPriceGhs.toFixed(2)}).`
+        : billingCycle === "annual" && subscriptionStatus !== "trialing"
+          ? `Switch to monthly billing after your current annual period ends${formattedPeriodEnd ? ` on ${formattedPeriodEnd}` : ""}? No immediate charge.`
+          : "Switch to monthly billing?";
+
+    if (!window.confirm(confirmMessage)) {
+      setCycleLoading(null);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/landlord-portal/billing/cycle/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_cycle: targetCycle }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        setError(payload?.error ?? "Unable to update billing cycle.");
+        setCycleLoading(null);
+        return;
+      }
+
+      setSuccess(payload.message ?? "Billing cycle updated.");
+      setCycleLoading(null);
+      router.refresh();
+    } catch (switchError) {
+      setError(
+        switchError instanceof Error
+          ? switchError.message
+          : "Unable to update billing cycle.",
+      );
+      setCycleLoading(null);
+    }
+  }
 
   async function handleBuySmsPack(pack: LandlordBillingSmsPack) {
     setError(null);
@@ -284,13 +377,73 @@ export default function LandlordPortalBillingSettings({
           </p>
           {trialEndsAt ? (
             <p className="mt-1 text-xs text-slate-500">
-              Trial ends{" "}
-              {new Date(trialEndsAt).toLocaleDateString("en-GB", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
+              Trial ends {formattedTrialEnd}
             </p>
+          ) : null}
+          {showBillingCycleControls ? (
+            <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+              <p className="text-sm text-slate-700">
+                Billing cycle:{" "}
+                <span className="font-medium text-[#0f2744]">{cycleLabel}</span>
+              </p>
+              {pendingBillingCycle === "monthly" && formattedPeriodEnd ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Switching to monthly billing on {formattedPeriodEnd}. Your
+                  prepaid annual period stays active until then.
+                </p>
+              ) : null}
+              {currentPeriodStart && currentPeriodEnd ? (
+                <p className="text-xs text-slate-500">
+                  Current paid period: {formatIsoDate(currentPeriodStart)} –{" "}
+                  {formattedPeriodEnd}
+                </p>
+              ) : null}
+              {nextChargeSummary ? (
+                <p className="text-sm text-slate-600">
+                  Next charge: {nextChargeSummary}
+                  {formattedNextCharge ? ` (${formattedNextCharge})` : ""}
+                </p>
+              ) : null}
+              <p className="text-xs text-slate-500">
+                {activeUnitCount} active billing unit
+                {activeUnitCount === 1 ? "" : "s"} · Monthly GHS{" "}
+                {monthlyUnitPriceGhs.toFixed(2)}/unit · Annual GHS{" "}
+                {annualUnitPriceGhs.toFixed(2)}/unit
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {billingCycle !== "annual" || pendingBillingCycle === "monthly" ? (
+                  <button
+                    type="button"
+                    disabled={cycleLoading !== null}
+                    onClick={() => void handleBillingCycleSwitch("annual")}
+                    className="rounded-md border border-[#0f2744] px-3 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {cycleLoading === "annual"
+                      ? "Processing…"
+                      : "Switch to annual"}
+                  </button>
+                ) : null}
+                {billingCycle === "annual" && pendingBillingCycle !== "monthly" ? (
+                  <button
+                    type="button"
+                    disabled={cycleLoading !== null}
+                    onClick={() => void handleBillingCycleSwitch("monthly")}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {cycleLoading === "monthly"
+                      ? "Scheduling…"
+                      : "Switch to monthly"}
+                  </button>
+                ) : null}
+              </div>
+              {subscriptionStatus === "trialing" ? (
+                <p className="text-xs text-slate-500">
+                  During your trial, switching billing cycle does not charge your
+                  card. Your first full charge uses the cycle selected before the
+                  trial ends.
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </section>
       </div>

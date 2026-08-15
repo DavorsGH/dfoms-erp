@@ -28,6 +28,10 @@ import {
   processPlatformOnlyUnitMonthlyPaystackEvent,
 } from "@/utils/platform-only-unit-monthly-billing";
 import {
+  isPlatformOnlyUnitAnnualPaystackContext,
+  processPlatformOnlyUnitAnnualPaystackEvent,
+} from "@/utils/platform-only-unit-annual-billing";
+import {
   isSmsCreditPaystackContext,
   processSmsCreditPaystackEvent,
 } from "@/utils/sms-credit-paystack";
@@ -1283,6 +1287,8 @@ export async function processPaystackWebhookEvent(
           result = await processProductSalePaystackEvent(data);
         } else if (isPlatformOnlyUnitMonthlyPaystackContext(data)) {
           result = await processPlatformOnlyUnitMonthlyPaystackEvent(data);
+        } else if (isPlatformOnlyUnitAnnualPaystackContext(data)) {
+          result = await processPlatformOnlyUnitAnnualPaystackEvent(data);
         } else if (isPlatformOnlyUnitActivationPaystackContext(data)) {
           result = await processPlatformOnlyUnitActivationPaystackEvent(data);
         } else if (isRentLedgerPaystackContext(data)) {

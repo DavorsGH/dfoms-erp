@@ -18,7 +18,7 @@ export type PlatformUnitPricingRow = {
 };
 
 type PlatformUnitPricingProps = {
-  initialRow: PlatformUnitPricingRow;
+  initialRows: PlatformUnitPricingRow[];
   fetchError: string | null;
 };
 
@@ -45,34 +45,47 @@ function formatUpdatedAt(value: string | null): string {
 }
 
 export default function PlatformUnitPricing({
-  initialRow,
+  initialRows,
   fetchError,
 }: PlatformUnitPricingProps) {
   const router = useRouter();
-  const [row, setRow] = useState(initialRow);
+  const [rows, setRows] = useState(initialRows);
   const [error, setError] = useState<string | null>(fetchError);
-  const [isEditing, setIsEditing] = useState(false);
-  const [priceGhsInput, setPriceGhsInput] = useState(String(initialRow.priceGhs));
-  const [saving, setSaving] = useState(false);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [priceInputs, setPriceInputs] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
   useEffect(() => {
-    setRow(initialRow);
-    setPriceGhsInput(String(initialRow.priceGhs));
-  }, [initialRow]);
+    setRows(initialRows);
+    setPriceInputs(
+      Object.fromEntries(initialRows.map((row) => [row.configKey, String(row.priceGhs)])),
+    );
+  }, [initialRows]);
 
-  function openEdit() {
-    setIsEditing(true);
-    setPriceGhsInput(String(row.priceGhs));
+  function openEdit(configKey: string) {
+    const row = rows.find((item) => item.configKey === configKey);
+    if (!row) {
+      return;
+    }
+    setEditingKey(configKey);
+    setPriceInputs((current) => ({
+      ...current,
+      [configKey]: String(row.priceGhs),
+    }));
     setError(null);
   }
 
   function cancelEdit() {
-    setIsEditing(false);
-    setPriceGhsInput(String(row.priceGhs));
+    setEditingKey(null);
   }
 
-  async function handleSave() {
-    const priceGhs = Number(priceGhsInput);
+  async function handleSave(configKey: string) {
+    const row = rows.find((item) => item.configKey === configKey);
+    if (!row) {
+      return;
+    }
+
+    const priceGhs = Number(priceInputs[configKey]);
 
     if (!Number.isFinite(priceGhs)) {
       setError("Price (GHS) must be a valid number.");
@@ -85,19 +98,19 @@ export default function PlatformUnitPricing({
     }
 
     const confirmed = window.confirm(
-      `Update platform-only unit activation price to GHS ${priceGhs.toFixed(2)}? This affects new unit activations only; historical charges keep their recorded amounts.`,
+      `Update ${row.label.toLowerCase()} to GHS ${priceGhs.toFixed(2)}? New charges use this rate; historical audit rows keep their recorded amounts.`,
     );
     if (!confirmed) {
       return;
     }
 
-    setSaving(true);
+    setSavingKey(configKey);
     setError(null);
 
     const response = await fetch("/api/admin/platform-billing/update-pricing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ price_ghs: priceGhs }),
+      body: JSON.stringify({ config_key: configKey, price_ghs: priceGhs }),
     });
 
     const payload = (await response.json().catch(() => null)) as
@@ -106,28 +119,32 @@ export default function PlatformUnitPricing({
 
     if (!response.ok) {
       setError(payload?.error ?? "Unable to update pricing.");
-      setSaving(false);
+      setSavingKey(null);
       return;
     }
 
     const updatedAt =
-      typeof payload?.updated_at === "string" ? payload.updated_at : new Date().toISOString();
-    setRow((current) => ({
-      ...current,
-      priceGhs,
-      updatedAt,
-    }));
+      typeof payload?.updated_at === "string"
+        ? payload.updated_at
+        : new Date().toISOString();
+    setRows((current) =>
+      current.map((item) =>
+        item.configKey === configKey
+          ? { ...item, priceGhs, updatedAt }
+          : item,
+      ),
+    );
     cancelEdit();
-    setSaving(false);
+    setSavingKey(null);
     router.refresh();
   }
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-600">
-        Manage per-unit activation pricing for platform-only landlords. Changes
-        apply to new activations and reactivations only; existing audit records
-        in landlord_unit_activation_charges keep the amount actually charged.
+        Manage per-unit pricing for platform-only landlords. Monthly rate applies
+        to unit activation and monthly recurring billing. Annual rate applies to
+        annual recurring billing and immediate annual cycle switches.
       </p>
 
       {error ? (
@@ -147,60 +164,73 @@ export default function PlatformUnitPricing({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            <tr className={getStripedRowClassName(0)}>
-              <td className="px-4 py-3 font-medium text-[#0f2744]">{row.label}</td>
-              <td className="px-4 py-3">
-                {isEditing ? (
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    value={priceGhsInput}
-                    onChange={(event) => setPriceGhsInput(event.target.value)}
-                    className={inputClassName}
-                  />
-                ) : (
-                  formatProductPrice(row.priceGhs)
-                )}
-              </td>
-              <td className="px-4 py-3 text-sm text-slate-700">
-                {formatUpdatedAt(row.updatedAt)}
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex flex-wrap gap-2">
-                  {isEditing ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() => void handleSave()}
-                        className={primaryActionButtonClassName}
-                      >
-                        {saving ? "Saving…" : "Save"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={cancelEdit}
-                        className={actionButtonClassName}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={openEdit}
-                      className={primaryActionButtonClassName}
-                    >
-                      Edit
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
+            {rows.map((row, index) => {
+              const isEditing = editingKey === row.configKey;
+              const isSaving = savingKey === row.configKey;
+              return (
+                <tr key={row.configKey} className={getStripedRowClassName(index)}>
+                  <td className="px-4 py-3 font-medium text-[#0f2744]">
+                    {row.label}
+                  </td>
+                  <td className="px-4 py-3">
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={priceInputs[row.configKey] ?? ""}
+                        onChange={(event) =>
+                          setPriceInputs((current) => ({
+                            ...current,
+                            [row.configKey]: event.target.value,
+                          }))
+                        }
+                        className={inputClassName}
+                      />
+                    ) : (
+                      formatProductPrice(row.priceGhs)
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-700">
+                    {formatUpdatedAt(row.updatedAt)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      {isEditing ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={isSaving}
+                            onClick={() => void handleSave(row.configKey)}
+                            className={primaryActionButtonClassName}
+                          >
+                            {isSaving ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSaving}
+                            onClick={cancelEdit}
+                            className={actionButtonClassName}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          onClick={() => openEdit(row.configKey)}
+                          className={primaryActionButtonClassName}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </ScrollableTable>

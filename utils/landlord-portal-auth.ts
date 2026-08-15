@@ -7,6 +7,16 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { PaystackSubaccountStatus } from "@/utils/billing-settings-types";
+import {
+  getPlatformOnlyUnitActivationPriceGhs,
+  getPlatformOnlyUnitAnnualPriceGhs,
+} from "@/utils/platform-billing-config";
+import { isPlatformOnlyLandlordInTrial } from "@/utils/platform-only-unit-billing";
+import {
+  countActiveBillingUnits,
+  nextFirstOfMonthAfter,
+  todayIsoDate,
+} from "@/utils/platform-only-unit-recurring-billing";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
 import {
   formatRentLedgerStatus,
@@ -1095,6 +1105,15 @@ export type LandlordPortalBillingSnapshot = {
   subscriptionTier: string | null;
   subscriptionStatus: string | null;
   trialEndsAt: string | null;
+  billingCycle: "monthly" | "annual" | null;
+  pendingBillingCycle: "monthly" | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  activeUnitCount: number;
+  monthlyUnitPriceGhs: number;
+  annualUnitPriceGhs: number;
+  nextChargeDate: string | null;
+  nextChargeSummary: string | null;
   smsCreditBalance: number;
   smsCreditPacks: LandlordPortalSmsCreditPack[];
   billingEmail: string | null;
@@ -2042,7 +2061,9 @@ export async function fetchLandlordPortalBillingSnapshot(
   ] = await Promise.all([
     admin
       .from("landlord_subscriptions")
-      .select("tier, status, trial_ends_at")
+      .select(
+        "tier, status, trial_ends_at, billing_cycle, pending_billing_cycle, current_period_start, current_period_end, active_unit_count",
+      )
       .eq("tenant_id", tenantId)
       .maybeSingle(),
     admin
@@ -2103,8 +2124,76 @@ export async function fetchLandlordPortalBillingSnapshot(
           tier: string | null;
           status: string | null;
           trial_ends_at: string | null;
+          billing_cycle: string | null;
+          pending_billing_cycle: string | null;
+          current_period_start: string | null;
+          current_period_end: string | null;
+          active_unit_count: number | null;
         })
       : null;
+
+  const isPlatformOnly = session.landlordType === "platform_only";
+  let billingCycle: "monthly" | "annual" | null = null;
+  let pendingBillingCycle: "monthly" | null = null;
+  let currentPeriodStart: string | null = null;
+  let currentPeriodEnd: string | null = null;
+  let activeUnitCount = 0;
+  let monthlyUnitPriceGhs = 0;
+  let annualUnitPriceGhs = 0;
+  let nextChargeDate: string | null = null;
+  let nextChargeSummary: string | null = null;
+
+  if (isPlatformOnly) {
+    billingCycle =
+      subscription?.billing_cycle === "annual" ? "annual" : "monthly";
+    pendingBillingCycle =
+      subscription?.pending_billing_cycle === "monthly" ? "monthly" : null;
+    currentPeriodStart = subscription?.current_period_start ?? null;
+    currentPeriodEnd = subscription?.current_period_end ?? null;
+
+    const [liveUnitCount, monthlyPrice, annualPrice, inTrial] = await Promise.all([
+      countActiveBillingUnits(admin, tenantId),
+      getPlatformOnlyUnitActivationPriceGhs(admin),
+      getPlatformOnlyUnitAnnualPriceGhs(admin),
+      isPlatformOnlyLandlordInTrial(admin, tenantId),
+    ]);
+
+    activeUnitCount = liveUnitCount;
+    monthlyUnitPriceGhs = monthlyPrice;
+    annualUnitPriceGhs = annualPrice;
+
+    const trialEndsAt =
+      typeof subscription?.trial_ends_at === "string"
+        ? subscription.trial_ends_at.slice(0, 10)
+        : null;
+
+    if (inTrial && trialEndsAt) {
+      if (billingCycle === "annual") {
+        const firstDate = addCalendarDaysIso(trialEndsAt, 1);
+        nextChargeDate = firstDate;
+        nextChargeSummary = `GHS ${annualUnitPriceGhs.toFixed(2)} × ${activeUnitCount} active unit${activeUnitCount === 1 ? "" : "s"} on ${firstDate}`;
+      } else {
+        const firstDate = nextFirstOfMonthAfter(trialEndsAt);
+        nextChargeDate = firstDate;
+        nextChargeSummary = `GHS ${monthlyUnitPriceGhs.toFixed(2)} × ${activeUnitCount} active unit${activeUnitCount === 1 ? "" : "s"} on ${firstDate}`;
+      }
+    } else if (billingCycle === "annual") {
+      if (pendingBillingCycle === "monthly" && currentPeriodEnd) {
+        nextChargeDate = nextFirstOfMonthAfter(currentPeriodEnd);
+        nextChargeSummary = `Monthly billing starts ${nextChargeDate} after your prepaid annual period ends (${currentPeriodEnd})`;
+      } else if (currentPeriodEnd) {
+        nextChargeDate = addCalendarDaysIso(currentPeriodEnd.slice(0, 10), 1);
+        nextChargeSummary = `GHS ${annualUnitPriceGhs.toFixed(2)} × ${activeUnitCount} active unit${activeUnitCount === 1 ? "" : "s"} renews on ${nextChargeDate}`;
+      }
+    } else {
+      const today = todayIsoDate();
+      const monthStart = `${today.slice(0, 7)}-01`;
+      nextChargeDate = nextFirstOfMonthAfter(
+        today === monthStart ? today : monthStart,
+      );
+      nextChargeSummary = `GHS ${monthlyUnitPriceGhs.toFixed(2)} × ${activeUnitCount} active unit${activeUnitCount === 1 ? "" : "s"} on the 1st of each month (next: ${nextChargeDate})`;
+    }
+  }
 
   const smsCreditPacks: LandlordPortalSmsCreditPack[] = (
     (packsResult.data as
@@ -2143,6 +2232,15 @@ export async function fetchLandlordPortalBillingSnapshot(
         session.landlordType === "platform_only"
           ? (subscription?.trial_ends_at ?? null)
           : null,
+      billingCycle: isPlatformOnly ? billingCycle : null,
+      pendingBillingCycle: isPlatformOnly ? pendingBillingCycle : null,
+      currentPeriodStart: isPlatformOnly ? currentPeriodStart : null,
+      currentPeriodEnd: isPlatformOnly ? currentPeriodEnd : null,
+      activeUnitCount: isPlatformOnly ? activeUnitCount : 0,
+      monthlyUnitPriceGhs: isPlatformOnly ? monthlyUnitPriceGhs : 0,
+      annualUnitPriceGhs: isPlatformOnly ? annualUnitPriceGhs : 0,
+      nextChargeDate: isPlatformOnly ? nextChargeDate : null,
+      nextChargeSummary: isPlatformOnly ? nextChargeSummary : null,
       smsCreditBalance:
         walletResult.data?.balance != null
           ? Number(walletResult.data.balance) || 0

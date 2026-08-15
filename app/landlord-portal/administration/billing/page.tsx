@@ -60,6 +60,15 @@ export default async function LandlordPortalBillingPage({
           subscriptionTier={data.subscriptionTier}
           subscriptionStatus={data.subscriptionStatus}
           trialEndsAt={data.trialEndsAt}
+          billingCycle={data.billingCycle}
+          pendingBillingCycle={data.pendingBillingCycle}
+          currentPeriodStart={data.currentPeriodStart}
+          currentPeriodEnd={data.currentPeriodEnd}
+          activeUnitCount={data.activeUnitCount}
+          monthlyUnitPriceGhs={data.monthlyUnitPriceGhs}
+          annualUnitPriceGhs={data.annualUnitPriceGhs}
+          nextChargeDate={data.nextChargeDate}
+          nextChargeSummary={data.nextChargeSummary}
           smsCreditBalance={data.smsCreditBalance}
           smsCreditPacks={data.smsCreditPacks.map((pack) => ({
             packKey: pack.packKey,
@@ -69,6 +78,7 @@ export default async function LandlordPortalBillingPage({
           billingEmail={data.billingEmail}
           paystackSubaccountStatus={data.paystackSubaccountStatus}
           showPaymentSettings={session.landlordType === "platform_only"}
+          showBillingCycleControls={session.landlordType === "platform_only"}
           fetchError={error}
           initialTab={initialTab}
         />

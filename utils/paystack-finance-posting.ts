@@ -605,6 +605,63 @@ export async function postPlatformMonthlyUnitBillingPaystackFinance(
   });
 }
 
+export async function postPlatformAnnualUnitBillingPaystackFinance(
+  admin: SupabaseClient,
+  options: {
+    reference: string;
+    transactionAmountGhs: number;
+    paidAt: string | null | undefined;
+    landlordTenantId: string;
+    activeUnitCount: number;
+    unitPriceGhs: number;
+    periodStart: string;
+    periodEnd: string;
+  },
+): Promise<void> {
+  const reference = options.reference.trim();
+  const transactionAmountGhs = assertVerifiedPaystackAmountGhs({
+    paidAmountGhs: options.transactionAmountGhs,
+    reference,
+    context: "Platform annual unit billing",
+  });
+
+  const customerName = await resolveTenantDisplayName(
+    admin,
+    options.landlordTenantId,
+  );
+  const description = `Platform-only annual unit billing — ${options.activeUnitCount} unit(s) × GHS ${options.unitPriceGhs.toFixed(2)} — ${customerName}`;
+  const notes = [
+    `Auto-posted from Paystack platform_only annual unit billing.`,
+    `paystack_reference=${reference}`,
+    `landlord_tenant_id=${options.landlordTenantId}`,
+    `billing_period_start=${options.periodStart}`,
+    `billing_period_end=${options.periodEnd}`,
+    `active_unit_count=${options.activeUnitCount}`,
+    `unit_price_ghs=${options.unitPriceGhs.toFixed(2)}`,
+    `trigger_type=annual_recurring`,
+  ].join(" ");
+
+  await postPaystackIncomeRegisterEntry(admin, {
+    tenantId: DAVORS_TENANT_ID,
+    reference,
+    transactionAmountGhs,
+    paidAt: options.paidAt,
+    serviceCategory: PLATFORM_BILLING_INCOME_CATEGORY,
+    description,
+    customerName,
+    notes,
+  });
+
+  await postPaystackFeeToExpenseRegister(admin, {
+    tenantId: DAVORS_TENANT_ID,
+    reference,
+    transactionAmountGhs,
+    paidAt: options.paidAt,
+    description: `Paystack transaction fee — platform annual unit billing (${reference})`,
+    notes: `Transaction amount GHS ${transactionAmountGhs.toFixed(2)}; fee rate ${(PAYSTACK_TRANSACTION_FEE_RATE * 100).toFixed(2)}%. paystack_reference=${reference}`,
+  });
+}
+
 export async function postProductSalePaystackFee(
   admin: SupabaseClient,
   options: {

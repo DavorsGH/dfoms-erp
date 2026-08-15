@@ -29,7 +29,8 @@ export type UnitActivationTriggerType =
   | "activation"
   | "reactivation"
   | "create"
-  | "monthly_recurring";
+  | "monthly_recurring"
+  | "annual_recurring";
 
 export type UnitActivationChargeStatus =
   | "success"
@@ -725,6 +726,7 @@ export async function ensurePlatformOnlyLandlordTrialSubscription(
   trialEnd.setUTCDate(trialEnd.getUTCDate() + ERP_SUITE_TRIAL_DAYS);
   const trialEndsAt = trialEnd.toISOString().slice(0, 10);
   const unitPriceGhs = await getPlatformOnlyUnitActivationPriceGhs(admin);
+  const periodStart = new Date().toISOString().slice(0, 10);
 
   const { error } = await admin.from("landlord_subscriptions").insert({
     tenant_id: tenantId,
@@ -732,7 +734,14 @@ export async function ensurePlatformOnlyLandlordTrialSubscription(
     status: "trialing",
     trial_ends_at: trialEndsAt,
     active_unit_count: 0,
+    included_units: 0,
+    base_price_ghs: 0,
     extra_unit_price_ghs: unitPriceGhs,
+    current_period_price_ghs: 0,
+    current_period_start: periodStart,
+    current_period_end: trialEndsAt,
+    billing_cycle: "monthly",
+    pending_billing_cycle: null,
   });
 
   if (error) {

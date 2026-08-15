@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { updatePlatformOnlyUnitActivationPriceGhs } from "@/utils/platform-billing-config";
+import {
+  PLATFORM_ONLY_UNIT_ACTIVATION_CONFIG_KEY,
+  PLATFORM_ONLY_UNIT_ANNUAL_CONFIG_KEY,
+  updatePlatformOnlyUnitActivationPriceGhs,
+  updatePlatformOnlyUnitAnnualPriceGhs,
+} from "@/utils/platform-billing-config";
 
 type UpdatePlatformBillingBody = {
+  config_key?: string;
   price_ghs?: number;
 };
 
@@ -21,6 +27,10 @@ export async function POST(request: Request) {
   }
 
   const { price_ghs } = body;
+  const configKey =
+    typeof body.config_key === "string" && body.config_key.trim()
+      ? body.config_key.trim()
+      : PLATFORM_ONLY_UNIT_ACTIVATION_CONFIG_KEY;
 
   if (typeof price_ghs !== "number") {
     return NextResponse.json(
@@ -37,7 +47,12 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
-  const result = await updatePlatformOnlyUnitActivationPriceGhs(admin, price_ghs);
+  const result =
+    configKey === PLATFORM_ONLY_UNIT_ANNUAL_CONFIG_KEY
+      ? await updatePlatformOnlyUnitAnnualPriceGhs(admin, price_ghs)
+      : configKey === PLATFORM_ONLY_UNIT_ACTIVATION_CONFIG_KEY
+        ? await updatePlatformOnlyUnitActivationPriceGhs(admin, price_ghs)
+        : { ok: false as const, error: "Unsupported config_key." };
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
@@ -45,6 +60,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
+    config_key: configKey,
     price_ghs,
     updated_at: new Date().toISOString(),
   });
