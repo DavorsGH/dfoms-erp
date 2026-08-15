@@ -5,6 +5,11 @@ import { insertEmployeeInAppNotification } from "@/utils/employee-in-app-notific
 import { needsPasswordUpdateNudge } from "@/lib/security/password-updated-at";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
+import {
+  isSecurityNudgeInCooldown,
+  MFA_ENROLLMENT_NUDGE_TYPE,
+  PASSWORD_UPDATE_NUDGE_TYPE,
+} from "@/utils/security-notification-dismissals";
 
 export const SECURITY_NOTIFICATION = {
   passwordTitle: "Update your password",
@@ -194,87 +199,101 @@ export async function ensureSecurityNotifications(
     });
 
     if (passwordNudge) {
-      if (options.persona === "staff") {
-        await ensureStaffNotification({
-          authUid: options.authUid,
-          tenantId: options.tenantId,
-          title: SECURITY_NOTIFICATION.passwordTitle,
-          body: SECURITY_NOTIFICATION.passwordBody,
-          actionUrl: options.passwordActionUrl,
-        });
-      } else if (options.persona === "lessee" && options.lesseeId) {
-        const already = await hasUnreadSecurityNotification(
-          "lessee_notifications",
-          options.authUid,
-          SECURITY_NOTIFICATION.passwordTitle,
-        );
-        if (!already) {
-          await insertLesseePortalNotification({
-            landlordTenantId: options.tenantId,
-            lesseeId: options.lesseeId,
+      const passwordNudgeInCooldown = await isSecurityNudgeInCooldown(
+        options.authUid,
+        PASSWORD_UPDATE_NUDGE_TYPE,
+      );
+
+      if (!passwordNudgeInCooldown) {
+        if (options.persona === "staff") {
+          await ensureStaffNotification({
+            authUid: options.authUid,
+            tenantId: options.tenantId,
             title: SECURITY_NOTIFICATION.passwordTitle,
             body: SECURITY_NOTIFICATION.passwordBody,
             actionUrl: options.passwordActionUrl,
-            context: "password-policy-nudge",
           });
-        }
-      } else if (options.persona === "landlord") {
-        const already = await hasUnreadSecurityNotification(
-          "landlord_notifications",
-          options.authUid,
-          SECURITY_NOTIFICATION.passwordTitle,
-        );
-        if (!already) {
-          await insertLandlordPortalNotification({
-            landlordTenantId: options.tenantId,
-            title: SECURITY_NOTIFICATION.passwordTitle,
-            body: SECURITY_NOTIFICATION.passwordBody,
-            actionUrl: options.passwordActionUrl,
-            context: "password-policy-nudge",
-          });
+        } else if (options.persona === "lessee" && options.lesseeId) {
+          const already = await hasUnreadSecurityNotification(
+            "lessee_notifications",
+            options.authUid,
+            SECURITY_NOTIFICATION.passwordTitle,
+          );
+          if (!already) {
+            await insertLesseePortalNotification({
+              landlordTenantId: options.tenantId,
+              lesseeId: options.lesseeId,
+              title: SECURITY_NOTIFICATION.passwordTitle,
+              body: SECURITY_NOTIFICATION.passwordBody,
+              actionUrl: options.passwordActionUrl,
+              context: "password-policy-nudge",
+            });
+          }
+        } else if (options.persona === "landlord") {
+          const already = await hasUnreadSecurityNotification(
+            "landlord_notifications",
+            options.authUid,
+            SECURITY_NOTIFICATION.passwordTitle,
+          );
+          if (!already) {
+            await insertLandlordPortalNotification({
+              landlordTenantId: options.tenantId,
+              title: SECURITY_NOTIFICATION.passwordTitle,
+              body: SECURITY_NOTIFICATION.passwordBody,
+              actionUrl: options.passwordActionUrl,
+              context: "password-policy-nudge",
+            });
+          }
         }
       }
     }
 
     if (mfaNudge) {
-      if (options.persona === "staff") {
-        await ensureStaffNotification({
-          authUid: options.authUid,
-          tenantId: options.tenantId,
-          title: SECURITY_NOTIFICATION.mfaTitle,
-          body: SECURITY_NOTIFICATION.mfaBody,
-          actionUrl: options.mfaActionUrl,
-        });
-      } else if (options.persona === "lessee" && options.lesseeId) {
-        const already = await hasUnreadSecurityNotification(
-          "lessee_notifications",
-          options.authUid,
-          SECURITY_NOTIFICATION.mfaTitle,
-        );
-        if (!already) {
-          await insertLesseePortalNotification({
-            landlordTenantId: options.tenantId,
-            lesseeId: options.lesseeId,
+      const mfaNudgeInCooldown = await isSecurityNudgeInCooldown(
+        options.authUid,
+        MFA_ENROLLMENT_NUDGE_TYPE,
+      );
+
+      if (!mfaNudgeInCooldown) {
+        if (options.persona === "staff") {
+          await ensureStaffNotification({
+            authUid: options.authUid,
+            tenantId: options.tenantId,
             title: SECURITY_NOTIFICATION.mfaTitle,
             body: SECURITY_NOTIFICATION.mfaBody,
             actionUrl: options.mfaActionUrl,
-            context: "mfa-enrollment-nudge",
           });
-        }
-      } else if (options.persona === "landlord") {
-        const already = await hasUnreadSecurityNotification(
-          "landlord_notifications",
-          options.authUid,
-          SECURITY_NOTIFICATION.mfaTitle,
-        );
-        if (!already) {
-          await insertLandlordPortalNotification({
-            landlordTenantId: options.tenantId,
-            title: SECURITY_NOTIFICATION.mfaTitle,
-            body: SECURITY_NOTIFICATION.mfaBody,
-            actionUrl: options.mfaActionUrl,
-            context: "mfa-enrollment-nudge",
-          });
+        } else if (options.persona === "lessee" && options.lesseeId) {
+          const already = await hasUnreadSecurityNotification(
+            "lessee_notifications",
+            options.authUid,
+            SECURITY_NOTIFICATION.mfaTitle,
+          );
+          if (!already) {
+            await insertLesseePortalNotification({
+              landlordTenantId: options.tenantId,
+              lesseeId: options.lesseeId,
+              title: SECURITY_NOTIFICATION.mfaTitle,
+              body: SECURITY_NOTIFICATION.mfaBody,
+              actionUrl: options.mfaActionUrl,
+              context: "mfa-enrollment-nudge",
+            });
+          }
+        } else if (options.persona === "landlord") {
+          const already = await hasUnreadSecurityNotification(
+            "landlord_notifications",
+            options.authUid,
+            SECURITY_NOTIFICATION.mfaTitle,
+          );
+          if (!already) {
+            await insertLandlordPortalNotification({
+              landlordTenantId: options.tenantId,
+              title: SECURITY_NOTIFICATION.mfaTitle,
+              body: SECURITY_NOTIFICATION.mfaBody,
+              actionUrl: options.mfaActionUrl,
+              context: "mfa-enrollment-nudge",
+            });
+          }
         }
       }
     }

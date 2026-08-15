@@ -9,6 +9,7 @@ import {
   type LesseeNotificationRow,
 } from "@/utils/lessee-notifications-types";
 import { createClient } from "@/utils/supabase/server";
+import { afterSecurityNotificationDeleted } from "@/utils/security-notification-delete-hook";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -134,6 +135,25 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  const { data: existing, error: fetchError } = await supabase
+    .from("lessee_notifications")
+    .select("id, title")
+    .eq("id", id)
+    .eq("tenant_id", session.tenantId)
+    .eq("recipient_user_id", session.authUserId)
+    .eq("lessee_id", session.lesseeId)
+    .maybeSingle();
+
+  if (fetchError) {
+    return NextResponse.json({ error: fetchError.message }, { status: 400 });
+  }
+  if (!existing) {
+    return NextResponse.json(
+      { error: "Notification not found." },
+      { status: 404 },
+    );
+  }
+
   const { data, error } = await supabase
     .from("lessee_notifications")
     .delete()
@@ -153,6 +173,11 @@ export async function DELETE(_request: Request, context: RouteContext) {
       { status: 404 },
     );
   }
+
+  await afterSecurityNotificationDeleted({
+    authUid: session.authUserId,
+    title: existing.title,
+  });
 
   return NextResponse.json({ ok: true, id: data.id });
 }
