@@ -359,22 +359,21 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
 
-  const shouldPassSignedAuthContext =
+  if (
     user &&
     accountRow &&
     accountRow.is_active !== false &&
     (pathname.startsWith("/dashboard") ||
       (isPerfProbeEnabled() &&
-        pathname === "/api/perf-probe/trusted-context"));
-
-  if (shouldPassSignedAuthContext) {
+        pathname === "/api/perf-probe/trusted-context"))
+  ) {
     const signed = await signAuthContext({
       authUid: user.id,
       tenantId: accountRow.tenant_id,
       role: accountRow.role,
       employeeId: accountRow.employee_id,
       clientId: accountRow.client_id,
-      isActive: accountRow.is_active !== false,
+      isActive: accountRow.is_active ?? true,
       portal: resolvedPortal,
       email: user.email ?? null,
     });

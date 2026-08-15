@@ -42,6 +42,11 @@ async function fetchVapidPublicKey(): Promise<string | null> {
 }
 
 async function fetchSubscriptionStatus(persona: PushPersona): Promise<boolean> {
+  const cached = subscriptionStatusCache.get(persona);
+  if (cached) {
+    return cached.subscribed;
+  }
+
   const response = await fetch(
     `/api/push/subscribe?persona=${encodeURIComponent(persona)}`,
   );
@@ -49,10 +54,33 @@ async function fetchSubscriptionStatus(persona: PushPersona): Promise<boolean> {
     return false;
   }
   const payload = (await response.json()) as { subscribed?: boolean };
-  return payload.subscribed === true;
+  const subscribed = payload.subscribed === true;
+  subscriptionStatusCache.set(persona, { subscribed });
+  return subscribed;
 }
 
-export function usePushNotifications(persona: PushPersona): UsePushNotificationsResult {
+const subscriptionStatusCache = new Map<
+  PushPersona,
+  { subscribed: boolean }
+>();
+
+export function invalidatePushSubscriptionCache(persona?: PushPersona): void {
+  if (persona) {
+    subscriptionStatusCache.delete(persona);
+    return;
+  }
+  subscriptionStatusCache.clear();
+}
+
+type UsePushNotificationsOptions = {
+  /** Skip server subscription lookup on mount (bell soft-prompt). */
+  skipInitialRefresh?: boolean;
+};
+
+export function usePushNotifications(
+  persona: PushPersona,
+  options: UsePushNotificationsOptions = {},
+): UsePushNotificationsResult {
   const [status, setStatus] = useState<PushStatus>("checking");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,8 +117,26 @@ export function usePushNotifications(persona: PushPersona): UsePushNotifications
   }, [isIosInstallRequired, persona]);
 
   useEffect(() => {
+    if (options.skipInitialRefresh) {
+      if (!isPushSupportedInBrowser()) {
+        setStatus("unsupported");
+      } else if (isIosInstallRequired) {
+        setStatus("ios_install_required");
+      } else {
+        const permission = getNotificationPermission();
+        if (permission === "denied") {
+          setStatus("denied");
+        } else if (permission === "default") {
+          setStatus("default");
+        } else {
+          setStatus("unsubscribed");
+        }
+      }
+      return;
+    }
+
     void refresh();
-  }, [refresh]);
+  }, [isIosInstallRequired, options.skipInitialRefresh, refresh]);
 
   const enable = useCallback(async () => {
     if (busy) {
@@ -152,6 +198,7 @@ export function usePushNotifications(persona: PushPersona): UsePushNotifications
       }
 
       setStatus("subscribed");
+      invalidatePushSubscriptionCache(persona);
     } catch (cause) {
       setStatus("error");
       setError(
@@ -195,6 +242,7 @@ export function usePushNotifications(persona: PushPersona): UsePushNotifications
       setStatus(
         getNotificationPermission() === "granted" ? "unsubscribed" : "default",
       );
+      invalidatePushSubscriptionCache(persona);
     } catch (cause) {
       setStatus("error");
       setError(

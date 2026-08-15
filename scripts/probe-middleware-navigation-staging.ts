@@ -173,6 +173,8 @@ async function liveHttpProbe(
   cookieHeader: string,
   path: string,
 ): Promise<{
+  status: number;
+  location: string | null;
   totalMs: number;
   middlewareMs: string | null;
   middlewareAuthCalls: string | null;

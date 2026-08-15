@@ -6,6 +6,7 @@ import { usePushNotifications } from "@/hooks/use-push-notifications";
 import {
   getNotificationPermission,
   isPushSupportedInBrowser,
+  needsIosInstallForPush,
 } from "@/utils/push-client";
 
 function bellPromptStorageKey(persona: PushPersona): string {
@@ -17,21 +18,23 @@ type NotificationBellPushPromptProps = {
   open: boolean;
 };
 
-/**
- * Soft opt-in shown once on the first bell open when browser permission is still default.
- */
-export default function NotificationBellPushPrompt({
-  persona,
-  open,
-}: NotificationBellPushPromptProps) {
-  const push = usePushNotifications(persona);
+function IosInstallBanner() {
+  return (
+    <div className="border-b border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <p className="font-medium">Install to Home Screen to get alerts</p>
+      <p className="mt-1 text-xs leading-relaxed">
+        On iPhone and iPad, device notifications work only after adding this app
+        to your Home Screen, then enabling push in Account settings.
+      </p>
+    </div>
+  );
+}
+
+function DefaultPermissionEnablePrompt({ persona }: { persona: PushPersona }) {
+  const push = usePushNotifications(persona, { skipInitialRefresh: true });
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!open || push.status === "checking") {
-      return;
-    }
-
     if (typeof window === "undefined") {
       return;
     }
@@ -42,42 +45,11 @@ export default function NotificationBellPushPrompt({
     }
 
     window.localStorage.setItem(storageKey, "1");
-
-    if (!isPushSupportedInBrowser()) {
-      return;
-    }
-
-    if (getNotificationPermission() !== "default") {
-      return;
-    }
-
-    if (push.enabled) {
-      return;
-    }
-
     setVisible(true);
-  }, [open, persona, push.enabled, push.status]);
-
-  useEffect(() => {
-    if (push.enabled) {
-      setVisible(false);
-    }
-  }, [push.enabled]);
+  }, [persona]);
 
   if (!visible) {
     return null;
-  }
-
-  if (push.isIosInstallRequired) {
-    return (
-      <div className="border-b border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        <p className="font-medium">Install to Home Screen to get alerts</p>
-        <p className="mt-1 text-xs leading-relaxed">
-          On iPhone and iPad, device notifications work only after adding this app
-          to your Home Screen, then enabling push in Account settings.
-        </p>
-      </div>
-    );
   }
 
   return (
@@ -101,4 +73,39 @@ export default function NotificationBellPushPrompt({
       </button>
     </div>
   );
+}
+
+/**
+ * Soft opt-in shown once on the first bell open when browser permission is still default.
+ * Avoids mounting push subscription hooks when permission is already decided.
+ */
+export default function NotificationBellPushPrompt({
+  persona,
+  open,
+}: NotificationBellPushPromptProps) {
+  if (!open) {
+    return null;
+  }
+
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (window.localStorage.getItem(bellPromptStorageKey(persona))) {
+    return null;
+  }
+
+  if (!isPushSupportedInBrowser()) {
+    return null;
+  }
+
+  if (needsIosInstallForPush()) {
+    return <IosInstallBanner />;
+  }
+
+  if (getNotificationPermission() !== "default") {
+    return null;
+  }
+
+  return <DefaultPermissionEnablePrompt persona={persona} />;
 }

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
@@ -97,7 +98,8 @@ export type PortalDashboardData = {
  * Resolves the signed-in Supabase user to a lessees row via auth_user_id.
  * Portal auth is separate from user_accounts / staff RBAC.
  */
-export async function getPortalLesseeSession(): Promise<PortalLesseeSession | null> {
+export const getPortalLesseeSession = cache(
+  async (): Promise<PortalLesseeSession | null> => {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const {
@@ -145,7 +147,8 @@ export async function getPortalLesseeSession(): Promise<PortalLesseeSession | nu
     fullName: lessee.full_name,
     photoUrl,
   };
-}
+  },
+);
 
 export async function fetchPortalDashboardData(
   session: PortalLesseeSession,

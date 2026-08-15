@@ -9,8 +9,13 @@ import {
 } from "@/utils/employee-notifications-types";
 import { NOTIFICATION_DROPDOWN_PANEL_CLASS } from "@/utils/notification-bell-ui";
 import NotificationBellPushPrompt from "@/components/notification-bell-push-prompt";
+import {
+  setNotificationBadgeCount,
+  useNotificationBadgePoll,
+} from "@/hooks/use-notification-badge-poll";
 
 const PAGE_SIZE = 20;
+const BADGE_ENDPOINT = "/api/employee-notifications?countOnly=1";
 
 function formatSentAt(value: string): string {
   const date = new Date(value);
@@ -52,7 +57,7 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState<EmployeeNotificationRow[]>(
     [],
   );
-  const [unreadCount, setUnreadCount] = useState(0);
+  const unreadCount = useNotificationBadgePoll(BADGE_ENDPOINT);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -62,19 +67,6 @@ export default function NotificationBell() {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-
-  const refreshUnread = useCallback(async () => {
-    try {
-      const response = await fetch(
-        `/api/employee-notifications?limit=1&offset=0`,
-      );
-      if (!response.ok) return;
-      const payload = (await response.json()) as { unreadCount?: number };
-      setUnreadCount(payload.unreadCount ?? 0);
-    } catch {
-      // Ignore background badge refresh failures.
-    }
-  }, []);
 
   const loadPage = useCallback(async (offset: number, append: boolean) => {
     if (append) {
@@ -102,7 +94,7 @@ export default function NotificationBell() {
 
       const rows = payload.notifications ?? [];
       setNotifications((current) => (append ? [...current, ...rows] : rows));
-      setUnreadCount(payload.unreadCount ?? 0);
+      setNotificationBadgeCount(BADGE_ENDPOINT,payload.unreadCount ?? 0);
       setHasMore(payload.hasMore === true);
     } catch {
       setError("Failed to load notifications.");
@@ -111,14 +103,6 @@ export default function NotificationBell() {
       setLoadingMore(false);
     }
   }, []);
-
-  useEffect(() => {
-    void refreshUnread();
-    const interval = window.setInterval(() => {
-      void refreshUnread();
-    }, 60_000);
-    return () => window.clearInterval(interval);
-  }, [refreshUnread]);
 
   useEffect(() => {
     if (!open) return;
@@ -169,7 +153,7 @@ export default function NotificationBell() {
         item.id === row.id ? payload.notification! : item,
       ),
     );
-    setUnreadCount((current) => Math.max(0, current - 1));
+    setNotificationBadgeCount(BADGE_ENDPOINT,Math.max(0, unreadCount - 1));
   }
 
   async function handleSelect(row: EmployeeNotificationRow) {
@@ -206,7 +190,7 @@ export default function NotificationBell() {
         item.read_at ? item : { ...item, read_at: now },
       ),
     );
-    setUnreadCount(0);
+    setNotificationBadgeCount(BADGE_ENDPOINT,0);
   }
 
   async function handleDelete(row: EmployeeNotificationRow) {
@@ -228,7 +212,7 @@ export default function NotificationBell() {
       current.filter((item) => item.id !== row.id),
     );
     if (wasUnread) {
-      setUnreadCount((current) => Math.max(0, current - 1));
+      setNotificationBadgeCount(BADGE_ENDPOINT,Math.max(0, unreadCount - 1));
     }
     if (expandedId === row.id) {
       setExpandedId(null);

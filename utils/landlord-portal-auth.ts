@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -287,7 +288,8 @@ export async function fetchLandlordPortalNotificationContacts(
  * Data access still requires approval_status = approved (RLS helper +
  * landlordPortalHasDataAccess / requirePlatformOnlyLandlordSession).
  */
-export async function getLandlordPortalSession(): Promise<LandlordPortalSession | null> {
+export const getLandlordPortalSession = cache(
+  async (): Promise<LandlordPortalSession | null> => {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const {
@@ -340,7 +342,8 @@ export async function getLandlordPortalSession(): Promise<LandlordPortalSession 
     landlordType,
     approvalStatus: landlord.approval_status,
   };
-}
+  },
+);
 
 export async function fetchLandlordPortalDashboardData(
   session: LandlordPortalSession,
