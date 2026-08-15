@@ -2,10 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSafeNext } from "@/utils/safe-redirect";
 import { getMfaGateStatus } from "./aal-gate";
 import { isMfaEnforcementEnabled } from "./config";
+import {
+  getCachedMfaGateStatus,
+  setCachedMfaGateStatus,
+} from "./middleware-gate-cache";
 import { deriveSessionKeyFromAuthSession } from "./session-key";
 import {
   MFA_CHALLENGE_ROUTES,
   MFA_PENDING_PUBLIC_PATHS,
+  type MfaGateStatus,
   type MfaPersona,
 } from "./types";
 
@@ -20,6 +25,21 @@ function resolvePersona(options: {
 
 function isLoginPath(pathname: string, persona: MfaPersona): boolean {
   return pathname === MFA_CHALLENGE_ROUTES[persona].loginPath;
+}
+
+async function resolveMfaGateStatus(
+  supabase: SupabaseClient,
+  userId: string,
+  sessionKey: string | null,
+): Promise<MfaGateStatus> {
+  const cached = getCachedMfaGateStatus(userId, sessionKey);
+  if (cached !== null) {
+    return cached;
+  }
+
+  const status = await getMfaGateStatus(supabase, userId, sessionKey);
+  setCachedMfaGateStatus(userId, sessionKey, status);
+  return status;
 }
 
 export async function getMfaChallengeRedirectPath(options: {
@@ -50,7 +70,7 @@ export async function getMfaChallengeRedirectPath(options: {
       ? await deriveSessionKeyFromAuthSession(session)
       : null;
 
-  const gateStatus = await getMfaGateStatus(
+  const gateStatus = await resolveMfaGateStatus(
     options.supabase,
     options.userId,
     sessionKey,
@@ -99,7 +119,7 @@ export async function shouldBlockLoginAutoRedirect(options: {
       ? await deriveSessionKeyFromAuthSession(session)
       : null;
 
-  const gateStatus = await getMfaGateStatus(
+  const gateStatus = await resolveMfaGateStatus(
     options.supabase,
     options.userId,
     sessionKey,

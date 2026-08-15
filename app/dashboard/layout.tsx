@@ -1,9 +1,5 @@
 import DashboardShell from "./dashboard-shell";
-import { getCurrentUserRole, hasLeaveApprovalInbox, isDavorsPlatformSuperAdmin, isDavorsPlatformRealEstateStaff, getCurrentAuthUser, getCurrentUserAccount } from "@/utils/dashboard-auth";
-import { getCurrentTenantBranding } from "@/utils/tenant-branding";
-import { getUserDisplayInfo } from "@/utils/user-display";
-import { ensureTrialAccess } from "@/utils/trial-enforcement";
-import { ensureSecurityNotifications } from "@/utils/security-notifications";
+import { loadDashboardShellData } from "@/utils/dashboard-shell-data";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 
 export const dynamic = "force-dynamic";
@@ -14,40 +10,18 @@ export default async function DashboardLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  await ensureTrialAccess();
-
-  const [displayInfo, userRole, showLeaveApprovals, showPlatformSettings, showRealEstate, tenantBranding, authUser, account] =
-    await Promise.all([
-      getUserDisplayInfo(),
-      getCurrentUserRole(),
-      hasLeaveApprovalInbox(),
-      isDavorsPlatformSuperAdmin(),
-      isDavorsPlatformRealEstateStaff(),
-      getCurrentTenantBranding(),
-      getCurrentAuthUser(),
-      getCurrentUserAccount(),
-    ]);
-
-  if (authUser && account?.tenant_id) {
-    await ensureSecurityNotifications({
-      authUid: authUser.id,
-      persona: "staff",
-      tenantId: account.tenant_id,
-      passwordActionUrl: "/dashboard/my-account",
-      mfaActionUrl: "/dashboard/my-account/mfa",
-    });
-  }
+  const shell = await loadDashboardShellData();
 
   return (
     <DashboardShell
-      userRole={userRole as AppRole | null}
-      showLeaveApprovals={showLeaveApprovals}
-      showPlatformSettings={showPlatformSettings}
-      showRealEstate={showRealEstate}
-      tenantBranding={tenantBranding}
-      userLabel={displayInfo.label}
-      userPhotoUrl={displayInfo.photoUrl}
-      userFullName={displayInfo.fullName ?? displayInfo.email}
+      userRole={shell.userRole as AppRole | null}
+      showLeaveApprovals={shell.showLeaveApprovals}
+      showPlatformSettings={shell.showPlatformSettings}
+      showRealEstate={shell.showRealEstate}
+      tenantBranding={shell.tenantBranding}
+      userLabel={shell.displayInfo.label}
+      userPhotoUrl={shell.displayInfo.photoUrl}
+      userFullName={shell.displayInfo.fullName ?? shell.displayInfo.email}
     >
       {children}
     </DashboardShell>

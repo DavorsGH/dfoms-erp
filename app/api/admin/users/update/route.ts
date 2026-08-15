@@ -9,6 +9,7 @@ import {
   validationErrorMessage,
 } from "@/utils/admin-user-role";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
 
 type UpdateUserBody = {
   auth_uid?: string;
@@ -162,6 +163,8 @@ export async function POST(request: Request) {
   if (siteSyncError) {
     return NextResponse.json({ error: siteSyncError }, { status: 400 });
   }
+
+  await syncAuthUserPortalMetadata(auth_uid, "staff");
 
   return NextResponse.json({ success: true });
 }

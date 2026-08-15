@@ -13,6 +13,7 @@ import {
   validatePasswordLength,
 } from "@/utils/password-policy";
 import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
+import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
 
 type CreateUserBody = {
   employee_id?: string | null;
@@ -136,6 +137,7 @@ export async function POST(request: Request) {
   }
 
   await recordPasswordUpdatedAt(authData.user.id);
+  await syncAuthUserPortalMetadata(authData.user.id, "staff");
 
   return NextResponse.json({ auth_uid: authData.user.id });
 }

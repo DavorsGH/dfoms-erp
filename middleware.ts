@@ -6,6 +6,15 @@ import {
   shouldBlockLoginAutoRedirect,
 } from "@/lib/mfa/middleware-gate";
 import { MFA_CHALLENGE_ROUTES } from "@/lib/mfa/types";
+import {
+  AUTH_CONTEXT_HEADER,
+  signAuthContext,
+} from "@/lib/middleware-auth-context";
+import {
+  resolveMiddlewarePersona,
+  type MiddlewareAccountRow,
+} from "@/lib/middleware-persona";
+import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
 
 /** Redirect to a validated relative path+query (pathname + search). */
 function redirectToRelativePath(request: NextRequest, relativePath: string) {
@@ -83,9 +92,12 @@ export async function middleware(request: NextRequest) {
   }
 
   const { supabase, response } = createClient(request);
+  const perf = createPerfProbe();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  perf.countAuth();
 
   const isPortalPath = pathname.startsWith("/portal");
   const isLandlordPortalPath = pathname.startsWith("/landlord-portal");
@@ -144,28 +156,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (
+  const needsAccountGate =
     user &&
     pathname !== "/login" &&
     !isPortalPublicPath &&
-    !isLandlordPortalPublicPath
-  ) {
-    const { data: account } = await supabase
-      .from("user_accounts")
-      .select("is_active")
-      .eq("auth_uid", user.id)
-      .maybeSingle();
-
-    if (account?.is_active === false) {
-      await supabase.auth.signOut();
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      return NextResponse.redirect(url);
-    }
-  }
-
-  let isLesseePortalUser = false;
-  let isLandlordPortalUser = false;
+    !isLandlordPortalPublicPath;
 
   const needsPersonaCheck =
     user &&
@@ -177,27 +172,50 @@ export async function middleware(request: NextRequest) {
       (isLandlordPortalPath && !isLandlordPortalPublicPath) ||
       pathname.startsWith("/dashboard"));
 
+  let accountRow: MiddlewareAccountRow | null = null;
+
+  if (user && (needsAccountGate || needsPersonaCheck)) {
+    const { data: account } = await supabase
+      .from("user_accounts")
+      .select("is_active, tenant_id, role, employee_id, client_id")
+      .eq("auth_uid", user.id)
+      .maybeSingle();
+    perf.countDb();
+
+    accountRow = account ?? null;
+
+    if (needsAccountGate && accountRow?.is_active === false) {
+      await supabase.auth.signOut();
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  let isLesseePortalUser = false;
+  let isLandlordPortalUser = false;
+  let resolvedPortal: "staff" | "lessee" | "landlord" = "staff";
+
   if (needsPersonaCheck) {
-    const portalMeta = user.user_metadata?.portal;
-    if (portalMeta === "lessee") {
-      isLesseePortalUser = true;
-    } else if (portalMeta === "landlord") {
-      isLandlordPortalUser = true;
-    } else {
-      const [{ data: lessee }, { data: landlord }] = await Promise.all([
-        supabase
-          .from("lessees")
-          .select("lessee_id")
-          .eq("auth_user_id", user.id)
-          .maybeSingle(),
-        supabase
-          .from("landlords")
-          .select("tenant_id")
-          .eq("auth_user_id", user.id)
-          .maybeSingle(),
-      ]);
-      isLesseePortalUser = Boolean(lessee);
-      isLandlordPortalUser = Boolean(landlord);
+    const persona = await resolveMiddlewarePersona({
+      supabase,
+      user,
+      pathname,
+      accountRow,
+    });
+    isLesseePortalUser = persona.isLesseePortalUser;
+    isLandlordPortalUser = persona.isLandlordPortalUser;
+    resolvedPortal = persona.portal;
+    if (persona.extraDbCalls > 0) {
+      perf.countDb(persona.extraDbCalls);
+    } else if (
+      pathname.startsWith("/dashboard") &&
+      accountRow &&
+      !user.user_metadata?.portal
+    ) {
+      perf.countSkippedDb(2);
+    } else if (user.user_metadata?.portal) {
+      perf.countSkippedDb(2);
     }
   }
 
@@ -341,6 +359,30 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
 
+  const shouldPassSignedAuthContext =
+    user &&
+    accountRow &&
+    accountRow.is_active !== false &&
+    (pathname.startsWith("/dashboard") ||
+      (isPerfProbeEnabled() &&
+        pathname === "/api/perf-probe/trusted-context"));
+
+  if (shouldPassSignedAuthContext) {
+    const signed = await signAuthContext({
+      authUid: user.id,
+      tenantId: accountRow.tenant_id,
+      role: accountRow.role,
+      employeeId: accountRow.employee_id,
+      clientId: accountRow.client_id,
+      isActive: accountRow.is_active !== false,
+      portal: resolvedPortal,
+      email: user.email ?? null,
+    });
+    if (signed) {
+      requestHeaders.set(AUTH_CONTEXT_HEADER, signed);
+    }
+  }
+
   const nextResponse = NextResponse.next({
     request: { headers: requestHeaders },
   });
@@ -359,6 +401,23 @@ export async function middleware(request: NextRequest) {
     "Cache-Control",
     "private, no-store, no-cache, must-revalidate",
   );
+
+  if (isPerfProbeEnabled()) {
+    for (const [key, value] of Object.entries(perf.toHeaderValues())) {
+      nextResponse.headers.set(key, value);
+    }
+    console.info(
+      "[perf] middleware",
+      pathname,
+      JSON.stringify({
+        ms: perf.elapsedMs(),
+        authCalls: perf.authCalls,
+        dbCalls: perf.dbCalls,
+        skippedAuthCalls: perf.skippedAuthCalls,
+        skippedDbCalls: perf.skippedDbCalls,
+      }),
+    );
+  }
 
   return nextResponse;
 }

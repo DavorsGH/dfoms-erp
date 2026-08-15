@@ -11,6 +11,7 @@ import {
 } from "@/utils/login-rate-limit";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
+import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type PortalLoginActionResult = LoginWithMfaResult;
@@ -96,6 +97,8 @@ export async function portalLoginWithPassword(
       maskedPhone: mfa.maskedPhone,
     };
   }
+
+  await syncAuthUserPortalMetadata(signInData.user.id, "lessee");
 
   return { ok: true };
 }

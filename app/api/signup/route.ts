@@ -155,6 +155,7 @@ export async function POST(request: Request) {
     user_metadata: {
       full_name: adminFullName,
       company_name: companyName,
+      portal: "staff",
     },
   });
 

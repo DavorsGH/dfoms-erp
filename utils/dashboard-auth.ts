@@ -1,10 +1,15 @@
 import "server-only";
 
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import {
+  AUTH_CONTEXT_HEADER,
+  verifyAuthContext,
+  type MiddlewareAuthContext,
+} from "@/lib/middleware-auth-context";
 
 type UserAccountRow = {
   role: string | null;
@@ -13,11 +18,61 @@ type UserAccountRow = {
   tenant_id: string | null;
 };
 
-/** One auth.getUser() per request (layout + page both call helpers). */
+type LayoutPerfCounters = {
+  authCalls: number;
+  dbCalls: number;
+  skippedAuthCalls: number;
+  skippedDbCalls: number;
+};
+
+const layoutPerf: LayoutPerfCounters = {
+  authCalls: 0,
+  dbCalls: 0,
+  skippedAuthCalls: 0,
+  skippedDbCalls: 0,
+};
+
+export function resetLayoutPerfCounters(): void {
+  layoutPerf.authCalls = 0;
+  layoutPerf.dbCalls = 0;
+  layoutPerf.skippedAuthCalls = 0;
+  layoutPerf.skippedDbCalls = 0;
+}
+
+export function getLayoutPerfCounters(): LayoutPerfCounters {
+  return { ...layoutPerf };
+}
+
+const getTrustedAuthContext = cache(
+  async (): Promise<MiddlewareAuthContext | null> => {
+    const headerStore = await headers();
+    return verifyAuthContext(headerStore.get(AUTH_CONTEXT_HEADER));
+  },
+);
+
+function userFromTrustedContext(ctx: MiddlewareAuthContext): User {
+  return {
+    id: ctx.authUid,
+    email: ctx.email ?? undefined,
+    app_metadata: {},
+    user_metadata: { portal: ctx.portal },
+    aud: "authenticated",
+    created_at: "",
+  } as User;
+}
+
+/** One auth.getUser() per request unless middleware passed a signed context. */
 export const getCurrentAuthUser = cache(async (): Promise<User | null> => {
+  const trusted = await getTrustedAuthContext();
+  if (trusted) {
+    layoutPerf.skippedAuthCalls += 1;
+    return userFromTrustedContext(trusted);
+  }
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  layoutPerf.authCalls += 1;
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -25,9 +80,20 @@ export const getCurrentAuthUser = cache(async (): Promise<User | null> => {
   return user;
 });
 
-/** One user_accounts row load per request. */
+/** One user_accounts row load per request unless middleware passed a signed context. */
 export const getCurrentUserAccount = cache(
   async (): Promise<UserAccountRow | null> => {
+    const trusted = await getTrustedAuthContext();
+    if (trusted) {
+      layoutPerf.skippedDbCalls += 1;
+      return {
+        role: trusted.role,
+        employee_id: trusted.employeeId,
+        client_id: trusted.clientId,
+        tenant_id: trusted.tenantId,
+      };
+    }
+
     const user = await getCurrentAuthUser();
     if (!user) {
       return null;
@@ -36,6 +102,7 @@ export const getCurrentUserAccount = cache(
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 
+    layoutPerf.dbCalls += 1;
     const { data: account } = await supabase
       .from("user_accounts")
       .select("role, employee_id, client_id, tenant_id")

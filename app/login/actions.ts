@@ -9,6 +9,7 @@ import {
   recordFailedLoginAttempt,
 } from "@/utils/login-rate-limit";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
+import { syncStaffPortalMetadataAfterLogin } from "@/lib/auth/portal-metadata";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type LoginActionResult = LoginWithMfaResult;
@@ -85,6 +86,8 @@ export async function loginWithPassword(
         maskedPhone: mfa.maskedPhone,
       };
     }
+
+    await syncStaffPortalMetadataAfterLogin(user.id);
   }
 
   return { ok: true };
