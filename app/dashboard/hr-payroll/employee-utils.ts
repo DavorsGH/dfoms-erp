@@ -23,8 +23,14 @@ export type PeriodEmployableEmployee = {
   employment_status?: string | null;
 };
 
+/** Minimum shape for Active / Inactive / Terminated checks (`employment_status` only). */
+export type EmploymentStatusCarrier = Pick<
+  PeriodEmployableEmployee,
+  "employment_status"
+>;
+
 /** Matches Employee Directory: Active / Inactive / Terminated (`employment_status`). */
-export function isActiveEmployee(employee: HrEmployee): boolean {
+export function isActiveEmployee(employee: EmploymentStatusCarrier): boolean {
   const status = employee.employment_status?.trim().toLowerCase();
 
   if (!status) {
