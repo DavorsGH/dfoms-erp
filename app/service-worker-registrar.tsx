@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import ClientCacheSessionGuard from "@/components/client-cache-session-guard";
 
 export default function ServiceWorkerRegistrar() {
   useEffect(() => {
@@ -15,5 +16,5 @@ export default function ServiceWorkerRegistrar() {
       });
   }, []);
 
-  return null;
+  return <ClientCacheSessionGuard />;
 }

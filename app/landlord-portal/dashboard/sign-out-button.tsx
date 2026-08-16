@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { completePlatformSignOut } from "@/lib/auth/sign-out";
+import { purgeClientCacheBeforeSignOut } from "@/lib/client-cache/client-sign-out";
 
 type LandlordPortalSignOutButtonProps = {
   variant?: "header" | "topbar" | "menu";
@@ -13,6 +14,7 @@ export default function LandlordPortalSignOutButton({
   const router = useRouter();
 
   async function handleSignOut() {
+    await purgeClientCacheBeforeSignOut();
     await completePlatformSignOut();
     router.push("/landlord-portal/login");
     router.refresh();

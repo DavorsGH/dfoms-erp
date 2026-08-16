@@ -2,11 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { completePlatformSignOut } from "@/lib/auth/sign-out";
+import { purgeClientCacheBeforeSignOut } from "@/lib/client-cache/client-sign-out";
 
 export default function PortalSignOutButton() {
   const router = useRouter();
 
   async function handleSignOut() {
+    await purgeClientCacheBeforeSignOut();
     await completePlatformSignOut();
     router.push("/portal/login");
     router.refresh();

@@ -1,4 +1,6 @@
-const CACHE_NAME = "davors-erp-shell-v2";
+const CACHE_NAME = "davors-erp-shell-v3";
+const CLIENT_CACHE_DB_NAME = "dfoms-client-cache";
+const CLIENT_CACHE_PURGE_MESSAGE = "PURGE_CLIENT_CACHE";
 
 const PRECACHE_URLS = [
   "/manifest.json",
@@ -137,6 +139,22 @@ self.addEventListener("notificationclick", (event) => {
       }
 
       return undefined;
+    }),
+  );
+});
+
+self.addEventListener("message", (event) => {
+  if (!event.data || event.data.type !== CLIENT_CACHE_PURGE_MESSAGE) {
+    return;
+  }
+
+  event.waitUntil(
+    new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(CLIENT_CACHE_DB_NAME);
+      request.onsuccess = () => resolve();
+      request.onerror = () =>
+        reject(request.error ?? new Error("IndexedDB purge failed"));
+      request.onblocked = () => resolve();
     }),
   );
 });

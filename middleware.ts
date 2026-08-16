@@ -139,6 +139,10 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith("/api/apply/") &&
     !pathname.startsWith("/api/cron/")
   ) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const url = request.nextUrl.clone();
     if (isLandlordPortalPath) {
       url.pathname = "/landlord-portal/login";

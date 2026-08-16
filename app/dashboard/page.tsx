@@ -5,6 +5,7 @@ import {
   getCurrentUserClientId,
   getCurrentUserEmployeeId,
   getCurrentUserRole,
+  getCurrentAuthUid,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
 import type { AppRole } from "@/app/dashboard/user-account-types";
@@ -15,16 +16,11 @@ import { buildEmployeeDashboardSummary } from "./employee-dashboard-utils";
 import EmployeeDashboard from "./employee-dashboard";
 import { buildOperationsDashboardSummary } from "./operations-dashboard-utils";
 import OperationsDashboard from "./operations-dashboard";
-import Dashboard from "./dashboard";
-import { buildDashboardViewModel } from "./dashboard-utils";
-import {
-  toSpendingAnalysisExpenseRows,
-  toSpendingAnalysisIncomeRows,
-} from "./dashboard-spending-analysis-utils";
+import DashboardCacheShell from "./dashboard-cache-shell";
+import { buildOwnerDashboardViewModel } from "./owner-dashboard-view-model";
+import { fetchDashboardPageData } from "./dashboard-page-data";
 import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
-import { fetchDashboardPageData } from "./dashboard-page-data";
-import { countLowStockRawMaterials } from "./reports/inventory-reports-utils";
 
 export default async function DashboardPage() {
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -209,115 +205,25 @@ export default async function DashboardPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const tenantId = await getCurrentUserTenantId();
+  const authUid = await getCurrentAuthUid();
 
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
   }
 
+  if (!authUid) {
+    throw new Error("Unable to resolve the current user.");
+  }
+
   const dashboardPageData = await fetchDashboardPageData(supabase, tenantId);
-
-  const {
-    initialIncomeEntries: incomeEntries,
-    initialExpenseEntries: expenseEntries,
-    initialFixedAssets: fixedAssets,
-    initialPayableEntries: payableEntries,
-    initialAccountsPayablePayments: accountsPayablePayments,
-    initialDirectorsLoanRepayments: directorsLoanRepayments,
-    initialCapitalContributions: capitalContributions,
-    initialCashFlowExpenseEntries: cashFlowExpenseEntries,
-    initialPayrollHistory: payrollHistoryWages,
-    initialMonthEndCloseNetPay: monthEndCloseNetPay,
-    initialMonthEndCloseRecords: monthEndCloseRecords,
-    initialPayrollProcessingRows: payrollProcessingEntries,
-    initialPayrollHistoryGrossEntries: payrollHistoryGrossEntries,
-    initialManualEntries: manualEntries,
-    initialInventoryBalanceSheet: inventoryBalanceSheetInput,
-    initialTaxLedgerEntries: taxLedgerEntries,
-    salesAnalysisEntries,
-    fetchError,
-  } = dashboardPageData;
-
-  const lowStockRawMaterialCount = countLowStockRawMaterials(
-    inventoryBalanceSheetInput.rawMaterials,
-  );
-
-  const balanceSheetReportOptions = {
-    tenantId,
-    accountsPayablePayments,
-    directorsLoanRepayments,
-  };
-
-  const dashboardData = buildDashboardViewModel({
-    incomeEntries:
-      incomeEntries?.map((entry) => ({
-        date: entry.date,
-        amount: entry.amount,
-      })) ?? [],
-    productSaleEntries:
-      incomeEntries
-        ?.filter((entry) => entry.entry_type === "product_sale")
-        .map((entry) => ({
-          date: entry.date,
-          amount: entry.amount,
-          sale_status: entry.sale_status,
-        })) ?? [],
-    profitLossIncomeEntries:
-      incomeEntries?.map((entry) => {
-        const row = entry as typeof entry & {
-          net_of_tax_amount?: number | null;
-          output_vat_amount?: number | null;
-        };
-        return {
-          date: row.date,
-          service_category: row.service_category,
-          amount: row.amount,
-          entry_type: row.entry_type,
-          sale_status: row.sale_status,
-          net_of_tax_amount: row.net_of_tax_amount,
-          output_vat_amount: row.output_vat_amount,
-        };
-      }) ?? [],
-    balanceSheetIncomeEntries: incomeEntries ?? [],
-    expenseEntries:
-      expenseEntries?.map((entry) => ({
-        date: entry.date,
-        amount: entry.amount,
-      })) ?? [],
-    profitLossExpenseEntries: expenseEntries ?? [],
-    fixedAssets: fixedAssets ?? [],
-    payableEntries: payableEntries ?? [],
-    capitalContributions: capitalContributions ?? [],
-    cashFlowIncomeEntries: dashboardPageData.initialCashFlowIncomeEntries,
-    cashFlowExpenseEntries,
-    payrollHistoryWages,
-    monthEndCloseNetPay,
-    manualEntries: manualEntries ?? [],
-    monthEndCloseRecords: monthEndCloseRecords ?? [],
-    payrollProcessingEntries:
-      payrollProcessingEntries?.map((entry) => ({
-        payroll_month: entry.payroll_month,
-        gross_pay: Number(entry.gross_pay) || 0,
-      })) ?? [],
-    payrollHistoryEntries: payrollHistoryGrossEntries,
-    lowStockRawMaterialCount,
-    inventoryBalanceSheetInput,
-    taxLedgerEntries: taxLedgerEntries ?? [],
-    balanceSheetReportOptions,
-  });
+  const dashboardData = buildOwnerDashboardViewModel(dashboardPageData, tenantId);
 
   return (
-    <Dashboard
-      data={{
-        ...dashboardData,
-        spendingAnalysisIncome: toSpendingAnalysisIncomeRows(
-          incomeEntries ?? [],
-        ),
-        spendingAnalysisExpenses: toSpendingAnalysisExpenseRows(
-          expenseEntries ?? [],
-        ),
-        salesAnalysisEntries,
-      }}
-      fetchError={fetchError}
+    <DashboardCacheShell
+      session={{ tenantId, authUid }}
+      initialData={dashboardData}
+      initialFetchError={dashboardPageData.fetchError}
+      initialCachedAt={new Date().toISOString()}
       visibility={getDashboardVisibility(role)}
     />
   );

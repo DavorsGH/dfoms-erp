@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { NamedLookup } from "../lookup-types";
+import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
+import { invalidateReferenceLookupsAfterWrite } from "@/lib/client-cache/dashboard-summary-cache";
+import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
 
 type PaymentMethodsProps = {
   initialMethods: NamedLookup[];
@@ -17,11 +20,19 @@ export default function PaymentMethods({
   fetchError,
 }: PaymentMethodsProps) {
   const supabase = createClient();
+  const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
   const [methods, setMethods] = useState(initialMethods);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [deletingName, setDeletingName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
+
+  async function invalidateReferenceCache() {
+    const session = await resolveClientCacheSession();
+    if (session) {
+      await invalidateReferenceLookupsAfterWrite(session);
+    }
+  }
 
   async function refreshMethods() {
     const { data, error: refreshError } = await supabase
@@ -40,6 +51,10 @@ export default function PaymentMethods({
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
+    if (isOffline) {
+      setError(offlineWriteMessage);
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -55,10 +70,15 @@ export default function PaymentMethods({
 
     setName("");
     await refreshMethods();
+    await invalidateReferenceCache();
     setLoading(false);
   }
 
   async function handleDelete(methodName: string) {
+    if (isOffline) {
+      setError(offlineWriteMessage);
+      return;
+    }
     setDeletingName(methodName);
     setError(null);
 
@@ -74,6 +94,7 @@ export default function PaymentMethods({
     }
 
     await refreshMethods();
+    await invalidateReferenceCache();
     setDeletingName(null);
   }
 
@@ -82,6 +103,12 @@ export default function PaymentMethods({
       <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
         Payment Methods
       </h2>
+
+      {isOffline && (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {offlineWriteMessage}
+        </p>
+      )}
 
       {error && (
         <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -100,7 +127,7 @@ export default function PaymentMethods({
         />
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || isOffline}
           className="shrink-0 rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading ? "Adding…" : "Add"}
@@ -120,7 +147,7 @@ export default function PaymentMethods({
               <button
                 type="button"
                 onClick={() => handleDelete(method.name)}
-                disabled={deletingName === method.name}
+                disabled={deletingName === method.name || isOffline}
                 className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {deletingName === method.name ? "Deleting…" : "Delete"}
