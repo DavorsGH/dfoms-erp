@@ -20,9 +20,10 @@ export const HR_EMPLOYEE_SELECT =
 export type PeriodEmployableEmployee = {
   date_hired: string | null;
   appointment_end_date: string | null;
+  employment_status?: string | null;
 };
 
-/** Uses today's employment_status — not valid for historical payroll periods. */
+/** Matches Employee Directory: Active / Inactive / Terminated (`employment_status`). */
 export function isActiveEmployee(employee: HrEmployee): boolean {
   const status = employee.employment_status?.trim().toLowerCase();
 
@@ -33,7 +34,7 @@ export function isActiveEmployee(employee: HrEmployee): boolean {
   return status === "active";
 }
 
-/** Uses today's employment_status — not valid for historical payroll periods. */
+/** Matches Employee Directory: Active / Inactive / Terminated (`employment_status`). */
 export function filterActiveEmployees(employees: HrEmployee[]): HrEmployee[] {
   return employees.filter(isActiveEmployee);
 }
@@ -59,11 +60,54 @@ export function wasEmployedDuringPayrollPeriod(
   return true;
 }
 
+/** Terminated with an end date inside the payroll month (final prorated pay). */
+export function wasTerminatedDuringPayrollPeriod(
+  employee: PeriodEmployableEmployee,
+  year: number,
+  month: number,
+): boolean {
+  const status = employee.employment_status?.trim().toLowerCase() ?? "";
+  if (status !== "terminated") {
+    return false;
+  }
+
+  const appointmentEnd = employee.appointment_end_date?.slice(0, 10);
+  if (!appointmentEnd) {
+    return false;
+  }
+
+  const periodStart = getPeriodStartDate(year, month);
+  const periodEnd = getPeriodEndDate(year, month);
+  return appointmentEnd >= periodStart && appointmentEnd <= periodEnd;
+}
+
+/**
+ * Payroll roster eligibility for a period (tenant-agnostic):
+ * - employed during the period (hire / appointment_end dates), and
+ * - Active today, OR Terminated with appointment_end in this month (final pay).
+ * Inactive employees are never included.
+ */
+export function isEligibleForPayrollProcessing(
+  employee: PeriodEmployableEmployee,
+  year: number,
+  month: number,
+): boolean {
+  if (!wasEmployedDuringPayrollPeriod(employee, year, month)) {
+    return false;
+  }
+
+  if (isActiveEmployee(employee)) {
+    return true;
+  }
+
+  return wasTerminatedDuringPayrollPeriod(employee, year, month);
+}
+
 export function filterEmployeesForPayrollPeriod<
   T extends PeriodEmployableEmployee,
 >(employees: T[], year: number, month: number): T[] {
   return employees.filter((employee) =>
-    wasEmployedDuringPayrollPeriod(employee, year, month),
+    isEligibleForPayrollProcessing(employee, year, month),
   );
 }
 
