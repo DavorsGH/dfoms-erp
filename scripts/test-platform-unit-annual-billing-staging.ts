@@ -12,7 +12,7 @@
  */
 import Module from "node:module";
 import { randomUUID } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const originalLoad = (Module as unknown as { _load: (...args: unknown[]) => unknown })
   ._load;
@@ -81,7 +81,7 @@ function addDays(iso: string, days: number): string {
 }
 
 async function insertPlatformSubscription(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient,
   options: {
     tenantId: string;
     trialEndsAt: string;

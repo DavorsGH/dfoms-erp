@@ -113,6 +113,10 @@ async function notifyTrialEndingReminder(options: {
   billingCycle: string;
   firstChargeFormula: string;
 }): Promise<void> {
+  const title =
+    options.reminderDays === 14
+      ? "Your platform trial ends in 14 days"
+      : "Your platform trial ends in 3 days";
   const context = `trial-ending-${options.reminderDays}d:${options.tenantId}:${options.trialEndsAt}`;
   if (
     await reminderAlreadySent(
@@ -126,10 +130,6 @@ async function notifyTrialEndingReminder(options: {
   }
 
   const cycleLabel = options.billingCycle === "annual" ? "Annual" : "Monthly";
-  const title =
-    options.reminderDays === 14
-      ? "Your platform trial ends in 14 days"
-      : "Your platform trial ends in 3 days";
 
   const body =
     `Your free trial ends on ${formatDisplayDate(options.trialEndsAt)}. ` +
