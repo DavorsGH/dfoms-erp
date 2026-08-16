@@ -106,7 +106,8 @@ export async function middleware(request: NextRequest) {
   const isLandlordPortalPublicPath =
     pathname === "/landlord-portal/login" ||
     pathname === "/landlord-portal/accept-invite" ||
-    pathname === "/landlord-portal/signup";
+    pathname === "/landlord-portal/signup" ||
+    pathname === "/landlord-portal/verify-email";
 
   const publicPaths = new Set([
     "/", // Public portal chooser (landlord / tenant) — no auth redirects from here
@@ -125,6 +126,7 @@ export async function middleware(request: NextRequest) {
     "/landlord-portal/login/mfa",
     "/landlord-portal/accept-invite",
     "/landlord-portal/signup",
+    "/landlord-portal/verify-email",
     "/api/landlord-portal/signup",
   ]);
 

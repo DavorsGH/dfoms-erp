@@ -8,6 +8,7 @@ const PUBLIC_AUTH_PREFIXES = [
   "/landlord-portal/login",
   "/landlord-portal/signup",
   "/landlord-portal/accept-invite",
+  "/landlord-portal/verify-email",
 ] as const;
 
 type PortalLayoutClientProps = {

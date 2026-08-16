@@ -4,7 +4,8 @@ import {
   rollbackPendingLandlordTenant,
   validatePendingLandlordInput,
 } from "@/utils/landlord-create";
-import { notifyStaffLandlordPendingApproval } from "@/utils/real-estate-staff-notifications";
+import { sendLandlordSignupConfirmationEmail } from "@/utils/landlord-signup-emails";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isDuplicateEmailError } from "@/utils/tenant-signup";
 import {
@@ -12,6 +13,11 @@ import {
   validatePasswordClient,
 } from "@/utils/password-policy";
 import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
+import {
+  assertSignupAllowed,
+  getRequestIp,
+  recordSignupAttempt,
+} from "@/utils/signup-rate-limit";
 
 type SignupBody = {
   name?: string;
@@ -23,8 +29,8 @@ type SignupBody = {
 };
 
 /**
- * Public self-signup: create pending landlord tenant + Auth user, link
- * landlords.auth_user_id, notify staff. Caller should sign the user in.
+ * Public self-signup: create pending landlord tenant + unconfirmed Auth user.
+ * Email confirmation triggers auto-approval (see confirm-email route).
  */
 export async function POST(request: Request) {
   let body: SignupBody;
@@ -52,8 +58,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: passwordError }, { status: 400 });
   }
 
-  const admin = createAdminClient();
   const { name, email, phone, address } = validation.data;
+  const ip = getRequestIp(request.headers);
+
+  const allowed = await assertSignupAllowed(email, ip);
+  if (!allowed.ok) {
+    return NextResponse.json({ error: allowed.error }, { status: 429 });
+  }
+
+  await recordSignupAttempt(email, ip);
+
+  const admin = createAdminClient();
 
   const created = await createPendingLandlordTenant(admin, {
     name,
@@ -77,7 +92,7 @@ export async function POST(request: Request) {
     await admin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,
+      email_confirm: false,
       user_metadata: {
         full_name: name,
         portal: "landlord",
@@ -123,15 +138,33 @@ export async function POST(request: Request) {
     );
   }
 
-  await notifyStaffLandlordPendingApproval({
-    landlordTenantId: tenantId,
-    landlordType: "platform_only",
-    landlordName: name,
-  });
+  const { data: linkData, error: verifyLinkError } =
+    await admin.auth.admin.generateLink({
+      type: "signup",
+      email,
+      password,
+    });
+
+  if (verifyLinkError || !linkData?.properties?.hashed_token) {
+    console.error(
+      "[landlord-portal/signup] failed to generate verification link:",
+      verifyLinkError?.message,
+    );
+  } else {
+    const siteUrl = resolvePublicSiteUrl().replace(/\/$/, "");
+    const verifyUrl = `${siteUrl}/landlord-portal/verify-email?token_hash=${linkData.properties.hashed_token}&type=signup`;
+
+    await sendLandlordSignupConfirmationEmail({
+      email,
+      name,
+      verifyUrl,
+    });
+  }
 
   return NextResponse.json({
-    success: true,
-    tenant_id: tenantId,
+    message:
+      "Account created. Check your email for a link to confirm your address before signing in.",
     email,
+    tenant_id: tenantId,
   });
 }

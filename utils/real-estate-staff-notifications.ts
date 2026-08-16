@@ -976,6 +976,69 @@ export async function notifyStaffLandlordPendingApproval(options: {
   }
 }
 
+/** Self-signup landlord confirmed email and was auto-approved — informational only. */
+export async function notifyStaffLandlordSelfSignupApproved(options: {
+  landlordTenantId: string;
+  landlordType: string;
+  landlordName?: string | null;
+}): Promise<void> {
+  try {
+    let landlordName = options.landlordName?.trim() || "";
+    if (!landlordName) {
+      const admin = createAdminClient();
+      const { data: tenant } = await admin
+        .from("tenants")
+        .select("name")
+        .eq("id", options.landlordTenantId)
+        .maybeSingle();
+      landlordName = tenant?.name?.trim() || "Landlord";
+    }
+
+    const recipients = await resolveNotificationRecipients({
+      landlordTenantId: options.landlordTenantId,
+      forceDavors: true,
+    });
+    const typeLabel = formatLandlordTypeLabel(options.landlordType);
+    const actionPath = landlordPendingApprovalPath(options.landlordTenantId);
+    const deepLink = staffDashboardUrl(actionPath);
+    const smsLink = await smsDeepLinkUrl(deepLink);
+
+    const title = "New landlord signed up";
+    const body = [
+      `${landlordName} completed self-signup and email verification.`,
+      `Type: ${typeLabel}`,
+      "No staff action required — account is active.",
+    ].join("\n");
+
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Landlord", landlordName],
+        ["Type", typeLabel],
+        ["Status", "Active (auto-approved)"],
+      ],
+      deepLink,
+    );
+
+    await dispatchStaffNotification({
+      title,
+      body,
+      actionUrl: actionPath,
+      emailSubject: `Real Estate: New landlord signed up — ${landlordName}`,
+      emailHtml: html,
+      emailText: text,
+      smsContent: `Davors RE: New landlord "${landlordName}" signed up (${typeLabel}). No action needed. ${smsLink}`,
+      context: `landlord-signup:${options.landlordTenantId}`,
+      recipients,
+    });
+  } catch (error) {
+    console.error(
+      "[real-estate-staff-notifications] notifyStaffLandlordSelfSignupApproved failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 function maskAccountLast4(accountNumber: string): string {
   const digits = accountNumber.replace(/\D/g, "");
   if (digits.length < 4) {

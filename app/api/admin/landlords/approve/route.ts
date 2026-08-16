@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
+import { approveLandlordTenant } from "@/utils/landlord-approval";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
@@ -51,49 +52,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: landlord, error: landlordError } = await admin
-    .from("landlords")
-    .select("tenant_id, approval_status")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
+  const approval = await approveLandlordTenant(admin, tenantId, {
+    requirePending: true,
+  });
 
-  if (landlordError) {
-    return NextResponse.json({ error: landlordError.message }, { status: 400 });
-  }
-  if (!landlord) {
+  if (!approval.ok) {
     return NextResponse.json(
-      { error: "Landlord record not found." },
-      { status: 404 },
-    );
-  }
-  if (landlord.approval_status !== "pending") {
-    return NextResponse.json(
-      { error: "Only pending landlords can be approved or rejected." },
-      { status: 400 },
-    );
-  }
-
-  const { error: updateError } = await admin
-    .from("landlords")
-    .update({
-      approval_status: "approved",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("tenant_id", tenantId);
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 400 });
-  }
-
-  try {
-    const { ensurePlatformOnlyLandlordTrialSubscription } = await import(
-      "@/utils/platform-only-unit-billing"
-    );
-    await ensurePlatformOnlyLandlordTrialSubscription(admin, tenantId);
-  } catch (error) {
-    console.warn(
-      "[landlords/approve] trial subscription seed failed:",
-      error instanceof Error ? error.message : error,
+      { error: approval.error },
+      { status: approval.status },
     );
   }
 
@@ -127,7 +93,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     success: true,
-    approval_status: "approved",
+    approval_status: approval.approvalStatus,
     portal_invite: portalInvite,
   });
 }
