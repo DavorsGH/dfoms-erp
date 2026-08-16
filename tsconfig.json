@@ -1,4 +1,6 @@
 {
+  // Application + Next.js type-check config (`next build` uses this file).
+  // Dev/staging scripts live under scripts/ and are excluded here — see tsconfig.scripts.json.
   "compilerOptions": {
     "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
@@ -31,5 +33,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "scripts"]
 }

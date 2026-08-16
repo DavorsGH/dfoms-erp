@@ -143,7 +143,7 @@ async function main() {
     record(
       "Dashboard cache populated after login",
       idbAfterLogin.count >= 1 &&
-        idbAfterLogin.keys.some((k) => k.includes("dashboard-summary")),
+        idbAfterLogin.keys.some((k: string) => k.includes("dashboard-summary")),
       `count=${idbAfterLogin.count}, keys=${idbAfterLogin.keys.join(", ") || "(none)"}`,
     );
 

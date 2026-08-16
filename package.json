@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
     "start": "next start",
     "lint": "eslint",
     "audit:tenant-rls": "npx tsx scripts/audit-tenant-rls.ts",
