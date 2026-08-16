@@ -17,6 +17,7 @@ import {
   LANDLORD_TYPE_OPTIONS,
   formatLandlordApprovalStatus,
   formatLandlordDate,
+  formatLandlordPortalStatus,
   formatLandlordTier,
   formatLandlordType,
   type LandlordListRow,
@@ -213,8 +214,8 @@ export default function Landlords({
             New Landlord
           </h3>
           <p className="text-sm text-slate-600">
-            Creates a pending landlord tenant. Approve from the detail page when
-            ready (portal invite is sent on approve).
+            Creates an approved landlord tenant and sends a portal invite to the
+            email address when one is provided.
           </p>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div>
@@ -320,6 +321,7 @@ export default function Landlords({
               <th className={scrollableTableThClassName}>Name</th>
               <th className={scrollableTableThClassName}>Landlord Type</th>
               <th className={scrollableTableThClassName}>Approval Status</th>
+              <th className={scrollableTableThClassName}>Portal</th>
               <th className={scrollableTableThClassName}>Subscription Tier</th>
               <th className={scrollableTableThClassName}>Created Date</th>
             </tr>
@@ -328,7 +330,7 @@ export default function Landlords({
             {filteredRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No landlords match the current filters.
@@ -360,6 +362,9 @@ export default function Landlords({
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {formatLandlordApprovalStatus(row.approvalStatus)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      {formatLandlordPortalStatus(row)}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {row.landlordType === "davors_managed"

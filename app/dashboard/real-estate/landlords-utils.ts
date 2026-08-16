@@ -1,5 +1,9 @@
 export type LandlordType = "platform_only" | "davors_managed";
-export type LandlordApprovalStatus = "pending" | "approved" | "rejected";
+export type LandlordApprovalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "suspended";
 export type LandlordSubscriptionTier = "base" | "growth" | "pro";
 export type LandlordSubscriptionStatus =
   | "trialing"
@@ -12,6 +16,7 @@ export type LandlordListRow = {
   name: string;
   landlordType: LandlordType | null;
   approvalStatus: LandlordApprovalStatus | null;
+  authUserId: string | null;
   subscriptionTier: LandlordSubscriptionTier | null;
   createdAt: string;
 };
@@ -49,6 +54,7 @@ export type LandlordDetail = {
   productLine: string | null;
   landlordType: LandlordType | null;
   approvalStatus: LandlordApprovalStatus | null;
+  authUserId: string | null;
   managementFeePercent: number | null;
   paystackSubaccountCode: string | null;
   /** SMS recipient for platform_only Real Estate ops alerts. */
@@ -71,9 +77,10 @@ export const LANDLORD_APPROVAL_STATUS_OPTIONS: Array<{
   value: LandlordApprovalStatus;
   label: string;
 }> = [
-  { value: "pending", label: "Pending" },
+  { value: "pending", label: "Pending (legacy)" },
   { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
+  { value: "suspended", label: "Suspended" },
+  { value: "rejected", label: "Rejected (legacy)" },
 ];
 
 export function formatLandlordType(value: string | null | undefined): string {
@@ -112,4 +119,24 @@ export function formatLandlordDate(value: string | null | undefined): string {
     month: "short",
     year: "numeric",
   });
+}
+
+/** Staff list Portal column — derived from approval_status + auth link. */
+export function formatLandlordPortalStatus(row: {
+  approvalStatus: LandlordApprovalStatus | null;
+  authUserId: string | null;
+}): string {
+  if (row.approvalStatus === "approved") {
+    return row.authUserId ? "Active" : "Approved · invite pending";
+  }
+  if (row.approvalStatus === "suspended") {
+    return "Suspended";
+  }
+  if (row.approvalStatus === "pending") {
+    return "Setup incomplete (legacy)";
+  }
+  if (row.approvalStatus === "rejected") {
+    return "Not approved (legacy)";
+  }
+  return "—";
 }

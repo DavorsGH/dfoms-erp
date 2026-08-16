@@ -43,10 +43,19 @@ export async function approveLandlordTenant(
     };
   }
 
-  if (landlord.approval_status === "rejected") {
+  const manualReactivationStatuses = new Set([
+    "pending",
+    "suspended",
+    "rejected",
+  ]);
+  if (
+    !requirePending &&
+    landlord.approval_status != null &&
+    !manualReactivationStatuses.has(landlord.approval_status)
+  ) {
     return {
       ok: false,
-      error: "Rejected landlords cannot be approved.",
+      error: `Landlords with status "${landlord.approval_status}" cannot be approved.`,
       status: 400,
     };
   }

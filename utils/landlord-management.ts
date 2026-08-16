@@ -41,6 +41,7 @@ type LandlordRow = {
   tenant_id: string;
   landlord_type: LandlordType | null;
   approval_status: LandlordApprovalStatus | null;
+  auth_user_id: string | null;
   management_fee_percent: number | null;
   paystack_subaccount_code: string | null;
   paystack_subaccount_status: PaystackSubaccountStatus | null;
@@ -154,6 +155,7 @@ export async function fetchLandlordListRows(
       name: tenant.name,
       landlordType: landlord?.landlord_type ?? null,
       approvalStatus: landlord?.approval_status ?? null,
+      authUserId: landlord?.auth_user_id ?? null,
       subscriptionTier: isPlatformOnly ? (subscription?.tier ?? null) : null,
       createdAt: tenant.created_at,
     };
@@ -232,6 +234,7 @@ export async function fetchLandlordDetail(
       productLine: tenantRow.product_line,
       landlordType: landlordRow?.landlord_type ?? null,
       approvalStatus: landlordRow?.approval_status ?? null,
+      authUserId: landlordRow?.auth_user_id ?? null,
       managementFeePercent: landlordRow?.management_fee_percent ?? null,
       paystackSubaccountCode: landlordRow?.paystack_subaccount_code ?? null,
       notificationPhone: landlordRow?.notification_phone ?? null,

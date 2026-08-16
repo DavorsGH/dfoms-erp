@@ -3,6 +3,7 @@ import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
+import { LANDLORD_PORTAL_INACTIVE_LOGO_MESSAGE } from "@/utils/landlord-portal-access-messages";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { uploadPropertyPhoto } from "@/utils/property-photo";
 
@@ -17,8 +18,7 @@ export async function POST(request: Request) {
   if (!landlordPortalHasDataAccess(session)) {
     return NextResponse.json(
       {
-        error:
-          "Your landlord account is pending approval. Logo upload is unavailable until Davors staff approves your account.",
+        error: LANDLORD_PORTAL_INACTIVE_LOGO_MESSAGE,
       },
       { status: 403 },
     );

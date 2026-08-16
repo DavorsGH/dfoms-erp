@@ -1003,11 +1003,11 @@ export async function notifyStaffLandlordSelfSignupApproved(options: {
     const deepLink = staffDashboardUrl(actionPath);
     const smsLink = await smsDeepLinkUrl(deepLink);
 
-    const title = "New landlord signed up";
+    const title = "[FYI] New landlord signed up";
     const body = [
+      "No action needed — account is active.",
       `${landlordName} completed self-signup and email verification.`,
       `Type: ${typeLabel}`,
-      "No staff action required — account is active.",
     ].join("\n");
 
     const { html, text } = buildEmailShell(
@@ -1024,16 +1024,79 @@ export async function notifyStaffLandlordSelfSignupApproved(options: {
       title,
       body,
       actionUrl: actionPath,
-      emailSubject: `Real Estate: New landlord signed up — ${landlordName}`,
+      emailSubject: `[FYI] Real Estate: New landlord signed up — ${landlordName}`,
       emailHtml: html,
       emailText: text,
-      smsContent: `Davors RE: New landlord "${landlordName}" signed up (${typeLabel}). No action needed. ${smsLink}`,
+      smsContent: `Davors RE [FYI]: New landlord "${landlordName}" signed up (${typeLabel}). No action needed. ${smsLink}`,
       context: `landlord-signup:${options.landlordTenantId}`,
       recipients,
     });
   } catch (error) {
     console.error(
       "[real-estate-staff-notifications] notifyStaffLandlordSelfSignupApproved failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/** Staff-created landlord — auto-approved; informational only. */
+export async function notifyStaffLandlordCreatedByStaff(options: {
+  landlordTenantId: string;
+  landlordType: string;
+  landlordName?: string | null;
+}): Promise<void> {
+  try {
+    let landlordName = options.landlordName?.trim() || "";
+    if (!landlordName) {
+      const admin = createAdminClient();
+      const { data: tenant } = await admin
+        .from("tenants")
+        .select("name")
+        .eq("id", options.landlordTenantId)
+        .maybeSingle();
+      landlordName = tenant?.name?.trim() || "Landlord";
+    }
+
+    const recipients = await resolveNotificationRecipients({
+      landlordTenantId: options.landlordTenantId,
+      forceDavors: true,
+    });
+    const typeLabel = formatLandlordTypeLabel(options.landlordType);
+    const actionPath = landlordPendingApprovalPath(options.landlordTenantId);
+    const deepLink = staffDashboardUrl(actionPath);
+    const smsLink = await smsDeepLinkUrl(deepLink);
+
+    const title = "[FYI] Landlord added by staff";
+    const body = [
+      "No action needed — account is active and portal invite was sent when applicable.",
+      `${landlordName} was added by Real Estate staff.`,
+      `Type: ${typeLabel}`,
+    ].join("\n");
+
+    const { html, text } = buildEmailShell(
+      title,
+      [
+        ["Landlord", landlordName],
+        ["Type", typeLabel],
+        ["Status", "Active (auto-approved)"],
+      ],
+      deepLink,
+    );
+
+    await dispatchStaffNotification({
+      title,
+      body,
+      actionUrl: actionPath,
+      emailSubject: `[FYI] Real Estate: Landlord added — ${landlordName}`,
+      emailHtml: html,
+      emailText: text,
+      smsContent: `Davors RE [FYI]: Landlord "${landlordName}" added by staff (${typeLabel}). No action needed. ${smsLink}`,
+      context: `landlord-staff-create:${options.landlordTenantId}`,
+      recipients,
+    });
+  } catch (error) {
+    console.error(
+      "[real-estate-staff-notifications] notifyStaffLandlordCreatedByStaff failed:",
       error instanceof Error ? error.message : error,
     );
   }

@@ -3,7 +3,7 @@ import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
-import { notifyStaffLandlordPendingApproval } from "@/utils/real-estate-staff-notifications";
+import { onboardStaffCreatedLandlord } from "@/utils/staff-landlord-onboarding";
 
 type UpdateLandlordBody = {
   tenant_id?: string;
@@ -176,10 +176,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: insertError.message }, { status: 400 });
     }
 
-    await notifyStaffLandlordPendingApproval({
-      landlordTenantId: tenantId,
+    const onboarded = await onboardStaffCreatedLandlord(admin, {
+      tenantId,
       landlordType,
     });
+
+    if (!onboarded.ok) {
+      return NextResponse.json(
+        { error: onboarded.error },
+        { status: onboarded.status },
+      );
+    }
   }
 
   return NextResponse.json({ success: true });

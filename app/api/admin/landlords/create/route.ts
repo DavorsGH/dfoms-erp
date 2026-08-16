@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createPendingLandlordTenant } from "@/utils/landlord-create";
-import { notifyStaffLandlordPendingApproval } from "@/utils/real-estate-staff-notifications";
+import { onboardStaffCreatedLandlord } from "@/utils/staff-landlord-onboarding";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 type CreateLandlordBody = {
@@ -39,11 +39,23 @@ export async function POST(request: Request) {
     );
   }
 
-  await notifyStaffLandlordPendingApproval({
-    landlordTenantId: created.tenantId,
+  const onboarded = await onboardStaffCreatedLandlord(admin, {
+    tenantId: created.tenantId,
     landlordType: "platform_only",
     landlordName: created.name,
   });
 
-  return NextResponse.json({ success: true, tenant_id: created.tenantId });
+  if (!onboarded.ok) {
+    return NextResponse.json(
+      { error: onboarded.error },
+      { status: onboarded.status },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    tenant_id: created.tenantId,
+    approval_status: onboarded.approvalStatus,
+    portal_invite: onboarded.portalInvite,
+  });
 }

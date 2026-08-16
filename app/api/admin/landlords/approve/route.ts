@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { approveLandlordTenant } from "@/utils/landlord-approval";
+import { reactivateLandlordPortalAccess } from "@/utils/landlord-portal-account-management";
+import { createAndSendLandlordPortalInvite } from "@/utils/landlord-portal-invite";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
@@ -52,15 +54,30 @@ export async function POST(request: Request) {
     );
   }
 
-  const approval = await approveLandlordTenant(admin, tenantId, {
-    requirePending: true,
-  });
+  const approval = await approveLandlordTenant(admin, tenantId);
 
   if (!approval.ok) {
     return NextResponse.json(
       { error: approval.error },
       { status: approval.status },
     );
+  }
+
+  const { data: landlordRow } = await admin
+    .from("landlords")
+    .select("auth_user_id")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  const authUserId =
+    typeof landlordRow?.auth_user_id === "string"
+      ? landlordRow.auth_user_id.trim()
+      : "";
+  if (authUserId && approval.transitioned) {
+    const liftBan = await reactivateLandlordPortalAccess(admin, authUserId);
+    if (!liftBan.ok) {
+      return NextResponse.json({ error: liftBan.error }, { status: 400 });
+    }
   }
 
   // Best-effort landlord portal invite (do not fail approve on email errors).
@@ -70,9 +87,6 @@ export async function POST(request: Request) {
     | { status: "failed"; error: string }
     | undefined;
   try {
-    const { createAndSendLandlordPortalInvite } = await import(
-      "@/utils/landlord-portal-invite"
-    );
     const inviteResult = await createAndSendLandlordPortalInvite(admin, {
       tenantId,
     });

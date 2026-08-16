@@ -12,13 +12,14 @@ import {
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
 import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
+import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 
 export type LandlordPortalLoginActionResult = LoginWithMfaResult;
 
 /**
  * Landlord portal login — rate-limited like Tenant Portal.
- * Allows approved and pending landlords (pending see Pending Approval UI).
- * Rejected accounts can sign in to see a clear rejected state.
+ * Allows approved, pending, and rejected landlords (inactive states see limited UI).
+ * Suspended accounts and Auth-banned users cannot sign in.
  */
 export async function landlordPortalLoginWithPassword(
   email: string,
@@ -70,6 +71,30 @@ export async function landlordPortalLoginWithPassword(
       ok: false,
       error:
         "This account is not registered for the Landlord Portal. Use the staff or Tenant Portal login if that applies to you.",
+    };
+  }
+
+  if (landlord.approval_status === "suspended") {
+    await supabase.auth.signOut();
+    return {
+      ok: false,
+      error:
+        "Your landlord portal access has been suspended. Contact Davors Facilities staff.",
+    };
+  }
+
+  const { data: authUserData, error: authUserError } =
+    await admin.auth.admin.getUserById(signInData.user.id);
+  if (authUserError) {
+    await supabase.auth.signOut();
+    return { ok: false, error: authUserError.message };
+  }
+  if (isAuthUserBanned(authUserData.user?.banned_until)) {
+    await supabase.auth.signOut();
+    return {
+      ok: false,
+      error:
+        "Your landlord portal access has been suspended. Contact Davors Facilities staff.",
     };
   }
 

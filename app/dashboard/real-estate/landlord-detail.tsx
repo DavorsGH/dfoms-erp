@@ -8,6 +8,7 @@ import {
   LANDLORD_TYPE_OPTIONS,
   formatLandlordApprovalStatus,
   formatLandlordDate,
+  formatLandlordPortalStatus,
   formatLandlordTier,
   type LandlordDetail,
   type LandlordType,
@@ -86,6 +87,10 @@ export default function LandlordDetailView({
 
   const showManagementFee = landlordType === "davors_managed";
   const isPending = detail.approvalStatus === "pending";
+  const isApproved = detail.approvalStatus === "approved";
+  const isSuspended = detail.approvalStatus === "suspended";
+  const isRejected = detail.approvalStatus === "rejected";
+  const canReactivate = isSuspended || isRejected;
   const canConvertToDavorsManaged = detail.landlordType === "platform_only";
 
   async function saveEditableFields() {
@@ -176,8 +181,37 @@ export default function LandlordDetailView({
 
     setDetail((current) => ({ ...current, approvalStatus: status }));
     setSuccess(
-      status === "approved" ? "Landlord approved." : "Landlord rejected.",
+      status === "approved"
+        ? "Landlord approved."
+        : "Landlord rejected.",
     );
+    setLoading(false);
+    router.refresh();
+  }
+
+  async function suspendAccess() {
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/admin/landlords/suspend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenant_id: detail.tenantId }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to suspend landlord access.");
+      setLoading(false);
+      return;
+    }
+
+    setDetail((current) => ({ ...current, approvalStatus: "suspended" }));
+    setSuccess("Landlord portal access suspended.");
     setLoading(false);
     router.refresh();
   }
@@ -257,6 +291,26 @@ export default function LandlordDetailView({
             </button>
           </div>
         ) : null}
+        {isApproved ? (
+          <button
+            type="button"
+            className={dangerButtonClassName}
+            disabled={loading}
+            onClick={() => void suspendAccess()}
+          >
+            Suspend access
+          </button>
+        ) : null}
+        {canReactivate ? (
+          <button
+            type="button"
+            className={primaryButtonClassName}
+            disabled={loading}
+            onClick={() => void setApprovalStatus("approved")}
+          >
+            Approve
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -331,6 +385,17 @@ export default function LandlordDetailView({
             </dt>
             <dd className="mt-1 text-sm text-slate-900">
               {formatLandlordApprovalStatus(detail.approvalStatus)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Portal
+            </dt>
+            <dd className="mt-1 text-sm text-slate-900">
+              {formatLandlordPortalStatus({
+                approvalStatus: detail.approvalStatus,
+                authUserId: detail.authUserId,
+              })}
             </dd>
           </div>
           <div>

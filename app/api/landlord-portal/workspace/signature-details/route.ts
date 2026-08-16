@@ -3,6 +3,7 @@ import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
+import { LANDLORD_PORTAL_INACTIVE_SIGNATURE_MESSAGE } from "@/utils/landlord-portal-access-messages";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 type SignatureDetailsBody = {
@@ -21,8 +22,7 @@ export async function POST(request: Request) {
   if (!landlordPortalHasDataAccess(session)) {
     return NextResponse.json(
       {
-        error:
-          "Your landlord account is pending approval. Signature settings are unavailable until Davors staff approves your account.",
+        error: LANDLORD_PORTAL_INACTIVE_SIGNATURE_MESSAGE,
       },
       { status: 403 },
     );

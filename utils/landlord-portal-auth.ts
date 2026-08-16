@@ -2,6 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { LANDLORD_PORTAL_INACTIVE_ACCESS_MESSAGE } from "@/utils/landlord-portal-access-messages";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
@@ -199,8 +200,7 @@ export async function requireApprovedLandlordSession(): Promise<
       ok: false,
       response: NextResponse.json(
         {
-          error:
-            "Your landlord account is pending approval. Portal actions are unavailable until Davors staff approves your account.",
+          error: LANDLORD_PORTAL_INACTIVE_ACCESS_MESSAGE,
         },
         { status: 403 },
       ),
