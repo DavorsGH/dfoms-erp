@@ -1,5 +1,3 @@
-import "server-only";
-
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isAppRole } from "@/app/dashboard/user-account-role-utils";
 import type { AppRole } from "@/app/dashboard/user-account-types";

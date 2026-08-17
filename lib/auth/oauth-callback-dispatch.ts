@@ -1,5 +1,3 @@
-import "server-only";
-
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
 import { MFA_CHALLENGE_ROUTES } from "@/lib/mfa/types";

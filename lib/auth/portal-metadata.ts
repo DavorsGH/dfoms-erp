@@ -1,5 +1,3 @@
-import "server-only";
-
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { PortalKind } from "@/lib/middleware-auth-context";
 

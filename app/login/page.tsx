@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import StayLoggedInCheckbox from "@/components/auth/stay-logged-in-checkbox";
 import OAuthProviderButtons from "@/components/auth/oauth-provider-buttons";
@@ -9,7 +9,7 @@ import PasswordInput from "@/components/password-input";
 import { getSafeNext } from "@/utils/safe-redirect";
 import { loginWithPassword } from "./actions";
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
@@ -47,6 +47,67 @@ export default function LoginPage() {
   }
 
   return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label
+          htmlFor="email"
+          className="mb-1 block text-sm font-medium text-zinc-700"
+        >
+          Email
+        </label>
+        <input
+          id="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+          placeholder="you@company.com"
+        />
+      </div>
+
+      <div>
+        <label
+          htmlFor="password"
+          className="mb-1 block text-sm font-medium text-zinc-700"
+        >
+          Password
+        </label>
+        <PasswordInput
+          id="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+          placeholder="••••••••"
+        />
+      </div>
+
+      <StayLoggedInCheckbox checked={stayLoggedIn} onChange={setStayLoggedIn} />
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {loading ? "Signing in…" : "Sign In"}
+      </button>
+      <p className="text-center text-sm text-zinc-600">
+        <a
+          href="/forgot-password"
+          className="font-medium text-zinc-900 underline hover:text-zinc-700"
+        >
+          Forgot Password?
+        </a>
+      </p>
+    </form>
+  );
+}
+
+export default function LoginPage() {
+  return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#0F2744] px-4">
       <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
         <div className="mb-4 flex justify-center">
@@ -63,71 +124,16 @@ export default function LoginPage() {
           Davors Facilities ERP
         </h1>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="mb-1 block text-sm font-medium text-zinc-700"
-            >
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-              placeholder="you@company.com"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="password"
-              className="mb-1 block text-sm font-medium text-zinc-700"
-            >
-              Password
-            </label>
-            <PasswordInput
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <StayLoggedInCheckbox
-            checked={stayLoggedIn}
-            onChange={setStayLoggedIn}
-          />
-
-          {error && (
-            <p className="text-sm text-red-600">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Signing in…" : "Sign In"}
-          </button>
-          <p className="text-center text-sm text-zinc-600">
-            <a href="/forgot-password" className="font-medium text-zinc-900 underline hover:text-zinc-700">
-              Forgot Password?
-            </a>
-          </p>
-        </form>
+        <Suspense
+          fallback={
+            <p className="text-center text-sm text-zinc-600">Loading sign-in…</p>
+          }
+        >
+          <LoginForm />
+        </Suspense>
 
         <div className="mt-4">
-          <OAuthProviderButtons
-            persona="staff"
-            flow="login"
-            next={searchParams.get("next")}
-          />
+          <OAuthProviderButtons persona="staff" flow="login" />
         </div>
       </div>
     </div>
