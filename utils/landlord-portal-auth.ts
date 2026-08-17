@@ -1022,6 +1022,15 @@ export type LandlordPortalTenantBrowseRow = {
   status: string | null;
 };
 
+export type LandlordPortalLesseeDetail = {
+  lesseeId: string;
+  fullName: string;
+  phone: string | null;
+  email: string | null;
+  status: string | null;
+  hasPortalAccount: boolean;
+};
+
 export type LandlordPortalLeaseBrowseRow = LandlordPortalLeaseRow;
 
 export type LandlordPortalRentLedgerBrowseRow = {
@@ -1675,6 +1684,50 @@ export async function fetchLandlordPortalTenants(
   }));
 
   return { rows, error: null };
+}
+
+export async function fetchLandlordPortalLesseeDetail(
+  session: LandlordPortalSession,
+  lesseeId: string,
+): Promise<{ detail: LandlordPortalLesseeDetail | null; error: string | null }> {
+  if (!landlordPortalHasDataAccess(session)) {
+    return { detail: null, error: null };
+  }
+
+  const trimmedId = lesseeId.trim();
+  if (!trimmedId) {
+    return { detail: null, error: "Lessee id is required." };
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("lessees")
+    .select("lessee_id, full_name, phone, email, status, auth_user_id")
+    .eq("tenant_id", session.tenantId)
+    .eq("lessee_id", trimmedId)
+    .maybeSingle();
+
+  if (error) {
+    return { detail: null, error: error.message };
+  }
+  if (!data) {
+    return { detail: null, error: null };
+  }
+
+  const authUserId =
+    typeof data.auth_user_id === "string" ? data.auth_user_id.trim() : "";
+
+  return {
+    detail: {
+      lesseeId: data.lessee_id,
+      fullName: data.full_name,
+      phone: data.phone,
+      email: data.email,
+      status: data.status,
+      hasPortalAccount: authUserId.length > 0,
+    },
+    error: null,
+  };
 }
 
 export async function fetchLandlordPortalLeasesBrowse(

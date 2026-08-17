@@ -2,6 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
 import { MFA_CHALLENGE_ROUTES } from "@/lib/mfa/types";
 import {
+  crossPersonaErrorMessage,
+  findCrossPersonaConflictForAuthUid,
+  findCrossPersonaConflictForEmail,
+} from "@/lib/auth/cross-persona-guard";
+import {
   acceptLandlordInviteWithOAuth,
   acceptLesseeInviteWithOAuth,
   acceptStaffInviteWithOAuth,
@@ -94,18 +99,42 @@ async function handleOpenSignupFlow(
 ): Promise<OAuthDispatchResult> {
   const existing = await findAnyPersonaByAuthUid(admin, authUid);
   if (existing) {
-    await confirmAuthUserEmailIfNeeded(admin, authUid);
-    await syncAuthUserPortalMetadata(authUid, existing.persona);
-    const destination = getSafeNext(
-      flow.next,
-      defaultDashboardForPersona(existing.persona),
-    );
-    const redirectTo = await mfaRedirectIfNeeded(
-      authUid,
-      existing.persona,
-      destination,
-    );
-    return { ok: true, redirectTo };
+    if (existing.persona === flow.persona) {
+      await confirmAuthUserEmailIfNeeded(admin, authUid);
+      await syncAuthUserPortalMetadata(authUid, existing.persona);
+      const destination = getSafeNext(
+        flow.next,
+        defaultDashboardForPersona(existing.persona),
+      );
+      const redirectTo = await mfaRedirectIfNeeded(
+        authUid,
+        existing.persona,
+        destination,
+      );
+      return { ok: true, redirectTo };
+    }
+
+    const crossByAuth = await findCrossPersonaConflictForAuthUid(admin, authUid, {
+      targetPersona: flow.persona,
+    });
+    return {
+      ok: false,
+      error:
+        crossByAuth?.detail ??
+        "This sign-in is already linked to another portal account.",
+      persona: flow.persona,
+    };
+  }
+
+  const crossByAuth = await findCrossPersonaConflictForAuthUid(admin, authUid, {
+    targetPersona: flow.persona,
+  });
+  if (crossByAuth) {
+    return {
+      ok: false,
+      error: crossPersonaErrorMessage(crossByAuth),
+      persona: flow.persona,
+    };
   }
 
   if (flow.persona === "staff") {
@@ -172,6 +201,17 @@ async function handleOpenSignupFlow(
       return {
         ok: false,
         error: `Sign up with the email you entered (${email}). You signed in as ${oauthEmail}.`,
+        persona: flow.persona,
+      };
+    }
+
+    const crossByEmail = await findCrossPersonaConflictForEmail(admin, email, {
+      targetPersona: "landlord",
+    });
+    if (crossByEmail) {
+      return {
+        ok: false,
+        error: crossPersonaErrorMessage(crossByEmail),
         persona: flow.persona,
       };
     }

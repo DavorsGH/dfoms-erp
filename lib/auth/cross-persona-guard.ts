@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type CrossPersonaTarget = "staff" | "lessee" | "landlord";
+
 export type CrossPersonaConflict =
   | { persona: "staff"; detail: string }
   | { persona: "lessee"; detail: string }
@@ -9,22 +11,100 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function emailConflictMessage(
+  conflictPersona: CrossPersonaConflict["persona"],
+  target: CrossPersonaTarget,
+): string {
+  if (target === "landlord") {
+    switch (conflictPersona) {
+      case "staff":
+        return "This email is already linked to a staff ERP account. Sign in there or use a different email.";
+      case "lessee":
+        return "This email is already linked to a Tenant Portal account. Use a different email or ask the tenant to sign in to their portal.";
+      case "landlord":
+        return "A landlord account with this email already exists. Try signing in instead.";
+    }
+  }
+
+  if (target === "lessee") {
+    switch (conflictPersona) {
+      case "staff":
+        return "This email is already linked to a staff ERP account, not the Tenant Portal.";
+      case "lessee":
+        return "This email is already linked to a Tenant Portal account. Try signing in instead.";
+      case "landlord":
+        return "This email is already linked to a Landlord Portal account. Use a different email.";
+    }
+  }
+
+  switch (conflictPersona) {
+    case "staff":
+      return "This email is already linked to a staff ERP account. Ask them to sign in or use a different email.";
+    case "lessee":
+      return "This email is already linked to a Tenant Portal account. Staff invites cannot use the same email.";
+    case "landlord":
+      return "This email is already linked to a Landlord Portal account. Staff invites cannot use the same email.";
+  }
+}
+
+function authUidConflictMessage(
+  conflictPersona: CrossPersonaConflict["persona"],
+  target: CrossPersonaTarget,
+): string {
+  if (target === "landlord") {
+    switch (conflictPersona) {
+      case "staff":
+        return "This sign-in is already linked to a staff ERP account, not the Landlord Portal.";
+      case "lessee":
+        return "This sign-in is already linked to a Tenant Portal account, not the Landlord Portal.";
+      case "landlord":
+        return "A landlord account with this sign-in already exists. Try signing in instead.";
+    }
+  }
+
+  if (target === "lessee") {
+    switch (conflictPersona) {
+      case "staff":
+        return "This sign-in is already linked to a staff ERP account, not this portal.";
+      case "lessee":
+        return "This sign-in is already linked to a Tenant Portal account. Try signing in instead.";
+      case "landlord":
+        return "This sign-in is linked to a Landlord Portal account, not this portal.";
+    }
+  }
+
+  switch (conflictPersona) {
+    case "staff":
+      return "This sign-in is already linked to a staff ERP account, not this portal.";
+    case "lessee":
+      return "This sign-in is linked to a Tenant Portal account, not staff ERP.";
+    case "landlord":
+      return "This sign-in is linked to a Landlord Portal account, not staff ERP.";
+  }
+}
+
 /**
  * One email may only belong to one portal persona (staff OR lessee OR landlord).
- * Call before staff invite send/accept and before OAuth accept (later phase).
+ * Call before staff invite send/accept, OAuth accept, and portal self-signup.
  */
 export async function findCrossPersonaConflictForEmail(
   admin: SupabaseClient,
   email: string,
   options?: {
+    /** Portal context for user-facing error copy. Defaults to staff (invite) wording. */
+    targetPersona?: CrossPersonaTarget;
     /** When accepting a staff invite, allow an existing staff row only if same auth user (unused here). */
     allowStaff?: boolean;
+    /** Skip lessee-row conflict when updating this lessee's own contact email. */
+    excludeLesseeId?: string;
   },
 ): Promise<CrossPersonaConflict | null> {
   const normalized = normalizeEmail(email);
   if (!normalized) {
     return null;
   }
+
+  const target = options?.targetPersona ?? "staff";
 
   if (!options?.allowStaff) {
     const { data: staffRow } = await admin
@@ -36,8 +116,7 @@ export async function findCrossPersonaConflictForEmail(
     if (staffRow) {
       return {
         persona: "staff",
-        detail:
-          "This email is already linked to a staff ERP account. Ask them to sign in or use a different email.",
+        detail: emailConflictMessage("staff", target),
       };
     }
   }
@@ -49,11 +128,13 @@ export async function findCrossPersonaConflictForEmail(
     .not("auth_user_id", "is", null)
     .maybeSingle();
 
-  if (lesseeRow?.auth_user_id) {
+  if (
+    lesseeRow?.auth_user_id &&
+    lesseeRow.lessee_id !== options?.excludeLesseeId
+  ) {
     return {
       persona: "lessee",
-      detail:
-        "This email is already linked to a Tenant Portal account. Staff invites cannot use the same email.",
+      detail: emailConflictMessage("lessee", target),
     };
   }
 
@@ -75,8 +156,7 @@ export async function findCrossPersonaConflictForEmail(
     if (landlordMatch?.auth_user_id) {
       return {
         persona: "landlord",
-        detail:
-          "This email is already linked to a Landlord Portal account. Staff invites cannot use the same email.",
+        detail: emailConflictMessage("landlord", target),
       };
     }
   }
@@ -85,12 +165,17 @@ export async function findCrossPersonaConflictForEmail(
 }
 
 /**
- * Resolve auth user by email and reject if linked to a non-staff persona.
+ * Reject when auth.uid() is already linked to a different portal persona.
  */
 export async function findCrossPersonaConflictForAuthUid(
   admin: SupabaseClient,
   authUid: string,
+  options?: {
+    targetPersona?: CrossPersonaTarget;
+  },
 ): Promise<CrossPersonaConflict | null> {
+  const target = options?.targetPersona ?? "staff";
+
   const { data: staffRow } = await admin
     .from("user_accounts")
     .select("auth_uid")
@@ -100,8 +185,7 @@ export async function findCrossPersonaConflictForAuthUid(
   if (staffRow) {
     return {
       persona: "staff",
-      detail:
-        "This sign-in is already linked to a staff ERP account, not this portal.",
+      detail: authUidConflictMessage("staff", target),
     };
   }
 
@@ -114,8 +198,7 @@ export async function findCrossPersonaConflictForAuthUid(
   if (lessee) {
     return {
       persona: "lessee",
-      detail:
-        "This sign-in is linked to a Tenant Portal account, not staff ERP.",
+      detail: authUidConflictMessage("lessee", target),
     };
   }
 
@@ -128,8 +211,7 @@ export async function findCrossPersonaConflictForAuthUid(
   if (landlord) {
     return {
       persona: "landlord",
-      detail:
-        "This sign-in is linked to a Landlord Portal account, not staff ERP.",
+      detail: authUidConflictMessage("landlord", target),
     };
   }
 

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   fetchLandlordPortalTenants,
@@ -33,14 +34,17 @@ export default async function LandlordPortalTenantsPage() {
   }
 
   const { rows, error } = await fetchLandlordPortalTenants(session);
+  const canEdit = session.landlordType === "platform_only";
 
   return (
     <div className="space-y-4">
       <div>
         <h1 className={portalSectionTitleClassName}>Tenants</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Lessees linked to your portfolio (browse). New tenants are created
-          when you create a lease or convert an approved application.
+          Lessees linked to your portfolio
+          {canEdit
+            ? ". Edit contact details or create new tenants when you create a lease or convert an approved application."
+            : " (browse). New tenants are created when you create a lease or convert an approved application."}
         </p>
       </div>
 
@@ -59,6 +63,9 @@ export default async function LandlordPortalTenantsPage() {
                 <th className={scrollableTableThClassName}>Phone</th>
                 <th className={scrollableTableThClassName}>Email</th>
                 <th className={scrollableTableThClassName}>Status</th>
+                <th className={scrollableTableThClassName}>
+                  {canEdit ? "Actions" : "View"}
+                </th>
               </tr>
             </thead>
             <tbody className={scrollableTableBodyClassName}>
@@ -75,6 +82,14 @@ export default async function LandlordPortalTenantsPage() {
                   </td>
                   <td className="px-4 py-3 capitalize text-slate-700">
                     {row.status ?? "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/landlord-portal/real-estate/tenants/${row.lesseeId}`}
+                      className="text-sm font-medium text-[#0f2744] hover:underline"
+                    >
+                      {canEdit ? "Edit" : "View"}
+                    </Link>
                   </td>
                 </tr>
               ))}

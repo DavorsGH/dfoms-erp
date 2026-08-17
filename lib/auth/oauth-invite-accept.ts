@@ -199,7 +199,9 @@ export async function acceptLesseeInviteWithOAuth(
     };
   }
 
-  const crossByAuth = await findCrossPersonaConflictForAuthUid(admin, authUserId);
+  const crossByAuth = await findCrossPersonaConflictForAuthUid(admin, authUserId, {
+    targetPersona: "lessee",
+  });
   if (crossByAuth) {
     return {
       ok: false,
@@ -208,7 +210,9 @@ export async function acceptLesseeInviteWithOAuth(
     };
   }
 
-  const crossByEmail = await findCrossPersonaConflictForEmail(admin, inviteEmail);
+  const crossByEmail = await findCrossPersonaConflictForEmail(admin, inviteEmail, {
+    targetPersona: "lessee",
+  });
   if (crossByEmail) {
     return {
       ok: false,
@@ -314,7 +318,9 @@ export async function acceptLandlordInviteWithOAuth(
     };
   }
 
-  const crossByAuth = await findCrossPersonaConflictForAuthUid(admin, authUserId);
+  const crossByAuth = await findCrossPersonaConflictForAuthUid(admin, authUserId, {
+    targetPersona: "landlord",
+  });
   if (crossByAuth) {
     return {
       ok: false,
@@ -323,7 +329,9 @@ export async function acceptLandlordInviteWithOAuth(
     };
   }
 
-  const crossByEmail = await findCrossPersonaConflictForEmail(admin, inviteEmail);
+  const crossByEmail = await findCrossPersonaConflictForEmail(admin, inviteEmail, {
+    targetPersona: "landlord",
+  });
   if (crossByEmail) {
     return {
       ok: false,

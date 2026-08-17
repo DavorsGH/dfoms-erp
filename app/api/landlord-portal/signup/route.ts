@@ -14,6 +14,10 @@ import {
 } from "@/utils/password-policy";
 import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
 import {
+  crossPersonaErrorMessage,
+  findCrossPersonaConflictForEmail,
+} from "@/lib/auth/cross-persona-guard";
+import {
   assertSignupAllowed,
   getRequestIp,
   recordSignupAttempt,
@@ -69,6 +73,16 @@ export async function POST(request: Request) {
   await recordSignupAttempt(email, ip);
 
   const admin = createAdminClient();
+
+  const crossPersona = await findCrossPersonaConflictForEmail(admin, email, {
+    targetPersona: "landlord",
+  });
+  if (crossPersona) {
+    return NextResponse.json(
+      { error: crossPersonaErrorMessage(crossPersona) },
+      { status: 409 },
+    );
+  }
 
   const created = await createPendingLandlordTenant(admin, {
     name,
