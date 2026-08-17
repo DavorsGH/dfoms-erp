@@ -242,6 +242,142 @@ async function probeDeployedMfaEnforcement(
   return null;
 }
 
+async function createSmsEnrolledTestUser(
+  admin: SupabaseClient,
+  persona: MfaPersona,
+  stamp: number,
+): Promise<{ authUid: string; email: string; cleanup: () => Promise<void> } | null> {
+  const email = `mfa.e2e.${persona}.${stamp}@test.davors`;
+  const password = DEFAULT_PASSWORD;
+
+  const { data: authCreated, error: authError } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: {
+      portal: persona === "staff" ? "staff" : persona === "lessee" ? "lessee" : "landlord",
+      full_name: `MFA E2E ${persona}`,
+    },
+  });
+  if (authError || !authCreated.user) return null;
+  const authUid = authCreated.user.id;
+
+  const cleanupSteps: Array<() => Promise<void>> = [
+    async () => {
+      await admin.from("login_mfa_sessions").delete().eq("auth_uid", authUid);
+      await admin.from("login_sms_otp_challenges").delete().eq("auth_uid", authUid);
+      await admin.from("user_mfa_settings").delete().eq("auth_uid", authUid);
+    },
+  ];
+
+  if (persona === "staff") {
+    const { data: tenant } = await admin.from("tenants").select("id").limit(1).maybeSingle();
+    if (!tenant?.id) {
+      await admin.auth.admin.deleteUser(authUid);
+      return null;
+    }
+    await admin.from("user_accounts").insert({
+      auth_uid: authUid,
+      tenant_id: tenant.id,
+      role: "employee",
+      email,
+      is_active: true,
+    });
+    cleanupSteps.push(async () => {
+      await admin.from("user_accounts").delete().eq("auth_uid", authUid);
+    });
+  }
+
+  if (persona === "lessee") {
+    const { data: landlordRow } = await admin
+      .from("landlords")
+      .select("tenant_id")
+      .eq("approval_status", "approved")
+      .limit(1)
+      .maybeSingle();
+    if (!landlordRow?.tenant_id) {
+      await admin.auth.admin.deleteUser(authUid);
+      return null;
+    }
+    const { data: lesseeRow } = await admin
+      .from("lessees")
+      .insert({
+        tenant_id: landlordRow.tenant_id,
+        full_name: `MFA E2E Lessee ${stamp}`,
+        phone: "",
+        email,
+        auth_user_id: authUid,
+        status: "active",
+      })
+      .select("lessee_id")
+      .single();
+    if (!lesseeRow) {
+      await admin.auth.admin.deleteUser(authUid);
+      return null;
+    }
+    cleanupSteps.push(async () => {
+      await admin.from("lessees").delete().eq("lessee_id", lesseeRow.lessee_id);
+    });
+  }
+
+  if (persona === "landlord") {
+    const { createTestPendingLandlord } = await import("./lib/landlord-test-helpers");
+    let tenantId: string | null = null;
+    try {
+      tenantId = await createTestPendingLandlord(admin, {
+        name: `MFA E2E Landlord ${stamp}`,
+        email,
+        phone: "+233200000000",
+        address: "Test",
+      });
+      await admin
+        .from("landlords")
+        .update({
+          auth_user_id: authUid,
+          approval_status: "approved",
+          notification_phone: null,
+        })
+        .eq("tenant_id", tenantId);
+      cleanupSteps.push(async () => {
+        if (tenantId) {
+          await admin.from("landlords").delete().eq("tenant_id", tenantId);
+          await admin.from("tenants").delete().eq("id", tenantId);
+        }
+      });
+    } catch {
+      await admin.auth.admin.deleteUser(authUid);
+      return null;
+    }
+  }
+
+  const now = new Date().toISOString();
+  await admin.from("user_mfa_settings").upsert(
+    {
+      auth_uid: authUid,
+      method: "sms",
+      sms_phone_e164: MANUAL_PHONE,
+      sms_phone_verified_at: now,
+      totp_enrolled_at: null,
+      updated_at: now,
+    },
+    { onConflict: "auth_uid" },
+  );
+
+  cleanupSteps.push(async () => {
+    await admin.auth.admin.deleteUser(authUid);
+  });
+
+  return {
+    authUid,
+    email,
+    cleanup: async () => {
+      for (const step of cleanupSteps) {
+        await step().catch(() => undefined);
+      }
+    },
+  };
+}
+
 async function testPasswordLoginMfaRedirect(
   admin: SupabaseClient,
   url: string,
@@ -249,7 +385,16 @@ async function testPasswordLoginMfaRedirect(
   persona: MfaPersona,
   method: "sms" | "totp",
 ) {
-  const enrolled = await findEnrolledUser(admin, persona, method);
+  let enrolled = await findEnrolledUser(admin, persona, method);
+  let created: Awaited<ReturnType<typeof createSmsEnrolledTestUser>> = null;
+
+  if (!enrolled && method === "sms") {
+    created = await createSmsEnrolledTestUser(admin, persona, Date.now());
+    if (created) {
+      enrolled = { authUid: created.authUid, email: created.email };
+    }
+  }
+
   if (!enrolled) {
     record(
       `Password login → MFA (${persona}/${method})`,
@@ -259,33 +404,37 @@ async function testPasswordLoginMfaRedirect(
     return;
   }
 
-  const cookie = await signInCookieHeader(
-    url,
-    anonKey,
-    enrolled.email,
-    DEFAULT_PASSWORD,
-  );
-  if (!cookie) {
+  try {
+    const cookie = await signInCookieHeader(
+      url,
+      anonKey,
+      enrolled.email,
+      DEFAULT_PASSWORD,
+    );
+    if (!cookie) {
+      record(
+        `Password login → MFA (${persona}/${method})`,
+        true,
+        `SKIP — login failed for ${enrolled.email} (set MFA_TEST_PASSWORD)`,
+      );
+      return;
+    }
+
+    const protectedPath = MFA_CHALLENGE_ROUTES[persona].defaultNext;
+    const challengePath = MFA_CHALLENGE_ROUTES[persona].challengePath;
+    const probe = await fetchProtectedRoute(protectedPath, cookie);
+    const location = probe.location ?? "";
+    const redirected = location.includes(challengePath);
     record(
       `Password login → MFA (${persona}/${method})`,
-      true,
-      `SKIP — login failed for ${enrolled.email} (set MFA_TEST_PASSWORD)`,
+      redirected,
+      redirected
+        ? `${protectedPath} → ${location}`
+        : `expected ${challengePath}, got status ${probe.status} location ${location || "(none)"}`,
     );
-    return;
+  } finally {
+    if (created) await created.cleanup();
   }
-
-  const protectedPath = MFA_CHALLENGE_ROUTES[persona].defaultNext;
-  const challengePath = MFA_CHALLENGE_ROUTES[persona].challengePath;
-  const probe = await fetchProtectedRoute(protectedPath, cookie);
-  const location = probe.location ?? "";
-  const redirected = location.includes(challengePath);
-  record(
-    `Password login → MFA (${persona}/${method})`,
-    redirected,
-    redirected
-      ? `${protectedPath} → ${location}`
-      : `expected ${challengePath}, got status ${probe.status} location ${location || "(none)"}`,
-  );
 }
 
 async function testOAuthMfaRedirectMatrix(
@@ -293,38 +442,62 @@ async function testOAuthMfaRedirectMatrix(
   enforcementOn: boolean,
   smsBypassOn: boolean,
 ) {
+  const stamp = Date.now();
+  const smsTestUsers = new Map<
+    MfaPersona,
+    { authUid: string; email: string; cleanup: () => Promise<void> }
+  >();
+
   for (const persona of ["staff", "lessee", "landlord"] as const) {
-    for (const provider of ["google", "microsoft"] as const) {
-      for (const method of ["sms", "totp"] as const) {
-        const enrolled = await findEnrolledUser(admin, persona, method);
-        if (!enrolled) {
+    const created = await createSmsEnrolledTestUser(admin, persona, stamp + smsTestUsers.size);
+    if (created) smsTestUsers.set(persona, created);
+  }
+
+  try {
+    for (const persona of ["staff", "lessee", "landlord"] as const) {
+      for (const provider of ["google", "microsoft"] as const) {
+        for (const method of ["sms", "totp"] as const) {
+          const enrolled =
+            method === "sms"
+              ? smsTestUsers.get(persona) ??
+                (await findEnrolledUser(admin, persona, method))
+              : await findEnrolledUser(admin, persona, method);
+
+          if (!enrolled) {
+            record(
+              `OAuth ${provider} → MFA (${persona}/${method})`,
+              method === "totp",
+              method === "totp"
+                ? "SKIP — no TOTP enrolled user (redirect logic verified for SMS)"
+                : "SKIP — no enrolled user",
+            );
+            continue;
+          }
+
+          const destination = MFA_CHALLENGE_ROUTES[persona].defaultNext;
+          const mfa = evaluatePostPasswordMfa({
+            method,
+            enforcementOn,
+            smsBypassOn,
+          });
+          const redirectTo = oauthMfaRedirect(persona, destination, mfa);
+          const expectedChallenge = MFA_CHALLENGE_ROUTES[persona].challengePath;
+          const pass =
+            mfa.mfaRequired === false
+              ? redirectTo === destination
+              : redirectTo.startsWith(expectedChallenge) &&
+                redirectTo.includes(`method=${method}`);
           record(
             `OAuth ${provider} → MFA (${persona}/${method})`,
-            true,
-            "SKIP — no enrolled user",
+            pass,
+            redirectTo,
           );
-          continue;
         }
-
-        const destination = MFA_CHALLENGE_ROUTES[persona].defaultNext;
-        const mfa = evaluatePostPasswordMfa({
-          method,
-          enforcementOn,
-          smsBypassOn,
-        });
-        const redirectTo = oauthMfaRedirect(persona, destination, mfa);
-        const expectedChallenge = MFA_CHALLENGE_ROUTES[persona].challengePath;
-        const pass =
-          mfa.mfaRequired === false
-            ? redirectTo === destination
-            : redirectTo.startsWith(expectedChallenge) &&
-              redirectTo.includes(`method=${method}`);
-        record(
-          `OAuth ${provider} → MFA (${persona}/${method})`,
-          pass,
-          redirectTo,
-        );
       }
+    }
+  } finally {
+    for (const user of smsTestUsers.values()) {
+      await user.cleanup();
     }
   }
 }
@@ -421,7 +594,7 @@ async function testManualSmsLoginE2E(
       .insert({
         tenant_id: tenantId,
         full_name: `MFA Manual ${stamp}`,
-        phone: null,
+        phone: "",
         email,
         auth_user_id: authUid,
         status: "active",
