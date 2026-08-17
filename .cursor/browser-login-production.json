@@ -1,0 +1,5 @@
+{
+  "productionAppUrl": "https://portal.davorsfacilities.com",
+  "staffUrl": "https://tvcurcnmasnocwdxzgvz.supabase.co/auth/v1/verify?token=4a06cddc7e67316127beb4947cd29a2e8704dd3f0fd7cc09c356bf01&type=magiclink&redirect_to=https://portal.davorsfacilities.com/dashboard/my-account",
+  "staffEmail": "david.avors@gmail.com"
+}

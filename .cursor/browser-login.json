@@ -1,0 +1,6 @@
+{
+  "stagingAppUrl": "https://dfoms-erp-git-staging-davorsghs-projects.vercel.app",
+  "bypass": "IJ7aYbMjtmTzXvZFVY1MdDdZYAlZcIDq",
+  "staffUrl": "https://wieflwbfdmjtsdnwbfii.supabase.co/auth/v1/verify?token=165cac56738679772cf148f1ce062b9d257cd78d9ad82866897b335b&type=magiclink&redirect_to=https%3A%2F%2Fdfoms-erp-git-staging-davorsghs-projects.vercel.app%2Fdashboard%2Freal-estate%2Flandlords&x-vercel-protection-bypass=IJ7aYbMjtmTzXvZFVY1MdDdZYAlZcIDq",
+  "staffEmail": "david.avors@gmail.com"
+}
