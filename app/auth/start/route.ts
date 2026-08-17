@@ -15,15 +15,20 @@ import {
 import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import { createClient } from "@/utils/supabase/server";
 import { getSafeNext } from "@/utils/safe-redirect";
+import { mapOAuthErrorMessage } from "@/lib/auth/oauth-error-messages";
 
 function oauthErrorRedirect(
   persona: string,
   message: string,
   requestUrl: string,
+  provider?: "google" | "azure",
 ): NextResponse {
   const params = new URLSearchParams();
   params.set("persona", persona);
-  params.set("message", message);
+  params.set(
+    "message",
+    mapOAuthErrorMessage(message, { persona, provider }),
+  );
   return NextResponse.redirect(new URL(`/auth/error?${params.toString()}`, requestUrl));
 }
 
@@ -76,6 +81,7 @@ export async function GET(request: Request) {
   const payload: OAuthFlowPayload = {
     persona,
     flow,
+    provider,
     invite_token: url.searchParams.get("invite_token")?.trim() || undefined,
     signup: buildSignupFields(url.searchParams),
     next: getSafeNext(url.searchParams.get("next"), ""),
@@ -107,6 +113,7 @@ export async function GET(request: Request) {
     provider,
     options: {
       redirectTo,
+      scopes: provider === "azure" ? "email" : undefined,
       queryParams:
         provider === "azure"
           ? { prompt: "select_account" }
@@ -120,6 +127,7 @@ export async function GET(request: Request) {
       persona,
       error?.message ?? "Unable to start OAuth sign-in.",
       request.url,
+      provider,
     );
   }
 

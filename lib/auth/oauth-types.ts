@@ -19,6 +19,7 @@ export type OAuthSignupFields = {
 export type OAuthFlowPayload = {
   persona: OAuthPersona;
   flow: OAuthFlow;
+  provider?: OAuthProvider;
   invite_token?: string;
   signup?: OAuthSignupFields;
   next?: string;

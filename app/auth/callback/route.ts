@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/oauth-flow-cookie";
 import { defaultDashboardForPersona } from "@/lib/auth/oauth-types";
 import { normalizeOAuthEmail } from "@/lib/auth/oauth-persona-resolve";
+import { mapOAuthErrorMessage } from "@/lib/auth/oauth-error-messages";
 import { completePlatformSignOut } from "@/lib/auth/sign-out";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
@@ -15,10 +16,14 @@ function oauthErrorRedirect(
   persona: string,
   message: string,
   requestUrl: string,
+  provider?: "google" | "azure",
 ): NextResponse {
   const params = new URLSearchParams();
   params.set("persona", persona);
-  params.set("message", message);
+  params.set(
+    "message",
+    mapOAuthErrorMessage(message, { persona, provider }),
+  );
   return NextResponse.redirect(new URL(`/auth/error?${params.toString()}`, requestUrl));
 }
 
@@ -35,6 +40,7 @@ export async function GET(request: Request) {
       flow?.persona ?? "staff",
       oauthError,
       request.url,
+      flow?.provider,
     );
   }
 
@@ -65,6 +71,7 @@ export async function GET(request: Request) {
       flow.persona,
       exchangeError.message,
       request.url,
+      flow.provider,
     );
   }
 
@@ -90,7 +97,12 @@ export async function GET(request: Request) {
 
   if (!result.ok) {
     await completePlatformSignOut();
-    return oauthErrorRedirect(result.persona, result.error, request.url);
+    return oauthErrorRedirect(
+      result.persona,
+      result.error,
+      request.url,
+      flow.provider,
+    );
   }
 
   return NextResponse.redirect(new URL(result.redirectTo, request.url));

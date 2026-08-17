@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { mapOAuthErrorMessage } from "@/lib/auth/oauth-error-messages";
 import { parseOAuthPersona } from "@/lib/auth/oauth-types";
 
 type AuthErrorPageProps = {
@@ -32,9 +33,11 @@ function personaLabel(persona: string): string {
 export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps) {
   const params = await searchParams;
   const persona = params.persona ?? "staff";
-  const message =
+  const message = mapOAuthErrorMessage(
     params.message?.trim() ||
-    "We could not complete sign-in. Please try again or contact support.";
+      "We could not complete sign-in. Please try again or contact support.",
+    { persona },
+  );
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#0F2744] px-4">
