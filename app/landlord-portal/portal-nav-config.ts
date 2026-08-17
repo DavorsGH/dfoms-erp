@@ -75,10 +75,6 @@ export function getLandlordPortalNavSections(
       label: "User Accounts",
       href: "/landlord-portal/administration/user-accounts",
     },
-    {
-      label: "Account Security",
-      href: "/landlord-portal/administration/account-security",
-    },
   ];
 
   if (showNotificationContacts) {
@@ -93,6 +89,11 @@ export function getLandlordPortalNavSections(
       id: "dashboard",
       label: "Dashboard",
       href: "/landlord-portal/dashboard",
+    },
+    {
+      id: "account",
+      label: "My Account",
+      href: "/landlord-portal/account",
     },
     {
       id: "real-estate",

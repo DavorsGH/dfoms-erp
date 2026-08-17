@@ -9,6 +9,7 @@ const navItems = [
   { label: "Repairs", href: "/portal/repairs" },
   { label: "Complaints", href: "/portal/complaints" },
   { label: "My Issues", href: "/portal/issues" },
+  { label: "Account", href: "/portal/account" },
 ] as const;
 
 export default function PortalNav() {

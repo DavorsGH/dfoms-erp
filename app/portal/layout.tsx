@@ -14,8 +14,8 @@ export default async function PortalLayout({
       persona: "lessee",
       tenantId: session.tenantId,
       lesseeId: session.lesseeId,
-      passwordActionUrl: "/portal/account-security",
-      mfaActionUrl: "/portal/account-security/mfa",
+      passwordActionUrl: "/portal/account",
+      mfaActionUrl: "/portal/account/mfa",
     });
   }
 

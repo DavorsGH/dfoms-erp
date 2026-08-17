@@ -49,8 +49,8 @@ async function testPersona(
       persona === "staff"
         ? "/dashboard/my-account"
         : persona === "lessee"
-          ? "/portal/account-security"
-          : "/landlord-portal/administration/account-security",
+          ? "/portal/account"
+          : "/landlord-portal/account",
     notificationId: `staging-test-${persona}`,
   });
 

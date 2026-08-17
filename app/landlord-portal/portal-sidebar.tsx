@@ -173,6 +173,11 @@ export default function LandlordPortalSidebar({
           label: "Dashboard",
           href: "/landlord-portal/dashboard",
         } satisfies LandlordPortalNavSection,
+        {
+          id: "account",
+          label: "My Account",
+          href: "/landlord-portal/account",
+        } satisfies LandlordPortalNavSection,
       ];
 
   function handleNavigate() {

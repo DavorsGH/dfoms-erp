@@ -23,8 +23,8 @@ export default async function LandlordPortalLayout({
       authUid: session.authUserId,
       persona: "landlord",
       tenantId: session.tenantId,
-      passwordActionUrl: "/landlord-portal/administration/account-security",
-      mfaActionUrl: "/landlord-portal/administration/account-security/mfa",
+      passwordActionUrl: "/landlord-portal/account",
+      mfaActionUrl: "/landlord-portal/account/mfa",
     });
   }
 

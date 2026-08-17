@@ -106,7 +106,7 @@ async function main() {
       lesseeId: lessee.lessee_id,
       title: "[TEST] Lessee push notification",
       body: "Staging Web Push test — safe to ignore.",
-      actionUrl: "/portal/account-security",
+      actionUrl: "/portal/account",
       context: "web-push-full-staging-test",
     });
     console.log(
@@ -130,7 +130,7 @@ async function main() {
       landlordTenantId: landlord.tenant_id,
       title: "[TEST] Landlord push notification",
       body: "Staging Web Push test — safe to ignore.",
-      actionUrl: "/landlord-portal/administration/account-security",
+      actionUrl: "/landlord-portal/account",
       context: "web-push-full-staging-test",
     });
     console.log(
