@@ -617,10 +617,29 @@ async function testManualSmsLoginE2E(
       { onConflict: "auth_uid" },
     );
 
-    const cookie = await signInCookieHeader(url, anonKey, email, password);
-    assert(cookie, "sign-in failed for manual SMS test lessee");
+    const anon = createClient(url, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: sessionData } = await anon.auth.signInWithPassword({
+      email,
+      password,
+    });
+    assert(sessionData.session, "session missing after sign-in");
 
-    const beforeMfa = await fetchProtectedRoute("/portal/dashboard", cookie!);
+    const projectRef = new URL(url).hostname.split(".")[0];
+    const cookieName = `sb-${projectRef}-auth-token`;
+    const cookie = `${cookieName}=${encodeURIComponent(
+      JSON.stringify({
+        access_token: sessionData.session.access_token,
+        refresh_token: sessionData.session.refresh_token,
+        expires_at: sessionData.session.expires_at,
+        expires_in: sessionData.session.expires_in,
+        token_type: "bearer",
+        user: sessionData.session.user,
+      }),
+    )}`;
+
+    const beforeMfa = await fetchProtectedRoute("/portal/dashboard", cookie);
     const challengePath = MFA_CHALLENGE_ROUTES.lessee.challengePath;
     const redirectedBefore = (beforeMfa.location ?? "").includes(challengePath);
     record(
@@ -632,14 +651,10 @@ async function testManualSmsLoginE2E(
     const otp = String(randomInt(100000, 1000000));
     await seedLoginOtp(admin, authUid, MANUAL_PHONE, otp, serviceKey);
 
-    const anon = createClient(url, anonKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
+    const sessionKey = await deriveSessionKeyFromAuthSession({
+      access_token: sessionData.session.access_token,
+      refresh_token: sessionData.session.refresh_token,
     });
-    const { data: sessionData } = await anon.auth.signInWithPassword({
-      email,
-      password,
-    });
-    assert(sessionData.session, "session missing after sign-in");
 
     const pepper = process.env.MFA_OTP_PEPPER?.trim() || serviceKey;
     const { data: challenge } = await admin
@@ -665,11 +680,6 @@ async function testManualSmsLoginE2E(
       `challenge ${challenge.id}`,
     );
 
-    const sessionKey = await deriveSessionKeyFromAuthSession({
-      access_token: sessionData.session.access_token,
-      refresh_token: sessionData.session.refresh_token,
-    });
-
     const expiresAt = sessionData.session.expires_at
       ? new Date(sessionData.session.expires_at * 1000).toISOString()
       : new Date(Date.now() + 3600_000).toISOString();
@@ -685,7 +695,25 @@ async function testManualSmsLoginE2E(
       { onConflict: "auth_uid,session_key" },
     );
 
-    const afterMfa = await fetchProtectedRoute("/portal/dashboard", cookie!);
+    const { data: mfaSessionRow } = await admin
+      .from("login_mfa_sessions")
+      .select("session_key, expires_at")
+      .eq("auth_uid", authUid)
+      .eq("session_key", sessionKey)
+      .maybeSingle();
+    const dbSessionValid =
+      Boolean(mfaSessionRow) &&
+      (mfaSessionRow?.expires_at ?? "") > new Date().toISOString();
+    record(
+      "Manual SMS login — login_mfa_sessions satisfied in DB",
+      dbSessionValid,
+      `session_key ${sessionKey.slice(0, 12)}…`,
+    );
+
+    // Edge middleware caches MFA gate status ~45s per isolate; wait before HTTP re-check.
+    await new Promise((resolve) => setTimeout(resolve, 46_000));
+
+    const afterMfa = await fetchProtectedRoute("/portal/dashboard", cookie);
     const reachedDashboard =
       afterMfa.status === 200 ||
       !(afterMfa.location ?? "").includes(challengePath);
