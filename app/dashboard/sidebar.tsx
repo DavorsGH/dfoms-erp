@@ -233,12 +233,12 @@ export default function Sidebar({
       label: "Real Estate",
       href: "/dashboard/real-estate",
     };
-    // Keep Real Estate between Operations and HR Management when those exist.
+    // Keep Real Estate after HR Management (before Self-Service when present).
     const insertAt =
-      operationsIndex >= 0
-        ? operationsIndex + 1
-        : hrIndex >= 0
-          ? hrIndex
+      hrIndex >= 0
+        ? hrIndex + 1
+        : operationsIndex >= 0
+          ? operationsIndex + 1
           : navItems.length;
     navItems.splice(insertAt, 0, realEstateItem);
   }
