@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PASSWORD_MIN_LENGTH } from "@/utils/password-policy";
+import { parseApiErrorResponse } from "@/utils/parse-api-error";
 import type { Employee } from "../lookup-types";
 import { getRoleLabel } from "../role-labels";
 import ScrollableTable, {
@@ -47,6 +48,8 @@ type CreateFormState = RoleAssignmentFormState & {
   email: string;
   password: string;
 };
+
+type CreateUserMode = "password" | "invite";
 
 const emptyCreateForm = (): CreateFormState => ({
   ...createEmptyRoleAssignmentForm(),
@@ -120,6 +123,7 @@ export default function UserAccounts({
   const router = useRouter();
   const [accounts, setAccounts] = useState(initialAccounts);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createMode, setCreateMode] = useState<CreateUserMode>("password");
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [editingUid, setEditingUid] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditUserFormState>({
@@ -166,25 +170,50 @@ export default function UserAccounts({
     setError(null);
     setSuccess(null);
 
-    const response = await fetch("/api/admin/users/create", {
+    const endpoint =
+      createMode === "invite"
+        ? "/api/admin/users/invite"
+        : "/api/admin/users/create";
+
+    const payload =
+      createMode === "invite"
+        ? {
+            email: createForm.email,
+            role: createForm.role,
+            employee_id: createForm.employee_id,
+            client_id: createForm.client_id,
+            supervisor_site_codes: createForm.supervisor_site_codes,
+          }
+        : createForm;
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(createForm),
+      body: JSON.stringify(payload),
     });
 
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-
     if (!response.ok) {
-      setError(payload?.error ?? "Failed to create user");
+      const message = await parseApiErrorResponse(
+        response,
+        createMode === "invite" ? "Failed to send invite" : "Failed to create user",
+      );
+      setError(message);
       setLoading(false);
       return;
     }
 
+    const result = (await response.json().catch(() => null)) as {
+      message?: string;
+    } | null;
+
     setCreateForm(emptyCreateForm());
+    setCreateMode("password");
     setShowCreateForm(false);
-    setSuccess("User account created.");
+    setSuccess(
+      createMode === "invite"
+        ? (result?.message ?? "Invite email sent.")
+        : "User account created.",
+    );
     setLoading(false);
     router.refresh();
   }
@@ -216,12 +245,10 @@ export default function UserAccounts({
       }),
     });
 
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-
     if (!response.ok) {
-      setError(payload?.error ?? "Failed to update user");
+      setError(
+        await parseApiErrorResponse(response, "Failed to update user"),
+      );
       setActionId(null);
       return;
     }
@@ -250,12 +277,10 @@ export default function UserAccounts({
       body: JSON.stringify({ auth_uid: authUid, password: resetPassword }),
     });
 
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-
     if (!response.ok) {
-      setError(payload?.error ?? "Failed to reset password");
+      setError(
+        await parseApiErrorResponse(response, "Failed to reset password"),
+      );
       setActionId(null);
       return;
     }
@@ -281,12 +306,10 @@ export default function UserAccounts({
       body: JSON.stringify({ auth_uid: authUid }),
     });
 
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-
     if (!response.ok) {
-      setError(payload?.error ?? "Failed to deactivate user");
+      setError(
+        await parseApiErrorResponse(response, "Failed to deactivate user"),
+      );
       setActionId(null);
       return;
     }
@@ -304,6 +327,18 @@ export default function UserAccounts({
     const dependencyResponse = await fetch(
       `/api/admin/users/delete-dependencies?auth_uid=${encodeURIComponent(authUid)}`,
     );
+
+    if (!dependencyResponse.ok) {
+      setError(
+        await parseApiErrorResponse(
+          dependencyResponse,
+          "Failed to inspect user dependencies",
+        ),
+      );
+      setActionId(null);
+      return;
+    }
+
     const dependencyPayload = (await dependencyResponse.json().catch(() => null)) as {
       error?: string;
       summary?: string;
@@ -311,8 +346,8 @@ export default function UserAccounts({
       blockMessage?: string;
     } | null;
 
-    if (!dependencyResponse.ok) {
-      setError(dependencyPayload?.error ?? "Failed to inspect user dependencies");
+    if (!dependencyPayload) {
+      setError("Failed to inspect user dependencies (empty response).");
       setActionId(null);
       return;
     }
@@ -341,15 +376,17 @@ export default function UserAccounts({
       body: JSON.stringify({ auth_uid: authUid }),
     });
 
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-      dependencySummary?: string;
-    } | null;
-
     if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        dependencySummary?: string;
+      } | null;
+      const baseMessage =
+        payload?.error?.trim() ||
+        `Failed to delete user (HTTP ${response.status}).`;
       const detail = payload?.dependencySummary
-        ? `${payload.error ?? "Failed to delete user"}\n\n${payload.dependencySummary}`
-        : (payload?.error ?? "Failed to delete user");
+        ? `${baseMessage}\n\n${payload.dependencySummary}`
+        : baseMessage;
       setError(detail);
       setActionId(null);
       return;
@@ -368,6 +405,7 @@ export default function UserAccounts({
           type="button"
           onClick={() => {
             setShowCreateForm((current) => !current);
+            setCreateMode("password");
             setEditingUid(null);
             setError(null);
             setSuccess(null);
@@ -406,6 +444,32 @@ export default function UserAccounts({
             idPrefix="create"
           />
 
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-slate-700">
+              Onboarding method
+            </legend>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="create-user-mode"
+                checked={createMode === "password"}
+                onChange={() => setCreateMode("password")}
+                className="h-4 w-4 border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+              />
+              Set password now (default)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="create-user-mode"
+                checked={createMode === "invite"}
+                onChange={() => setCreateMode("invite")}
+                className="h-4 w-4 border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+              />
+              Send invite email
+            </label>
+          </fieldset>
+
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -424,23 +488,32 @@ export default function UserAccounts({
                 className={inputClassName}
               />
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Temporary Password
-              </label>
-              <PasswordInput
-                required
-                minLength={PASSWORD_MIN_LENGTH}
-                value={createForm.password}
-                onChange={(e) =>
-                  setCreateForm((current) => ({
-                    ...current,
-                    password: e.target.value,
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
+            {createMode === "password" ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Temporary Password
+                </label>
+                <PasswordInput
+                  required
+                  minLength={PASSWORD_MIN_LENGTH}
+                  value={createForm.password}
+                  onChange={(e) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      password: e.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+            ) : (
+              <div className="flex items-end">
+                <p className="text-sm text-slate-600">
+                  An email with a link to set their password will be sent to this
+                  address. The link expires in 7 days.
+                </p>
+              </div>
+            )}
           </div>
 
           <button
@@ -448,7 +521,13 @@ export default function UserAccounts({
             disabled={loading}
             className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Creating…" : "Create User"}
+            {loading
+              ? createMode === "invite"
+                ? "Sending invite…"
+                : "Creating…"
+              : createMode === "invite"
+                ? "Send Invite"
+                : "Create User"}
           </button>
         </form>
       )}

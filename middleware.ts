@@ -71,7 +71,8 @@ export async function middleware(request: NextRequest) {
   if (
     pathname === "/api/portal/accept-invite" ||
     pathname === "/api/landlord-portal/accept-invite" ||
-    pathname === "/api/landlord-portal/signup"
+    pathname === "/api/landlord-portal/signup" ||
+    pathname === "/api/staff/accept-invite"
   ) {
     return NextResponse.next();
   }
@@ -114,6 +115,7 @@ export async function middleware(request: NextRequest) {
     "/login",
     "/login/mfa",
     "/signup",
+    "/accept-invite",
     "/api/signup",
     "/api/webhooks/paystack",
     "/forgot-password",
@@ -172,6 +174,7 @@ export async function middleware(request: NextRequest) {
     user &&
     (pathname === "/login" ||
       pathname === "/signup" ||
+      pathname === "/accept-invite" ||
       isPortalPublicPath ||
       isLandlordPortalPublicPath ||
       (isPortalPath && !isPortalPublicPath) ||
@@ -246,6 +249,7 @@ export async function middleware(request: NextRequest) {
     isLesseePortalUser &&
     (pathname === "/login" ||
       pathname === "/signup" ||
+      pathname === "/accept-invite" ||
       pathname.startsWith("/dashboard") ||
       isLandlordPortalPath)
   ) {
@@ -260,6 +264,7 @@ export async function middleware(request: NextRequest) {
     isLandlordPortalUser &&
     (pathname === "/login" ||
       pathname === "/signup" ||
+      pathname === "/accept-invite" ||
       pathname.startsWith("/dashboard") ||
       isPortalPath)
   ) {
@@ -272,7 +277,7 @@ export async function middleware(request: NextRequest) {
     user &&
     !isLesseePortalUser &&
     !isLandlordPortalUser &&
-    (pathname === "/login" || pathname === "/signup")
+    (pathname === "/login" || pathname === "/signup" || pathname === "/accept-invite")
   ) {
     const blockDashboardRedirect = await shouldBlockLoginAutoRedirect({
       supabase,

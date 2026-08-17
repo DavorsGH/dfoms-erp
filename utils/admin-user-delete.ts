@@ -67,28 +67,38 @@ export function getUserDeleteBlockMessage(
   }
 }
 
+function formatDependencyQueryError(label: string, message: string): string {
+  return `Failed to inspect user dependencies (${label}: ${message})`;
+}
+
 export async function getUserDeleteDependencyReport(
   admin: AdminClient,
   authUid: string,
   tenantId: string,
 ): Promise<UserDeleteDependencyReport | null> {
-  const { data: account } = await admin
+  const { data: account, error: accountError } = await admin
     .from("user_accounts")
     .select("auth_uid")
     .eq("auth_uid", authUid)
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
+  if (accountError) {
+    throw new Error(
+      formatDependencyQueryError("user_accounts", accountError.message),
+    );
+  }
+
   if (!account) {
     return null;
   }
 
   const [
-    { count: supervisorSiteCount },
-    { count: leaveApproverConfigCount },
-    { count: pendingLeaveApprovalCount },
-    { count: leaveRequestApproverCount },
-    { data: currentApproverConfig },
+    supervisorSitesResult,
+    leaveApproverConfigResult,
+    pendingLeaveApprovalsResult,
+    leaveRequestApproverResult,
+    currentApproverConfigResult,
   ] = await Promise.all([
     admin
       .from("user_account_supervisor_sites")
@@ -120,6 +130,49 @@ export async function getUserDeleteDependencyReport(
       .limit(1)
       .maybeSingle(),
   ]);
+
+  const queryErrors: Array<{ label: string; message: string }> = [];
+  if (supervisorSitesResult.error) {
+    queryErrors.push({
+      label: "user_account_supervisor_sites",
+      message: supervisorSitesResult.error.message,
+    });
+  }
+  if (leaveApproverConfigResult.error) {
+    queryErrors.push({
+      label: "leave_approver_config",
+      message: leaveApproverConfigResult.error.message,
+    });
+  }
+  if (pendingLeaveApprovalsResult.error) {
+    queryErrors.push({
+      label: "leave_requests_pending",
+      message: pendingLeaveApprovalsResult.error.message,
+    });
+  }
+  if (leaveRequestApproverResult.error) {
+    queryErrors.push({
+      label: "leave_requests",
+      message: leaveRequestApproverResult.error.message,
+    });
+  }
+  if (currentApproverConfigResult.error) {
+    queryErrors.push({
+      label: "current_leave_approver",
+      message: currentApproverConfigResult.error.message,
+    });
+  }
+
+  if (queryErrors.length > 0) {
+    const first = queryErrors[0]!;
+    throw new Error(formatDependencyQueryError(first.label, first.message));
+  }
+
+  const supervisorSiteCount = supervisorSitesResult.count;
+  const leaveApproverConfigCount = leaveApproverConfigResult.count;
+  const pendingLeaveApprovalCount = pendingLeaveApprovalsResult.count;
+  const leaveRequestApproverCount = leaveRequestApproverResult.count;
+  const currentApproverConfig = currentApproverConfigResult.data;
 
   return {
     supervisorSiteCount: supervisorSiteCount ?? 0,
