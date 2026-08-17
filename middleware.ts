@@ -67,6 +67,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // OAuth start/callback — public; flow validated via signed cookie in-route.
+  if (
+    pathname === "/auth/start" ||
+    pathname === "/auth/callback" ||
+    pathname === "/auth/error"
+  ) {
+    return NextResponse.next();
+  }
+
   // Portal invite acceptance / landlord self-signup APIs — public; validate in-route.
   if (
     pathname === "/api/portal/accept-invite" ||
@@ -116,6 +125,9 @@ export async function middleware(request: NextRequest) {
     "/login/mfa",
     "/signup",
     "/accept-invite",
+    "/auth/start",
+    "/auth/callback",
+    "/auth/error",
     "/api/signup",
     "/api/webhooks/paystack",
     "/forgot-password",

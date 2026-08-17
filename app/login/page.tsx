@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import StayLoggedInCheckbox from "@/components/auth/stay-logged-in-checkbox";
+import OAuthProviderButtons from "@/components/auth/oauth-provider-buttons";
 import PasswordInput from "@/components/password-input";
 import { getSafeNext } from "@/utils/safe-redirect";
 import { loginWithPassword } from "./actions";
@@ -120,6 +121,14 @@ export default function LoginPage() {
             </a>
           </p>
         </form>
+
+        <div className="mt-4">
+          <OAuthProviderButtons
+            persona="staff"
+            flow="login"
+            next={searchParams.get("next")}
+          />
+        </div>
       </div>
     </div>
   );

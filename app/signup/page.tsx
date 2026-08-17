@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import PasswordInput from "@/components/password-input";
+import OAuthProviderButtons from "@/components/auth/oauth-provider-buttons";
 import {
   PASSWORD_MIN_LENGTH,
   PASSWORD_POLICY_HINT,
@@ -199,6 +200,21 @@ export default function SignupPage() {
             >
               {loading ? "Creating account…" : "Create account"}
             </button>
+
+            <OAuthProviderButtons
+              persona="staff"
+              flow="open_signup"
+              signupFields={{
+                company_name: companyName,
+                admin_full_name: adminFullName,
+                admin_email: adminEmail,
+              }}
+              disabled={
+                !companyName.trim() ||
+                !adminFullName.trim() ||
+                !adminEmail.trim()
+              }
+            />
           </form>
         )}
 

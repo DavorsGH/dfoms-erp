@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PasswordInput from "@/components/password-input";
+import OAuthProviderButtons from "@/components/auth/oauth-provider-buttons";
 import {
   PASSWORD_MIN_LENGTH,
   PASSWORD_POLICY_HINT,
@@ -148,6 +149,12 @@ export default function AcceptInvitePage() {
             >
               {loading ? "Creating account…" : "Create account"}
             </button>
+
+            <OAuthProviderButtons
+              persona="lessee"
+              flow="accept_invite"
+              inviteToken={token}
+            />
           </form>
         )}
       </div>

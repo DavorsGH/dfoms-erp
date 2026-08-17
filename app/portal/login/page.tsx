@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import StayLoggedInCheckbox from "@/components/auth/stay-logged-in-checkbox";
+import OAuthProviderButtons from "@/components/auth/oauth-provider-buttons";
 import PasswordInput from "@/components/password-input";
 import {
   portalAuthCardClassName,
@@ -113,6 +114,10 @@ export default function PortalLoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
+
+        <div className="mt-4">
+          <OAuthProviderButtons persona="lessee" flow="login" />
+        </div>
 
         <p className="mt-6 text-center text-xs text-slate-500">
           Staff users should use the{" "}

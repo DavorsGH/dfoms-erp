@@ -100,6 +100,33 @@ export function validateSignupInput(body: SignupRequestBody): SignupValidationRe
   };
 }
 
+export function validateStaffOAuthSignupFields(body: {
+  company_name?: string;
+  admin_full_name?: string;
+  admin_email?: string;
+}):
+  | {
+      ok: true;
+      data: { companyName: string; adminFullName: string; adminEmail: string };
+    }
+  | { ok: false; error: string } {
+  const companyName = body.company_name?.trim() ?? "";
+  const adminFullName = body.admin_full_name?.trim() ?? "";
+  const adminEmail = normalizeSignupEmail(body.admin_email ?? "");
+
+  if (!companyName) {
+    return { ok: false, error: "Company name is required." };
+  }
+  if (!adminFullName) {
+    return { ok: false, error: "Admin full name is required." };
+  }
+  if (!adminEmail || !EMAIL_PATTERN.test(adminEmail)) {
+    return { ok: false, error: "A valid admin email is required." };
+  }
+
+  return { ok: true, data: { companyName, adminFullName, adminEmail } };
+}
+
 export function slugifyCompanyName(companyName: string): string {
   const slug = companyName
     .toLowerCase()

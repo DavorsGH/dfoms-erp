@@ -93,6 +93,20 @@ export async function findCrossPersonaConflictForAuthUid(
   admin: SupabaseClient,
   authUid: string,
 ): Promise<CrossPersonaConflict | null> {
+  const { data: staffRow } = await admin
+    .from("user_accounts")
+    .select("auth_uid")
+    .eq("auth_uid", authUid)
+    .maybeSingle();
+
+  if (staffRow) {
+    return {
+      persona: "staff",
+      detail:
+        "This sign-in is already linked to a staff ERP account, not this portal.",
+    };
+  }
+
   const { data: lessee } = await admin
     .from("lessees")
     .select("lessee_id")
