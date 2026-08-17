@@ -26,8 +26,21 @@ function redirectToRelativePath(request: NextRequest, relativePath: string) {
   return NextResponse.redirect(url);
 }
 
+const ACCOUNT_SETTINGS_ALIASES: Record<string, string> = {
+  "/portal/account-security": "/portal/account",
+  "/portal/account-security/mfa": "/portal/account/mfa",
+  "/landlord-portal/administration/account-security": "/landlord-portal/account",
+  "/landlord-portal/administration/account-security/mfa":
+    "/landlord-portal/account/mfa",
+};
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  const accountAliasTarget = ACCOUNT_SETTINGS_ALIASES[pathname];
+  if (accountAliasTarget) {
+    return redirectToRelativePath(request, accountAliasTarget);
+  }
 
   // External cron keepalive — must stay reachable without a session.
   if (pathname === "/api/heartbeat") {
