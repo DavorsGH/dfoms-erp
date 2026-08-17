@@ -58,22 +58,51 @@ async function resolveSmsEnrollmentPhoneE164(
     return { ok: true, phoneE164 };
   }
 
-  if (phoneOverride?.trim()) {
-    const phoneE164 = toGhanaE164(phoneOverride);
-    if (phoneE164) {
-      return { ok: true, phoneE164 };
+  if (persona === "lessee") {
+    if (resolved.phoneE164 && resolved.source === "lessees.phone") {
+      return { ok: true, phoneE164: resolved.phoneE164 };
     }
+
+    const trimmed = phoneOverride?.trim();
+    if (!trimmed) {
+      return {
+        ok: false,
+        error: "Enter a mobile number to receive the verification code.",
+      };
+    }
+
+    const phoneE164 = toGhanaE164(trimmed);
+    if (!phoneE164) {
+      return {
+        ok: false,
+        error: "Enter a valid Ghana mobile number (e.g. 024XXXXXXX).",
+      };
+    }
+
+    return { ok: true, phoneE164 };
   }
 
-  if (resolved.phoneE164) {
+  if (resolved.phoneE164 && resolved.source === "landlords.notification_phone") {
     return { ok: true, phoneE164: resolved.phoneE164 };
   }
 
-  return {
-    ok: false,
-    error:
-      "No phone number on your profile. Add a phone to your portal profile first.",
-  };
+  const trimmed = phoneOverride?.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      error: "Enter a mobile number to receive the verification code.",
+    };
+  }
+
+  const phoneE164 = toGhanaE164(trimmed);
+  if (!phoneE164) {
+    return {
+      ok: false,
+      error: "Enter a valid Ghana mobile number (e.g. 024XXXXXXX).",
+    };
+  }
+
+  return { ok: true, phoneE164 };
 }
 
 async function getAuthedSupabase() {

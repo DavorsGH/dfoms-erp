@@ -40,6 +40,35 @@ type Props = {
   onSendDisableSmsOtp: () => Promise<MfaActionResult>;
 };
 
+function smsProfilePhoneDescription(
+  persona: MfaPersona,
+  profilePhone: string,
+): string {
+  switch (persona) {
+    case "staff":
+      return `Codes are sent via Hubtel to your employee profile phone (${profilePhone}).`;
+    case "lessee":
+      return `Codes are sent via Hubtel to your tenant profile phone (${profilePhone}).`;
+    case "landlord":
+      return `Codes are sent via Hubtel to your notification phone (${profilePhone}).`;
+    default:
+      return `Codes are sent via Hubtel to your profile phone (${profilePhone}).`;
+  }
+}
+
+function smsManualEntryIntro(persona: MfaPersona): string {
+  switch (persona) {
+    case "staff":
+      return "No employee directory phone is linked to your account. Enter a mobile number below to receive a verification code via Hubtel.";
+    case "lessee":
+      return "Add a phone number to your tenant record, or enter one below to use SMS.";
+    case "landlord":
+      return "Set a notification phone in Workspace Settings, or enter one below to use SMS.";
+    default:
+      return "Enter a mobile number below to receive a verification code via Hubtel.";
+  }
+}
+
 export default function MfaSettingsPanel({
   persona,
   initialSettings,
@@ -50,7 +79,6 @@ export default function MfaSettingsPanel({
   onDisable,
   onSendDisableSmsOtp,
 }: Props) {
-  void persona;
   const router = useRouter();
   const [method, setMethod] = useState(initialSettings?.method ?? "none");
   const [error, setError] = useState<string | null>(null);
@@ -94,11 +122,16 @@ export default function MfaSettingsPanel({
   }
 
   const profilePhone = initialSettings?.profilePhoneE164 ?? null;
-  const staffManualPhoneEntry =
-    persona === "staff" && !initialSettings?.staffSmsEnrollmentPhoneLocked;
+  const manualPhoneEntryAllowed = !profilePhone;
   const canSendSmsEnrollment =
     Boolean(profilePhone) ||
-    (staffManualPhoneEntry && manualPhone.trim().length > 0);
+    (manualPhoneEntryAllowed && manualPhone.trim().length > 0);
+
+  function resolveSmsPhoneOverride(): string | undefined {
+    if (!manualPhoneEntryAllowed) return undefined;
+    const trimmed = manualPhone.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
 
   async function handleStartTotp() {
     setLoading(true);
@@ -140,9 +173,7 @@ export default function MfaSettingsPanel({
   async function handleSendSms() {
     setLoading(true);
     setError(null);
-    const phoneOverride =
-      staffManualPhoneEntry && !profilePhone ? manualPhone : undefined;
-    const result = await onSendSmsOtp(phoneOverride);
+    const result = await onSendSmsOtp(resolveSmsPhoneOverride());
     if (!applySmsSendResult(result)) {
       setLoading(false);
       return;
@@ -155,9 +186,7 @@ export default function MfaSettingsPanel({
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const phoneOverride =
-      staffManualPhoneEntry && !profilePhone ? manualPhone : undefined;
-    const result = await onConfirmSms(smsCode, phoneOverride);
+    const result = await onConfirmSms(smsCode, resolveSmsPhoneOverride());
     if (!result.ok) {
       setError(result.error);
       setLoading(false);
@@ -278,14 +307,12 @@ export default function MfaSettingsPanel({
           <h2 className="text-lg font-semibold text-[#0f2744]">Enable SMS</h2>
           {profilePhone ? (
             <p className="text-sm text-slate-600">
-              Codes are sent via Hubtel to your employee profile phone (
-              {profilePhone}).
+              {smsProfilePhoneDescription(persona, profilePhone)}
             </p>
-          ) : staffManualPhoneEntry ? (
+          ) : manualPhoneEntryAllowed ? (
             <>
               <p className="text-sm text-slate-600">
-                No employee directory phone is linked to your account. Enter a
-                mobile number below to receive a verification code via Hubtel.
+                {smsManualEntryIntro(persona)}
               </p>
               <div>
                 <label
@@ -307,14 +334,9 @@ export default function MfaSettingsPanel({
               </div>
             </>
           ) : (
-            <>
-              <p className="text-sm text-slate-600">
-                Codes are sent via Hubtel to your profile phone.
-              </p>
-              <p className="text-sm text-amber-700">
-                No phone on file — add one to your profile before enabling SMS.
-              </p>
-            </>
+            <p className="text-sm text-amber-700">
+              No phone on file — add one to your profile before enabling SMS.
+            </p>
           )}
           <button
             type="button"
