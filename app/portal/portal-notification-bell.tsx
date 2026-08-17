@@ -255,7 +255,7 @@ export default function PortalNotificationBell() {
             ? `Notifications, ${unreadCount} unread`
             : "Notifications"
         }
-        className="relative rounded-md p-2 text-white/90 transition-colors hover:bg-white/10"
+        className="relative rounded-md p-2 text-[#0f2744] transition-colors hover:bg-slate-100"
       >
         <BellIcon />
         {badgeLabel ? (
