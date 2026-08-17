@@ -8,6 +8,8 @@ import {
   ensureEmployeeAvailable,
   validationErrorMessage,
 } from "@/utils/admin-user-role";
+import { isAppRole } from "@/app/dashboard/user-account-role-utils";
+import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
   crossPersonaErrorMessage,
   findCrossPersonaConflictForEmail,
@@ -327,6 +329,16 @@ export async function acceptStaffPortalInviteWithPassword(
   const email = String(invite.email).trim().toLowerCase();
   const nowIso = new Date().toISOString();
 
+  if (!isAppRole(invite.role)) {
+    return {
+      ok: false,
+      error:
+        "This invite has an invalid role. Ask your administrator for a new invite.",
+      status: 400,
+    };
+  }
+  const role: AppRole = invite.role;
+
   const crossPersona = await findCrossPersonaConflictForEmail(admin, email);
   if (crossPersona) {
     return {
@@ -405,7 +417,7 @@ export async function acceptStaffPortalInviteWithPassword(
   const { error: insertError } = await admin.from("user_accounts").insert({
     auth_uid: authUserId,
     tenant_id: invite.tenant_id,
-    role: invite.role,
+    role,
     employee_id: invite.employee_id,
     client_id: invite.client_id,
     email,
@@ -420,7 +432,7 @@ export async function acceptStaffPortalInviteWithPassword(
   const siteSyncError = await syncSupervisorSites(
     admin,
     authUserId,
-    invite.role,
+    role,
     supervisorSiteCodes,
     invite.tenant_id,
   );
