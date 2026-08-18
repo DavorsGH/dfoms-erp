@@ -10,6 +10,12 @@ export type AdministrationNavGroup = {
 };
 
 export const PLATFORM_SETTINGS_GROUP_ID = "platform-settings";
+export const MONITORING_SUPPORT_GROUP_ID = "monitoring-support";
+
+const PLATFORM_ADMIN_GROUP_IDS: readonly string[] = [
+  PLATFORM_SETTINGS_GROUP_ID,
+  MONITORING_SUPPORT_GROUP_ID,
+];
 
 export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
   {
@@ -135,6 +141,12 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Platform Unit Pricing",
         href: "/dashboard/administration/platform-unit-pricing",
       },
+    ],
+  },
+  {
+    id: MONITORING_SUPPORT_GROUP_ID,
+    label: "Monitoring & Support",
+    items: [
       {
         label: "System Event Log",
         href: "/dashboard/administration/system-events",
@@ -200,12 +212,24 @@ export function getAdministrationSidebarLinks(
 ) {
   return ADMINISTRATION_GROUPS.filter(
     (group) =>
-      includePlatformSettings || group.id !== PLATFORM_SETTINGS_GROUP_ID,
+      includePlatformSettings || !PLATFORM_ADMIN_GROUP_IDS.includes(group.id),
   ).map((group) => ({
     label: group.label,
     href: getAdministrationGroupDefaultHref(group),
     groupId: group.id,
   }));
+}
+
+export function isPlatformAdministrationPath(pathname: string): boolean {
+  return PLATFORM_ADMIN_GROUP_IDS.some((groupId) =>
+    isAdministrationGroupActive(pathname, groupId),
+  );
+}
+
+export function getPlatformAdministrationGroups(): AdministrationNavGroup[] {
+  return ADMINISTRATION_GROUPS.filter((group) =>
+    PLATFORM_ADMIN_GROUP_IDS.includes(group.id),
+  );
 }
 
 export const ADMINISTRATION_SIDEBAR_LINKS = getAdministrationSidebarLinks(true);

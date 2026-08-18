@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { getActiveAdministrationGroup } from "./administration-nav-config";
+import {
+  getActiveAdministrationGroup,
+  getPlatformAdministrationGroups,
+  isPlatformAdministrationPath,
+  type AdministrationNavGroup,
+} from "./administration-nav-config";
 
 const tabClassName = (active: boolean) =>
   `shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
@@ -11,9 +16,58 @@ const tabClassName = (active: boolean) =>
       : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
   }`;
 
+function AdministrationTabGroup({
+  group,
+  pathname,
+}: {
+  group: AdministrationNavGroup;
+  pathname: string;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {group.label}
+      </p>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {group.items.map((item) => {
+          const active = pathname === item.href;
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              scroll
+              className={tabClassName(active)}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AdministrationNav() {
   const pathname = usePathname();
   const activeGroup = getActiveAdministrationGroup(pathname);
+  const platformAdmin = isPlatformAdministrationPath(pathname);
+
+  if (platformAdmin) {
+    const groups = getPlatformAdministrationGroups();
+
+    return (
+      <nav className="mb-6 space-y-4 border-b border-slate-200 pb-4">
+        {groups.map((group) => (
+          <AdministrationTabGroup
+            key={group.id}
+            group={group}
+            pathname={pathname}
+          />
+        ))}
+      </nav>
+    );
+  }
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
