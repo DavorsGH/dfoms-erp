@@ -46,6 +46,21 @@ function run() {
   );
   assert.deepEqual(getMonitoringSupportNavItems(false), []);
 
+  const financeSettings = ADMINISTRATION_GROUPS.find(
+    (g) => g.id === "finance-settings",
+  );
+  const hrSettings = ADMINISTRATION_GROUPS.find((g) => g.id === "hr-settings");
+  assert(financeSettings, "Finance Settings group exists");
+  assert(hrSettings, "HR Settings group exists");
+  assert(
+    financeSettings.items.some((item) => item.href === "/dashboard/administration/approvers"),
+    "Approvers lives under Finance Settings",
+  );
+  assert(
+    !hrSettings.items.some((item) => item.href === "/dashboard/administration/approvers"),
+    "Approvers removed from HR Settings",
+  );
+
   const davorsSidebar = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: true,
   });

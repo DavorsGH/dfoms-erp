@@ -61,6 +61,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Inventory Go-Live",
         href: "/dashboard/administration/inventory-go-live",
       },
+      {
+        label: "Approvers",
+        href: "/dashboard/administration/approvers",
+      },
     ],
   },
   {
@@ -74,10 +78,6 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
       {
         label: "Manage Positions",
         href: "/dashboard/administration/positions",
-      },
-      {
-        label: "Approvers",
-        href: "/dashboard/administration/approvers",
       },
       {
         label: "Leave Settings",
