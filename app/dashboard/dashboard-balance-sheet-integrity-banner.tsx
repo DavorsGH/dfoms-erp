@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatGHS } from "./finance/income-register-utils";
-import type { TenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
+import type { TenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status-core";
 
 type DashboardBalanceSheetIntegrityBannerProps = {
   status: TenantBalanceSheetIntegrityStatus;

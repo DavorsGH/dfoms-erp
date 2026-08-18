@@ -43,8 +43,8 @@ import type {
 } from "./dashboard-spending-analysis-utils";
 import type { SalesAnalysisRow } from "./dashboard-sales-analysis-utils";
 import { isActiveIncomeForReporting } from "./finance/income-register-utils";
-import type { TenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
-import { emptyTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
+import type { TenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status-core";
+import { emptyTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status-core";
 
 export type DashboardIncomeEntry = {
   date: string;

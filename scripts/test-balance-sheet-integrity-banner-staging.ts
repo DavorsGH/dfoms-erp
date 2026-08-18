@@ -8,8 +8,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { assert, loadEnvFromArgv } from "./lib/env";
 import {
   buildTenantBalanceSheetIntegrityStatusFromMetadata,
-  fetchTenantBalanceSheetIntegrityStatus,
-} from "../utils/tenant-balance-sheet-integrity-status";
+} from "../utils/tenant-balance-sheet-integrity-status-core";
+import { BS_INTEGRITY_EVENT_NAME } from "../utils/balance-sheet-integrity-constants";
 
 const STAGING_APP_URL = (
   process.env.STAGING_APP_URL ??
@@ -20,6 +20,31 @@ const DAVORS = "00000001-0000-4000-8000-000000000001";
 const CAANTA = "61e8e5d9-9cdb-4b8d-9e44-ed0acc23d87b";
 const PASSWORD = "BsBanner-Iso-7Kx9!";
 const stamp = Date.now().toString(36);
+
+async function fetchStatusForTenant(admin: SupabaseClient, tenantId: string) {
+  const { data, error } = await admin
+    .from("system_event_log")
+    .select("status, metadata, created_at")
+    .eq("event_name", BS_INTEGRITY_EVENT_NAME)
+    .filter("metadata->>kind", "eq", "tenant")
+    .filter("metadata->>tenantId", "eq", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  assert(!error, error?.message ?? "system_event_log query failed");
+  if (!data) {
+    return buildTenantBalanceSheetIntegrityStatusFromMetadata({
+      metadata: null,
+      createdAt: null,
+      cronStatus: null,
+    });
+  }
+  return buildTenantBalanceSheetIntegrityStatusFromMetadata({
+    metadata: (data.metadata as Record<string, unknown> | null) ?? null,
+    createdAt: data.created_at,
+    cronStatus: data.status as "success" | "warning" | "failure",
+  });
+}
 
 function resolveBypassSecret(): string {
   const existing = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
@@ -172,12 +197,8 @@ async function main() {
   assert(balanced.worstDiff === 0, "balanced tenant worst diff");
   console.log("PASS — successful/balanced cron row maps to clean state");
 
-  const davorsStatus = await fetchTenantBalanceSheetIntegrityStatus(DAVORS, {
-    admin,
-  });
-  const caantaStatus = await fetchTenantBalanceSheetIntegrityStatus(CAANTA, {
-    admin,
-  });
+  const davorsStatus = await fetchStatusForTenant(admin, DAVORS);
+  const caantaStatus = await fetchStatusForTenant(admin, CAANTA);
   console.log(
     `INFO — helper Davors: count=${davorsStatus.imbalancedMonthCount}, hasCron=${davorsStatus.hasCronResult}`,
   );
