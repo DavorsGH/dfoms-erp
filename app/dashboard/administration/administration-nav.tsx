@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   getActiveAdministrationGroup,
-  LEAVE_APPROVALS_HREF,
   MONITORING_SUPPORT_GROUP_ID,
   PLATFORM_SETTINGS_GROUP_ID,
   type AdministrationNavGroup,
@@ -64,11 +63,6 @@ function AdministrationTabGroup({
 
 export default function AdministrationNav() {
   const pathname = usePathname();
-
-  if (pathname.startsWith(LEAVE_APPROVALS_HREF)) {
-    return null;
-  }
-
   const activeGroup = getActiveAdministrationGroup(pathname);
 
   return (

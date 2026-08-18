@@ -9,6 +9,9 @@ export type HrManagementNavGroup = {
   items: readonly HrManagementNavItem[];
 };
 
+export const LEAVE_APPROVALS_GROUP_ID = "leave-approvals";
+export const LEAVE_APPROVALS_HREF = "/dashboard/leave-approvals";
+
 export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
   {
     id: "employees",
@@ -67,6 +70,11 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
     ],
   },
   {
+    id: LEAVE_APPROVALS_GROUP_ID,
+    label: "Leave Approvals",
+    items: [{ label: "Leave Approvals", href: LEAVE_APPROVALS_HREF }],
+  },
+  {
     id: "employee-announcements",
     label: "Employee Announcements",
     items: [
@@ -81,7 +89,8 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
 export function isHrManagementPath(pathname: string): boolean {
   return (
     pathname.startsWith("/dashboard/hr-payroll") ||
-    pathname.startsWith("/dashboard/employees")
+    pathname.startsWith("/dashboard/employees") ||
+    pathname.startsWith(LEAVE_APPROVALS_HREF)
   );
 }
 
@@ -117,6 +126,14 @@ export function getActiveHrManagementGroup(
     return HR_MANAGEMENT_GROUPS[0];
   }
 
+  if (pathname.startsWith(LEAVE_APPROVALS_HREF)) {
+    return (
+      HR_MANAGEMENT_GROUPS.find(
+        (group) => group.id === LEAVE_APPROVALS_GROUP_ID,
+      ) ?? HR_MANAGEMENT_GROUPS[0]
+    );
+  }
+
   return HR_MANAGEMENT_GROUPS[0];
 }
 
@@ -134,10 +151,28 @@ export const HR_MANAGEMENT_SIDEBAR_LINKS = HR_MANAGEMENT_GROUPS.map(
   }),
 );
 
+export function getHrManagementSidebarLinks(
+  options: { showLeaveApprovals?: boolean } = {},
+) {
+  const { showLeaveApprovals = false } = options;
+
+  return HR_MANAGEMENT_SIDEBAR_LINKS.filter((link) => {
+    if (link.groupId === LEAVE_APPROVALS_GROUP_ID) {
+      return showLeaveApprovals;
+    }
+
+    return true;
+  });
+}
+
 export function isHrManagementGroupActive(
   pathname: string,
   groupId: string,
 ): boolean {
+  if (groupId === LEAVE_APPROVALS_GROUP_ID) {
+    return pathname.startsWith(LEAVE_APPROVALS_HREF);
+  }
+
   const group = HR_MANAGEMENT_GROUPS.find((entry) => entry.id === groupId);
   if (!group) {
     return false;

@@ -8,14 +8,18 @@ import {
   getAdministrationSidebarLinks,
   getMonitoringSupportNavItems,
   getPlatformAdministrationGroups,
-  isAdministrationGroupActive,
   isAdministrationPath,
   isPlatformAdministrationPath,
-  LEAVE_APPROVALS_GROUP_ID,
-  LEAVE_APPROVALS_HREF,
   MONITORING_SUPPORT_GROUP_ID,
   PLATFORM_SETTINGS_GROUP_ID,
 } from "../app/dashboard/administration/administration-nav-config";
+import {
+  getHrManagementSidebarLinks,
+  isHrManagementGroupActive,
+  isHrManagementPath,
+  LEAVE_APPROVALS_GROUP_ID,
+  LEAVE_APPROVALS_HREF,
+} from "../app/dashboard/hr-payroll/hr-management-nav-config";
 
 function run() {
   const platform = ADMINISTRATION_GROUPS.find(
@@ -44,7 +48,6 @@ function run() {
 
   const davorsSidebar = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: true,
-    showLeaveApprovals: true,
   });
   assert.deepEqual(
     davorsSidebar.map((l) => l.label),
@@ -54,7 +57,6 @@ function run() {
       "Operations Settings",
       "User Accounts",
       "Workspace Settings",
-      "Leave Approvals",
       "Platform Settings",
       "Monitoring & Support",
     ],
@@ -70,7 +72,6 @@ function run() {
 
   const tenantSidebar = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: false,
-    showLeaveApprovals: false,
   });
   assert.deepEqual(
     tenantSidebar.map((l) => l.label),
@@ -83,6 +84,27 @@ function run() {
     ],
   );
 
+  const hrWithLeave = getHrManagementSidebarLinks({ showLeaveApprovals: true });
+  assert.deepEqual(
+    hrWithLeave.map((l) => l.label),
+    [
+      "Employees",
+      "Payroll",
+      "HR Operations",
+      "Leave Approvals",
+      "Employee Announcements",
+    ],
+  );
+
+  const hrWithoutLeave = getHrManagementSidebarLinks({ showLeaveApprovals: false });
+  assert(!hrWithoutLeave.some((l) => l.groupId === LEAVE_APPROVALS_GROUP_ID));
+
+  assert(isHrManagementPath(LEAVE_APPROVALS_HREF));
+  assert(!isAdministrationPath(LEAVE_APPROVALS_HREF));
+  assert(
+    isHrManagementGroupActive(LEAVE_APPROVALS_HREF, LEAVE_APPROVALS_GROUP_ID),
+  );
+
   const groups = getPlatformAdministrationGroups();
   assert.equal(groups.length, 2);
 
@@ -90,10 +112,6 @@ function run() {
   assert(isPlatformAdministrationPath("/dashboard/administration/system-events"));
   assert(!isPlatformAdministrationPath("/dashboard/administration/workspace"));
   assert(!isPlatformAdministrationPath("/dashboard/administration/login-activity"));
-  assert(isAdministrationPath(LEAVE_APPROVALS_HREF));
-  assert(
-    isAdministrationGroupActive(LEAVE_APPROVALS_HREF, LEAVE_APPROVALS_GROUP_ID),
-  );
 
   console.log("PASS administration nav grouping");
 }

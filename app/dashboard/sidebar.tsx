@@ -17,9 +17,10 @@ import {
   type SidebarNavItem,
 } from "@/utils/rbac-access";
 import {
-  HR_MANAGEMENT_SIDEBAR_LINKS,
+  getHrManagementSidebarLinks,
   isHrManagementGroupActive,
   isHrManagementPath,
+  LEAVE_APPROVALS_GROUP_ID,
 } from "./hr-payroll/hr-management-nav-config";
 import {
   getAdministrationSidebarLinks,
@@ -209,7 +210,6 @@ export default function Sidebar({
   const navItems = getSidebarNavItems(userRole);
   const administrationLinks = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: showPlatformSettings,
-    showLeaveApprovals,
   });
   const workspaceLogoUrl = tenantBranding.workspaceLogoUrl;
   const workspaceName = tenantBranding.workspaceName;
@@ -248,7 +248,13 @@ export default function Sidebar({
     isExpanded: reportsExpanded,
     handleToggle: handleReportsToggle,
   } = useSidebarExpandableSection(reportsActive);
-  const hrManagementLinks = HR_MANAGEMENT_SIDEBAR_LINKS.filter((link) => {
+  const hrManagementLinks = getHrManagementSidebarLinks({
+    showLeaveApprovals,
+  }).filter((link) => {
+    if (link.groupId === LEAVE_APPROVALS_GROUP_ID) {
+      return true;
+    }
+
     if (link.groupId === "employees") {
       return canAccessEmployeesSection(userRole);
     }

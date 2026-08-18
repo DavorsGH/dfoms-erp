@@ -4,7 +4,9 @@
  */
 import { getSidebarNavItems } from "../utils/rbac-access";
 import { getAdministrationSidebarLinks } from "../app/dashboard/administration/administration-nav-config";
-import { HR_MANAGEMENT_SIDEBAR_LINKS } from "../app/dashboard/hr-payroll/hr-management-nav-config";
+import {
+  getHrManagementSidebarLinks,
+} from "../app/dashboard/hr-payroll/hr-management-nav-config";
 import { REPORT_SIDEBAR_LINKS } from "../app/dashboard/reports/reports-nav-config";
 import { INVENTORY_SIDEBAR_LINKS } from "../app/dashboard/inventory/inventory-nav-config";
 
@@ -12,10 +14,10 @@ function countForRole(role: Parameters<typeof getSidebarNavItems>[0], showPlatfo
   const top = getSidebarNavItems(role);
   const admin = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: showPlatform,
-    showLeaveApprovals: true,
   });
+  const hr =
+    getHrManagementSidebarLinks({ showLeaveApprovals: true }).length;
   const reports = REPORT_SIDEBAR_LINKS.length;
-  const hr = HR_MANAGEMENT_SIDEBAR_LINKS.length;
   const inventory = INVENTORY_SIDEBAR_LINKS.length;
   const expandableSubLinks = admin.length + reports + hr + inventory;
   const topLevel = top.length + (showRealEstate ? 1 : 0);

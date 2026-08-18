@@ -11,8 +11,6 @@ export type AdministrationNavGroup = {
 
 export const PLATFORM_SETTINGS_GROUP_ID = "platform-settings";
 export const MONITORING_SUPPORT_GROUP_ID = "monitoring-support";
-export const LEAVE_APPROVALS_GROUP_ID = "leave-approvals";
-export const LEAVE_APPROVALS_HREF = "/dashboard/leave-approvals";
 
 const PLATFORM_ADMIN_GROUP_IDS: readonly string[] = [
   PLATFORM_SETTINGS_GROUP_ID,
@@ -24,8 +22,6 @@ export type AdministrationSidebarOptions = {
   isDavorsPlatformSuperAdmin?: boolean;
   /** Tenant super_admin — reserved for future tenant-scoped monitoring links. */
   showMonitoringSupport?: boolean;
-  /** Approver queue for pending leave requests. */
-  showLeaveApprovals?: boolean;
 };
 
 export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
@@ -190,8 +186,7 @@ export function getMonitoringSupportNavItems(
 export function isAdministrationPath(pathname: string): boolean {
   return (
     pathname.startsWith("/dashboard/administration") ||
-    pathname.startsWith("/dashboard/user-accounts") ||
-    pathname.startsWith(LEAVE_APPROVALS_HREF)
+    pathname.startsWith("/dashboard/user-accounts")
   );
 }
 
@@ -235,10 +230,7 @@ export function getAdministrationGroupDefaultHref(
 export function getAdministrationSidebarLinks(
   options: AdministrationSidebarOptions = {},
 ) {
-  const {
-    isDavorsPlatformSuperAdmin = false,
-    showLeaveApprovals = false,
-  } = options;
+  const { isDavorsPlatformSuperAdmin = false } = options;
 
   const links: { label: string; href: string; groupId: string }[] = [];
 
@@ -273,14 +265,6 @@ export function getAdministrationSidebarLinks(
       href: getAdministrationGroupDefaultHref(group),
       groupId: group.id,
     });
-
-    if (group.id === "workspace-settings" && showLeaveApprovals) {
-      links.push({
-        label: "Leave Approvals",
-        href: LEAVE_APPROVALS_HREF,
-        groupId: LEAVE_APPROVALS_GROUP_ID,
-      });
-    }
   }
 
   return links;
@@ -304,10 +288,6 @@ export function isAdministrationGroupActive(
   pathname: string,
   groupId: string,
 ): boolean {
-  if (groupId === LEAVE_APPROVALS_GROUP_ID) {
-    return pathname.startsWith(LEAVE_APPROVALS_HREF);
-  }
-
   const group = ADMINISTRATION_GROUPS.find((entry) => entry.id === groupId);
   if (!group) {
     return false;
