@@ -113,6 +113,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Report a Problem",
         href: "/dashboard/administration/report-a-problem",
       },
+      {
+        label: "Login Activity",
+        href: "/dashboard/login-activity",
+      },
     ],
   },
   {
@@ -134,6 +138,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
       {
         label: "System Event Log",
         href: "/dashboard/administration/system-events",
+      },
+      {
+        label: "User Activity Log",
+        href: "/dashboard/administration/user-activity-log",
       },
       {
         label: "Support Tickets",

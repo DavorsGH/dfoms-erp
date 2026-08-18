@@ -8,9 +8,14 @@ import { getRequestIp } from "@/utils/login-rate-limit";
 import {
   assertMfaResendAllowed,
   assertMfaVerifyAllowed,
+  MFA_VERIFY_RATE_LIMIT_MESSAGE,
   recordFailedMfaVerifyAttempt,
   recordMfaResend,
 } from "./mfa-rate-limit";
+import {
+  logAuthActivity,
+  resolveAuthActivityTenantId,
+} from "@/lib/user-activity-log";
 import {
   createLoginMfaSession,
   deleteLoginMfaSessionForKey,
@@ -65,11 +70,60 @@ export async function cancelMfaLogin(
   return { ok: true };
 }
 
+async function logMfaLoginSuccess(
+  persona: MfaPersona,
+  authUserId: string,
+  email: string,
+  ip: string,
+  method: "sms_mfa" | "totp_mfa",
+): Promise<void> {
+  const tenantId = await resolveAuthActivityTenantId({
+    persona,
+    authUserId,
+  });
+  logAuthActivity({
+    persona,
+    eventName: "login.mfa_success",
+    status: "success",
+    email,
+    ip,
+    tenantId,
+    authUserId,
+    method,
+  });
+}
+
+async function logMfaLoginFailure(
+  persona: MfaPersona,
+  options: {
+    email: string;
+    ip: string;
+    authUserId?: string;
+    tenantId?: string | null;
+    method: "sms_mfa" | "totp_mfa";
+    failureReason: string;
+    rateLimited?: boolean;
+  },
+): Promise<void> {
+  logAuthActivity({
+    persona,
+    eventName: options.rateLimited
+      ? "login.rate_limited"
+      : "login.mfa_failure",
+    status: "failure",
+    email: options.email,
+    ip: options.ip,
+    tenantId: options.tenantId,
+    authUserId: options.authUserId,
+    method: options.method,
+    failureReason: options.failureReason,
+  });
+}
+
 export async function verifyMfaTotpCode(
   code: string,
   persona: MfaPersona,
 ): Promise<MfaActionResult> {
-  void persona;
   const supabase = await getAuthedSupabase();
   const auth = await requireAuthedUser(supabase);
   if (!auth.ok) return auth;
@@ -79,14 +133,37 @@ export async function verifyMfaTotpCode(
   const email = auth.user.email ?? "";
 
   const allowed = await assertMfaVerifyAllowed(email, ip);
-  if (!allowed.ok) return allowed;
+  if (!allowed.ok) {
+    await logMfaLoginFailure(persona, {
+      email,
+      ip,
+      authUserId: auth.user.id,
+      method: "totp_mfa",
+      failureReason: MFA_VERIFY_RATE_LIMIT_MESSAGE,
+      rateLimited: true,
+    });
+    return allowed;
+  }
 
   const result = await verifyTotpLoginCode(supabase, code);
   if (!result.ok) {
     await recordFailedMfaVerifyAttempt(email, ip);
+    const tenantId = await resolveAuthActivityTenantId({
+      persona,
+      authUserId: auth.user.id,
+    });
+    await logMfaLoginFailure(persona, {
+      email,
+      ip,
+      authUserId: auth.user.id,
+      tenantId,
+      method: "totp_mfa",
+      failureReason: result.error,
+    });
     return result;
   }
 
+  await logMfaLoginSuccess(persona, auth.user.id, email, ip, "totp_mfa");
   return { ok: true };
 }
 
@@ -131,7 +208,6 @@ export async function verifyMfaSmsCode(
   code: string,
   persona: MfaPersona,
 ): Promise<MfaActionResult> {
-  void persona;
   const supabase = await getAuthedSupabase();
   const auth = await requireAuthedUser(supabase);
   if (!auth.ok) return auth;
@@ -141,7 +217,17 @@ export async function verifyMfaSmsCode(
   const email = auth.user.email ?? "";
 
   const allowed = await assertMfaVerifyAllowed(email, ip);
-  if (!allowed.ok) return allowed;
+  if (!allowed.ok) {
+    await logMfaLoginFailure(persona, {
+      email,
+      ip,
+      authUserId: auth.user.id,
+      method: "sms_mfa",
+      failureReason: MFA_VERIFY_RATE_LIMIT_MESSAGE,
+      rateLimited: true,
+    });
+    return allowed;
+  }
 
   const verified = await verifySmsOtpChallenge({
     authUid: auth.user.id,
@@ -151,6 +237,18 @@ export async function verifyMfaSmsCode(
 
   if (!verified.ok) {
     await recordFailedMfaVerifyAttempt(email, ip);
+    const tenantId = await resolveAuthActivityTenantId({
+      persona,
+      authUserId: auth.user.id,
+    });
+    await logMfaLoginFailure(persona, {
+      email,
+      ip,
+      authUserId: auth.user.id,
+      tenantId,
+      method: "sms_mfa",
+      failureReason: verified.error,
+    });
     return verified;
   }
 
@@ -183,6 +281,7 @@ export async function verifyMfaSmsCode(
     };
   }
 
+  await logMfaLoginSuccess(persona, auth.user.id, email, ip, "sms_mfa");
   return { ok: true };
 }
 

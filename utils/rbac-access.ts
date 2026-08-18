@@ -332,5 +332,9 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
     items.push({ label: "Administration", href: "/dashboard/administration" });
   }
 
+  if (role === "super_admin" || role === "director") {
+    items.push({ label: "Login Activity", href: "/dashboard/login-activity" });
+  }
+
   return items;
 }

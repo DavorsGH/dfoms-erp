@@ -75,6 +75,10 @@ export function getLandlordPortalNavSections(
       label: "User Accounts",
       href: "/landlord-portal/administration/user-accounts",
     },
+    {
+      label: "Login Activity",
+      href: "/landlord-portal/administration/login-activity",
+    },
   ];
 
   if (showNotificationContacts) {

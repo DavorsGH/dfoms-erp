@@ -10,6 +10,11 @@ import {
 } from "@/utils/login-rate-limit";
 import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
 import { syncStaffPortalMetadataAfterLogin } from "@/lib/auth/portal-metadata";
+import {
+  logAuthActivity,
+  resolveAuthActivityTenantId,
+} from "@/lib/user-activity-log";
+import { LOGIN_RATE_LIMIT_MESSAGE } from "@/utils/login-rate-limit";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type LoginActionResult = LoginWithMfaResult;
@@ -25,16 +30,34 @@ export async function loginWithPassword(
   stayLoggedIn = false,
   captchaToken?: string | null,
 ): Promise<LoginActionResult> {
+  const headerStore = await headers();
+  const ip = getRequestIp(headerStore);
   const trimmedEmail = email.trim();
+
   if (!trimmedEmail || !password) {
+    logAuthActivity({
+      persona: "staff",
+      eventName: "login.password_failure",
+      status: "failure",
+      email: trimmedEmail || email,
+      ip,
+      method: "password",
+      failureReason: "missing_credentials",
+    });
     return { ok: false, error: "Email and password are required." };
   }
 
-  const headerStore = await headers();
-  const ip = getRequestIp(headerStore);
-
   const allowed = await assertLoginAllowed(trimmedEmail, ip);
   if (!allowed.ok) {
+    logAuthActivity({
+      persona: "staff",
+      eventName: "login.rate_limited",
+      status: "failure",
+      email: trimmedEmail,
+      ip,
+      method: "password",
+      failureReason: LOGIN_RATE_LIMIT_MESSAGE,
+    });
     return allowed;
   }
 
@@ -61,6 +84,15 @@ export async function loginWithPassword(
       message.includes("turnstile") ||
       error.code === "captcha_failed"
     ) {
+      logAuthActivity({
+        persona: "staff",
+        eventName: "login.password_failure",
+        status: "failure",
+        email: trimmedEmail,
+        ip,
+        method: "password",
+        failureReason: "captcha_failed",
+      });
       return {
         ok: false,
         error:
@@ -68,6 +100,15 @@ export async function loginWithPassword(
       };
     }
 
+    logAuthActivity({
+      persona: "staff",
+      eventName: "login.password_failure",
+      status: "failure",
+      email: trimmedEmail,
+      ip,
+      method: "password",
+      failureReason: error.message,
+    });
     return { ok: false, error: error.message };
   }
 
@@ -88,6 +129,20 @@ export async function loginWithPassword(
     }
 
     await syncStaffPortalMetadataAfterLogin(user.id);
+    const tenantId = await resolveAuthActivityTenantId({
+      persona: "staff",
+      authUserId: user.id,
+    });
+    logAuthActivity({
+      persona: "staff",
+      eventName: "login.password_success",
+      status: "success",
+      email: trimmedEmail,
+      ip,
+      tenantId,
+      authUserId: user.id,
+      method: "password",
+    });
   }
 
   return { ok: true };
