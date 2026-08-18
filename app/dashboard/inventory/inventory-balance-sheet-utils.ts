@@ -197,7 +197,7 @@ export function calculateInventoryOpeningEquityByMonth(
   totals[monthIndex] = roundInventoryCurrency(
     Number(config.opening_inventory_value) || 0,
   );
-  totals[FULL_YEAR_INDEX] = totals[monthIndex];
+  totals[FULL_YEAR_INDEX] = totals[11];
   return totals;
 }
 
