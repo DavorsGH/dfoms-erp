@@ -29,6 +29,7 @@ import type { PosCartLine } from "@/app/dashboard/pos/pos-utils";
 import { sendResendEmail } from "@/utils/resend-email";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
+import { createShortLinkUrl } from "@/utils/short-links";
 
 export const runtime = "nodejs";
 
@@ -56,6 +57,19 @@ type IncomeRow = ProductSaleIncomeLine & {
 };
 
 const REQUEST_PAYMENT_CHANNELS = ["card", "mobile_money"] as const;
+
+/** SMS-only: store Paystack checkout URL in short_links; email keeps the full URL. */
+async function smsPaymentLinkUrl(checkoutUrl: string): Promise<string> {
+  try {
+    return await createShortLinkUrl(checkoutUrl);
+  } catch (error) {
+    console.error(
+      "[paystack/initialize] short-link create failed; using full checkout URL in SMS:",
+      error instanceof Error ? error.message : error,
+    );
+    return checkoutUrl;
+  }
+}
 
 async function deliverPaymentLink(options: {
   sendEmail: boolean;
@@ -98,9 +112,10 @@ async function deliverPaymentLink(options: {
   }
 
   if (options.sendSms && options.deliveryPhone) {
+    const smsLink = await smsPaymentLinkUrl(options.link);
     const smsResult = await sendHubtelSms({
       to: options.deliveryPhone,
-      content: `Davors: Pay GHS ${options.amountLabel} for ${options.invoiceLabel}: ${options.link}`,
+      content: `Davors: Pay GHS ${options.amountLabel} for ${options.invoiceLabel}: ${smsLink}`,
       tenantName: options.tenantName,
       recipientName: options.recipientName,
     });
