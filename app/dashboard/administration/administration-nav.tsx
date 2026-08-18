@@ -8,6 +8,7 @@ import {
   getPlatformAdministrationGroups,
   isPlatformAdministrationPath,
   MONITORING_SUPPORT_GROUP_ID,
+  PLATFORM_SETTINGS_GROUP_ID,
   type AdministrationNavGroup,
 } from "./administration-nav-config";
 
@@ -17,6 +18,11 @@ const tabClassName = (active: boolean) =>
       ? "bg-[#0f2744] text-white"
       : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
   }`;
+
+const PLATFORM_ADMIN_GROUP_IDS = new Set([
+  PLATFORM_SETTINGS_GROUP_ID,
+  MONITORING_SUPPORT_GROUP_ID,
+]);
 
 function withFilteredItems(
   group: AdministrationNavGroup,
@@ -39,6 +45,10 @@ function AdministrationTabGroup({
   group: AdministrationNavGroup;
   pathname: string;
 }) {
+  if (group.items.length === 0) {
+    return null;
+  }
+
   return (
     <div>
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -73,29 +83,37 @@ export default function AdministrationNav({
 }: AdministrationNavProps) {
   const pathname = usePathname();
   const activeGroup = getActiveAdministrationGroup(pathname);
-  const showPlatformTabGroups =
-    isPlatformAdministrationPath(pathname) && showPlatformMonitoringTabs;
+  const onPlatformAdminPage = isPlatformAdministrationPath(pathname);
 
-  if (showPlatformTabGroups) {
-    const groups = getPlatformAdministrationGroups().map((group) =>
-      withFilteredItems(group, showPlatformMonitoringTabs),
+  // Davors platform admins: Platform Settings + Monitoring & Support tab rows
+  // are always available on every Administration page (page-level grouping only;
+  // these groups are intentionally not duplicated in the sidebar sub-nav).
+  if (showPlatformMonitoringTabs) {
+    const platformGroups = getPlatformAdministrationGroups().map((group) =>
+      withFilteredItems(group, true),
     );
+    const showSectionTabs =
+      !onPlatformAdminPage && !PLATFORM_ADMIN_GROUP_IDS.has(activeGroup.id);
 
     return (
       <nav className="mb-6 space-y-4 border-b border-slate-200 pb-4">
-        {groups.map((group) => (
+        {platformGroups.map((group) => (
           <AdministrationTabGroup
             key={group.id}
             group={group}
             pathname={pathname}
           />
         ))}
+        {showSectionTabs ? (
+          <AdministrationTabGroup group={activeGroup} pathname={pathname} />
+        ) : null}
       </nav>
     );
   }
 
+  // Tenant / landlord admins: Monitoring & Support shows Login Activity only.
   if (activeGroup.id === MONITORING_SUPPORT_GROUP_ID) {
-    const group = withFilteredItems(activeGroup, showPlatformMonitoringTabs);
+    const group = withFilteredItems(activeGroup, false);
 
     return (
       <nav className="mb-6 border-b border-slate-200 pb-4">
