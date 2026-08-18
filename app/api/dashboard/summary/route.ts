@@ -7,6 +7,7 @@ import {
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
 import { createClient } from "@/utils/supabase/server";
+import { fetchTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,14 @@ export async function GET() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const dashboardPageData = await fetchDashboardPageData(supabase, tenantId);
-  const viewModel = buildOwnerDashboardViewModel(dashboardPageData, tenantId);
+  const [viewModelBase, balanceSheetIntegrity] = await Promise.all([
+    Promise.resolve(buildOwnerDashboardViewModel(dashboardPageData, tenantId)),
+    fetchTenantBalanceSheetIntegrityStatus(tenantId),
+  ]);
+  const viewModel = {
+    ...viewModelBase,
+    balanceSheetIntegrity,
+  };
 
   return NextResponse.json({
     tenantId,

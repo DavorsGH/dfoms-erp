@@ -52,7 +52,15 @@ type BalanceSheetProps = {
   initialTaxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
   availableYears: number[];
   fetchError: string | null;
+  initialFocusMonth?: number | null;
+  initialFocusYear?: number | null;
 };
+
+const focusMonthHeaderClassName =
+  "sticky top-0 z-10 bg-amber-100 px-4 py-3 font-semibold text-amber-950 ring-2 ring-inset ring-amber-300";
+
+const focusMonthCellClassName =
+  "bg-amber-50 px-4 py-3 font-medium text-amber-950";
 
 const fullYearHeaderClassName =
   "sticky top-0 z-10 bg-slate-200 px-4 py-3 font-semibold text-[#0f2744]";
@@ -140,10 +148,20 @@ export default function BalanceSheet({
   initialTaxLedgerEntries = [],
   availableYears,
   fetchError,
+  initialFocusMonth = null,
+  initialFocusYear = null,
 }: BalanceSheetProps) {
-  const [selectedYear, setSelectedYear] = useState(() =>
-    getDefaultSelectedYear(availableYears),
-  );
+  const [selectedYear, setSelectedYear] = useState(() => {
+    if (
+      initialFocusYear !== null &&
+      availableYears.includes(initialFocusYear)
+    ) {
+      return initialFocusYear;
+    }
+    return getDefaultSelectedYear(availableYears);
+  });
+  const focusMonthIndex =
+    selectedYear === initialFocusYear ? initialFocusMonth : null;
 
   const report = useMemo(
     () =>
@@ -224,8 +242,15 @@ export default function BalanceSheet({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Line Item</th>
-              {MONTH_LABELS.map((month) => (
-                <th key={month} className={scrollableTableThClassName}>
+              {MONTH_LABELS.map((month, monthIndex) => (
+                <th
+                  key={month}
+                  className={
+                    focusMonthIndex === monthIndex
+                      ? focusMonthHeaderClassName
+                      : scrollableTableThClassName
+                  }
+                >
                   {month} {report.financialYear}
                 </th>
               ))}
@@ -258,7 +283,14 @@ export default function BalanceSheet({
                     {row.amounts
                       .slice(0, FULL_YEAR_INDEX)
                       .map((amount, monthIndex) => (
-                        <td key={monthIndex} className="px-4 py-3">
+                        <td
+                          key={monthIndex}
+                          className={
+                            focusMonthIndex === monthIndex
+                              ? focusMonthCellClassName
+                              : "px-4 py-3"
+                          }
+                        >
                           {formatGHS(amount)}
                         </td>
                       ))}

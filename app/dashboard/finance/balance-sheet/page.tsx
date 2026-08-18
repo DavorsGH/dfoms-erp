@@ -5,7 +5,26 @@ import BalanceSheet from "../balance-sheet";
 import { fetchBalanceSheetPageData } from "../balance-sheet-page-data";
 import BalanceSheetShell from "../balance-sheet-shell";
 
-export default async function BalanceSheetPage() {
+type BalanceSheetPageProps = {
+  searchParams: Promise<{ focusMonth?: string; year?: string }>;
+};
+
+export default async function BalanceSheetPage({ searchParams }: BalanceSheetPageProps) {
+  const { focusMonth: focusMonthParam, year: yearParam } = await searchParams;
+  const parsedFocusMonth = focusMonthParam ? Number(focusMonthParam) : null;
+  const initialFocusMonth =
+    parsedFocusMonth !== null &&
+    Number.isInteger(parsedFocusMonth) &&
+    parsedFocusMonth >= 0 &&
+    parsedFocusMonth <= 11
+      ? parsedFocusMonth
+      : null;
+  const parsedYear = yearParam ? Number(yearParam) : null;
+  const initialFocusYear =
+    parsedYear !== null && Number.isInteger(parsedYear) && parsedYear >= 2000
+      ? parsedYear
+      : null;
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const tenantId = await getCurrentUserTenantId();
@@ -53,6 +72,8 @@ export default async function BalanceSheetPage() {
         initialTaxLedgerEntries={initialTaxLedgerEntries}
         availableYears={availableYears}
         fetchError={fetchError}
+        initialFocusMonth={initialFocusMonth}
+        initialFocusYear={initialFocusYear}
       />
     </BalanceSheetShell>
   );

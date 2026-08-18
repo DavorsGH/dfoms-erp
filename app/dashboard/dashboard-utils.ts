@@ -43,6 +43,8 @@ import type {
 } from "./dashboard-spending-analysis-utils";
 import type { SalesAnalysisRow } from "./dashboard-sales-analysis-utils";
 import { isActiveIncomeForReporting } from "./finance/income-register-utils";
+import type { TenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
+import { emptyTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
 
 export type DashboardIncomeEntry = {
   date: string;
@@ -138,6 +140,8 @@ export type DashboardViewModel = {
   cashTrend: DashboardCashTrendPoint[];
   payrollTrend: DashboardPayrollTrendPoint[];
   lowStockRawMaterialCount: number;
+  /** Latest nightly cron balance-sheet-integrity snapshot for this tenant. */
+  balanceSheetIntegrity: TenantBalanceSheetIntegrityStatus;
   spendingAnalysisIncome: SpendingAnalysisIncomeRow[];
   spendingAnalysisExpenses: SpendingAnalysisExpenseRow[];
   salesAnalysisEntries: SalesAnalysisRow[];
@@ -870,6 +874,7 @@ export function buildDashboardViewModel(input: {
     cashTrend,
     payrollTrend,
     lowStockRawMaterialCount: input.lowStockRawMaterialCount ?? 0,
+    balanceSheetIntegrity: emptyTenantBalanceSheetIntegrityStatus(),
     spendingAnalysisIncome: [],
     spendingAnalysisExpenses: [],
     salesAnalysisEntries: [],

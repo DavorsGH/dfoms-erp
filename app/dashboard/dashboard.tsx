@@ -21,6 +21,7 @@ import type { DashboardVisibility } from "@/utils/rbac-access";
 import DashboardSpendingAnalysis from "./dashboard-spending-analysis";
 import DashboardSalesAnalysis from "./dashboard-sales-analysis";
 import { SummaryCard } from "./summary-card";
+import DashboardBalanceSheetIntegrityBanner from "./dashboard-balance-sheet-integrity-banner";
 
 type DashboardProps = {
   data: DashboardViewModel;
@@ -123,6 +124,11 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {fetchError}
         </p>
+      ) : null}
+
+      {visibility.showFinancialSummary &&
+      data.balanceSheetIntegrity.imbalancedMonthCount > 0 ? (
+        <DashboardBalanceSheetIntegrityBanner status={data.balanceSheetIntegrity} />
       ) : null}
 
       {visibility.showInventoryAlerts && data.lowStockRawMaterialCount > 0 ? (

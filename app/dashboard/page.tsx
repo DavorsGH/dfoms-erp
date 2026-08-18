@@ -21,6 +21,7 @@ import { buildOwnerDashboardViewModel } from "./owner-dashboard-view-model";
 import { fetchDashboardPageData } from "./dashboard-page-data";
 import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
+import { fetchTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
 
 export default async function DashboardPage() {
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -216,7 +217,14 @@ export default async function DashboardPage() {
   }
 
   const dashboardPageData = await fetchDashboardPageData(supabase, tenantId);
-  const dashboardData = buildOwnerDashboardViewModel(dashboardPageData, tenantId);
+  const [dashboardDataBase, balanceSheetIntegrity] = await Promise.all([
+    Promise.resolve(buildOwnerDashboardViewModel(dashboardPageData, tenantId)),
+    fetchTenantBalanceSheetIntegrityStatus(tenantId),
+  ]);
+  const dashboardData = {
+    ...dashboardDataBase,
+    balanceSheetIntegrity,
+  };
 
   return (
     <DashboardCacheShell
