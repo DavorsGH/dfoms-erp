@@ -21,6 +21,8 @@ export type TenantBalanceSheetIntegrityStatus = {
   /** Latest cron row status for this tenant, or null when no cron row exists yet. */
   cronStatus: SystemEventStatus | null;
   hasCronResult: boolean;
+  /** True when the status came from an on-demand live audit (not system_event_log). */
+  isLiveCheck?: boolean;
 };
 
 type TenantEventMetadata = {

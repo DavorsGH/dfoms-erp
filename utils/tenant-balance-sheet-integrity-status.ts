@@ -1,8 +1,13 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getCurrentFinancialYear } from "@/app/dashboard/finance/finance-year-utils";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { BS_INTEGRITY_EVENT_NAME } from "@/utils/balance-sheet-integrity-constants";
+import {
+  auditTenantBalanceSheetIntegrity,
+  type TenantBalanceSheetIntegrityResult,
+} from "@/utils/balance-sheet-integrity";
 import type { SystemEventStatus } from "@/utils/system-event-log-types";
 import {
   buildTenantBalanceSheetIntegrityStatusFromMetadata,
@@ -58,4 +63,82 @@ export async function fetchTenantBalanceSheetIntegrityStatus(
     cronStatus: data.status as SystemEventStatus,
     referenceDate: options.referenceDate,
   });
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function buildStatusFromAuditResult(
+  result: TenantBalanceSheetIntegrityResult,
+  checkedAt: Date,
+): TenantBalanceSheetIntegrityStatus {
+  const imbalances = result.imbalances.map((row) => ({
+    monthIndex: row.monthIndex,
+    monthLabel: row.monthLabel,
+    diff: roundCurrency(row.diff),
+  }));
+
+  const worst =
+    imbalances.length > 0
+      ? imbalances.reduce((best, row) =>
+          Math.abs(row.diff) > Math.abs(best.diff) ? row : best,
+        )
+      : null;
+
+  return {
+    imbalancedMonthCount: imbalances.length,
+    worstDiff: worst ? Math.abs(worst.diff) : roundCurrency(result.maxAbsDiff),
+    worstMonthLabel: worst?.monthLabel ?? null,
+    worstMonthIndex: worst?.monthIndex ?? null,
+    imbalances,
+    fiscalYear: result.fiscalYear,
+    checkedAt: checkedAt.toISOString(),
+    isStale: false,
+    cronStatus: result.status,
+    hasCronResult: false,
+    isLiveCheck: true,
+  };
+}
+
+/**
+ * On-demand live BS audit for one tenant. Does not write system_event_log.
+ * Caller must pass session-resolved tenantId only.
+ */
+export async function runLiveTenantBalanceSheetIntegrityCheck(
+  tenantId: string,
+  options: {
+    admin?: SupabaseClient;
+    referenceDate?: Date;
+  } = {},
+): Promise<TenantBalanceSheetIntegrityStatus> {
+  const admin = options.admin ?? createAdminClient();
+  const referenceDate = options.referenceDate ?? new Date();
+  const fiscalYear = getCurrentFinancialYear();
+
+  const { data: tenant, error: tenantError } = await admin
+    .from("tenants")
+    .select("id, name")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  if (tenantError) {
+    throw new Error(tenantError.message);
+  }
+  if (!tenant) {
+    throw new Error("Tenant not found");
+  }
+
+  const result = await auditTenantBalanceSheetIntegrity(
+    admin,
+    { id: tenant.id, name: tenant.name },
+    fiscalYear,
+    referenceDate,
+  );
+
+  if (result.fetchError) {
+    throw new Error(result.fetchError);
+  }
+
+  return buildStatusFromAuditResult(result, referenceDate);
 }

@@ -126,9 +126,10 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
         </p>
       ) : null}
 
-      {visibility.showFinancialSummary &&
-      data.balanceSheetIntegrity.imbalancedMonthCount > 0 ? (
-        <DashboardBalanceSheetIntegrityBanner status={data.balanceSheetIntegrity} />
+      {visibility.showFinancialSummary ? (
+        <DashboardBalanceSheetIntegrityBanner
+          initialStatus={data.balanceSheetIntegrity}
+        />
       ) : null}
 
       {visibility.showInventoryAlerts && data.lowStockRawMaterialCount > 0 ? (

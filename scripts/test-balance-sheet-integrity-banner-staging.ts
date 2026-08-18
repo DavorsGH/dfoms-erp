@@ -2,6 +2,7 @@
  * Staging: tenant isolation + banner data path for balance-sheet-integrity status.
  *
  *   npx tsx scripts/test-balance-sheet-integrity-banner-staging.ts --env-file .env.staging.local
+ *   npx tsx scripts/test-balance-sheet-integrity-banner-staging.ts --env-file .env.local.backup --allow-production
  */
 import { execFileSync } from "node:child_process";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -10,14 +11,19 @@ import {
   buildTenantBalanceSheetIntegrityStatusFromMetadata,
 } from "../utils/tenant-balance-sheet-integrity-status-core";
 import { BS_INTEGRITY_EVENT_NAME } from "../utils/balance-sheet-integrity-constants";
+import { auditTenantBalanceSheetIntegrity } from "../utils/balance-sheet-integrity";
+import { getCurrentFinancialYear } from "../app/dashboard/finance/finance-year-utils";
 
 const STAGING_APP_URL = (
   process.env.STAGING_APP_URL ??
+  process.env.PRODUCTION_APP_URL ??
   "https://dfoms-erp-git-staging-davorsghs-projects.vercel.app"
 ).replace(/\/$/, "");
 
 const DAVORS = "00000001-0000-4000-8000-000000000001";
-const CAANTA = "61e8e5d9-9cdb-4b8d-9e44-ed0acc23d87b";
+const CAANTA =
+  process.env.PRODUCTION_CAANTA_TENANT_ID ??
+  "61e8e5d9-9cdb-4b8d-9e44-ed0acc23d87b";
 const PASSWORD = "BsBanner-Iso-7Kx9!";
 const stamp = Date.now().toString(36);
 
@@ -102,9 +108,11 @@ async function fetchStatusRoute(
   cookieHeader: string,
   bypass: string,
   extraQuery = "",
+  method: "GET" | "POST" = "GET",
 ) {
   const url = `${STAGING_APP_URL}/api/dashboard/balance-sheet-integrity-status${extraQuery}`;
   const resp = await fetch(url, {
+    method,
     headers: {
       Cookie: cookieHeader,
       "x-vercel-protection-bypass": bypass,
@@ -144,6 +152,7 @@ async function cleanupUser(admin: SupabaseClient, authUid: string) {
 }
 
 async function main() {
+  const allowProduction = process.argv.includes("--allow-production");
   loadEnvFromArgv(process.argv.slice(2));
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -151,8 +160,12 @@ async function main() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     "";
-  assert(url.includes("wieflwbfdmjtsdnwbfii"), "Refusing non-staging Supabase");
-  assert(serviceKey && anonKey.length > 20, "Missing staging keys");
+  if (allowProduction) {
+    assert(url.includes("tvcurcnmasnocwdxzgvz"), "Refusing non-production Supabase");
+  } else {
+    assert(url.includes("wieflwbfdmjtsdnwbfii"), "Refusing non-staging Supabase");
+  }
+  assert(serviceKey && anonKey.length > 20, "Missing Supabase keys");
 
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -161,7 +174,9 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  console.log("=== Balance Sheet integrity banner — staging tests ===\n");
+  console.log(
+    `=== Balance Sheet integrity banner — ${allowProduction ? "production" : "staging"} tests ===\n`,
+  );
 
   const parsed = buildTenantBalanceSheetIntegrityStatusFromMetadata({
     metadata: {
@@ -274,6 +289,68 @@ async function main() {
     });
     assert(unauth.status === 401, `Unauthenticated must 401, got ${unauth.status}`);
     console.log("PASS — unauthenticated request rejected");
+
+    const liveAudit = await auditTenantBalanceSheetIntegrity(
+      admin,
+      { id: CAANTA, name: "Caanta Market" },
+      getCurrentFinancialYear(),
+    );
+    assert(!liveAudit.fetchError, liveAudit.fetchError ?? "live audit fetch failed");
+    console.log(
+      `PASS — live audit Caanta: imbalanced=${liveAudit.imbalances.length}, worst=${liveAudit.maxAbsDiff}`,
+    );
+
+    const cronBeforeLive = await fetchStatusForTenant(admin, CAANTA);
+    const { data: cronRowsBefore } = await admin
+      .from("system_event_log")
+      .select("id")
+      .eq("event_name", BS_INTEGRITY_EVENT_NAME)
+      .filter("metadata->>kind", "eq", "tenant")
+      .filter("metadata->>tenantId", "eq", CAANTA);
+    const cronCountBefore = cronRowsBefore?.length ?? 0;
+
+    const liveRoute = await fetchStatusRoute(caantaCookie, bypass, "", "POST");
+    assert(liveRoute.status === 200, `Caanta live POST HTTP ${liveRoute.status}`);
+    const liveBody = liveRoute.body as {
+      imbalancedMonthCount: number;
+      isLiveCheck?: boolean;
+      isStale: boolean;
+      hasCronResult: boolean;
+    };
+    assert(liveBody.isLiveCheck === true, "POST must return isLiveCheck");
+    assert(liveBody.isStale === false, "POST must return isStale false");
+    assert(liveBody.hasCronResult === false, "POST must not mark hasCronResult");
+    assert(
+      liveBody.imbalancedMonthCount === liveAudit.imbalances.length,
+      "POST live result must match direct audit",
+    );
+    console.log("PASS — POST live check returns fresh audit (no cron write)");
+
+    const { data: cronRowsAfter } = await admin
+      .from("system_event_log")
+      .select("id")
+      .eq("event_name", BS_INTEGRITY_EVENT_NAME)
+      .filter("metadata->>kind", "eq", "tenant")
+      .filter("metadata->>tenantId", "eq", CAANTA);
+    const cronCountAfter = cronRowsAfter?.length ?? 0;
+    assert(
+      cronCountAfter === cronCountBefore,
+      "POST live check must not insert system_event_log rows",
+    );
+
+    if (cronBeforeLive.imbalancedMonthCount > 0 && liveBody.imbalancedMonthCount === 0) {
+      console.log(
+        "PASS — stale cron banner would clear on Check now (cron imbalanced, live balanced)",
+      );
+    } else if (cronBeforeLive.imbalancedMonthCount === liveBody.imbalancedMonthCount) {
+      console.log(
+        "INFO — cron and live agree on imbalance count; stale-clear scenario not applicable",
+      );
+    }
+
+    const rapidSecond = await fetchStatusRoute(caantaCookie, bypass, "", "POST");
+    assert(rapidSecond.status === 429, `rapid POST must 429, got ${rapidSecond.status}`);
+    console.log("PASS — POST rate limit enforced");
   } finally {
     if (davorsUid) await cleanupUser(admin, davorsUid);
     if (caantaUid) await cleanupUser(admin, caantaUid);
