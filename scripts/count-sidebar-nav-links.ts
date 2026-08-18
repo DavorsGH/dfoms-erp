@@ -12,7 +12,7 @@ function countForRole(role: Parameters<typeof getSidebarNavItems>[0], showPlatfo
   const top = getSidebarNavItems(role);
   const admin = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: showPlatform,
-    showMonitoringSupport: true,
+    showLeaveApprovals: true,
   });
   const reports = REPORT_SIDEBAR_LINKS.length;
   const hr = HR_MANAGEMENT_SIDEBAR_LINKS.length;

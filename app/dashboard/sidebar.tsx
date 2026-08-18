@@ -125,23 +125,20 @@ function CloseIcon() {
 function useSidebarExpandableSection(isActive: boolean) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const isExpanded = isActive || isOpen;
 
   useEffect(() => {
-    if (!isActive) {
+    if (isActive) {
+      setIsOpen(true);
+    } else {
       setIsOpen(false);
     }
   }, [pathname, isActive]);
 
   function handleToggle() {
-    if (isActive) {
-      return;
-    }
-
     setIsOpen((current) => !current);
   }
 
-  return { isExpanded, handleToggle };
+  return { isExpanded: isOpen, handleToggle };
 }
 
 type SidebarExpandableNavSectionProps = {
@@ -210,21 +207,13 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const navItems = getSidebarNavItems(userRole);
-  const showMonitoringSupport = userRole === "super_admin";
   const administrationLinks = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: showPlatformSettings,
-    showMonitoringSupport,
+    showLeaveApprovals,
   });
   const workspaceLogoUrl = tenantBranding.workspaceLogoUrl;
   const workspaceName = tenantBranding.workspaceName;
   const usesRemoteLogo = workspaceLogoUrl.startsWith("http");
-
-  if (showLeaveApprovals) {
-    navItems.push({
-      label: "Leave Approvals",
-      href: "/dashboard/leave-approvals",
-    });
-  }
 
   if (showRealEstate) {
     const operationsIndex = navItems.findIndex(

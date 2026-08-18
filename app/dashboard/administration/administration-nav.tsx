@@ -4,9 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   getActiveAdministrationGroup,
-  getMonitoringSupportNavItems,
-  getPlatformAdministrationGroups,
-  isPlatformAdministrationPath,
+  LEAVE_APPROVALS_HREF,
   MONITORING_SUPPORT_GROUP_ID,
   PLATFORM_SETTINGS_GROUP_ID,
   type AdministrationNavGroup,
@@ -19,31 +17,19 @@ const tabClassName = (active: boolean) =>
       : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
   }`;
 
-const PLATFORM_ADMIN_GROUP_IDS = new Set([
+const SIDEBAR_NAV_GROUP_IDS = new Set([
   PLATFORM_SETTINGS_GROUP_ID,
   MONITORING_SUPPORT_GROUP_ID,
 ]);
 
-function withFilteredItems(
-  group: AdministrationNavGroup,
-  showPlatformMonitoringTabs: boolean,
-): AdministrationNavGroup {
-  if (group.id !== MONITORING_SUPPORT_GROUP_ID) {
-    return group;
-  }
-
-  return {
-    ...group,
-    items: getMonitoringSupportNavItems(showPlatformMonitoringTabs),
-  };
-}
-
 function AdministrationTabGroup({
   group,
   pathname,
+  showGroupLabel = true,
 }: {
   group: AdministrationNavGroup;
   pathname: string;
+  showGroupLabel?: boolean;
 }) {
   if (group.items.length === 0) {
     return null;
@@ -51,9 +37,11 @@ function AdministrationTabGroup({
 
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        {group.label}
-      </p>
+      {showGroupLabel ? (
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {group.label}
+        </p>
+      ) : null}
       <div className="flex gap-2 overflow-x-auto pb-1">
         {group.items.map((item) => {
           const active = pathname === item.href;
@@ -74,61 +62,22 @@ function AdministrationTabGroup({
   );
 }
 
-type AdministrationNavProps = {
-  showPlatformMonitoringTabs: boolean;
-};
-
-export default function AdministrationNav({
-  showPlatformMonitoringTabs,
-}: AdministrationNavProps) {
+export default function AdministrationNav() {
   const pathname = usePathname();
-  const activeGroup = getActiveAdministrationGroup(pathname);
-  const onPlatformAdminPage = isPlatformAdministrationPath(pathname);
 
-  // Davors platform admins: Platform Settings + Monitoring & Support tab rows
-  // are always available on every Administration page (page-level grouping only;
-  // these groups are intentionally not duplicated in the sidebar sub-nav).
-  if (showPlatformMonitoringTabs) {
-    const platformGroups = getPlatformAdministrationGroups().map((group) =>
-      withFilteredItems(group, true),
-    );
-    const showSectionTabs =
-      !onPlatformAdminPage && !PLATFORM_ADMIN_GROUP_IDS.has(activeGroup.id);
-
-    return (
-      <nav className="mb-6 space-y-4 border-b border-slate-200 pb-4">
-        {platformGroups.map((group) => (
-          <AdministrationTabGroup
-            key={group.id}
-            group={group}
-            pathname={pathname}
-          />
-        ))}
-        {showSectionTabs ? (
-          <AdministrationTabGroup group={activeGroup} pathname={pathname} />
-        ) : null}
-      </nav>
-    );
+  if (pathname.startsWith(LEAVE_APPROVALS_HREF)) {
+    return null;
   }
+
+  const activeGroup = getActiveAdministrationGroup(pathname);
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {activeGroup.items.map((item) => {
-          const active = pathname === item.href;
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              scroll
-              className={tabClassName(active)}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </div>
+      <AdministrationTabGroup
+        group={activeGroup}
+        pathname={pathname}
+        showGroupLabel={!SIDEBAR_NAV_GROUP_IDS.has(activeGroup.id)}
+      />
     </nav>
   );
 }

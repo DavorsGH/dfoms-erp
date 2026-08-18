@@ -1,5 +1,5 @@
 /**
- * Unit test: Davors platform Administration tab grouping.
+ * Unit test: Administration sidebar and tab grouping.
  * Usage: npx tsx scripts/test-administration-nav-grouping.ts
  */
 import assert from "node:assert/strict";
@@ -8,7 +8,11 @@ import {
   getAdministrationSidebarLinks,
   getMonitoringSupportNavItems,
   getPlatformAdministrationGroups,
+  isAdministrationGroupActive,
+  isAdministrationPath,
   isPlatformAdministrationPath,
+  LEAVE_APPROVALS_GROUP_ID,
+  LEAVE_APPROVALS_HREF,
   MONITORING_SUPPORT_GROUP_ID,
   PLATFORM_SETTINGS_GROUP_ID,
 } from "../app/dashboard/administration/administration-nav-config";
@@ -40,11 +44,36 @@ function run() {
 
   const davorsSidebar = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: true,
-    showMonitoringSupport: true,
+    showLeaveApprovals: true,
   });
-  assert.equal(davorsSidebar.length, 5);
   assert.deepEqual(
     davorsSidebar.map((l) => l.label),
+    [
+      "Finance Settings",
+      "HR Settings",
+      "Operations Settings",
+      "User Accounts",
+      "Workspace Settings",
+      "Leave Approvals",
+      "Platform Settings",
+      "Monitoring & Support",
+    ],
+  );
+  assert.equal(
+    davorsSidebar.find((l) => l.groupId === PLATFORM_SETTINGS_GROUP_ID)?.href,
+    "/dashboard/administration/tenants",
+  );
+  assert.equal(
+    davorsSidebar.find((l) => l.groupId === MONITORING_SUPPORT_GROUP_ID)?.href,
+    "/dashboard/administration/system-events",
+  );
+
+  const tenantSidebar = getAdministrationSidebarLinks({
+    isDavorsPlatformSuperAdmin: false,
+    showLeaveApprovals: false,
+  });
+  assert.deepEqual(
+    tenantSidebar.map((l) => l.label),
     [
       "Finance Settings",
       "HR Settings",
@@ -54,25 +83,6 @@ function run() {
     ],
   );
 
-  const tenantSidebar = getAdministrationSidebarLinks({
-    isDavorsPlatformSuperAdmin: false,
-    showMonitoringSupport: true,
-  });
-  assert.equal(tenantSidebar.length, 5);
-  assert(
-    !tenantSidebar.some((l) => l.groupId === MONITORING_SUPPORT_GROUP_ID),
-    "Tenant sidebar must not show empty Monitoring & Support group",
-  );
-
-  assert(
-    !davorsSidebar.some(
-      (l) =>
-        l.groupId === PLATFORM_SETTINGS_GROUP_ID ||
-        l.groupId === MONITORING_SUPPORT_GROUP_ID,
-    ),
-    "Platform admin groups are page tabs only for Davors, not sidebar entries",
-  );
-
   const groups = getPlatformAdministrationGroups();
   assert.equal(groups.length, 2);
 
@@ -80,6 +90,10 @@ function run() {
   assert(isPlatformAdministrationPath("/dashboard/administration/system-events"));
   assert(!isPlatformAdministrationPath("/dashboard/administration/workspace"));
   assert(!isPlatformAdministrationPath("/dashboard/administration/login-activity"));
+  assert(isAdministrationPath(LEAVE_APPROVALS_HREF));
+  assert(
+    isAdministrationGroupActive(LEAVE_APPROVALS_HREF, LEAVE_APPROVALS_GROUP_ID),
+  );
 
   console.log("PASS administration nav grouping");
 }

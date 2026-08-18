@@ -11,6 +11,8 @@ export type AdministrationNavGroup = {
 
 export const PLATFORM_SETTINGS_GROUP_ID = "platform-settings";
 export const MONITORING_SUPPORT_GROUP_ID = "monitoring-support";
+export const LEAVE_APPROVALS_GROUP_ID = "leave-approvals";
+export const LEAVE_APPROVALS_HREF = "/dashboard/leave-approvals";
 
 const PLATFORM_ADMIN_GROUP_IDS: readonly string[] = [
   PLATFORM_SETTINGS_GROUP_ID,
@@ -18,10 +20,12 @@ const PLATFORM_ADMIN_GROUP_IDS: readonly string[] = [
 ];
 
 export type AdministrationSidebarOptions = {
-  /** Davors platform super_admin — platform groups stay on the page tab row only. */
+  /** Davors platform super_admin — show Platform Settings + Monitoring & Support. */
   isDavorsPlatformSuperAdmin?: boolean;
-  /** Tenant super_admin — show Monitoring & Support in admin sub-nav when applicable. */
+  /** Tenant super_admin — reserved for future tenant-scoped monitoring links. */
   showMonitoringSupport?: boolean;
+  /** Approver queue for pending leave requests. */
+  showLeaveApprovals?: boolean;
 };
 
 export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
@@ -186,7 +190,8 @@ export function getMonitoringSupportNavItems(
 export function isAdministrationPath(pathname: string): boolean {
   return (
     pathname.startsWith("/dashboard/administration") ||
-    pathname.startsWith("/dashboard/user-accounts")
+    pathname.startsWith("/dashboard/user-accounts") ||
+    pathname.startsWith(LEAVE_APPROVALS_HREF)
   );
 }
 
@@ -232,28 +237,53 @@ export function getAdministrationSidebarLinks(
 ) {
   const {
     isDavorsPlatformSuperAdmin = false,
-    showMonitoringSupport = false,
+    showLeaveApprovals = false,
   } = options;
 
-  return ADMINISTRATION_GROUPS.filter((group) => {
+  const links: { label: string; href: string; groupId: string }[] = [];
+
+  for (const group of ADMINISTRATION_GROUPS) {
     if (group.id === PLATFORM_SETTINGS_GROUP_ID) {
-      return false;
+      if (isDavorsPlatformSuperAdmin) {
+        links.push({
+          label: group.label,
+          href: getAdministrationGroupDefaultHref(group),
+          groupId: group.id,
+        });
+      }
+      continue;
     }
 
     if (group.id === MONITORING_SUPPORT_GROUP_ID) {
-      return (
-        showMonitoringSupport &&
-        !isDavorsPlatformSuperAdmin &&
-        getMonitoringSupportNavItems(false).length > 0
-      );
+      if (
+        isDavorsPlatformSuperAdmin &&
+        getMonitoringSupportNavItems(true).length > 0
+      ) {
+        links.push({
+          label: group.label,
+          href: getAdministrationGroupDefaultHref(group),
+          groupId: group.id,
+        });
+      }
+      continue;
     }
 
-    return true;
-  }).map((group) => ({
-    label: group.label,
-    href: getAdministrationGroupDefaultHref(group),
-    groupId: group.id,
-  }));
+    links.push({
+      label: group.label,
+      href: getAdministrationGroupDefaultHref(group),
+      groupId: group.id,
+    });
+
+    if (group.id === "workspace-settings" && showLeaveApprovals) {
+      links.push({
+        label: "Leave Approvals",
+        href: LEAVE_APPROVALS_HREF,
+        groupId: LEAVE_APPROVALS_GROUP_ID,
+      });
+    }
+  }
+
+  return links;
 }
 
 export function isPlatformAdministrationPath(pathname: string): boolean {
@@ -274,6 +304,10 @@ export function isAdministrationGroupActive(
   pathname: string,
   groupId: string,
 ): boolean {
+  if (groupId === LEAVE_APPROVALS_GROUP_ID) {
+    return pathname.startsWith(LEAVE_APPROVALS_HREF);
+  }
+
   const group = ADMINISTRATION_GROUPS.find((entry) => entry.id === groupId);
   if (!group) {
     return false;
