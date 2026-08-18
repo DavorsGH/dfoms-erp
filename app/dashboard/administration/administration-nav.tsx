@@ -4,8 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   getActiveAdministrationGroup,
+  getMonitoringSupportNavItems,
   getPlatformAdministrationGroups,
   isPlatformAdministrationPath,
+  MONITORING_SUPPORT_GROUP_ID,
   type AdministrationNavGroup,
 } from "./administration-nav-config";
 
@@ -15,6 +17,20 @@ const tabClassName = (active: boolean) =>
       ? "bg-[#0f2744] text-white"
       : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
   }`;
+
+function withFilteredItems(
+  group: AdministrationNavGroup,
+  showPlatformMonitoringTabs: boolean,
+): AdministrationNavGroup {
+  if (group.id !== MONITORING_SUPPORT_GROUP_ID) {
+    return group;
+  }
+
+  return {
+    ...group,
+    items: getMonitoringSupportNavItems(showPlatformMonitoringTabs),
+  };
+}
 
 function AdministrationTabGroup({
   group,
@@ -48,13 +64,22 @@ function AdministrationTabGroup({
   );
 }
 
-export default function AdministrationNav() {
+type AdministrationNavProps = {
+  showPlatformMonitoringTabs: boolean;
+};
+
+export default function AdministrationNav({
+  showPlatformMonitoringTabs,
+}: AdministrationNavProps) {
   const pathname = usePathname();
   const activeGroup = getActiveAdministrationGroup(pathname);
-  const platformAdmin = isPlatformAdministrationPath(pathname);
+  const showPlatformTabGroups =
+    isPlatformAdministrationPath(pathname) && showPlatformMonitoringTabs;
 
-  if (platformAdmin) {
-    const groups = getPlatformAdministrationGroups();
+  if (showPlatformTabGroups) {
+    const groups = getPlatformAdministrationGroups().map((group) =>
+      withFilteredItems(group, showPlatformMonitoringTabs),
+    );
 
     return (
       <nav className="mb-6 space-y-4 border-b border-slate-200 pb-4">
@@ -65,6 +90,16 @@ export default function AdministrationNav() {
             pathname={pathname}
           />
         ))}
+      </nav>
+    );
+  }
+
+  if (activeGroup.id === MONITORING_SUPPORT_GROUP_ID) {
+    const group = withFilteredItems(activeGroup, showPlatformMonitoringTabs);
+
+    return (
+      <nav className="mb-6 border-b border-slate-200 pb-4">
+        <AdministrationTabGroup group={group} pathname={pathname} />
       </nav>
     );
   }

@@ -11,11 +11,22 @@ export type AdministrationNavGroup = {
 
 export const PLATFORM_SETTINGS_GROUP_ID = "platform-settings";
 export const MONITORING_SUPPORT_GROUP_ID = "monitoring-support";
+export const LOGIN_ACTIVITY_ADMIN_HREF =
+  "/dashboard/administration/login-activity";
 
 const PLATFORM_ADMIN_GROUP_IDS: readonly string[] = [
   PLATFORM_SETTINGS_GROUP_ID,
   MONITORING_SUPPORT_GROUP_ID,
 ];
+
+export type AdministrationSidebarOptions = {
+  /** Davors platform super_admin — platform groups stay on the page tab row only. */
+  isDavorsPlatformSuperAdmin?: boolean;
+  /** Tenant super_admin or director — show Monitoring & Support in admin sub-nav. */
+  showMonitoringSupport?: boolean;
+  /** Director may only open Login Activity under Administration. */
+  directorLoginActivityOnly?: boolean;
+};
 
 export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
   {
@@ -119,10 +130,6 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Report a Problem",
         href: "/dashboard/administration/report-a-problem",
       },
-      {
-        label: "Login Activity",
-        href: "/dashboard/login-activity",
-      },
     ],
   },
   {
@@ -159,9 +166,30 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Support Tickets",
         href: "/dashboard/administration/support-tickets",
       },
+      {
+        label: "Login Activity",
+        href: LOGIN_ACTIVITY_ADMIN_HREF,
+      },
     ],
   },
 ] as const;
+
+export function getMonitoringSupportNavItems(
+  showPlatformTabs: boolean,
+): AdministrationNavItem[] {
+  const group = ADMINISTRATION_GROUPS.find(
+    (entry) => entry.id === MONITORING_SUPPORT_GROUP_ID,
+  );
+  if (!group) {
+    return [];
+  }
+
+  if (showPlatformTabs) {
+    return [...group.items];
+  }
+
+  return group.items.filter((item) => item.href === LOGIN_ACTIVITY_ADMIN_HREF);
+}
 
 export function isAdministrationPath(pathname: string): boolean {
   return (
@@ -204,15 +232,37 @@ export function getActiveAdministrationGroup(
 export function getAdministrationGroupDefaultHref(
   group: AdministrationNavGroup,
 ): string {
+  if (group.id === MONITORING_SUPPORT_GROUP_ID) {
+    return LOGIN_ACTIVITY_ADMIN_HREF;
+  }
+
   return group.items[0]?.href ?? "/dashboard/administration/expense-categories";
 }
 
 export function getAdministrationSidebarLinks(
-  _includePlatformSettings = false,
+  options: AdministrationSidebarOptions = {},
 ) {
-  return ADMINISTRATION_GROUPS.filter(
-    (group) => !PLATFORM_ADMIN_GROUP_IDS.includes(group.id),
-  ).map((group) => ({
+  const {
+    isDavorsPlatformSuperAdmin = false,
+    showMonitoringSupport = false,
+    directorLoginActivityOnly = false,
+  } = options;
+
+  return ADMINISTRATION_GROUPS.filter((group) => {
+    if (group.id === PLATFORM_SETTINGS_GROUP_ID) {
+      return false;
+    }
+
+    if (group.id === MONITORING_SUPPORT_GROUP_ID) {
+      return showMonitoringSupport && !isDavorsPlatformSuperAdmin;
+    }
+
+    if (directorLoginActivityOnly) {
+      return false;
+    }
+
+    return true;
+  }).map((group) => ({
     label: group.label,
     href: getAdministrationGroupDefaultHref(group),
     groupId: group.id,
@@ -231,7 +281,7 @@ export function getPlatformAdministrationGroups(): AdministrationNavGroup[] {
   );
 }
 
-export const ADMINISTRATION_SIDEBAR_LINKS = getAdministrationSidebarLinks(true);
+export const ADMINISTRATION_SIDEBAR_LINKS = getAdministrationSidebarLinks();
 
 export function isAdministrationGroupActive(
   pathname: string,

@@ -10,7 +10,10 @@ import { INVENTORY_SIDEBAR_LINKS } from "../app/dashboard/inventory/inventory-na
 
 function countForRole(role: Parameters<typeof getSidebarNavItems>[0], showPlatform: boolean, showRealEstate: boolean) {
   const top = getSidebarNavItems(role);
-  const admin = getAdministrationSidebarLinks(showPlatform);
+  const admin = getAdministrationSidebarLinks({
+    isDavorsPlatformSuperAdmin: showPlatform,
+    showMonitoringSupport: true,
+  });
   const reports = REPORT_SIDEBAR_LINKS.length;
   const hr = HR_MANAGEMENT_SIDEBAR_LINKS.length;
   const inventory = INVENTORY_SIDEBAR_LINKS.length;
