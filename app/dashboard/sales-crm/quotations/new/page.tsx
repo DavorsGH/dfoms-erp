@@ -65,6 +65,7 @@ export default async function NewClientQuotationPage() {
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
       .eq("tenant_id", tenantId)
+      .eq("is_archived", false)
       .order("product_name", { ascending: true }),
     peekNextQuotationNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),

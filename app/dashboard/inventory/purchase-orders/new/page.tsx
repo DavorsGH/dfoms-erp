@@ -63,6 +63,7 @@ export default async function NewPurchaseOrderPage() {
       .select(PO_FINISHED_PRODUCT_OPTION_SELECT)
       .eq("tenant_id", tenantId)
       .eq("sourcing_type", "purchased")
+      .eq("is_archived", false)
       .order("product_name", { ascending: true }),
   ]);
 

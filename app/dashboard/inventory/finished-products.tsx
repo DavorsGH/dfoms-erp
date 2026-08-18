@@ -6,11 +6,13 @@ import FinishedProductPhoto from "@/components/finished-product-photo";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
 import RegisterRowActions, {
+  confirmArchiveEntry,
   getStripedRowClassName,
 } from "../finance/register-row-actions";
 import {
   buildFinishedProductDeleteMessage,
   confirmCascadeDelete,
+  finishedProductHasBlockingPurchaseHistory,
   normalizeFinishedProductDeletePreview,
 } from "./inventory-delete-utils";
 import ScrollableTable, {
@@ -27,6 +29,7 @@ import {
   buildFinishedProductSavePayload,
   DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
   fetchFinishedProductLotDateSources,
+  fetchFinishedProductPurchaseCounts,
   FINISHED_PRODUCT_SELECT,
   FINISHED_PRODUCT_SOURCING_OPTIONS,
   finishedProductToForm,
@@ -37,6 +40,7 @@ import {
   type FinishedProductSourcingType,
 } from "./finished-products-utils";
 import type { SupplierRow } from "@/utils/suppliers-types";
+import { getFinishedProductDeleteErrorMessage, FINISHED_PRODUCT_DELETE_BLOCKED_MESSAGE } from "@/utils/finished-product-delete-errors";
 
 type FinishedProductsProps = {
   initialProducts: FinishedProductRecord[];
@@ -67,6 +71,10 @@ export default function FinishedProducts({
   const [showForm, setShowForm] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [archivingProductId, setArchivingProductId] = useState<string | null>(null);
+  const [purchaseCountByProductId, setPurchaseCountByProductId] = useState<
+    Record<string, number>
+  >({});
   const [form, setForm] = useState(emptyForm);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -77,13 +85,30 @@ export default function FinishedProducts({
     setProducts(initialProducts.map(normalizeFinishedProduct));
   }, [initialProducts]);
 
+  useEffect(() => {
+    void fetchFinishedProductPurchaseCounts(supabase).then((result) => {
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setPurchaseCountByProductId(
+        Object.fromEntries(result.countsByProductId.entries()),
+      );
+    });
+  }, [supabase]);
+
   async function refreshData() {
-    const [{ data, error: refreshError }, lotDatesResult] = await Promise.all([
+    const [
+      { data, error: refreshError },
+      lotDatesResult,
+      purchaseCountsResult,
+    ] = await Promise.all([
       supabase
         .from("finished_products")
         .select(FINISHED_PRODUCT_SELECT)
         .order("product_name", { ascending: true }),
       fetchFinishedProductLotDateSources(supabase),
+      fetchFinishedProductPurchaseCounts(supabase),
     ]);
 
     if (refreshError) {
@@ -94,6 +119,10 @@ export default function FinishedProducts({
       setError(lotDatesResult.error);
       return;
     }
+    if (purchaseCountsResult.error) {
+      setError(purchaseCountsResult.error);
+      return;
+    }
 
     setProducts(
       mergeFinishedProductsWithLotDates(
@@ -102,6 +131,9 @@ export default function FinishedProducts({
         ),
         lotDatesResult.lots,
       ),
+    );
+    setPurchaseCountByProductId(
+      Object.fromEntries(purchaseCountsResult.countsByProductId.entries()),
     );
     setError(null);
   }
@@ -217,9 +249,41 @@ export default function FinishedProducts({
     setLoading(false);
   }
 
+  async function handleArchive(productId: string) {
+    if (!confirmArchiveEntry("finished product")) {
+      return;
+    }
+
+    setArchivingProductId(productId);
+    setError(null);
+
+    const { error: archiveError } = await supabase
+      .from("finished_products")
+      .update({
+        is_archived: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", productId);
+
+    if (archiveError) {
+      setError(archiveError.message);
+      setArchivingProductId(null);
+      return;
+    }
+
+    if (editingProductId === productId) {
+      closeForm();
+    }
+
+    await refreshData();
+    setArchivingProductId(null);
+  }
+
   async function handleDelete(productId: string) {
     setDeletingProductId(productId);
     setError(null);
+
+    const purchaseCount = purchaseCountByProductId[productId] ?? 0;
 
     const { data: previewData, error: previewError } = await supabase.rpc(
       "preview_finished_product_delete",
@@ -232,7 +296,14 @@ export default function FinishedProducts({
       return;
     }
 
-    const preview = normalizeFinishedProductDeletePreview(previewData);
+    const preview = normalizeFinishedProductDeletePreview(previewData, purchaseCount);
+
+    if (finishedProductHasBlockingPurchaseHistory(preview)) {
+      setError(FINISHED_PRODUCT_DELETE_BLOCKED_MESSAGE);
+      setDeletingProductId(null);
+      return;
+    }
+
     if (!confirmCascadeDelete(buildFinishedProductDeleteMessage(preview))) {
       setDeletingProductId(null);
       return;
@@ -244,7 +315,7 @@ export default function FinishedProducts({
     );
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(getFinishedProductDeleteErrorMessage(deleteError));
       setDeletingProductId(null);
       return;
     }
@@ -505,6 +576,10 @@ export default function FinishedProducts({
                 const expirationStatus = getFinishedProductExpirationStatus(
                   product.expiration_date,
                 );
+                const purchaseCount = purchaseCountByProductId[product.id] ?? 0;
+                const hasBlockingPurchaseHistory = purchaseCount > 0;
+                const showDeactivateAction =
+                  product.is_archived || hasBlockingPurchaseHistory;
 
                 return (
                 <tr key={product.id} className={getStripedRowClassName(index)}>
@@ -517,7 +592,14 @@ export default function FinishedProducts({
                   </td>
                   <td className="px-4 py-3">{product.product_code}</td>
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
-                    {product.product_name}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>{product.product_name}</span>
+                      {product.is_archived ? (
+                        <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700">
+                          Inactive
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-3">{product.unit_of_measure}</td>
                   <td className="px-4 py-3">
@@ -549,8 +631,20 @@ export default function FinishedProducts({
                   {!readOnly ? (
                   <RegisterRowActions
                     onEdit={() => openEditForm(product)}
-                    onDelete={() => handleDelete(product.id)}
+                    onDelete={
+                      showDeactivateAction
+                        ? undefined
+                        : () => handleDelete(product.id)
+                    }
+                    onArchive={
+                      showDeactivateAction
+                        ? () => handleArchive(product.id)
+                        : undefined
+                    }
                     deleting={deletingProductId === product.id}
+                    archiving={archivingProductId === product.id}
+                    disableArchive={product.is_archived}
+                    archiveLabel="Deactivate"
                   />
                   ) : null}
                 </tr>

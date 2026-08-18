@@ -303,6 +303,7 @@ export default function ProductSales({
       const { data, error: productError } = await client
         .from("finished_products")
         .select(FINISHED_PRODUCT_SELECT)
+        .eq("is_archived", false)
         .order("product_name", { ascending: true });
 
       if (productError) {

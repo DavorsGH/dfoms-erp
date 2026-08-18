@@ -21,6 +21,7 @@ export type FinishedProductRecord = {
   /** Soonest lot expiration date (from batches/purchases), not finished_products. */
   expiration_date: string | null;
   photo_url: string | null;
+  is_archived: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -45,7 +46,7 @@ export const FINISHED_PRODUCT_SOURCING_OPTIONS = [
 
 /** Master columns only — lot dates live on production_batches / product_purchases. */
 export const FINISHED_PRODUCT_SELECT =
-  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, photo_url, created_at, updated_at";
+  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, photo_url, is_archived, created_at, updated_at";
 
 function normalizeDateOnly(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -191,6 +192,28 @@ export async function fetchFinishedProductLotDateSources(
   return { lots: [...batchLots, ...purchaseLots], error: null };
 }
 
+export async function fetchFinishedProductPurchaseCounts(
+  supabase: SupabaseClient,
+): Promise<{ countsByProductId: Map<string, number>; error: string | null }> {
+  const { data, error } = await supabase
+    .from("product_purchases")
+    .select("product_id");
+
+  if (error) {
+    return { countsByProductId: new Map(), error: error.message };
+  }
+
+  const countsByProductId = new Map<string, number>();
+  for (const row of (data as { product_id: string }[] | null) ?? []) {
+    countsByProductId.set(
+      row.product_id,
+      (countsByProductId.get(row.product_id) ?? 0) + 1,
+    );
+  }
+
+  return { countsByProductId, error: null };
+}
+
 export function normalizeFinishedProduct(
   raw: Omit<FinishedProductRecord, "manufacturing_date" | "expiration_date"> & {
     manufacturing_date?: string | null;
@@ -207,6 +230,7 @@ export function normalizeFinishedProduct(
     sourcing_type: raw.sourcing_type ?? DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
     supplier_id: raw.supplier_id ?? null,
     photo_url: raw.photo_url ?? null,
+    is_archived: raw.is_archived ?? false,
     manufacturing_date: normalizeDateOnly(raw.manufacturing_date),
     expiration_date: normalizeDateOnly(raw.expiration_date),
   };

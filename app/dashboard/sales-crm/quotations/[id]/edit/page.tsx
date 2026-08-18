@@ -75,6 +75,7 @@ export default async function EditClientQuotationPage({
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
       .eq("tenant_id", tenantId)
+      .eq("is_archived", false)
       .order("product_name", { ascending: true }),
     loadAuthorizedSignerOptions(supabase, tenantId),
     getCurrentTenantBillingSettingsHeader(),

@@ -49,6 +49,7 @@ export default async function ProductPurchasesPage() {
       .select(PURCHASED_PRODUCT_SELECT)
       .eq("tenant_id", tenantId)
       .eq("sourcing_type", "purchased")
+      .eq("is_archived", false)
       .order("product_name", { ascending: true }),
     supabase
       .from("suppliers")

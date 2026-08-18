@@ -82,7 +82,7 @@ export async function POST(request: Request) {
 
   const { data: product, error: productError } = await supabase
     .from("finished_products")
-    .select("id, sourcing_type")
+    .select("id, sourcing_type, is_archived")
     .eq("id", trimmed.product_id)
     .eq("tenant_id", auth.tenantId)
     .maybeSingle();
@@ -93,6 +93,13 @@ export async function POST(request: Request) {
 
   if (!product) {
     return NextResponse.json({ error: "Product not found." }, { status: 404 });
+  }
+
+  if (product.is_archived) {
+    return NextResponse.json(
+      { error: "This finished product is inactive and can't be used for new purchases." },
+      { status: 400 },
+    );
   }
 
   if (product.sourcing_type !== "purchased") {

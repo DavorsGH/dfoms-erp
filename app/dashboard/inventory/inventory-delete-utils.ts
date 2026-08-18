@@ -14,6 +14,7 @@ export type FinishedProductDeletePreview = {
   consumption_count: number;
   stock_movement_count: number;
   batch_count: number;
+  purchase_count: number;
 };
 
 function pluralize(count: number, singular: string, plural = `${singular}s`) {
@@ -58,6 +59,7 @@ export function buildRawMaterialDeleteMessage(
 
 export function normalizeFinishedProductDeletePreview(
   raw: unknown,
+  purchaseCount = 0,
 ): FinishedProductDeletePreview {
   const preview = (raw ?? {}) as Partial<FinishedProductDeletePreview>;
   return {
@@ -66,7 +68,15 @@ export function normalizeFinishedProductDeletePreview(
     consumption_count: Number(preview.consumption_count) || 0,
     stock_movement_count: Number(preview.stock_movement_count) || 0,
     batch_count: Number(preview.batch_count) || 0,
+    purchase_count:
+      Number(preview.purchase_count) || Number(purchaseCount) || 0,
   };
+}
+
+export function finishedProductHasBlockingPurchaseHistory(
+  preview: Pick<FinishedProductDeletePreview, "purchase_count">,
+): boolean {
+  return preview.purchase_count > 0;
 }
 
 export function buildFinishedProductDeleteMessage(

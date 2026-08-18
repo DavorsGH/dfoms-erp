@@ -98,6 +98,7 @@ export default function InternalConsumption({
       supabase
         .from("finished_products")
         .select(FINISHED_PRODUCT_SELECT)
+        .eq("is_archived", false)
         .order("product_name", { ascending: true }),
     ]);
 
