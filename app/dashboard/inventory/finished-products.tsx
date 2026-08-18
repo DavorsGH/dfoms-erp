@@ -7,6 +7,7 @@ import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
 import RegisterRowActions, {
   confirmArchiveEntry,
+  confirmReactivateEntry,
   getStripedRowClassName,
 } from "../finance/register-row-actions";
 import {
@@ -72,6 +73,7 @@ export default function FinishedProducts({
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [archivingProductId, setArchivingProductId] = useState<string | null>(null);
+  const [reactivatingProductId, setReactivatingProductId] = useState<string | null>(null);
   const [purchaseCountByProductId, setPurchaseCountByProductId] = useState<
     Record<string, number>
   >({});
@@ -277,6 +279,32 @@ export default function FinishedProducts({
 
     await refreshData();
     setArchivingProductId(null);
+  }
+
+  async function handleReactivate(productId: string) {
+    if (!confirmReactivateEntry("finished product")) {
+      return;
+    }
+
+    setReactivatingProductId(productId);
+    setError(null);
+
+    const { error: reactivateError } = await supabase
+      .from("finished_products")
+      .update({
+        is_archived: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", productId);
+
+    if (reactivateError) {
+      setError(reactivateError.message);
+      setReactivatingProductId(null);
+      return;
+    }
+
+    await refreshData();
+    setReactivatingProductId(null);
   }
 
   async function handleDelete(productId: string) {
@@ -579,7 +607,7 @@ export default function FinishedProducts({
                 const purchaseCount = purchaseCountByProductId[product.id] ?? 0;
                 const hasBlockingPurchaseHistory = purchaseCount > 0;
                 const showDeactivateAction =
-                  product.is_archived || hasBlockingPurchaseHistory;
+                  !product.is_archived && hasBlockingPurchaseHistory;
 
                 return (
                 <tr key={product.id} className={getStripedRowClassName(index)}>
@@ -632,7 +660,7 @@ export default function FinishedProducts({
                   <RegisterRowActions
                     onEdit={() => openEditForm(product)}
                     onDelete={
-                      showDeactivateAction
+                      showDeactivateAction || product.is_archived
                         ? undefined
                         : () => handleDelete(product.id)
                     }
@@ -641,9 +669,14 @@ export default function FinishedProducts({
                         ? () => handleArchive(product.id)
                         : undefined
                     }
+                    onRestore={
+                      product.is_archived
+                        ? () => handleReactivate(product.id)
+                        : undefined
+                    }
                     deleting={deletingProductId === product.id}
                     archiving={archivingProductId === product.id}
-                    disableArchive={product.is_archived}
+                    restoring={reactivatingProductId === product.id}
                     archiveLabel="Deactivate"
                   />
                   ) : null}

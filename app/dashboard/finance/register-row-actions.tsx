@@ -2,12 +2,14 @@ type RegisterRowActionsProps = {
   onEdit?: () => void;
   onDelete?: () => void;
   onArchive?: () => void;
+  onRestore?: () => void;
   onVoid?: () => void;
   onPrint?: () => void;
   onMarkPaid?: () => void;
   onRecordPayment?: () => void;
   deleting?: boolean;
   archiving?: boolean;
+  restoring?: boolean;
   voiding?: boolean;
   markingPaid?: boolean;
   recordingPayment?: boolean;
@@ -18,6 +20,7 @@ type RegisterRowActionsProps = {
   disableVoid?: boolean;
   voidLabel?: string;
   archiveLabel?: string;
+  restoreLabel?: string;
   printLabel?: string;
   markPaidLabel?: string;
   recordPaymentLabel?: string;
@@ -50,6 +53,12 @@ export function confirmArchiveEntry(label: string): boolean {
   );
 }
 
+export function confirmReactivateEntry(label: string): boolean {
+  return window.confirm(
+    `Reactivate this ${label}? It will appear again in dropdowns for new transactions.`,
+  );
+}
+
 export function confirmRawMaterialPurchaseDelete(): boolean {
   return window.confirm(
     "Delete this purchase? Stock and average cost will be recalculated and any linked Cash or Accounts Payable posting will be reversed.",
@@ -74,16 +83,21 @@ const voidButtonClassName =
 const archiveButtonClassName =
   "rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+const restoreButtonClassName =
+  "rounded-md border border-emerald-200 px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50";
+
 export default function RegisterRowActions({
   onEdit,
   onDelete,
   onArchive,
+  onRestore,
   onVoid,
   onPrint,
   onMarkPaid,
   onRecordPayment,
   deleting = false,
   archiving = false,
+  restoring = false,
   voiding = false,
   markingPaid = false,
   recordingPayment = false,
@@ -94,6 +108,7 @@ export default function RegisterRowActions({
   disableVoid = false,
   voidLabel = "Void Sale",
   archiveLabel = "Archive",
+  restoreLabel = "Reactivate",
   printLabel = "Print Receipt",
   markPaidLabel = "Mark as Paid",
   recordPaymentLabel = "Record Payment",
@@ -148,6 +163,15 @@ export default function RegisterRowActions({
             className={voidButtonClassName}
           >
             {voiding ? "Voiding…" : voidLabel}
+          </button>
+        ) : onRestore ? (
+          <button
+            type="button"
+            onClick={onRestore}
+            disabled={restoring}
+            className={restoreButtonClassName}
+          >
+            {restoring ? "Reactivating…" : restoreLabel}
           </button>
         ) : onArchive ? (
           <button

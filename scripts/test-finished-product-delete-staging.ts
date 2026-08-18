@@ -149,10 +149,47 @@ async function main() {
     if (countError) throw new Error(countError.message);
     assertTrue((purchaseCount ?? 0) === 1, "Purchase history should remain after archive");
 
+    const { data: hiddenWhenArchived, error: hiddenError } = await admin
+      .from("finished_products")
+      .select("id")
+      .eq("id", productId)
+      .eq("is_archived", false)
+      .maybeSingle();
+
+    if (hiddenError) throw new Error(hiddenError.message);
+    assertTrue(!hiddenWhenArchived, "Archived product should be excluded from active dropdown filter");
+
+    const { error: reactivateError } = await admin
+      .from("finished_products")
+      .update({ is_archived: false, updated_at: new Date().toISOString() })
+      .eq("id", productId);
+    if (reactivateError) throw new Error(reactivateError.message);
+
+    const { data: reactivated, error: reactivatedError } = await admin
+      .from("finished_products")
+      .select("is_archived")
+      .eq("id", productId)
+      .single();
+
+    if (reactivatedError) throw new Error(reactivatedError.message);
+    assertTrue(reactivated.is_archived === false, "Product should be active after reactivate");
+
+    const { data: visibleWhenActive, error: visibleError } = await admin
+      .from("finished_products")
+      .select("id")
+      .eq("id", productId)
+      .eq("is_archived", false)
+      .maybeSingle();
+
+    if (visibleError) throw new Error(visibleError.message);
+    assertTrue(Boolean(visibleWhenActive), "Reactivated product should match active dropdown filter");
+
     console.log("PASS: FK error maps to friendly message");
     console.log("PASS: Product without history hard-deletes");
     console.log("PASS: Product with purchase history blocks delete");
     console.log("PASS: archive sets is_archived while preserving history");
+    console.log("PASS: archived product hidden from active dropdown filter");
+    console.log("PASS: reactivate clears is_archived and restores dropdown visibility");
   } finally {
     if (productId) {
       await admin.from("product_purchases").delete().eq("product_id", productId);
