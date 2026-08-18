@@ -27,11 +27,7 @@ type TenantEventMetadata = {
   kind?: string;
   tenantId?: string;
   fiscalYear?: number;
-  imbalances?: Array<{
-    monthIndex?: number;
-    monthLabel?: string;
-    diff?: number;
-  }>;
+  imbalances?: TenantBalanceSheetIntegrityImbalance[];
   maxAbsDiff?: number;
 };
 
@@ -46,7 +42,9 @@ function parseTenantMetadata(
     return {};
   }
 
-  const imbalances = Array.isArray(metadata.imbalances)
+  const imbalances: TenantBalanceSheetIntegrityImbalance[] = Array.isArray(
+    metadata.imbalances,
+  )
     ? metadata.imbalances
         .filter(
           (row): row is { monthIndex: number; monthLabel: string; diff: number } =>
