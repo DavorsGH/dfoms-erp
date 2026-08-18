@@ -1,21 +1,16 @@
 import "server-only";
 
-/** OTP/auth SMS always send. Everything else respects NON_OTP_SMS_ENABLED. */
-export type SmsSendPurpose = "otp" | "transactional";
+import {
+  isNonOtpSmsSendingEnabled,
+  type SendSmsResult,
+  type SmsSendPurpose,
+} from "@/utils/sms-shared";
 
-export type SendSmsResult =
-  | { ok: true; id: string | null }
-  | { ok: false; error: string };
+export type { SendSmsResult, SmsSendPurpose } from "@/utils/sms-shared";
+export { isNonOtpSmsSendingEnabled } from "@/utils/sms-shared";
 
-/**
- * Temporary kill switch during Hubtel → new provider migration.
- * Default false: non-OTP SMS short-circuit at sendHubtelSms (no Hubtel call).
- * OTP/login/enrollment codes (purpose=otp) are always sent regardless.
- * Set NON_OTP_SMS_ENABLED=true to re-enable transactional SMS after migration.
- */
-export function isNonOtpSmsSendingEnabled(): boolean {
-  return process.env["NON_OTP_SMS_ENABLED"] === "true";
-}
+import { sendFormulaDcSms } from "@/utils/formula-dc-sms";
+import { resolveSmsProvider } from "@/utils/sms-provider";
 
 type HubtelSendResponse = {
   status?: unknown;
@@ -29,6 +24,8 @@ type HubtelSendResponse = {
  * Minimal Hubtel Programmable SMS sender.
  * Env: HUBTEL_CLIENT_ID, HUBTEL_CLIENT_SECRET, HUBTEL_SMS_FROM
  * Placeholder sender (e.g. DAVORS) until production-approved ID is set.
+ *
+ * When SMS_PROVIDER=formula_dc, delegates to Formula-DC before Hubtel logic runs.
  */
 export async function sendHubtelSms(options: {
   to: string;
@@ -37,6 +34,10 @@ export async function sendHubtelSms(options: {
   /** otp = MFA/login codes; transactional = all tenant notifications (default). */
   purpose?: SmsSendPurpose;
 }): Promise<SendSmsResult> {
+  if (resolveSmsProvider() === "formula_dc") {
+    return sendFormulaDcSms(options);
+  }
+
   const purpose = options.purpose ?? "transactional";
 
   if (purpose !== "otp" && !isNonOtpSmsSendingEnabled()) {

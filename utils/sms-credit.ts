@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/utils/supabase/admin";
-import { isNonOtpSmsSendingEnabled } from "@/utils/hubtel-sms";
+import { isNonOtpSmsSendingEnabled } from "@/utils/sms-shared";
 
 /**
  * Debit one SMS credit for the tenant. Returns true when the debit succeeds
