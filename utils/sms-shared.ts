@@ -14,5 +14,5 @@ export type SendSmsResult =
  * Set NON_OTP_SMS_ENABLED=true to re-enable transactional SMS after migration.
  */
 export function isNonOtpSmsSendingEnabled(): boolean {
-  return process.env["NON_OTP_SMS_ENABLED"] === "true";
+  return (process.env["NON_OTP_SMS_ENABLED"] ?? "").trim().toLowerCase() === "true";
 }
