@@ -327,7 +327,12 @@ async function notifyRecurringBillingResult(options: {
         : `Davors: ${options.labels.cycleAdjective} unit billing GHS ${options.amountGhs.toFixed(2)} charged for ${options.periodLabel} (${unitsLabel}).`
       : `Davors: ${options.labels.cycleAdjective} unit billing failed for ${options.periodLabel} (GHS ${options.amountGhs.toFixed(2)}). Update your payment method.`;
 
-    const smsResult = await sendHubtelSms({ to: phone, content: sms });
+    const smsResult = await sendHubtelSms({
+      to: phone,
+      content: sms,
+      tenantName: options.tenantName,
+      recipientName: options.tenantName,
+    });
     if (!smsResult.ok) {
       console.error(
         "[platform-only-unit-recurring-billing] notification SMS failed:",

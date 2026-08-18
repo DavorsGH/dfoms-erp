@@ -8,6 +8,7 @@ import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { notifyTenantAdminsAndDirectors } from "@/utils/tenant-admin-director-notifications";
 import { fireTransactionalNotification } from "@/utils/transactional-notification-trigger";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 type TenantOwnerContacts = {
   name: string | null;
@@ -90,6 +91,7 @@ async function loadTenantOwnerContacts(
 
 async function sendFallbackPaymentReceivedToCustomer(options: {
   tenantId: string;
+  tenantName: string;
   customerName: string;
   email: string | null;
   phone: string | null;
@@ -144,7 +146,12 @@ ${options.paymentReference ? `<p>Reference: ${escapeHtml(options.paymentReferenc
     const creditOk = await tryDebitSmsCredit(options.tenantId);
     if (creditOk) {
       const sms = `Davors: Received ${options.amountReceivedLabel} on invoice ${options.invoiceNo}. Balance: ${options.outstandingLabel}.`;
-      const result = await sendHubtelSms({ to: phone, content: sms });
+      const result = await sendHubtelSms({
+        to: phone,
+        content: sms,
+        tenantName: options.tenantName,
+        recipientName: options.customerName,
+      });
       if (result.ok) {
         sent = true;
       } else {
@@ -161,6 +168,7 @@ ${options.paymentReference ? `<p>Reference: ${escapeHtml(options.paymentReferenc
 
 async function notifyBusinessOwnerPaymentReceived(options: {
   tenantId: string;
+  tenantName: string;
   ownerName: string | null;
   email: string | null;
   phone: string | null;
@@ -219,7 +227,12 @@ async function notifyBusinessOwnerPaymentReceived(options: {
   if (phone) {
     try {
       const sms = `Davors: ${options.customerName} paid ${options.amountReceivedLabel} on invoice ${options.invoiceNo}. Balance: ${options.outstandingLabel}.`;
-      const result = await sendHubtelSms({ to: phone, content: sms });
+      const result = await sendHubtelSms({
+        to: phone,
+        content: sms,
+        tenantName: options.tenantName,
+        recipientName: ownerName,
+      });
       if (!result.ok) {
         console.error(
           "[product-sale-payment-notifications] owner SMS failed:",
@@ -255,6 +268,7 @@ export async function notifyProductSalePaymentReceived(
   options: NotifyProductSalePaymentReceivedOptions,
 ): Promise<void> {
   const admin = createAdminClient();
+  const tenantName = await resolveTenantDisplayName(admin, options.tenantId);
   const amountReceivedLabel = formatMoneyLabel(options.amountReceived);
   const outstandingLabel = formatOutstandingLabel(options.outstandingAfter);
   const invoiceNo =
@@ -314,6 +328,7 @@ export async function notifyProductSalePaymentReceived(
     } else {
       await sendFallbackPaymentReceivedToCustomer({
         tenantId: options.tenantId,
+        tenantName,
         customerName,
         email: customerEmail,
         phone: customerPhone,
@@ -332,6 +347,7 @@ export async function notifyProductSalePaymentReceived(
   const owner = await loadTenantOwnerContacts(admin, options.tenantId);
   await notifyBusinessOwnerPaymentReceived({
     tenantId: options.tenantId,
+    tenantName,
     ownerName: owner.name,
     email: owner.email,
     phone: owner.phone,

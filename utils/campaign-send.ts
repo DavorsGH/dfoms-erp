@@ -12,6 +12,7 @@ import {
 } from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 export const CAMPAIGN_SEND_BATCH_SIZE = 50;
 
@@ -421,6 +422,10 @@ export async function processCampaignSendBatch(
   const batchSize = options.batchSize ?? CAMPAIGN_SEND_BATCH_SIZE;
   const campaign = options.campaign;
   const template = options.template;
+  const tenantName = await resolveTenantDisplayName(
+    supabase,
+    options.tenantId,
+  );
 
   const { data: pendingRows, error: pendingError } = await supabase
     .from("campaign_recipients")
@@ -590,7 +595,12 @@ export async function processCampaignSendBatch(
         continue;
       }
 
-      const result = await sendHubtelSms({ to, content });
+      const result = await sendHubtelSms({
+        to,
+        content,
+        tenantName,
+        recipientName: vars.customer_name,
+      });
       if (result.ok) {
         await supabase
           .from("campaign_recipients")

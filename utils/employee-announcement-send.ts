@@ -17,6 +17,7 @@ import {
 import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { insertEmployeeInAppNotification } from "@/utils/employee-in-app-notifications";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 export const ANNOUNCEMENT_SEND_BATCH_SIZE = 50;
 
@@ -438,6 +439,10 @@ export async function processAnnouncementSendBatch(
   const batchSize = options.batchSize ?? ANNOUNCEMENT_SEND_BATCH_SIZE;
   const announcement = options.announcement;
   const content = options.content;
+  const tenantName = await resolveTenantDisplayName(
+    supabase,
+    options.tenantId,
+  );
 
   const { employees, logins, remaining } = await listRemainingEligible(
     supabase,
@@ -555,7 +560,12 @@ export async function processAnnouncementSendBatch(
           continue;
         }
 
-        const result = await sendHubtelSms({ to, content: resolvedBody });
+        const result = await sendHubtelSms({
+          to,
+          content: resolvedBody,
+          tenantName,
+          recipientName: employee.full_name?.trim() || employee.staff_id,
+        });
         if (result.ok) {
           await supabase.from("employee_announcement_recipients").insert({
             tenant_id: options.tenantId,

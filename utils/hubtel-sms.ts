@@ -1,13 +1,17 @@
 import "server-only";
 
 import {
+  formatTransactionalSmsBody,
   isNonOtpSmsSendingEnabled,
   type SendSmsResult,
   type SmsSendPurpose,
 } from "@/utils/sms-shared";
 
 export type { SendSmsResult, SmsSendPurpose } from "@/utils/sms-shared";
-export { isNonOtpSmsSendingEnabled } from "@/utils/sms-shared";
+export {
+  formatTransactionalSmsBody,
+  isNonOtpSmsSendingEnabled,
+} from "@/utils/sms-shared";
 
 import { sendFormulaDcSms } from "@/utils/formula-dc-sms";
 import { resolveSmsProvider } from "@/utils/sms-provider";
@@ -33,12 +37,25 @@ export async function sendHubtelSms(options: {
   from?: string;
   /** otp = MFA/login codes; transactional = all tenant notifications (default). */
   purpose?: SmsSendPurpose;
+  tenantName?: string | null;
+  recipientName?: string | null;
 }): Promise<SendSmsResult> {
-  if (resolveSmsProvider() === "formula_dc") {
-    return sendFormulaDcSms(options);
+  const purpose = options.purpose ?? "transactional";
+
+  let content = options.content.trim();
+  if (purpose !== "otp") {
+    content = formatTransactionalSmsBody({
+      tenantName: options.tenantName,
+      recipientName: options.recipientName,
+      body: content,
+    });
   }
 
-  const purpose = options.purpose ?? "transactional";
+  const routed = { ...options, content };
+
+  if (resolveSmsProvider() === "formula_dc") {
+    return sendFormulaDcSms(routed);
+  }
 
   if (purpose !== "otp" && !isNonOtpSmsSendingEnabled()) {
     console.warn(
@@ -65,8 +82,7 @@ export async function sendHubtelSms(options: {
     };
   }
 
-  const to = options.to.trim();
-  const content = options.content.trim();
+  const to = routed.to.trim();
   if (!to || !content) {
     return { ok: false, error: "SMS requires to and content." };
   }

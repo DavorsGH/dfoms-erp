@@ -16,3 +16,34 @@ export type SendSmsResult =
 export function isNonOtpSmsSendingEnabled(): boolean {
   return (process.env["NON_OTP_SMS_ENABLED"] ?? "").trim().toLowerCase() === "true";
 }
+
+const DEFAULT_SMS_TENANT_LABEL = "Davors Facilities";
+const DEFAULT_SMS_RECIPIENT_LABEL = "Customer";
+
+/**
+ * Prefix transactional SMS with shared-sender tenant/recipient context.
+ * OTP messages must not use this helper (see sendHubtelSms purpose gate).
+ */
+export function formatTransactionalSmsBody(options: {
+  tenantName?: string | null;
+  recipientName?: string | null;
+  body: string;
+}): string {
+  const rawTenant = options.tenantName?.trim();
+  const rawRecipient = options.recipientName?.trim();
+  const tenant = rawTenant || DEFAULT_SMS_TENANT_LABEL;
+  const recipient = rawRecipient || DEFAULT_SMS_RECIPIENT_LABEL;
+
+  if (!rawTenant) {
+    console.warn(
+      `[sms-shared] formatTransactionalSmsBody: missing tenantName; using fallback "${DEFAULT_SMS_TENANT_LABEL}".`,
+    );
+  }
+  if (!rawRecipient) {
+    console.warn(
+      `[sms-shared] formatTransactionalSmsBody: missing recipientName; using fallback "${DEFAULT_SMS_RECIPIENT_LABEL}".`,
+    );
+  }
+
+  return `From: ${tenant}\nTo: ${recipient}\n${options.body.trim()}`;
+}

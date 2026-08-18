@@ -233,7 +233,12 @@ export async function fireTransactionalNotification(
             `[transactional-notification] ${eventType}: SMS template body_sms is empty after substitution for ${clientId} (template ${template.id}); SMS NOT attempted.`,
           );
         } else {
-          const result = await sendHubtelSms({ to, content });
+          const result = await sendHubtelSms({
+            to,
+            content,
+            tenantName,
+            recipientName: customerCompanyName,
+          });
           if (!result.ok) {
             console.error(
               `[transactional-notification] SMS failed (${eventType}/${clientId}):`,

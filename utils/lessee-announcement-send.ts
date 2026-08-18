@@ -16,6 +16,7 @@ import {
 } from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 import { sendWebPushForRecipient } from "@/utils/web-push-send";
 
 export const LESSEE_ANNOUNCEMENT_SEND_BATCH_SIZE = 50;
@@ -371,6 +372,10 @@ export async function processLesseeAnnouncementSendBatch(
   const batchSize = options.batchSize ?? LESSEE_ANNOUNCEMENT_SEND_BATCH_SIZE;
   const announcement = options.announcement;
   const content = options.content;
+  const tenantName = await resolveTenantDisplayName(
+    supabase,
+    options.tenantId,
+  );
 
   const { lessees, remaining } = await listRemainingEligible(supabase, {
     tenantId: options.tenantId,
@@ -485,7 +490,12 @@ export async function processLesseeAnnouncementSendBatch(
           continue;
         }
 
-        const result = await sendHubtelSms({ to, content: resolvedBody });
+        const result = await sendHubtelSms({
+          to,
+          content: resolvedBody,
+          tenantName,
+          recipientName: lessee.full_name?.trim() || lessee.lessee_id,
+        });
         if (result.ok) {
           await supabase.from("lessee_announcement_recipients").insert({
             tenant_id: options.tenantId,

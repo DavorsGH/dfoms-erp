@@ -163,7 +163,12 @@ async function notifyTrialEndingReminder(options: {
   const phone = normalizeGhanaPhone(options.notificationPhone);
   if (phone) {
     const sms = `Davors: Trial ends ${formatDisplayDate(options.trialEndsAt)} (${options.reminderDays}d). ${cycleLabel} billing — ${options.firstChargeFormula}. Update billing settings.`;
-    const smsResult = await sendHubtelSms({ to: phone, content: sms });
+    const smsResult = await sendHubtelSms({
+      to: phone,
+      content: sms,
+      tenantName: options.tenantName,
+      recipientName: options.tenantName,
+    });
     if (!smsResult.ok) {
       console.error(
         "[platform-only-unit-trial-reminders] SMS failed:",

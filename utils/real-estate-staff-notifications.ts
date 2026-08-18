@@ -8,6 +8,7 @@ import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import { createShortLinkUrl } from "@/utils/short-links";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
 import {
   formatRentMoney,
@@ -39,6 +40,7 @@ type StaffNotifyPayload = {
   emailText: string;
   smsContent: string;
   context: string;
+  landlordTenantId: string;
   recipients: NotificationRecipients;
   /**
    * When set, also insert landlord portal in-app (if landlords.auth_user_id).
@@ -384,6 +386,8 @@ async function sendStaffSms(options: {
   phone: string | null;
   content: string;
   context: string;
+  tenantName: string;
+  recipientName: string;
 }): Promise<void> {
   try {
     const raw = options.phone?.trim() || null;
@@ -395,7 +399,12 @@ async function sendStaffSms(options: {
     }
 
     const to = normalizeGhanaPhone(raw) ?? raw;
-    const result = await sendHubtelSms({ to, content: options.content });
+    const result = await sendHubtelSms({
+      to,
+      content: options.content,
+      tenantName: options.tenantName,
+      recipientName: options.recipientName,
+    });
     if (!result.ok) {
       console.error(
         `[real-estate-staff-notifications] SMS failed (${options.context}):`,
@@ -413,6 +422,16 @@ async function sendStaffSms(options: {
 async function dispatchStaffNotification(
   payload: StaffNotifyPayload,
 ): Promise<void> {
+  const admin = createAdminClient();
+  const tenantName = await resolveTenantDisplayName(
+    admin,
+    payload.landlordTenantId,
+  );
+  const recipientName =
+    payload.recipients.landlordType === "platform_only"
+      ? tenantName
+      : "Davors RE Staff";
+
   const tasks: Array<Promise<void>> = [
     sendStaffEmail({
       to: payload.recipients.email,
@@ -425,6 +444,8 @@ async function dispatchStaffNotification(
       phone: payload.recipients.phone,
       content: payload.smsContent,
       context: payload.context,
+      tenantName,
+      recipientName,
     }),
   ];
 
@@ -557,6 +578,7 @@ export async function notifyStaffNewRepairRequest(options: {
       emailText: text,
       smsContent: `Davors RE: Repair from ${ctx.lesseeName}, ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
       context: `repair:${options.requestId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
       landlordPortal: {
         landlordTenantId: options.landlordTenantId,
@@ -622,6 +644,7 @@ export async function notifyStaffNewComplaint(options: {
       emailText: text,
       smsContent: `Davors RE: Complaint from ${lesseeName}: ${options.subject}. ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
       context: `complaint:${options.complaintId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
       landlordPortal: {
         landlordTenantId: options.landlordTenantId,
@@ -691,6 +714,7 @@ export async function notifyStaffLandlordRaisedComplaint(options: {
       emailText: text,
       smsContent: `Davors RE: Complaint from ${landlordName} about ${lesseeName}: ${options.subject}. ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
       context: `complaint-landlord:${options.complaintId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
       landlordPortal: {
         landlordTenantId: options.landlordTenantId,
@@ -761,6 +785,7 @@ export async function notifyStaffTenantComplaintResponse(options: {
       emailText: text,
       smsContent: `Davors RE: ${lesseeName} responded to complaint "${options.subject}". ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
       context: `complaint-tenant-response:${options.complaintId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
       landlordPortal: {
         landlordTenantId: options.landlordTenantId,
@@ -839,6 +864,7 @@ export async function notifyStaffRentPaymentReceived(options: {
       emailText: text,
       smsContent: `Davors RE: Rent ${amountLabel} from ${lesseeName} (${periodLabel}). ${smsLink}`,
       context: `rent-paystack:${options.reference}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
       landlordPortal: null,
     });
@@ -900,6 +926,7 @@ export async function notifyStaffEarlyTerminationRequest(options: {
       emailText: text,
       smsContent: `Davors RE: Early termination from ${lesseeName}, ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
       context: `termination:${options.leaseId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
       landlordPortal: {
         landlordTenantId: options.landlordTenantId,
@@ -966,6 +993,7 @@ export async function notifyStaffLandlordPendingApproval(options: {
       emailText: text,
       smsContent: `Davors RE: Landlord "${landlordName}" pending approval (${typeLabel}). ${smsLink}`,
       context: `landlord-pending:${options.landlordTenantId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
     });
   } catch (error) {
@@ -1029,6 +1057,7 @@ export async function notifyStaffLandlordSelfSignupApproved(options: {
       emailText: text,
       smsContent: `Davors RE [FYI]: New landlord "${landlordName}" signed up (${typeLabel}). No action needed. ${smsLink}`,
       context: `landlord-signup:${options.landlordTenantId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
     });
   } catch (error) {
@@ -1092,6 +1121,7 @@ export async function notifyStaffLandlordCreatedByStaff(options: {
       emailText: text,
       smsContent: `Davors RE [FYI]: Landlord "${landlordName}" added by staff (${typeLabel}). No action needed. ${smsLink}`,
       context: `landlord-staff-create:${options.landlordTenantId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients,
     });
   } catch (error) {
@@ -1189,6 +1219,7 @@ export async function notifyStaffNewPaystackSubaccount(options: {
       emailText: text,
       smsContent,
       context: `paystack-subaccount:${options.entityType}:${options.subaccountCode}`,
+      landlordTenantId: options.entityTenantId,
       recipients,
     });
   } catch (error) {
@@ -1261,6 +1292,7 @@ export async function notifyLandlordNewRentalApplication(options: {
       emailText: text,
       smsContent: `Davors RE: Application from ${options.applicantName}, ${options.propertyName} unit ${options.unitNumber}. ${smsLink}`,
       context: `rental-app:${options.applicationId}`,
+      landlordTenantId: options.landlordTenantId,
       recipients: {
         landlordType,
         email: landlordEmail,
@@ -1301,6 +1333,7 @@ export async function notifyLandlordNewRentalApplication(options: {
         emailText: staffShell.text,
         smsContent: `Davors RE: Application from ${options.applicantName}, ${options.propertyName} unit ${options.unitNumber}. ${staffSmsLink}`,
         context: `rental-app-staff:${options.applicationId}`,
+        landlordTenantId: options.landlordTenantId,
         recipients: staffRecipients,
       });
     }

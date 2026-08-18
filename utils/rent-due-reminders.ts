@@ -15,6 +15,7 @@ import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { sendResendEmail } from "@/utils/resend-email";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 /**
  * Milestone cutoffs by rent period length (period_end − period_start, days):
@@ -357,6 +358,7 @@ async function notifyLesseeRentDue(options: {
   lesseeId: string | null;
   entryId: string;
   lesseeName: string;
+  tenantName: string;
   email: string | null;
   phone: string | null;
   amountLabel: string;
@@ -416,7 +418,12 @@ async function notifyLesseeRentDue(options: {
   const phone = normalizeGhanaPhone(options.phone);
   if (phone) {
     const sms = `Davors: Rent ${options.amountLabel} due ${daysLabel} (${options.periodEnd}) for ${place}. Please pay soon.`;
-    const result = await sendHubtelSms({ to: phone, content: sms });
+    const result = await sendHubtelSms({
+      to: phone,
+      content: sms,
+      tenantName: options.tenantName,
+      recipientName: options.lesseeName,
+    });
     if (result.ok) {
       sent = true;
     } else {
@@ -449,6 +456,7 @@ async function notifyLandlordRentDue(options: {
   landlordTenantId: string;
   entryId: string;
   landlordName: string | null;
+  tenantName: string;
   email: string | null;
   phone: string | null;
   lesseeName: string;
@@ -524,7 +532,12 @@ async function notifyLandlordRentDue(options: {
   if (phone) {
     try {
       const sms = `Davors RE: ${options.lesseeName} — rent ${options.amountLabel} due ${daysLabel} (${place}). Tenant reminded.`;
-      const result = await sendHubtelSms({ to: phone, content: sms });
+      const result = await sendHubtelSms({
+        to: phone,
+        content: sms,
+        tenantName: options.tenantName,
+        recipientName: name,
+      });
       if (!result.ok) {
         console.error(
           "[rent-due-reminders] landlord SMS failed:",
@@ -563,6 +576,7 @@ export async function runRentDueReminders(
     addUtcDays(asOf, RENT_DUE_REMINDER_MAX_LEAD_DAYS),
   );
   const landlordContactCache = new Map<string, LandlordContacts>();
+  const tenantDisplayNameCache = new Map<string, string>();
 
   let query = admin
     .from("rent_ledger")
@@ -684,11 +698,19 @@ export async function runRentDueReminders(
       const amountLabel = formatRentMoney(outstanding);
       const periodLabel = formatRentPeriod(periodStart, periodEnd);
 
+      const tenantName = tenantDisplayNameCache.has(row.tenant_id)
+        ? tenantDisplayNameCache.get(row.tenant_id)!
+        : await resolveTenantDisplayName(admin, row.tenant_id).then((name) => {
+            tenantDisplayNameCache.set(row.tenant_id, name);
+            return name;
+          });
+
       const delivered = await notifyLesseeRentDue({
         landlordTenantId: row.tenant_id,
         lesseeId: ctx.lesseeId,
         entryId: row.entry_id,
         lesseeName: ctx.lesseeName,
+        tenantName,
         email: ctx.lesseeEmail,
         phone: ctx.lesseePhone,
         amountLabel,
@@ -718,6 +740,7 @@ export async function runRentDueReminders(
         landlordTenantId: row.tenant_id,
         entryId: row.entry_id,
         landlordName: landlord.name,
+        tenantName,
         email: landlord.email,
         phone: landlord.phone,
         lesseeName: ctx.lesseeName,

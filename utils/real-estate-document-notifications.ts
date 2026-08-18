@@ -193,6 +193,8 @@ export async function notifyRentPaymentSuccess(options: {
     const smsResult = await sendHubtelSms({
       to: lesseePhone,
       content: `Davors: Rent payment of ${amountLabel} received for ${periodLabel} via ${options.paymentMethod}. Thank you.`,
+      tenantName: landlordName,
+      recipientName: lesseeName,
     });
     if (!smsResult.ok) {
       console.error(
@@ -272,6 +274,8 @@ ${receiptAttachment ? "<p>The payment receipt is attached.</p>" : ""}
     const smsResult = await sendHubtelSms({
       to: landlordPhone,
       content: smsParts.join(" "),
+      tenantName: landlordName,
+      recipientName: landlordName,
     });
     if (!smsResult.ok) {
       console.error(

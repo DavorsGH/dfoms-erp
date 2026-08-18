@@ -28,6 +28,7 @@ import {
 import type { PosCartLine } from "@/app/dashboard/pos/pos-utils";
 import { sendResendEmail } from "@/utils/resend-email";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 export const runtime = "nodejs";
 
@@ -64,6 +65,8 @@ async function deliverPaymentLink(options: {
   link: string;
   amountLabel: string;
   invoiceLabel: string;
+  tenantName: string;
+  recipientName: string;
 }): Promise<{
   emailSent: boolean;
   smsSent: boolean;
@@ -98,6 +101,8 @@ async function deliverPaymentLink(options: {
     const smsResult = await sendHubtelSms({
       to: options.deliveryPhone,
       content: `Davors: Pay GHS ${options.amountLabel} for ${options.invoiceLabel}: ${options.link}`,
+      tenantName: options.tenantName,
+      recipientName: options.recipientName,
     });
     if (smsResult.ok) {
       smsSent = true;
@@ -187,6 +192,7 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   const admin = createAdminClient();
+  const tenantName = await resolveTenantDisplayName(admin, auth.tenantId);
   const siteUrl = resolveSiteUrlFromRequest(request);
 
   // ── Charge-first POS cart path (Request Payment link) ───────────────────
@@ -337,6 +343,8 @@ export async function POST(request: Request) {
       link: initialized.authorizationUrl,
       amountLabel,
       invoiceLabel: "your POS order",
+      tenantName,
+      recipientName: customerName ?? "Customer",
     });
 
     const { error: updateError } = await admin
@@ -536,6 +544,8 @@ export async function POST(request: Request) {
     link: initialized.authorizationUrl,
     amountLabel,
     invoiceLabel: `invoice ${invoiceNo}`,
+    tenantName,
+    recipientName: "Customer",
   });
 
   const { error: updateError } = await admin

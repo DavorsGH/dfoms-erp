@@ -6,6 +6,7 @@ import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { sendResendEmail } from "@/utils/resend-email";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 function escapeHtml(value: string): string {
   return value
@@ -77,6 +78,10 @@ export async function notifyLesseeOneTimeChargeAdded(options: {
   }
 
   const lesseeName = lessee?.full_name?.trim() || "Tenant";
+  const tenantName = await resolveTenantDisplayName(
+    options.admin,
+    options.landlordTenantId,
+  );
   const unitNumber = unit?.unit_number?.trim() || "—";
   const amountLabel = formatRentMoney(options.amountGhs);
   const description = options.description.trim();
@@ -122,7 +127,12 @@ export async function notifyLesseeOneTimeChargeAdded(options: {
   const phone = normalizeGhanaPhone(lessee?.phone);
   if (phone) {
     const sms = `Davors: New charge ${amountLabel} (${description}) on ${place}. Sign in to your portal to pay.`;
-    const result = await sendHubtelSms({ to: phone, content: sms });
+    const result = await sendHubtelSms({
+      to: phone,
+      content: sms,
+      tenantName,
+      recipientName: lesseeName,
+    });
     if (!result.ok) {
       console.error("[one-time-charge-notify] lessee SMS failed:", result.error);
     }

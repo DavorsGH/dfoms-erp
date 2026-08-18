@@ -7,6 +7,7 @@ import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fireTransactionalNotification } from "@/utils/transactional-notification-trigger";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 /** Days before due_date that count as "approaching". */
 export const PRODUCT_SALE_DUE_REMINDER_LEAD_DAYS = 3;
@@ -195,6 +196,7 @@ async function hasActivePaymentDueRule(
 
 async function sendFallbackDueReminder(options: {
   tenantId: string;
+  tenantName: string;
   customerName: string;
   email: string | null;
   phone: string | null;
@@ -254,7 +256,12 @@ async function sendFallbackDueReminder(options: {
         options.kind === "overdue"
           ? `Davors: Invoice ${options.invoiceNo} balance ${options.amountLabel} was due ${dueLabel} and is overdue. Please pay soon.`
           : `Davors: Reminder — ${options.amountLabel} due by ${dueLabel} on invoice ${options.invoiceNo}.`;
-      const result = await sendHubtelSms({ to: phone, content: sms });
+      const result = await sendHubtelSms({
+        to: phone,
+        content: sms,
+        tenantName: options.tenantName,
+        recipientName: options.customerName,
+      });
       if (result.ok) {
         sent = true;
       } else {
@@ -393,7 +400,12 @@ async function notifyBusinessOwnerDueReminder(options: {
         options.kind === "overdue"
           ? `Davors: ${options.customerName} overdue ${options.amountLabel} on invoice ${options.invoiceNo} (due ${dueLabel}). Customer reminded.`
           : `Davors: ${options.customerName} — ${options.amountLabel} due by ${dueLabel} on invoice ${options.invoiceNo}. Customer reminded.`;
-      const result = await sendHubtelSms({ to: phone, content: sms });
+      const result = await sendHubtelSms({
+        to: phone,
+        content: sms,
+        tenantName: options.ownerName,
+        recipientName: ownerName,
+      });
       if (!result.ok) {
         console.error(
           "[product-sale-due-reminders] owner SMS failed:",
@@ -425,6 +437,7 @@ export async function runProductSaleDueReminders(
     addUtcDays(asOf, PRODUCT_SALE_DUE_REMINDER_LEAD_DAYS),
   );
   const ownerContactCache = new Map<string, TenantOwnerContacts>();
+  const tenantDisplayNameCache = new Map<string, string>();
 
   let query = admin
     .from("income_register")
@@ -545,6 +558,13 @@ export async function runProductSaleDueReminders(
         row.tenant_id,
       );
 
+      const tenantName = tenantDisplayNameCache.has(row.tenant_id)
+        ? tenantDisplayNameCache.get(row.tenant_id)!
+        : await resolveTenantDisplayName(admin, row.tenant_id).then((name) => {
+            tenantDisplayNameCache.set(row.tenant_id, name);
+            return name;
+          });
+
       let delivered = false;
 
       if (useTransactional) {
@@ -561,6 +581,7 @@ export async function runProductSaleDueReminders(
       } else {
         delivered = await sendFallbackDueReminder({
           tenantId: row.tenant_id,
+          tenantName,
           customerName,
           email: customer.email,
           phone: customer.phone,
