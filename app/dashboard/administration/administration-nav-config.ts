@@ -208,11 +208,10 @@ export function getAdministrationGroupDefaultHref(
 }
 
 export function getAdministrationSidebarLinks(
-  includePlatformSettings = false,
+  _includePlatformSettings = false,
 ) {
   return ADMINISTRATION_GROUPS.filter(
-    (group) =>
-      includePlatformSettings || !PLATFORM_ADMIN_GROUP_IDS.includes(group.id),
+    (group) => !PLATFORM_ADMIN_GROUP_IDS.includes(group.id),
   ).map((group) => ({
     label: group.label,
     href: getAdministrationGroupDefaultHref(group),

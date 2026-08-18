@@ -58,14 +58,14 @@ export default async function TenantLoginActivityPage({
   const { data, error, count } = await query;
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="mb-2 text-2xl font-semibold text-[#0f2744]">
-        Login Activity
-      </h1>
-      <p className="mb-6 text-sm text-slate-600">
-        Sign-in events for your workspace (RLS-scoped). Includes staff portal
-        logins for this tenant.
-      </p>
+    <div className="min-w-0 space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-[#0f2744]">Login Activity</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Sign-in events for your workspace (RLS-scoped). Includes staff portal
+          logins for this tenant.
+        </p>
+      </div>
       <Suspense fallback={<p className="text-sm text-slate-600">Loading…</p>}>
         <UserActivityLogViewer
           rows={(data as UserActivityLogRow[] | null) ?? []}
@@ -81,6 +81,6 @@ export default async function TenantLoginActivityPage({
           basePath="/dashboard/login-activity"
         />
       </Suspense>
-    </section>
+    </div>
   );
 }
