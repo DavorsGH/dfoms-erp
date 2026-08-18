@@ -63,12 +63,12 @@ export default function DashboardBalanceSheetIntegrityBanner({
           return;
         }
 
-        if (!body || "error" in body) {
+        if (!body || "error" in body || !("imbalancedMonthCount" in body)) {
           setError("Balance sheet check failed");
           return;
         }
 
-        setStatus(body);
+        setStatus(body as TenantBalanceSheetIntegrityStatus);
       } catch {
         setError("Balance sheet check failed");
       } finally {

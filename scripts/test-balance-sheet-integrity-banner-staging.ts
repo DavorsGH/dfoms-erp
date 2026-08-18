@@ -21,9 +21,7 @@ const STAGING_APP_URL = (
 ).replace(/\/$/, "");
 
 const DAVORS = "00000001-0000-4000-8000-000000000001";
-const CAANTA =
-  process.env.PRODUCTION_CAANTA_TENANT_ID ??
-  "61e8e5d9-9cdb-4b8d-9e44-ed0acc23d87b";
+const STAGING_CAANTA = "61e8e5d9-9cdb-4b8d-9e44-ed0acc23d87b";
 const PASSWORD = "BsBanner-Iso-7Kx9!";
 const stamp = Date.now().toString(36);
 
@@ -166,6 +164,10 @@ async function main() {
     assert(url.includes("wieflwbfdmjtsdnwbfii"), "Refusing non-staging Supabase");
   }
   assert(serviceKey && anonKey.length > 20, "Missing Supabase keys");
+
+  const CAANTA = allowProduction
+    ? (process.env.PRODUCTION_CAANTA_TENANT_ID ?? STAGING_CAANTA)
+    : STAGING_CAANTA;
 
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
