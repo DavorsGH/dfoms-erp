@@ -210,12 +210,10 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const navItems = getSidebarNavItems(userRole);
-  const showMonitoringSupport =
-    userRole === "super_admin" || userRole === "director";
+  const showMonitoringSupport = userRole === "super_admin";
   const administrationLinks = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: showPlatformSettings,
     showMonitoringSupport,
-    directorLoginActivityOnly: userRole === "director",
   });
   const workspaceLogoUrl = tenantBranding.workspaceLogoUrl;
   const workspaceName = tenantBranding.workspaceName;

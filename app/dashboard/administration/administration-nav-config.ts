@@ -11,8 +11,6 @@ export type AdministrationNavGroup = {
 
 export const PLATFORM_SETTINGS_GROUP_ID = "platform-settings";
 export const MONITORING_SUPPORT_GROUP_ID = "monitoring-support";
-export const LOGIN_ACTIVITY_ADMIN_HREF =
-  "/dashboard/administration/login-activity";
 
 const PLATFORM_ADMIN_GROUP_IDS: readonly string[] = [
   PLATFORM_SETTINGS_GROUP_ID,
@@ -22,10 +20,8 @@ const PLATFORM_ADMIN_GROUP_IDS: readonly string[] = [
 export type AdministrationSidebarOptions = {
   /** Davors platform super_admin — platform groups stay on the page tab row only. */
   isDavorsPlatformSuperAdmin?: boolean;
-  /** Tenant super_admin or director — show Monitoring & Support in admin sub-nav. */
+  /** Tenant super_admin — show Monitoring & Support in admin sub-nav when applicable. */
   showMonitoringSupport?: boolean;
-  /** Director may only open Login Activity under Administration. */
-  directorLoginActivityOnly?: boolean;
 };
 
 export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
@@ -166,10 +162,6 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Support Tickets",
         href: "/dashboard/administration/support-tickets",
       },
-      {
-        label: "Login Activity",
-        href: LOGIN_ACTIVITY_ADMIN_HREF,
-      },
     ],
   },
 ] as const;
@@ -184,11 +176,11 @@ export function getMonitoringSupportNavItems(
     return [];
   }
 
-  if (showPlatformTabs) {
-    return [...group.items];
+  if (!showPlatformTabs) {
+    return [];
   }
 
-  return group.items.filter((item) => item.href === LOGIN_ACTIVITY_ADMIN_HREF);
+  return [...group.items];
 }
 
 export function isAdministrationPath(pathname: string): boolean {
@@ -232,10 +224,6 @@ export function getActiveAdministrationGroup(
 export function getAdministrationGroupDefaultHref(
   group: AdministrationNavGroup,
 ): string {
-  if (group.id === MONITORING_SUPPORT_GROUP_ID) {
-    return LOGIN_ACTIVITY_ADMIN_HREF;
-  }
-
   return group.items[0]?.href ?? "/dashboard/administration/expense-categories";
 }
 
@@ -245,7 +233,6 @@ export function getAdministrationSidebarLinks(
   const {
     isDavorsPlatformSuperAdmin = false,
     showMonitoringSupport = false,
-    directorLoginActivityOnly = false,
   } = options;
 
   return ADMINISTRATION_GROUPS.filter((group) => {
@@ -254,11 +241,11 @@ export function getAdministrationSidebarLinks(
     }
 
     if (group.id === MONITORING_SUPPORT_GROUP_ID) {
-      return showMonitoringSupport && !isDavorsPlatformSuperAdmin;
-    }
-
-    if (directorLoginActivityOnly) {
-      return false;
+      return (
+        showMonitoringSupport &&
+        !isDavorsPlatformSuperAdmin &&
+        getMonitoringSupportNavItems(false).length > 0
+      );
     }
 
     return true;

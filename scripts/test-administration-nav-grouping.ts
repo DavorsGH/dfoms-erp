@@ -9,7 +9,6 @@ import {
   getMonitoringSupportNavItems,
   getPlatformAdministrationGroups,
   isPlatformAdministrationPath,
-  LOGIN_ACTIVITY_ADMIN_HREF,
   MONITORING_SUPPORT_GROUP_ID,
   PLATFORM_SETTINGS_GROUP_ID,
 } from "../app/dashboard/administration/administration-nav-config";
@@ -30,35 +29,14 @@ function run() {
   );
   assert.deepEqual(
     monitoring.items.map((i) => i.label),
-    [
-      "System Event Log",
-      "User Activity Log",
-      "Support Tickets",
-      "Login Activity",
-    ],
-  );
-
-  const workspace = ADMINISTRATION_GROUPS.find(
-    (g) => g.id === "workspace-settings",
-  );
-  assert(
-    !workspace?.items.some((i) => i.href === LOGIN_ACTIVITY_ADMIN_HREF),
-    "Login Activity removed from Workspace Settings sidebar tabs",
+    ["System Event Log", "User Activity Log", "Support Tickets"],
   );
 
   assert.deepEqual(
     getMonitoringSupportNavItems(true).map((item) => item.label),
-    [
-      "System Event Log",
-      "User Activity Log",
-      "Support Tickets",
-      "Login Activity",
-    ],
+    ["System Event Log", "User Activity Log", "Support Tickets"],
   );
-  assert.deepEqual(
-    getMonitoringSupportNavItems(false).map((item) => item.label),
-    ["Login Activity"],
-  );
+  assert.deepEqual(getMonitoringSupportNavItems(false), []);
 
   const davorsSidebar = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: true,
@@ -80,22 +58,11 @@ function run() {
     isDavorsPlatformSuperAdmin: false,
     showMonitoringSupport: true,
   });
-  assert.equal(tenantSidebar.length, 6);
-  assert.equal(tenantSidebar.at(-1)?.label, "Monitoring & Support");
-  assert.equal(tenantSidebar.at(-1)?.href, LOGIN_ACTIVITY_ADMIN_HREF);
-
-  const directorSidebar = getAdministrationSidebarLinks({
-    isDavorsPlatformSuperAdmin: false,
-    showMonitoringSupport: true,
-    directorLoginActivityOnly: true,
-  });
-  assert.deepEqual(directorSidebar, [
-    {
-      label: "Monitoring & Support",
-      href: LOGIN_ACTIVITY_ADMIN_HREF,
-      groupId: MONITORING_SUPPORT_GROUP_ID,
-    },
-  ]);
+  assert.equal(tenantSidebar.length, 5);
+  assert(
+    !tenantSidebar.some((l) => l.groupId === MONITORING_SUPPORT_GROUP_ID),
+    "Tenant sidebar must not show empty Monitoring & Support group",
+  );
 
   assert(
     !davorsSidebar.some(
@@ -111,8 +78,8 @@ function run() {
 
   assert(isPlatformAdministrationPath("/dashboard/administration/tenants"));
   assert(isPlatformAdministrationPath("/dashboard/administration/system-events"));
-  assert(isPlatformAdministrationPath(LOGIN_ACTIVITY_ADMIN_HREF));
   assert(!isPlatformAdministrationPath("/dashboard/administration/workspace"));
+  assert(!isPlatformAdministrationPath("/dashboard/administration/login-activity"));
 
   console.log("PASS administration nav grouping");
 }

@@ -111,17 +111,6 @@ export default function AdministrationNav({
     );
   }
 
-  // Tenant / landlord admins: Monitoring & Support shows Login Activity only.
-  if (activeGroup.id === MONITORING_SUPPORT_GROUP_ID) {
-    const group = withFilteredItems(activeGroup, false);
-
-    return (
-      <nav className="mb-6 border-b border-slate-200 pb-4">
-        <AdministrationTabGroup group={group} pathname={pathname} />
-      </nav>
-    );
-  }
-
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
       <div className="flex gap-2 overflow-x-auto pb-1">
