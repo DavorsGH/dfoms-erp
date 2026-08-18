@@ -189,22 +189,15 @@ export function calculateInventoryOpeningEquityByMonth(
     return totals;
   }
 
-  const goLiveMonthIndex = getEntryMonthIndex(config.go_live_date, financialYear);
-  if (goLiveMonthIndex === null) {
+  const monthIndex = getEntryMonthIndex(config.go_live_date, financialYear);
+  if (monthIndex === null) {
     return totals;
   }
 
-  const openingValue = roundInventoryCurrency(
+  totals[monthIndex] = roundInventoryCurrency(
     Number(config.opening_inventory_value) || 0,
   );
-
-  // Carry opening equity from go-live through FY-end — same persistence pattern as
-  // calculateInventoryByMonth (asset) and calculateShareCapitalByMonth (equity).
-  for (let monthIndex = goLiveMonthIndex; monthIndex < 12; monthIndex += 1) {
-    totals[monthIndex] = openingValue;
-  }
-
-  totals[FULL_YEAR_INDEX] = totals[11];
+  totals[FULL_YEAR_INDEX] = totals[monthIndex];
   return totals;
 }
 

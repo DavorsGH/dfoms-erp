@@ -1,5 +1,5 @@
 /**
- * Unit tests: calculateInventoryOpeningEquityByMonth carry-forward behaviour.
+ * Unit tests: calculateInventoryOpeningEquityByMonth go-live-only behaviour.
  * Usage: npx tsx scripts/test-inventory-opening-equity-by-month.ts
  */
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ function assertAllZero(totals: number[], label: string) {
 }
 
 function runUnitTests() {
-  // Go-live January — value in every month Jan-Dec; year column = December.
+  // Go-live January — value only in January; year column = go-live month.
   const janGoLive = calculateInventoryOpeningEquityByMonth(
     {
       go_live_date: "2026-01-01",
@@ -25,21 +25,13 @@ function runUnitTests() {
     },
     FY,
   );
-  for (let i = 0; i < 12; i += 1) {
-    assert.equal(
-      janGoLive[i],
-      2730,
-      `Jan go-live: month index ${i} should be 2730`,
-    );
+  assert.equal(janGoLive[0], 2730, "Jan go-live: January should be 2730");
+  for (let i = 1; i < 12; i += 1) {
+    assert.equal(janGoLive[i], 0, `Jan go-live: month index ${i} should be 0`);
   }
-  assert.equal(
-    janGoLive[FULL_YEAR_INDEX],
-    janGoLive[11],
-    "Jan go-live: FULL_YEAR_INDEX should match December (index 11)",
-  );
-  assert.equal(janGoLive[FULL_YEAR_INDEX], 2730, "Jan go-live: year column = 2730");
+  assert.equal(janGoLive[FULL_YEAR_INDEX], 2730, "Jan go-live: year column = go-live month");
 
-  // Go-live July — zero Jan-Jun, value Jul-Dec; year column = December.
+  // Go-live July — zero Jan-Jun, value in July only; year column = July.
   const julGoLive = calculateInventoryOpeningEquityByMonth(
     {
       go_live_date: "2026-07-15",
@@ -51,15 +43,11 @@ function runUnitTests() {
   for (let i = 0; i < 6; i += 1) {
     assert.equal(julGoLive[i], 0, `Jul go-live: pre-go-live month ${i} should be 0`);
   }
-  for (let i = 6; i < 12; i += 1) {
-    assert.equal(julGoLive[i], 1500.5, `Jul go-live: month index ${i} should be 1500.5`);
+  assert.equal(julGoLive[6], 1500.5, "Jul go-live: July should be 1500.5");
+  for (let i = 7; i < 12; i += 1) {
+    assert.equal(julGoLive[i], 0, `Jul go-live: post-go-live month ${i} should be 0`);
   }
-  assert.equal(
-    julGoLive[FULL_YEAR_INDEX],
-    julGoLive[11],
-    "Jul go-live: FULL_YEAR_INDEX should match December",
-  );
-  assert.equal(julGoLive[FULL_YEAR_INDEX], 1500.5, "Jul go-live: year column = 1500.5");
+  assert.equal(julGoLive[FULL_YEAR_INDEX], 1500.5, "Jul go-live: year column = go-live month");
 
   // No config — all zero.
   assertAllZero(calculateInventoryOpeningEquityByMonth(null, FY), "null config");
