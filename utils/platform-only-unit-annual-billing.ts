@@ -6,10 +6,10 @@ import {
 } from "@/utils/platform-billing-config";
 import {
   buildAnnualPeriodBounds,
-  chargeLandlordRecurringBillingNow,
   processLandlordRecurringBilling,
   todayIsoDate,
   type LandlordBillingRow,
+  type ProcessLandlordRecurringBillingOptions,
   type RecurringBillingDetail,
 } from "@/utils/platform-only-unit-recurring-billing";
 import { postPlatformAnnualUnitBillingPaystackFinance } from "@/utils/paystack-finance-posting";
@@ -320,10 +320,11 @@ export async function runPlatformOnlyUnitAnnualBilling(
   };
 }
 
-export async function chargePlatformOnlyLandlordAnnualCycleNow(
+export async function runPlatformOnlyLandlordAnnualRecurringBillingForTenant(
   admin: SupabaseClient,
   tenantId: string,
-  asOfDate = todayIsoDate(),
+  options: PlatformUnitAnnualBillingOptions &
+    ProcessLandlordRecurringBillingOptions = {},
 ): Promise<RecurringBillingDetail> {
   const { data: landlord, error: landlordError } = await admin
     .from("landlords")
@@ -338,10 +339,11 @@ export async function chargePlatformOnlyLandlordAnnualCycleNow(
     throw new Error("Platform-only landlord not found.");
   }
 
+  const asOfDate = options.asOfDate?.trim() || todayIsoDate();
   const unitPriceGhs = await getPlatformOnlyUnitAnnualPriceGhs(admin);
   const { periodStart, periodEnd } = buildAnnualPeriodBounds(asOfDate);
 
-  return chargeLandlordRecurringBillingNow(
+  return processLandlordRecurringBilling(
     admin,
     landlord as LandlordBillingRow,
     {
@@ -372,7 +374,18 @@ export async function chargePlatformOnlyLandlordAnnualCycleNow(
         });
       },
     },
+    { dryRun: options.dryRun },
   );
+}
+
+export async function chargePlatformOnlyLandlordAnnualCycleNow(
+  admin: SupabaseClient,
+  tenantId: string,
+  asOfDate = todayIsoDate(),
+): Promise<RecurringBillingDetail> {
+  return runPlatformOnlyLandlordAnnualRecurringBillingForTenant(admin, tenantId, {
+    asOfDate,
+  });
 }
 
 export function isPlatformOnlyUnitAnnualPaystackContext(

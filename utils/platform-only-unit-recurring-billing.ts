@@ -37,9 +37,18 @@ export type RecurringBillingDetail = {
   tenantName: string;
   outcome: RecurringBillingOutcome;
   activeUnitCount: number;
+  billableUnitCount?: number;
+  unitCap?: number;
+  unitPriceGhs?: number;
   amountGhs: number;
   reference: string | null;
   message?: string;
+  dryRun?: boolean;
+};
+
+export type ProcessLandlordRecurringBillingOptions = {
+  /** When true, resolve billing math and idempotency only — no Paystack, audit, or notifications. */
+  dryRun?: boolean;
 };
 
 export type RecurringBillingCycleLabels = {
@@ -420,7 +429,19 @@ export async function updateLandlordSubscriptionAfterRecurringCharge(
     billingCycle: "monthly" | "annual";
   },
 ): Promise<void> {
-  const payload = {
+  const { data: existing, error: existingError } = await admin
+    .from("landlord_subscriptions")
+    .select("status, activated_at")
+    .eq("tenant_id", options.tenantId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw new Error(
+      `Failed to load landlord_subscriptions before recurring charge update: ${existingError.message}`,
+    );
+  }
+
+  const payload: Record<string, unknown> = {
     tenant_id: options.tenantId,
     status: "active" as const,
     active_unit_count: options.activeUnitCount,
@@ -432,6 +453,13 @@ export async function updateLandlordSubscriptionAfterRecurringCharge(
     pending_billing_cycle: null,
     updated_at: new Date().toISOString(),
   };
+
+  if (
+    existing?.status === "trialing" &&
+    (existing.activated_at == null || existing.activated_at === "")
+  ) {
+    payload.activated_at = new Date().toISOString();
+  }
 
   const { error } = await admin
     .from("landlord_subscriptions")
@@ -449,8 +477,10 @@ export async function processLandlordRecurringBilling(
   admin: SupabaseClient,
   row: LandlordBillingRow,
   config: RecurringBillingRunConfig,
+  options: ProcessLandlordRecurringBillingOptions = {},
 ): Promise<RecurringBillingDetail> {
   const tenantId = row.tenant_id;
+  const dryRun = options.dryRun === true;
 
   const { data: tenantRow } = await admin
     .from("tenants")
@@ -463,14 +493,22 @@ export async function processLandlordRecurringBilling(
     typeof tenantRow?.email === "string" ? tenantRow.email : null;
 
   try {
-    const { activeUnitCount, billableUnitCount } =
+    const { activeUnitCount, billableUnitCount, unitCap } =
       await resolveBillableActiveUnitCount(admin, tenantId);
+    const detailBase = {
+      tenantId,
+      tenantName,
+      activeUnitCount,
+      billableUnitCount,
+      unitCap,
+      unitPriceGhs: config.unitPriceGhs,
+      dryRun: dryRun || undefined,
+    };
+
     if (billableUnitCount <= 0) {
       return {
-        tenantId,
-        tenantName,
+        ...detailBase,
         outcome: "skipped_zero_units",
-        activeUnitCount,
         amountGhs: 0,
         reference: null,
       };
@@ -486,17 +524,60 @@ export async function processLandlordRecurringBilling(
       ])
     ) {
       return {
-        tenantId,
-        tenantName,
+        ...detailBase,
         outcome: "skipped_already_billed",
-        activeUnitCount,
         amountGhs: roundGhs(billableUnitCount * config.unitPriceGhs),
         reference: chargeRef,
+        message: dryRun
+          ? "Dry run — period already settled in audit (no duplicate rows would be created)."
+          : undefined,
       };
     }
 
     const amountGhs = roundGhs(billableUnitCount * config.unitPriceGhs);
     const inTrial = await isPlatformOnlyLandlordInTrial(admin, tenantId);
+
+    if (dryRun) {
+      if (inTrial) {
+        return {
+          ...detailBase,
+          outcome: "skipped_trial",
+          amountGhs,
+          reference: trialRef,
+          message:
+            "Dry run — landlord in trial; no charge or audit row would be written.",
+        };
+      }
+
+      const authCode = row.paystack_charge_authorization_code?.trim() ?? "";
+      const authEmail = await resolveBillingEmail(
+        admin,
+        tenantId,
+        row.paystack_charge_authorization_email,
+        tenantEmail,
+      );
+
+      if (!authCode || !authEmail) {
+        const failureReason =
+          "No stored Paystack authorization on file. Complete a unit activation payment to save a card.";
+        return {
+          ...detailBase,
+          outcome: "failed",
+          amountGhs,
+          reference: chargeRef,
+          message: `Dry run — would fail before Paystack: ${failureReason}`,
+        };
+      }
+
+      return {
+        ...detailBase,
+        outcome: "charged",
+        amountGhs,
+        reference: chargeRef,
+        message:
+          "Dry run — Paystack charge_authorization would be called with this amount and reference.",
+      };
+    }
 
     if (inTrial) {
       await insertUnitActivationChargeAudit(admin, {
@@ -522,10 +603,8 @@ export async function processLandlordRecurringBilling(
         labels: config.labels,
       });
       return {
-        tenantId,
-        tenantName,
+        ...detailBase,
         outcome: "skipped_trial",
-        activeUnitCount,
         amountGhs,
         reference: trialRef,
       };
@@ -553,10 +632,8 @@ export async function processLandlordRecurringBilling(
         tenantEmail,
       });
       return {
-        tenantId,
-        tenantName,
+        ...detailBase,
         outcome: "failed",
-        activeUnitCount,
         amountGhs,
         reference: chargeRef,
         message: failureReason,
@@ -591,10 +668,8 @@ export async function processLandlordRecurringBilling(
         tenantEmail,
       });
       return {
-        tenantId,
-        tenantName,
+        ...detailBase,
         outcome: "failed",
-        activeUnitCount,
         amountGhs,
         reference: chargeRef,
         message: charged.error,
@@ -646,10 +721,8 @@ export async function processLandlordRecurringBilling(
     });
 
     return {
-      tenantId,
-      tenantName,
+      ...detailBase,
       outcome: "charged",
-      activeUnitCount,
       amountGhs,
       reference: charged.reference,
     };
@@ -672,6 +745,7 @@ export async function chargeLandlordRecurringBillingNow(
   admin: SupabaseClient,
   row: LandlordBillingRow,
   config: RecurringBillingRunConfig,
+  options: ProcessLandlordRecurringBillingOptions = {},
 ): Promise<RecurringBillingDetail> {
-  return processLandlordRecurringBilling(admin, row, config);
+  return processLandlordRecurringBilling(admin, row, config, options);
 }

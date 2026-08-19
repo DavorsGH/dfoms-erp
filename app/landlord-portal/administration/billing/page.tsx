@@ -60,6 +60,8 @@ export default async function LandlordPortalBillingPage({
           subscriptionTier={data.subscriptionTier}
           subscriptionStatus={data.subscriptionStatus}
           trialEndsAt={data.trialEndsAt}
+          trialStartedAt={data.trialStartedAt}
+          activatedAt={data.activatedAt}
           billingCycle={data.billingCycle}
           pendingBillingCycle={data.pendingBillingCycle}
           currentPeriodStart={data.currentPeriodStart}

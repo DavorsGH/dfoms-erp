@@ -62,7 +62,25 @@ type SubscriptionRow = {
   paystack_customer_id: string | null;
   paystack_subscription_id: string | null;
   next_billing_date: string | null;
+  activated_at: string | null;
 };
+
+const CRM_SUBSCRIPTION_ROW_SELECT =
+  "id, linked_tenant_id, product_id, subscription_status, billing_waived, paystack_customer_id, paystack_subscription_id, next_billing_date, activated_at" as const;
+
+function applyFirstPaidActivationTimestamp(
+  patch: Record<string, unknown>,
+  previousStatus: CrmSubscriptionStatus,
+  activatedAt: string | null | undefined,
+): Record<string, unknown> {
+  if (previousStatus !== "trialing" || activatedAt) {
+    return patch;
+  }
+  return {
+    ...patch,
+    activated_at: new Date().toISOString(),
+  };
+}
 
 function asRecord(value: unknown): JsonRecord | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -444,9 +462,7 @@ async function findSubscriptionByLinkedTenant(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("crm_subscriptions")
-    .select(
-      "id, linked_tenant_id, product_id, subscription_status, billing_waived, paystack_customer_id, paystack_subscription_id, next_billing_date",
-    )
+    .select(CRM_SUBSCRIPTION_ROW_SELECT)
     .eq("linked_tenant_id", linkedTenantId)
     .eq("tenant_id", DAVORS_TENANT_ID)
     .order("created_at", { ascending: false })
@@ -466,9 +482,7 @@ async function findSubscriptionByPaystackSubscriptionId(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("crm_subscriptions")
-    .select(
-      "id, linked_tenant_id, product_id, subscription_status, billing_waived, paystack_customer_id, paystack_subscription_id, next_billing_date",
-    )
+    .select(CRM_SUBSCRIPTION_ROW_SELECT)
     .eq("paystack_subscription_id", subscriptionCode)
     .eq("tenant_id", DAVORS_TENANT_ID)
     .order("created_at", { ascending: false })
@@ -547,9 +561,7 @@ async function findSubscriptionByEmailAndPlan(options: {
     if (productId) {
       const { data, error } = await admin
         .from("crm_subscriptions")
-        .select(
-          "id, linked_tenant_id, product_id, subscription_status, billing_waived, paystack_customer_id, paystack_subscription_id, next_billing_date",
-        )
+        .select(CRM_SUBSCRIPTION_ROW_SELECT)
         .eq("tenant_id", DAVORS_TENANT_ID)
         .eq("product_id", productId)
         .in("linked_tenant_id", tenantIds)
@@ -585,9 +597,7 @@ async function findSubscriptionByEmailAndPlan(options: {
 
   const { data: sub, error: subError } = await admin
     .from("crm_subscriptions")
-    .select(
-      "id, linked_tenant_id, product_id, subscription_status, billing_waived, paystack_customer_id, paystack_subscription_id, next_billing_date",
-    )
+    .select(CRM_SUBSCRIPTION_ROW_SELECT)
     .eq("tenant_id", DAVORS_TENANT_ID)
     .eq("customer_id", customer.client_id)
     .order("created_at", { ascending: false })
@@ -629,9 +639,7 @@ async function resolveSubscription(options: {
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("crm_subscriptions")
-      .select(
-        "id, linked_tenant_id, product_id, subscription_status, billing_waived, paystack_customer_id, paystack_subscription_id, next_billing_date",
-      )
+      .select(CRM_SUBSCRIPTION_ROW_SELECT)
       .eq("tenant_id", DAVORS_TENANT_ID)
       .eq("paystack_customer_id", options.customerCode)
       .order("created_at", { ascending: false })
@@ -877,9 +885,7 @@ async function ensureSubscriptionForLinkedTenant(options: {
   const { data, error } = await admin
     .from("crm_subscriptions")
     .insert(insertPayload)
-    .select(
-      "id, linked_tenant_id, product_id, subscription_status, billing_waived, paystack_customer_id, paystack_subscription_id, next_billing_date",
-    )
+    .select(CRM_SUBSCRIPTION_ROW_SELECT)
     .single();
 
   if (error || !data) {
@@ -1014,7 +1020,14 @@ async function handleChargeSuccess(
     patch.paystack_email_token = emailToken;
   }
 
-  await updateSubscription(row.id, patch);
+  await updateSubscription(
+    row.id,
+    applyFirstPaidActivationTimestamp(
+      patch,
+      previousStatus,
+      row.activated_at,
+    ),
+  );
 
   if (!reference) {
     throw new Error(
@@ -1163,7 +1176,14 @@ async function handleSubscriptionCreate(
     );
   }
 
-  await updateSubscription(row.id, patch);
+  await updateSubscription(
+    row.id,
+    applyFirstPaidActivationTimestamp(
+      patch,
+      previousStatus,
+      row.activated_at,
+    ),
+  );
 
   await maybeNotifyPaidConversion({
     previousStatus,

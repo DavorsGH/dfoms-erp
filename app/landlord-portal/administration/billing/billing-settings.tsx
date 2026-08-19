@@ -14,6 +14,7 @@ import {
   portalSectionTitleClassName,
   portalSuccessBannerClassName,
 } from "../../portal-ui";
+import { formatTrialCountdownMessage } from "@/utils/subscription-date-display";
 import LandlordPaymentSettings from "./payment-settings";
 
 export type LandlordBillingSmsPack = {
@@ -28,6 +29,8 @@ type LandlordPortalBillingSettingsProps = {
   subscriptionTier: string | null;
   subscriptionStatus: string | null;
   trialEndsAt: string | null;
+  trialStartedAt: string | null;
+  activatedAt: string | null;
   billingCycle: "monthly" | "annual" | null;
   pendingBillingCycle: "monthly" | null;
   currentPeriodStart: string | null;
@@ -98,6 +101,8 @@ export default function LandlordPortalBillingSettings({
   subscriptionTier,
   subscriptionStatus,
   trialEndsAt,
+  trialStartedAt,
+  activatedAt,
   billingCycle,
   pendingBillingCycle,
   currentPeriodStart,
@@ -145,6 +150,10 @@ export default function LandlordPortalBillingSettings({
   const cycleLabel =
     billingCycle === "annual" ? "Annual (per unit / year)" : "Monthly (per unit / month)";
   const formattedTrialEnd = formatIsoDate(trialEndsAt);
+  const formattedTrialStart = formatIsoDate(trialStartedAt);
+  const formattedSubscribedSince = formatIsoDate(
+    activatedAt ? activatedAt.slice(0, 10) : null,
+  );
   const formattedNextCharge = formatIsoDate(nextChargeDate);
   const formattedPeriodEnd = formatIsoDate(currentPeriodEnd);
 
@@ -375,9 +384,22 @@ export default function LandlordPortalBillingSettings({
             Status:{" "}
             <span className="font-medium text-slate-800">{planState}</span>
           </p>
-          {trialEndsAt ? (
+          {showBillingCycleControls && formattedTrialStart ? (
             <p className="mt-1 text-xs text-slate-500">
-              Trial ends {formattedTrialEnd}
+              Trial started: {formattedTrialStart}
+            </p>
+          ) : null}
+          {showBillingCycleControls && formattedSubscribedSince ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Subscribed since: {formattedSubscribedSince}
+            </p>
+          ) : null}
+          {showBillingCycleControls &&
+          subscriptionStatus === "trialing" &&
+          trialEndsAt &&
+          formattedTrialEnd ? (
+            <p className="mt-1 text-xs text-slate-500">
+              {formatTrialCountdownMessage(trialEndsAt, formattedTrialEnd)}
             </p>
           ) : null}
           {showBillingCycleControls ? (
@@ -398,7 +420,15 @@ export default function LandlordPortalBillingSettings({
                   {formattedPeriodEnd}
                 </p>
               ) : null}
-              {nextChargeSummary ? (
+              {subscriptionStatus === "active" && formattedNextCharge ? (
+                <p className="text-sm text-slate-600">
+                  Next billing date: {formattedNextCharge}
+                </p>
+              ) : null}
+              {subscriptionStatus === "active" && nextChargeSummary ? (
+                <p className="text-xs text-slate-500">{nextChargeSummary}</p>
+              ) : null}
+              {subscriptionStatus === "trialing" && nextChargeSummary ? (
                 <p className="text-sm text-slate-600">
                   Next charge: {nextChargeSummary}
                   {formattedNextCharge ? ` (${formattedNextCharge})` : ""}

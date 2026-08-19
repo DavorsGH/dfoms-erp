@@ -10,6 +10,7 @@ import {
   nextFirstOfMonthAfter,
   processLandlordRecurringBilling,
   type LandlordBillingRow,
+  type ProcessLandlordRecurringBillingOptions,
   type RecurringBillingDetail,
 } from "@/utils/platform-only-unit-recurring-billing";
 
@@ -365,6 +366,61 @@ export async function runPlatformOnlyUnitMonthlyBilling(
     errors,
     details,
   };
+}
+
+export async function runPlatformOnlyLandlordMonthlyRecurringBillingForTenant(
+  admin: SupabaseClient,
+  tenantId: string,
+  options: PlatformUnitMonthlyBillingOptions &
+    ProcessLandlordRecurringBillingOptions = {},
+): Promise<RecurringBillingDetail> {
+  const { data: landlord, error: landlordError } = await admin
+    .from("landlords")
+    .select(
+      "tenant_id, paystack_charge_authorization_code, paystack_charge_authorization_email, notification_phone",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("landlord_type", "platform_only")
+    .maybeSingle();
+
+  if (landlordError || !landlord) {
+    throw new Error("Platform-only landlord not found.");
+  }
+
+  const { year, monthIndex, billingMonth } = parseBillingMonth(options.billingMonth);
+  const { periodStart, periodEnd } = getMonthPeriodBounds(year, monthIndex);
+  const unitPriceGhs = await getPlatformOnlyUnitActivationPriceGhs(admin);
+
+  return processLandlordRecurringBilling(
+    admin,
+    landlord as LandlordBillingRow,
+    {
+      triggerType: "monthly_recurring",
+      paystackContext: PLATFORM_ONLY_UNIT_MONTHLY_CONTEXT,
+      periodKey: billingMonth,
+      periodLabel: billingMonth,
+      periodStart,
+      periodEnd,
+      unitPriceGhs,
+      buildReference: buildMonthlyBillingReference,
+      buildTrialSkipReference: buildMonthlyTrialSkipReference,
+      labels: MONTHLY_LABELS,
+      paystackMetadataExtra: { billing_month: billingMonth },
+      postFinance: async ({ admin: financeAdmin, ...financeOptions }) => {
+        await postPlatformMonthlyUnitBillingPaystackFinance(financeAdmin, {
+          reference: financeOptions.reference,
+          transactionAmountGhs: financeOptions.amountGhs,
+          paidAt: financeOptions.paidAt,
+          landlordTenantId: financeOptions.tenantId,
+          activeUnitCount: financeOptions.activeUnitCount,
+          unitPriceGhs: financeOptions.unitPriceGhs,
+          billingMonth: financeOptions.periodKey,
+        });
+      },
+      previousPeriodHadFailedCharge: previousBillingMonthHadFailedMonthlyCharge,
+    },
+    { dryRun: options.dryRun },
+  );
 }
 
 export function isPlatformOnlyUnitMonthlyPaystackContext(

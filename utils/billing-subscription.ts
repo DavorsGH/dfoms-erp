@@ -7,6 +7,8 @@ import { DAVORS_TENANT_ID, type CrmSubscriptionStatus } from "@/utils/tenant-sig
 export type TenantBillingSubscription = {
   subscriptionStatus: CrmSubscriptionStatus | null;
   trialEndDate: string | null;
+  trialStartedAt: string | null;
+  activatedAt: string | null;
   nextBillingDate: string | null;
   tierName: string | null;
   productId: string | null;
@@ -19,6 +21,8 @@ export type TenantBillingSubscription = {
 type SubscriptionRecord = {
   subscription_status: CrmSubscriptionStatus;
   trial_end_date: string | null;
+  created_at: string | null;
+  activated_at: string | null;
   next_billing_date: string | null;
   product_id: string | null;
   paystack_subscription_id: string | null;
@@ -49,7 +53,7 @@ export const getTenantBillingSubscription = cache(
     const { data, error } = await admin
       .from("crm_subscriptions")
       .select(
-        "subscription_status, trial_end_date, next_billing_date, product_id, paystack_subscription_id, billing_waived, cancelled_at, cancellation_reason, product:crm_products(name)",
+        "subscription_status, trial_end_date, created_at, activated_at, next_billing_date, product_id, paystack_subscription_id, billing_waived, cancelled_at, cancellation_reason, product:crm_products(name)",
       )
       .eq("linked_tenant_id", linkedTenantId)
       .order("created_at", { ascending: false })
@@ -64,6 +68,8 @@ export const getTenantBillingSubscription = cache(
       return {
         subscriptionStatus: null,
         trialEndDate: null,
+        trialStartedAt: null,
+        activatedAt: null,
         nextBillingDate: null,
         tierName: null,
         productId: null,
@@ -79,6 +85,14 @@ export const getTenantBillingSubscription = cache(
     return {
       subscriptionStatus: row.subscription_status,
       trialEndDate: row.trial_end_date,
+      trialStartedAt:
+        typeof row.created_at === "string" && row.created_at.trim()
+          ? row.created_at.slice(0, 10)
+          : null,
+      activatedAt:
+        typeof row.activated_at === "string" && row.activated_at.trim()
+          ? row.activated_at
+          : null,
       nextBillingDate: row.next_billing_date,
       tierName: productNameFromRow(row.product),
       productId: row.product_id,

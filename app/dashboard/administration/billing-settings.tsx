@@ -31,6 +31,7 @@ import {
   SUBSCRIPTION_CANCELLATION_REASONS,
   type SubscriptionCancellationReason,
 } from "@/utils/subscription-cancellation";
+import { formatTrialCountdownMessage } from "@/utils/subscription-date-display";
 import { subscriptionCancelledAccessActive } from "@/utils/subscription-access";
 import PaymentSettings from "./payment-settings";
 
@@ -167,6 +168,14 @@ function subscriptionPaymentMethodOnFile(
   paymentMethod: SubscriptionPaymentMethod | null,
 ): boolean {
   return Boolean(paymentMethod?.last4?.trim() || paymentMethod?.brand?.trim());
+}
+
+function formatErpTrialEndDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 export default function BillingSettings({
@@ -595,14 +604,25 @@ export default function BillingSettings({
             <p className="mt-1 text-sm text-slate-600">
               Status: <span className="font-medium text-slate-800">{planState}</span>
             </p>
-            {subscription.trialEndDate ? (
+            {subscription.trialStartedAt ? (
               <p className="mt-1 text-xs text-slate-500">
-                Trial ends{" "}
-                {new Date(subscription.trialEndDate).toLocaleDateString("en-GB", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                })}
+                Trial started:{" "}
+                {formatErpTrialEndDate(subscription.trialStartedAt)}
+              </p>
+            ) : null}
+            {subscription.activatedAt ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Subscribed since:{" "}
+                {formatErpTrialEndDate(subscription.activatedAt)}
+              </p>
+            ) : null}
+            {subscription.subscriptionStatus === "trialing" &&
+            subscription.trialEndDate ? (
+              <p className="mt-1 text-xs text-slate-500">
+                {formatTrialCountdownMessage(
+                  subscription.trialEndDate,
+                  formatErpTrialEndDate(subscription.trialEndDate),
+                )}
               </p>
             ) : null}
             {subscription.subscriptionStatus === "cancelled" ? (
@@ -612,10 +632,15 @@ export default function BillingSettings({
                   : "Cancelled — access has ended."}
               </p>
             ) : null}
+            {subscription.subscriptionStatus === "active" &&
+            subscription.nextBillingDate ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Next billing date:{" "}
+                {formatSubscriptionAccessEndDate(subscription.nextBillingDate)}
+              </p>
+            ) : null}
             {subscription.nextBillingDate &&
-            subscription.subscriptionStatus !== "cancelled" &&
-            (subscription.subscriptionStatus === "active" ||
-              subscription.subscriptionStatus === "past_due") ? (
+            subscription.subscriptionStatus === "past_due" ? (
               <p className="mt-1 text-xs text-slate-500">
                 Current billing period ends {accessEndLabel}.
               </p>

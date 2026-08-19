@@ -49,6 +49,8 @@ import {
   buildLandlordPortalFinancialSummary,
   type LandlordPortalFinancialSummaryViewModel,
 } from "@/app/landlord-portal/dashboard/financial-summary-utils";
+import { resolveLandlordTrialStartedIsoDate } from "@/utils/subscription-date-display";
+import { ERP_SUITE_TRIAL_DAYS } from "@/utils/tenant-signup";
 
 function formatTerminationRequestStatus(value: string): string {
   if (value === "pending_staff_approval") {
@@ -1114,6 +1116,8 @@ export type LandlordPortalBillingSnapshot = {
   subscriptionTier: string | null;
   subscriptionStatus: string | null;
   trialEndsAt: string | null;
+  trialStartedAt: string | null;
+  activatedAt: string | null;
   billingCycle: "monthly" | "annual" | null;
   pendingBillingCycle: "monthly" | null;
   currentPeriodStart: string | null;
@@ -2115,7 +2119,7 @@ export async function fetchLandlordPortalBillingSnapshot(
     admin
       .from("landlord_subscriptions")
       .select(
-        "tier, status, trial_ends_at, billing_cycle, pending_billing_cycle, current_period_start, current_period_end, active_unit_count",
+        "tier, status, trial_ends_at, activated_at, billing_cycle, pending_billing_cycle, current_period_start, current_period_end, active_unit_count",
       )
       .eq("tenant_id", tenantId)
       .maybeSingle(),
@@ -2177,6 +2181,7 @@ export async function fetchLandlordPortalBillingSnapshot(
           tier: string | null;
           status: string | null;
           trial_ends_at: string | null;
+          activated_at: string | null;
           billing_cycle: string | null;
           pending_billing_cycle: string | null;
           current_period_start: string | null;
@@ -2195,6 +2200,7 @@ export async function fetchLandlordPortalBillingSnapshot(
   let annualUnitPriceGhs = 0;
   let nextChargeDate: string | null = null;
   let nextChargeSummary: string | null = null;
+  let trialStartedAt: string | null = null;
 
   if (isPlatformOnly) {
     billingCycle =
@@ -2219,6 +2225,13 @@ export async function fetchLandlordPortalBillingSnapshot(
       typeof subscription?.trial_ends_at === "string"
         ? subscription.trial_ends_at.slice(0, 10)
         : null;
+
+    trialStartedAt = resolveLandlordTrialStartedIsoDate({
+      status: subscription?.status ?? null,
+      trialEndsAt,
+      currentPeriodStart,
+      trialLengthDays: ERP_SUITE_TRIAL_DAYS,
+    });
 
     if (inTrial && trialEndsAt) {
       if (billingCycle === "annual") {
@@ -2284,6 +2297,13 @@ export async function fetchLandlordPortalBillingSnapshot(
       trialEndsAt:
         session.landlordType === "platform_only"
           ? (subscription?.trial_ends_at ?? null)
+          : null,
+      trialStartedAt: isPlatformOnly ? trialStartedAt : null,
+      activatedAt:
+        isPlatformOnly &&
+        typeof subscription?.activated_at === "string" &&
+        subscription.activated_at.trim()
+          ? subscription.activated_at
           : null,
       billingCycle: isPlatformOnly ? billingCycle : null,
       pendingBillingCycle: isPlatformOnly ? pendingBillingCycle : null,
