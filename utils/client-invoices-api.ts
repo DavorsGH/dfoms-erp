@@ -57,8 +57,8 @@ function buildHeaderPayload(
       }
     : computeInvoiceTotals(
         body.line_items,
-        body.vat_nhil_getfund_rate ?? 20,
-        body.wht_rate ?? 7.5,
+        body.vat_nhil_getfund_rate ?? 0,
+        body.wht_rate ?? 0,
         taxBasis,
       );
 
@@ -75,9 +75,9 @@ function buildHeaderPayload(
     bill_to_address: nullableText(body.bill_to_address ?? null),
     bill_to_phone: nullableText(body.bill_to_phone ?? null),
     subtotal: totals.subtotal,
-    vat_nhil_getfund_rate: roundMoney(toNumber(body.vat_nhil_getfund_rate ?? 20)),
+    vat_nhil_getfund_rate: roundMoney(toNumber(body.vat_nhil_getfund_rate ?? 0)),
     tax_due: totals.tax_due,
-    wht_rate: roundMoney(toNumber(body.wht_rate ?? 7.5)),
+    wht_rate: roundMoney(toNumber(body.wht_rate ?? 0)),
     wht_amount: totals.wht_amount,
     total_amount_due: totals.total_amount_due,
     status: normalizeStatus(body.status),

@@ -45,8 +45,8 @@ function buildHeaderPayload(
       : "flat";
   const totals = computeQuotationTotals(
     body.line_items,
-    body.vat_nhil_getfund_rate ?? 20,
-    body.wht_rate ?? 7.5,
+    body.vat_nhil_getfund_rate ?? 0,
+    body.wht_rate ?? 0,
     taxBasis,
     body.header_discount_amount ?? 0,
     quotationType,
@@ -72,9 +72,9 @@ function buildHeaderPayload(
     ship_to_address: nullableText(body.ship_to_address ?? null),
     ship_to_phone: nullableText(body.ship_to_phone ?? null),
     subtotal: totals.subtotal,
-    vat_nhil_getfund_rate: roundMoney(toNumber(body.vat_nhil_getfund_rate ?? 20)),
+    vat_nhil_getfund_rate: roundMoney(toNumber(body.vat_nhil_getfund_rate ?? 0)),
     tax_due: totals.tax_due,
-    wht_rate: roundMoney(toNumber(body.wht_rate ?? 7.5)),
+    wht_rate: roundMoney(toNumber(body.wht_rate ?? 0)),
     wht_amount: totals.wht_amount,
     header_discount_amount: totals.header_discount_amount,
     discount_type: discountType,
@@ -153,8 +153,8 @@ async function replaceLineItemsAndPaymentAccounts(
 ) {
   const quotationType = normalizeQuotationType(body.quotation_type);
   const taxBasis = resolveQuotationTaxBasis(body.tax_basis, quotationType);
-  const vatRate = toNumber(body.vat_nhil_getfund_rate ?? 20);
-  const whtRate = toNumber(body.wht_rate ?? 7.5);
+  const vatRate = toNumber(body.vat_nhil_getfund_rate ?? 0);
+  const whtRate = toNumber(body.wht_rate ?? 0);
   const headerDiscountAmount = toNumber(body.header_discount_amount ?? 0);
   const discountType =
     quotationType === "product"

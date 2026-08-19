@@ -97,9 +97,9 @@ export function normalizeClientInvoiceDetail(
     invoice: {
       ...invoice,
       subtotal: toNumber(invoice.subtotal),
-      vat_nhil_getfund_rate: toNumber(invoice.vat_nhil_getfund_rate) || 20,
+      vat_nhil_getfund_rate: toNumber(invoice.vat_nhil_getfund_rate),
       tax_due: toNumber(invoice.tax_due),
-      wht_rate: toNumber(invoice.wht_rate) || 7.5,
+      wht_rate: toNumber(invoice.wht_rate),
       wht_amount: toNumber(invoice.wht_amount),
       total_amount_due: toNumber(invoice.total_amount_due),
       amount_received: toNumber(invoice.amount_received),

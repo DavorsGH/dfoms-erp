@@ -808,10 +808,11 @@ export default function ClientInvoiceForm({
               }
               className={inputClassName}
             />
+            <p className="mt-1 text-xs text-slate-500">Standard rate: 20%</p>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              WHT Rate (%) — display only
+              WHT Rate (%)
             </label>
             <input
               type="number"
@@ -826,6 +827,7 @@ export default function ClientInvoiceForm({
               }
               className={inputClassName}
             />
+            <p className="mt-1 text-xs text-slate-500">Standard rate: 7.5%</p>
           </div>
         </div>
         <PromoCodeField
