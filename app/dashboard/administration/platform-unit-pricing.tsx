@@ -15,6 +15,7 @@ export type PlatformUnitPricingRow = {
   label: string;
   priceGhs: number;
   updatedAt: string | null;
+  valueKind?: "price" | "integer";
 };
 
 type PlatformUnitPricingProps = {
@@ -30,6 +31,17 @@ const actionButtonClassName =
 
 const primaryActionButtonClassName =
   "shrink-0 whitespace-nowrap rounded-md border border-[#0f2744] px-2 py-1 text-xs font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+function formatRowValue(row: PlatformUnitPricingRow): string {
+  if (row.valueKind === "integer") {
+    return String(Math.trunc(row.priceGhs));
+  }
+  return formatProductPrice(row.priceGhs);
+}
+
+function formatValueColumnLabel(row: PlatformUnitPricingRow): string {
+  return row.valueKind === "integer" ? "Cap (units)" : "Price (GHS)";
+}
 
 function formatUpdatedAt(value: string | null): string {
   if (!value) {
@@ -85,20 +97,33 @@ export default function PlatformUnitPricing({
       return;
     }
 
-    const priceGhs = Number(priceInputs[configKey]);
+    const rawValue = Number(priceInputs[configKey]);
+    const isIntegerRow = row.valueKind === "integer";
 
-    if (!Number.isFinite(priceGhs)) {
-      setError("Price (GHS) must be a valid number.");
+    if (!Number.isFinite(rawValue)) {
+      setError(
+        isIntegerRow
+          ? "Cap must be a valid whole number."
+          : "Price (GHS) must be a valid number.",
+      );
       return;
     }
 
-    if (priceGhs < 0) {
-      setError("Price cannot be negative.");
+    if (rawValue < 0) {
+      setError(isIntegerRow ? "Cap cannot be negative." : "Price cannot be negative.");
+      return;
+    }
+
+    const savedValue = isIntegerRow ? Math.trunc(rawValue) : rawValue;
+    if (isIntegerRow && savedValue !== rawValue) {
+      setError("Cap must be a whole number.");
       return;
     }
 
     const confirmed = window.confirm(
-      `Update ${row.label.toLowerCase()} to GHS ${priceGhs.toFixed(2)}? New charges use this rate; historical audit rows keep their recorded amounts.`,
+      isIntegerRow
+        ? `Update ${row.label.toLowerCase()} to ${savedValue} units? Platform-only landlords are not charged for activation or recurring billing on units beyond this cap.`
+        : `Update ${row.label.toLowerCase()} to GHS ${savedValue.toFixed(2)}? New charges use this rate; historical audit rows keep their recorded amounts.`,
     );
     if (!confirmed) {
       return;
@@ -110,7 +135,11 @@ export default function PlatformUnitPricing({
     const response = await fetch("/api/admin/platform-billing/update-pricing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ config_key: configKey, price_ghs: priceGhs }),
+      body: JSON.stringify(
+        isIntegerRow
+          ? { config_key: configKey, unit_cap: savedValue }
+          : { config_key: configKey, price_ghs: savedValue },
+      ),
     });
 
     const payload = (await response.json().catch(() => null)) as
@@ -130,7 +159,7 @@ export default function PlatformUnitPricing({
     setRows((current) =>
       current.map((item) =>
         item.configKey === configKey
-          ? { ...item, priceGhs, updatedAt }
+          ? { ...item, priceGhs: savedValue, updatedAt }
           : item,
       ),
     );
@@ -142,9 +171,12 @@ export default function PlatformUnitPricing({
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-600">
-        Manage per-unit pricing for platform-only landlords. Monthly rate applies
-        to unit activation and monthly recurring billing. Annual rate applies to
-        annual recurring billing and immediate annual cycle switches.
+        Manage per-unit pricing and billing limits for platform-only landlords.
+        Monthly rate applies to unit activation and monthly recurring billing.
+        Annual rate applies to annual recurring billing and immediate annual cycle
+        switches. The active-unit cap limits how many units are billed — units
+        beyond the cap activate free of charge and are excluded from recurring
+        billing.
       </p>
 
       {error ? (
@@ -158,7 +190,7 @@ export default function PlatformUnitPricing({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Setting</th>
-              <th className={scrollableTableThClassName}>Price (GHS)</th>
+              <th className={scrollableTableThClassName}>Value</th>
               <th className={scrollableTableThClassName}>Last updated</th>
               <th className={scrollableTableThClassName}>Actions</th>
             </tr>
@@ -173,11 +205,14 @@ export default function PlatformUnitPricing({
                     {row.label}
                   </td>
                   <td className="px-4 py-3">
+                    <div className="text-xs text-slate-500">
+                      {formatValueColumnLabel(row)}
+                    </div>
                     {isEditing ? (
                       <input
                         type="number"
                         min="0"
-                        step="0.01"
+                        step={row.valueKind === "integer" ? "1" : "0.01"}
                         required
                         value={priceInputs[row.configKey] ?? ""}
                         onChange={(event) =>
@@ -189,7 +224,7 @@ export default function PlatformUnitPricing({
                         className={inputClassName}
                       />
                     ) : (
-                      formatProductPrice(row.priceGhs)
+                      formatRowValue(row)
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">

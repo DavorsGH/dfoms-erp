@@ -1,0 +1,30 @@
+=== PRODUCTION READ-ONLY (fixed local code) ===
+URL: https://tvcurcnmasnocwdxzgvz.supabase.co
+
+--- All tenants FULL_YEAR ---
+Caanta Market | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Contagion Ghana Limited | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Davors Facilities | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Get Knitted | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Lavish Mayor Casual | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Mimshack-Glo-Ltd | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Mrs Esinam Ifeoma Anagbonu | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+NET+I ENGINEERING LIMITED | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Nextronics | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+On-Site Supplies Africa Limited | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Paystack Live Test Co | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+TechTalk | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+Wraphoria | FULL_YEAR diff=0 balanced=true | openingEquityFY=0
+
+--- Caanta detail ---
+inventory_balance_config: {"opening_inventory_value":3247,"go_live_date":"2026-07-24"}
+Caanta FULL_YEAR: diff=0 assets=-17 LE=-17 balanced=true
+Caanta FULL_YEAR non-zero lines:
+  Cash and Cash Equivalents: -3302.00
+  Inventory: 3285.00
+  TOTAL ASSETS: -17.00
+  WHT Payable: 2.10
+  TOTAL LIABILITIES: 2.10
+  Retained Earnings: -19.10
+  TOTAL EQUITY: -19.10
+  TOTAL LIABILITIES + EQUITY: -17.00

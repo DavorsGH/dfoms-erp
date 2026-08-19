@@ -1,5 +1,5 @@
 /**
- * Two-tenant RLS isolation test for user_activity_log (staging).
+ * Two-tenant RLS isolation test for user_activity_log (staging or production).
  *
  * Seeds login rows for tenant A and B, signs in as each tenant's super_admin,
  * asserts zero cross-tenant leakage on unfiltered SELECT.
@@ -7,12 +7,14 @@
  * Usage:
  *   npx tsx scripts/test-user-activity-log-rls-staging.ts
  *   npx tsx scripts/test-user-activity-log-rls-staging.ts --env-file .env.staging.local
+ *   npx tsx scripts/test-user-activity-log-rls-staging.ts --env-file .env.local.backup --allow-production
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DAVORS_TENANT_ID, ERP_SUITE_SIGNUP_SOURCE } from "../utils/tenant-signup";
 import { assert, loadEnvFromArgv } from "./lib/env";
 
 const PASSWORD = "UalRlsIso-Test-9Kp!";
+const PRODUCTION_REF = "tvcurcnmasnocwdxzgvz";
 
 type CleanupState = {
   tenantIds: string[];
@@ -201,10 +203,19 @@ async function runCleanup(admin: SupabaseClient) {
 
 async function main() {
   loadEnvFromArgv(process.argv);
+  const allowProduction = process.argv.includes("--allow-production");
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const anon =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   assert(url && anon && serviceKey, "Missing Supabase env vars");
+  if (url.includes(PRODUCTION_REF) && !allowProduction) {
+    throw new Error("Pass --allow-production for production RLS test.");
+  }
+  if (url.includes(PRODUCTION_REF)) {
+    console.log("Running user_activity_log RLS isolation test on PRODUCTION");
+  }
 
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },

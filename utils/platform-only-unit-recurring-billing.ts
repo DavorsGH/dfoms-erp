@@ -10,8 +10,10 @@ import {
 import {
   insertUnitActivationChargeAudit,
   isPlatformOnlyLandlordInTrial,
+  countActiveBillingUnits,
   type UnitActivationTriggerType,
 } from "@/utils/platform-only-unit-billing";
+import { getPlatformOnlyUnitCap } from "@/utils/platform-billing-config";
 import { normalizeGhanaPhone, roundGhs } from "@/utils/product-sale-paystack";
 import { sendResendEmail } from "@/utils/resend-email";
 
@@ -113,22 +115,27 @@ export function buildAnnualPeriodBounds(startDate = todayIsoDate()): {
   return { periodStart, periodEnd };
 }
 
-export async function countActiveBillingUnits(
+export async function resolveBillableActiveUnitCount(
   admin: SupabaseClient,
   tenantId: string,
-): Promise<number> {
-  const { count, error } = await admin
-    .from("property_units")
-    .select("unit_id", { count: "exact", head: true })
-    .eq("tenant_id", tenantId)
-    .eq("billing_activation_status", "active");
+): Promise<{
+  activeUnitCount: number;
+  billableUnitCount: number;
+  unitCap: number;
+}> {
+  const [activeUnitCount, unitCap] = await Promise.all([
+    countActiveBillingUnits(admin, tenantId),
+    getPlatformOnlyUnitCap(admin),
+  ]);
 
-  if (error) {
-    throw new Error(`Failed to count active billing units: ${error.message}`);
-  }
-
-  return count ?? 0;
+  return {
+    activeUnitCount,
+    billableUnitCount: Math.min(activeUnitCount, unitCap),
+    unitCap,
+  };
 }
+
+export { countActiveBillingUnits };
 
 export async function resolveBillingEmail(
   admin: SupabaseClient,
@@ -456,13 +463,14 @@ export async function processLandlordRecurringBilling(
     typeof tenantRow?.email === "string" ? tenantRow.email : null;
 
   try {
-    const activeUnitCount = await countActiveBillingUnits(admin, tenantId);
-    if (activeUnitCount <= 0) {
+    const { activeUnitCount, billableUnitCount } =
+      await resolveBillableActiveUnitCount(admin, tenantId);
+    if (billableUnitCount <= 0) {
       return {
         tenantId,
         tenantName,
         outcome: "skipped_zero_units",
-        activeUnitCount: 0,
+        activeUnitCount,
         amountGhs: 0,
         reference: null,
       };
@@ -482,12 +490,12 @@ export async function processLandlordRecurringBilling(
         tenantName,
         outcome: "skipped_already_billed",
         activeUnitCount,
-        amountGhs: roundGhs(activeUnitCount * config.unitPriceGhs),
+        amountGhs: roundGhs(billableUnitCount * config.unitPriceGhs),
         reference: chargeRef,
       };
     }
 
-    const amountGhs = roundGhs(activeUnitCount * config.unitPriceGhs);
+    const amountGhs = roundGhs(billableUnitCount * config.unitPriceGhs);
     const inTrial = await isPlatformOnlyLandlordInTrial(admin, tenantId);
 
     if (inTrial) {
@@ -504,7 +512,7 @@ export async function processLandlordRecurringBilling(
         tenantId,
         tenantName,
         periodLabel: config.periodLabel,
-        activeUnitCount,
+        activeUnitCount: billableUnitCount,
         amountGhs,
         unitPriceGhs: config.unitPriceGhs,
         success: true,
@@ -537,7 +545,7 @@ export async function processLandlordRecurringBilling(
       await handleRecurringBillingChargeFailure(admin, config, {
         tenantId,
         tenantName,
-        activeUnitCount,
+        activeUnitCount: billableUnitCount,
         amountGhs,
         reference: chargeRef,
         failureReason,
@@ -563,7 +571,8 @@ export async function processLandlordRecurringBilling(
       metadata: {
         context: config.paystackContext,
         tenant_id: tenantId,
-        active_unit_count: activeUnitCount,
+        active_unit_count: billableUnitCount,
+        total_active_unit_count: activeUnitCount,
         unit_price_ghs: config.unitPriceGhs,
         trigger_type: config.triggerType,
         ...config.paystackMetadataExtra,
@@ -574,7 +583,7 @@ export async function processLandlordRecurringBilling(
       await handleRecurringBillingChargeFailure(admin, config, {
         tenantId,
         tenantName,
-        activeUnitCount,
+        activeUnitCount: billableUnitCount,
         amountGhs,
         reference: chargeRef,
         failureReason: charged.error,
@@ -608,7 +617,7 @@ export async function processLandlordRecurringBilling(
       amountGhs,
       paidAt,
       tenantId,
-      activeUnitCount,
+      activeUnitCount: billableUnitCount,
       unitPriceGhs: config.unitPriceGhs,
       periodKey: config.periodKey,
     });
@@ -626,7 +635,7 @@ export async function processLandlordRecurringBilling(
       tenantId,
       tenantName,
       periodLabel: config.periodLabel,
-      activeUnitCount,
+      activeUnitCount: billableUnitCount,
       amountGhs,
       unitPriceGhs: config.unitPriceGhs,
       success: true,

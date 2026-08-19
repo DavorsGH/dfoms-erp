@@ -14,6 +14,7 @@ import { ERP_SUITE_TRIAL_DAYS } from "@/utils/tenant-signup";
 import {
   DEFAULT_PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS,
   getPlatformOnlyUnitActivationPriceGhs,
+  getPlatformOnlyUnitCap,
 } from "@/utils/platform-billing-config";
 import { postPlatformUnitActivationPaystackFinance } from "@/utils/paystack-finance-posting";
 import { roundGhs } from "@/utils/product-sale-paystack";
@@ -21,6 +22,23 @@ import { roundGhs } from "@/utils/product-sale-paystack";
 /** @deprecated Use getPlatformOnlyUnitActivationPriceGhs() — kept for backwards compatibility. */
 export const PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS =
   DEFAULT_PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS;
+
+export async function countActiveBillingUnits(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<number> {
+  const { count, error } = await admin
+    .from("property_units")
+    .select("unit_id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("billing_activation_status", "active");
+
+  if (error) {
+    throw new Error(`Failed to count active billing units: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
 
 export const PLATFORM_ONLY_UNIT_ACTIVATION_CONTEXT =
   "platform_only_unit_activation" as const;
@@ -36,6 +54,7 @@ export type UnitActivationChargeStatus =
   | "success"
   | "failed"
   | "skipped_trial"
+  | "skipped_over_cap"
   | "pending";
 
 type LandlordAuthRow = {
@@ -310,18 +329,24 @@ async function notifyUnitActivationChargeResult(options: {
   success: boolean;
   amountGhs: number;
   trial: boolean;
+  overCap?: boolean;
+  unitCap?: number;
   failureReason?: string;
 }): Promise<void> {
   const title = options.success
     ? options.trial
       ? "Unit activated (trial)"
-      : "Unit billing activated"
+      : options.overCap
+        ? "Unit activated (no charge — unit cap)"
+        : "Unit billing activated"
     : "Unit activation charge failed";
 
   const body = options.success
     ? options.trial
       ? `Unit ${options.unitNumber} is active for billing. No charge during your free trial.`
-      : `Unit ${options.unitNumber} is active for billing. GHS ${options.amountGhs.toFixed(2)} was charged.`
+      : options.overCap
+        ? `Unit ${options.unitNumber} is active for billing. No activation charge — your workspace exceeds the ${options.unitCap ?? "configured"}-unit billing cap.`
+        : `Unit ${options.unitNumber} is active for billing. GHS ${options.amountGhs.toFixed(2)} was charged.`
     : `Could not charge GHS ${options.amountGhs.toFixed(2)} for unit ${options.unitNumber}: ${options.failureReason ?? "Payment failed."}`;
 
   await insertLandlordPortalNotification({
@@ -428,6 +453,40 @@ export async function activatePlatformOnlyUnitForBilling(
       ok: true,
       activated: true,
       trial: true,
+      amountGhs,
+      reference: null,
+    };
+  }
+
+  const [activeUnitCount, unitCap] = await Promise.all([
+    countActiveBillingUnits(admin, options.tenantId),
+    getPlatformOnlyUnitCap(admin),
+  ]);
+
+  if (activeUnitCount >= unitCap) {
+    await setUnitBillingActive(admin, options.tenantId, options.unitId);
+    await insertUnitActivationChargeAudit(admin, {
+      tenantId: options.tenantId,
+      unitId: options.unitId,
+      amountGhs,
+      chargeStatus: "skipped_over_cap",
+      paystackReference: null,
+      failureReason: null,
+      triggerType,
+    });
+    await notifyUnitActivationChargeResult({
+      tenantId: options.tenantId,
+      unitNumber: unit.unit_number,
+      success: true,
+      amountGhs,
+      trial: false,
+      overCap: true,
+      unitCap,
+    });
+    return {
+      ok: true,
+      activated: true,
+      trial: false,
       amountGhs,
       reference: null,
     };

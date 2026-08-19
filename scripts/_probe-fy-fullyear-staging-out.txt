@@ -1,0 +1,32 @@
+Staging URL: https://wieflwbfdmjtsdnwbfii.supabase.co
+=== ALL STAGING TENANTS FY2026: Dec vs FULL_YEAR ===
+Caanta Market | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+David Avors | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Davors Facilities | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786860577125 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786860790448 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786866761360 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786867296243 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786867822606 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786867923906 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786870761929 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786870989046 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786871039137 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786871094248 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+IDB Cache Test 1786871707931 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Landlord E2E Browser Test | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Landlord Staging E2E 1786887994851 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+PayMeth Trial 1786728550776 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+PayMeth Trial 1786729033043 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Signup Owner Test 1786190023827 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Signup Owner Test 1786190263140 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Signup Owner Test 1786190401507 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Signup Owner Test 1786632007919 | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Test Landlord Co | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+Test Managed Co | Dec diff=0 bal=true | FULL_YEAR diff=0 bal=true
+
+=== CAANTA STAGING: inventory_balance_config ===
+null
+
+=== CAANTA STAGING: FULL_YEAR non-zero lines ===
+FULL_YEAR check: diff=0 assets=0 LE=0 balanced=true

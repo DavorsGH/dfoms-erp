@@ -1,6 +1,7 @@
 /**
  * Staging verification for finished product delete FK handling + archive.
- * Run: npx tsx scripts/test-finished-product-delete-staging.ts
+ * Run: npx tsx scripts/test-finished-product-delete-staging.ts --env-file .env.staging.local
+ * Production: npx tsx scripts/test-finished-product-delete-staging.ts --env-file .env.local.backup --allow-production
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -10,6 +11,7 @@ import {
   getFinishedProductDeleteErrorMessage,
   isFinishedProductDeleteForeignKeyError,
 } from "../utils/finished-product-delete-errors";
+import { loadEnvFromArgv } from "./lib/env";
 
 function loadEnvFile(filePath: string) {
   const contents = readFileSync(filePath, "utf8");
@@ -29,12 +31,21 @@ function assertTrue(condition: boolean, label: string) {
 }
 
 async function main() {
-  loadEnvFile(resolve(process.cwd(), ".env.staging.local"));
+  const allowProduction = process.argv.includes("--allow-production");
+  loadEnvFromArgv(process.argv.slice(2));
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
-    throw new Error("Missing staging Supabase env (.env.staging.local)");
+    throw new Error("Missing Supabase env (use --env-file)");
+  }
+  if (allowProduction) {
+    assertTrue(
+      url.includes("tvcurcnmasnocwdxzgvz"),
+      "Refusing non-production Supabase without --allow-production",
+    );
+  } else if (!url.includes("wieflwbfdmjtsdnwbfii")) {
+    loadEnvFile(resolve(process.cwd(), ".env.staging.local"));
   }
 
   const admin = createClient(url, serviceKey, {

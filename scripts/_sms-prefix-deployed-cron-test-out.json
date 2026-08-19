@@ -1,0 +1,84 @@
+{
+  "deploySha": null,
+  "httpStatus": 200,
+  "otpOk": true,
+  "txnOk": true,
+  "hubtelContents": [
+    "Davors Formula-DC OTP staging test 199458. Expires in 5 minutes.",
+    "From: Davors Facilities\nTo: Customer\nDavors Formula-DC transactional staging test at 2026-08-18T15:58:16.302Z"
+  ],
+  "body": {
+    "env": {
+      "VERCEL_ENV": "preview",
+      "SMS_PROVIDER": "hubtel",
+      "FORMULA_DC_SENDER_ID": "Davors-ERP",
+      "NON_OTP_SMS_ENABLED": "True",
+      "isNonOtpSmsSendingEnabled": true,
+      "resolvedProvider": "hubtel"
+    },
+    "phone": {
+      "raw": "0244303171",
+      "formulaDcRecipient": "233244303171"
+    },
+    "otp": {
+      "sendSmsResult": {
+        "ok": true,
+        "id": "ce6f653b-aaf9-4290-bf93-991a67d054a4"
+      },
+      "requestBody": null,
+      "responseStatus": null,
+      "responseBody": null
+    },
+    "transactional": {
+      "sendSmsResult": {
+        "ok": true,
+        "id": "695ddc27-7740-46cf-8c4a-c813c7ac2935"
+      },
+      "requestBody": null,
+      "responseStatus": null,
+      "responseBody": null
+    },
+    "providerCalls": {
+      "formulaDc": 0,
+      "hubtel": 2,
+      "traces": [
+        {
+          "provider": "hubtel",
+          "url": "https://sms.hubtel.com/v1/messages/send",
+          "requestBody": {
+            "From": "DAVORS",
+            "To": "0244303171",
+            "Content": "Davors Formula-DC OTP staging test 199458. Expires in 5 minutes."
+          },
+          "responseStatus": 201,
+          "responseBody": {
+            "rate": 0.0243,
+            "messageId": "ce6f653b-aaf9-4290-bf93-991a67d054a4",
+            "status": 0,
+            "networkId": "62001",
+            "clientReference": null,
+            "statusDescription": "request submitted successfully"
+          }
+        },
+        {
+          "provider": "hubtel",
+          "url": "https://sms.hubtel.com/v1/messages/send",
+          "requestBody": {
+            "From": "DAVORS",
+            "To": "0244303171",
+            "Content": "From: Davors Facilities\nTo: Customer\nDavors Formula-DC transactional staging test at 2026-08-18T15:58:16.302Z"
+          },
+          "responseStatus": 201,
+          "responseBody": {
+            "rate": 0.0243,
+            "messageId": "695ddc27-7740-46cf-8c4a-c813c7ac2935",
+            "status": 0,
+            "networkId": "62001",
+            "clientReference": null,
+            "statusDescription": "request submitted successfully"
+          }
+        }
+      ]
+    }
+  }
+}

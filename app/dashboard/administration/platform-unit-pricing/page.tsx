@@ -4,6 +4,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import {
   getPlatformOnlyUnitActivationPricing,
   getPlatformOnlyUnitAnnualPricing,
+  getPlatformOnlyUnitCapConfig,
 } from "@/utils/platform-billing-config";
 import PlatformUnitPricing, {
   type PlatformUnitPricingRow,
@@ -15,9 +16,10 @@ export default async function PlatformUnitPricingPage() {
   }
 
   const admin = createAdminClient();
-  const [monthlyPricing, annualPricing] = await Promise.all([
+  const [monthlyPricing, annualPricing, capConfig] = await Promise.all([
     getPlatformOnlyUnitActivationPricing(admin),
     getPlatformOnlyUnitAnnualPricing(admin),
+    getPlatformOnlyUnitCapConfig(admin),
   ]);
 
   const initialRows: PlatformUnitPricingRow[] = [
@@ -26,12 +28,21 @@ export default async function PlatformUnitPricingPage() {
       label: "Platform-only unit activation / monthly",
       priceGhs: monthlyPricing.priceGhs,
       updatedAt: monthlyPricing.updatedAt,
+      valueKind: "price",
     },
     {
       configKey: annualPricing.configKey,
       label: "Platform-only unit annual (per unit / year)",
       priceGhs: annualPricing.priceGhs,
       updatedAt: annualPricing.updatedAt,
+      valueKind: "price",
+    },
+    {
+      configKey: capConfig.configKey,
+      label: "Platform-only active unit cap",
+      priceGhs: capConfig.unitCap,
+      updatedAt: capConfig.updatedAt,
+      valueKind: "integer",
     },
   ];
 
