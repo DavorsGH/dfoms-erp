@@ -220,6 +220,17 @@ export async function generateServiceContractInvoices(
       invoiceId: invoice.id,
       invoiceNumber: invoice.invoice_number,
     });
+
+    void import("@/utils/tenant-admin-director-tier2-notifications").then(
+      ({ notifyAdminsDirectorsDraftServiceContractInvoice }) => {
+        void notifyAdminsDirectorsDraftServiceContractInvoice(
+          contract.tenant_id,
+          contract.contract_number,
+          invoice.invoice_number,
+          customer.client_name,
+        );
+      },
+    );
   }
 
   return {

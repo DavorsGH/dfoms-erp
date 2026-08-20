@@ -5,6 +5,7 @@ export const CLIENT_DOCUMENT_NOTIFICATION_EVENTS = [
   "quotation_sent",
   "invoice_created",
   "receipt_issued",
+  "contract_raised",
 ] as const satisfies readonly TransactionalEventType[];
 
 export type ClientDocumentNotificationEvent =
@@ -30,6 +31,7 @@ export function buildClientDocumentPortalUrlVars(): Record<string, string> {
     portal_quotations_url: `${base}/dashboard/client-portal/quotations`,
     portal_invoices_url: `${base}/dashboard/client-portal/invoices`,
     portal_receipts_url: `${base}/dashboard/client-portal/receipts`,
+    portal_contracts_url: `${base}/dashboard/client-portal/invoices`,
   };
 }
 
@@ -104,6 +106,25 @@ View your receipts: ${portal.portal_receipts_url}`,
         "amount",
         "payment_date",
         "portal_receipts_url",
+      ],
+    },
+    {
+      event_type: "contract_raised",
+      name: "Contract Raised",
+      subject: "Service contract {{contract_number}} from {{tenant_name}}",
+      body_email: `Dear {{customer_name}},
+
+Your service contract {{contract_number}} has been raised from quotation {{quotation_number}}.
+
+View your account: ${portal.portal_invoices_url}`,
+      body_sms:
+        "{{tenant_name}}: Service contract {{contract_number}} raised for {{customer_name}} from quotation {{quotation_number}}.",
+      variables: [
+        "tenant_name",
+        "customer_name",
+        "contract_number",
+        "quotation_number",
+        "portal_invoices_url",
       ],
     },
   ];

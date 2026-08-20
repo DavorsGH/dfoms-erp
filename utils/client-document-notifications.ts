@@ -12,7 +12,8 @@ import type { TransactionalEventType } from "@/utils/transactional-notification-
 type ClientDocumentEventType =
   | "invoice_created"
   | "quotation_sent"
-  | "receipt_issued";
+  | "receipt_issued"
+  | "contract_raised";
 
 type NotifyClientDocumentOptions = {
   tenantId: string;
@@ -137,7 +138,7 @@ export async function notifyClientDocumentEvent(
   }
 }
 
-export async function notifyClientInvoiceCreated(options: {
+export async function notifyClientInvoiceSent(options: {
   tenantId: string;
   clientId: string;
   invoiceId: string;
@@ -163,8 +164,21 @@ export async function notifyClientInvoiceCreated(options: {
       body: "Your invoice is ready to view in the customer portal.",
       actionUrl: "/dashboard/client-portal/invoices",
     },
-    context: `invoice_created/${options.invoiceId}`,
+    context: `invoice_sent/${options.invoiceId}`,
   });
+}
+
+/** @deprecated Use notifyClientInvoiceSent — customer notifications fire on Send, not create. */
+export async function notifyClientInvoiceCreated(options: {
+  tenantId: string;
+  clientId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  customerName: string;
+  amount: string;
+  dueDate: string;
+}): Promise<void> {
+  await notifyClientInvoiceSent(options);
 }
 
 export async function notifyClientQuotationSent(options: {
@@ -229,6 +243,43 @@ export async function notifyClientReceiptIssued(options: {
   });
 }
 
+export async function notifyClientContractRaised(options: {
+  tenantId: string;
+  clientId: string;
+  contractId: string;
+  contractNumber: string;
+  quotationNumber: string;
+  customerName: string;
+}): Promise<void> {
+  try {
+    void insertClientPortalNotification({
+      tenantId: options.tenantId,
+      clientId: options.clientId,
+      title: `Service contract ${options.contractNumber}`,
+      body: `Your service contract has been raised from quotation ${options.quotationNumber}.`,
+      actionUrl: "/dashboard/client-portal/invoices",
+      context: `contract_raised/${options.contractId}`,
+    });
+
+    await fireTransactionalNotification(
+      options.tenantId,
+      "contract_raised",
+      options.clientId,
+      {
+        customer_name: options.customerName,
+        contract_number: options.contractNumber,
+        quotation_number: options.quotationNumber,
+      },
+      { emailOnly: true },
+    );
+  } catch (error) {
+    console.error(
+      `[client-document-notifications] contract_raised failed (${options.contractId}):`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 export function shouldFireQuotationSentNotification(
   previousStatus: string | null | undefined,
   nextStatus: string | null | undefined,
@@ -240,3 +291,6 @@ export function shouldFireQuotationSentNotification(
   const previous = (previousStatus ?? "").trim().toLowerCase();
   return previous !== "sent";
 }
+
+/** First transition to sent only — same guard as quotations. */
+export const shouldFireInvoiceSentNotification = shouldFireQuotationSentNotification;

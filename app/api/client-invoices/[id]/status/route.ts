@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { updateClientInvoiceStatus } from "@/utils/client-invoices-api";
+import {
+  loadClientInvoiceDetail,
+  updateClientInvoiceStatus,
+} from "@/utils/client-invoices-api";
 import { normalizeStatus } from "@/utils/client-invoices-types";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
@@ -44,6 +47,14 @@ export async function PATCH(request: Request, context: RouteContext) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  const existing = await loadClientInvoiceDetail(supabase, auth.tenantId, id);
+  if (existing.error || !existing.invoice) {
+    return NextResponse.json(
+      { error: existing.error ?? "Invoice not found." },
+      { status: 404 },
+    );
+  }
+
   const { invoice, error } = await updateClientInvoiceStatus(
     supabase,
     auth.tenantId,
@@ -55,6 +66,44 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json(
       { error: error ?? "Unable to update invoice status." },
       { status: 400 },
+    );
+  }
+
+  if (nextStatus === "sent") {
+    void Promise.all([
+      import("@/utils/client-document-notifications"),
+      import("@/utils/tenant-admin-director-tier2-notifications"),
+    ]).then(
+      ([
+        { notifyClientInvoiceSent, shouldFireInvoiceSentNotification },
+        { notifyAdminsDirectorsInvoiceSent },
+      ]) => {
+        if (
+          !shouldFireInvoiceSentNotification(
+            existing.invoice!.status,
+            invoice.status,
+          )
+        ) {
+          return;
+        }
+
+        void notifyClientInvoiceSent({
+          tenantId: auth.tenantId,
+          clientId: invoice.client_id,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoice_number,
+          customerName: invoice.bill_to_name?.trim() || invoice.client_id,
+          amount: String(invoice.total_amount_due ?? ""),
+          dueDate: invoice.due_date ?? "",
+        });
+
+        void notifyAdminsDirectorsInvoiceSent(
+          auth.tenantId,
+          invoice.invoice_number,
+          invoice.bill_to_name,
+          Number(invoice.total_amount_due) || 0,
+        );
+      },
     );
   }
 

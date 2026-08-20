@@ -60,6 +60,8 @@ export async function fireTransactionalNotification(
   variables: Record<string, string>,
   options?: {
     emailAttachments?: ResendEmailAttachment[];
+    /** When true, never send SMS even if the rule channel includes sms/both. */
+    emailOnly?: boolean;
   },
 ): Promise<void> {
   try {
@@ -165,7 +167,8 @@ export async function fireTransactionalNotification(
     // CRM company name (customers.client_name) — not bill_to_name / contact person.
     vars.customer_name = customerCompanyName;
 
-    const wantsSms = channel === "sms" || channel === "both";
+    const wantsSms =
+      !options?.emailOnly && (channel === "sms" || channel === "both");
     let smsCreditAvailable = false;
 
     if (wantsSms) {

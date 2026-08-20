@@ -81,6 +81,17 @@ export async function PATCH(request: Request, context: RouteContext) {
           amount: String(quotation.total_amount_due ?? ""),
           validUntil: quotation.valid_until ?? "",
         });
+
+        void import("@/utils/tenant-admin-director-tier2-notifications").then(
+          ({ notifyAdminsDirectorsQuotationSent }) => {
+            void notifyAdminsDirectorsQuotationSent(
+              auth.tenantId,
+              quotation.quotation_number,
+              quotation.bill_to_name,
+              Number(quotation.total_amount_due) || 0,
+            );
+          },
+        );
       }
     },
   );

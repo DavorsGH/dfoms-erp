@@ -5,6 +5,7 @@ import { getCurrentUserNotificationLabel } from "@/utils/current-user";
 import {
   maybeNotifyLargeProductSale,
   notifyTenantAdminsAndDirectors,
+  notifyTenantAdminsAndDirectorsSms,
 } from "@/utils/tenant-admin-director-notifications";
 import { createAdminClient } from "@/utils/supabase/admin";
 
@@ -48,6 +49,74 @@ export async function notifyAdminsDirectorsNewInvoice(
     "New invoice generated",
     `${clientLabel}, ${formatGHS(totalAmount)}`,
     "/dashboard/finance/client-invoices",
+  );
+}
+
+export async function notifyAdminsDirectorsQuotationSent(
+  tenantId: string,
+  quotationNumber: string,
+  billToName: string | null | undefined,
+  totalAmount: number,
+): Promise<void> {
+  const clientLabel = billToName?.trim() || "Customer";
+  await notifyTenantAdminsAndDirectors(
+    tenantId,
+    "Quotation sent to customer",
+    `${clientLabel}, ${quotationNumber}, ${formatGHS(totalAmount)}`,
+    "/dashboard/sales-crm/quotations",
+  );
+}
+
+export async function notifyAdminsDirectorsInvoiceSent(
+  tenantId: string,
+  invoiceNumber: string,
+  billToName: string | null | undefined,
+  totalAmount: number,
+): Promise<void> {
+  const clientLabel = billToName?.trim() || "Customer";
+  await notifyTenantAdminsAndDirectors(
+    tenantId,
+    "Invoice sent to customer",
+    `${clientLabel}, ${invoiceNumber}, ${formatGHS(totalAmount)}`,
+    "/dashboard/finance/client-invoices",
+  );
+}
+
+export async function notifyAdminsDirectorsContractRaised(
+  tenantId: string,
+  contractNumber: string,
+  quotationNumber: string,
+  customerName: string | null | undefined,
+): Promise<void> {
+  const clientLabel = customerName?.trim() || "Customer";
+  await notifyTenantAdminsAndDirectors(
+    tenantId,
+    "Service contract raised",
+    `${clientLabel} — contract ${contractNumber} from quotation ${quotationNumber}`,
+    "/dashboard/finance/service-contracts",
+  );
+}
+
+export async function notifyAdminsDirectorsDraftServiceContractInvoice(
+  tenantId: string,
+  contractNumber: string,
+  invoiceNumber: string,
+  customerName: string | null | undefined,
+): Promise<void> {
+  const clientLabel = customerName?.trim() || "Customer";
+  const body = `${clientLabel} — ${invoiceNumber} from contract ${contractNumber}. Review and send.`;
+
+  await notifyTenantAdminsAndDirectors(
+    tenantId,
+    "Draft service contract invoice",
+    body,
+    "/dashboard/finance/client-invoices",
+  );
+
+  await notifyTenantAdminsAndDirectorsSms(
+    tenantId,
+    `Draft invoice ${invoiceNumber} for ${clientLabel} (contract ${contractNumber}) is ready. Please review and send.`,
+    `draft-service-contract-invoice/${invoiceNumber}`,
   );
 }
 

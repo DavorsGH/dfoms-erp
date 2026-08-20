@@ -107,20 +107,6 @@ export async function POST(request: Request) {
     );
   }
 
-  void import("@/utils/client-document-notifications").then(
-    ({ notifyClientInvoiceCreated }) => {
-      void notifyClientInvoiceCreated({
-        tenantId: auth.tenantId,
-        clientId: invoice.client_id,
-        invoiceId: invoice.id,
-        invoiceNumber: invoice.invoice_number,
-        customerName: invoice.bill_to_name?.trim() || invoice.client_id,
-        amount: String(invoice.total_amount_due ?? ""),
-        dueDate: invoice.due_date ?? "",
-      });
-    },
-  );
-
   void import("@/utils/tenant-admin-director-tier2-notifications").then(
     ({ notifyAdminsDirectorsNewInvoice }) => {
       void notifyAdminsDirectorsNewInvoice(

@@ -162,6 +162,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         label: "Support Tickets",
         href: "/dashboard/administration/support-tickets",
       },
+      {
+        label: "Platform SMS Usage",
+        href: "/dashboard/administration/platform-sms-usage",
+      },
     ],
   },
 ] as const;
