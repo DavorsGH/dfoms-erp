@@ -31,26 +31,18 @@ export type PlatformSmsTransactionalLogSummary = {
   note: string | null;
 };
 
-export type PlatformHubtelBalanceSummary = {
+export type PlatformHubtelBalanceEstimate = {
   available: boolean;
-  balance: number | null;
-  currency: string | null;
-  accountLabel: string | null;
-  endpoint: string | null;
-  configuredClientId: string | null;
-  configuredClientIdLabel: string | null;
-  error: string | null;
-};
-
-export type PlatformHubtelReportedSendsSummary = {
-  available: boolean;
-  outboundSendCount: number | null;
-  ledgerSendCount: number;
-  discrepancy: number;
-  endpoint: string | null;
-  configuredClientId: string | null;
-  configuredClientIdLabel: string | null;
-  error: string | null;
+  estimatedBalanceGhs: number | null;
+  lastLoggedAmountGhs: number | null;
+  lastLoggedAt: string | null;
+  lastLoggedNote: string | null;
+  transactionalSendsSinceLog: number;
+  otpSendsSinceLog: number;
+  totalSendsSinceLog: number;
+  smsUnitCostGhs: number;
+  estimatedSpendSinceLogGhs: number | null;
+  note: string | null;
 };
 
 export type PlatformSmsUsageReport = {
@@ -65,7 +57,6 @@ export type PlatformSmsUsageReport = {
   periodBreakdown: PlatformSmsPeriodBreakdown[];
   perTenant: PlatformSmsTenantBreakdown[];
   transactionalLog: PlatformSmsTransactionalLogSummary;
-  hubtelBalance: PlatformHubtelBalanceSummary;
-  hubtelReportedSends: PlatformHubtelReportedSendsSummary;
+  hubtelBalanceEstimate: PlatformHubtelBalanceEstimate;
   notes: string[];
 };

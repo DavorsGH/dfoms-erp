@@ -7,6 +7,7 @@ import ScrollableTable, {
 } from "@/app/dashboard/scrollable-table";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import type { PlatformSmsUsageReport } from "@/utils/platform-sms-usage-types";
+import HubtelBalanceEstimateCard from "./hubtel-balance-estimate-card";
 
 type PlatformSmsUsageViewerProps = {
   report: PlatformSmsUsageReport;
@@ -59,9 +60,7 @@ export default function PlatformSmsUsageViewer({
     );
   }
 
-  const { totals, hubtelBalance, hubtelReportedSends, transactionalLog } = report;
-  const hubtelMismatch =
-    hubtelReportedSends.available && hubtelReportedSends.discrepancy !== 0;
+  const { totals, transactionalLog } = report;
 
   return (
     <div className="space-y-8">
@@ -86,30 +85,7 @@ export default function PlatformSmsUsageViewer({
           value={formatNumber(totals.paidSends)}
           hint="Debited from purchased SMS credits"
         />
-        <SummaryCard
-          label="Hubtel account balance"
-          value={
-            hubtelBalance.available && hubtelBalance.balance !== null
-              ? `${hubtelBalance.currency ?? "GHS"} ${hubtelBalance.balance.toLocaleString("en-GH", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`
-              : "Unavailable"
-          }
-          hint={
-            hubtelBalance.available
-              ? hubtelBalance.endpoint ?? undefined
-              : [
-                  hubtelBalance.configuredClientIdLabel
-                    ? `Client ID: ${hubtelBalance.configuredClientIdLabel}`
-                    : null,
-                  hubtelBalance.error ??
-                    "Check Hubtel dashboard (Developers → Programmable API Keys → SMS API Keys).",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-          }
-        />
+        <HubtelBalanceEstimateCard estimate={report.hubtelBalanceEstimate} />
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -193,62 +169,6 @@ export default function PlatformSmsUsageViewer({
             </tbody>
           </table>
         </ScrollableTable>
-      </section>
-
-      <section
-        className={`rounded-lg border p-6 shadow-sm ${
-          hubtelMismatch
-            ? "border-amber-300 bg-amber-50"
-            : "border-slate-200 bg-white"
-        }`}
-      >
-        <h3 className="mb-3 text-lg font-semibold text-[#0f2744]">
-          Hubtel reconciliation
-        </h3>
-        <dl className="grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
-          <div>
-            <dt className="font-medium text-slate-900">Configured Client ID</dt>
-            <dd>
-              {hubtelReportedSends.configuredClientIdLabel ??
-                hubtelBalance.configuredClientIdLabel ??
-                "—"}
-            </dd>
-          </div>
-          <div>
-            <dt className="font-medium text-slate-900">Internal ledger sends</dt>
-            <dd>{formatNumber(hubtelReportedSends.ledgerSendCount)}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-slate-900">Hubtel-reported sends</dt>
-            <dd>
-              {hubtelReportedSends.available &&
-              hubtelReportedSends.outboundSendCount !== null
-                ? formatNumber(hubtelReportedSends.outboundSendCount)
-                : "API unavailable"}
-            </dd>
-          </div>
-          {hubtelReportedSends.available ? (
-            <div>
-              <dt className="font-medium text-slate-900">
-                Discrepancy (Hubtel − ledger)
-              </dt>
-              <dd
-                className={
-                  hubtelMismatch ? "font-semibold text-amber-800" : undefined
-                }
-              >
-                {formatNumber(hubtelReportedSends.discrepancy)}
-                {hubtelMismatch ? " — investigate drift" : ""}
-              </dd>
-            </div>
-          ) : null}
-          {hubtelReportedSends.error ? (
-            <div className="sm:col-span-2">
-              <dt className="font-medium text-slate-900">Hubtel API note</dt>
-              <dd>{hubtelReportedSends.error}</dd>
-            </div>
-          ) : null}
-        </dl>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-slate-50 p-6">

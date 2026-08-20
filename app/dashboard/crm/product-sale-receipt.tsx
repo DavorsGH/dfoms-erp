@@ -128,7 +128,7 @@ export function ProductSaleReceiptPanel({
 
         <div className="mb-6 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
           <p>
-            <span className="font-medium text-slate-900">Invoice No.:</span>{" "}
+            <span className="font-medium text-slate-900">Receipt No.:</span>{" "}
             {receipt.invoiceNo}
           </p>
           <p>

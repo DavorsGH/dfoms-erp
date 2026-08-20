@@ -1,11 +1,8 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchHubtelAccountProfile } from "@/utils/hubtel-account";
-import { fetchHubtelReportedOutboundSendCount } from "@/utils/hubtel-sms-reporting";
+import { computeHubtelBalanceEstimate } from "@/utils/hubtel-balance-log";
 import type {
-  PlatformHubtelBalanceSummary,
-  PlatformHubtelReportedSendsSummary,
   PlatformSmsPeriodBreakdown,
   PlatformSmsTenantBreakdown,
   PlatformSmsTransactionalLogSummary,
@@ -246,19 +243,13 @@ export async function fetchPlatformSmsUsageReport(
   admin: SupabaseClient,
 ): Promise<PlatformSmsUsageReport> {
   const now = new Date();
-  const [
-    transactions,
-    tenantsResult,
-    transactionalLogBase,
-    hubtelProfile,
-    hubtelReporting,
-  ] = await Promise.all([
-    loadAllSmsCreditTransactions(admin),
-    admin.from("tenants").select("id, name, tenant_code"),
-    loadTransactionalSmsLogCount(admin),
-    fetchHubtelAccountProfile(),
-    fetchHubtelReportedOutboundSendCount(),
-  ]);
+  const [transactions, tenantsResult, transactionalLogBase, hubtelBalanceEstimate] =
+    await Promise.all([
+      loadAllSmsCreditTransactions(admin),
+      admin.from("tenants").select("id, name, tenant_code"),
+      loadTransactionalSmsLogCount(admin),
+      computeHubtelBalanceEstimate(admin),
+    ]);
 
   if (tenantsResult.error) {
     throw new Error(tenantsResult.error.message);
@@ -346,30 +337,6 @@ export async function fetchPlatformSmsUsageReport(
       : transactionalLogBase.note,
   };
 
-  const hubtelBalance: PlatformHubtelBalanceSummary = {
-    available: hubtelProfile.available && hubtelProfile.balance !== null,
-    balance: hubtelProfile.balance,
-    currency: hubtelProfile.currency,
-    accountLabel: hubtelProfile.accountLabel,
-    endpoint: hubtelProfile.endpoint,
-    configuredClientId: hubtelProfile.configuredClientId,
-    configuredClientIdLabel: hubtelProfile.configuredClientIdLabel,
-    error: hubtelProfile.error,
-  };
-
-  const hubtelReportedSends: PlatformHubtelReportedSendsSummary = {
-    available: hubtelReporting.available,
-    outboundSendCount: hubtelReporting.outboundSendCount,
-    ledgerSendCount,
-    discrepancy: hubtelReporting.available
-      ? (hubtelReporting.outboundSendCount ?? 0) - ledgerSendCount
-      : 0,
-    endpoint: hubtelReporting.endpoint,
-    configuredClientId: hubtelReporting.configuredClientId,
-    configuredClientIdLabel: hubtelReporting.configuredClientIdLabel,
-    error: hubtelReporting.error,
-  };
-
   const perTenant: PlatformSmsTenantBreakdown[] = [...byTenant.values()]
     .map((entry) => {
       const tenant = tenantById.get(entry.tenantId);
@@ -411,14 +378,13 @@ export async function fetchPlatformSmsUsageReport(
     periodBreakdown,
     perTenant,
     transactionalLog,
-    hubtelBalance,
-    hubtelReportedSends,
+    hubtelBalanceEstimate,
     notes: [
       "Counts reflect sms_credit_transactions reason='send' — each row is one real Hubtel SMS debit.",
       "Allowance vs paid split is reconstructed FIFO: monthly allowance credits are consumed before purchased credits.",
-      "MFA/login OTP SMS bypass the credit wallet and are not included here.",
+      "MFA/login OTP SMS bypass the credit wallet and are not included in platform send totals.",
       "transactional_notification_sms_log covers fireTransactionalNotification sends only when deployed.",
-      "Hubtel balance and aggregate send counts are dashboard-only for programmable SMS keys unless Hubtel enables GET /v1/account/profile and GET /v1/messages on sms.hubtel.com.",
+      "Estimated Hubtel balance = last manual dashboard reading minus SMS sent since (transactional ledger + OTP) at GHS 0.0243 each.",
     ],
   };
 }
