@@ -264,6 +264,7 @@ export function buildClientQuotationPreviewDisplay(input: {
     payment_terms: input.form.payment_terms ?? null,
     authorized_by_name: input.authorizedBy.authorized_by_name,
     authorized_by_title: input.authorizedBy.authorized_by_title,
+    contract_id: null,
     converted_invoice_id: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

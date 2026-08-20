@@ -6,6 +6,7 @@ import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clie
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadClientInvoiceDetail, loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
+import { loadActiveServiceContractsForTenant } from "@/utils/service-contracts-api";
 import {
   clientInvoiceToFormState,
   type ClientInvoiceLineItemRow,
@@ -47,6 +48,7 @@ export default async function EditClientInvoicePage({
     { data: paymentAccounts, error: paymentAccountsError },
     authorizedSignersResult,
     salesTaxBasisResult,
+    serviceContractsResult,
   ] = await Promise.all([
     loadClientInvoiceDetail(supabase, tenantId, id),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
@@ -62,6 +64,7 @@ export default async function EditClientInvoicePage({
       .order("account_name", { ascending: true }),
     loadAuthorizedSignerOptions(supabase, tenantId),
     loadTenantSalesTaxBasis(supabase, tenantId),
+    loadActiveServiceContractsForTenant(supabase, tenantId),
   ]);
 
   if (!detail.invoice) {
@@ -75,6 +78,7 @@ export default async function EditClientInvoicePage({
     paymentAccountsError?.message ??
     authorizedSignersResult.error ??
     salesTaxBasisResult.error ??
+    serviceContractsResult.error ??
     null;
 
   const initialForm = clientInvoiceToFormState(
@@ -107,6 +111,7 @@ export default async function EditClientInvoicePage({
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
+        initialServiceContracts={serviceContractsResult.contracts}
         salesTaxBasis={salesTaxBasisResult.salesTaxBasis}
         initialForm={initialForm}
         fetchError={fetchError}

@@ -33,7 +33,7 @@ import {
   formatReceiptMoney,
 } from "@/utils/client-receipts-types";
 import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
-import { toNumber, resolveSourceQuotationLink } from "@/utils/client-invoices-types";
+import { toNumber, resolveSourceContractLink, resolveSourceQuotationLink } from "@/utils/client-invoices-types";
 
 type ClientInvoiceViewProps = {
   invoiceId: string;
@@ -49,6 +49,9 @@ const secondaryButtonClassName =
 
 const traceabilityBadgeClassName =
   "inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm font-medium text-sky-800 transition-colors hover:bg-sky-100";
+
+const contractTraceabilityBadgeClassName =
+  "inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-sm font-medium text-violet-800 transition-colors hover:bg-violet-100";
 
 function ClientInvoicePrintStyles() {
   return (
@@ -225,6 +228,7 @@ export default function ClientInvoiceView({
     display.branding,
   );
   const sourceQuotation = resolveSourceQuotationLink(invoice);
+  const sourceContract = resolveSourceContractLink(invoice);
   const canRecordPayment =
     invoice.status !== "draft" && invoice.status !== "paid";
 
@@ -239,6 +243,17 @@ export default function ClientInvoiceView({
             className={traceabilityBadgeClassName}
           >
             From Quotation {sourceQuotation.quotation_number}
+          </Link>
+        </div>
+      ) : null}
+
+      {sourceContract ? (
+        <div className="no-print">
+          <Link
+            href={`/dashboard/finance/service-contracts/${sourceContract.id}`}
+            className={contractTraceabilityBadgeClassName}
+          >
+            From Contract {sourceContract.contract_number}
           </Link>
         </div>
       ) : null}

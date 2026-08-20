@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { createClientInvoice } from "@/utils/client-invoices-api";
 import type { ClientInvoiceWriteBody } from "@/utils/client-invoices-types";
+import { createServiceContract } from "@/utils/service-contracts-api";
+import type { ServiceContractLineItemInput } from "@/utils/service-contracts-types";
 import {
   CLIENT_QUOTATION_ENTITY_TYPE,
   CLIENT_QUOTATION_HEADER_SELECT,
@@ -16,10 +18,12 @@ import {
   normalizeQuotationType,
   resolveQuotationTaxBasis,
   quotationToInvoiceWriteBody,
+  defaultValidUntil,
   roundMoney,
   toNumber,
   type ClientQuotationHeaderRow,
   type ClientQuotationLineItemInput,
+  type ClientQuotationStatus,
   type ClientQuotationType,
   type ClientQuotationWriteBody,
 } from "@/utils/client-quotations-types";
@@ -340,6 +344,7 @@ export async function createClientQuotation(
     sequence,
     quotationNumber,
   );
+  headerPayload.status = "draft";
 
   const { data: quotation, error: insertError } = await supabase
     .from("client_quotations")
@@ -371,6 +376,183 @@ export async function createClientQuotation(
   }
 
   return { quotation: quotation as ClientQuotationHeaderRow, error: null };
+}
+
+const QUOTATION_STATUS_TRANSITIONS: Record<
+  ClientQuotationStatus,
+  ClientQuotationStatus[]
+> = {
+  draft: ["sent"],
+  sent: ["accepted", "declined"],
+  accepted: [],
+  declined: [],
+  expired: [],
+};
+
+export async function updateClientQuotationStatus(
+  supabase: DbClient,
+  tenantId: string,
+  quotationId: string,
+  nextStatus: ClientQuotationStatus,
+) {
+  const detail = await loadClientQuotationDetail(supabase, tenantId, quotationId);
+  if (detail.error || !detail.quotation) {
+    return { quotation: null, error: detail.error ?? "Quotation not found." };
+  }
+
+  if (detail.quotation.converted_invoice_id) {
+    return {
+      quotation: null,
+      error: "Converted quotations cannot change status.",
+    };
+  }
+
+  const currentStatus = normalizeQuotationStatus(detail.quotation.status);
+  const allowed = QUOTATION_STATUS_TRANSITIONS[currentStatus] ?? [];
+  if (!allowed.includes(nextStatus)) {
+    return {
+      quotation: null,
+      error: `Cannot change quotation status from ${currentStatus} to ${nextStatus}.`,
+    };
+  }
+
+  const { data: quotation, error } = await supabase
+    .from("client_quotations")
+    .update({
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", quotationId)
+    .eq("tenant_id", tenantId)
+    .eq("status", currentStatus)
+    .select(CLIENT_QUOTATION_HEADER_SELECT)
+    .single();
+
+  if (error || !quotation) {
+    return {
+      quotation: null,
+      error: error?.message ?? "Unable to update quotation status.",
+    };
+  }
+
+  return { quotation: quotation as ClientQuotationHeaderRow, error: null };
+}
+
+function quotationLinesToContractLines(
+  lineItems: ClientQuotationLineItemInput[],
+): ServiceContractLineItemInput[] {
+  return lineItems.map((line, index) => ({
+    site_id: null,
+    category_label: line.category_label ?? null,
+    description: line.description.trim(),
+    labour_amount: roundMoney(toNumber(line.labour_amount)),
+    material_amount: roundMoney(toNumber(line.material_amount)),
+    discount_amount: roundMoney(toNumber(line.discount_amount)),
+    taxed: line.taxed ?? true,
+    sort_order: line.sort_order ?? index,
+  }));
+}
+
+export async function raiseContractFromQuotation(
+  supabase: DbClient,
+  tenantId: string,
+  quotationId: string,
+) {
+  const detail = await loadClientQuotationDetail(supabase, tenantId, quotationId);
+  if (detail.error || !detail.quotation) {
+    return { contract: null, error: detail.error ?? "Quotation not found." };
+  }
+
+  const quotation = detail.quotation;
+  if (normalizeQuotationStatus(quotation.status) !== "accepted") {
+    return {
+      contract: null,
+      error: "Only accepted quotations can be raised to a contract.",
+    };
+  }
+
+  if (quotation.contract_id) {
+    return {
+      contract: null,
+      error: "This quotation already has a linked service contract.",
+    };
+  }
+
+  const quotationType = normalizeQuotationType(quotation.quotation_type);
+  const lineItems: ClientQuotationLineItemInput[] = detail.line_items.map((line) => ({
+    site_id: line.site_id,
+    category_label: line.category_label,
+    description: line.description,
+    labour_amount: toNumber(line.labour_amount),
+    material_amount: toNumber(line.material_amount),
+    discount_amount: toNumber(line.discount_amount),
+    taxed: line.taxed,
+    sort_order: line.sort_order,
+    product_id: line.product_id,
+    quantity: line.quantity != null ? toNumber(line.quantity) : null,
+    unit_price: line.unit_price != null ? toNumber(line.unit_price) : null,
+  }));
+
+  const contractLines = quotationLinesToContractLines(
+    lineItems.map((line, index) => ({
+      ...line,
+      sort_order: index,
+    })),
+  );
+
+  if (contractLines.length === 0) {
+    return {
+      contract: null,
+      error: "Quotation has no line items to copy into a contract.",
+    };
+  }
+
+  const startDate = quotation.issue_date;
+  const endDate =
+    quotation.valid_until?.trim() ||
+    defaultValidUntil(new Date(`${quotation.issue_date}T00:00:00`));
+
+  const { contract, error: createError } = await createServiceContract(supabase, tenantId, {
+    client_id: quotation.client_id,
+    start_date: startDate,
+    end_date: endDate,
+    auto_renew: false,
+    billing_frequency: "monthly",
+    next_billing_date: null,
+    status: "draft",
+    tax_basis: resolveQuotationTaxBasis(quotation.tax_basis, quotationType),
+    vat_nhil_getfund_rate: toNumber(quotation.vat_nhil_getfund_rate),
+    wht_rate: toNumber(quotation.wht_rate),
+    document_url: null,
+    notes: `Raised from quotation ${quotation.quotation_number}.`,
+    line_items: contractLines,
+  });
+
+  if (createError || !contract) {
+    return {
+      contract: null,
+      error: createError ?? "Unable to create service contract.",
+    };
+  }
+
+  const { error: linkError } = await supabase
+    .from("client_quotations")
+    .update({
+      contract_id: contract.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", quotationId)
+    .eq("tenant_id", tenantId)
+    .is("contract_id", null);
+
+  if (linkError) {
+    return {
+      contract,
+      error: `Contract ${contract.contract_number} was created, but linking back to the quotation failed: ${linkError.message}`,
+    };
+  }
+
+  return { contract, error: null };
 }
 
 export async function updateClientQuotation(
@@ -528,6 +710,7 @@ export async function convertClientQuotationToInvoice(
         wht_amount: toNumber(quotation.wht_amount),
         total_amount_due: toNumber(quotation.total_amount_due),
       },
+      contractId: quotation.contract_id,
     },
   );
 

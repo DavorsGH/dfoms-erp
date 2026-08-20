@@ -10,6 +10,9 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
 import FilteredListCount from "@/app/dashboard/filtered-list-count";
+import ListRowStatusActionsMenu, {
+  type ListRowStatusActionItem,
+} from "@/components/list-row-status-actions-menu";
 import {
   formatInvoiceDate,
   formatInvoiceMoney,
@@ -18,6 +21,7 @@ import {
   formatQuotationType,
   normalizeClientQuotationListRow,
   resolveConvertedInvoiceLink,
+  resolveRaisedContractLink,
   type ClientQuotationListRow,
 } from "@/utils/client-quotations-types";
 
@@ -26,17 +30,88 @@ type ClientQuotationsListProps = {
   fetchError: string | null;
 };
 
+type QuotationStatusAction = "send" | "accept" | "decline" | "raise-contract" | "convert";
+
+type PendingQuotationAction = {
+  quotationId: string;
+  action: QuotationStatusAction;
+  label: string;
+  confirmMessage: string;
+};
+
 const primaryButtonClassName =
   "rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50";
 
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+const actionButtonClassName =
+  "rounded-md border border-emerald-700 px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const statusMenuButtonClassName =
+  "rounded-md border border-emerald-700 px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50";
+
 const traceabilityBadgeClassName =
   "inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100";
 
+const contractTraceabilityBadgeClassName =
+  "inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-xs font-medium text-violet-800 hover:bg-violet-100";
+
 const dangerButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+function getQuotationStatusActions(
+  quotation: ClientQuotationListRow,
+): ListRowStatusActionItem<QuotationStatusAction>[] {
+  if (quotation.status === "draft") {
+    return [
+      {
+        action: "send",
+        label: "Send",
+        confirmMessage: `Mark ${quotation.quotation_number} as Sent?`,
+      },
+    ];
+  }
+
+  if (quotation.status === "sent") {
+    return [
+      {
+        action: "accept",
+        label: "Accept",
+        confirmMessage: `Mark ${quotation.quotation_number} as Accepted?`,
+      },
+      {
+        action: "decline",
+        label: "Decline",
+        confirmMessage: `Mark ${quotation.quotation_number} as Declined?`,
+      },
+    ];
+  }
+
+  if (quotation.status === "accepted") {
+    const actions: ListRowStatusActionItem<QuotationStatusAction>[] = [];
+
+    if (!quotation.contract_id) {
+      actions.push({
+        action: "raise-contract",
+        label: "Raise Contract",
+        confirmMessage: `Raise a service contract from ${quotation.quotation_number}?`,
+      });
+    }
+
+    if (!quotation.converted_invoice_id) {
+      actions.push({
+        action: "convert",
+        label: "Convert to Invoice",
+        confirmMessage: `Convert ${quotation.quotation_number} to a customer invoice?`,
+      });
+    }
+
+    return actions;
+  }
+
+  return [];
+}
 
 export default function ClientQuotationsList({
   initialQuotations,
@@ -48,10 +123,20 @@ export default function ClientQuotationsList({
   );
   const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingQuotationAction | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  function updateQuotationInList(next: ClientQuotationListRow) {
+    setQuotations((current) =>
+      current.map((entry) =>
+        entry.id === next.id ? normalizeClientQuotationListRow(next) : entry,
+      ),
+    );
+  }
 
   async function handleDelete(quotation: ClientQuotationListRow) {
-    setConfirmingId(null);
+    setConfirmingDeleteId(null);
     setDeletingId(quotation.id);
     setError(null);
 
@@ -77,6 +162,88 @@ export default function ClientQuotationsList({
       setError("Unable to delete quotation. Check your connection and try again.");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function executePendingAction() {
+    if (!pendingAction) {
+      return;
+    }
+
+    const { quotationId, action } = pendingAction;
+    setActingId(quotationId);
+    setError(null);
+
+    try {
+      if (action === "raise-contract") {
+        const response = await fetch(
+          `/api/client-quotations/${quotationId}/raise-contract`,
+          { method: "POST" },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | { service_contract?: { id: string }; error?: string }
+          | null;
+
+        if (!response.ok || !payload?.service_contract?.id) {
+          setError(payload?.error ?? "Unable to raise contract.");
+          return;
+        }
+
+        setPendingAction(null);
+        router.push(
+          `/dashboard/finance/service-contracts/${payload.service_contract.id}/edit`,
+        );
+        router.refresh();
+        return;
+      }
+
+      if (action === "convert") {
+        const response = await fetch(`/api/client-quotations/${quotationId}/convert`, {
+          method: "POST",
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | { client_invoice?: ClientQuotationListRow & { id: string }; error?: string }
+          | null;
+
+        if (!response.ok || !payload?.client_invoice?.id) {
+          setError(payload?.error ?? "Unable to convert quotation.");
+          return;
+        }
+
+        setPendingAction(null);
+        router.push(`/dashboard/finance/client-invoices/${payload.client_invoice.id}`);
+        router.refresh();
+        return;
+      }
+
+      const statusMap = {
+        send: "sent",
+        accept: "accepted",
+        decline: "declined",
+      } as const;
+
+      const response = await fetch(`/api/client-quotations/${quotationId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: statusMap[action] }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { client_quotation?: ClientQuotationListRow; error?: string }
+        | null;
+
+      if (!response.ok || !payload?.client_quotation) {
+        setError(payload?.error ?? "Unable to update quotation status.");
+        return;
+      }
+
+      updateQuotationInList(payload.client_quotation);
+      setPendingAction(null);
+      router.refresh();
+    } catch {
+      setError("Unable to complete action. Check your connection and try again.");
+    } finally {
+      setActingId(null);
     }
   }
 
@@ -117,7 +284,7 @@ export default function ClientQuotationsList({
                 <th className={scrollableTableThClassName}>Valid Until</th>
                 <th className={scrollableTableThClassName}>Total Due</th>
                 <th className={scrollableTableThClassName}>Status</th>
-                <th className={scrollableTableThClassName}>Converted</th>
+                <th className={scrollableTableThClassName}>Links</th>
                 <th className={scrollableTableThClassName}>Actions</th>
               </tr>
             </thead>
@@ -135,6 +302,7 @@ export default function ClientQuotationsList({
                     : quotation.client?.client_name;
                   const isConverted = Boolean(quotation.converted_invoice_id);
                   const convertedInvoice = resolveConvertedInvoiceLink(quotation);
+                  const raisedContract = resolveRaisedContractLink(quotation);
 
                   return (
                     <tr key={quotation.id} className={getStripedRowClassName(index)}>
@@ -161,16 +329,27 @@ export default function ClientQuotationsList({
                         {formatQuotationStatus(quotation.status)}
                       </td>
                       <td className="px-4 py-3">
-                        {convertedInvoice ? (
-                          <Link
-                            href={`/dashboard/finance/client-invoices/${convertedInvoice.id}`}
-                            className={traceabilityBadgeClassName}
-                          >
-                            Converted → {convertedInvoice.invoice_number}
-                          </Link>
-                        ) : (
-                          <span className="text-sm text-slate-500">—</span>
-                        )}
+                        <div className="flex flex-col gap-1">
+                          {raisedContract ? (
+                            <Link
+                              href={`/dashboard/finance/service-contracts/${raisedContract.id}`}
+                              className={contractTraceabilityBadgeClassName}
+                            >
+                              Contract Raised → {raisedContract.contract_number}
+                            </Link>
+                          ) : null}
+                          {convertedInvoice ? (
+                            <Link
+                              href={`/dashboard/finance/client-invoices/${convertedInvoice.id}`}
+                              className={traceabilityBadgeClassName}
+                            >
+                              Converted → {convertedInvoice.invoice_number}
+                            </Link>
+                          ) : null}
+                          {!raisedContract && !convertedInvoice ? (
+                            <span className="text-sm text-slate-500">—</span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="inline-flex flex-nowrap items-center gap-2">
@@ -189,7 +368,7 @@ export default function ClientQuotationsList({
                             </Link>
                           ) : null}
                           {!isConverted ? (
-                            confirmingId === quotation.id ? (
+                            confirmingDeleteId === quotation.id ? (
                               <span className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap">
                                 <span className="text-sm text-red-700">
                                   Delete {quotation.quotation_number}?
@@ -203,7 +382,7 @@ export default function ClientQuotationsList({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setConfirmingId(null)}
+                                  onClick={() => setConfirmingDeleteId(null)}
                                   className={secondaryButtonClassName}
                                 >
                                   Cancel
@@ -214,7 +393,8 @@ export default function ClientQuotationsList({
                                 type="button"
                                 onClick={() => {
                                   setError(null);
-                                  setConfirmingId(quotation.id);
+                                  setPendingAction(null);
+                                  setConfirmingDeleteId(quotation.id);
                                 }}
                                 disabled={deletingId === quotation.id}
                                 className={dangerButtonClassName}
@@ -223,6 +403,45 @@ export default function ClientQuotationsList({
                               </button>
                             )
                           ) : null}
+                          {pendingAction?.quotationId === quotation.id ? (
+                            <span className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap">
+                              <span className="text-sm text-slate-700">
+                                {pendingAction.confirmMessage}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void executePendingAction()}
+                                disabled={actingId === quotation.id}
+                                className={actionButtonClassName}
+                              >
+                                {actingId === quotation.id ? "Working…" : "Confirm"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPendingAction(null)}
+                                disabled={actingId === quotation.id}
+                                className={secondaryButtonClassName}
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <ListRowStatusActionsMenu
+                              items={getQuotationStatusActions(quotation)}
+                              disabled={actingId === quotation.id}
+                              buttonClassName={statusMenuButtonClassName}
+                              onSelect={(item) => {
+                                setError(null);
+                                setConfirmingDeleteId(null);
+                                setPendingAction({
+                                  quotationId: quotation.id,
+                                  action: item.action,
+                                  label: item.label,
+                                  confirmMessage: item.confirmMessage,
+                                });
+                              }}
+                            />
+                          )}
                         </div>
                       </td>
                     </tr>

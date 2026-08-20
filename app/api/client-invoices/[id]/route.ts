@@ -163,13 +163,12 @@ export async function DELETE(_request: Request, context: RouteContext) {
     );
   }
 
-  // Deleting the invoice cascades to its income_register row (script 84),
-  // which would orphan the tax ledger legs keyed on that income id — so look
-  // the id up first and clear the ledger after the delete succeeds.
+  // Deleting the invoice removes its linked income_register row (matched by
+  // invoice_no). Clear tax ledger legs keyed on that income id first.
   const { incomeId } = await findClientInvoiceIncomeRegisterId(
     supabase,
     auth.tenantId,
-    id,
+    existing.invoice.invoice_number,
   );
 
   const { error } = await supabase

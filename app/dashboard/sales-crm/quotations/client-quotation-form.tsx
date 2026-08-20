@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
@@ -12,18 +13,16 @@ import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import {
   AUTHORIZED_BY_OTHER,
   CLIENT_QUOTATION_PAYMENT_TERMS_OPTIONS,
-  computeQuotationLineTotalCost,
   computeQuotationTotals,
   defaultTaxBasisForQuotationType,
   emptyProductQuotationLineItem,
   emptyQuotationLineItem,
   formatInvoiceMoney,
-  isProductCatalogLine,
-  isProductPickerLine,
   normalizeClientQuotationPaymentTerms,
   normalizeQuotationDiscountType,
   normalizeQuotationType,
   quotationHeaderDiscountLabel,
+  quotationHasBeenSent,
   QUOTATION_TAX_BASIS_OPTIONS,
   resolveAuthorizedByFields,
   resolveQuotationTaxBasis,
@@ -86,10 +85,6 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
-function reindexLineItems(lines: ClientQuotationFormLineItem[]) {
-  return lines.map((line, index) => ({ ...line, sort_order: index }));
-}
-
 function resolveShipToPayload(form: ClientQuotationFormState) {
   if (form.ship_to_same_as_billing) {
     return {
@@ -130,7 +125,6 @@ export default function ClientQuotationForm({
   const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [sitePicker, setSitePicker] = useState("");
 
   const clientSites = useMemo(
     () =>
@@ -271,59 +265,6 @@ export default function ClientQuotationForm({
     billingSettings,
   ]);
 
-  function updateLineItem(key: string, patch: Partial<ClientQuotationFormLineItem>) {
-    setForm((current) => ({
-      ...current,
-      line_items: current.line_items.map((line) =>
-        line.key === key ? { ...line, ...patch } : line,
-      ),
-    }));
-  }
-
-  function moveLineItem(key: string, direction: -1 | 1) {
-    setForm((current) => {
-      const index = current.line_items.findIndex((line) => line.key === key);
-      const targetIndex = index + direction;
-      if (index < 0 || targetIndex < 0 || targetIndex >= current.line_items.length) {
-        return current;
-      }
-
-      const next = [...current.line_items];
-      const [item] = next.splice(index, 1);
-      next.splice(targetIndex, 0, item);
-      return { ...current, line_items: reindexLineItems(next) };
-    });
-  }
-
-  function removeLineItem(key: string) {
-    setForm((current) => ({
-      ...current,
-      line_items: reindexLineItems(
-        current.line_items.filter((line) => line.key !== key),
-      ),
-    }));
-  }
-
-  function addManualLine() {
-    setForm((current) => ({
-      ...current,
-      line_items: reindexLineItems([
-        ...current.line_items,
-        emptyQuotationLineItem(current.line_items.length),
-      ]),
-    }));
-  }
-
-  function addProductLine() {
-    setForm((current) => ({
-      ...current,
-      line_items: reindexLineItems([
-        ...current.line_items,
-        emptyProductQuotationLineItem(current.line_items.length),
-      ]),
-    }));
-  }
-
   function handleQuotationTypeChange(nextType: ClientQuotationType) {
     setForm((current) => ({
       ...current,
@@ -337,7 +278,6 @@ export default function ClientQuotationForm({
           ? [emptyProductQuotationLineItem(0)]
           : [emptyQuotationLineItem(0)],
     }));
-    setSitePicker("");
   }
 
   function handlePreview() {
@@ -372,63 +312,6 @@ export default function ClientQuotationForm({
     setPreviewOpen(true);
   }
 
-  function updateProductLine(
-    key: string,
-    patch: Partial<ClientQuotationFormLineItem>,
-  ) {
-    setForm((current) => ({
-      ...current,
-      line_items: current.line_items.map((line) => {
-        if (line.key !== key) {
-          return line;
-        }
-
-        const nextLine = { ...line, ...patch };
-
-        if (patch.product_id !== undefined) {
-          const product = initialProducts.find(
-            (entry) => entry.id === patch.product_id,
-          );
-          if (product) {
-            nextLine.description = `${product.product_code} — ${product.product_name}`;
-            if (!nextLine.unit_price) {
-              nextLine.unit_price = toNumber(product.standard_selling_price);
-            }
-          } else if (!patch.product_id) {
-            nextLine.description = "";
-          }
-        }
-
-        return nextLine;
-      }),
-    }));
-  }
-
-  function toNumber(value: unknown) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  function addSiteLine(siteCode: string) {
-    const site = clientSites.find((entry) => entry.site_code === siteCode);
-    if (!site) {
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      line_items: reindexLineItems([
-        ...current.line_items,
-        {
-          ...emptyQuotationLineItem(current.line_items.length),
-          site_id: site.site_code,
-          description: site.site_name,
-        },
-      ]),
-    }));
-    setSitePicker("");
-  }
-
   function handleClientChange(clientId: string) {
     const customer = initialCustomers.find((entry) => entry.client_id === clientId);
     setForm((current) => ({
@@ -440,7 +323,6 @@ export default function ClientQuotationForm({
       bill_to_phone: customer?.phone ?? "",
       line_items: current.line_items.filter((line) => !line.site_id),
     }));
-    setSitePicker("");
   }
 
   function togglePaymentAccount(paymentAccountId: string) {
@@ -551,6 +433,13 @@ export default function ClientQuotationForm({
       {isConverted ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           This quotation has been converted to an invoice and can no longer be edited.
+        </p>
+      ) : null}
+
+      {mode === "edit" && !isConverted && quotationHasBeenSent(form.status) ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          This quotation has already been sent to the client. Changes here update the record
+          only — use the list actions to change status.
         </p>
       ) : null}
 
@@ -773,28 +662,30 @@ export default function ClientQuotationForm({
               <option value="proforma_invoice">Pro-forma Invoice</option>
             </select>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Status
-            </label>
-            <select
-              disabled={isConverted}
-              value={form.status}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  status: event.target.value as ClientQuotationStatus,
-                }))
-              }
-              className={inputClassName}
-            >
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="accepted">Accepted</option>
-              <option value="declined">Declined</option>
-              <option value="expired">Expired</option>
-            </select>
-          </div>
+          {mode === "edit" ? (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Status
+              </label>
+              <select
+                disabled={isConverted}
+                value={form.status}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    status: event.target.value as ClientQuotationStatus,
+                  }))
+                }
+                className={inputClassName}
+              >
+                <option value="draft">Draft</option>
+                <option value="sent">Sent</option>
+                <option value="accepted">Accepted</option>
+                <option value="declined">Declined</option>
+                <option value="expired">Expired</option>
+              </select>
+            </div>
+          ) : null}
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Issue Date *
@@ -884,408 +775,29 @@ export default function ClientQuotationForm({
         </div>
       </section>
 
-      <section className={cardClassName}>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-slate-700">Line Items</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              {isProductQuotation
-                ? "Add products from inventory or manual ad-hoc lines."
-                : "Group lines with the same category label. Total cost updates live."}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            {!isProductQuotation ? (
-              <div className="flex gap-2">
-                <select
-                  value={sitePicker}
-                  disabled={isConverted || !form.client_id}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (value) {
-                      addSiteLine(value);
-                    }
-                  }}
-                  className={inputClassName}
-                >
-                  <option value="">
-                    {!form.client_id
-                      ? "Select customer first"
-                      : clientSites.length === 0
-                        ? "No sites for this customer"
-                        : "Add site line…"}
-                  </option>
-                  {clientSites.map((site) => (
-                    <option key={site.site_code} value={site.site_code}>
-                      {site.site_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-            {isProductQuotation ? (
-              <button
-                type="button"
-                disabled={isConverted}
-                onClick={addProductLine}
-                className={secondaryButtonClassName}
-              >
-                Add Product Line
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={isConverted}
-              onClick={addManualLine}
-              className={secondaryButtonClassName}
-            >
-              Add Manual Line
-            </button>
-          </div>
-        </div>
-
-        {form.line_items.length === 0 ? (
-          <p className="text-sm text-slate-500">No line items yet.</p>
-        ) : isProductQuotation ? (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-100 text-slate-700">
-                <tr>
-                  <th className="px-3 py-2">Line</th>
-                  <th className="px-3 py-2">Product / Description</th>
-                  <th className="px-3 py-2">Quantity</th>
-                  <th className="px-3 py-2">Unit Price (GHS)</th>
-                  <th className="px-3 py-2">Discount</th>
-                  <th className="px-3 py-2">Taxed</th>
-                  <th className="px-3 py-2">Total</th>
-                  <th className="px-3 py-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {form.line_items.map((line) => {
-                  const productPickerLine = isProductPickerLine(line);
-                  const quotationType = normalizeQuotationType(form.quotation_type);
-
-                  return (
-                    <tr key={line.key}>
-                      <td className="px-3 py-2 text-slate-600">
-                        {productPickerLine ? "Product" : "Manual"}
-                      </td>
-                      <td className="px-3 py-2">
-                        {productPickerLine ? (
-                          <select
-                            required
-                            disabled={isConverted}
-                            value={line.product_id ?? ""}
-                            onChange={(event) =>
-                              updateProductLine(line.key, {
-                                product_id: event.target.value,
-                              })
-                            }
-                            className={inputClassName}
-                          >
-                            <option value="">Select product</option>
-                            {initialProducts.map((product) => (
-                              <option key={product.id} value={product.id}>
-                                {product.product_code} — {product.product_name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            required
-                            disabled={isConverted}
-                            value={line.description}
-                            onChange={(event) =>
-                              updateLineItem(line.key, {
-                                description: event.target.value,
-                              })
-                            }
-                            className={inputClassName}
-                          />
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {productPickerLine ? (
-                          <input
-                            type="number"
-                            min="0.0001"
-                            step="0.0001"
-                            disabled={isConverted}
-                            value={line.quantity ?? 1}
-                            onChange={(event) =>
-                              updateProductLine(line.key, {
-                                quantity: Number(event.target.value) || 0,
-                              })
-                            }
-                            className={inputClassName}
-                          />
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {productPickerLine ? (
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            disabled={isConverted}
-                            value={line.unit_price ?? 0}
-                            onChange={(event) =>
-                              updateProductLine(line.key, {
-                                unit_price: Number(event.target.value) || 0,
-                              })
-                            }
-                            className={inputClassName}
-                          />
-                        ) : (
-                          <div className="grid gap-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              disabled={isConverted}
-                              placeholder="Service cost"
-                              value={line.labour_amount}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  labour_amount: Number(event.target.value) || 0,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              disabled={isConverted}
-                              placeholder="Material cost"
-                              value={line.material_amount}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  material_amount: Number(event.target.value) || 0,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          disabled={isConverted}
-                          value={line.discount_amount}
-                          onChange={(event) =>
-                            (productPickerLine ? updateProductLine : updateLineItem)(line.key, {
-                              discount_amount: Number(event.target.value) || 0,
-                            })
-                          }
-                          className={inputClassName}
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          disabled={isConverted}
-                          checked={line.taxed}
-                          onChange={(event) =>
-                            (productPickerLine ? updateProductLine : updateLineItem)(line.key, {
-                              taxed: event.target.checked,
-                            })
-                          }
-                          className="h-4 w-4 rounded border-slate-300 text-[#0f2744]"
-                        />
-                      </td>
-                      <td className="px-3 py-2 font-medium text-[#0f2744]">
-                        {formatInvoiceMoney(
-                          computeQuotationLineTotalCost(line, quotationType),
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            disabled={isConverted}
-                            onClick={() => moveLineItem(line.key, -1)}
-                            className={secondaryButtonClassName}
-                          >
-                            Up
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isConverted}
-                            onClick={() => moveLineItem(line.key, 1)}
-                            className={secondaryButtonClassName}
-                          >
-                            Down
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isConverted}
-                            onClick={() => removeLineItem(line.key)}
-                            className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-100 text-slate-700">
-                <tr>
-                  <th className="px-3 py-2">Description</th>
-                  <th className="px-3 py-2">Category</th>
-                  <th className="px-3 py-2">Service Cost (GHS)</th>
-                  <th className="px-3 py-2">Material Cost (GHS)</th>
-                  <th className="px-3 py-2">Discount</th>
-                  <th className="px-3 py-2">Taxed</th>
-                  <th className="px-3 py-2">Total</th>
-                  <th className="px-3 py-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {form.line_items.map((line) => (
-                  <tr key={line.key}>
-                    <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        required
-                        disabled={isConverted}
-                        value={line.description}
-                        onChange={(event) =>
-                          updateLineItem(line.key, {
-                            description: event.target.value,
-                          })
-                        }
-                        className={inputClassName}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        disabled={isConverted}
-                        value={line.category_label ?? ""}
-                        onChange={(event) =>
-                          updateLineItem(line.key, {
-                            category_label: event.target.value,
-                          })
-                        }
-                        className={inputClassName}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        disabled={isConverted}
-                        value={line.labour_amount}
-                        onChange={(event) =>
-                          updateLineItem(line.key, {
-                            labour_amount: Number(event.target.value) || 0,
-                          })
-                        }
-                        className={inputClassName}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        disabled={isConverted}
-                        value={line.material_amount}
-                        onChange={(event) =>
-                          updateLineItem(line.key, {
-                            material_amount: Number(event.target.value) || 0,
-                          })
-                        }
-                        className={inputClassName}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        disabled={isConverted}
-                        value={line.discount_amount}
-                        onChange={(event) =>
-                          updateLineItem(line.key, {
-                            discount_amount: Number(event.target.value) || 0,
-                          })
-                        }
-                        className={inputClassName}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="checkbox"
-                        disabled={isConverted}
-                        checked={line.taxed}
-                        onChange={(event) =>
-                          updateLineItem(line.key, {
-                            taxed: event.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 rounded border-slate-300 text-[#0f2744]"
-                      />
-                    </td>
-                    <td className="px-3 py-2 font-medium text-[#0f2744]">
-                      {formatInvoiceMoney(
-                        computeQuotationLineTotalCost(
-                          line,
-                          normalizeQuotationType(form.quotation_type),
-                        ),
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex gap-1">
-                        <button
-                          type="button"
-                          disabled={isConverted}
-                          onClick={() => moveLineItem(line.key, -1)}
-                          className={secondaryButtonClassName}
-                        >
-                          Up
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isConverted}
-                          onClick={() => moveLineItem(line.key, 1)}
-                          className={secondaryButtonClassName}
-                        >
-                          Down
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isConverted}
-                          onClick={() => removeLineItem(line.key)}
-                          className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <LineItemsEditor
+        lineItems={form.line_items}
+        onLineItemsChange={(line_items) => setForm((current) => ({ ...current, line_items }))}
+        itemSource={isProductQuotation ? "product" : "site"}
+        siteOptions={clientSites}
+        products={initialProducts}
+        clientSelected={Boolean(form.client_id)}
+        vatRate={form.vat_nhil_getfund_rate ?? 0}
+        whtRate={form.wht_rate ?? 0}
+        taxBasis={resolveQuotationTaxBasis(
+          form.tax_basis,
+          normalizeQuotationType(form.quotation_type),
         )}
-      </section>
+        disabled={isConverted}
+        sectionDescription={
+          isProductQuotation
+            ? "Add products from inventory or manual ad-hoc lines."
+            : "Group lines with the same category label. Total cost updates live."
+        }
+        showCurrencyInHeaders={!isProductQuotation}
+        createManualLine={emptyQuotationLineItem}
+        createProductLine={isProductQuotation ? emptyProductQuotationLineItem : undefined}
+      />
 
       <section className={cardClassName}>
         <div>

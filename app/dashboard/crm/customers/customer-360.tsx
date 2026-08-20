@@ -47,6 +47,7 @@ import {
   type Customer360ProductSale,
   type Customer360Quotation,
   type Customer360Quote,
+  type Customer360ServiceContract,
   type Customer360TabId,
 } from "./customer-360-utils";
 
@@ -56,6 +57,7 @@ type Customer360Props = {
   opportunities: Customer360Opportunity[];
   quotes: Customer360Quote[];
   quotations: Customer360Quotation[];
+  serviceContracts: Customer360ServiceContract[];
   invoices: Customer360Invoice[];
   productSales: Customer360ProductSale[];
   activities: SalesActivity[];
@@ -73,6 +75,7 @@ export default function Customer360({
   opportunities,
   quotes,
   quotations,
+  serviceContracts,
   invoices,
   productSales,
   activities,
@@ -82,6 +85,9 @@ export default function Customer360({
 }: Customer360Props) {
   const [activeTab, setActiveTab] = useState<Customer360TabId>("opportunities");
   const summary = computeCustomer360Summary(productSales, invoices, activities);
+  const activeServiceContracts = serviceContracts.filter(
+    (contract) => contract.status === "active",
+  );
 
   return (
     <div className="min-w-0 space-y-6">
@@ -188,6 +194,38 @@ export default function Customer360({
           </p>
         </div>
       </section>
+
+      {activeServiceContracts.length > 0 ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h4 className="mb-4 text-sm font-medium text-slate-700">Active Service Contracts</h4>
+          <div className="space-y-3">
+            {activeServiceContracts.map((contract) => (
+              <div
+                key={contract.id}
+                className="flex flex-col gap-2 rounded-md border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-medium text-[#0f2744]">{contract.contract_number}</p>
+                  <p className="text-sm text-slate-600">
+                    {formatInvoiceDate(contract.start_date)} →{" "}
+                    {formatInvoiceDate(contract.end_date)}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    Next billing: {formatInvoiceDate(contract.next_billing_date)} ·{" "}
+                    {formatInvoiceMoney(contract.total_amount_due)}
+                  </p>
+                </div>
+                <Link
+                  href={`/dashboard/finance/service-contracts/${contract.id}`}
+                  className={secondaryButtonClassName}
+                >
+                  View contract
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap gap-2 border-b border-slate-200 px-4 pt-4">

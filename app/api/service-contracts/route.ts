@@ -1,0 +1,111 @@
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  createServiceContract,
+  getNextServiceContractSequence,
+  peekNextServiceContractNumber,
+} from "@/utils/service-contracts-api";
+import {
+  SERVICE_CONTRACT_LIST_SELECT,
+  validateServiceContractBody,
+  type ServiceContractListRow,
+  type ServiceContractWriteBody,
+} from "@/utils/service-contracts-types";
+import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
+import { createClient } from "@/utils/supabase/server";
+
+async function getTenantSupabase() {
+  const cookieStore = await cookies();
+  return createClient(cookieStore);
+}
+
+function rejectClientTenantId(body: unknown): NextResponse | null {
+  if (body !== null && typeof body === "object" && "tenant_id" in body) {
+    return NextResponse.json(
+      { error: "tenant_id cannot be set by client" },
+      { status: 400 },
+    );
+  }
+
+  return null;
+}
+
+export async function GET() {
+  const auth = await requireTenantRoleIn(FINANCE_SECTION_ROLES);
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  const supabase = await getTenantSupabase();
+  const { data, error } = await supabase
+    .from("service_contracts")
+    .select(SERVICE_CONTRACT_LIST_SELECT)
+    .eq("tenant_id", auth.tenantId)
+    .order("start_date", { ascending: false })
+    .order("contract_sequence", { ascending: false });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const [{ sequence, error: sequenceError }, peekResult] = await Promise.all([
+    getNextServiceContractSequence(supabase, auth.tenantId),
+    peekNextServiceContractNumber(supabase, auth.tenantId),
+  ]);
+
+  if (sequenceError) {
+    return NextResponse.json({ error: sequenceError }, { status: 500 });
+  }
+
+  if (peekResult.error) {
+    return NextResponse.json({ error: peekResult.error }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    service_contracts: (data as ServiceContractListRow[] | null) ?? [],
+    next_contract_sequence: sequence,
+    next_contract_number: peekResult.contractNumber,
+  });
+}
+
+export async function POST(request: Request) {
+  const auth = await requireTenantRoleIn(FINANCE_SECTION_ROLES);
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  let rawBody: unknown;
+  try {
+    rawBody = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const tenantRejection = rejectClientTenantId(rawBody);
+  if (tenantRejection) {
+    return tenantRejection;
+  }
+
+  const body = rawBody as ServiceContractWriteBody;
+  const validationError = validateServiceContractBody(body);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
+  const supabase = await getTenantSupabase();
+  const { contract, error } = await createServiceContract(
+    supabase,
+    auth.tenantId,
+    body,
+  );
+
+  if (error || !contract) {
+    return NextResponse.json(
+      { error: error ?? "Unable to create service contract." },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({ service_contract: contract });
+}

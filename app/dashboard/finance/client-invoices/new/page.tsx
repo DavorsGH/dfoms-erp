@@ -5,6 +5,7 @@ import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clie
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadAuthorizedSignerOptions, peekNextInvoiceNumber } from "@/utils/client-invoices-api";
+import { loadActiveServiceContractsForTenant } from "@/utils/service-contracts-api";
 import {
   defaultDueDate,
   emptyLineItem,
@@ -40,6 +41,7 @@ export default async function NewClientInvoicePage() {
     nextInvoiceNumberResult,
     authorizedSignersResult,
     salesTaxBasisResult,
+    serviceContractsResult,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
@@ -55,6 +57,7 @@ export default async function NewClientInvoicePage() {
     peekNextInvoiceNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
     loadTenantSalesTaxBasis(supabase, tenantId),
+    loadActiveServiceContractsForTenant(supabase, tenantId),
   ]);
 
   const fetchError =
@@ -64,6 +67,7 @@ export default async function NewClientInvoicePage() {
     nextInvoiceNumberResult.error ??
     authorizedSignersResult.error ??
     salesTaxBasisResult.error ??
+    serviceContractsResult.error ??
     null;
 
   return (
@@ -86,9 +90,11 @@ export default async function NewClientInvoicePage() {
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
+        initialServiceContracts={serviceContractsResult.contracts}
         salesTaxBasis={salesTaxBasisResult.salesTaxBasis}
         initialForm={{
           client_id: "",
+          contract_id: "",
           invoice_date: todayIsoDate(),
           due_date: defaultDueDate(),
           billing_period_start: "",

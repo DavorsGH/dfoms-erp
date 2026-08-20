@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
 import PromoCodeField from "@/components/promo-code-field";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
@@ -15,7 +16,7 @@ import {
   emptyLineItem,
   formatAuthorizedSignerLabel,
   formatInvoiceMoney,
-  groupLineItemsByCategory,
+  invoiceHasBeenSent,
   resolveAuthorizedByFields,
   roundMoney,
   toNumber,
@@ -27,6 +28,7 @@ import {
   type ClientInvoiceWriteBody,
 } from "@/utils/client-invoices-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
+import type { ServiceContractOption } from "@/utils/service-contracts-types";
 
 type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> &
   ClientInvoiceFormAuthorizedByState & {
@@ -43,6 +45,7 @@ type ClientInvoiceFormProps = {
   initialSites: ClientInvoiceSiteOption[];
   initialPaymentAccounts: PaymentAccountRow[];
   initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
+  initialServiceContracts?: ServiceContractOption[];
   initialForm: ClientInvoiceFormState;
   salesTaxBasis: SalesTaxBasis;
   fetchError?: string | null;
@@ -60,10 +63,6 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
-function reindexLineItems(lines: ClientInvoiceFormLineItem[]) {
-  return lines.map((line, index) => ({ ...line, sort_order: index }));
-}
-
 export default function ClientInvoiceForm({
   mode,
   invoiceId,
@@ -73,6 +72,7 @@ export default function ClientInvoiceForm({
   initialSites,
   initialPaymentAccounts,
   initialAuthorizedSigners,
+  initialServiceContracts = [],
   initialForm,
   salesTaxBasis,
   fetchError = null,
@@ -84,7 +84,6 @@ export default function ClientInvoiceForm({
   const [saving, setSaving] = useState(false);
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [promoDiscount, setPromoDiscount] = useState(0);
-  const [sitePicker, setSitePicker] = useState("");
 
   const clientSites = useMemo(
     () =>
@@ -92,6 +91,16 @@ export default function ClientInvoiceForm({
         ? initialSites.filter((site) => site.client_id === form.client_id)
         : [],
     [form.client_id, initialSites],
+  );
+
+  const clientContracts = useMemo(
+    () =>
+      form.client_id
+        ? initialServiceContracts.filter(
+            (contract) => contract.client_id === form.client_id,
+          )
+        : [],
+    [form.client_id, initialServiceContracts],
   );
 
   const totals = useMemo(
@@ -110,11 +119,6 @@ export default function ClientInvoiceForm({
     [totals.total_amount_due, promoDiscount],
   );
 
-  const groupedLines = useMemo(
-    () => groupLineItemsByCategory(form.line_items),
-    [form.line_items],
-  );
-
   const displayInvoiceNumber = useMemo(() => {
     if (mode === "edit") {
       return existingInvoiceNumber ?? "";
@@ -123,80 +127,17 @@ export default function ClientInvoiceForm({
     return nextInvoiceNumberPreview?.trim() || "Assigned on save";
   }, [mode, existingInvoiceNumber, nextInvoiceNumberPreview]);
 
-  function updateLineItem(key: string, patch: Partial<ClientInvoiceFormLineItem>) {
-    setForm((current) => ({
-      ...current,
-      line_items: current.line_items.map((line) =>
-        line.key === key ? { ...line, ...patch } : line,
-      ),
-    }));
-  }
-
-  function moveLineItem(key: string, direction: -1 | 1) {
-    setForm((current) => {
-      const index = current.line_items.findIndex((line) => line.key === key);
-      const targetIndex = index + direction;
-      if (index < 0 || targetIndex < 0 || targetIndex >= current.line_items.length) {
-        return current;
-      }
-
-      const next = [...current.line_items];
-      const [item] = next.splice(index, 1);
-      next.splice(targetIndex, 0, item);
-      return { ...current, line_items: reindexLineItems(next) };
-    });
-  }
-
-  function removeLineItem(key: string) {
-    setForm((current) => ({
-      ...current,
-      line_items: reindexLineItems(
-        current.line_items.filter((line) => line.key !== key),
-      ),
-    }));
-  }
-
-  function addManualLine() {
-    setForm((current) => ({
-      ...current,
-      line_items: reindexLineItems([
-        ...current.line_items,
-        emptyLineItem(current.line_items.length),
-      ]),
-    }));
-  }
-
-  function addSiteLine(siteCode: string) {
-    const site = clientSites.find((entry) => entry.site_code === siteCode);
-    if (!site) {
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      line_items: reindexLineItems([
-        ...current.line_items,
-        {
-          ...emptyLineItem(current.line_items.length),
-          site_id: site.site_code,
-          description: site.site_name,
-        },
-      ]),
-    }));
-    setSitePicker("");
-  }
-
   function handleClientChange(clientId: string) {
     const customer = initialCustomers.find((entry) => entry.client_id === clientId);
     setForm((current) => ({
       ...current,
       client_id: clientId,
+      contract_id: "",
       bill_to_name: customer?.client_name ?? "",
       bill_to_address: customer?.address ?? "",
       bill_to_phone: customer?.phone ?? "",
       line_items: current.line_items.filter((line) => !line.site_id),
     }));
-    setSitePicker("");
   }
 
   function togglePaymentAccount(paymentAccountId: string) {
@@ -222,6 +163,7 @@ export default function ClientInvoiceForm({
 
     const payload: ClientInvoiceWriteBody = {
       client_id: form.client_id,
+      contract_id: form.contract_id?.trim() ? form.contract_id : null,
       invoice_date: form.invoice_date,
       due_date: form.due_date,
       billing_period_start: form.billing_period_start || null,
@@ -288,6 +230,13 @@ export default function ClientInvoiceForm({
         </p>
       ) : null}
 
+      {mode === "edit" && invoiceHasBeenSent(form.status) ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          This invoice has already been sent to the client. Changes here update the record
+          only — use the list actions to change status.
+        </p>
+      ) : null}
+
       <section className={cardClassName}>
         <div>
           <h3 className="text-sm font-medium text-slate-700">Customer</h3>
@@ -313,6 +262,41 @@ export default function ClientInvoiceForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Service Contract
+            </label>
+            <select
+              value={form.contract_id ?? ""}
+              disabled={!form.client_id}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  contract_id: event.target.value,
+                }))
+              }
+              className={inputClassName}
+            >
+              <option value="">
+                {form.client_id ? "No linked contract" : "Select customer first"}
+              </option>
+              {clientContracts.map((contract) => (
+                <option key={contract.id} value={contract.id}>
+                  {contract.contract_number}
+                </option>
+              ))}
+            </select>
+            {form.contract_id ? (
+              <p className="mt-1 text-xs text-slate-500">
+                <Link
+                  href={`/dashboard/finance/service-contracts/${form.contract_id}`}
+                  className="text-[#0f2744] underline"
+                >
+                  View linked contract
+                </Link>
+              </p>
+            ) : null}
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -384,47 +368,51 @@ export default function ClientInvoiceForm({
                 : "Invoice number cannot be changed after creation."}
             </p>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Status
-            </label>
-            <select
-              value={form.status}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  status: event.target.value as ClientInvoiceStatus,
-                }))
-              }
-              className={inputClassName}
-            >
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="partial">Partial</option>
-              <option value="paid">Paid</option>
-            </select>
-          </div>
-          {form.status === "partial" && (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Amount Received *
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                value={form.amount_received ?? 0}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    amount_received: Number(event.target.value),
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-          )}
+          {mode === "edit" ? (
+            <>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Status
+                </label>
+                <select
+                  value={form.status}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      status: event.target.value as ClientInvoiceStatus,
+                    }))
+                  }
+                  className={inputClassName}
+                >
+                  <option value="draft">Draft</option>
+                  <option value="sent">Sent</option>
+                  <option value="partial">Partial</option>
+                  <option value="paid">Paid</option>
+                </select>
+              </div>
+              {form.status === "partial" && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Amount Received *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={form.amount_received ?? 0}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        amount_received: Number(event.target.value),
+                      }))
+                    }
+                    className={inputClassName}
+                  />
+                </div>
+              )}
+            </>
+          ) : null}
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Invoice Date *
@@ -493,188 +481,20 @@ export default function ClientInvoiceForm({
         </div>
       </section>
 
-      <section className={cardClassName}>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h3 className="text-sm font-medium text-slate-700">Line Items</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Group lines with the same category label. Total cost updates live.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="flex gap-2">
-              <select
-                value={sitePicker}
-                disabled={!form.client_id || clientSites.length === 0}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (value) {
-                    addSiteLine(value);
-                  }
-                }}
-                className={inputClassName}
-              >
-                <option value="">
-                  {form.client_id ? "Add site line…" : "Select customer first"}
-                </option>
-                {clientSites.map((site) => (
-                  <option key={site.site_code} value={site.site_code}>
-                    {site.site_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="button"
-              onClick={addManualLine}
-              className={secondaryButtonClassName}
-            >
-              Add Manual Line
-            </button>
-          </div>
-        </div>
-
-        {form.line_items.length === 0 ? (
-          <p className="text-sm text-slate-500">No line items yet.</p>
-        ) : (
-          <div className="space-y-6">
-            {groupedLines.map((group) => (
-              <div key={group.label} className="space-y-3">
-                <h4 className="text-sm font-semibold text-[#0f2744]">{group.label}</h4>
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-100 text-slate-700">
-                      <tr>
-                        <th className="px-3 py-2">Description</th>
-                        <th className="px-3 py-2">Category</th>
-                        <th className="px-3 py-2">Service Cost (GHS)</th>
-                        <th className="px-3 py-2">Material Cost (GHS)</th>
-                        <th className="px-3 py-2">Discount</th>
-                        <th className="px-3 py-2">Taxed</th>
-                        <th className="px-3 py-2">Total</th>
-                        <th className="px-3 py-2">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {group.items.map((line) => (
-                        <tr key={line.key}>
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              required
-                              value={line.description}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  description: event.target.value,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={line.category_label ?? ""}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  category_label: event.target.value,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.labour_amount}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  labour_amount: Number(event.target.value) || 0,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.material_amount}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  material_amount: Number(event.target.value) || 0,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={line.discount_amount}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  discount_amount: Number(event.target.value) || 0,
-                                })
-                              }
-                              className={inputClassName}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={line.taxed}
-                              onChange={(event) =>
-                                updateLineItem(line.key, {
-                                  taxed: event.target.checked,
-                                })
-                              }
-                              className="h-4 w-4 rounded border-slate-300 text-[#0f2744]"
-                            />
-                          </td>
-                          <td className="px-3 py-2 font-medium text-[#0f2744]">
-                            {formatInvoiceMoney(computeLineTotalCost(line))}
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex gap-1">
-                              <button
-                                type="button"
-                                onClick={() => moveLineItem(line.key, -1)}
-                                className={secondaryButtonClassName}
-                              >
-                                Up
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => moveLineItem(line.key, 1)}
-                                className={secondaryButtonClassName}
-                              >
-                                Down
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeLineItem(line.key)}
-                                className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <LineItemsEditor
+        lineItems={form.line_items}
+        onLineItemsChange={(line_items) => setForm((current) => ({ ...current, line_items }))}
+        itemSource="site"
+        siteOptions={clientSites}
+        clientSelected={Boolean(form.client_id)}
+        vatRate={form.vat_nhil_getfund_rate ?? 0}
+        whtRate={form.wht_rate ?? 0}
+        taxBasis={salesTaxBasis}
+        disabled={saving}
+        sectionDescription="Group lines with the same category label. Total cost updates live."
+        showCurrencyInHeaders
+        createManualLine={emptyLineItem}
+      />
 
       <section className={cardClassName}>
         <div>

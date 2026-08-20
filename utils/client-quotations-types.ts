@@ -17,6 +17,7 @@ import {
   DEFAULT_SALES_TAX_BASIS,
   type SalesTaxBasis,
 } from "@/app/dashboard/finance/tax-utils";
+import { computeLineItemTotals } from "@/utils/line-items-totals";
 
 export {
   AUTHORIZED_BY_OTHER,
@@ -71,10 +72,10 @@ export const DEFAULT_CLIENT_QUOTATION_PAYMENT_TERMS: ClientQuotationPaymentTerms
   "Net 30";
 
 export const CLIENT_QUOTATION_LIST_SELECT =
-  "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, converted_invoice_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
+  "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, contract_id, converted_invoice_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_QUOTATION_HEADER_SELECT =
-  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number)" as const;
+  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, contract_id, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_QUOTATION_LINE_ITEM_SELECT =
   "id, quotation_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, product_id, quantity, unit_price, sort_order" as const;
@@ -90,6 +91,11 @@ export type ClientQuotationCustomer = {
 export type ClientQuotationConvertedInvoice = {
   id: string;
   invoice_number: string;
+};
+
+export type ClientQuotationSourceContract = {
+  id: string;
+  contract_number: string;
 };
 
 export type ClientQuotationListRow = {
@@ -108,10 +114,12 @@ export type ClientQuotationListRow = {
   wht_amount: number;
   total_amount_due: number;
   status: ClientQuotationStatus;
+  contract_id: string | null;
   converted_invoice_id: string | null;
   created_at: string;
   client?: ClientQuotationCustomer | ClientQuotationCustomer[] | null;
   converted_invoice?: ClientQuotationConvertedInvoice | ClientQuotationConvertedInvoice[] | null;
+  source_contract?: ClientQuotationSourceContract | ClientQuotationSourceContract[] | null;
 };
 
 export type ClientQuotationPortalListRow = {
@@ -180,6 +188,7 @@ export type ClientQuotationHeaderRow = {
   payment_terms: string | null;
   authorized_by_name: string | null;
   authorized_by_title: string | null;
+  contract_id: string | null;
   converted_invoice_id: string | null;
   created_at: string;
   updated_at: string;
@@ -188,6 +197,7 @@ export type ClientQuotationHeaderRow = {
     | ClientQuotationOpportunityRelation[]
     | null;
   converted_invoice?: ClientQuotationConvertedInvoice | ClientQuotationConvertedInvoice[] | null;
+  source_contract?: ClientQuotationSourceContract | ClientQuotationSourceContract[] | null;
 };
 
 export type ClientQuotationLineItemInput = {
@@ -353,14 +363,15 @@ export function computeQuotationTotals(
   discountType: ClientQuotationDiscountType = "flat",
   discountPercentage: unknown = 0,
 ) {
-  const normalizedLines = lineItems.map((line) => ({
-    ...line,
-    total_cost: computeQuotationLineTotalCost(line, quotationType),
-  }));
-
-  const lineSubtotal = roundMoney(
-    normalizedLines.reduce((sum, line) => sum + line.total_cost, 0),
+  const baseTotals = computeLineItemTotals(
+    lineItems,
+    vatRate,
+    whtRate,
+    taxBasis,
+    (line) => computeQuotationLineTotalCost(line, quotationType),
   );
+
+  const lineSubtotal = baseTotals.subtotal;
   const headerDiscount = resolveQuotationHeaderDiscountAmount(
     lineSubtotal,
     discountType,
@@ -368,36 +379,18 @@ export function computeQuotationTotals(
     discountPercentage,
   );
   const subtotal = roundMoney(Math.max(0, lineSubtotal - headerDiscount));
-
-  const labourTotal = roundMoney(
-    normalizedLines.reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
-  );
-  const taxedLineSubtotal = roundMoney(
-    normalizedLines
-      .filter((line) => isLineTaxedForSalesTax(line.taxed))
-      .reduce((sum, line) => sum + line.total_cost, 0),
-  );
-  const taxedLabourTotal = roundMoney(
-    normalizedLines
-      .filter((line) => isLineTaxedForSalesTax(line.taxed))
-      .reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
-  );
-  const taxBase =
-    taxBasis === "total_cost" ? taxedLineSubtotal : taxedLabourTotal;
-  const vat = roundMoney((taxBase * toNumber(vatRate)) / 100);
-  const wht = roundMoney((taxBase * toNumber(whtRate)) / 100);
-  const totalAmountDue = roundMoney(subtotal + vat);
+  const totalAmountDue = roundMoney(subtotal + baseTotals.tax_due);
 
   return {
-    line_items: normalizedLines,
+    line_items: baseTotals.line_items,
     line_subtotal: lineSubtotal,
     header_discount_amount: headerDiscount,
     subtotal,
-    tax_due: vat,
-    wht_amount: wht,
+    tax_due: baseTotals.tax_due,
+    wht_amount: baseTotals.wht_amount,
     total_amount_due: totalAmountDue,
-    labour_total: labourTotal,
-    tax_base: taxBase,
+    labour_total: baseTotals.labour_total,
+    tax_base: baseTotals.tax_base,
   };
 }
 
@@ -531,6 +524,28 @@ export function resolveConvertedInvoiceLink(
   };
 }
 
+export function resolveRaisedContractLink(
+  quotation: Pick<ClientQuotationListRow, "contract_id" | "source_contract">,
+) {
+  const embedded = firstEmbeddedRelation(quotation.source_contract);
+  if (embedded?.id && embedded.contract_number) {
+    return embedded;
+  }
+
+  if (!quotation.contract_id) {
+    return null;
+  }
+
+  return {
+    id: quotation.contract_id,
+    contract_number: quotation.contract_id,
+  };
+}
+
+export function quotationHasBeenSent(status: ClientQuotationStatus | string | undefined) {
+  return Boolean(status && status !== "draft");
+}
+
 export function formatQuotationStatus(status: string) {
   switch (status) {
     case "sent":
@@ -654,6 +669,9 @@ export function normalizeClientQuotationListRow(
     converted_invoice: Array.isArray(row.converted_invoice)
       ? (row.converted_invoice[0] ?? null)
       : (row.converted_invoice ?? null),
+    source_contract: Array.isArray(row.source_contract)
+      ? (row.source_contract[0] ?? null)
+      : (row.source_contract ?? null),
   };
 }
 
@@ -844,6 +862,7 @@ export function quotationToInvoiceWriteBody(
 
   return {
     client_id: quotation.client_id,
+    contract_id: quotation.contract_id ?? null,
     invoice_date: quotation.issue_date,
     due_date: quotation.valid_until,
     billing_period_start: null,

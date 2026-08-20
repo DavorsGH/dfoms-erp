@@ -3,15 +3,16 @@ import {
   DEFAULT_SALES_TAX_BASIS,
   type SalesTaxBasis,
 } from "@/app/dashboard/finance/tax-utils";
+import { computeLineItemTotals } from "@/utils/line-items-totals";
 
 export const CLIENT_INVOICE_STATUSES = ["draft", "sent", "partial", "paid"] as const;
 export type ClientInvoiceStatus = (typeof CLIENT_INVOICE_STATUSES)[number];
 
 export const CLIENT_INVOICE_LIST_SELECT =
-  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, amount_received, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name), source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number)" as const;
+  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, amount_received, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name), source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number), source_contract:service_contracts!client_invoices_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_INVOICE_HEADER_SELECT =
-  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, authorized_by_name, authorized_by_title, created_at, updated_at, source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number)" as const;
+  "id, tenant_id, client_id, contract_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, authorized_by_name, authorized_by_title, created_at, updated_at, source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number), source_contract:service_contracts!client_invoices_contract_id_fkey(id, contract_number)" as const;
 
 export const AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT =
   "auth_uid, employee_id, employees!user_accounts_employee_id_fkey(full_name, position)" as const;
@@ -160,6 +161,11 @@ export type ClientInvoiceSourceQuotation = {
   quotation_number: string;
 };
 
+export type ClientInvoiceSourceContract = {
+  id: string;
+  contract_number: string;
+};
+
 export type ClientInvoiceListRow = {
   id: string;
   tenant_id: string;
@@ -178,6 +184,7 @@ export type ClientInvoiceListRow = {
   created_at: string;
   client?: ClientInvoiceCustomer | ClientInvoiceCustomer[] | null;
   source_quotation?: ClientInvoiceSourceQuotation | ClientInvoiceSourceQuotation[] | null;
+  source_contract?: ClientInvoiceSourceContract | ClientInvoiceSourceContract[] | null;
 };
 
 export type ClientInvoiceLineItemRow = {
@@ -199,6 +206,7 @@ export type ClientInvoiceHeaderRow = {
   id: string;
   tenant_id: string;
   client_id: string;
+  contract_id: string | null;
   invoice_number: string;
   invoice_sequence: number;
   invoice_date: string;
@@ -222,6 +230,7 @@ export type ClientInvoiceHeaderRow = {
   created_at: string;
   updated_at: string;
   source_quotation?: ClientInvoiceSourceQuotation | ClientInvoiceSourceQuotation[] | null;
+  source_contract?: ClientInvoiceSourceContract | ClientInvoiceSourceContract[] | null;
 };
 
 export type ClientInvoiceLineItemInput = {
@@ -237,6 +246,7 @@ export type ClientInvoiceLineItemInput = {
 
 export type ClientInvoiceWriteBody = {
   client_id: string;
+  contract_id?: string | null;
   invoice_date: string;
   due_date?: string | null;
   billing_period_start?: string | null;
@@ -303,42 +313,7 @@ export function computeInvoiceTotals(
   whtRate: unknown,
   taxBasis: SalesTaxBasis = DEFAULT_SALES_TAX_BASIS,
 ) {
-  const normalizedLines = lineItems.map((line) => ({
-    ...line,
-    total_cost: computeLineTotalCost(line),
-  }));
-
-  const subtotal = roundMoney(
-    normalizedLines.reduce((sum, line) => sum + line.total_cost, 0),
-  );
-  const labourTotal = roundMoney(
-    normalizedLines.reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
-  );
-  const taxedLineSubtotal = roundMoney(
-    normalizedLines
-      .filter((line) => isLineTaxedForSalesTax(line.taxed))
-      .reduce((sum, line) => sum + line.total_cost, 0),
-  );
-  const taxedLabourTotal = roundMoney(
-    normalizedLines
-      .filter((line) => isLineTaxedForSalesTax(line.taxed))
-      .reduce((sum, line) => sum + toNumber(line.labour_amount), 0),
-  );
-  const taxBase =
-    taxBasis === "total_cost" ? taxedLineSubtotal : taxedLabourTotal;
-  const vat = roundMoney((taxBase * toNumber(vatRate)) / 100);
-  const wht = roundMoney((taxBase * toNumber(whtRate)) / 100);
-  const totalAmountDue = roundMoney(subtotal + vat);
-
-  return {
-    line_items: normalizedLines,
-    subtotal,
-    tax_due: vat,
-    wht_amount: wht,
-    total_amount_due: totalAmountDue,
-    labour_total: labourTotal,
-    tax_base: taxBase,
-  };
+  return computeLineItemTotals(lineItems, vatRate, whtRate, taxBasis, computeLineTotalCost);
 }
 
 export function formatInvoiceStatus(status: string) {
@@ -352,6 +327,10 @@ export function formatInvoiceStatus(status: string) {
     default:
       return "Draft";
   }
+}
+
+export function invoiceHasBeenSent(status: ClientInvoiceStatus | string | undefined) {
+  return Boolean(status && status !== "draft");
 }
 
 export function formatInvoiceMoney(value: unknown) {
@@ -427,6 +406,20 @@ export function resolveSourceQuotationLink(
   return embedded;
 }
 
+export function resolveSourceContractLink(
+  invoice: Pick<ClientInvoiceListRow, "source_contract">,
+) {
+  const embedded = Array.isArray(invoice.source_contract)
+    ? (invoice.source_contract[0] ?? null)
+    : (invoice.source_contract ?? null);
+
+  if (!embedded?.id || !embedded.contract_number) {
+    return null;
+  }
+
+  return embedded;
+}
+
 export function normalizeClientInvoiceListRow(row: ClientInvoiceListRow): ClientInvoiceListRow {
   return {
     ...row,
@@ -439,6 +432,9 @@ export function normalizeClientInvoiceListRow(row: ClientInvoiceListRow): Client
     source_quotation: Array.isArray(row.source_quotation)
       ? (row.source_quotation[0] ?? null)
       : (row.source_quotation ?? null),
+    source_contract: Array.isArray(row.source_contract)
+      ? (row.source_contract[0] ?? null)
+      : (row.source_contract ?? null),
   };
 }
 
@@ -489,6 +485,7 @@ export function clientInvoiceToFormState(
   return {
     ...resolveAuthorizedByFormState(invoice, signers),
     client_id: invoice.client_id,
+    contract_id: invoice.contract_id ?? "",
     invoice_date: invoice.invoice_date,
     due_date: invoice.due_date ?? defaultDueDate(new Date(invoice.invoice_date)),
     billing_period_start: invoice.billing_period_start ?? "",

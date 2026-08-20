@@ -125,6 +125,16 @@ export type Customer360ProductSale = {
     | null;
 };
 
+export type Customer360ServiceContract = {
+  id: string;
+  contract_number: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  next_billing_date: string | null;
+  total_amount_due: number;
+};
+
 export type Customer360Summary = {
   totalProductSales: number;
   totalInvoiced: number;
@@ -143,6 +153,9 @@ export const CUSTOMER_360_QUOTATION_SELECT =
 
 export const CUSTOMER_360_INVOICE_SELECT =
   "id, invoice_number, invoice_date, status, total_amount_due, amount_received";
+
+export const CUSTOMER_360_SERVICE_CONTRACT_SELECT =
+  "id, contract_number, start_date, end_date, status, next_billing_date, total_amount_due";
 
 export const CUSTOMER_360_PRODUCT_SALE_SELECT =
   "id, date, invoice_no, amount, amount_received, payment_status, sale_quantity, sale_status, product:finished_products(product_code, product_name)";
@@ -206,6 +219,15 @@ export function normalizeCustomer360Invoice(
     ...row,
     total_amount_due: toNumber(row.total_amount_due),
     amount_received: toNumber(row.amount_received),
+  };
+}
+
+export function normalizeCustomer360ServiceContract(
+  row: Customer360ServiceContract,
+): Customer360ServiceContract {
+  return {
+    ...row,
+    total_amount_due: toNumber(row.total_amount_due),
   };
 }
 

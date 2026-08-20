@@ -26,6 +26,8 @@ import {
 
 type DbClient = SupabaseClient;
 
+const CLIENT_INVOICE_INCOME_SERVICE_CATEGORY = "Client Invoice";
+
 export type CreateClientInvoiceOptions = {
   fixedHeaderTotals?: {
     subtotal: number;
@@ -33,6 +35,8 @@ export type CreateClientInvoiceOptions = {
     wht_amount: number;
     total_amount_due: number;
   };
+  taxBasisOverride?: SalesTaxBasis;
+  contractId?: string | null;
 };
 
 function nullableText(value: string | null | undefined) {
@@ -47,6 +51,7 @@ function buildHeaderPayload(
   invoiceNumber: string,
   taxBasis: SalesTaxBasis,
   fixedHeaderTotals?: CreateClientInvoiceOptions["fixedHeaderTotals"],
+  contractId?: string | null,
 ) {
   const totals = fixedHeaderTotals
     ? {
@@ -85,6 +90,7 @@ function buildHeaderPayload(
     notes: nullableText(body.notes ?? null),
     authorized_by_name: nullableText(body.authorized_by_name ?? null),
     authorized_by_title: nullableText(body.authorized_by_title ?? null),
+    contract_id: nullableText(contractId ?? body.contract_id ?? null),
     updated_at: new Date().toISOString(),
   };
 }
@@ -277,21 +283,24 @@ async function allocateInvoiceNumber(supabase: DbClient, tenantId: string) {
 }
 
 /**
- * Income Register row id owned by one client invoice (script 84 link).
+ * Income Register row id owned by one client invoice.
+ * Client invoices link to income_register via invoice_no = invoice_number
+ * (service_category "Client Invoice") within tenant — not a FK column.
  * The tax ledger keys off this income row (source_type=income_register), so
  * callers that are about to remove the income row — draft revert or invoice
- * delete (ON DELETE CASCADE) — look it up first to clear the ledger legs.
+ * delete — look it up first to clear the ledger legs.
  */
 export async function findClientInvoiceIncomeRegisterId(
   supabase: DbClient,
   tenantId: string,
-  invoiceId: string,
+  invoiceNumber: string,
 ): Promise<{ incomeId: string | null; error: string | null }> {
   const { data, error } = await supabase
     .from("income_register")
     .select("id")
     .eq("tenant_id", tenantId)
-    .eq("client_invoice_id", invoiceId)
+    .eq("invoice_no", invoiceNumber)
+    .eq("service_category", CLIENT_INVOICE_INCOME_SERVICE_CATEGORY)
     .maybeSingle();
 
   if (error) {
@@ -331,31 +340,37 @@ export async function syncIncomeRegisterFromClientInvoice(
   // Draft invoices should have no Income Register entry (nor tax ledger legs).
   if (invoice.status === "draft") {
     const { incomeId, error: lookupError } =
-      await findClientInvoiceIncomeRegisterId(supabase, tenantId, invoice.id);
+      await findClientInvoiceIncomeRegisterId(
+        supabase,
+        tenantId,
+        invoice.invoice_number,
+      );
 
     if (lookupError) {
       return { error: lookupError };
     }
 
+    if (!incomeId) {
+      return { error: null };
+    }
+
     const { error } = await supabase
       .from("income_register")
       .delete()
-      .eq("tenant_id", tenantId)
-      .eq("client_invoice_id", invoice.id);
+      .eq("id", incomeId)
+      .eq("tenant_id", tenantId);
 
     if (error) {
       return { error: error.message };
     }
 
-    if (incomeId) {
-      const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
-        supabase,
-        "income_register",
-        incomeId,
-      );
-      if (ledgerError) {
-        return { error: ledgerError };
-      }
+    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
+      supabase,
+      "income_register",
+      incomeId,
+    );
+    if (ledgerError) {
+      return { error: ledgerError };
     }
 
     return { error: null };
@@ -390,13 +405,12 @@ export async function syncIncomeRegisterFromClientInvoice(
 
   const payload = {
     tenant_id: tenantId,
-    client_invoice_id: invoice.id,
     date: invoice.invoice_date,
     invoice_no: invoice.invoice_number,
     client_id: invoice.client_id,
     customer_name: invoice.bill_to_name,
     entry_type: "service" as const,
-    service_category: "Client Invoice",
+    service_category: CLIENT_INVOICE_INCOME_SERVICE_CATEGORY,
     description: invoice.notes ?? null,
     amount,
     amount_received: amountReceived,
@@ -411,11 +425,29 @@ export async function syncIncomeRegisterFromClientInvoice(
     due_date: invoice.due_date ?? invoice.invoice_date,
   };
 
-  const { data: incomeRow, error } = await supabase
-    .from("income_register")
-    .upsert(payload, { onConflict: "client_invoice_id" })
-    .select("id")
-    .single();
+  const { incomeId: existingIncomeId, error: lookupError } =
+    await findClientInvoiceIncomeRegisterId(
+      supabase,
+      tenantId,
+      invoice.invoice_number,
+    );
+
+  if (lookupError) {
+    return { error: lookupError };
+  }
+
+  const writeResult = existingIncomeId
+    ? await supabase
+        .from("income_register")
+        .update(payload)
+        .eq("id", existingIncomeId)
+        .eq("tenant_id", tenantId)
+        .select("id")
+        .single()
+    : await supabase.from("income_register").insert(payload).select("id").single();
+
+  const incomeRow = writeResult.data;
+  const error = writeResult.error;
 
   if (error || !incomeRow) {
     return { error: error?.message ?? "Unable to sync the Income Register row." };
@@ -480,14 +512,19 @@ export async function createClientInvoice(
     return { invoice: null, error: taxBasisError };
   }
 
+  const taxBasis = options?.taxBasisOverride ?? salesTaxBasis;
   const headerPayload = buildHeaderPayload(
     tenantId,
     body,
     sequence,
     invoiceNumber,
-    salesTaxBasis,
+    taxBasis,
     options?.fixedHeaderTotals,
+    options?.contractId,
   );
+  headerPayload.status = "draft";
+  headerPayload.amount_received = 0;
+
   const { data: invoice, error: insertError } = await supabase
     .from("client_invoices")
     .insert(headerPayload)
@@ -521,6 +558,81 @@ export async function createClientInvoice(
   );
   if (syncResult.error) {
     return { invoice: invoice as ClientInvoiceHeaderRow, error: null, syncWarning: syncResult.error };
+  }
+
+  return { invoice: invoice as ClientInvoiceHeaderRow, error: null };
+}
+
+const INVOICE_STATUS_TRANSITIONS: Record<
+  "draft" | "sent" | "partial" | "paid",
+  Array<"sent" | "paid">
+> = {
+  draft: ["sent"],
+  sent: ["paid"],
+  partial: [],
+  paid: [],
+};
+
+export async function updateClientInvoiceStatus(
+  supabase: DbClient,
+  tenantId: string,
+  invoiceId: string,
+  nextStatus: "sent" | "paid",
+) {
+  const detail = await loadClientInvoiceDetail(supabase, tenantId, invoiceId);
+  if (detail.error || !detail.invoice) {
+    return { invoice: null, error: detail.error ?? "Invoice not found." };
+  }
+
+  const currentStatus = normalizeStatus(detail.invoice.status);
+  const allowed = INVOICE_STATUS_TRANSITIONS[currentStatus] ?? [];
+  if (!allowed.includes(nextStatus)) {
+    return {
+      invoice: null,
+      error: `Cannot change invoice status from ${currentStatus} to ${nextStatus}.`,
+    };
+  }
+
+  const totalDue = roundMoney(toNumber(detail.invoice.total_amount_due));
+  const updatePayload =
+    nextStatus === "paid"
+      ? {
+          status: "paid" as const,
+          amount_received: totalDue,
+          updated_at: new Date().toISOString(),
+        }
+      : {
+          status: "sent" as const,
+          updated_at: new Date().toISOString(),
+        };
+
+  const { data: invoice, error } = await supabase
+    .from("client_invoices")
+    .update(updatePayload)
+    .eq("id", invoiceId)
+    .eq("tenant_id", tenantId)
+    .eq("status", currentStatus)
+    .select(CLIENT_INVOICE_HEADER_SELECT)
+    .single();
+
+  if (error || !invoice) {
+    return {
+      invoice: null,
+      error: error?.message ?? "Unable to update invoice status.",
+    };
+  }
+
+  const syncResult = await syncIncomeRegisterFromClientInvoice(
+    supabase,
+    tenantId,
+    invoice as ClientInvoiceHeaderRow,
+  );
+
+  if (syncResult.error) {
+    return {
+      invoice: invoice as ClientInvoiceHeaderRow,
+      error: syncResult.error,
+    };
   }
 
   return { invoice: invoice as ClientInvoiceHeaderRow, error: null };
