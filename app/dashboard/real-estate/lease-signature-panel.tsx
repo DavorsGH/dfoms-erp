@@ -40,6 +40,7 @@ export type LeaseSignaturePanelProps = {
   lesseeEmail: string | null;
   propertyName: string;
   propertyAddress: string;
+  propertyStreetAddress: string;
   propertyLocation: string;
   unitNumber: string;
   startDate: string;
@@ -163,6 +164,9 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
           lesseePhone={props.lesseePhone}
           lesseeEmail={props.lesseeEmail}
           propertyAddress={props.propertyAddress}
+          propertyStreetAddress={props.propertyStreetAddress}
+          propertyName={props.propertyName}
+          unitNumber={props.unitNumber}
           locationLabel={props.propertyLocation}
           startDate={props.startDate}
           endDate={props.endDate}

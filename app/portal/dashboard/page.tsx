@@ -158,6 +158,7 @@ export default async function PortalDashboardPage() {
             lesseeEmail={data.lesseeEmail}
             propertyName={data.propertyName}
             propertyAddress={data.propertyAddress}
+            propertyStreetAddress={data.propertyStreetAddress}
             propertyLocation={data.propertyLocation}
             unitNumber={data.unitNumber}
             startDate={data.leaseStartDate}

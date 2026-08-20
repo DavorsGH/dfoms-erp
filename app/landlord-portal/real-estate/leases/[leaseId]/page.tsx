@@ -131,6 +131,7 @@ export default async function LandlordPortalLeaseDetailPage({
             lesseeEmail={detail.lesseeEmail}
             propertyName={detail.propertyName}
             propertyAddress={detail.propertyAddress}
+            propertyStreetAddress={detail.propertyStreetAddress}
             propertyLocation={detail.propertyLocation}
             unitNumber={detail.unitNumber}
             startDate={detail.startDate}

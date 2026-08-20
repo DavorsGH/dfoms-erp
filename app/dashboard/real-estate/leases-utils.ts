@@ -79,6 +79,8 @@ export type LeaseDetail = {
   propertyName: string;
   /** Composed property street + unit for tenancy PDF. */
   propertyAddress: string;
+  /** Street and locality only (no property name / unit) for tenancy PDF WHEREAS. */
+  propertyStreetAddress: string;
   /** City / region used as witness LOCATION. */
   propertyLocation: string;
   lesseeId: string;
@@ -245,6 +247,80 @@ export function formatTerminationNoticeLabel(months: number): string {
   }
   const whole = Math.trunc(months);
   return whole === 1 ? "1 month" : `${whole} months`;
+}
+
+export function composePropertyDescriptionLabel(
+  propertyName: string,
+  unitNumber: string,
+): string {
+  const unitLabel =
+    unitNumber && unitNumber !== "—" ? `Unit ${unitNumber}` : null;
+  const name = propertyName !== "—" ? propertyName : null;
+  return [name, unitLabel].filter(Boolean).join(" · ") || "—";
+}
+
+export function composePropertyStreetAddress(parts: {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  region: string | null;
+}): string {
+  const street = [parts.addressLine1, parts.addressLine2]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  const locality = [parts.city, parts.region]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(", ");
+  return [street, locality].filter(Boolean).join(", ") || "—";
+}
+
+function ordinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) {
+    return "th";
+  }
+  switch (day % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+/** e.g. "this 20th day of August, 2026" for tenancy agreement preamble. */
+export function formatAgreementDateIntro(value: string): string {
+  const normalized = value.includes("T") ? value : `${value}T00:00:00`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return value?.trim() || "—";
+  }
+  const day = date.getDate();
+  const monthYear = date.toLocaleDateString("en-GB", {
+    month: "long",
+    year: "numeric",
+  });
+  return `this ${day}${ordinalSuffix(day)} day of ${monthYear}`;
+}
+
+export function computeDepositMonthsRent(
+  depositAmountGhs: number | null | undefined,
+  rentAmountGhs: number,
+): number | null {
+  if (
+    depositAmountGhs == null ||
+    !Number.isFinite(depositAmountGhs) ||
+    depositAmountGhs <= 0 ||
+    !Number.isFinite(rentAmountGhs) ||
+    rentAmountGhs <= 0
+  ) {
+    return null;
+  }
+  return Math.max(1, Math.round(depositAmountGhs / rentAmountGhs));
 }
 
 /** Suggested advance on create: rent × term months (independently overridable). */

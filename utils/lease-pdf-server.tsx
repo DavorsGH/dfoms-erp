@@ -97,6 +97,9 @@ export async function renderLeasePdfBuffer(options: {
         lesseePhone={detail.lesseePhone}
         lesseeEmail={detail.lesseeEmail}
         propertyAddress={detail.propertyAddress}
+        propertyStreetAddress={detail.propertyStreetAddress}
+        propertyName={detail.propertyName}
+        unitNumber={detail.unitNumber}
         locationLabel={detail.propertyLocation}
         startDate={detail.startDate}
         endDate={detail.endDate}

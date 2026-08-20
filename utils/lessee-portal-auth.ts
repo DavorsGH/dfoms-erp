@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { formatRentLedgerStatus, rentOutstandingGhs } from "@/app/dashboard/real-estate/rent-ledger-utils";
+import { composePropertyStreetAddress } from "@/app/dashboard/real-estate/leases-utils";
 import { normalizePhotoUrls } from "@/app/dashboard/real-estate/properties-utils";
 import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
@@ -55,6 +56,7 @@ export type PortalDashboardData = {
   leaseId: string;
   propertyName: string;
   propertyAddress: string;
+  propertyStreetAddress: string;
   propertyLocation: string;
   unitNumber: string;
   rentAmountGhs: number;
@@ -285,6 +287,12 @@ async function loadDashboardWithClient(
     .filter(Boolean)
     .join(" · ");
   const propertyAddress = [head, street, locality].filter(Boolean).join(", ") || "—";
+  const propertyStreetAddress = composePropertyStreetAddress({
+    addressLine1: propertyAddressLine1,
+    addressLine2: propertyAddressLine2,
+    city: propertyCity,
+    region: propertyRegion,
+  });
   const propertyLocation =
     locality || (propertyName !== "—" ? propertyName : "—");
 
@@ -376,6 +384,7 @@ async function loadDashboardWithClient(
       leaseId: lease.lease_id,
       propertyName,
       propertyAddress,
+      propertyStreetAddress,
       propertyLocation,
       unitNumber,
       rentAmountGhs: Number(lease.rent_amount_ghs) || 0,

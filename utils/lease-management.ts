@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import {
+  composePropertyStreetAddress,
   isDepositStatus,
   isLateFeeType,
   isLeaseStatus,
@@ -444,6 +445,12 @@ export async function fetchLeaseDetail(
     city: propertyCity,
     region: propertyRegion,
   });
+  const propertyStreetAddress = composePropertyStreetAddress({
+    addressLine1: propertyAddressLine1,
+    addressLine2: propertyAddressLine2,
+    city: propertyCity,
+    region: propertyRegion,
+  });
   const propertyLocation = composePropertyLocation(
     propertyCity,
     propertyRegion,
@@ -511,6 +518,7 @@ export async function fetchLeaseDetail(
       unitNumber,
       propertyName,
       propertyAddress,
+      propertyStreetAddress,
       propertyLocation,
       lesseeId: leaseRow.lessee_id,
       lesseeName: (lessee?.full_name as string | undefined) ?? "—",
