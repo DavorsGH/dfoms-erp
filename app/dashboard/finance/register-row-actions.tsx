@@ -13,6 +13,7 @@ type RegisterRowActionsProps = {
   voiding?: boolean;
   markingPaid?: boolean;
   recordingPayment?: boolean;
+  printing?: boolean;
   disableEdit?: boolean;
   disableDelete?: boolean;
   deleteDisabledTitle?: string;
@@ -101,6 +102,7 @@ export default function RegisterRowActions({
   voiding = false,
   markingPaid = false,
   recordingPayment = false,
+  printing = false,
   disableEdit = false,
   disableDelete = false,
   deleteDisabledTitle,
@@ -120,9 +122,10 @@ export default function RegisterRowActions({
           <button
             type="button"
             onClick={onPrint}
+            disabled={printing}
             className={editButtonClassName}
           >
-            {printLabel}
+            {printing ? "Loading…" : printLabel}
           </button>
         ) : null}
         {onRecordPayment ? (

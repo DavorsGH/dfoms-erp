@@ -59,11 +59,13 @@ export function PosReceiptPanel({
   receipt,
   onPrint,
   onNewSale,
+  onClose,
   onRequestPayment,
 }: {
   receipt: PosReceiptData;
   onPrint: () => void;
-  onNewSale: () => void;
+  onNewSale?: () => void;
+  onClose?: () => void;
   onRequestPayment?: () => void;
 }) {
   return (
@@ -89,10 +91,10 @@ export function PosReceiptPanel({
         ) : null}
         <button
           type="button"
-          onClick={onNewSale}
+          onClick={onClose ?? onNewSale}
           className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
         >
-          New Sale
+          {onClose ? "Close" : "New Sale"}
         </button>
       </div>
 

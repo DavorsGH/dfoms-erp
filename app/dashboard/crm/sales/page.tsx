@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import type { ProductSaleEntry } from "../product-sales-utils";
+import { CLIENT_SELECT, type ClientEntry } from "../../operations/clients-utils";
 import CrmShell from "../crm-shell";
 import Sales from "./sales";
 import {
@@ -21,6 +22,7 @@ export default async function SalesPage() {
   const [
     { data: productSaleRows, error: productSaleError },
     { data: webhookRows, error: webhookError },
+    { data: clientRows, error: clientsError },
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -31,6 +33,9 @@ export default async function SalesPage() {
       .from("crm_sales")
       .select(CRM_WEBHOOK_SALE_SELECT)
       .order("sale_date", { ascending: false }),
+    supabase.from("customers").select(CLIENT_SELECT).order("client_name", {
+      ascending: true,
+    }),
   ]);
 
   const productSales: CrmSaleEntry[] = (
@@ -42,11 +47,19 @@ export default async function SalesPage() {
   ).map((row) => normalizeWebhookSale(row));
 
   const sales = mergeSalesLogEntries(productSales, webhookSales);
-  const fetchError = productSaleError?.message ?? webhookError?.message ?? null;
+  const fetchError =
+    productSaleError?.message ??
+    webhookError?.message ??
+    clientsError?.message ??
+    null;
 
   return (
     <CrmShell sectionTitle="Sales Log">
-      <Sales initialSales={sales} fetchError={fetchError} />
+      <Sales
+        initialSales={sales}
+        initialClients={(clientRows as ClientEntry[] | null) ?? []}
+        fetchError={fetchError}
+      />
     </CrmShell>
   );
 }
