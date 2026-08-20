@@ -1,20 +1,25 @@
 import "server-only";
 
+import {
+  describeHubtelClientId,
+  getHubtelClientIdLabel,
+  getHubtelCredentials,
+  HUBTEL_SMS_API_BASE,
+  maskHubtelClientId,
+} from "@/utils/hubtel-api";
+
 export type HubtelAccountProfileResult = {
   available: boolean;
   balance: number | null;
   currency: string | null;
   accountLabel: string | null;
   endpoint: string | null;
+  configuredClientId: string | null;
+  configuredClientIdLabel: string | null;
   error: string | null;
 };
 
-const PROFILE_ENDPOINTS = [
-  "https://sms.hubtel.com/v1/account/profile",
-  "https://smsc.hubtel.com/v1/account/profile",
-  "https://sms.hubtel.com/v1/account",
-  "https://smsc.hubtel.com/v1/account",
-] as const;
+const PROFILE_ENDPOINT = `${HUBTEL_SMS_API_BASE}/account/profile`;
 
 function parseBalance(payload: unknown): {
   balance: number | null;
@@ -71,80 +76,116 @@ function parseBalance(payload: unknown): {
 }
 
 /**
- * Best-effort Hubtel programmable SMS account profile/balance lookup.
- * Hubtel documents dashboard monitoring; REST balance is not guaranteed on all keys.
+ * Hubtel programmable SMS account profile lookup.
+ * Official SDKs reference GET /v1/account/profile (Basic auth). As of 2026-08 this
+ * returns HTTP 404 on sms.hubtel.com for programmable keys — balance is dashboard-only.
  */
 export async function fetchHubtelAccountProfile(): Promise<HubtelAccountProfileResult> {
-  const clientId = (process.env.HUBTEL_CLIENT_ID ?? "").trim();
-  const clientSecret = (process.env.HUBTEL_CLIENT_SECRET ?? "").trim();
-
-  if (!clientId || !clientSecret) {
+  const credentials = getHubtelCredentials();
+  if (!credentials) {
     return {
       available: false,
       balance: null,
       currency: null,
       accountLabel: null,
       endpoint: null,
+      configuredClientId: null,
+      configuredClientIdLabel: null,
       error: "HUBTEL_CLIENT_ID / HUBTEL_CLIENT_SECRET are not configured.",
     };
   }
 
-  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  let lastError = "Hubtel account profile endpoint not available.";
+  const { clientId, authHeader } = credentials;
+  const configuredClientId = maskHubtelClientId(clientId);
+  const configuredClientIdLabel = describeHubtelClientId(clientId);
 
-  for (const endpoint of PROFILE_ENDPOINTS) {
+  try {
+    const response = await fetch(PROFILE_ENDPOINT, {
+      method: "GET",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+
+    const bodyText = await response.text().catch(() => "");
+    let parsed: unknown = null;
     try {
-      const response = await fetch(endpoint, {
-        method: "GET",
-        headers: {
-          Authorization: `Basic ${auth}`,
-          Accept: "application/json",
-        },
-        cache: "no-store",
-      });
+      parsed = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      parsed = null;
+    }
 
-      const bodyText = await response.text().catch(() => "");
-      let parsed: unknown = null;
-      try {
-        parsed = bodyText ? JSON.parse(bodyText) : null;
-      } catch {
-        parsed = null;
-      }
+    if (response.status === 404) {
+      return {
+        available: false,
+        balance: null,
+        currency: null,
+        accountLabel: null,
+        endpoint: PROFILE_ENDPOINT,
+        configuredClientId,
+        configuredClientIdLabel,
+        error:
+          "Hubtel programmable SMS keys do not expose a public balance REST endpoint (GET /v1/account/profile → 404). Check balance in Hubtel dashboard under Developers → Programmable API Keys → SMS API Keys.",
+      };
+    }
 
-      if (!response.ok) {
-        lastError = `HTTP ${response.status} from ${endpoint}`;
-        continue;
-      }
+    if (!response.ok) {
+      return {
+        available: false,
+        balance: null,
+        currency: null,
+        accountLabel: null,
+        endpoint: PROFILE_ENDPOINT,
+        configuredClientId,
+        configuredClientIdLabel,
+        error: `HTTP ${response.status} from ${PROFILE_ENDPOINT}`,
+      };
+    }
 
-      const { balance, currency, accountLabel } = parseBalance(parsed);
-      if (balance !== null || accountLabel) {
-        return {
-          available: true,
-          balance,
-          currency: currency ?? "GHS",
-          accountLabel,
-          endpoint,
-          error: balance === null
+    const { balance, currency, accountLabel } = parseBalance(parsed);
+    if (balance !== null || accountLabel) {
+      return {
+        available: balance !== null,
+        balance,
+        currency: currency ?? "GHS",
+        accountLabel,
+        endpoint: PROFILE_ENDPOINT,
+        configuredClientId,
+        configuredClientIdLabel,
+        error:
+          balance === null
             ? "Profile returned without a numeric balance field."
             : null,
-        };
-      }
-
-      lastError = `No balance field in response from ${endpoint}`;
-    } catch (error) {
-      lastError =
-        error instanceof Error
-          ? `${endpoint}: ${error.message}`
-          : `${endpoint}: request failed`;
+      };
     }
-  }
 
-  return {
-    available: false,
-    balance: null,
-    currency: null,
-    accountLabel: null,
-    endpoint: null,
-    error: lastError,
-  };
+    return {
+      available: false,
+      balance: null,
+      currency: null,
+      accountLabel,
+      endpoint: PROFILE_ENDPOINT,
+      configuredClientId,
+      configuredClientIdLabel,
+      error: `No balance field in response from ${PROFILE_ENDPOINT}`,
+    };
+  } catch (error) {
+    return {
+      available: false,
+      balance: null,
+      currency: null,
+      accountLabel: null,
+      endpoint: PROFILE_ENDPOINT,
+      configuredClientId,
+      configuredClientIdLabel,
+      error:
+        error instanceof Error
+          ? `${PROFILE_ENDPOINT}: ${error.message}`
+          : `${PROFILE_ENDPOINT}: request failed`,
+    };
+  }
 }
+
+export { getHubtelClientIdLabel };

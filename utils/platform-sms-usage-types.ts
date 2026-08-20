@@ -37,6 +37,19 @@ export type PlatformHubtelBalanceSummary = {
   currency: string | null;
   accountLabel: string | null;
   endpoint: string | null;
+  configuredClientId: string | null;
+  configuredClientIdLabel: string | null;
+  error: string | null;
+};
+
+export type PlatformHubtelReportedSendsSummary = {
+  available: boolean;
+  outboundSendCount: number | null;
+  ledgerSendCount: number;
+  discrepancy: number;
+  endpoint: string | null;
+  configuredClientId: string | null;
+  configuredClientIdLabel: string | null;
   error: string | null;
 };
 
@@ -53,5 +66,6 @@ export type PlatformSmsUsageReport = {
   perTenant: PlatformSmsTenantBreakdown[];
   transactionalLog: PlatformSmsTransactionalLogSummary;
   hubtelBalance: PlatformHubtelBalanceSummary;
+  hubtelReportedSends: PlatformHubtelReportedSendsSummary;
   notes: string[];
 };
