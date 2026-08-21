@@ -4,16 +4,19 @@ import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
-import { formatMaintenanceDate } from "@/app/dashboard/real-estate/maintenance-utils";
+import {
+  formatMaintenanceDate,
+  formatMaintenanceMoney,
+} from "@/app/dashboard/real-estate/maintenance-utils";
 import {
   portalErrorBannerClassName,
   portalSectionClassName,
   portalSectionTitleClassName,
 } from "../portal-ui";
 import LandlordPortalPendingApprovalView from "../pending-approval-view";
-import LandlordPortalMaintenanceActions from "./maintenance-actions";
-import LandlordPortalMaintenanceCompletePanel from "./maintenance-complete-panel";
-import MaintenanceBeforeAfterGallery from "@/app/dashboard/real-estate/maintenance-before-after-gallery";
+import LandlordMaintenanceList, {
+  type LandlordMaintenanceListItem,
+} from "./landlord-maintenance-list";
 
 export default async function LandlordPortalMaintenancePage() {
   const session = await getLandlordPortalSession();
@@ -33,6 +36,27 @@ export default async function LandlordPortalMaintenancePage() {
   const { rows, error } = await fetchLandlordPortalMaintenance(session);
   const canAct = session.landlordType === "platform_only";
 
+  const listItems: LandlordMaintenanceListItem[] = rows.map((row) => ({
+    requestId: row.requestId,
+    description: row.description,
+    dateLabel: formatMaintenanceDate(row.dateReported),
+    statusLabel: row.statusLabel,
+    landlordApprovalLabel: row.landlordApprovalLabel,
+    costSelfFixLabel: row.tenantSelfFix
+      ? `Self-fix ${formatMaintenanceMoney(row.proposedCostGhs)}`
+      : null,
+    lesseeName: row.lesseeName,
+    unitLabel: row.unitLabel,
+    tenantSelfFix: row.tenantSelfFix,
+    proposedCostGhs: row.proposedCostGhs,
+    status: row.status,
+    landlordApprovalStatus: row.landlordApprovalStatus,
+    photoUrls: row.photoUrls,
+    completionPhotoUrls: row.completionPhotoUrls,
+    hasPendingApproval: row.landlordApprovalStatus === "pending",
+    hasPhotos: row.photoUrls.length > 0 || row.completionPhotoUrls.length > 0,
+  }));
+
   return (
     <section className={portalSectionClassName}>
       <h2 className={portalSectionTitleClassName}>Maintenance requests</h2>
@@ -44,56 +68,16 @@ export default async function LandlordPortalMaintenancePage() {
 
       {error ? (
         <div className={`mt-4 ${portalErrorBannerClassName}`}>{error}</div>
-      ) : rows.length === 0 ? (
+      ) : listItems.length === 0 ? (
         <p className="mt-4 text-sm text-slate-600">
           No maintenance requests yet.
         </p>
       ) : (
-        <ul className="mt-4 divide-y divide-slate-200">
-          {rows.map((row) => (
-            <li key={row.requestId} className="py-3">
-              <p className="text-sm font-medium text-slate-900">
-                {row.description}
-                {row.tenantSelfFix ? (
-                  <span className="ml-1 text-xs font-normal text-slate-500">
-                    (self-fix)
-                  </span>
-                ) : null}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {row.lesseeName} · {row.unitLabel}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {formatMaintenanceDate(row.dateReported)} · {row.statusLabel} ·
-                Landlord {row.landlordApprovalLabel}
-              </p>
-              {canAct && row.landlordApprovalStatus === "pending" ? (
-                <LandlordPortalMaintenanceActions
-                  requestId={row.requestId}
-                  tenantSelfFix={row.tenantSelfFix}
-                  proposedCostGhs={row.proposedCostGhs}
-                />
-              ) : null}
-              {canAct ? (
-                <LandlordPortalMaintenanceCompletePanel
-                  requestId={row.requestId}
-                  status={row.status}
-                  landlordApprovalStatus={row.landlordApprovalStatus}
-                />
-              ) : null}
-              {row.photoUrls.length > 0 || row.completionPhotoUrls.length > 0 ? (
-                <div className="mt-3">
-                  <MaintenanceBeforeAfterGallery
-                    submissionPhotoUrls={row.photoUrls}
-                    completionPhotoUrls={row.completionPhotoUrls}
-                    tenantId={session.tenantId}
-                    compact
-                  />
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <LandlordMaintenanceList
+          rows={listItems}
+          canAct={canAct}
+          tenantId={session.tenantId}
+        />
       )}
     </section>
   );

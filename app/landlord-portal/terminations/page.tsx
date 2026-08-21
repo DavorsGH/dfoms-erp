@@ -11,7 +11,9 @@ import {
   portalSectionTitleClassName,
 } from "../portal-ui";
 import LandlordPortalPendingApprovalView from "../pending-approval-view";
-import LandlordPortalTerminationActions from "./termination-actions";
+import LandlordTerminationsList, {
+  type LandlordTerminationListItem,
+} from "./landlord-terminations-list";
 
 export default async function LandlordPortalTerminationsPage() {
   const session = await getLandlordPortalSession();
@@ -31,6 +33,16 @@ export default async function LandlordPortalTerminationsPage() {
   const { rows, error } = await fetchLandlordPortalTerminations(session);
   const canAct = session.landlordType === "platform_only";
 
+  const listItems: LandlordTerminationListItem[] = rows.map((row) => ({
+    leaseId: row.leaseId,
+    lesseeName: row.lesseeName,
+    unitLabel: row.unitLabel,
+    endDateLabel: formatLeaseDate(row.endDate),
+    statusLabel: row.statusLabel,
+    reason: row.reason,
+    canReview: canAct && row.requestStatus === "pending_staff_approval",
+  }));
+
   return (
     <section className={portalSectionClassName}>
       <h2 className={portalSectionTitleClassName}>Termination requests</h2>
@@ -42,30 +54,12 @@ export default async function LandlordPortalTerminationsPage() {
 
       {error ? (
         <div className={`mt-4 ${portalErrorBannerClassName}`}>{error}</div>
-      ) : rows.length === 0 ? (
+      ) : listItems.length === 0 ? (
         <p className="mt-4 text-sm text-slate-600">
           No termination requests yet.
         </p>
       ) : (
-        <ul className="mt-4 divide-y divide-slate-200">
-          {rows.map((row) => (
-            <li key={row.leaseId} className="py-3">
-              <p className="text-sm font-medium text-slate-900">
-                {row.lesseeName}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {row.unitLabel} · Lease end {formatLeaseDate(row.endDate)}
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">{row.statusLabel}</p>
-              {row.reason ? (
-                <p className="mt-1 text-sm text-slate-600">{row.reason}</p>
-              ) : null}
-              {canAct && row.requestStatus === "pending_staff_approval" ? (
-                <LandlordPortalTerminationActions leaseId={row.leaseId} />
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <LandlordTerminationsList rows={listItems} />
       )}
     </section>
   );

@@ -22,18 +22,20 @@ export const leaseFieldGridClassName =
 export const leaseSummaryGridClassName =
   "grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 text-sm";
 
-type LeaseDetailTabsProps = {
-  activeTab: LeaseDetailTabId;
-  onTabChange: (tab: LeaseDetailTabId) => void;
+type DetailTabsProps<T extends string> = {
+  tabs: ReadonlyArray<{ id: T; label: string }>;
+  activeTab: T;
+  onTabChange: (tab: T) => void;
 };
 
-export function LeaseDetailTabs({
+export function DetailTabs<T extends string>({
+  tabs,
   activeTab,
   onTabChange,
-}: LeaseDetailTabsProps) {
+}: DetailTabsProps<T>) {
   return (
     <div className="flex flex-wrap gap-1 border-b border-slate-200 pb-px">
-      {LEASE_DETAIL_TABS.map((item) => (
+      {tabs.map((item) => (
         <button
           key={item.id}
           type="button"
@@ -48,6 +50,24 @@ export function LeaseDetailTabs({
         </button>
       ))}
     </div>
+  );
+}
+
+type LeaseDetailTabsProps = {
+  activeTab: LeaseDetailTabId;
+  onTabChange: (tab: LeaseDetailTabId) => void;
+};
+
+export function LeaseDetailTabs({
+  activeTab,
+  onTabChange,
+}: LeaseDetailTabsProps) {
+  return (
+    <DetailTabs
+      tabs={LEASE_DETAIL_TABS}
+      activeTab={activeTab}
+      onTabChange={onTabChange}
+    />
   );
 }
 

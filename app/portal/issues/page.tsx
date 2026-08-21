@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { fetchMaintenanceRequestsForLessee } from "@/utils/maintenance-management";
@@ -7,6 +6,7 @@ import { fetchComplaintsForLessee } from "@/utils/complaint-management";
 import {
   formatMaintenanceDate,
   formatMaintenanceLandlordApproval,
+  formatMaintenanceMoney,
   formatMaintenanceStatus,
 } from "@/app/dashboard/real-estate/maintenance-utils";
 import {
@@ -19,18 +19,9 @@ import {
   portalSectionTitleClassName,
 } from "../portal-ui";
 import PortalShell from "../portal-shell";
-
-type IssueItem = {
-  id: string;
-  kind: "repair" | "complaint";
-  title: string;
-  statusLabel: string;
-  raisedByLabel: string | null;
-  dateIso: string;
-  dateLabel: string;
-  detail: string | null;
-  isLandlordRaised: boolean;
-};
+import PortalIssuesView, {
+  type PortalIssueItem,
+} from "./portal-issues-view";
 
 export default async function PortalIssuesPage() {
   const session = await getPortalLesseeSession();
@@ -48,53 +39,57 @@ export default async function PortalIssuesPage() {
     fetchComplaintsForLessee(admin, session.tenantId, session.lesseeId),
   ]);
 
-  const items: IssueItem[] = [
-    ...maintenance.rows
-      .filter((row) => row.reportedBy === "tenant")
-      .map((row) => ({
-        id: `repair-${row.requestId}`,
-        kind: "repair" as const,
-        title: row.description,
-        statusLabel: [
-          formatMaintenanceStatus(row.status),
-          `Landlord ${formatMaintenanceLandlordApproval(row.landlordApprovalStatus)}`,
-          row.tenantSelfFix ? "Self-fix" : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        raisedByLabel: null,
-        dateIso: row.dateReported,
-        dateLabel: formatMaintenanceDate(row.dateReported),
-        detail: null,
-        isLandlordRaised: false,
-      })),
-    ...complaints.rows.map((row) => ({
-      id: `complaint-${row.complaintId}`,
-      kind: "complaint" as const,
-      title: row.subject,
-      statusLabel: [
-        formatLesseeComplaintStatus(row.status),
-        row.raisedBy === "tenant" &&
-        row.status === "resolved" &&
-        !row.tenantAcknowledgedAt
-          ? "Awaiting your acknowledgment"
-          : row.tenantAcknowledgedAt
-            ? "Acknowledged"
-            : null,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      raisedByLabel: formatLesseeComplaintRaisedBy(row.raisedBy),
-      dateIso: row.dateReported,
-      dateLabel: formatLesseeComplaintDate(row.dateReported),
-      detail: row.staffResponse,
-      isLandlordRaised: row.raisedBy === "landlord",
-    })),
-  ].sort(
-    (a, b) => new Date(b.dateIso).getTime() - new Date(a.dateIso).getTime(),
-  );
+  const repairs: PortalIssueItem[] = maintenance.rows
+    .filter((row) => row.reportedBy === "tenant")
+    .sort(
+      (a, b) =>
+        new Date(b.dateReported).getTime() - new Date(a.dateReported).getTime(),
+    )
+    .map((row) => ({
+      id: `repair-${row.requestId}`,
+      kind: "repair" as const,
+      title: row.description,
+      statusPrimary: formatMaintenanceStatus(row.status),
+      statusSecondary: `Landlord ${formatMaintenanceLandlordApproval(row.landlordApprovalStatus)}`,
+      raisedByLabel: null,
+      dateLabel: formatMaintenanceDate(row.dateReported),
+      detail: null,
+      isLandlordRaised: false,
+      costSelfFixLabel: row.tenantSelfFix
+        ? `Self-fix ${formatMaintenanceMoney(row.proposedCostGhs)}`
+        : null,
+      hasPhotos:
+        row.photoUrls.length > 0 || row.completionPhotoUrls.length > 0,
+    }));
+
+  const complaintItems: PortalIssueItem[] = [...complaints.rows]
+    .sort(
+      (a, b) =>
+        new Date(b.dateReported).getTime() - new Date(a.dateReported).getTime(),
+    )
+    .map((row) => ({
+    id: `complaint-${row.complaintId}`,
+    kind: "complaint" as const,
+    title: row.subject,
+    statusPrimary: formatLesseeComplaintStatus(row.status),
+    statusSecondary:
+      row.raisedBy === "tenant" &&
+      row.status === "resolved" &&
+      !row.tenantAcknowledgedAt
+        ? "Awaiting your acknowledgment"
+        : row.tenantAcknowledgedAt
+          ? "Acknowledged"
+          : null,
+    raisedByLabel: formatLesseeComplaintRaisedBy(row.raisedBy),
+    dateLabel: formatLesseeComplaintDate(row.dateReported),
+    detail: row.staffResponse,
+    isLandlordRaised: row.raisedBy === "landlord",
+    costSelfFixLabel: null,
+    hasPhotos: false,
+  }));
 
   const fetchError = maintenance.fetchError ?? complaints.fetchError;
+  const hasAnyIssues = repairs.length > 0 || complaintItems.length > 0;
 
   return (
     <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
@@ -106,62 +101,15 @@ export default async function PortalIssuesPage() {
 
         {fetchError ? (
           <p className="mt-3 text-sm text-red-700">{fetchError}</p>
-        ) : items.length === 0 ? (
+        ) : !hasAnyIssues ? (
           <p className="mt-4 text-sm text-slate-600">
             No issues yet. Submit a repair or complaint from the portal menu.
           </p>
         ) : (
-          <ul className="mt-4 divide-y divide-slate-200">
-            {items.map((item) => (
-              <li key={item.id} className="py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-slate-600">
-                    {item.kind === "repair" ? "Repair" : "Complaint"}
-                  </span>
-                  {item.raisedByLabel ? (
-                    <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
-                      {item.raisedByLabel}
-                    </span>
-                  ) : null}
-                  <span className="text-xs text-slate-500">{item.dateLabel}</span>
-                </div>
-                <p className="mt-1 text-sm font-medium text-slate-900">
-                  {item.title}
-                </p>
-                <p className="mt-1 text-xs text-slate-600">{item.statusLabel}</p>
-                {item.kind === "repair" ? (
-                  <p className="mt-2">
-                    <Link
-                      href={`/portal/repairs/${item.id.replace(/^repair-/, "")}`}
-                      className="text-sm font-medium text-[#0f2744] hover:underline"
-                    >
-                      View repair details & photos
-                    </Link>
-                  </p>
-                ) : (
-                  <p className="mt-2">
-                    <Link
-                      href="/portal/complaints"
-                      className="text-sm font-medium text-[#0f2744] hover:underline"
-                    >
-                      {item.isLandlordRaised
-                        ? "View & respond"
-                        : item.statusLabel.includes("Awaiting your acknowledgment")
-                          ? "Acknowledge resolution"
-                          : "View complaint details"}
-                    </Link>
-                  </p>
-                )}
-                {item.detail ? (
-                  <p className="mt-2 text-sm text-slate-700">
-                    {item.isLandlordRaised
-                      ? `Your response: ${item.detail}`
-                      : `Landlord: ${item.detail}`}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+          <PortalIssuesView
+            complaints={complaintItems}
+            repairs={repairs}
+          />
         )}
       </section>
     </PortalShell>

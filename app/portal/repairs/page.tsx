@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { fetchMaintenanceRequestsForLessee } from "@/utils/maintenance-management";
@@ -15,6 +14,9 @@ import {
 } from "../portal-ui";
 import PortalShell from "../portal-shell";
 import PortalRepairForm from "./repair-form";
+import PortalRepairsList, {
+  type PortalRepairListItem,
+} from "./portal-repairs-list";
 
 export default async function PortalRepairsPage() {
   const session = await getPortalLesseeSession();
@@ -31,6 +33,21 @@ export default async function PortalRepairsPage() {
 
   const mine = rows.filter((row) => row.reportedBy === "tenant");
 
+  const listItems: PortalRepairListItem[] = mine.map((row) => ({
+    requestId: row.requestId,
+    description: row.description,
+    dateLabel: formatMaintenanceDate(row.dateReported),
+    statusLabel: formatMaintenanceStatus(row.status),
+    landlordApprovalLabel: formatMaintenanceLandlordApproval(
+      row.landlordApprovalStatus,
+    ),
+    costSelfFixLabel: row.tenantSelfFix
+      ? `Self-fix ${formatMaintenanceMoney(row.proposedCostGhs)}`
+      : null,
+    hasPhotos:
+      row.photoUrls.length > 0 || row.completionPhotoUrls.length > 0,
+  }));
+
   return (
     <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <PortalRepairForm />
@@ -39,36 +56,10 @@ export default async function PortalRepairsPage() {
         <h2 className={portalSectionTitleClassName}>Your repair requests</h2>
         {fetchError ? (
           <p className="mt-3 text-sm text-red-700">{fetchError}</p>
-        ) : mine.length === 0 ? (
+        ) : listItems.length === 0 ? (
           <p className="mt-3 text-sm text-slate-600">No repair requests yet.</p>
         ) : (
-          <ul className="mt-4 divide-y divide-slate-200">
-            {mine.map((row) => (
-              <li key={row.requestId} className="py-3">
-                <Link
-                  href={`/portal/repairs/${row.requestId}`}
-                  className="block hover:bg-slate-50 -mx-2 px-2 rounded-md"
-                >
-                  <p className="text-sm font-medium text-slate-900">
-                    {row.description}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {formatMaintenanceDate(row.dateReported)} ·{" "}
-                    {formatMaintenanceStatus(row.status)} · Landlord:{" "}
-                    {formatMaintenanceLandlordApproval(
-                      row.landlordApprovalStatus,
-                    )}
-                    {row.tenantSelfFix
-                      ? ` · Self-fix ${formatMaintenanceMoney(row.proposedCostGhs)}`
-                      : ""}
-                    {(row.photoUrls.length > 0 ||
-                      row.completionPhotoUrls.length > 0) &&
-                      " · View photos"}
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <PortalRepairsList rows={listItems} />
         )}
       </section>
     </PortalShell>

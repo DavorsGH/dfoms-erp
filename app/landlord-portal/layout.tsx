@@ -1,3 +1,4 @@
+import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
 import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
@@ -47,15 +48,18 @@ export default async function LandlordPortalLayout({
   }
 
   return (
-    <PortalLayoutClient
-      userLabel={session?.fullName ?? null}
-      userPhotoUrl={session?.logoUrl ?? null}
-      landlordType={session?.landlordType ?? null}
-      hasDataAccess={session ? landlordPortalHasDataAccess(session) : false}
-      isAuthenticatedLandlord={Boolean(session)}
-      billingPastDueBanner={billingPastDueBanner}
-    >
-      {children}
-    </PortalLayoutClient>
+    <>
+      <PortalLayoutClient
+        userLabel={session?.fullName ?? null}
+        userPhotoUrl={session?.logoUrl ?? null}
+        landlordType={session?.landlordType ?? null}
+        hasDataAccess={session ? landlordPortalHasDataAccess(session) : false}
+        isAuthenticatedLandlord={Boolean(session)}
+        billingPastDueBanner={billingPastDueBanner}
+      >
+        {children}
+      </PortalLayoutClient>
+      {session ? <AssistantChatWidget /> : null}
+    </>
   );
 }

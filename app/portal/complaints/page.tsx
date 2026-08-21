@@ -13,8 +13,9 @@ import {
 } from "../portal-ui";
 import PortalShell from "../portal-shell";
 import PortalComplaintForm from "./complaint-form";
-import PortalComplaintActions from "./complaint-actions";
-import PortalComplaintAcknowledge from "./complaint-acknowledge";
+import PortalComplaintsList, {
+  type PortalComplaintListItem,
+} from "./portal-complaints-list";
 
 export default async function PortalComplaintsPage() {
   const session = await getPortalLesseeSession();
@@ -29,6 +30,27 @@ export default async function PortalComplaintsPage() {
     session.lesseeId,
   );
 
+  const listItems: PortalComplaintListItem[] = rows.map((row) => {
+    const isOpen = row.status === "submitted" || row.status === "in_progress";
+    const isTenantRaised = row.raisedBy === "tenant";
+    const needsAcknowledgment =
+      isTenantRaised && row.status === "resolved" && !row.tenantAcknowledgedAt;
+
+    return {
+      complaintId: row.complaintId,
+      subject: row.subject,
+      description: row.description,
+      raisedBy: row.raisedBy,
+      raisedByLabel: formatLesseeComplaintRaisedBy(row.raisedBy),
+      dateLabel: formatLesseeComplaintDate(row.dateReported),
+      statusLabel: formatLesseeComplaintStatus(row.status),
+      staffResponse: row.staffResponse,
+      tenantAcknowledgedAt: row.tenantAcknowledgedAt,
+      isOpen,
+      needsAcknowledgment,
+    };
+  });
+
   return (
     <PortalShell fullName={session.fullName} photoUrl={session.photoUrl}>
       <PortalComplaintForm />
@@ -37,74 +59,10 @@ export default async function PortalComplaintsPage() {
         <h2 className={portalSectionTitleClassName}>Your complaints</h2>
         {fetchError ? (
           <p className="mt-3 text-sm text-red-700">{fetchError}</p>
-        ) : rows.length === 0 ? (
+        ) : listItems.length === 0 ? (
           <p className="mt-3 text-sm text-slate-600">No complaints yet.</p>
         ) : (
-          <ul className="mt-4 divide-y divide-slate-200">
-            {rows.map((row) => {
-              const open =
-                row.status === "submitted" || row.status === "in_progress";
-              const isLandlordRaised = row.raisedBy === "landlord";
-              const isTenantRaised = row.raisedBy === "tenant";
-              const needsAcknowledgment =
-                isTenantRaised &&
-                row.status === "resolved" &&
-                !row.tenantAcknowledgedAt;
-
-              return (
-                <li key={row.complaintId} className="py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium text-slate-900">
-                      {row.subject}
-                    </p>
-                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                      {formatLesseeComplaintRaisedBy(row.raisedBy)}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {formatLesseeComplaintDate(row.dateReported)} ·{" "}
-                    {formatLesseeComplaintStatus(row.status)}
-                    {row.tenantAcknowledgedAt
-                      ? " · Acknowledged"
-                      : needsAcknowledgment
-                        ? " · Awaiting your acknowledgment"
-                        : ""}
-                  </p>
-                  {isTenantRaised || isLandlordRaised ? (
-                    <p className="mt-2 text-sm text-slate-700">
-                      {isTenantRaised ? "Your report: " : null}
-                      {row.description}
-                    </p>
-                  ) : null}
-                  {row.staffResponse ? (
-                    <p className="mt-2 text-sm text-slate-700">
-                      {isLandlordRaised
-                        ? `Your response: ${row.staffResponse}`
-                        : `Landlord: ${row.staffResponse}`}
-                    </p>
-                  ) : null}
-                  {isLandlordRaised && open ? (
-                    <PortalComplaintActions
-                      complaintId={row.complaintId}
-                      initialResponse={row.staffResponse}
-                    />
-                  ) : null}
-                  {needsAcknowledgment ? (
-                    <PortalComplaintAcknowledge
-                      complaintId={row.complaintId}
-                      acknowledgedAt={row.tenantAcknowledgedAt}
-                    />
-                  ) : null}
-                  {isTenantRaised && row.tenantAcknowledgedAt ? (
-                    <PortalComplaintAcknowledge
-                      complaintId={row.complaintId}
-                      acknowledgedAt={row.tenantAcknowledgedAt}
-                    />
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <PortalComplaintsList rows={listItems} />
         )}
       </section>
     </PortalShell>
