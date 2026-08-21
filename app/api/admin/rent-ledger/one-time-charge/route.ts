@@ -3,6 +3,7 @@ import { requireDavorsPlatformRealEstateStaff } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { assertRealEstateLandlordTenant } from "@/utils/property-management";
 import { createOneTimeLeaseCharge } from "@/utils/rent-ledger-one-time";
+import { isLeaseChargeCategory } from "@/utils/lease-charge-categories";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,7 @@ type Body = {
   description?: string;
   amount_ghs?: number | string;
   charge_date?: string;
+  charge_category?: string;
 };
 
 /**
@@ -49,6 +51,11 @@ export async function POST(request: Request) {
   }
 
   const amount = Number(body.amount_ghs);
+  const chargeCategoryRaw = body.charge_category?.trim();
+  const chargeCategory =
+    chargeCategoryRaw && isLeaseChargeCategory(chargeCategoryRaw)
+      ? chargeCategoryRaw
+      : null;
   try {
     const result = await createOneTimeLeaseCharge(admin, {
       tenantId: landlord.tenantId,
@@ -56,6 +63,7 @@ export async function POST(request: Request) {
       description: body.description ?? "",
       amountGhs: amount,
       chargeDate: body.charge_date,
+      chargeCategory,
     });
 
     return NextResponse.json({

@@ -2,6 +2,11 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatRentMoney } from "@/app/dashboard/real-estate/rent-ledger-utils";
+import {
+  formatLeaseChargeCategoryLabel,
+  isLeaseChargeCategory,
+  type LeaseChargeCategory,
+} from "@/utils/lease-charge-categories";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
@@ -27,6 +32,7 @@ export async function notifyLesseeOneTimeChargeAdded(options: {
   entryId: string;
   description: string;
   amountGhs: number;
+  chargeCategory?: LeaseChargeCategory | null;
 }): Promise<void> {
   const { data: lease, error: leaseError } = await options.admin
     .from("leases")
@@ -85,9 +91,16 @@ export async function notifyLesseeOneTimeChargeAdded(options: {
   const unitNumber = unit?.unit_number?.trim() || "—";
   const amountLabel = formatRentMoney(options.amountGhs);
   const description = options.description.trim();
+  const categoryLabel =
+    options.chargeCategory && isLeaseChargeCategory(options.chargeCategory)
+      ? formatLeaseChargeCategoryLabel(options.chargeCategory)
+      : null;
+  const chargeLabel = categoryLabel ?? description;
   const place = `${propertyName} / Unit ${unitNumber}`;
   const subject = `New charge on your lease — ${amountLabel}`;
-  const lead = `A one-time charge of ${amountLabel} was added to your lease: ${description}.`;
+  const lead = categoryLabel
+    ? `A ${categoryLabel} charge of ${amountLabel} was added to your lease.`
+    : `A one-time charge of ${amountLabel} was added to your lease: ${description}.`;
   const body = [lead, `Property: ${place}`, "Sign in to your portal to pay."].join(
     "\n",
   );
@@ -126,7 +139,7 @@ export async function notifyLesseeOneTimeChargeAdded(options: {
 
   const phone = normalizeGhanaPhone(lessee?.phone);
   if (phone) {
-    const sms = `Davors: New charge ${amountLabel} (${description}) on ${place}. Sign in to your portal to pay.`;
+    const sms = `Davors: New charge ${amountLabel} (${chargeLabel}) on ${place}. Sign in to your portal to pay.`;
     const result = await sendHubtelSms({
       to: phone,
       content: sms,

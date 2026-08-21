@@ -1,6 +1,11 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  defaultLeaseChargeCategoryLabel,
+  isLeaseChargeCategory,
+  type LeaseChargeCategory,
+} from "@/utils/lease-charge-categories";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 export type GenerateRentLedgerOptions = {
@@ -44,6 +49,9 @@ export type GenerateRentLedgerResult = {
   created: number;
   skipped: number;
   errors: number;
+  categoryChargesCreated: number;
+  categoryChargesSkipped: number;
+  categoryChargeErrors: number;
   leases: RentLedgerLeaseResult[];
 };
 
@@ -325,6 +333,13 @@ export async function generateRentLedger(
     });
   }
 
+  const categorySummary = await generateRecurringCategoryCharges({
+    admin,
+    activeLeases,
+    periodStart,
+    periodEnd,
+  });
+
   const summary: GenerateRentLedgerResult = {
     billingMonth,
     periodStart,
@@ -334,6 +349,9 @@ export async function generateRentLedger(
     created,
     skipped,
     errors,
+    categoryChargesCreated: categorySummary.created,
+    categoryChargesSkipped: categorySummary.skipped,
+    categoryChargeErrors: categorySummary.errors,
     leases: leaseResults,
   };
 
@@ -343,6 +361,9 @@ export async function generateRentLedger(
     created,
     skipped,
     errors,
+    categoryChargesCreated: categorySummary.created,
+    categoryChargesSkipped: categorySummary.skipped,
+    categoryChargeErrors: categorySummary.errors,
   });
 
   return summary;
@@ -558,4 +579,143 @@ async function processActiveLease(args: {
     lateFeeGhs,
     entryId,
   };
+}
+
+type LeaseChargeSettingsRow = {
+  lease_id: string;
+  charge_category: string;
+  flat_amount_ghs: number | string | null;
+};
+
+async function generateRecurringCategoryCharges(args: {
+  admin: SupabaseClient;
+  activeLeases: ActiveLeaseRow[];
+  periodStart: string;
+  periodEnd: string;
+}): Promise<{ created: number; skipped: number; errors: number }> {
+  const { admin, activeLeases, periodStart, periodEnd } = args;
+  const leaseIds = activeLeases.map((lease) => lease.lease_id);
+  if (leaseIds.length === 0) {
+    return { created: 0, skipped: 0, errors: 0 };
+  }
+
+  const [{ data: settingsRows, error: settingsError }, { data: existingRows, error: existingError }] =
+    await Promise.all([
+      admin
+        .from("lease_charge_settings")
+        .select("lease_id, charge_category, flat_amount_ghs")
+        .in("lease_id", leaseIds)
+        .eq("is_billed", true)
+        .eq("billing_mode", "recurring"),
+      admin
+        .from("rent_ledger")
+        .select("lease_id, charge_category")
+        .eq("period_start", periodStart)
+        .eq("charge_type", "one_time")
+        .not("charge_category", "is", null)
+        .in("lease_id", leaseIds),
+    ]);
+
+  if (settingsError) {
+    throw new Error(
+      `Failed to load lease_charge_settings: ${settingsError.message}`,
+    );
+  }
+  if (existingError) {
+    throw new Error(
+      `Failed to load existing category charges: ${existingError.message}`,
+    );
+  }
+
+  const existingByLeaseCategory = new Set<string>();
+  for (const row of (existingRows as Array<{
+    lease_id: string;
+    charge_category: string | null;
+  }> | null) ?? []) {
+    if (!row.charge_category) {
+      continue;
+    }
+    existingByLeaseCategory.add(`${row.lease_id}:${row.charge_category}`);
+  }
+
+  const settingsByLease = new Map<string, LeaseChargeSettingsRow[]>();
+  for (const row of (settingsRows as LeaseChargeSettingsRow[] | null) ?? []) {
+    const list = settingsByLease.get(row.lease_id) ?? [];
+    list.push(row);
+    settingsByLease.set(row.lease_id, list);
+  }
+
+  let created = 0;
+  let skipped = 0;
+  let errors = 0;
+  const nowIso = new Date().toISOString();
+
+  for (const lease of activeLeases) {
+    if (lease.start_date > periodEnd || lease.end_date < periodStart) {
+      continue;
+    }
+
+    const settings = settingsByLease.get(lease.lease_id) ?? [];
+    for (const setting of settings) {
+      if (!isLeaseChargeCategory(setting.charge_category)) {
+        continue;
+      }
+
+      const category = setting.charge_category as LeaseChargeCategory;
+      const dedupeKey = `${lease.lease_id}:${category}`;
+      if (existingByLeaseCategory.has(dedupeKey)) {
+        skipped += 1;
+        continue;
+      }
+
+      const amountDue = roundMoney(Number(setting.flat_amount_ghs));
+      if (!Number.isFinite(amountDue) || amountDue <= 0) {
+        skipped += 1;
+        continue;
+      }
+
+      const description = defaultLeaseChargeCategoryLabel(category);
+      const entryId = crypto.randomUUID();
+      const { error: insertError } = await admin.from("rent_ledger").insert({
+        tenant_id: lease.tenant_id,
+        entry_id: entryId,
+        lease_id: lease.lease_id,
+        charge_type: "one_time",
+        charge_category: category,
+        description,
+        period_start: periodStart,
+        period_end: periodEnd,
+        amount_due_ghs: amountDue,
+        amount_paid_ghs: 0,
+        credit_ghs: 0,
+        status: "pending",
+        verification_status: "not_required",
+        notes: null,
+        created_at: nowIso,
+        updated_at: nowIso,
+      });
+
+      if (insertError) {
+        errors += 1;
+        console.error("[generate-rent-ledger] category charge error", {
+          lease_id: lease.lease_id,
+          charge_category: category,
+          error: insertError.message,
+        });
+        continue;
+      }
+
+      existingByLeaseCategory.add(dedupeKey);
+      created += 1;
+      console.log("[generate-rent-ledger] category charge created", {
+        lease_id: lease.lease_id,
+        charge_category: category,
+        period: `${periodStart}..${periodEnd}`,
+        amount_due: amountDue,
+        entry_id: entryId,
+      });
+    }
+  }
+
+  return { created, skipped, errors };
 }

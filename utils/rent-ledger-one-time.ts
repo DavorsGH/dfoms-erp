@@ -1,6 +1,11 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  isLeaseChargeCategory,
+  resolveOneTimeChargeDescription,
+  type LeaseChargeCategory,
+} from "@/utils/lease-charge-categories";
 import { notifyLesseeOneTimeChargeAdded } from "@/utils/rent-ledger-one-time-notifications";
 
 export type RentLedgerChargeType = "rent" | "one_time";
@@ -22,6 +27,7 @@ export type CreateOneTimeChargeInput = {
   amountGhs: number;
   /** ISO date YYYY-MM-DD; defaults to today UTC. */
   chargeDate?: string;
+  chargeCategory?: LeaseChargeCategory | null;
 };
 
 export type CreateOneTimeChargeResult = {
@@ -30,6 +36,7 @@ export type CreateOneTimeChargeResult = {
   description: string;
   periodStart: string;
   periodEnd: string;
+  chargeCategory: LeaseChargeCategory | null;
 };
 
 /**
@@ -40,7 +47,14 @@ export async function createOneTimeLeaseCharge(
   admin: SupabaseClient,
   input: CreateOneTimeChargeInput,
 ): Promise<CreateOneTimeChargeResult> {
-  const description = input.description.trim();
+  const chargeCategory =
+    input.chargeCategory && isLeaseChargeCategory(input.chargeCategory)
+      ? input.chargeCategory
+      : null;
+  const description = resolveOneTimeChargeDescription({
+    chargeCategory,
+    description: input.description,
+  });
   if (!description) {
     throw new Error("description is required for a one-time charge.");
   }
@@ -84,6 +98,7 @@ export async function createOneTimeLeaseCharge(
     entry_id: entryId,
     lease_id: input.leaseId,
     charge_type: "one_time",
+    charge_category: chargeCategory,
     description,
     period_start: chargeDate,
     period_end: chargeDate,
@@ -109,6 +124,7 @@ export async function createOneTimeLeaseCharge(
       entryId,
       description,
       amountGhs: amountDue,
+      chargeCategory,
     });
   } catch (error) {
     console.error(
@@ -123,5 +139,6 @@ export async function createOneTimeLeaseCharge(
     description,
     periodStart: chargeDate,
     periodEnd: chargeDate,
+    chargeCategory,
   };
 }

@@ -1,11 +1,13 @@
 import "server-only";
 
 import { sendHubtelSms } from "@/utils/hubtel-sms";
+import { logSystemEvent } from "@/lib/system-event-log";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { insertEmployeeInAppNotifications } from "@/utils/employee-in-app-notifications";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
+import { isDavorsPlatformTenant } from "@/utils/tenant-signup";
 
 const ADMIN_DIRECTOR_ROLES = ["super_admin", "director"] as const;
 
@@ -91,14 +93,27 @@ type AdminDirectorSmsRecipient = {
   phone: string;
 };
 
+type AdminDirectorSmsRecipientProbe = {
+  authUid: string;
+  email: string;
+  role: string;
+  employeeId: string | null;
+  fullName: string | null;
+  phone: string | null;
+  skipReason: string | null;
+};
+
 async function loadAdminDirectorSmsRecipients(
   tenantId: string,
-): Promise<AdminDirectorSmsRecipient[]> {
+): Promise<{
+  recipients: AdminDirectorSmsRecipient[];
+  probes: AdminDirectorSmsRecipientProbe[];
+}> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("user_accounts")
     .select(
-      "auth_uid, employees!user_accounts_employee_id_fkey(full_name, phone)",
+      "auth_uid, email, role, employee_id, employees!user_accounts_employee_id_fkey(full_name, phone)",
     )
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
@@ -110,32 +125,56 @@ async function loadAdminDirectorSmsRecipients(
       "[tenant-admin-director-notifications] SMS recipient lookup failed:",
       error.message,
     );
-    return [];
+    return { recipients: [], probes: [] };
   }
 
   const recipients: AdminDirectorSmsRecipient[] = [];
+  const probes: AdminDirectorSmsRecipientProbe[] = [];
+
   for (const row of data ?? []) {
     const authUid = typeof row.auth_uid === "string" ? row.auth_uid.trim() : "";
-    if (!authUid) {
-      continue;
-    }
+    const email = typeof row.email === "string" ? row.email.trim() : "";
+    const role = typeof row.role === "string" ? row.role.trim() : "";
+    const employeeId =
+      typeof row.employee_id === "string" ? row.employee_id.trim() : null;
 
     const employee = Array.isArray(row.employees)
       ? row.employees[0]
       : row.employees;
-    const phone = employee?.phone?.trim() ?? "";
-    if (!phone) {
+    const fullName = employee?.full_name?.trim() || null;
+    const phone = employee?.phone?.trim() || null;
+
+    let skipReason: string | null = null;
+    if (!authUid) {
+      skipReason = "missing auth_uid";
+    } else if (!employeeId) {
+      skipReason = "user_accounts.employee_id not linked";
+    } else if (!phone) {
+      skipReason = "employees.phone blank (link HR employee phone)";
+    }
+
+    probes.push({
+      authUid,
+      email,
+      role,
+      employeeId,
+      fullName,
+      phone,
+      skipReason,
+    });
+
+    if (skipReason || !authUid || !phone) {
       continue;
     }
 
     recipients.push({
       authUid,
-      fullName: employee?.full_name?.trim() || "Admin",
+      fullName: fullName || "Admin",
       phone,
     });
   }
 
-  return recipients;
+  return { recipients, probes };
 }
 
 /**
@@ -153,23 +192,52 @@ export async function notifyTenantAdminsAndDirectorsSms(
   }
 
   try {
-    const recipients = await loadAdminDirectorSmsRecipients(normalizedTenantId);
+    const { recipients, probes } =
+      await loadAdminDirectorSmsRecipients(normalizedTenantId);
     if (recipients.length === 0) {
+      const skipped = probes.filter((probe) => probe.skipReason);
+      console.warn(
+        `[tenant-admin-director-notifications] SMS skipped (${context}): no deliverable Admin/Director phone numbers.`,
+        skipped,
+      );
+      await logSystemEvent({
+        eventType: "cron",
+        eventName: "admin_director_sms_skipped",
+        status: "warning",
+        message: `No Admin/Director SMS recipients for ${context}`,
+        metadata: {
+          tenantId: normalizedTenantId,
+          context,
+          probes: skipped,
+        },
+      });
       return;
     }
 
     const creditOk = await tryDebitSmsCredit(normalizedTenantId);
     if (!creditOk) {
       console.error(
-        `[tenant-admin-director-notifications] SMS skipped (${context}): no SMS credits.`,
+        `[tenant-admin-director-notifications] SMS skipped (${context}): SMS credit gate returned false.`,
       );
+      await logSystemEvent({
+        eventType: "cron",
+        eventName: "admin_director_sms_skipped",
+        status: "warning",
+        message: `SMS credit gate blocked ${context}`,
+        metadata: {
+          tenantId: normalizedTenantId,
+          context,
+          recipientCount: recipients.length,
+          platformTenant: isDavorsPlatformTenant(normalizedTenantId),
+        },
+      });
       return;
     }
 
     const admin = createAdminClient();
     const tenantName = await resolveTenantDisplayName(admin, normalizedTenantId);
 
-    await Promise.all(
+    const sendResults = await Promise.all(
       recipients.map(async (recipient) => {
         const to = normalizeGhanaPhone(recipient.phone) ?? recipient.phone;
         const result = await sendHubtelSms({
@@ -177,20 +245,77 @@ export async function notifyTenantAdminsAndDirectorsSms(
           content: normalizedContent,
           tenantName,
           recipientName: recipient.fullName,
+          tenantId: normalizedTenantId,
         });
-        if (!result.ok) {
-          console.error(
-            `[tenant-admin-director-notifications] SMS failed (${context}/${recipient.authUid}):`,
-            result.error,
-          );
-        }
+        return { recipient, to, result };
       }),
     );
+
+    const failures = sendResults.filter(
+      (entry): entry is typeof entry & { result: { ok: false; error: string } } =>
+        !entry.result.ok,
+    );
+    if (failures.length > 0) {
+      for (const failure of failures) {
+        console.error(
+          `[tenant-admin-director-notifications] SMS failed (${context}/${failure.recipient.authUid}):`,
+          failure.result.error,
+        );
+      }
+      await logSystemEvent({
+        eventType: "cron",
+        eventName: "admin_director_sms_failed",
+        status: "failure",
+        message: `Hubtel SMS failed for ${context}`,
+        metadata: {
+          tenantId: normalizedTenantId,
+          context,
+          failures: failures.map((failure) => ({
+            authUid: failure.recipient.authUid,
+            to: failure.to,
+            error: failure.result.error,
+          })),
+        },
+      });
+    }
+
+    const successes = sendResults.filter(
+      (entry): entry is typeof entry & { result: { ok: true; id: string | null } } =>
+        entry.result.ok,
+    );
+    if (successes.length > 0) {
+      await logSystemEvent({
+        eventType: "cron",
+        eventName: "admin_director_sms_sent",
+        status: "success",
+        message: `Admin/Director SMS sent for ${context}`,
+        metadata: {
+          tenantId: normalizedTenantId,
+          context,
+          sent: successes.map((entry) => ({
+            authUid: entry.recipient.authUid,
+            to: entry.to,
+            hubtelMessageId: entry.result.id,
+          })),
+        },
+      });
+    }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error(
       `[tenant-admin-director-notifications] SMS failed (${context}):`,
-      error instanceof Error ? error.message : error,
+      message,
     );
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: "admin_director_sms_failed",
+      status: "failure",
+      message: `Admin/Director SMS error for ${context}: ${message}`,
+      metadata: {
+        tenantId: normalizedTenantId,
+        context,
+      },
+    });
   }
 }
 

@@ -14,7 +14,7 @@ import {
   CRM_PRODUCT_SELECT,
   ERP_SUITE_CATEGORY,
 } from "../../crm/products/products-utils";
-import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import { DAVORS_TENANT_ID, isDavorsPlatformTenant } from "@/utils/tenant-signup";
 import BillingSettings, {
   type BillingTierOption,
 } from "../billing-settings";
@@ -153,6 +153,7 @@ export default async function BillingSettingsPage({
         tierOptions={(tiersResult.data as BillingTierOption[] | null) ?? []}
         smsCreditPacks={smsCreditPacks}
         smsCreditBalance={smsCreditBalance}
+        showSmsCreditPurchase={!isDavorsPlatformTenant(tenantId)}
         fetchError={fetchError}
         initialTab={initialTab}
       />

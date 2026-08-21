@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { formatRentLedgerStatus, rentOutstandingGhs } from "@/app/dashboard/real-estate/rent-ledger-utils";
+import { resolveChargeDisplayLabel } from "@/utils/lease-charge-categories";
 import { composePropertyStreetAddress } from "@/app/dashboard/real-estate/leases-utils";
 import { normalizePhotoUrls } from "@/app/dashboard/real-estate/properties-utils";
 import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
@@ -44,6 +45,7 @@ export type PortalUnpaidRent = {
 export type PortalOtherCharge = {
   entryId: string;
   description: string;
+  chargeCategory: string | null;
   periodStart: string;
   amountDueGhs: number;
   amountPaidGhs: number;
@@ -215,7 +217,7 @@ async function loadDashboardWithClient(
     client
       .from("rent_ledger")
       .select(
-        "entry_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, charge_type, description",
+        "entry_id, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, charge_type, charge_category, description",
       )
       .eq("tenant_id", session.tenantId)
       .eq("lease_id", lease.lease_id)
@@ -306,6 +308,7 @@ async function loadDashboardWithClient(
       amount_paid_ghs: number | string;
       credit_ghs?: number | string | null;
       charge_type?: string | null;
+      charge_category?: string | null;
       description?: string | null;
     }> | null) ?? [];
 
@@ -357,7 +360,11 @@ async function loadDashboardWithClient(
     }
     otherCharges.push({
       entryId: row.entry_id,
-      description: row.description?.trim() || "Other charge",
+      description: resolveChargeDisplayLabel({
+        chargeCategory: row.charge_category,
+        description: row.description,
+      }),
+      chargeCategory: row.charge_category?.trim() || null,
       periodStart: row.period_start,
       amountDueGhs: amountDue,
       amountPaidGhs: amountPaid,

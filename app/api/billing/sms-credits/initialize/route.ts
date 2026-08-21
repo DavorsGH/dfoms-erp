@@ -5,6 +5,7 @@ import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isValidEmail, resolveSiteUrlFromRequest } from "@/utils/product-sale-paystack";
 import { initializeSmsCreditPurchase } from "@/utils/sms-credit-purchase";
+import { isDavorsPlatformTenant } from "@/utils/tenant-signup";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,16 @@ export async function POST(request: Request) {
   const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
     return auth.response;
+  }
+
+  if (isDavorsPlatformTenant(auth.tenantId)) {
+    return NextResponse.json(
+      {
+        error:
+          "SMS credit purchases do not apply to the Davors platform workspace.",
+      },
+      { status: 400 },
+    );
   }
 
   let body: InitializeBody;

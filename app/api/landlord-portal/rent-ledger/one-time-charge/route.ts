@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createOneTimeLeaseCharge } from "@/utils/rent-ledger-one-time";
+import { isLeaseChargeCategory } from "@/utils/lease-charge-categories";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,7 @@ type Body = {
   description?: string;
   amount_ghs?: number | string;
   charge_date?: string;
+  charge_category?: string;
 };
 
 /**
@@ -36,6 +38,11 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
   const amount = Number(body.amount_ghs);
+  const chargeCategoryRaw = body.charge_category?.trim();
+  const chargeCategory =
+    chargeCategoryRaw && isLeaseChargeCategory(chargeCategoryRaw)
+      ? chargeCategoryRaw
+      : null;
 
   try {
     const result = await createOneTimeLeaseCharge(admin, {
@@ -44,6 +51,7 @@ export async function POST(request: Request) {
       description: body.description ?? "",
       amountGhs: amount,
       chargeDate: body.charge_date,
+      chargeCategory,
     });
 
     return NextResponse.json({

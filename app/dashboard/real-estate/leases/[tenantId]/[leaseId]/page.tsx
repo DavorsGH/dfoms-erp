@@ -2,6 +2,7 @@ import Link from "next/link";
 import { NotificationTargetUnavailablePanel } from "@/components/notification-target-unavailable";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchLeaseDetail } from "@/utils/lease-management";
+import { fetchLeaseChargeSettings } from "@/utils/lease-charge-settings";
 import RealEstateShell from "../../../real-estate-shell";
 import LeaseDetailView from "../../../lease-detail";
 
@@ -22,6 +23,9 @@ export default async function LeaseDetailPage({
     tenantId,
     leaseId,
   );
+  const { settings: initialChargeSettings } = detail
+    ? await fetchLeaseChargeSettings(admin, detail.leaseId)
+    : { settings: [] };
 
   if (!detail) {
     if (fetchError) {
@@ -57,6 +61,7 @@ export default async function LeaseDetailPage({
         initialDetail={detail}
         fetchError={fetchError}
         focusDeposit={resolveDeposit === "1"}
+        initialChargeSettings={initialChargeSettings}
       />
     </RealEstateShell>
   );

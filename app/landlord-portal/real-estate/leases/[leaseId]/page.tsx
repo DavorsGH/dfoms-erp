@@ -22,8 +22,10 @@ import {
 import LandlordPortalPendingApprovalView from "../../../pending-approval-view";
 import LandlordPortalLeaseEditForm from "../lease-edit-form";
 import OneTimeChargeForm from "@/app/dashboard/real-estate/one-time-charge-form";
+import LeaseChargeSettingsPanel from "@/app/dashboard/real-estate/lease-charge-settings-panel";
 import MoveInConditionPhotosPanel from "@/app/dashboard/real-estate/move-in-condition-photos-panel";
 import FileComplaintForm from "@/app/dashboard/real-estate/file-complaint-form";
+import { fetchLeaseChargeSettings } from "@/utils/lease-charge-settings";
 
 type PageProps = {
   params: Promise<{ leaseId: string }>;
@@ -70,6 +72,9 @@ export default async function LandlordPortalLeaseDetailPage({
     session.tenantId,
     leaseId,
   );
+  const { settings: chargeSettings } = detail
+    ? await fetchLeaseChargeSettings(admin, detail.leaseId)
+    : { settings: [] };
 
   if (!detail && !fetchError) {
     return (
@@ -274,6 +279,23 @@ export default async function LandlordPortalLeaseDetailPage({
                   initialUrls={detail.moveInConditionPhotoUrls}
                   uploadPath="/api/landlord-portal/leases/upload-move-in-photo"
                   readOnly
+                />
+              </div>
+            </section>
+          ) : null}
+
+          {detail ? (
+            <section className={portalSectionClassName}>
+              <h2 className={portalSectionTitleClassName}>
+                Tenant charge categories
+              </h2>
+              <div className="mt-4">
+                <LeaseChargeSettingsPanel
+                  mode="landlord"
+                  tenantId={detail.tenantId}
+                  leaseId={detail.leaseId}
+                  initialSettings={chargeSettings}
+                  readOnly={!canManage}
                 />
               </div>
             </section>

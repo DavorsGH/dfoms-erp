@@ -7,6 +7,7 @@ import {
   rentOutstandingGhs,
   type RentLedgerStatus,
 } from "@/app/dashboard/real-estate/rent-ledger-utils";
+import { resolveChargeDisplayLabel } from "@/utils/lease-charge-categories";
 
 export type RentPaymentReceiptData = {
   entryId: string;
@@ -60,9 +61,17 @@ function buildReceiptReference(
   return ref || entryId;
 }
 
-function chargeTypeLabel(chargeType: "rent" | "one_time", description: string | null) {
+function chargeTypeLabel(
+  chargeType: "rent" | "one_time",
+  description: string | null,
+  chargeCategory: string | null | undefined,
+) {
   if (chargeType === "one_time") {
-    return description ? `One-time — ${description}` : "One-time charge";
+    const label = resolveChargeDisplayLabel({
+      chargeCategory,
+      description,
+    });
+    return chargeCategory ? label : description ? `One-time — ${description}` : "One-time charge";
   }
   return "Rent";
 }
@@ -101,7 +110,7 @@ export async function fetchRentPaymentReceipt(
   const { data: rentRow, error: rentError } = await admin
     .from("rent_ledger")
     .select(
-      "entry_id, lease_id, charge_type, description, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, payment_method, notes, paystack_reference",
+      "entry_id, lease_id, charge_type, charge_category, description, period_start, period_end, status, amount_due_ghs, amount_paid_ghs, credit_ghs, payment_date, payment_method, notes, paystack_reference",
     )
     .eq("tenant_id", options.tenantId)
     .eq("entry_id", entryId)
@@ -170,6 +179,10 @@ export async function fetchRentPaymentReceipt(
   const propertyName = property?.name?.trim() || "—";
   const unitNumber = unit?.unit_number?.trim() || "—";
   const chargeType = rentRow.charge_type === "one_time" ? "one_time" : "rent";
+  const chargeCategory =
+    typeof rentRow.charge_category === "string"
+      ? rentRow.charge_category.trim() || null
+      : null;
   const description =
     typeof rentRow.description === "string"
       ? rentRow.description.trim() || null
@@ -186,7 +199,7 @@ export async function fetchRentPaymentReceipt(
         rentRow.paystack_reference,
       ),
       chargeType,
-      chargeTypeLabel: chargeTypeLabel(chargeType, description),
+      chargeTypeLabel: chargeTypeLabel(chargeType, description, chargeCategory),
       description,
       lesseeName: lessee?.full_name?.trim() || "—",
       landlordName: tenantRow?.name?.trim() || "—",
@@ -218,7 +231,7 @@ export async function fetchPortalPaymentHistory(
   const { data: rentRows, error } = await admin
     .from("rent_ledger")
     .select(
-      "entry_id, charge_type, description, period_start, period_end, status, amount_paid_ghs, payment_date, payment_method, paystack_reference",
+      "entry_id, charge_type, charge_category, description, period_start, period_end, status, amount_paid_ghs, payment_date, payment_method, paystack_reference",
     )
     .eq("tenant_id", options.tenantId)
     .eq("lease_id", options.leaseId)
@@ -236,12 +249,16 @@ export async function fetchPortalPaymentHistory(
       continue;
     }
     const chargeType = row.charge_type === "one_time" ? "one_time" : "rent";
+    const chargeCategory =
+      typeof row.charge_category === "string"
+        ? row.charge_category.trim() || null
+        : null;
     const description =
       typeof row.description === "string" ? row.description.trim() || null : null;
     rows.push({
       entryId: row.entry_id,
       chargeType,
-      chargeTypeLabel: chargeTypeLabel(chargeType, description),
+      chargeTypeLabel: chargeTypeLabel(chargeType, description, chargeCategory),
       description,
       periodStart: row.period_start,
       periodEnd: row.period_end,

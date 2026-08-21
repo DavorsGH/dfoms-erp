@@ -1,25 +1,33 @@
 import { createAdminClient } from "@/utils/supabase/admin";
 import { isNonOtpSmsSendingEnabled } from "@/utils/sms-shared";
+import { isDavorsPlatformTenant } from "@/utils/tenant-signup";
 
 /**
  * Debit one SMS credit for the tenant. Returns true when the debit succeeds
  * (wallet had balance). Uses the service-role client so send paths that run
  * as the authenticated user can still gate on the shared wallet RPC.
  *
+ * Davors Facilities (platform tenant) bypasses the wallet entirely — Davors
+ * is the Hubtel account holder, not a prepaid SMS credit customer.
+ *
  * Same contract as fireTransactionalNotification: success → caller may send
  * SMS; false → skip SMS (do not call Hubtel).
  */
 export async function tryDebitSmsCredit(tenantId: string): Promise<boolean> {
-  if (!isNonOtpSmsSendingEnabled()) {
-    console.warn(
-      `[sms-credit] debit skipped — NON_OTP_SMS_ENABLED is not true (tenant ${tenantId?.trim() ?? "(missing)"}).`,
-    );
-    return false;
-  }
-
   const cleaned = tenantId?.trim() ?? "";
   if (!cleaned) {
     console.error("[sms-credit] debit_sms_credit skipped: missing tenantId.");
+    return false;
+  }
+
+  if (isDavorsPlatformTenant(cleaned)) {
+    return true;
+  }
+
+  if (!isNonOtpSmsSendingEnabled()) {
+    console.warn(
+      `[sms-credit] debit skipped — NON_OTP_SMS_ENABLED is not true (tenant ${cleaned}).`,
+    );
     return false;
   }
 

@@ -61,6 +61,8 @@ type BillingSettingsProps = {
   tierOptions: BillingTierOption[];
   smsCreditPacks: SmsCreditPackOption[];
   smsCreditBalance: number;
+  /** False for Davors platform tenant — Hubtel account holder, not a prepaid SMS customer. */
+  showSmsCreditPurchase?: boolean;
   fetchError: string | null;
   /** Initial tab, e.g. from ?tab=payment deep links (POS Payment Settings). */
   initialTab?: "billing" | "payment";
@@ -186,6 +188,7 @@ export default function BillingSettings({
   tierOptions,
   smsCreditPacks,
   smsCreditBalance,
+  showSmsCreditPurchase = true,
   fetchError,
   initialTab = "billing",
 }: BillingSettingsProps) {
@@ -657,6 +660,7 @@ export default function BillingSettings({
         </div>
       </section>
 
+      {showSmsCreditPurchase ? (
       <section className={cardClassName}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -708,6 +712,7 @@ export default function BillingSettings({
           </div>
         )}
       </section>
+      ) : null}
 
       <section className={cardClassName}>
         <div>

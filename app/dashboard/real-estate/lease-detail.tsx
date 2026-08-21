@@ -15,13 +15,16 @@ import {
 } from "./leases-utils";
 import LeaseSignaturePanel from "./lease-signature-panel";
 import OneTimeChargeForm from "./one-time-charge-form";
+import LeaseChargeSettingsPanel from "./lease-charge-settings-panel";
 import MoveInConditionPhotosPanel from "./move-in-condition-photos-panel";
 import FileComplaintForm from "./file-complaint-form";
+import type { LeaseChargeSettingRow } from "@/utils/lease-charge-categories";
 
 type LeaseDetailViewProps = {
   initialDetail: LeaseDetail;
   fetchError: string | null;
   focusDeposit?: boolean;
+  initialChargeSettings: LeaseChargeSettingRow[];
 };
 
 const primaryButtonClassName =
@@ -40,6 +43,7 @@ export default function LeaseDetailView({
   initialDetail,
   fetchError,
   focusDeposit = false,
+  initialChargeSettings,
 }: LeaseDetailViewProps) {
   const router = useRouter();
   const [detail, setDetail] = useState(initialDetail);
@@ -865,6 +869,18 @@ export default function LeaseDetailView({
           leaseId={detail.leaseId}
           initialUrls={detail.moveInConditionPhotoUrls}
           uploadPath="/api/admin/leases/upload-move-in-photo"
+        />
+      </section>
+
+      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+          Tenant charge categories
+        </h3>
+        <LeaseChargeSettingsPanel
+          mode="staff"
+          tenantId={detail.tenantId}
+          leaseId={detail.leaseId}
+          initialSettings={initialChargeSettings}
         />
       </section>
 

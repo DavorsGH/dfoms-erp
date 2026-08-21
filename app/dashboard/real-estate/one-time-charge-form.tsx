@@ -3,6 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { inputClassName } from "@/app/dashboard/hr-payroll/hr-register-utils";
+import {
+  LEASE_CHARGE_CATEGORY_OPTIONS,
+  isLeaseChargeCategory,
+  type LeaseChargeCategory,
+} from "@/utils/lease-charge-categories";
 
 type OneTimeChargeFormProps = {
   /** Staff admin API vs landlord portal API. */
@@ -29,6 +34,9 @@ export default function OneTimeChargeForm({
   leaseActive,
 }: OneTimeChargeFormProps) {
   const router = useRouter();
+  const [chargeCategory, setChargeCategory] = useState<"" | LeaseChargeCategory>(
+    "",
+  );
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,6 +47,11 @@ export default function OneTimeChargeForm({
     event.preventDefault();
     if (!leaseActive) {
       setError("One-time charges can only be added to an active lease.");
+      return;
+    }
+
+    if (!chargeCategory && !description.trim()) {
+      setError("Enter a description or select a charge category.");
       return;
     }
 
@@ -56,11 +69,13 @@ export default function OneTimeChargeForm({
         ? {
             tenant_id: tenantId,
             lease_id: leaseId,
+            charge_category: chargeCategory || undefined,
             description,
             amount_ghs: amount,
           }
         : {
             lease_id: leaseId,
+            charge_category: chargeCategory || undefined,
             description,
             amount_ghs: amount,
           };
@@ -83,6 +98,7 @@ export default function OneTimeChargeForm({
       return;
     }
 
+    setChargeCategory("");
     setDescription("");
     setAmount("");
     setLoading(false);
@@ -103,6 +119,42 @@ export default function OneTimeChargeForm({
       ) : null}
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">
+          Charge category (optional)
+        </label>
+        <select
+          value={chargeCategory}
+          onChange={(event) => {
+            const value = event.target.value;
+            setChargeCategory(
+              value && isLeaseChargeCategory(value) ? value : "",
+            );
+          }}
+          className={inputClassName}
+          disabled={loading || !leaseActive}
+        >
+          <option value="">General / other (no category)</option>
+          <optgroup label="Utilities">
+            {LEASE_CHARGE_CATEGORY_OPTIONS.filter(
+              (option) => option.group === "utilities",
+            ).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Service charge">
+            {LEASE_CHARGE_CATEGORY_OPTIONS.filter(
+              (option) => option.group === "service",
+            ).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-slate-700">
           Description
         </label>
         <textarea
@@ -110,8 +162,12 @@ export default function OneTimeChargeForm({
           onChange={(event) => setDescription(event.target.value)}
           rows={2}
           maxLength={500}
-          required
-          placeholder="e.g. Key replacement, damage repair"
+          required={!chargeCategory}
+          placeholder={
+            chargeCategory
+              ? "Optional note (category label used if blank)"
+              : "e.g. Key replacement, damage repair"
+          }
           className={textareaClassName}
           disabled={loading || !leaseActive}
         />
