@@ -4,6 +4,9 @@ import {
   buildTopSalesAnalysis,
   toSalesAnalysisRows,
 } from "@/app/dashboard/dashboard-sales-analysis-utils";
+import type { ProductSaleEntry } from "@/app/dashboard/crm/product-sales-utils";
+import { normalizeProductSaleForLog } from "@/app/dashboard/crm/sales/sales-utils";
+import type { ProductSaleReportRecord } from "@/app/dashboard/reports/inventory-reports-utils";
 import { SALES_OPPORTUNITY_SELECT } from "@/app/dashboard/crm/sales-pipeline/sales-pipeline-utils";
 import { fetchProductSalesReportData } from "@/app/dashboard/reports/inventory-report-data";
 import {
@@ -38,6 +41,38 @@ import {
 
 function hasSalesModuleAccess(role: import("@/app/dashboard/user-account-types").AppRole): boolean {
   return canAccessCrmSection(role) || canAccessPosSection(role);
+}
+
+function productSaleReportToProductSaleEntry(
+  sale: ProductSaleReportRecord,
+): ProductSaleEntry {
+  return {
+    id: sale.id,
+    date: sale.date,
+    invoice_no: sale.invoice_no,
+    client_id: sale.client_id,
+    customer_name: sale.customer_name,
+    amount: Number(sale.amount) || 0,
+    amount_received: 0,
+    outstanding_balance: null,
+    payment_status: "",
+    due_date: sale.date,
+    notes: null,
+    product_id: sale.product_id,
+    sale_quantity: sale.sale_quantity,
+    unit_price: sale.unit_price,
+    sale_status: sale.sale_status ?? "active",
+    voided_at: null,
+    cogs_expense_id: sale.cogs_expense_id ?? null,
+    cogs_reversal_expense_id: null,
+    client: sale.client ?? null,
+    product: sale.product
+      ? {
+          ...sale.product,
+          standard_selling_price: null,
+        }
+      : null,
+  };
 }
 
 export async function getSalesSummary(toolInput?: unknown): Promise<unknown> {
@@ -79,14 +114,9 @@ export async function getSalesSummary(toolInput?: unknown): Promise<unknown> {
     const supabase = await getStaffSupabase();
     const data = await fetchProductSalesReportData(supabase);
     const rows = toSalesAnalysisRows(
-      (data.initialSales ?? []).map((sale) => ({
-        sale_date: sale.date,
-        amount: Number(sale.amount) || 0,
-        product_name: sale.product?.product_name ?? "Product",
-        customer_name: sale.client?.client_name ?? sale.customer_name ?? "Customer",
-        source: "product_sale" as const,
-        sale_status: sale.sale_status === "voided" ? "voided" : "active",
-      })),
+      (data.initialSales ?? [])
+        .map(productSaleReportToProductSaleEntry)
+        .map(normalizeProductSaleForLog),
     );
     const ranked = buildTopSalesAnalysis(rows, mode, key, "product");
     const totalSales = ranked.reduce((sum, row) => sum + row.amount, 0);

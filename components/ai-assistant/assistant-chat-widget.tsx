@@ -229,8 +229,9 @@ export default function AssistantChatWidget() {
       });
 
       const data = (await response.json()) as { reply?: string; error?: string };
+      const reply = data.reply?.trim();
 
-      if (!response.ok || !data.reply) {
+      if (!response.ok || !reply) {
         throw new Error(data.error ?? ERROR_MESSAGE);
       }
 
@@ -239,7 +240,7 @@ export default function AssistantChatWidget() {
         {
           id: createMessageId(),
           role: "assistant",
-          content: data.reply,
+          content: reply,
           createdAt: Date.now(),
         },
       ]);

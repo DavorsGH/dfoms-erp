@@ -84,19 +84,20 @@ export async function getOutstandingInvoices(): Promise<unknown> {
       .filter(isUnpaidClientInvoice)
       .map((row) => {
         const outstanding = invoiceOutstanding(row);
+        const dueDate = row.due_date ?? row.invoice_date;
         const daysOverdue = Math.max(
-          calculateDaysOutstanding(row.due_date, referenceDate),
+          calculateDaysOutstanding(dueDate, referenceDate),
           0,
         );
         const client = Array.isArray(row.client) ? row.client[0] : row.client;
         return {
           invoiceNumber: row.invoice_number,
           customerName: row.bill_to_name || client?.client_name || "Customer",
-          dueDate: row.due_date,
+          dueDate,
           outstandingGhs: outstanding,
           daysOverdue,
           agingBucket: getAgingBucket(
-            calculateDaysOutstanding(row.due_date, referenceDate),
+            calculateDaysOutstanding(dueDate, referenceDate),
           ),
         };
       })
