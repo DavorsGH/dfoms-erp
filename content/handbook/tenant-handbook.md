@@ -1,0 +1,121 @@
+**DAVORS FACILITIES MANAGEMENT SERVICES LTD**
+
+Davors Real Estate System
+
+**TENANT PORTAL GUIDE**
+
+**For Customer Use**
+
+Version 2.2 | July 2026
+
+*Covers: How to use your Davors Tenant Portal*
+
+## Section 1 --- Getting Started
+
+Your landlord (or their managing agent, Davors) sets you up with a lease
+first - you don't sign up for a tenant account yourself.
+
+**Note**
+
+This guide is for tenants only. You do not need a staff account, and you
+should not use the main Davors business login.
+
+Once your lease is created, you'll automatically receive an email
+invite ("You're invited to the Davors Tenant Portal") with a link to
+set your own password. This link expires after 7 days - if it's expired
+or you never received it, ask your landlord to resend your invite.
+
+To log in, go to portal.davorsfacilities.com, choose "I'm a Tenant,"
+and log in with the email and password you set.
+
+## Section 2 --- Your Home
+
+Your Home screen shows your unit, your active lease (rent amount,
+start/end date, status), and your current rent status.
+
+## Section 3 --- Paying Rent, Other Charges & Payment History
+
+Pay by Mobile Money or card, directly from your dashboard. If you have
+both rent due and any one-time "Other Charges" outstanding (e.g. a
+repair bill your landlord added), you can pay everything together in a
+single transaction rather than separately.
+
+**Note**
+
+You can't pay rent until your lease has been at least partially
+acknowledged (see Section 6 below) - if payment isn't available yet,
+check whether you still need to acknowledge your lease.
+
+The Payments tab keeps a full history of your confirmed rent and
+one-time-charge payments. Open any payment to view, print, or download a
+receipt for it - useful for your own records.
+
+Your security deposit also has its own record: a collection document
+when it's first held, and a resolution document (returned, forfeited,
+or partially forfeited) once your tenancy ends and it's settled.
+
+## Section 4 --- Requesting Repairs
+
+Go to Repairs to submit a request: describe the issue and attach photos.
+If it's something minor you'd rather fix yourself, tick "I'd like to
+fix this myself" and propose a cost - your landlord has to approve that
+cost first; once approved, it's credited against your next rent rather
+than you paying out of pocket separately.
+
+Once your landlord marks a request completed, open it to see a
+before-and-after view: your own submission photos alongside any "after"
+photos your landlord attached showing the finished work.
+
+## Section 5 --- Filing a Complaint & My Issues
+
+Go to Complaints for anything that isn't a repair - a subject and
+description is enough. Your landlord will respond and mark it resolved.
+
+My Issues gives you a combined view of everything you've submitted -
+both repair requests and complaints - with their current status, all in
+one place.
+
+## Section 6 --- Your Lease, Move-In Photos & Signing
+
+From your Home screen, you can download your lease as a PDF (or, if your
+landlord uploaded their own lease document instead, that's what
+downloads). Once you've reviewed it, click "Tenant acknowledged" - this
+confirms you've read and agreed to the terms. It is not a legally
+binding electronic signature, just an in-app confirmation.
+
+If your landlord has uploaded move-in condition photos for your unit,
+you'll see them on your Home screen too - a visual record of the
+unit's condition when your tenancy started.
+
+## Section 7 --- Requesting Early Termination
+
+If you need to end your lease before the end date, click Request Early
+Termination on your Home screen and give a reason. Your lease stays
+active while your landlord reviews the request - you'll be notified
+once it's approved or rejected.
+
+## Section 8 --- Announcements & Notifications
+
+Your landlord may send you announcements (by email, SMS, or an in-app
+notification) - you'll also get automatic reminders as your rent due
+date approaches, and a receipt whenever a payment is confirmed. Check
+the bell icon in your portal for your notification inbox.
+
+## Section 9 --- Quick Reference
+
+  **Term**                             **Meaning**
+  ------------------------------------ ----------------------------------
+  Lease Acknowledgment                 An in-app confirmation that
+                                       you've reviewed your lease's
+                                       terms - not a legal electronic
+                                       signature.
+
+  One-Time Charge                      A single ad-hoc charge added to
+                                       your lease (e.g. a repair bill),
+                                       separate from your recurring rent.
+
+  Self-Fix Credit                      An approved cost for a repair you
+                                       fix yourself, credited against
+                                       your next rent.
+
+If you run into a problem with the portal itself, contact your landlord.
