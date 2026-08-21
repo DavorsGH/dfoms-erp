@@ -54,6 +54,8 @@ export type LeaseSignaturePanelProps = {
   agreementDate: string;
   /** Custom uploaded lease PDF/Word; preferred over generated default when set. */
   leaseDocumentUrl: string | null;
+  /** Tighter spacing for lease detail pages. */
+  compact?: boolean;
 };
 
 const primaryButtonClassName =
@@ -345,12 +347,18 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
       : "Download lease PDF";
 
   return (
-    <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
+    <section
+      className={
+        props.compact
+          ? "space-y-3 rounded-md border border-slate-200 bg-white p-3"
+          : "space-y-4 rounded-md border border-slate-200 bg-white p-4"
+      }
+    >
       <div>
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-[#0f2744]">
           Lease acknowledgment
         </h3>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-0.5 text-sm text-slate-600">
           Status:{" "}
           <span className="font-medium text-slate-900">
             {formatLeaseSignatureStatus(status)}
@@ -358,7 +366,7 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
         </p>
       </div>
 
-      <dl className="grid gap-3 sm:grid-cols-2">
+      <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Landlord acknowledged
@@ -381,7 +389,7 @@ export default function LeaseSignaturePanel(props: LeaseSignaturePanelProps) {
         </div>
       </dl>
 
-      <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+      <p className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
         {LEASE_SIGNATURE_DISCLAIMER}
       </p>
 

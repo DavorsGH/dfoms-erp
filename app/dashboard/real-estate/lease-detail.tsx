@@ -18,6 +18,16 @@ import OneTimeChargeForm from "./one-time-charge-form";
 import LeaseChargeSettingsPanel from "./lease-charge-settings-panel";
 import MoveInConditionPhotosPanel from "./move-in-condition-photos-panel";
 import FileComplaintForm from "./file-complaint-form";
+import {
+  LeaseDetailSection,
+  LeaseDetailTabs,
+  LeaseSummaryItem,
+  leaseFieldGridClassName,
+  leasePageClassName,
+  leaseSectionClassName,
+  leaseSummaryGridClassName,
+  type LeaseDetailTabId,
+} from "./lease-detail-layout";
 import type { LeaseChargeSettingRow } from "@/utils/lease-charge-categories";
 
 type LeaseDetailViewProps = {
@@ -63,6 +73,7 @@ export default function LeaseDetailView({
   >("returned");
   const [amountReturned, setAmountReturned] = useState("");
   const [resolutionNotes, setResolutionNotes] = useState("");
+  const [activeTab, setActiveTab] = useState<LeaseDetailTabId>("overview");
 
   const [startDate, setStartDate] = useState(initialDetail.startDate);
   const [endDate, setEndDate] = useState(initialDetail.endDate);
@@ -124,6 +135,7 @@ export default function LeaseDetailView({
     setError(fetchError);
     if (focusDeposit) {
       setShowResolveDeposit(true);
+      setActiveTab("overview");
     }
   }, [initialDetail, fetchError, focusDeposit]);
 
@@ -341,8 +353,12 @@ export default function LeaseDetailView({
     router.refresh();
   }
 
+  const depositSummary = detail.deposit
+    ? `${formatLeaseMoney(detail.deposit.amountGhs)} · ${formatDepositStatus(detail.deposit.status)}`
+    : "None";
+
   return (
-    <div className="space-y-8">
+    <div className={leasePageClassName}>
       <Link
         href={`/dashboard/real-estate/leases?landlord=${encodeURIComponent(detail.tenantId)}`}
         className="inline-block text-sm font-medium text-[#0f2744] hover:underline"
@@ -350,57 +366,53 @@ export default function LeaseDetailView({
         ← Back to Leases
       </Link>
 
-      <div className="text-sm text-slate-600">
-        <p>
-          Landlord:{" "}
-          <span className="font-medium text-[#0f2744]">
-            {detail.landlordName}
-          </span>
+      <section className={leaseSectionClassName}>
+        <dl className={leaseSummaryGridClassName}>
+          <LeaseSummaryItem
+            label="Status"
+            value={formatLeaseStatus(detail.status)}
+          />
+          <LeaseSummaryItem label="Landlord" value={detail.landlordName} />
+          <LeaseSummaryItem label="Tenant" value={detail.lesseeName} />
+          <LeaseSummaryItem
+            label="Rent"
+            value={formatLeaseMoney(detail.rentAmountGhs)}
+          />
+          <LeaseSummaryItem label="Deposit" value={depositSummary} />
+          <LeaseSummaryItem
+            label="Unit"
+            value={`${detail.propertyName} — ${detail.unitNumber}`}
+            className="sm:col-span-2 lg:col-span-1"
+          />
+        </dl>
+        <p className="text-xs text-slate-500">
+          {detail.lesseePhone}
+          {detail.lesseeEmail ? ` · ${detail.lesseeEmail}` : ""}
         </p>
-        <p className="mt-1">
-          Unit:{" "}
-          <span className="font-medium text-[#0f2744]">
-            {detail.propertyName} — {detail.unitNumber}
-          </span>
-        </p>
-        <p className="mt-1">
-          Tenant:{" "}
-          <span className="font-medium text-[#0f2744]">
-            {detail.lesseeName}
-          </span>{" "}
-          ({detail.lesseePhone}
-          {detail.lesseeEmail ? ` · ${detail.lesseeEmail}` : ""})
-        </p>
-        <p className="mt-1">
-          Status:{" "}
-          <span className="font-medium text-[#0f2744]">
-            {formatLeaseStatus(detail.status)}
-          </span>
-        </p>
-      </div>
+      </section>
 
       {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
       ) : null}
       {success ? (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           {success}
         </p>
       ) : null}
 
       {pendingRent ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2">
           <p className="text-sm font-medium text-amber-950">
             Pending rent change: {formatLeaseMoney(detail.pendingRentAmountGhs)}
             , awaiting staff approval
           </p>
-          <p className="mt-1 text-sm text-amber-900">
+          <p className="text-xs text-amber-900">
             Current rent remains {formatLeaseMoney(detail.rentAmountGhs)} until
             approved.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
               disabled={rentReviewLoading}
@@ -422,25 +434,19 @@ export default function LeaseDetailView({
       ) : null}
 
       {pendingTermination ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3">
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2">
           <p className="text-sm font-medium text-amber-950">
             Pending early termination request from tenant, awaiting staff
             approval
           </p>
           {detail.pendingTerminationReason ? (
-            <p className="mt-1 text-sm text-amber-900">
+            <p className="text-xs text-amber-900">
               Reason: {detail.pendingTerminationReason}
             </p>
           ) : (
-            <p className="mt-1 text-sm text-amber-900">
-              No reason was provided.
-            </p>
+            <p className="text-xs text-amber-900">No reason was provided.</p>
           )}
-          <p className="mt-1 text-sm text-amber-900">
-            Approving runs the same early-termination steps as Terminate Lease
-            Early (unit vacated; deposit still needs resolution).
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
               disabled={terminationReviewLoading}
@@ -461,460 +467,456 @@ export default function LeaseDetailView({
         </div>
       ) : null}
 
-      <LeaseSignaturePanel
-        mode="staff"
-        tenantId={detail.tenantId}
-        leaseId={detail.leaseId}
-        signatureStatus={detail.signatureStatus}
-        landlordAcknowledgedAt={detail.landlordAcknowledgedAt}
-        tenantAcknowledgedAt={detail.tenantAcknowledgedAt}
-        landlordName={detail.landlordName}
-        landlordAddress={detail.landlordAddress}
-        landlordPhone={detail.landlordPhone}
-        lesseeName={detail.lesseeName}
-        lesseePhone={detail.lesseePhone}
-        lesseeEmail={detail.lesseeEmail}
-        propertyName={detail.propertyName}
-        propertyAddress={detail.propertyAddress}
-        propertyStreetAddress={detail.propertyStreetAddress}
-        propertyLocation={detail.propertyLocation}
-        unitNumber={detail.unitNumber}
-        startDate={detail.startDate}
-        endDate={detail.endDate}
-        rentAmountGhs={detail.rentAmountGhs}
-        advanceRentAmountGhs={detail.advanceRentAmountGhs}
-        terminationNoticeMonths={detail.terminationNoticeMonths}
-        depositAmountGhs={detail.deposit?.amountGhs ?? null}
-        agreementDate={detail.createdAt}
-        leaseDocumentUrl={detail.leaseDocumentUrl}
-      />
+      <LeaseDetailTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-          Lease Details
-        </h3>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Start Date
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              End Date
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Current Rent (GHS)
-            </label>
-            <input
-              type="text"
-              value={formatLeaseMoney(detail.rentAmountGhs)}
-              disabled
-              className={`${inputClassName} bg-slate-50 text-slate-600`}
-            />
-          </div>
-          {isActive ? (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Propose New Rent (GHS)
-              </label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={proposedRent}
-                onChange={(event) => setProposedRent(event.target.value)}
-                className={inputClassName}
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Saving a different amount requests staff approval; it does not
-                change current rent immediately.
-              </p>
-            </div>
-          ) : null}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Escalation %
-            </label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={escalationPercent}
-              onChange={(event) => setEscalationPercent(event.target.value)}
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Escalation Frequency (months)
-            </label>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={escalationFrequency}
-              onChange={(event) => setEscalationFrequency(event.target.value)}
-              className={inputClassName}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Advance rent (GHS)
-            </label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={advanceRent}
-              onChange={(event) => setAdvanceRent(event.target.value)}
-              className={inputClassName}
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              Shown on the tenancy PDF. Independent of monthly rent.
-            </p>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Termination notice (months)
-            </label>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={terminationNoticeMonths}
-              onChange={(event) =>
-                setTerminationNoticeMonths(event.target.value)
-              }
-              className={inputClassName}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-3 rounded-md border border-slate-100 bg-slate-50 p-3">
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-            <input
-              type="checkbox"
-              checked={lateFeeEnabled}
-              onChange={(event) => setLateFeeEnabled(event.target.checked)}
-            />
-            Late fee enabled
-          </label>
-          {lateFeeEnabled ? (
-            <div className="grid gap-4 md:grid-cols-2">
+      {activeTab === "overview" ? (
+        <div className="space-y-3">
+          <LeaseDetailSection title="Lease details">
+            <div className={leaseFieldGridClassName}>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Late Fee Type
+                <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                  Start Date
                 </label>
-                <select
-                  value={lateFeeType}
-                  onChange={(event) =>
-                    setLateFeeType(event.target.value as LateFeeType)
-                  }
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
                   className={inputClassName}
-                >
-                  {LATE_FEE_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Late Fee Amount
+                <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                  Current Rent (GHS)
+                </label>
+                <input
+                  type="text"
+                  value={formatLeaseMoney(detail.rentAmountGhs)}
+                  disabled
+                  className={`${inputClassName} bg-slate-50 text-slate-600`}
+                />
+              </div>
+              {isActive ? (
+                <div>
+                  <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                    Propose New Rent (GHS)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={proposedRent}
+                    onChange={(event) => setProposedRent(event.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+              ) : null}
+              <div>
+                <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                  Escalation %
                 </label>
                 <input
                   type="number"
                   min={0}
                   step="0.01"
-                  value={lateFeeAmount}
-                  onChange={(event) => setLateFeeAmount(event.target.value)}
+                  value={escalationPercent}
+                  onChange={(event) => setEscalationPercent(event.target.value)}
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                  Escalation Frequency (months)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={escalationFrequency}
+                  onChange={(event) =>
+                    setEscalationFrequency(event.target.value)
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                  Advance rent (GHS)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={advanceRent}
+                  onChange={(event) => setAdvanceRent(event.target.value)}
+                  className={inputClassName}
+                />
+              </div>
+              <div>
+                <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                  Termination notice (months)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={terminationNoticeMonths}
+                  onChange={(event) =>
+                    setTerminationNoticeMonths(event.target.value)
+                  }
                   className={inputClassName}
                 />
               </div>
             </div>
-          ) : null}
-        </div>
 
-        {detail.terminatedAt ? (
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            <p>
-              Terminated: {formatLeaseDate(detail.terminatedAt)}
-            </p>
-            <p className="mt-1">
-              Reason: {detail.terminationReason ?? "—"}
-            </p>
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={handleSave}
-            className={primaryButtonClassName}
-          >
-            {saving ? "Saving…" : "Save Lease"}
-          </button>
-          {isActive ? (
-            <button
-              type="button"
-              onClick={() => setShowTerminate((current) => !current)}
-              className={dangerButtonClassName}
-            >
-              Terminate Lease Early
-            </button>
-          ) : null}
-        </div>
-
-        {showTerminate ? (
-          <div className="space-y-3 rounded-md border border-red-200 bg-red-50 p-3">
-            <label className="mb-1 block text-sm font-medium text-red-900">
-              Termination Reason
-            </label>
-            <textarea
-              rows={3}
-              value={terminationReason}
-              onChange={(event) => setTerminationReason(event.target.value)}
-              className={textareaClassName}
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={terminating}
-                onClick={handleTerminate}
-                className={dangerButtonClassName}
-              >
-                {terminating ? "Terminating…" : "Confirm Termination"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowTerminate(false)}
-                className={secondaryButtonClassName}
-              >
-                Cancel
-              </button>
+            <div className="space-y-2 rounded-md border border-slate-100 bg-slate-50 p-2">
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={lateFeeEnabled}
+                  onChange={(event) => setLateFeeEnabled(event.target.checked)}
+                />
+                Late fee enabled
+              </label>
+              {lateFeeEnabled ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                      Late Fee Type
+                    </label>
+                    <select
+                      value={lateFeeType}
+                      onChange={(event) =>
+                        setLateFeeType(event.target.value as LateFeeType)
+                      }
+                      className={inputClassName}
+                    >
+                      {LATE_FEE_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                      Late Fee Amount
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={lateFeeAmount}
+                      onChange={(event) => setLateFeeAmount(event.target.value)}
+                      className={inputClassName}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </div>
-        ) : null}
-      </section>
 
-      <section
-        id="security-deposit-section"
-        className="space-y-4 rounded-md border border-slate-200 bg-white p-4"
-      >
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-          Security Deposit
-        </h3>
-        {!detail.deposit ? (
-          <p className="text-sm text-slate-500">
-            No security deposit on file for this lease.
-          </p>
-        ) : (
-          <>
-            <dl className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 text-sm">
-              <div>
-                <dt className="text-slate-500">Amount</dt>
-                <dd className="mt-1 font-medium text-slate-900">
-                  {formatLeaseMoney(detail.deposit.amountGhs)}
-                </dd>
+            {detail.terminatedAt ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm text-slate-700">
+                <p>Terminated: {formatLeaseDate(detail.terminatedAt)}</p>
+                <p>Reason: {detail.terminationReason ?? "—"}</p>
               </div>
-              <div>
-                <dt className="text-slate-500">Status</dt>
-                <dd className="mt-1 font-medium text-slate-900">
-                  {formatDepositStatus(detail.deposit.status)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Date Collected</dt>
-                <dd className="mt-1 font-medium text-slate-900">
-                  {formatLeaseDate(detail.deposit.dateCollected)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Amount Returned</dt>
-                <dd className="mt-1 font-medium text-slate-900">
-                  {formatLeaseMoney(detail.deposit.amountReturnedGhs)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Date Resolved</dt>
-                <dd className="mt-1 font-medium text-slate-900">
-                  {formatLeaseDate(detail.deposit.dateResolved)}
-                </dd>
-              </div>
-              <div className="md:col-span-2 xl:col-span-3">
-                <dt className="text-slate-500">Resolution Notes</dt>
-                <dd className="mt-1 font-medium text-slate-900 whitespace-pre-wrap">
-                  {detail.deposit.resolutionNotes?.trim()
-                    ? detail.deposit.resolutionNotes
-                    : "—"}
-                </dd>
-              </div>
-            </dl>
+            ) : null}
 
-            <p className="text-sm">
-              <Link
-                href={`/dashboard/real-estate/deposits/${detail.tenantId}/${detail.deposit.depositId}`}
-                className="font-medium text-[#0f2744] hover:underline"
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleSave}
+                className={primaryButtonClassName}
               >
-                View deposit collection / resolution records
-              </Link>
-            </p>
-
-            {detail.deposit.status === "held" ? (
-              <>
+                {saving ? "Saving…" : "Save Lease"}
+              </button>
+              {isActive ? (
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowResolveDeposit((current) => !current)
-                  }
-                  className={secondaryButtonClassName}
+                  onClick={() => setShowTerminate((current) => !current)}
+                  className={dangerButtonClassName}
                 >
-                  {showResolveDeposit ? "Cancel Resolve" : "Resolve Deposit"}
+                  Terminate Lease Early
                 </button>
-                {showResolveDeposit ? (
-                  <div className="space-y-3 rounded-md border border-slate-100 bg-slate-50 p-3">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">
-                        Resolution
-                      </label>
-                      <select
-                        value={resolveStatus}
-                        onChange={(event) =>
-                          setResolveStatus(
-                            event.target.value as
-                              | "returned"
-                              | "forfeited"
-                              | "partially_forfeited",
-                          )
-                        }
-                        className={inputClassName}
-                      >
-                        <option value="returned">Returned (full amount)</option>
-                        <option value="forfeited">Forfeited (GHS 0)</option>
-                        <option value="partially_forfeited">
-                          Partially forfeited
-                        </option>
-                      </select>
-                    </div>
-                    {resolveStatus === "partially_forfeited" ? (
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">
-                          Amount Returned (GHS)
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          max={detail.deposit.amountGhs}
-                          value={amountReturned}
-                          onChange={(event) =>
-                            setAmountReturned(event.target.value)
-                          }
-                          className={inputClassName}
-                        />
-                      </div>
-                    ) : null}
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">
-                        Resolution Notes (optional)
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={resolutionNotes}
-                        onChange={(event) =>
-                          setResolutionNotes(event.target.value)
-                        }
-                        className={textareaClassName}
-                      />
-                    </div>
+              ) : null}
+            </div>
+
+            {showTerminate ? (
+              <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-2">
+                <label className="mb-0.5 block text-sm font-medium text-red-900">
+                  Termination Reason
+                </label>
+                <textarea
+                  rows={2}
+                  value={terminationReason}
+                  onChange={(event) => setTerminationReason(event.target.value)}
+                  className={textareaClassName}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={terminating}
+                    onClick={handleTerminate}
+                    className={dangerButtonClassName}
+                  >
+                    {terminating ? "Terminating…" : "Confirm Termination"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowTerminate(false)}
+                    className={secondaryButtonClassName}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </LeaseDetailSection>
+
+          <LeaseDetailSection
+            id="security-deposit-section"
+            title="Security deposit"
+          >
+            {!detail.deposit ? (
+              <p className="text-sm text-slate-500">
+                No security deposit on file for this lease.
+              </p>
+            ) : (
+              <>
+                <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+                  <div>
+                    <dt className="text-xs text-slate-500">Amount</dt>
+                    <dd className="font-medium text-slate-900">
+                      {formatLeaseMoney(detail.deposit.amountGhs)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">Status</dt>
+                    <dd className="font-medium text-slate-900">
+                      {formatDepositStatus(detail.deposit.status)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">Date Collected</dt>
+                    <dd className="font-medium text-slate-900">
+                      {formatLeaseDate(detail.deposit.dateCollected)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">Amount Returned</dt>
+                    <dd className="font-medium text-slate-900">
+                      {formatLeaseMoney(detail.deposit.amountReturnedGhs)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-500">Date Resolved</dt>
+                    <dd className="font-medium text-slate-900">
+                      {formatLeaseDate(detail.deposit.dateResolved)}
+                    </dd>
+                  </div>
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <dt className="text-xs text-slate-500">Resolution Notes</dt>
+                    <dd className="whitespace-pre-wrap font-medium text-slate-900">
+                      {detail.deposit.resolutionNotes?.trim()
+                        ? detail.deposit.resolutionNotes
+                        : "—"}
+                    </dd>
+                  </div>
+                </dl>
+
+                <p className="text-sm">
+                  <Link
+                    href={`/dashboard/real-estate/deposits/${detail.tenantId}/${detail.deposit.depositId}`}
+                    className="font-medium text-[#0f2744] hover:underline"
+                  >
+                    View deposit collection / resolution records
+                  </Link>
+                </p>
+
+                {detail.deposit.status === "held" ? (
+                  <>
                     <button
                       type="button"
-                      disabled={resolvingDeposit}
-                      onClick={handleResolveDeposit}
-                      className={primaryButtonClassName}
+                      onClick={() =>
+                        setShowResolveDeposit((current) => !current)
+                      }
+                      className={secondaryButtonClassName}
                     >
-                      {resolvingDeposit ? "Saving…" : "Confirm Resolution"}
+                      {showResolveDeposit ? "Cancel Resolve" : "Resolve Deposit"}
                     </button>
-                  </div>
+                    {showResolveDeposit ? (
+                      <div className="space-y-2 rounded-md border border-slate-100 bg-slate-50 p-2">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                              Resolution
+                            </label>
+                            <select
+                              value={resolveStatus}
+                              onChange={(event) =>
+                                setResolveStatus(
+                                  event.target.value as
+                                    | "returned"
+                                    | "forfeited"
+                                    | "partially_forfeited",
+                                )
+                              }
+                              className={inputClassName}
+                            >
+                              <option value="returned">
+                                Returned (full amount)
+                              </option>
+                              <option value="forfeited">Forfeited (GHS 0)</option>
+                              <option value="partially_forfeited">
+                                Partially forfeited
+                              </option>
+                            </select>
+                          </div>
+                          {resolveStatus === "partially_forfeited" ? (
+                            <div>
+                              <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                                Amount Returned (GHS)
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                max={detail.deposit.amountGhs}
+                                value={amountReturned}
+                                onChange={(event) =>
+                                  setAmountReturned(event.target.value)
+                                }
+                                className={inputClassName}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                        <div>
+                          <label className="mb-0.5 block text-xs font-medium text-slate-700">
+                            Resolution Notes (optional)
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={resolutionNotes}
+                            onChange={(event) =>
+                              setResolutionNotes(event.target.value)
+                            }
+                            className={textareaClassName}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={resolvingDeposit}
+                          onClick={handleResolveDeposit}
+                          className={primaryButtonClassName}
+                        >
+                          {resolvingDeposit ? "Saving…" : "Confirm Resolution"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
                 ) : null}
               </>
-            ) : null}
-          </>
-        )}
-      </section>
+            )}
+          </LeaseDetailSection>
+        </div>
+      ) : null}
 
-      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-          Move-in condition
-        </h3>
-        <MoveInConditionPhotosPanel
-          tenantId={detail.tenantId}
-          leaseId={detail.leaseId}
-          initialUrls={detail.moveInConditionPhotoUrls}
-          uploadPath="/api/admin/leases/upload-move-in-photo"
-        />
-      </section>
+      {activeTab === "charges" ? (
+        <div className="space-y-3">
+          <LeaseDetailSection title="Tenant charge categories">
+            <LeaseChargeSettingsPanel
+              mode="staff"
+              tenantId={detail.tenantId}
+              leaseId={detail.leaseId}
+              initialSettings={initialChargeSettings}
+            />
+          </LeaseDetailSection>
 
-      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-          Tenant charge categories
-        </h3>
-        <LeaseChargeSettingsPanel
-          mode="staff"
-          tenantId={detail.tenantId}
-          leaseId={detail.leaseId}
-          initialSettings={initialChargeSettings}
-        />
-      </section>
+          <LeaseDetailSection title="One-time charge">
+            <p className="text-xs text-slate-600">
+              Ad-hoc charge (Other charges in tenant portal). Included in
+              davors_managed management fee when paid.
+            </p>
+            <OneTimeChargeForm
+              mode="staff"
+              tenantId={detail.tenantId}
+              leaseId={detail.leaseId}
+              leaseActive={detail.status === "active"}
+              compact
+            />
+          </LeaseDetailSection>
+        </div>
+      ) : null}
 
-      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-          One-time charge
-        </h3>
-        <p className="text-sm text-slate-600">
-          Add an ad-hoc charge for this lease (shown as Other charges in the
-          tenant portal). Included in davors_managed management fee when paid.
-        </p>
-        <OneTimeChargeForm
-          mode="staff"
-          tenantId={detail.tenantId}
-          leaseId={detail.leaseId}
-          leaseActive={detail.status === "active"}
-        />
-      </section>
+      {activeTab === "documents" ? (
+        <div className="space-y-3">
+          <LeaseSignaturePanel
+            compact
+            mode="staff"
+            tenantId={detail.tenantId}
+            leaseId={detail.leaseId}
+            signatureStatus={detail.signatureStatus}
+            landlordAcknowledgedAt={detail.landlordAcknowledgedAt}
+            tenantAcknowledgedAt={detail.tenantAcknowledgedAt}
+            landlordName={detail.landlordName}
+            landlordAddress={detail.landlordAddress}
+            landlordPhone={detail.landlordPhone}
+            lesseeName={detail.lesseeName}
+            lesseePhone={detail.lesseePhone}
+            lesseeEmail={detail.lesseeEmail}
+            propertyName={detail.propertyName}
+            propertyAddress={detail.propertyAddress}
+            propertyStreetAddress={detail.propertyStreetAddress}
+            propertyLocation={detail.propertyLocation}
+            unitNumber={detail.unitNumber}
+            startDate={detail.startDate}
+            endDate={detail.endDate}
+            rentAmountGhs={detail.rentAmountGhs}
+            advanceRentAmountGhs={detail.advanceRentAmountGhs}
+            terminationNoticeMonths={detail.terminationNoticeMonths}
+            depositAmountGhs={detail.deposit?.amountGhs ?? null}
+            agreementDate={detail.createdAt}
+            leaseDocumentUrl={detail.leaseDocumentUrl}
+          />
 
-      <section className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
-          File a complaint
-        </h3>
-        <p className="text-sm text-slate-600">
-          File a complaint about this tenant on behalf of the landlord. The tenant
-          can respond from their portal.
-        </p>
-        <FileComplaintForm
-          mode="staff"
-          tenantId={detail.tenantId}
-          leaseId={detail.leaseId}
-          leaseActive={detail.status === "active"}
-        />
-      </section>
+          <LeaseDetailSection title="Move-in condition">
+            <MoveInConditionPhotosPanel
+              tenantId={detail.tenantId}
+              leaseId={detail.leaseId}
+              initialUrls={detail.moveInConditionPhotoUrls}
+              uploadPath="/api/admin/leases/upload-move-in-photo"
+              compact
+            />
+          </LeaseDetailSection>
+        </div>
+      ) : null}
+
+      {activeTab === "more" ? (
+        <LeaseDetailSection title="File a complaint">
+          <p className="text-xs text-slate-600">
+            File a complaint about this tenant on behalf of the landlord.
+          </p>
+          <FileComplaintForm
+            mode="staff"
+            tenantId={detail.tenantId}
+            leaseId={detail.leaseId}
+            leaseActive={detail.status === "active"}
+            compact
+          />
+        </LeaseDetailSection>
+      ) : null}
     </div>
   );
 }

@@ -91,12 +91,11 @@ export default function LandlordPortalLeaseEditForm({
   return (
     <form
       onSubmit={handleSave}
-      className={`${portalSectionClassName} space-y-4`}
+      className={`${portalSectionClassName} space-y-3`}
     >
       <h2 className={portalSectionTitleClassName}>Edit lease terms</h2>
-      <p className="text-sm text-slate-600">
-        Update dates, rent, escalation, and late fees. Rent is applied
-        immediately (no staff approval).
+      <p className="text-xs text-slate-600">
+        Update dates, rent, escalation, and late fees. Rent applies immediately.
       </p>
 
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
@@ -104,7 +103,7 @@ export default function LandlordPortalLeaseEditForm({
         <div className={portalSuccessBannerClassName}>{success}</div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <div>
           <label className={portalLabelClassName}>Start date</label>
           <input

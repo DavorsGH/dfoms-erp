@@ -15,6 +15,8 @@ type OneTimeChargeFormProps = {
   tenantId: string;
   leaseId: string;
   leaseActive: boolean;
+  /** Tighter grid layout for lease detail pages. */
+  compact?: boolean;
 };
 
 const primaryButtonClassName =
@@ -32,6 +34,7 @@ export default function OneTimeChargeForm({
   tenantId,
   leaseId,
   leaseActive,
+  compact = false,
 }: OneTimeChargeFormProps) {
   const router = useRouter();
   const [chargeCategory, setChargeCategory] = useState<"" | LeaseChargeCategory>(
@@ -111,81 +114,92 @@ export default function OneTimeChargeForm({
   }
 
   return (
-    <form onSubmit={(event) => void handleSubmit(event)} className="space-y-3">
+    <form
+      onSubmit={(event) => void handleSubmit(event)}
+      className={compact ? "space-y-2" : "space-y-3"}
+    >
       {!leaseActive ? (
         <p className="text-sm text-amber-800">
           Lease is not active — one-time charges cannot be added.
         </p>
       ) : null}
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Charge category (optional)
-        </label>
-        <select
-          value={chargeCategory}
-          onChange={(event) => {
-            const value = event.target.value;
-            setChargeCategory(
-              value && isLeaseChargeCategory(value) ? value : "",
-            );
-          }}
-          className={inputClassName}
-          disabled={loading || !leaseActive}
-        >
-          <option value="">General / other (no category)</option>
-          <optgroup label="Utilities">
-            {LEASE_CHARGE_CATEGORY_OPTIONS.filter(
-              (option) => option.group === "utilities",
-            ).map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Service charge">
-            {LEASE_CHARGE_CATEGORY_OPTIONS.filter(
-              (option) => option.group === "service",
-            ).map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Description
-        </label>
-        <textarea
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          rows={2}
-          maxLength={500}
-          required={!chargeCategory}
-          placeholder={
-            chargeCategory
-              ? "Optional note (category label used if blank)"
-              : "e.g. Key replacement, damage repair"
-          }
-          className={textareaClassName}
-          disabled={loading || !leaseActive}
-        />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Amount (GHS)
-        </label>
-        <input
-          type="number"
-          min="0.01"
-          step="0.01"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          required
-          className={inputClassName}
-          disabled={loading || !leaseActive}
-        />
+      <div
+        className={
+          compact
+            ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem]"
+            : "space-y-3"
+        }
+      >
+        <div className={compact ? "" : undefined}>
+          <label className="mb-0.5 block text-xs font-medium text-slate-700">
+            Charge category (optional)
+          </label>
+          <select
+            value={chargeCategory}
+            onChange={(event) => {
+              const value = event.target.value;
+              setChargeCategory(
+                value && isLeaseChargeCategory(value) ? value : "",
+              );
+            }}
+            className={inputClassName}
+            disabled={loading || !leaseActive}
+          >
+            <option value="">General / other (no category)</option>
+            <optgroup label="Utilities">
+              {LEASE_CHARGE_CATEGORY_OPTIONS.filter(
+                (option) => option.group === "utilities",
+              ).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Service charge">
+              {LEASE_CHARGE_CATEGORY_OPTIONS.filter(
+                (option) => option.group === "service",
+              ).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+        <div className={compact ? "sm:col-span-2 lg:col-span-1" : undefined}>
+          <label className="mb-0.5 block text-xs font-medium text-slate-700">
+            Amount (GHS)
+          </label>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            required
+            className={inputClassName}
+            disabled={loading || !leaseActive}
+          />
+        </div>
+        <div className={compact ? "sm:col-span-2" : undefined}>
+          <label className="mb-0.5 block text-xs font-medium text-slate-700">
+            Description
+          </label>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={compact ? 1 : 2}
+            maxLength={500}
+            required={!chargeCategory}
+            placeholder={
+              chargeCategory
+                ? "Optional note (category label used if blank)"
+                : "e.g. Key replacement, damage repair"
+            }
+            className={textareaClassName}
+            disabled={loading || !leaseActive}
+          />
+        </div>
       </div>
       <button
         type="submit"

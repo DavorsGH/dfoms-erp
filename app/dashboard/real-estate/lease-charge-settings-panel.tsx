@@ -19,7 +19,15 @@ type LeaseChargeSettingsPanelProps = {
 };
 
 const primaryButtonClassName =
-  "rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50";
+
+const compactInputClassName = `${inputClassName} min-w-0 w-full py-1.5 text-sm`;
+
+/** Category (fixed) | Mode (flex middle) | Flat GHS (~¼ row). Full-width, no dead gap. */
+const CHARGE_ROW_GRID_CLASS =
+  "sm:grid-cols-[9.5rem_minmax(14.5rem,3fr)_minmax(7.5rem,1fr)]";
+
+const CHARGE_ROW_GAP_CLASS = "gap-x-0 gap-y-1";
 
 function groupLabel(group: "utilities" | "service"): string {
   return group === "utilities" ? "Utilities" : "Service charge";
@@ -121,26 +129,31 @@ export default function LeaseChargeSettingsPanel({
   }
 
   return (
-    <form onSubmit={(event) => void handleSubmit(event)} className="space-y-6">
+    <form onSubmit={(event) => void handleSubmit(event)} className="space-y-4">
       {readOnly ? (
-        <p className="text-sm text-slate-600">
+        <p className="text-xs text-slate-600">
           Charge categories are managed by Davors staff for managed leases.
         </p>
       ) : (
-        <p className="text-sm text-slate-600">
-          All categories default to off. Enable only the charges you want billed
-          to this tenant. Recurring categories are added each billing month by
-          the rent ledger generator; one-off categories are entered manually when
-          a bill arrives.
+        <p className="text-xs text-slate-600">
+          Enable only the charges billed to this tenant. Recurring rows are
+          generated monthly; one-off rows are entered when a bill arrives.
         </p>
       )}
 
       {groupedOptions.map(({ group, options }) => (
-        <div key={group} className="space-y-3">
-          <h4 className="text-sm font-semibold text-[#0f2744]">
+        <div key={group} className="space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             {groupLabel(group)}
           </h4>
-          <div className="space-y-3">
+          <div
+            className={`hidden px-1 text-[10px] font-medium uppercase tracking-wide text-slate-400 sm:grid ${CHARGE_ROW_GAP_CLASS} ${CHARGE_ROW_GRID_CLASS}`}
+          >
+            <span className="pr-1.5">Category</span>
+            <span>Mode</span>
+            <span className="pl-1.5">Flat GHS / month</span>
+          </div>
+          <div className="space-y-1">
             {options.map((option) => {
               const row = settings.find(
                 (setting) => setting.chargeCategory === option.value,
@@ -153,64 +166,66 @@ export default function LeaseChargeSettingsPanel({
               return (
                 <div
                   key={option.value}
-                  className="rounded-md border border-slate-200 bg-slate-50 p-3"
+                  className={`grid items-stretch rounded border border-slate-100 bg-slate-50/80 px-2 py-1.5 sm:grid ${CHARGE_ROW_GAP_CLASS} ${CHARGE_ROW_GRID_CLASS}`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <label className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                      <input
-                        type="checkbox"
-                        checked={row.isBilled}
-                        onChange={(event) =>
-                          updateSetting(option.value, {
-                            isBilled: event.target.checked,
-                          })
-                        }
-                        disabled={readOnly || loading}
-                      />
-                      {option.label}
-                    </label>
-                    <select
-                      value={row.billingMode}
+                  <label className="flex min-w-0 items-center gap-2 pr-1.5 text-sm text-slate-900">
+                    <input
+                      type="checkbox"
+                      checked={row.isBilled}
                       onChange={(event) =>
                         updateSetting(option.value, {
-                          billingMode: event.target
-                            .value as LeaseChargeBillingMode,
+                          isBilled: event.target.checked,
                         })
                       }
-                      disabled={readOnly || loading || !row.isBilled}
-                      className={inputClassName}
-                    >
-                      {LEASE_CHARGE_BILLING_MODE_OPTIONS.map((billingOption) => (
-                        <option key={billingOption.value} value={billingOption.value}>
-                          {billingOption.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      disabled={readOnly || loading}
+                      className="shrink-0"
+                    />
+                    <span className="truncate">{option.label}</span>
+                  </label>
+                  <select
+                    value={row.billingMode}
+                    onChange={(event) =>
+                      updateSetting(option.value, {
+                        billingMode: event.target
+                          .value as LeaseChargeBillingMode,
+                      })
+                    }
+                    disabled={readOnly || loading || !row.isBilled}
+                    className={compactInputClassName}
+                  >
+                    {LEASE_CHARGE_BILLING_MODE_OPTIONS.map((billingOption) => (
+                      <option
+                        key={billingOption.value}
+                        value={billingOption.value}
+                      >
+                        {billingOption.label}
+                      </option>
+                    ))}
+                  </select>
                   {showFlatAmount ? (
-                    <div className="mt-3">
-                      <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
-                        Flat monthly amount (GHS)
-                      </label>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={row.flatAmountGhs ?? ""}
-                        onChange={(event) =>
-                          updateSetting(option.value, {
-                            flatAmountGhs:
-                              event.target.value === ""
-                                ? null
-                                : Number(event.target.value),
-                          })
-                        }
-                        required
-                        disabled={readOnly || loading}
-                        className={inputClassName}
-                      />
-                    </div>
-                  ) : null}
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={row.flatAmountGhs ?? ""}
+                      onChange={(event) =>
+                        updateSetting(option.value, {
+                          flatAmountGhs:
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value),
+                        })
+                      }
+                      required
+                      disabled={readOnly || loading}
+                      className={compactInputClassName}
+                      placeholder="Amount"
+                    />
+                  ) : (
+                    <span className="hidden min-w-0 w-full items-center justify-center text-xs text-slate-400 sm:flex">
+                      —
+                    </span>
+                  )}
                 </div>
               );
             })}

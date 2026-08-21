@@ -11,6 +11,7 @@ type MoveInConditionPhotosPanelProps = {
   initialUrls: string[];
   uploadPath: string;
   readOnly?: boolean;
+  compact?: boolean;
 };
 
 const primaryButtonClassName =
@@ -22,6 +23,7 @@ export default function MoveInConditionPhotosPanel({
   initialUrls,
   uploadPath,
   readOnly = false,
+  compact = false,
 }: MoveInConditionPhotosPanelProps) {
   const router = useRouter();
   const [urls, setUrls] = useState(initialUrls);
@@ -82,11 +84,11 @@ export default function MoveInConditionPhotosPanel({
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-slate-600">
+    <div className={compact ? "space-y-2" : "space-y-3"}>
+      <p className="text-xs text-slate-600">
         {readOnly
-          ? "Photos documenting the unit's condition when your lease started. These complement the Joint Inspection Sheet in your lease agreement."
-          : "Document the unit's condition at lease move-in. These photos are separate from listing/marketing photos and appear in the tenant portal alongside the Joint Inspection Sheet in the lease PDF."}
+          ? "Photos documenting the unit's condition when your lease started."
+          : "Document the unit's condition at lease move-in (shown in tenant portal with the Joint Inspection Sheet)."}
       </p>
 
       {error ? (
@@ -104,7 +106,7 @@ export default function MoveInConditionPhotosPanel({
               reference={reference}
               tenantId={tenantId}
               alt="Move-in condition"
-              className="h-24 w-24 object-cover"
+              className="h-20 w-20 object-cover"
               linkable
             />
           ))}

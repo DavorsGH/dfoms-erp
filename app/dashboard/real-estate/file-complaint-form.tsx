@@ -12,6 +12,7 @@ type FileComplaintFormProps = {
   leaseActive: boolean;
   /** Portal styling for landlord portal lease detail. */
   variant?: "staff" | "portal";
+  compact?: boolean;
 };
 
 const primaryButtonClassName =
@@ -40,6 +41,7 @@ export default function FileComplaintForm({
   leaseId,
   leaseActive,
   variant = "staff",
+  compact = false,
 }: FileComplaintFormProps) {
   const router = useRouter();
   const [subject, setSubject] = useState("");
@@ -109,7 +111,10 @@ export default function FileComplaintForm({
   }
 
   return (
-    <form onSubmit={(event) => void handleSubmit(event)} className="space-y-3">
+    <form
+      onSubmit={(event) => void handleSubmit(event)}
+      className={compact ? "space-y-2" : "space-y-3"}
+    >
       {error ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
@@ -148,7 +153,7 @@ export default function FileComplaintForm({
         <textarea
           id={`file-complaint-description-${leaseId}`}
           className={textareaClass}
-          rows={4}
+          rows={compact ? 2 : 4}
           required
           value={description}
           onChange={(event) => setDescription(event.target.value)}
