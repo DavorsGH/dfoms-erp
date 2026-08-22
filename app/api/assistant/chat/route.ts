@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
+  appendHandbookScreenshotsToReply,
   buildSystemPromptWithRetrieval,
   resolveHandbookPersona,
   retrieveHandbookChunks,
@@ -26,6 +27,7 @@ import {
   isDavorsPlatformRealEstateStaff,
 } from "@/utils/dashboard-auth";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 
 const MODEL = "claude-sonnet-4-6";
@@ -268,13 +270,20 @@ export async function POST(request: Request) {
   try {
     const anthropic = new Anthropic({ apiKey });
 
-    const reply = await runAssistantWithTools({
+    const textReply = await runAssistantWithTools({
       anthropic,
       systemPrompt,
       messages,
       persona: handbookPersona,
       staffRole,
       showRealEstate,
+    });
+
+    const reply = await appendHandbookScreenshotsToReply({
+      supabase,
+      handbookChunks,
+      textReply,
+      admin: createAdminClient(),
     });
 
     if (!reply) {

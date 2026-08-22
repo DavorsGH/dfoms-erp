@@ -6,6 +6,11 @@ import {
   resolveMiddlewarePersona,
   type MiddlewareAccountRow,
 } from "@/lib/middleware-persona";
+import {
+  buildHandbookScreenshotMarkdown,
+  createHandbookScreenshotSignedUrl,
+} from "@/utils/handbook-screenshots-storage";
+import { createAdminClient } from "@/utils/supabase/admin";
 
 export type HandbookPersona = "staff" | "landlord" | "tenant";
 
@@ -16,9 +21,133 @@ export type HandbookChunkMatch = {
   similarity: number;
 };
 
+type HandbookScreenshotRow = {
+  id: string;
+  section_key: string;
+  file_path: string;
+  caption: string | null;
+  display_order: number;
+};
+
 const VOYAGE_MODEL = "voyage-3";
 const EMBEDDING_DIMENSIONS = 1024;
 const DEFAULT_MATCH_COUNT = 5;
+
+/** e.g. "Section 6 — Finance — 6.2 Expense Register" -> "6.2"; Section 5 only -> "5.1" */
+export function extractHandbookSectionKey(sectionTitle: string): string | null {
+  const subsection = sectionTitle.match(/\b(\d+\.\d+)\b/);
+  if (subsection) {
+    return subsection[1] ?? null;
+  }
+
+  const sectionHeader = sectionTitle.match(/Section\s+(\d+)\s*[—-]/i);
+  if (sectionHeader) {
+    return `${sectionHeader[1]}.1`;
+  }
+
+  return null;
+}
+
+export function collectHandbookSectionKeys(chunks: HandbookChunkMatch[]): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+
+  for (const chunk of chunks) {
+    const key = extractHandbookSectionKey(chunk.section_title);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    keys.push(key);
+  }
+
+  return keys;
+}
+
+async function fetchHandbookScreenshotsForSectionKeys(
+  supabase: SupabaseClient,
+  sectionKeys: string[],
+): Promise<HandbookScreenshotRow[]> {
+  if (sectionKeys.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("handbook_screenshots")
+    .select("id, section_key, file_path, caption, display_order")
+    .in("section_key", sectionKeys)
+    .order("section_key", { ascending: true })
+    .order("display_order", { ascending: true });
+
+  if (error) {
+    console.error("[assistant] handbook_screenshots fetch failed:", error.message);
+    return [];
+  }
+
+  const order = new Map(sectionKeys.map((key, index) => [key, index]));
+  return ((data ?? []) as HandbookScreenshotRow[]).sort((a, b) => {
+    const left = order.get(a.section_key) ?? Number.MAX_SAFE_INTEGER;
+    const right = order.get(b.section_key) ?? Number.MAX_SAFE_INTEGER;
+    if (left !== right) {
+      return left - right;
+    }
+    return a.display_order - b.display_order;
+  });
+}
+
+async function buildHandbookScreenshotAppendix(
+  admin: SupabaseClient,
+  rows: HandbookScreenshotRow[],
+): Promise<string> {
+  if (rows.length === 0) {
+    return "";
+  }
+
+  const blocks: string[] = [];
+
+  for (const row of rows) {
+    const signedUrl = await createHandbookScreenshotSignedUrl(admin, row.file_path);
+    if (!signedUrl) {
+      console.error(
+        "[assistant] handbook screenshot signed URL failed:",
+        row.file_path,
+      );
+      continue;
+    }
+    blocks.push(buildHandbookScreenshotMarkdown(signedUrl, row.caption));
+  }
+
+  return blocks.join("\n\n");
+}
+
+/** Appends signed screenshot markdown after the assistant text reply when matched sections have uploads. */
+export async function appendHandbookScreenshotsToReply(options: {
+  supabase: SupabaseClient;
+  handbookChunks: HandbookChunkMatch[];
+  textReply: string;
+  admin?: SupabaseClient;
+}): Promise<string> {
+  const sectionKeys = collectHandbookSectionKeys(options.handbookChunks);
+  if (sectionKeys.length === 0) {
+    return options.textReply;
+  }
+
+  const screenshots = await fetchHandbookScreenshotsForSectionKeys(
+    options.supabase,
+    sectionKeys,
+  );
+  if (screenshots.length === 0) {
+    return options.textReply;
+  }
+
+  const admin = options.admin ?? createAdminClient();
+  const appendix = await buildHandbookScreenshotAppendix(admin, screenshots);
+  if (!appendix.trim()) {
+    return options.textReply;
+  }
+
+  return `${options.textReply.trim()}\n\n${appendix}`.trim();
+}
 
 export function portalToHandbookPersona(portal: PortalKind): HandbookPersona {
   if (portal === "lessee") {
