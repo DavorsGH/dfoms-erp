@@ -237,6 +237,12 @@ export async function POST(request: Request) {
         })
       : [];
 
+  if (voyageApiKey.length > 0 && handbookChunks.length === 0) {
+    console.error(
+      "[assistant] handbook retrieval returned no chunks despite configured Voyage key",
+    );
+  }
+
   if (process.env.NODE_ENV === "development") {
     console.log("[assistant] handbook persona:", handbookPersona);
     console.log(

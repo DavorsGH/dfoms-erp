@@ -106,15 +106,23 @@ async function buildHandbookScreenshotAppendix(
   const blocks: string[] = [];
 
   for (const row of rows) {
-    const signedUrl = await createHandbookScreenshotSignedUrl(admin, row.file_path);
-    if (!signedUrl) {
+    try {
+      const signedUrl = await createHandbookScreenshotSignedUrl(admin, row.file_path);
+      if (!signedUrl) {
+        console.error(
+          "[assistant] handbook screenshot signed URL failed:",
+          row.file_path,
+        );
+        continue;
+      }
+      blocks.push(buildHandbookScreenshotMarkdown(signedUrl, row.caption));
+    } catch (error) {
       console.error(
         "[assistant] handbook screenshot signed URL failed:",
         row.file_path,
+        error instanceof Error ? error.message : error,
       );
-      continue;
     }
-    blocks.push(buildHandbookScreenshotMarkdown(signedUrl, row.caption));
   }
 
   return blocks.join("\n\n");
