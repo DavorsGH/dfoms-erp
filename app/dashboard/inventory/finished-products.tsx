@@ -79,9 +79,23 @@ export default function FinishedProducts({
   >({});
   const [form, setForm] = useState(emptyForm);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
+  const [pendingPhotoPreviewUrl, setPendingPhotoPreviewUrl] = useState<string | null>(
+    null,
+  );
   const [photoUploading, setPhotoUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [photoWarning, setPhotoWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pendingPhotoPreviewUrl) {
+        URL.revokeObjectURL(pendingPhotoPreviewUrl);
+      }
+    };
+  }, [pendingPhotoPreviewUrl]);
 
   useEffect(() => {
     setProducts(initialProducts.map(normalizeFinishedProduct));
@@ -140,10 +154,34 @@ export default function FinishedProducts({
     setError(null);
   }
 
+  function clearPendingPhoto() {
+    if (pendingPhotoPreviewUrl) {
+      URL.revokeObjectURL(pendingPhotoPreviewUrl);
+    }
+    setPendingPhotoFile(null);
+    setPendingPhotoPreviewUrl(null);
+  }
+
+  function setPendingPhoto(file: File | null) {
+    if (pendingPhotoPreviewUrl) {
+      URL.revokeObjectURL(pendingPhotoPreviewUrl);
+    }
+    if (!file) {
+      setPendingPhotoFile(null);
+      setPendingPhotoPreviewUrl(null);
+      return;
+    }
+    setPendingPhotoFile(file);
+    setPendingPhotoPreviewUrl(URL.createObjectURL(file));
+  }
+
   function openAddForm() {
     setEditingProductId(null);
     setForm({ ...emptyForm });
     setPhotoUrl(null);
+    clearPendingPhoto();
+    setSuccessMessage(null);
+    setPhotoWarning(null);
     setShowForm(true);
   }
 
@@ -151,6 +189,9 @@ export default function FinishedProducts({
     setEditingProductId(product.id);
     setForm(finishedProductToForm(product));
     setPhotoUrl(product.photo_url);
+    clearPendingPhoto();
+    setSuccessMessage(null);
+    setPhotoWarning(null);
     setShowForm(true);
   }
 
@@ -158,7 +199,38 @@ export default function FinishedProducts({
     setEditingProductId(null);
     setForm(emptyForm);
     setPhotoUrl(null);
+    clearPendingPhoto();
     setShowForm(false);
+  }
+
+  async function uploadProductPhoto(
+    productId: string,
+    file: File,
+  ): Promise<{ ok: true; photo_url: string } | { ok: false; error: string }> {
+    const formData = new FormData();
+    formData.append("product_id", productId);
+    formData.append("file", file);
+
+    const response = await fetch("/api/inventory/finished-products/upload-photo", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = (await response.json()) as {
+      error?: string;
+      photo_url?: string;
+    };
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: payload.error ?? "Photo upload failed.",
+      };
+    }
+
+    return {
+      ok: true,
+      photo_url: payload.photo_url ?? "",
+    };
   }
 
   async function handlePhotoUpload(file: File) {
@@ -169,25 +241,13 @@ export default function FinishedProducts({
     setPhotoUploading(true);
     setError(null);
 
-    const formData = new FormData();
-    formData.append("product_id", editingProductId);
-    formData.append("file", file);
-
     try {
-      const response = await fetch("/api/inventory/finished-products/upload-photo", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = (await response.json()) as {
-        error?: string;
-        photo_url?: string;
-      };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Photo upload failed.");
+      const result = await uploadProductPhoto(editingProductId, file);
+      if (!result.ok) {
+        throw new Error(result.error);
       }
 
-      setPhotoUrl(payload.photo_url ?? null);
+      setPhotoUrl(result.photo_url || null);
       await refreshData();
     } catch (uploadError) {
       setError(
@@ -202,6 +262,8 @@ export default function FinishedProducts({
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccessMessage(null);
+    setPhotoWarning(null);
 
     if (editingProductId) {
       const payload = buildFinishedProductSavePayload(form);
@@ -235,15 +297,46 @@ export default function FinishedProducts({
         product_code: allocated.productCode,
       });
 
-      const { error: saveError } = await supabase
+      const { data: inserted, error: saveError } = await supabase
         .from("finished_products")
-        .insert(payload);
+        .insert(payload)
+        .select("id")
+        .single();
 
       if (saveError) {
         setError(saveError.message);
         setLoading(false);
         return;
       }
+
+      const newProductId = inserted?.id;
+      const photoToUpload = pendingPhotoFile;
+
+      closeForm();
+      await refreshData();
+      setLoading(false);
+      setSuccessMessage("Product added successfully.");
+
+      if (newProductId && photoToUpload) {
+        try {
+          const uploadResult = await uploadProductPhoto(newProductId, photoToUpload);
+          if (!uploadResult.ok) {
+            setPhotoWarning(
+              `The product was saved, but the photo could not be uploaded (${uploadResult.error}). You can add a photo from Edit.`,
+            );
+          } else {
+            await refreshData();
+          }
+        } catch (uploadError) {
+          setPhotoWarning(
+            `The product was saved, but the photo could not be uploaded (${
+              uploadError instanceof Error ? uploadError.message : "upload failed"
+            }). You can add a photo from Edit.`,
+          );
+        }
+      }
+
+      return;
     }
 
     closeForm();
@@ -363,6 +456,16 @@ export default function FinishedProducts({
           {error}
         </p>
       ) : null}
+      {successMessage ? (
+        <p className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          {successMessage}
+        </p>
+      ) : null}
+      {photoWarning ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {photoWarning}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-slate-600">
@@ -387,33 +490,59 @@ export default function FinishedProducts({
           </h3>
           <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
             <div className="md:col-span-2 flex flex-wrap items-center gap-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <FinishedProductPhoto
-                photoUrl={photoUrl}
-                productName={form.product_name}
-                size="lg"
-              />
+              {editingProductId ? (
+                <FinishedProductPhoto
+                  photoUrl={photoUrl}
+                  productName={form.product_name}
+                  size="lg"
+                />
+              ) : pendingPhotoPreviewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={pendingPhotoPreviewUrl}
+                  alt={`${form.product_name.trim() || "Product"} photo preview`}
+                  className="h-16 w-16 shrink-0 rounded-md object-cover bg-slate-100 ring-1 ring-slate-200"
+                />
+              ) : (
+                <FinishedProductPhoto
+                  photoUrl={null}
+                  productName={form.product_name}
+                  size="lg"
+                />
+              )}
               <div className="space-y-2">
                 <p className="text-sm font-medium text-slate-700">Product photo</p>
-                <ImageFileUploadButton
-                  files={[]}
-                  onChange={(next) => {
-                    const file = next[0];
-                    if (file) {
-                      void handlePhotoUpload(file);
-                    }
-                  }}
-                  multiple={false}
-                  disabled={photoUploading || !editingProductId}
-                  accept="image/jpeg,image/png,image/webp"
-                  addLabel={photoUploading ? "Uploading…" : "Add photo"}
-                  showClear={false}
-                  resetInputAfterSelect
-                  emptyHint={
-                    editingProductId
-                      ? "JPEG, PNG, or WebP. Saved when you upload."
-                      : "Save the product first, then edit it to add a photo."
-                  }
-                />
+                {editingProductId ? (
+                  <ImageFileUploadButton
+                    files={[]}
+                    onChange={(next) => {
+                      const file = next[0];
+                      if (file) {
+                        void handlePhotoUpload(file);
+                      }
+                    }}
+                    multiple={false}
+                    disabled={photoUploading || !editingProductId}
+                    accept="image/jpeg,image/png,image/webp"
+                    addLabel={photoUploading ? "Uploading…" : "Add photo"}
+                    showClear={false}
+                    resetInputAfterSelect
+                    emptyHint="JPEG, PNG, or WebP. Saved when you upload."
+                  />
+                ) : (
+                  <ImageFileUploadButton
+                    files={pendingPhotoFile ? [pendingPhotoFile] : []}
+                    onChange={(next) => {
+                      setPendingPhoto(next[0] ?? null);
+                    }}
+                    multiple={false}
+                    disabled={loading}
+                    accept="image/jpeg,image/png,image/webp"
+                    addLabel="Choose photo"
+                    changeLabel="Change photo"
+                    emptyHint="JPEG, PNG, or WebP. Uploads when you save the product."
+                  />
+                )}
               </div>
             </div>
             {editingProductId ? (

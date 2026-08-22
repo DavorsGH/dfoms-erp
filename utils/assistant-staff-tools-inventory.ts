@@ -8,6 +8,10 @@ import {
   normalizeFinishedProduct,
 } from "@/app/dashboard/inventory/finished-products-utils";
 import {
+  normalizeRawMaterial,
+  RAW_MATERIAL_SELECT,
+} from "@/app/dashboard/inventory/raw-materials-utils";
+import {
   fetchProductionHistoryReportData,
 } from "@/app/dashboard/reports/inventory-report-data";
 import {
@@ -95,6 +99,64 @@ export async function getFinishedProductsSummary(): Promise<unknown> {
     };
   } catch (error) {
     console.error("[assistant] get_finished_products_summary threw:", error);
+    return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+  }
+}
+
+export async function getRawMaterialsStock(): Promise<unknown> {
+  const sessionResult = await requireStaffSession();
+  if ("error" in sessionResult) {
+    return sessionResult;
+  }
+  if (!canAccessInventorySection(sessionResult.session.role)) {
+    return { error: "You do not have access to inventory data." };
+  }
+
+  try {
+    const supabase = await getStaffSupabase();
+    const { data: materials, error: materialsError } = await supabase
+      .from("raw_materials")
+      .select(RAW_MATERIAL_SELECT)
+      .order("material_name", { ascending: true });
+
+    if (materialsError) {
+      console.error(
+        "[assistant] get_raw_materials_stock failed:",
+        materialsError.message,
+      );
+      return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+    }
+
+    const normalized = (materials ?? []).map(normalizeRawMaterial);
+
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+
+    for (const material of normalized) {
+      const stock = Number(material.current_stock) || 0;
+      if (stock <= 0) {
+        outOfStockCount += 1;
+      } else if (
+        material.reorder_level != null &&
+        stock <= material.reorder_level
+      ) {
+        lowStockCount += 1;
+      }
+    }
+
+    return {
+      materialCount: normalized.length,
+      lowStockCount,
+      outOfStockCount,
+      materials: normalized.slice(0, LIST_LIMIT).map((row) => ({
+        materialName: row.material_name,
+        currentStock: row.current_stock,
+        unitOfMeasure: row.unit_of_measure,
+        averageCostPerUnit: row.average_cost_per_unit,
+      })),
+    };
+  } catch (error) {
+    console.error("[assistant] get_raw_materials_stock threw:", error);
     return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
   }
 }

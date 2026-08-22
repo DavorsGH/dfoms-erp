@@ -29,6 +29,7 @@ import {
   getFinishedProductsSummary,
   getProductionSummary,
   getPurchasingSummary,
+  getRawMaterialsStock,
 } from "@/utils/assistant-staff-tools-inventory";
 import {
   getDutyRosterSummary,
@@ -74,6 +75,7 @@ export const GET_LEASE_EXPIRATIONS_OVERVIEW_TOOL_NAME =
   "get_lease_expirations_overview";
 export const GET_FINISHED_PRODUCTS_SUMMARY_TOOL_NAME =
   "get_finished_products_summary";
+export const GET_RAW_MATERIALS_STOCK_TOOL_NAME = "get_raw_materials_stock";
 export const GET_PRODUCTION_SUMMARY_TOOL_NAME = "get_production_summary";
 export const GET_PURCHASING_SUMMARY_TOOL_NAME = "get_purchasing_summary";
 export const GET_SALES_SUMMARY_TOOL_NAME = "get_sales_summary";
@@ -192,6 +194,10 @@ export function getStaffAssistantTools(
       tool(
         GET_FINISHED_PRODUCTS_SUMMARY_TOOL_NAME,
         "Finished product stock levels, low/out-of-stock counts, and expiry alerts.",
+      ),
+      tool(
+        GET_RAW_MATERIALS_STOCK_TOOL_NAME,
+        "Raw material stock levels with unit of measure and weighted average cost per unit.",
       ),
       tool(
         GET_PRODUCTION_SUMMARY_TOOL_NAME,
@@ -324,6 +330,8 @@ export async function executeStaffAssistantTool(
       return getLeaseExpirationsOverview(toolInput);
     case GET_FINISHED_PRODUCTS_SUMMARY_TOOL_NAME:
       return getFinishedProductsSummary();
+    case GET_RAW_MATERIALS_STOCK_TOOL_NAME:
+      return getRawMaterialsStock();
     case GET_PRODUCTION_SUMMARY_TOOL_NAME:
       return getProductionSummary();
     case GET_PURCHASING_SUMMARY_TOOL_NAME:
@@ -381,7 +389,7 @@ export function staffAccountToolsSystemPromptAddition(
 
   if (canAccessInventorySection(role)) {
     lines.push(
-      "- get_finished_products_summary / get_production_summary / get_purchasing_summary: Inventory finished products, production batches, and purchasing/PO status",
+      "- get_finished_products_summary / get_raw_materials_stock / get_production_summary / get_purchasing_summary: Inventory finished products, raw materials stock, production batches, and purchasing/PO status",
     );
   }
 
