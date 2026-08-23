@@ -137,6 +137,7 @@ const SOURCE_LABELS: Record<TaxLedgerSourceType, string> = {
   manual: "Manual",
   settlement: "Settlement",
   payroll_period: "Payroll Period",
+  fixed_asset: "Fixed Asset",
 };
 
 export function normalizeTaxLedgerEntry(
@@ -191,6 +192,8 @@ export function getSourceHref(
       return "/dashboard/finance/product-sales";
     case "payroll_period":
       return "/dashboard/hr-payroll/payroll-processing";
+    case "fixed_asset":
+      return "/dashboard/finance/fixed-assets";
     default:
       return null;
   }

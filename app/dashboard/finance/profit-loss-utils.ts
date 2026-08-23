@@ -104,6 +104,12 @@ export type ProfitLossAssetEntry = {
   useful_life_years: number;
   purchase_date: string;
   depreciation_method: string;
+  tenant_id?: string | null;
+  payment_method?: string | null;
+  /** WHT withheld on purchase — reduces cash outflow for cash buys. */
+  wht_amount?: number | null;
+  /** Capitalized cost ex reclaimable input VAT (when purchase tax applies). */
+  net_of_tax_amount?: number | null;
 };
 
 export type MonthlyTotals = number[];

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import type { NamedLookup } from "../lookup-types";
+import { mapApproverRows } from "../approver-utils";
+import type { Approver, NamedLookup } from "../lookup-types";
 import {
   calculateAssetAccumulatedDepreciationAsOf,
   calculateAssetNetBookValueAsOf,
@@ -31,16 +32,62 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
+import {
+  computePurchaseTaxAmounts,
+  computeWhtAmount,
+  resolveDefaultWhtRate,
+  roundTaxAmount,
+  roundTaxRate,
+  selectTaxRateOptions,
+  type TaxRateCatalogEntry,
+  type TaxSettings,
+} from "./tax-utils";
+import {
+  deleteTaxLedgerEntriesForSource,
+  syncPurchaseTaxLedger,
+} from "./tax-ledger-sync";
+import type { SupplierRow } from "@/utils/suppliers-types";
+import { SUPPLIER_SELECT } from "@/utils/suppliers-types";
+import {
+  inferVendorSelectState,
+  resolveVendorNameFromSelect,
+  VENDOR_OTHER_VALUE,
+} from "./vendor-select-utils";
 
 type FixedAssetsProps = {
   initialAssets: FixedAssetEntry[];
   initialAssetCategories: NamedLookup[];
   initialDepreciationMethods: NamedLookup[];
   initialPaymentMethods: NamedLookup[];
+  initialApprovers: Approver[];
+  initialSuppliers: SupplierRow[];
+  taxSettings: TaxSettings | null;
+  taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
 };
 
-const emptyForm = {
+type FixedAssetFormState = {
+  asset_id: string;
+  asset_name: string;
+  asset_category: string;
+  purchase_date: string;
+  original_cost: string;
+  quantity: string;
+  useful_life_years: string;
+  depreciation_method: string;
+  location: string;
+  notes: string;
+  payment_method: string;
+  vendor_select: string;
+  vendor_other: string;
+  approved_by: string;
+  has_wht_vat: boolean;
+  wht_rate: string;
+  wht_amount: string;
+  input_vat_amount: string;
+};
+
+const emptyForm: FixedAssetFormState = {
   asset_id: "",
   asset_name: "",
   asset_category: "",
@@ -52,17 +99,40 @@ const emptyForm = {
   location: "",
   notes: "",
   payment_method: "Cash",
-  vendor_name: "",
+  vendor_select: "",
+  vendor_other: "",
+  approved_by: "",
+  has_wht_vat: false,
+  wht_rate: "0",
+  wht_amount: "",
+  input_vat_amount: "",
 };
 
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
+
+function formatRateValue(rate: number): string {
+  return String(roundTaxRate(rate));
+}
+
+function formatWhtAmount(gross: string, ratePct: string): string {
+  const rate = Number(ratePct) || 0;
+  if (rate <= 0) {
+    return "";
+  }
+
+  return String(computeWhtAmount(Number(gross) || 0, rate));
+}
 
 export default function FixedAssets({
   initialAssets,
   initialAssetCategories,
   initialDepreciationMethods,
   initialPaymentMethods,
+  initialApprovers,
+  initialSuppliers,
+  taxSettings,
+  taxRateCatalog,
   fetchError,
 }: FixedAssetsProps) {
   const supabase = createClient();
@@ -72,12 +142,34 @@ export default function FixedAssets({
     initialDepreciationMethods,
   );
   const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
+  const [approvers, setApprovers] = useState(initialApprovers);
+  const [suppliers, setSuppliers] = useState(initialSuppliers);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+
+  const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
+  const whtRateOptions = useMemo(() => {
+    const options = new Map<string, string>([["0", "No WHT (0%)"]]);
+
+    for (const rate of selectTaxRateOptions(taxRateCatalog, "wht")) {
+      options.set(formatRateValue(rate.rate_pct), rate.label);
+    }
+
+    for (const rate of [defaultWhtRate, form.wht_rate]) {
+      if (rate && rate !== "0" && !options.has(rate)) {
+        options.set(rate, `WHT ${rate}%`);
+      }
+    }
+
+    return [...options.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => Number(left.value) - Number(right.value));
+  }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
 
   useEffect(() => {
     if (!showForm) {
@@ -87,10 +179,13 @@ export default function FixedAssets({
     const client = createClient();
 
     async function loadLookups() {
+      const { tenantId } = await resolveSessionTenantId(client);
       const [
         { data: categories, error: categoriesError },
         { data: methods, error: methodsError },
         { data: payments, error: paymentsError },
+        { data: approverRows, error: approversError },
+        suppliersResult,
       ] = await Promise.all([
         client
           .from("asset_categories")
@@ -104,12 +199,28 @@ export default function FixedAssets({
           .from("payment_methods")
           .select("name")
           .order("name", { ascending: true }),
+        client
+          .from("approvers")
+          .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
+          .order("employee_id", { ascending: true }),
+        tenantId
+          ? client
+              .from("suppliers")
+              .select(SUPPLIER_SELECT)
+              .eq("tenant_id", tenantId)
+              .eq("is_active", true)
+              .order("name", { ascending: true })
+          : Promise.resolve({ data: [], error: null }),
       ]);
+
+      const suppliersError = suppliersResult.error?.message ?? null;
 
       const lookupError =
         categoriesError?.message ??
         methodsError?.message ??
         paymentsError?.message ??
+        approversError?.message ??
+        suppliersError ??
         null;
 
       if (lookupError) {
@@ -120,6 +231,8 @@ export default function FixedAssets({
       setAssetCategories(categories ?? []);
       setDepreciationMethods(methods ?? []);
       setPaymentMethods(payments ?? []);
+      setApprovers(mapApproverRows(approverRows ?? []) as Approver[]);
+      setSuppliers((suppliersResult.data as SupplierRow[] | null) ?? []);
     }
 
     loadLookups();
@@ -142,18 +255,26 @@ export default function FixedAssets({
 
   function openAddForm() {
     setEditingId(null);
+    setWhtAmountEdited(false);
     setForm({ ...emptyForm });
     setShowForm(true);
   }
 
   function closeForm() {
     setEditingId(null);
+    setWhtAmountEdited(false);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(asset: FixedAssetEntry) {
     setEditingId(asset.asset_id);
+    setWhtAmountEdited(false);
+    const vendorState = inferVendorSelectState(asset.vendor_name ?? "", suppliers);
+    const hasTax =
+      (asset.wht_rate ?? 0) > 0 ||
+      (asset.wht_amount ?? 0) > 0 ||
+      (asset.input_vat_amount ?? 0) > 0;
     setForm({
       asset_id: asset.asset_id,
       asset_name: asset.asset_name,
@@ -166,7 +287,16 @@ export default function FixedAssets({
       location: asset.location,
       notes: asset.notes ?? "",
       payment_method: asset.payment_method ?? "Cash",
-      vendor_name: asset.vendor_name ?? "",
+      vendor_select: vendorState.vendorSelect,
+      vendor_other: vendorState.vendorOther,
+      approved_by: asset.approved_by ?? "",
+      has_wht_vat: hasTax,
+      wht_rate: hasTax ? formatRateValue(asset.wht_rate ?? 0) : "0",
+      wht_amount: asset.wht_amount == null ? "" : String(asset.wht_amount),
+      input_vat_amount:
+        asset.input_vat_amount == null || asset.input_vat_amount === 0
+          ? ""
+          : String(asset.input_vat_amount),
     });
     setShowForm(true);
   }
@@ -201,6 +331,18 @@ export default function FixedAssets({
       setError(deleteError.message);
       setDeletingId(null);
       return;
+    }
+
+    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
+      supabase,
+      "fixed_asset",
+      assetId,
+    );
+
+    if (ledgerError) {
+      setError(
+        `Asset deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
+      );
     }
 
     if (editingId === assetId) {
@@ -260,12 +402,7 @@ export default function FixedAssets({
     const originalCost = Number(form.original_cost);
     const quantity = form.quantity.trim() === "" ? 1 : Number(form.quantity);
     const usefulLifeYears = Number(form.useful_life_years);
-    const {
-      totalCost,
-      annualDepreciation,
-      accumulatedDepreciation,
-      netBookValue,
-    } = getLiveAssetValues(
+    const { totalCost } = getLiveAssetValues(
       originalCost,
       quantity,
       usefulLifeYears,
@@ -274,14 +411,50 @@ export default function FixedAssets({
     );
 
     const paymentMethod = form.payment_method.trim() || "Cash";
-    if (
-      isCreditPaymentMethod(paymentMethod) &&
-      !form.vendor_name.trim()
-    ) {
+    const vendorName = resolveVendorNameFromSelect(
+      form.vendor_select,
+      form.vendor_other,
+      suppliers,
+    );
+    if (!vendorName) {
+      setError("Vendor is required.");
+      setLoading(false);
+      return;
+    }
+    if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
+      setError("Enter the one-time vendor name.");
+      setLoading(false);
+      return;
+    }
+    if (isCreditPaymentMethod(paymentMethod) && !vendorName) {
       setError("Vendor name is required for credit / on-account purchases.");
       setLoading(false);
       return;
     }
+
+    const whtRate = form.has_wht_vat ? Number(form.wht_rate) || 0 : 0;
+    const whtAmount = form.has_wht_vat
+      ? Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0))
+      : 0;
+    const inputVatAmount = form.has_wht_vat
+      ? Math.max(0, roundTaxAmount(Number(form.input_vat_amount) || 0))
+      : 0;
+    const purchaseTax = computePurchaseTaxAmounts({
+      grossBeforeWht: totalCost,
+      whtRatePct: whtRate,
+      whtAmount,
+      inputVatAmount,
+    });
+
+    // Capitalize / depreciate ex reclaimable input VAT (net_of_tax).
+    const capitalizedCost = purchaseTax.netOfTaxAmount;
+    const capitalizedLive = getLiveAssetValues(
+      capitalizedCost,
+      1,
+      usefulLifeYears,
+      form.purchase_date,
+      form.depreciation_method,
+    );
 
     const payload = {
       asset_id: form.asset_id.trim(),
@@ -293,13 +466,19 @@ export default function FixedAssets({
       total_cost: totalCost,
       useful_life_years: usefulLifeYears,
       depreciation_method: form.depreciation_method,
-      annual_depreciation: annualDepreciation,
-      accumulated_depreciation: accumulatedDepreciation,
-      net_book_value: netBookValue,
+      annual_depreciation: capitalizedLive.annualDepreciation,
+      accumulated_depreciation: capitalizedLive.accumulatedDepreciation,
+      net_book_value: capitalizedLive.netBookValue,
       location: form.location,
       notes: form.notes || null,
       payment_method: paymentMethod,
-      vendor_name: form.vendor_name.trim() || null,
+      vendor_name: vendorName,
+      approved_by: form.approved_by || null,
+      gross_before_wht: purchaseTax.grossBeforeWht,
+      wht_rate: whtRate > 0 ? whtRate : null,
+      wht_amount: purchaseTax.whtAmount,
+      input_vat_amount: purchaseTax.inputVatAmount,
+      net_of_tax_amount: purchaseTax.netOfTaxAmount,
     };
 
     const { tenantId, error: tenantError } =
@@ -334,6 +513,12 @@ export default function FixedAssets({
           notes: payload.notes,
           payment_method: payload.payment_method,
           vendor_name: payload.vendor_name,
+          approved_by: payload.approved_by,
+          gross_before_wht: payload.gross_before_wht,
+          wht_rate: payload.wht_rate,
+          wht_amount: payload.wht_amount,
+          input_vat_amount: payload.input_vat_amount,
+          net_of_tax_amount: payload.net_of_tax_amount,
         })
         .eq("asset_id", editingId);
 
@@ -403,13 +588,97 @@ export default function FixedAssets({
       }
     }
 
+    const { error: ledgerError } = await syncPurchaseTaxLedger(supabase, {
+      sourceType: "fixed_asset",
+      sourceId: savedAssetId as string,
+      entryDate: form.purchase_date,
+      grossBeforeWht: purchaseTax.grossBeforeWht,
+      whtRatePct: whtRate > 0 ? whtRate : null,
+      whtAmount: purchaseTax.whtAmount,
+      inputTaxComponent: purchaseTax.inputTaxComponent,
+      inputTaxRatePct: null,
+      inputVatAmount: purchaseTax.inputVatAmount,
+      counterpartyName: vendorName || null,
+      notes: payload.asset_name.trim() || null,
+    });
+
     closeForm();
     await refreshAssets();
+
+    if (ledgerError) {
+      setError(
+        `Asset saved, but the tax ledger could not be updated: ${ledgerError}`,
+      );
+    }
+
     setLoading(false);
   }
 
-  function updateField(field: keyof typeof emptyForm, value: string) {
+  function updateField<K extends keyof FixedAssetFormState>(
+    field: K,
+    value: FixedAssetFormState[K],
+  ) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function currentGrossString(next?: Partial<FixedAssetFormState>): string {
+    const originalCost = Number(next?.original_cost ?? form.original_cost) || 0;
+    const quantityRaw = (next?.quantity ?? form.quantity).trim();
+    const quantity = quantityRaw === "" ? 1 : Number(quantityRaw) || 1;
+    return String(originalCost * quantity);
+  }
+
+  function toggleHasWhtVat(checked: boolean) {
+    setWhtAmountEdited(false);
+    setForm((current) => ({
+      ...current,
+      has_wht_vat: checked,
+      wht_rate: checked ? defaultWhtRate : "0",
+      wht_amount: checked
+        ? formatWhtAmount(currentGrossString(current), defaultWhtRate)
+        : "",
+      input_vat_amount: checked ? current.input_vat_amount : "",
+    }));
+  }
+
+  function updateOriginalCost(value: string) {
+    setForm((current) => {
+      const next = { ...current, original_cost: value };
+      const gross = currentGrossString(next);
+      return {
+        ...next,
+        wht_amount: whtAmountEdited
+          ? current.wht_amount
+          : formatWhtAmount(gross, current.wht_rate),
+      };
+    });
+  }
+
+  function updateQuantity(value: string) {
+    setForm((current) => {
+      const next = { ...current, quantity: value };
+      const gross = currentGrossString(next);
+      return {
+        ...next,
+        wht_amount: whtAmountEdited
+          ? current.wht_amount
+          : formatWhtAmount(gross, current.wht_rate),
+      };
+    });
+  }
+
+  function updateWhtRate(value: string) {
+    setWhtAmountEdited(false);
+    setForm((current) => ({
+      ...current,
+      wht_rate: value,
+      wht_amount: formatWhtAmount(currentGrossString(current), value),
+    }));
+  }
+
+  function updateWhtAmount(value: string) {
+    setWhtAmountEdited(true);
+    updateField("wht_amount", value);
   }
 
   const previewQuantity =
@@ -526,7 +795,7 @@ export default function FixedAssets({
                   step="0.01"
                   required
                   value={form.original_cost}
-                  onChange={(e) => updateField("original_cost", e.target.value)}
+                  onChange={(e) => updateOriginalCost(e.target.value)}
                   className={inputClassName}
                 />
               </div>
@@ -539,7 +808,7 @@ export default function FixedAssets({
                   min="1"
                   step="1"
                   value={form.quantity}
-                  onChange={(e) => updateField("quantity", e.target.value)}
+                  onChange={(e) => updateQuantity(e.target.value)}
                   placeholder="1"
                   className={inputClassName}
                 />
@@ -603,19 +872,123 @@ export default function FixedAssets({
                   ))}
                 </select>
               </div>
-              {isCreditPaymentMethod(form.payment_method) ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Vendor
+                </label>
+                <select
+                  required
+                  value={form.vendor_select}
+                  onChange={(e) => updateField("vendor_select", e.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Select vendor</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
+                  <option value={VENDOR_OTHER_VALUE}>Other (one-time vendor)</option>
+                </select>
+              </div>
+              {form.vendor_select === VENDOR_OTHER_VALUE ? (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Vendor Name
+                    One-time vendor name
                   </label>
                   <input
                     type="text"
                     required
-                    value={form.vendor_name}
-                    onChange={(e) => updateField("vendor_name", e.target.value)}
+                    value={form.vendor_other}
+                    onChange={(e) => updateField("vendor_other", e.target.value)}
                     className={inputClassName}
                   />
                 </div>
+              ) : null}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Approved By
+                </label>
+                <select
+                  required
+                  value={form.approved_by}
+                  onChange={(e) => updateField("approved_by", e.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Select approver</option>
+                  {approvers.map((approver) => (
+                    <option key={approver.employee_id} value={approver.full_name}>
+                      {approver.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-2 xl:col-span-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.has_wht_vat}
+                    onChange={(e) => toggleHasWhtVat(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+                  />
+                  This purchase has WHT/VAT
+                </label>
+              </div>
+              {form.has_wht_vat ? (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      WHT Rate
+                    </label>
+                    <select
+                      value={form.wht_rate}
+                      onChange={(e) => updateWhtRate(e.target.value)}
+                      className={inputClassName}
+                    >
+                      {whtRateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      WHT Amount
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.wht_amount}
+                      onChange={(e) => updateWhtAmount(e.target.value)}
+                      className={inputClassName}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Auto-calculated from Total Cost × rate. Edit to match the
+                      withholding certificate.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Input VAT Amount
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.input_vat_amount}
+                      onChange={(e) =>
+                        updateField("input_vat_amount", e.target.value)
+                      }
+                      className={inputClassName}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Optional — VAT/NHIL/GETFund on this purchase (reclaimable
+                      input credit).
+                    </p>
+                  </div>
+                </>
               ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">

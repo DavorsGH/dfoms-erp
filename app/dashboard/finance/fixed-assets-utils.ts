@@ -18,6 +18,12 @@ export type FixedAssetEntry = {
   payment_method?: string | null;
   vendor_name?: string | null;
   accounts_payable_id?: string | null;
+  approved_by?: string | null;
+  gross_before_wht?: number | null;
+  wht_rate?: number | null;
+  wht_amount?: number | null;
+  input_vat_amount?: number | null;
+  net_of_tax_amount?: number | null;
   tenant_id?: string | null;
 };
 
@@ -270,9 +276,10 @@ function getUncappedAssetMonthlyDepreciationAmount(
   }
 
   const referenceDate = new Date(`${monthEnd}T12:00:00`);
+  const capitalized = getAssetCapitalizedTotalCost(asset);
   const { annualDepreciation } = getAssetCalculations(
-    asset.original_cost,
-    asset.quantity,
+    capitalized,
+    1,
     asset.useful_life_years,
     asset.purchase_date,
     asset.depreciation_method,
@@ -286,10 +293,7 @@ function calculateAccumulatedDepreciationBeforeMonthEnd(
   asset: AssetDepreciationInput,
   monthEnd: string,
 ): number {
-  const totalCost = calculateTotalCost(
-    Number(asset.original_cost) || 0,
-    Number(asset.quantity) || 0,
-  );
+  const totalCost = getAssetCapitalizedTotalCost(asset);
 
   if (!isAssetActiveOnOrBefore(asset.purchase_date, monthEnd)) {
     return 0;
@@ -336,10 +340,7 @@ export function getAssetMonthlyDepreciationAmount(
     return 0;
   }
 
-  const totalCost = calculateTotalCost(
-    Number(asset.original_cost) || 0,
-    Number(asset.quantity) || 0,
-  );
+  const totalCost = getAssetCapitalizedTotalCost(asset);
   const accumulatedPrior = calculateAccumulatedDepreciationBeforeMonthEnd(
     asset,
     monthEnd,
@@ -361,10 +362,7 @@ export function calculateAssetAccumulatedDepreciationAsOf(
   asset: AssetDepreciationInput,
   asOfMonthEnd: string,
 ): number {
-  const totalCost = calculateTotalCost(
-    Number(asset.original_cost) || 0,
-    Number(asset.quantity) || 0,
-  );
+  const totalCost = getAssetCapitalizedTotalCost(asset);
 
   if (!isAssetActiveOnOrBefore(asset.purchase_date, asOfMonthEnd)) {
     return 0;
@@ -402,10 +400,7 @@ export function calculateAssetNetBookValueAsOf(
     return 0;
   }
 
-  const totalCost = calculateTotalCost(
-    Number(asset.original_cost) || 0,
-    Number(asset.quantity) || 0,
-  );
+  const totalCost = getAssetCapitalizedTotalCost(asset);
   const accumulated = calculateAssetAccumulatedDepreciationAsOf(
     asset,
     asOfMonthEnd,
@@ -436,6 +431,7 @@ export function calculateMonthlyNetBookValueTotals(
 /**
  * Fixed-asset cash purchase outflows by purchase_date month.
  * Shared by Balance Sheet cash and Cash Flow investing.
+ * Cash paid = total_cost − WHT withheld (same net-paid convention as Expense Register).
  */
 export function calculateFixedAssetPurchaseOutflowsByMonth(
   fixedAssets: Array<{
@@ -444,6 +440,7 @@ export function calculateFixedAssetPurchaseOutflowsByMonth(
     quantity: number;
     purchase_date: string;
     payment_method?: string | null;
+    wht_amount?: number | null;
   }>,
   tenantId: string,
   financialYear: number,
@@ -466,11 +463,10 @@ export function calculateFixedAssetPurchaseOutflowsByMonth(
     if (year !== financialYear || month < 1 || month > 12) continue;
 
     const monthIndex = month - 1;
-    const totalCost = calculateTotalCost(
-      Number(asset.original_cost) || 0,
-      Number(asset.quantity) || 0,
-    );
-    const rounded = Math.round(totalCost * 100) / 100;
+    const invoiceTotal = getAssetInvoiceTotalCost(asset);
+    const whtWithheld = Math.max(0, Number(asset.wht_amount) || 0);
+    const cashPaid = Math.max(0, invoiceTotal - whtWithheld);
+    const rounded = Math.round(cashPaid * 100) / 100;
     totals[monthIndex] = Math.round((totals[monthIndex] + rounded) * 100) / 100;
     totals[12] = Math.round((totals[12] + rounded) * 100) / 100;
   }
@@ -484,7 +480,35 @@ export type AssetDepreciationInput = {
   useful_life_years: number;
   purchase_date: string;
   depreciation_method: string;
+  /** When set, used as capitalized / depreciable base (ex reclaimable VAT). */
+  net_of_tax_amount?: number | null;
 };
+
+/** Invoice gross (price × qty). */
+export function getAssetInvoiceTotalCost(asset: {
+  original_cost: number;
+  quantity: number;
+}): number {
+  return calculateTotalCost(
+    Number(asset.original_cost) || 0,
+    Number(asset.quantity) || 0,
+  );
+}
+
+/**
+ * Capitalized cost for NBV / depreciation.
+ * Prefer net_of_tax_amount when present (ex reclaimable input VAT).
+ */
+export function getAssetCapitalizedTotalCost(asset: {
+  original_cost: number;
+  quantity: number;
+  net_of_tax_amount?: number | null;
+}): number {
+  if (asset.net_of_tax_amount != null) {
+    return Math.max(0, Number(asset.net_of_tax_amount) || 0);
+  }
+  return getAssetInvoiceTotalCost(asset);
+}
 
 export function calculateMonthlyDepreciationTotals(
   assets: AssetDepreciationInput[],

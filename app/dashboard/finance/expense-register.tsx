@@ -14,6 +14,7 @@ import {
   type ExpenseRegisterEntry,
 } from "./expense-register-utils";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
+import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import { resolveManualExpenseReceiptNo } from "./expense-register-api";
 import {
   canMarkAutoPostedExpenseAsPaid,
@@ -64,6 +65,12 @@ import ScrollableTable, {
 import FilteredListCount, {
   anyRegisterColumnFiltersActive,
 } from "../filtered-list-count";
+import type { SupplierRow } from "@/utils/suppliers-types";
+import {
+  inferVendorSelectState,
+  resolveVendorNameFromSelect,
+  VENDOR_OTHER_VALUE,
+} from "./vendor-select-utils";
 
 type ExpenseRegisterProps = {
   initialEntries: ExpenseRegisterEntry[];
@@ -71,6 +78,7 @@ type ExpenseRegisterProps = {
   initialExpenseSubcategories: NamedLookup[];
   initialPaymentMethods: NamedLookup[];
   initialApprovers: Approver[];
+  initialSuppliers: SupplierRow[];
   taxSettings: TaxSettings | null;
   taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
@@ -81,13 +89,15 @@ type ExpenseFormState = {
   expense_category: string;
   sub_category: string;
   description: string;
-  vendor: string;
+  vendor_select: string;
+  vendor_other: string;
   price: string;
   quantity: string;
   payment_method: string;
   approved_by: string;
   receipt_no: string;
   payment_status: string;
+  has_wht_vat: boolean;
   wht_rate: string;
   wht_amount: string;
   input_vat_amount: string;
@@ -99,13 +109,15 @@ const emptyForm: ExpenseFormState = {
   expense_category: "",
   sub_category: "",
   description: "",
-  vendor: "",
+  vendor_select: "",
+  vendor_other: "",
   price: "",
   quantity: "",
   payment_method: "",
   approved_by: "",
   receipt_no: "",
   payment_status: "",
+  has_wht_vat: false,
   wht_rate: "0",
   wht_amount: "",
   input_vat_amount: "",
@@ -144,6 +156,7 @@ export default function ExpenseRegister({
   initialExpenseSubcategories,
   initialPaymentMethods,
   initialApprovers,
+  initialSuppliers,
   taxSettings,
   taxRateCatalog,
   fetchError,
@@ -166,6 +179,7 @@ export default function ExpenseRegister({
   );
   const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
   const [approvers, setApprovers] = useState(initialApprovers);
+  const [suppliers, setSuppliers] = useState(initialSuppliers);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -267,11 +281,23 @@ export default function ExpenseRegister({
     const client = createClient();
 
     async function loadLookups() {
+      const { tenantId } = await resolveSessionTenantId(client);
+
+      const supplierQuery = tenantId
+        ? client
+            .from("suppliers")
+            .select("id, tenant_id, name, contact_person, phone, email, address, payment_terms_days, is_active, created_at, updated_at")
+            .eq("tenant_id", tenantId)
+            .eq("is_active", true)
+            .order("name", { ascending: true })
+        : Promise.resolve({ data: [], error: null });
+
       const [
         { data: categories, error: categoriesError },
         { data: subcategories, error: subcategoriesError },
         { data: methods, error: methodsError },
         { data: approverRows, error: approversError },
+        { data: supplierRows, error: suppliersError },
       ] = await Promise.all([
         client
           .from("expense_categories")
@@ -289,6 +315,7 @@ export default function ExpenseRegister({
           .from("approvers")
           .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
           .order("employee_id", { ascending: true }),
+        supplierQuery,
       ]);
 
       const lookupError =
@@ -296,6 +323,7 @@ export default function ExpenseRegister({
         subcategoriesError?.message ??
         methodsError?.message ??
         approversError?.message ??
+        suppliersError?.message ??
         null;
 
       if (lookupError) {
@@ -307,6 +335,7 @@ export default function ExpenseRegister({
       setExpenseSubcategories(subcategories ?? []);
       setPaymentMethods(methods ?? []);
       setApprovers(mapApproverRows(approverRows ?? []));
+      setSuppliers((supplierRows as SupplierRow[] | null) ?? []);
     }
 
     loadLookups();
@@ -366,7 +395,7 @@ export default function ExpenseRegister({
   function openAddForm() {
     setEditingId(null);
     setWhtAmountEdited(false);
-    setForm({ ...emptyForm, wht_rate: defaultWhtRate });
+    setForm({ ...emptyForm });
     setShowForm(true);
   }
 
@@ -394,19 +423,26 @@ export default function ExpenseRegister({
     }
     setEditingId(entry.id);
     setWhtAmountEdited(false);
+    const vendorState = inferVendorSelectState(entry.vendor, suppliers);
+    const hasTax =
+      (entry.wht_rate ?? 0) > 0 ||
+      (entry.wht_amount ?? 0) > 0 ||
+      (entry.input_vat_amount ?? 0) > 0;
     setForm({
       date: toDateInputValue(entry.date),
       expense_category: entry.expense_category,
       sub_category: entry.sub_category,
       description: entry.description ?? "",
-      vendor: entry.vendor,
+      vendor_select: vendorState.vendorSelect,
+      vendor_other: vendorState.vendorOther,
       price: String(entry.price),
       quantity: String(entry.quantity),
       payment_method: entry.payment_method,
       approved_by: entry.approved_by,
       receipt_no: entry.receipt_no,
       payment_status: entry.payment_status,
-      wht_rate: formatRateValue(entry.wht_rate ?? 0),
+      has_wht_vat: hasTax,
+      wht_rate: hasTax ? formatRateValue(entry.wht_rate ?? 0) : "0",
       wht_amount: entry.wht_amount == null ? "" : String(entry.wht_amount),
       input_vat_amount:
         entry.input_vat_amount == null || entry.input_vat_amount === 0
@@ -553,12 +589,29 @@ export default function ExpenseRegister({
     const price = Number(form.price);
     const quantity = form.quantity.trim() === "" ? 1 : Number(form.quantity);
     const grossBeforeWht = calculateAmount(price, quantity);
-    const whtRate = Number(form.wht_rate) || 0;
-    const whtAmount = Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0));
-    const inputVatAmount = Math.max(
-      0,
-      roundTaxAmount(Number(form.input_vat_amount) || 0),
+    const vendorName = resolveVendorNameFromSelect(
+      form.vendor_select,
+      form.vendor_other,
+      suppliers,
     );
+    if (!vendorName) {
+      setError("Vendor is required.");
+      setLoading(false);
+      return;
+    }
+    if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
+      setError("Enter the one-time vendor name.");
+      setLoading(false);
+      return;
+    }
+
+    const whtRate = form.has_wht_vat ? Number(form.wht_rate) || 0 : 0;
+    const whtAmount = form.has_wht_vat
+      ? Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0))
+      : 0;
+    const inputVatAmount = form.has_wht_vat
+      ? Math.max(0, roundTaxAmount(Number(form.input_vat_amount) || 0))
+      : 0;
     const purchaseTax = computePurchaseTaxAmounts({
       grossBeforeWht,
       whtRatePct: whtRate,
@@ -584,7 +637,7 @@ export default function ExpenseRegister({
       expense_category: form.expense_category,
       sub_category: form.sub_category,
       description: form.description || null,
-      vendor: form.vendor,
+      vendor: vendorName,
       price,
       quantity,
       amount: purchaseTax.netPaidToSupplier,
@@ -645,7 +698,7 @@ export default function ExpenseRegister({
       inputTaxComponent: purchaseTax.inputTaxComponent,
       inputTaxRatePct: null,
       inputVatAmount: purchaseTax.inputVatAmount,
-      counterpartyName: form.vendor.trim() || null,
+      counterpartyName: vendorName || null,
       notes: receiptNo ? `Receipt ${receiptNo}` : null,
     });
 
@@ -661,8 +714,24 @@ export default function ExpenseRegister({
     setLoading(false);
   }
 
-  function updateField(field: keyof ExpenseFormState, value: string) {
+  function updateField<K extends keyof ExpenseFormState>(
+    field: K,
+    value: ExpenseFormState[K],
+  ) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function toggleHasWhtVat(checked: boolean) {
+    setWhtAmountEdited(false);
+    setForm((current) => ({
+      ...current,
+      has_wht_vat: checked,
+      wht_rate: checked ? defaultWhtRate : "0",
+      wht_amount: checked
+        ? formatWhtAmount(currentGrossString(current), defaultWhtRate)
+        : "",
+      input_vat_amount: checked ? current.input_vat_amount : "",
+    }));
   }
 
   function currentGrossString(next?: Partial<ExpenseFormState>): string {
@@ -718,12 +787,13 @@ export default function ExpenseRegister({
   );
   const previewPurchaseTax = computePurchaseTaxAmounts({
     grossBeforeWht: previewGross,
-    whtRatePct: Number(form.wht_rate) || 0,
-    whtAmount: Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0)),
-    inputVatAmount: Math.max(
-      0,
-      roundTaxAmount(Number(form.input_vat_amount) || 0),
-    ),
+    whtRatePct: form.has_wht_vat ? Number(form.wht_rate) || 0 : 0,
+    whtAmount: form.has_wht_vat
+      ? Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0))
+      : 0,
+    inputVatAmount: form.has_wht_vat
+      ? Math.max(0, roundTaxAmount(Number(form.input_vat_amount) || 0))
+      : 0,
   });
 
   return (
@@ -762,6 +832,17 @@ export default function ExpenseRegister({
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="md:col-span-2 xl:col-span-3">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Expense Name
+                </label>
+                <input
+                  type="text"
+                  value={form.description}
+                  onChange={(e) => updateField("description", e.target.value)}
+                  className={inputClassName}
+                />
+              </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Date
@@ -816,14 +897,35 @@ export default function ExpenseRegister({
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Vendor
                 </label>
-                <input
-                  type="text"
+                <select
                   required
-                  value={form.vendor}
-                  onChange={(e) => updateField("vendor", e.target.value)}
+                  value={form.vendor_select}
+                  onChange={(e) => updateField("vendor_select", e.target.value)}
                   className={inputClassName}
-                />
+                >
+                  <option value="">Select vendor</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
+                    </option>
+                  ))}
+                  <option value={VENDOR_OTHER_VALUE}>Other (one-time vendor)</option>
+                </select>
               </div>
+              {form.vendor_select === VENDOR_OTHER_VALUE ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    One-time vendor name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={form.vendor_other}
+                    onChange={(e) => updateField("vendor_other", e.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Price
@@ -855,58 +957,73 @@ export default function ExpenseRegister({
                   className={inputClassName}
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  WHT Rate
+              <div className="md:col-span-2 xl:col-span-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={form.has_wht_vat}
+                    onChange={(e) => toggleHasWhtVat(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+                  />
+                  This expense has WHT/VAT
                 </label>
-                <select
-                  value={form.wht_rate}
-                  onChange={(e) => updateWhtRate(e.target.value)}
-                  className={inputClassName}
-                >
-                  {whtRateOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  WHT Amount
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.wht_amount}
-                  onChange={(e) => updateWhtAmount(e.target.value)}
-                  className={inputClassName}
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Auto-calculated from Gross × rate. Edit to match the
-                  withholding certificate. Remitted to GRA as wht_payable.
-                </p>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Input VAT Amount
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.input_vat_amount}
-                  onChange={(e) =>
-                    updateField("input_vat_amount", e.target.value)
-                  }
-                  className={inputClassName}
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Optional — VAT/NHIL/GETFund on this purchase (reclaimable
-                  input credit).
-                </p>
-              </div>
+              {form.has_wht_vat ? (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      WHT Rate
+                    </label>
+                    <select
+                      value={form.wht_rate}
+                      onChange={(e) => updateWhtRate(e.target.value)}
+                      className={inputClassName}
+                    >
+                      {whtRateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      WHT Amount
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.wht_amount}
+                      onChange={(e) => updateWhtAmount(e.target.value)}
+                      className={inputClassName}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Auto-calculated from Gross × rate. Edit to match the
+                      withholding certificate.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Input VAT Amount
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.input_vat_amount}
+                      onChange={(e) =>
+                        updateField("input_vat_amount", e.target.value)
+                      }
+                      className={inputClassName}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Optional — VAT/NHIL/GETFund on this purchase (reclaimable
+                      input credit).
+                    </p>
+                  </div>
+                </>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Payment Method
@@ -987,17 +1104,6 @@ export default function ExpenseRegister({
               </div>
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Description
-                </label>
-                <input
-                  type="text"
-                  value={form.description}
-                  onChange={(e) => updateField("description", e.target.value)}
-                  className={inputClassName}
-                />
-              </div>
-              <div className="md:col-span-2 xl:col-span-3">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
                   Notes
                 </label>
                 <textarea
@@ -1067,6 +1173,14 @@ export default function ExpenseRegister({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
+                <th className={scrollableTableWrapThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Expense Name"
+                    options={descriptionOptions}
+                    applied={descriptionFilter}
+                    onApply={setDescriptionFilter}
+                  />
+                </th>
                 <th className={scrollableTableThClassName}>Date</th>
                 <th className={scrollableTableThClassName}>
                   <RegisterColumnFilterHeader
@@ -1082,14 +1196,6 @@ export default function ExpenseRegister({
                     options={subCategoryOptions}
                     applied={subCategoryFilter}
                     onApply={setSubCategoryFilter}
-                  />
-                </th>
-                <th className={scrollableTableWrapThClassName}>
-                  <RegisterColumnFilterHeader
-                    label="Description"
-                    options={descriptionOptions}
-                    applied={descriptionFilter}
-                    onApply={setDescriptionFilter}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>Vendor</th>
@@ -1139,9 +1245,6 @@ export default function ExpenseRegister({
                       key={entry.id}
                       className={getRegisterRowClassName(index, systemLinked)}
                     >
-                      <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                      <td className="px-4 py-3">{entry.expense_category}</td>
-                      <td className="px-4 py-3">{entry.sub_category}</td>
                       <td className={scrollableTableWrapTdClassName}>
                         {entry.description ?? "—"}
                         {autoPosted ? (
@@ -1154,6 +1257,9 @@ export default function ExpenseRegister({
                           </span>
                         ) : null}
                       </td>
+                      <td className="px-4 py-3">{formatDate(entry.date)}</td>
+                      <td className="px-4 py-3">{entry.expense_category}</td>
+                      <td className="px-4 py-3">{entry.sub_category}</td>
                       <td className="px-4 py-3">{entry.vendor}</td>
                       <td className="px-4 py-3">{formatGHS(gross)}</td>
                       <td className="px-4 py-3">

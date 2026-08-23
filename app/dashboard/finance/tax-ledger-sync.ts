@@ -18,7 +18,8 @@ export type TaxLedgerSourceType =
   | "product_sale"
   | "manual"
   | "settlement"
-  | "payroll_period";
+  | "payroll_period"
+  | "fixed_asset";
 
 export type TaxLedgerEntryInsert = {
   tenant_id?: string;
@@ -188,7 +189,8 @@ export async function syncIncomeRegisterTaxLedger(
 
 export type PurchaseTaxLedgerSourceType =
   | "expense_register"
-  | "accounts_payable";
+  | "accounts_payable"
+  | "fixed_asset";
 
 export type PurchaseTaxLedgerInput = {
   sourceType: PurchaseTaxLedgerSourceType;
@@ -269,8 +271,9 @@ export function buildPurchaseTaxLedgerRows(
 }
 
 /**
- * Replace tax ledger rows owned by one Expense Register or Accounts Payable entry.
- * Same delete-then-insert contract as syncIncomeRegisterTaxLedger.
+ * Replace tax ledger rows owned by one Expense Register, Accounts Payable,
+ * or Fixed Asset purchase entry. Same delete-then-insert contract as
+ * syncIncomeRegisterTaxLedger.
  */
 export async function syncPurchaseTaxLedger(
   supabase: SupabaseClient,

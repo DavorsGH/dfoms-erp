@@ -328,7 +328,7 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("fixed_assets")
       .select(
-        "tenant_id, original_cost, quantity, useful_life_years, purchase_date, depreciation_method, payment_method",
+        "tenant_id, original_cost, quantity, useful_life_years, purchase_date, depreciation_method, payment_method, wht_amount, net_of_tax_amount",
       )
       .eq("tenant_id", tenantId)
       .order("asset_id", { ascending: true }),
