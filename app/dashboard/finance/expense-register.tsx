@@ -58,9 +58,9 @@ import {
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableStickyFirstWrapTdClassName,
+  scrollableTableStickyFirstWrapThClassName,
   scrollableTableThClassName,
-  scrollableTableWrapTdClassName,
-  scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import FilteredListCount, {
   anyRegisterColumnFiltersActive,
@@ -1173,7 +1173,7 @@ export default function ExpenseRegister({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableWrapThClassName}>
+                <th className={scrollableTableStickyFirstWrapThClassName}>
                   <RegisterColumnFilterHeader
                     label="Expense Name"
                     options={descriptionOptions}
@@ -1245,7 +1245,11 @@ export default function ExpenseRegister({
                       key={entry.id}
                       className={getRegisterRowClassName(index, systemLinked)}
                     >
-                      <td className={scrollableTableWrapTdClassName}>
+                      <td
+                        className={scrollableTableStickyFirstWrapTdClassName({
+                          striped: index % 2 === 1,
+                        })}
+                      >
                         {entry.description ?? "—"}
                         {autoPosted ? (
                           <span className="ml-2 text-xs font-medium opacity-80">

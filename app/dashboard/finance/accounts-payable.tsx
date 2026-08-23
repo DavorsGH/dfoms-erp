@@ -39,6 +39,8 @@ import RegisterRowActions, {
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableStickyFirstTdClassName,
+  scrollableTableStickyFirstThClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
@@ -936,7 +938,7 @@ export default function AccountsPayable({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Vendor Name</th>
+                <th className={scrollableTableStickyFirstThClassName}>Vendor Name</th>
                 <th className={scrollableTableThClassName}>Invoice Number</th>
                 <th className={scrollableTableThClassName}>Expense Category</th>
                 <th className={scrollableTableThClassName}>Sub-Category</th>
@@ -980,7 +982,13 @@ export default function AccountsPayable({
                       key={entry.id}
                       className={getStripedRowClassName(index)}
                     >
-                      <td className="px-4 py-3">{entry.vendor_name}</td>
+                      <td
+                        className={scrollableTableStickyFirstTdClassName({
+                          striped: index % 2 === 1,
+                        })}
+                      >
+                        {entry.vendor_name}
+                      </td>
                       <td className="px-4 py-3">{entry.invoice_number}</td>
                       <td className="px-4 py-3">{entry.expense_category}</td>
                       <td className="px-4 py-3">{entry.sub_category}</td>

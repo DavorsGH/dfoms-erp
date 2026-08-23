@@ -29,6 +29,58 @@ export const scrollableTableWrapThClassName =
 export const scrollableTableWrapTdClassName =
   "max-w-md px-4 py-3 whitespace-normal break-words align-top";
 
+/** Wider first column for register tables (2–3 lines of name text). */
+export const scrollableTableStickyFirstColumnWidthClassName =
+  "min-w-[13rem] max-w-[15rem]";
+
+const scrollableTableStickyFirstColumnShadowClassName =
+  "shadow-[2px_0_4px_-2px_rgba(15,39,68,0.12)]";
+
+/** Sticky first header — use on the leftmost identifying column (Expense Name, Vendor Name, etc.). */
+export const scrollableTableStickyFirstThClassName =
+  `${scrollableTableThClassName} sticky left-0 top-0 z-20 ${scrollableTableStickyFirstColumnWidthClassName} ${scrollableTableStickyFirstColumnShadowClassName}`;
+
+/** Sticky first header when the column wraps long text. */
+export const scrollableTableStickyFirstWrapThClassName =
+  `${scrollableTableWrapThClassName} sticky left-0 top-0 z-20 ${scrollableTableStickyFirstColumnWidthClassName} ${scrollableTableStickyFirstColumnShadowClassName}`;
+
+type ScrollableTableStickyFirstCellOptions = {
+  /** Match alternating row shading (odd index = slate-50). */
+  striped?: boolean;
+};
+
+function scrollableTableStickyFirstCellBackground(
+  options?: ScrollableTableStickyFirstCellOptions,
+): string {
+  return options?.striped ? "bg-slate-50" : "bg-white";
+}
+
+/** Sticky first body cell for wrapped identifying text. */
+export function scrollableTableStickyFirstWrapTdClassName(
+  options?: ScrollableTableStickyFirstCellOptions,
+): string {
+  return [
+    "px-4 py-3 whitespace-normal break-words align-top",
+    "sticky left-0 z-[5]",
+    scrollableTableStickyFirstColumnWidthClassName,
+    scrollableTableStickyFirstCellBackground(options),
+    scrollableTableStickyFirstColumnShadowClassName,
+  ].join(" ");
+}
+
+/** Sticky first body cell for single-line identifying text. */
+export function scrollableTableStickyFirstTdClassName(
+  options?: ScrollableTableStickyFirstCellOptions,
+): string {
+  return [
+    "px-4 py-3 whitespace-normal break-words align-top",
+    "sticky left-0 z-[5]",
+    scrollableTableStickyFirstColumnWidthClassName,
+    scrollableTableStickyFirstCellBackground(options),
+    scrollableTableStickyFirstColumnShadowClassName,
+  ].join(" ");
+}
+
 /** Long free-text cells outside scrollable register tables (detail views, forms). */
 export const tableWrapCellClassName =
   "max-w-md whitespace-normal break-words align-top";
