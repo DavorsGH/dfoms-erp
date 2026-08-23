@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { logSystemEvent } from "@/lib/system-event-log";
 import { generateRentLedger } from "@/utils/generate-rent-ledger";
+import { createAdminClient } from "@/utils/supabase/admin";
+import { expireLeasesPastEndDate } from "@/utils/lessee-portal-auto-revoke";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,13 +30,18 @@ async function handleCron(request: Request) {
   const asOf = url.searchParams.get("asOf")?.trim() || undefined;
 
   try {
+    const admin = createAdminClient();
+    const expiry = await expireLeasesPastEndDate(admin, {
+      asOfDate: asOf,
+    });
+
     const result = await generateRentLedger({ billingMonth, asOf });
-    const errorCount = result.errors;
+    const errorCount = result.errors + expiry.errors;
     await logSystemEvent({
       eventType: "cron",
       eventName: "generate-rent-ledger",
       status: errorCount > 0 ? "warning" : "success",
-      message: `created ${result.created}, skipped ${result.skipped}, overdue updated ${result.overdueUpdated}, errors ${errorCount}`,
+      message: `created ${result.created}, skipped ${result.skipped}, overdue updated ${result.overdueUpdated}, expired ${expiry.expired}, portal revoked ${expiry.portalRevoked}, errors ${errorCount}`,
       metadata: {
         billingMonth: result.billingMonth,
         periodStart: result.periodStart,
@@ -43,6 +50,10 @@ async function handleCron(request: Request) {
         created: result.created,
         skipped: result.skipped,
         overdueUpdated: result.overdueUpdated,
+        leasesExpired: expiry.expired,
+        portalRevoked: expiry.portalRevoked,
+        portalEmailsSent: expiry.portalEmailsSent,
+        expiryErrors: expiry.errors,
         errorCount,
       },
     });
@@ -56,6 +67,10 @@ async function handleCron(request: Request) {
       created: result.created,
       skipped: result.skipped,
       errors: result.errors,
+      leasesExpired: expiry.expired,
+      portalRevoked: expiry.portalRevoked,
+      portalEmailsSent: expiry.portalEmailsSent,
+      expiryErrors: expiry.errors,
     });
   } catch (error) {
     const message =

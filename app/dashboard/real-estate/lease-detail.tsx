@@ -243,6 +243,8 @@ export default function LeaseDetailView({
     const payload = (await response.json().catch(() => null)) as {
       error?: string;
       deposit_id?: string | null;
+      portal_revoked?: boolean;
+      portal_revoke_error?: string;
     } | null;
 
     if (!response.ok) {
@@ -253,19 +255,24 @@ export default function LeaseDetailView({
 
     setTerminationReviewLoading(false);
 
-    if (action === "approve" && payload?.deposit_id) {
-      router.push(
-        `/dashboard/real-estate/leases/${detail.tenantId}/${detail.leaseId}?resolveDeposit=1`,
-      );
-      router.refresh();
-      return;
+    if (action === "approve") {
+      const parts = [
+        "Termination request approved — lease terminated early.",
+      ];
+      if (payload?.portal_revoked) {
+        parts.push("Portal access revoked.");
+      } else if (payload?.portal_revoke_error) {
+        parts.push(`Portal revoke note: ${payload.portal_revoke_error}`);
+      }
+      if (payload?.deposit_id) {
+        parts.push(
+          "Security deposit remains Held and can be resolved later from this page.",
+        );
+      }
+      setSuccess(parts.join(" "));
+    } else {
+      setSuccess("Termination request rejected — lease continues.");
     }
-
-    setSuccess(
-      action === "approve"
-        ? "Termination request approved — lease terminated early."
-        : "Termination request rejected — lease continues.",
-    );
     router.refresh();
   }
 
@@ -292,6 +299,8 @@ export default function LeaseDetailView({
     const payload = (await response.json().catch(() => null)) as {
       error?: string;
       deposit_id?: string | null;
+      portal_revoked?: boolean;
+      portal_revoke_error?: string;
     } | null;
 
     if (!response.ok) {
@@ -303,15 +312,18 @@ export default function LeaseDetailView({
     setTerminating(false);
     setShowTerminate(false);
 
-    if (payload?.deposit_id) {
-      router.push(
-        `/dashboard/real-estate/leases/${detail.tenantId}/${detail.leaseId}?resolveDeposit=1`,
-      );
-      router.refresh();
-      return;
+    const parts = ["Lease terminated early."];
+    if (payload?.portal_revoked) {
+      parts.push("Portal access revoked.");
+    } else if (payload?.portal_revoke_error) {
+      parts.push(`Portal revoke note: ${payload.portal_revoke_error}`);
     }
-
-    setSuccess("Lease terminated early.");
+    if (payload?.deposit_id) {
+      parts.push(
+        "Security deposit remains Held and can be resolved later from this page.",
+      );
+    }
+    setSuccess(parts.join(" "));
     router.refresh();
   }
 
@@ -663,6 +675,11 @@ export default function LeaseDetailView({
                   onChange={(event) => setTerminationReason(event.target.value)}
                   className={textareaClassName}
                 />
+                <p className="text-xs text-red-800">
+                  Portal access is revoked automatically when this is the
+                  tenant&apos;s last active lease. Security deposit can be
+                  resolved later if still Held.
+                </p>
                 <div className="flex gap-2">
                   <button
                     type="button"

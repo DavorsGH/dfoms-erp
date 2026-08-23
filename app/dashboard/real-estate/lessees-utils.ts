@@ -1,6 +1,9 @@
 import type { InspectionListRow } from "./inspections-utils";
 import type { MaintenanceListRow } from "./maintenance-utils";
 import type { RentLedgerListRow } from "./rent-ledger-utils";
+import type { LesseePortalAccessState } from "@/utils/lessee-portal-access";
+
+export type { LesseePortalAccessState } from "@/utils/lessee-portal-access";
 
 export type LesseeStatus = "active" | "former";
 
@@ -56,6 +59,10 @@ export type LesseeDetail = {
   propertyHeroPhotoUrl: string | null;
   propertyHeroPropertyId: string | null;
   propertyHeroPropertyName: string | null;
+  /** Linked Auth user for Tenant Portal (null when not invited / revoked). */
+  authUserId: string | null;
+  portalAccessState: LesseePortalAccessState;
+  pendingInviteExpiresAt: string | null;
   activeLease: LesseeActiveLeaseSummary | null;
   leases: LesseeActiveLeaseSummary[];
   deposits: LesseeDepositSummary[];

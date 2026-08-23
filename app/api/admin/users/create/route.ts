@@ -4,7 +4,6 @@ import {
   buildUserAccountPayload,
   ensureClientAvailable,
   ensureEmployeeAvailable,
-  syncSupervisorSites,
   validationErrorMessage,
 } from "@/utils/admin-user-role";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -13,7 +12,16 @@ import {
   validatePasswordLength,
 } from "@/utils/password-policy";
 import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
-import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
+import {
+  crossPersonaErrorMessage,
+  findCrossPersonaConflictForEmail,
+} from "@/lib/auth/cross-persona-guard";
+import {
+  assignStaffMembership,
+  findAuthUserIdByEmail,
+  findStaffAccountByEmail,
+  REUSED_ACCOUNT_LOGIN_HINT,
+} from "@/utils/email-reuse";
 
 type CreateUserBody = {
   employee_id?: string | null;
@@ -42,17 +50,14 @@ export async function POST(request: Request) {
   const { email, password, role, employee_id, client_id, supervisor_site_codes } =
     body;
 
-  if (!email || !password || !role) {
+  if (!email || !role) {
     return NextResponse.json(
-      { error: "email, password, and role are required" },
+      { error: "email and role are required" },
       { status: 400 },
     );
   }
 
-  const lengthError = validatePasswordLength(password);
-  if (lengthError) {
-    return NextResponse.json({ error: lengthError }, { status: 400 });
-  }
+  const normalizedEmail = email.trim().toLowerCase();
 
   const built = buildUserAccountPayload({
     tenant_id: tenantId,
@@ -70,6 +75,17 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
+
+  const crossPersona = await findCrossPersonaConflictForEmail(
+    admin,
+    normalizedEmail,
+  );
+  if (crossPersona) {
+    return NextResponse.json(
+      { error: crossPersonaErrorMessage(crossPersona) },
+      { status: 409 },
+    );
+  }
 
   if (built.payload.employee_id) {
     const employeeError = await ensureEmployeeAvailable(
@@ -93,51 +109,92 @@ export async function POST(request: Request) {
     }
   }
 
+  const existingAuthUserId = await findAuthUserIdByEmail(admin, normalizedEmail);
+  const existingStaff = existingAuthUserId
+    ? await findStaffAccountByEmail(admin, normalizedEmail)
+    : null;
+
+  if (existingAuthUserId) {
+    if (existingStaff?.is_active) {
+      return NextResponse.json(
+        {
+          error:
+            "This email is in use by an active account at another business.",
+        },
+        { status: 409 },
+      );
+    }
+
+    const assigned = await assignStaffMembership(admin, {
+      authUid: existingAuthUserId,
+      tenantId,
+      role: built.payload.role,
+      email: normalizedEmail,
+      employeeId: built.payload.employee_id,
+      clientId: built.payload.client_id,
+      supervisorSiteCodes: built.supervisor_site_codes,
+    });
+
+    if (!assigned.ok) {
+      return NextResponse.json({ error: assigned.error }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      auth_uid: existingAuthUserId,
+      reusedExistingAccount: true,
+      message: REUSED_ACCOUNT_LOGIN_HINT,
+    });
+  }
+
+  if (!password) {
+    return NextResponse.json(
+      { error: "password is required for new accounts" },
+      { status: 400 },
+    );
+  }
+
+  const lengthError = validatePasswordLength(password);
+  if (lengthError) {
+    return NextResponse.json({ error: lengthError }, { status: 400 });
+  }
+
   const { data: authData, error: authError } =
     await admin.auth.admin.createUser({
-      email,
+      email: normalizedEmail,
       password,
       email_confirm: true,
     });
 
   if (authError || !authData.user) {
     return NextResponse.json(
-      { error: mapSupabasePasswordError(authError ?? { message: "Failed to create auth user" }) },
+      {
+        error: mapSupabasePasswordError(
+          authError ?? { message: "Failed to create auth user" },
+        ),
+      },
       { status: 400 },
     );
   }
 
-  const { error: insertError } = await admin.from("user_accounts").insert({
-    auth_uid: authData.user.id,
-    employee_id: built.payload.employee_id,
-    client_id: built.payload.client_id,
+  const assigned = await assignStaffMembership(admin, {
+    authUid: authData.user.id,
+    tenantId,
     role: built.payload.role,
-    email,
-    is_active: true,
-    tenant_id: built.payload.tenant_id,
+    email: normalizedEmail,
+    employeeId: built.payload.employee_id,
+    clientId: built.payload.client_id,
+    supervisorSiteCodes: built.supervisor_site_codes,
   });
 
-  if (insertError) {
+  if (!assigned.ok) {
     await admin.auth.admin.deleteUser(authData.user.id);
-    return NextResponse.json({ error: insertError.message }, { status: 400 });
-  }
-
-  const siteSyncError = await syncSupervisorSites(
-    admin,
-    authData.user.id,
-    built.payload.role,
-    built.supervisor_site_codes,
-    tenantId,
-  );
-
-  if (siteSyncError) {
-    await admin.from("user_accounts").delete().eq("auth_uid", authData.user.id);
-    await admin.auth.admin.deleteUser(authData.user.id);
-    return NextResponse.json({ error: siteSyncError }, { status: 400 });
+    return NextResponse.json({ error: assigned.error }, { status: 400 });
   }
 
   await recordPasswordUpdatedAt(authData.user.id);
-  await syncAuthUserPortalMetadata(authData.user.id, "staff");
 
-  return NextResponse.json({ auth_uid: authData.user.id });
+  return NextResponse.json({
+    auth_uid: authData.user.id,
+    reusedExistingAccount: false,
+  });
 }

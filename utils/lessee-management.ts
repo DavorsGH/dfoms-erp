@@ -15,6 +15,8 @@ import {
   type LesseeListRow,
   type LesseeStatus,
 } from "@/app/dashboard/real-estate/lessees-utils";
+import { deriveLesseePortalAccessState } from "@/utils/lessee-portal-access";
+import { fetchPendingLesseeInviteExpiresAt } from "@/utils/lessee-portal-invite";
 
 export type {
   LesseeDetail,
@@ -31,6 +33,7 @@ type LesseeRow = {
   status: string;
   private_notes: string | null;
   photo_url?: string | null;
+  auth_user_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -127,7 +130,7 @@ export async function fetchLesseeDetail(
   const { data: lessee, error: lesseeError } = await admin
     .from("lessees")
     .select(
-      "tenant_id, lessee_id, full_name, email, phone, status, private_notes, photo_url, created_at, updated_at",
+      "tenant_id, lessee_id, full_name, email, phone, status, private_notes, photo_url, auth_user_id, created_at, updated_at",
     )
     .eq("tenant_id", landlord.tenantId)
     .eq("lessee_id", trimmedLesseeId)
@@ -300,6 +303,20 @@ export async function fetchLesseeDetail(
     }
   }
 
+  const authUserId =
+    typeof lesseeRow.auth_user_id === "string" && lesseeRow.auth_user_id.trim()
+      ? lesseeRow.auth_user_id.trim()
+      : null;
+  const pendingInviteExpiresAt = await fetchPendingLesseeInviteExpiresAt(admin, {
+    tenantId: landlord.tenantId,
+    lesseeId: trimmedLesseeId,
+  });
+  const portalAccessState = deriveLesseePortalAccessState({
+    authUserId,
+    status: lesseeRow.status,
+    pendingInviteExpiresAt,
+  });
+
   return {
     detail: {
       lesseeId: lesseeRow.lessee_id,
@@ -316,6 +333,9 @@ export async function fetchLesseeDetail(
       propertyHeroPhotoUrl,
       propertyHeroPropertyId,
       propertyHeroPropertyName,
+      authUserId,
+      portalAccessState,
+      pendingInviteExpiresAt,
       activeLease,
       leases: leaseSummaries,
       deposits,

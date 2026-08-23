@@ -19,7 +19,12 @@ export default function StaffAcceptInviteClient() {
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(
+    "Account created. Redirecting to login…",
+  );
   const [token, setToken] = useState<string | null>(null);
+  const [existingAccount, setExistingAccount] = useState(false);
+  const [reuseHint, setReuseHint] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -30,7 +35,30 @@ export default function StaffAcceptInviteClient() {
       return;
     }
     setToken(inviteToken);
-    setReady(true);
+
+    let cancelled = false;
+    (async () => {
+      const response = await fetch(
+        `/api/staff/accept-invite?token=${encodeURIComponent(inviteToken)}`,
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        existingAccount?: boolean;
+        message?: string | null;
+      } | null;
+      if (cancelled) return;
+      if (!response.ok) {
+        setError(payload?.error ?? "This invite link is invalid.");
+        return;
+      }
+      setExistingAccount(Boolean(payload?.existingAccount));
+      setReuseHint(payload?.message ?? null);
+      setReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -42,20 +70,27 @@ export default function StaffAcceptInviteClient() {
       return;
     }
 
-    const validationError = validatePasswordClient(password, confirmPassword);
-    if (validationError) {
-      setError(validationError);
-      return;
+    if (!existingAccount) {
+      const validationError = validatePasswordClient(password, confirmPassword);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
 
     setLoading(true);
     const response = await fetch("/api/staff/accept-invite", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, password }),
+      body: JSON.stringify({
+        token,
+        password: existingAccount ? "" : password,
+      }),
     });
     const payload = (await response.json().catch(() => null)) as {
       error?: string;
+      reusedExistingAccount?: boolean;
+      message?: string | null;
     } | null;
     setLoading(false);
 
@@ -64,10 +99,15 @@ export default function StaffAcceptInviteClient() {
       return;
     }
 
+    setSuccessMessage(
+      payload?.reusedExistingAccount && payload.message
+        ? `${payload.message} Redirecting to login…`
+        : "Account created. Redirecting to login…",
+    );
     setSuccess(true);
     setTimeout(() => {
       router.push("/login");
-    }, 2000);
+    }, 2500);
   }
 
   return (
@@ -87,13 +127,13 @@ export default function StaffAcceptInviteClient() {
           Accept Staff Invite
         </h1>
         <p className="mb-6 text-center text-sm text-zinc-600">
-          Set a password to access Davors Facilities ERP.
+          {existingAccount
+            ? "Join this workspace with your existing account."
+            : "Set a password to access Davors Facilities ERP."}
         </p>
 
         {success ? (
-          <p className="text-center text-sm text-zinc-700">
-            Account created. Redirecting to login…
-          </p>
+          <p className="text-center text-sm text-zinc-700">{successMessage}</p>
         ) : error && !ready ? (
           <div className="space-y-4 text-center">
             <p className="text-sm text-red-600">{error}</p>
@@ -108,48 +148,61 @@ export default function StaffAcceptInviteClient() {
           <p className="text-center text-sm text-zinc-600">Checking invite link…</p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="password"
-                className="mb-1 block text-sm font-medium text-zinc-700"
-              >
-                Password
-              </label>
-              <PasswordInput
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={PASSWORD_MIN_LENGTH}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-                placeholder="••••••••"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="confirmPassword"
-                className="mb-1 block text-sm font-medium text-zinc-700"
-              >
-                Confirm Password
-              </label>
-              <PasswordInput
-                id="confirmPassword"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                minLength={PASSWORD_MIN_LENGTH}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-                placeholder="••••••••"
-              />
-            </div>
-            <p className="text-xs text-zinc-500">{PASSWORD_POLICY_HINT}</p>
+            {existingAccount ? (
+              <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                {reuseHint ??
+                  "You already have an account. Continue to join this workspace, then sign in with your existing password."}
+              </p>
+            ) : (
+              <>
+                <div>
+                  <label
+                    htmlFor="password"
+                    className="mb-1 block text-sm font-medium text-zinc-700"
+                  >
+                    Password
+                  </label>
+                  <PasswordInput
+                    id="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={PASSWORD_MIN_LENGTH}
+                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="confirmPassword"
+                    className="mb-1 block text-sm font-medium text-zinc-700"
+                  >
+                    Confirm Password
+                  </label>
+                  <PasswordInput
+                    id="confirmPassword"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={PASSWORD_MIN_LENGTH}
+                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+                    placeholder="••••••••"
+                  />
+                </div>
+                <p className="text-xs text-zinc-500">{PASSWORD_POLICY_HINT}</p>
+              </>
+            )}
             {error ? <p className="text-sm text-red-600">{error}</p> : null}
             <button
               type="submit"
               disabled={loading}
               className="w-full rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading ? "Creating account…" : "Create account"}
+              {loading
+                ? "Working…"
+                : existingAccount
+                  ? "Join workspace"
+                  : "Create account"}
             </button>
 
             <OAuthProviderButtons

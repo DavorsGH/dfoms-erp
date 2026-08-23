@@ -8,7 +8,7 @@ import {
 } from "@/lib/auth/cross-persona-guard";
 import { normalizeOAuthEmail } from "@/lib/auth/oauth-persona-resolve";
 import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
-import { syncSupervisorSites } from "@/utils/admin-user-role";
+import { assignStaffMembership } from "@/utils/email-reuse";
 import { hashLandlordInviteToken } from "@/utils/landlord-portal-invite";
 import { hashLesseeInviteToken } from "@/utils/lessee-portal-invite";
 import {
@@ -17,7 +17,7 @@ import {
 } from "@/utils/staff-portal-invite";
 
 type AcceptResult =
-  | { ok: true }
+  | { ok: true; reusedExistingAccount?: boolean }
   | { ok: false; error: string; status: number };
 
 function inviteEmailMismatch(inviteEmail: string, oauthEmail: string): boolean {
@@ -78,14 +78,15 @@ export async function acceptStaffInviteWithOAuth(
     };
   }
 
-  const { data: existingStaffInTenant } = await admin
+  const { data: existingActiveInTenant } = await admin
     .from("user_accounts")
     .select("auth_uid")
     .eq("tenant_id", invite.tenant_id)
     .ilike("email", inviteEmail)
+    .eq("is_active", true)
     .maybeSingle();
 
-  if (existingStaffInTenant) {
+  if (existingActiveInTenant) {
     return {
       ok: false,
       error:
@@ -108,31 +109,18 @@ export async function acceptStaffInviteWithOAuth(
 
   const nowIso = new Date().toISOString();
 
-  const { error: insertError } = await admin.from("user_accounts").insert({
-    auth_uid: authUserId,
-    tenant_id: invite.tenant_id,
+  const assigned = await assignStaffMembership(admin, {
+    authUid: authUserId,
+    tenantId: invite.tenant_id,
     role,
-    employee_id: invite.employee_id,
-    client_id: invite.client_id,
     email: inviteEmail,
-    is_active: true,
+    employeeId: invite.employee_id,
+    clientId: invite.client_id,
+    supervisorSiteCodes,
   });
 
-  if (insertError) {
-    return { ok: false, error: insertError.message, status: 400 };
-  }
-
-  const siteSyncError = await syncSupervisorSites(
-    admin,
-    authUserId,
-    role,
-    supervisorSiteCodes,
-    invite.tenant_id,
-  );
-
-  if (siteSyncError) {
-    await admin.from("user_accounts").delete().eq("auth_uid", authUserId);
-    return { ok: false, error: siteSyncError, status: 400 };
+  if (!assigned.ok) {
+    return { ok: false, error: assigned.error, status: 400 };
   }
 
   const { error: markUsedError } = await admin
@@ -144,13 +132,15 @@ export async function acceptStaffInviteWithOAuth(
   if (markUsedError) {
     return {
       ok: false,
-      error: `Account created, but invite could not be marked used: ${markUsedError.message}`,
+      error: `Account linked, but invite could not be marked used: ${markUsedError.message}`,
       status: 400,
     };
   }
 
-  await syncAuthUserPortalMetadata(authUserId, "staff");
-  return { ok: true };
+  return {
+    ok: true,
+    reusedExistingAccount: assigned.mode === "updated",
+  };
 }
 
 export async function acceptLesseeInviteWithOAuth(
@@ -245,7 +235,11 @@ export async function acceptLesseeInviteWithOAuth(
 
   const { error: linkError } = await admin
     .from("lessees")
-    .update({ auth_user_id: authUserId, updated_at: nowIso })
+    .update({
+      auth_user_id: authUserId,
+      status: "active",
+      updated_at: nowIso,
+    })
     .eq("tenant_id", invite.tenant_id)
     .eq("lessee_id", invite.lessee_id)
     .is("auth_user_id", null);

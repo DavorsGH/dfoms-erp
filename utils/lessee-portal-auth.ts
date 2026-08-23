@@ -118,15 +118,16 @@ export const getPortalLesseeSession = cache(
   const admin = createAdminClient();
   const { data: lessee, error } = await admin
     .from("lessees")
-    .select("tenant_id, lessee_id, full_name, email, auth_user_id, photo_url")
+    .select("tenant_id, lessee_id, full_name, email, auth_user_id, photo_url, status")
     .eq("auth_user_id", user.id)
+    .neq("status", "former")
     .maybeSingle();
 
   if (error || !lessee) {
     return null;
   }
 
-  // Deactivated portal users keep lessees.auth_user_id; Auth ban blocks access.
+  // Ban still blocks access for legacy deactivate-without-revoke rows.
   const { data: authUserData } = await admin.auth.admin.getUserById(user.id);
   const bannedUntil =
     (authUserData?.user as { banned_until?: string | null } | undefined)

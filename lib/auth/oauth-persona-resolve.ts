@@ -37,6 +37,7 @@ export async function findLesseePersonaByAuthUid(
     .from("lessees")
     .select("tenant_id, lessee_id")
     .eq("auth_user_id", authUid)
+    .neq("status", "former")
     .maybeSingle();
 
   if (!data) {

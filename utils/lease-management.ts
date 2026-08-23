@@ -567,7 +567,8 @@ export async function fetchLeaseDetail(
 /**
  * Shared early-termination effect used by staff Terminate Lease Early and by
  * approving a tenant termination request. Frees the unit; deposit is returned
- * as deposit_id for the existing resolve-deposit UI (not auto-resolved).
+ * as deposit_id for optional resolve-deposit UI (not required to complete).
+ * Auto-revokes Tenant Portal when this was the lessee's last active lease.
  */
 export async function terminateLeaseEarly(
   admin: SupabaseClient,
@@ -578,7 +579,12 @@ export async function terminateLeaseEarly(
     /** When true, stamp termination_request_status = approved (tenant request path). */
     markRequestApproved?: boolean;
   },
-): Promise<{ depositId: string | null }> {
+): Promise<{
+  depositId: string | null;
+  portalRevoked: boolean;
+  portalEmailSent: boolean;
+  portalRevokeError?: string;
+}> {
   const landlord = await assertRealEstateLandlordTenant(admin, options.tenantId);
   if (!landlord.ok) {
     throw new Error(landlord.error);
@@ -595,7 +601,7 @@ export async function terminateLeaseEarly(
 
   const { data: lease, error: leaseError } = await admin
     .from("leases")
-    .select("lease_id, unit_id, status")
+    .select("lease_id, unit_id, lessee_id, status")
     .eq("tenant_id", landlord.tenantId)
     .eq("lease_id", leaseId)
     .maybeSingle();
@@ -653,5 +659,19 @@ export async function terminateLeaseEarly(
     .limit(1)
     .maybeSingle();
 
-  return { depositId: deposit?.deposit_id ?? null };
+  const { maybeRevokeLesseePortalIfNoActiveLeases } = await import(
+    "@/utils/lessee-portal-auto-revoke"
+  );
+  const portal = await maybeRevokeLesseePortalIfNoActiveLeases(admin, {
+    tenantId: landlord.tenantId,
+    lesseeId: lease.lessee_id,
+    endedLeaseId: leaseId,
+  });
+
+  return {
+    depositId: deposit?.deposit_id ?? null,
+    portalRevoked: portal.revoked,
+    portalEmailSent: portal.emailSent,
+    portalRevokeError: portal.error,
+  };
 }

@@ -1031,6 +1031,9 @@ export type LandlordPortalLesseeDetail = {
   email: string | null;
   status: string | null;
   hasPortalAccount: boolean;
+  authUserId: string | null;
+  portalAccessState: import("@/utils/lessee-portal-access").LesseePortalAccessState;
+  pendingInviteExpiresAt: string | null;
 };
 
 export type LandlordPortalLeaseBrowseRow = LandlordPortalLeaseRow;
@@ -1082,7 +1085,8 @@ export type LandlordPortalLesseeAccountPortalStatus =
   | "active"
   | "disabled"
   | "pending_invite"
-  | "no_account";
+  | "no_account"
+  | "former";
 
 export type LandlordPortalLesseeAccountRow = {
   lesseeId: string;
@@ -1719,7 +1723,25 @@ export async function fetchLandlordPortalLesseeDetail(
   }
 
   const authUserId =
-    typeof data.auth_user_id === "string" ? data.auth_user_id.trim() : "";
+    typeof data.auth_user_id === "string" && data.auth_user_id.trim()
+      ? data.auth_user_id.trim()
+      : null;
+
+  const { fetchPendingLesseeInviteExpiresAt } = await import(
+    "@/utils/lessee-portal-invite"
+  );
+  const { deriveLesseePortalAccessState } = await import(
+    "@/utils/lessee-portal-access"
+  );
+  const pendingInviteExpiresAt = await fetchPendingLesseeInviteExpiresAt(admin, {
+    tenantId: session.tenantId,
+    lesseeId: trimmedId,
+  });
+  const portalAccessState = deriveLesseePortalAccessState({
+    authUserId,
+    status: data.status,
+    pendingInviteExpiresAt,
+  });
 
   return {
     detail: {
@@ -1728,7 +1750,10 @@ export async function fetchLandlordPortalLesseeDetail(
       phone: data.phone,
       email: data.email,
       status: data.status,
-      hasPortalAccount: authUserId.length > 0,
+      hasPortalAccount: Boolean(authUserId),
+      authUserId,
+      portalAccessState,
+      pendingInviteExpiresAt,
     },
     error: null,
   };
@@ -2348,7 +2373,7 @@ export async function fetchLandlordPortalLesseeAccounts(
   ] = await Promise.all([
     admin
       .from("lessees")
-      .select("lessee_id, full_name, email, phone, auth_user_id")
+      .select("lessee_id, full_name, email, phone, auth_user_id, status")
       .eq("tenant_id", tenantId)
       .order("full_name", { ascending: true }),
     admin
@@ -2410,6 +2435,7 @@ export async function fetchLandlordPortalLesseeAccounts(
       email: string | null;
       phone: string | null;
       auth_user_id: string | null;
+      status: string | null;
     }> | null) ?? [];
 
   const banChecks = await Promise.all(
@@ -2451,6 +2477,8 @@ export async function fetchLandlordPortalLesseeAccounts(
       portalStatus = "disabled";
     } else if (hasAuth) {
       portalStatus = "active";
+    } else if (lessee.status === "former") {
+      portalStatus = "former";
     } else if (inviteExpiresAt) {
       portalStatus = "pending_invite";
     }
@@ -2463,7 +2491,12 @@ export async function fetchLandlordPortalLesseeAccounts(
       portalStatus,
       inviteExpiresAt,
       leaseId: leaseIdByLessee.get(lessee.lessee_id) ?? null,
-      canResendInvite: !hasAuth && Boolean(email),
+      canResendInvite:
+        !hasAuth &&
+        Boolean(email) &&
+        (portalStatus === "no_account" ||
+          portalStatus === "pending_invite" ||
+          portalStatus === "former"),
       canDeactivate:
         canMutatePortalAccounts && hasAuth && portalStatus === "active",
       canReactivate:

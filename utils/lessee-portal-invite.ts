@@ -2,7 +2,15 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { sendResendEmail } from "@/utils/resend-email";
+import {
+  crossPersonaErrorMessage,
+  findCrossPersonaConflictForEmail,
+} from "@/lib/auth/cross-persona-guard";
+import {
+  isResendConfigured,
+  resendNotConfiguredMessage,
+  sendResendEmail,
+} from "@/utils/resend-email";
 
 export const LESSEE_INVITE_EXPIRY_DAYS = 7;
 
@@ -38,7 +46,7 @@ export async function createAndSendLesseePortalInvite(
 > {
   const { data: lessee, error: lesseeError } = await admin
     .from("lessees")
-    .select("lessee_id, auth_user_id, full_name, email")
+    .select("lessee_id, auth_user_id, full_name, email, status")
     .eq("tenant_id", args.tenantId)
     .eq("lessee_id", args.lesseeId)
     .maybeSingle();
@@ -65,6 +73,19 @@ export async function createAndSendLesseePortalInvite(
       status: "skipped",
       reason: "Lessee has no email address.",
     };
+  }
+
+  const crossPersona = await findCrossPersonaConflictForEmail(admin, email, {
+    targetPersona: "lessee",
+    excludeLesseeId: args.lesseeId,
+  });
+  if (crossPersona) {
+    return { ok: false, error: crossPersonaErrorMessage(crossPersona) };
+  }
+
+  // Fail before writing an invite row when email cannot be sent.
+  if (!isResendConfigured()) {
+    return { ok: false, error: resendNotConfiguredMessage() };
   }
 
   const rawToken = generateLesseeInviteRawToken();
@@ -115,10 +136,44 @@ export async function createAndSendLesseePortalInvite(
   });
 
   if (!emailResult.ok) {
-    return { ok: false, error: emailResult.error };
+    // Roll back so UI does not show Invited after a failed send.
+    await admin
+      .from("lessee_portal_invites")
+      .delete()
+      .eq("tenant_id", args.tenantId)
+      .eq("lessee_id", args.lesseeId)
+      .eq("token_hash", tokenHash);
+
+    const detail = emailResult.error.trim() || "Email provider rejected the send.";
+    return {
+      ok: false,
+      error: `Unable to send portal invite email: ${detail}`,
+    };
   }
 
   return { ok: true, status: "sent" };
+}
+
+/**
+ * Latest unused, unexpired invite expiry for a lessee (if any).
+ */
+export async function fetchPendingLesseeInviteExpiresAt(
+  admin: SupabaseClient,
+  args: { tenantId: string; lesseeId: string },
+): Promise<string | null> {
+  const nowIso = new Date().toISOString();
+  const { data } = await admin
+    .from("lessee_portal_invites")
+    .select("expires_at")
+    .eq("tenant_id", args.tenantId)
+    .eq("lessee_id", args.lesseeId)
+    .is("used_at", null)
+    .gt("expires_at", nowIso)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return typeof data?.expires_at === "string" ? data.expires_at : null;
 }
 
 function escapeHtml(value: string): string {

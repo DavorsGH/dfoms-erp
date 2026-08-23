@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { requirePlatformOnlyLandlordSession } from "@/utils/landlord-portal-auth";
-import { createAndSendLesseePortalInvite } from "@/utils/lessee-portal-invite";
+import { revokeLesseePortalAccess } from "@/utils/email-reuse";
 
 export const runtime = "nodejs";
 
-type ResendBody = {
+type Body = {
   lessee_id?: string;
 };
 
 /**
- * platform_only: resend (or send) a lessee tenant-portal invite.
- * davors_managed: 403.
+ * platform_only: clear lessees.auth_user_id + mark status former.
+ * Auth user is kept (not banned/deleted) so the email can be reused sequentially.
  */
 export async function POST(request: Request) {
   const auth = await requirePlatformOnlyLandlordSession();
@@ -18,9 +18,9 @@ export async function POST(request: Request) {
     return auth.response;
   }
 
-  let body: ResendBody;
+  let body: Body;
   try {
-    body = (await request.json()) as ResendBody;
+    body = (await request.json()) as Body;
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -31,21 +31,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "lessee_id is required" }, { status: 400 });
   }
 
-  const result = await createAndSendLesseePortalInvite(auth.admin, {
+  const result = await revokeLesseePortalAccess(auth.admin, {
     tenantId: auth.session.tenantId,
     lesseeId,
   });
-
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 400 });
-  }
-
-  if (result.status === "skipped") {
     return NextResponse.json(
-      { error: result.reason, skipped: true },
-      { status: 409 },
+      { error: result.error },
+      { status: result.status ?? 400 },
     );
   }
 
-  return NextResponse.json({ ok: true, status: "sent" });
+  return NextResponse.json({ success: true });
 }

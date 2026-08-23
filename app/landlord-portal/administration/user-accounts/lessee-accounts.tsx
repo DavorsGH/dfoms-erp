@@ -23,7 +23,7 @@ export type LandlordPortalLesseeAccountViewRow = {
   fullName: string;
   email: string | null;
   phone: string | null;
-  portalStatus: "active" | "disabled" | "pending_invite" | "no_account";
+  portalStatus: "active" | "disabled" | "pending_invite" | "no_account" | "former";
   inviteExpiresAt: string | null;
   leaseId: string | null;
   canResendInvite: boolean;
@@ -45,6 +45,7 @@ function formatPortalStatus(
   if (status === "active") return "Active";
   if (status === "disabled") return "Deactivated";
   if (status === "pending_invite") return "Pending invite";
+  if (status === "former") return "Former (revoked)";
   return "No portal account";
 }
 
@@ -60,7 +61,7 @@ function formatInviteExpiry(value: string | null): string {
 }
 
 function deactivateConfirmMessage(displayName: string) {
-  return `Deactivate portal access for ${displayName}? They will no longer be able to sign in. The tenant record and history are kept — you can reactivate later.`;
+  return `Revoke portal access for ${displayName}? They will no longer be able to sign in to this landlord's portal. The tenant record and history are kept. Their login email can later be invited by another landlord.`;
 }
 
 export default function LandlordPortalLesseeAccounts({
@@ -120,7 +121,7 @@ export default function LandlordPortalLesseeAccounts({
     setActionId(row.lesseeId);
 
     const response = await fetch(
-      "/api/landlord-portal/lessee-accounts/deactivate",
+      "/api/landlord-portal/lessee-accounts/revoke",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -133,12 +134,12 @@ export default function LandlordPortalLesseeAccounts({
     } | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Failed to deactivate portal access.");
+      setError(payload?.error ?? "Failed to revoke portal access.");
       setActionId(null);
       return;
     }
 
-    setSuccess(`Portal access deactivated for ${row.fullName}.`);
+    setSuccess(`Portal access revoked for ${row.fullName}.`);
     setActionId(null);
     setResettingId(null);
     router.refresh();
@@ -303,7 +304,7 @@ export default function LandlordPortalLesseeAccounts({
                           >
                             {actionId === row.lesseeId
                               ? "Working…"
-                              : "Deactivate"}
+                              : "Revoke portal access"}
                           </button>
                         ) : null}
 

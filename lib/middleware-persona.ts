@@ -74,6 +74,7 @@ export async function resolveMiddlewarePersona(options: {
       .from("lessees")
       .select("lessee_id")
       .eq("auth_user_id", options.user.id)
+      .neq("status", "former")
       .maybeSingle(),
     options.supabase
       .from("landlords")

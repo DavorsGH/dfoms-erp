@@ -14,9 +14,13 @@ import {
   crossPersonaErrorMessage,
   findCrossPersonaConflictForEmail,
 } from "@/lib/auth/cross-persona-guard";
-import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
 import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
-import { syncSupervisorSites } from "@/utils/admin-user-role";
+import {
+  assignStaffMembership,
+  findAuthUserIdByEmail,
+  findStaffAccountByEmail,
+  REUSED_ACCOUNT_LOGIN_HINT,
+} from "@/utils/email-reuse";
 import {
   mapSupabasePasswordError,
   validatePasswordLength,
@@ -306,16 +310,38 @@ export async function loadStaffInviteSupervisorSites(
   return (data ?? []).map((row) => row.site_code);
 }
 
+export type StaffInviteAcceptResult =
+  | { ok: true; reusedExistingAccount: boolean }
+  | { ok: false; error: string; status: number };
+
+/**
+ * Peek whether this invite email already has Auth credentials (sequential reuse).
+ */
+export async function staffInviteHasExistingAuthAccount(
+  admin: SupabaseClient,
+  rawToken: string,
+): Promise<
+  | { ok: true; existingAccount: boolean; email: string }
+  | { ok: false; error: string; status: number }
+> {
+  const inviteResult = await loadStaffInviteByRawToken(admin, rawToken);
+  if (!inviteResult.ok) {
+    return {
+      ok: false,
+      error: inviteResult.error,
+      status: inviteResult.status,
+    };
+  }
+  const email = String(inviteResult.invite.email).trim().toLowerCase();
+  const authUserId = await findAuthUserIdByEmail(admin, email);
+  return { ok: true, existingAccount: Boolean(authUserId), email };
+}
+
 export async function acceptStaffPortalInviteWithPassword(
   admin: SupabaseClient,
   rawToken: string,
   password: string,
-): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
-  const lengthError = validatePasswordLength(password);
-  if (lengthError) {
-    return { ok: false, error: lengthError, status: 400 };
-  }
-
+): Promise<StaffInviteAcceptResult> {
   const inviteResult = await loadStaffInviteByRawToken(admin, rawToken);
   if (!inviteResult.ok) {
     return {
@@ -348,14 +374,15 @@ export async function acceptStaffPortalInviteWithPassword(
     };
   }
 
-  const { data: existingStaffInTenant } = await admin
+  const { data: existingActiveInTenant } = await admin
     .from("user_accounts")
     .select("auth_uid")
     .eq("tenant_id", invite.tenant_id)
     .ilike("email", email)
+    .eq("is_active", true)
     .maybeSingle();
 
-  if (existingStaffInTenant) {
+  if (existingActiveInTenant) {
     return {
       ok: false,
       error:
@@ -374,6 +401,57 @@ export async function acceptStaffPortalInviteWithPassword(
     const message =
       error instanceof Error ? error.message : "Failed to load invite details.";
     return { ok: false, error: message, status: 400 };
+  }
+
+  const existingAuthUserId = await findAuthUserIdByEmail(admin, email);
+  const existingStaff = existingAuthUserId
+    ? await findStaffAccountByEmail(admin, email)
+    : null;
+
+  if (existingAuthUserId) {
+    if (existingStaff?.is_active) {
+      return {
+        ok: false,
+        error:
+          "This email is in use by an active account at another business.",
+        status: 409,
+      };
+    }
+
+    const assigned = await assignStaffMembership(admin, {
+      authUid: existingAuthUserId,
+      tenantId: invite.tenant_id,
+      role,
+      email,
+      employeeId: invite.employee_id,
+      clientId: invite.client_id,
+      supervisorSiteCodes,
+    });
+
+    if (!assigned.ok) {
+      return { ok: false, error: assigned.error, status: 400 };
+    }
+
+    const { error: markUsedError } = await admin
+      .from("staff_portal_invites")
+      .update({ used_at: nowIso })
+      .eq("invite_id", invite.invite_id)
+      .is("used_at", null);
+
+    if (markUsedError) {
+      return {
+        ok: false,
+        error: `Account linked, but invite could not be marked used: ${markUsedError.message}`,
+        status: 400,
+      };
+    }
+
+    return { ok: true, reusedExistingAccount: true };
+  }
+
+  const lengthError = validatePasswordLength(password);
+  if (lengthError) {
+    return { ok: false, error: lengthError, status: 400 };
   }
 
   const { data: created, error: createError } =
@@ -414,33 +492,19 @@ export async function acceptStaffPortalInviteWithPassword(
   const authUserId = created.user.id;
   await recordPasswordUpdatedAt(authUserId);
 
-  const { error: insertError } = await admin.from("user_accounts").insert({
-    auth_uid: authUserId,
-    tenant_id: invite.tenant_id,
+  const assigned = await assignStaffMembership(admin, {
+    authUid: authUserId,
+    tenantId: invite.tenant_id,
     role,
-    employee_id: invite.employee_id,
-    client_id: invite.client_id,
     email,
-    is_active: true,
+    employeeId: invite.employee_id,
+    clientId: invite.client_id,
+    supervisorSiteCodes,
   });
 
-  if (insertError) {
+  if (!assigned.ok) {
     await admin.auth.admin.deleteUser(authUserId);
-    return { ok: false, error: insertError.message, status: 400 };
-  }
-
-  const siteSyncError = await syncSupervisorSites(
-    admin,
-    authUserId,
-    role,
-    supervisorSiteCodes,
-    invite.tenant_id,
-  );
-
-  if (siteSyncError) {
-    await admin.from("user_accounts").delete().eq("auth_uid", authUserId);
-    await admin.auth.admin.deleteUser(authUserId);
-    return { ok: false, error: siteSyncError, status: 400 };
+    return { ok: false, error: assigned.error, status: 400 };
   }
 
   const { error: markUsedError } = await admin
@@ -457,7 +521,7 @@ export async function acceptStaffPortalInviteWithPassword(
     };
   }
 
-  await syncAuthUserPortalMetadata(authUserId, "staff");
-
-  return { ok: true };
+  return { ok: true, reusedExistingAccount: false };
 }
+
+export { REUSED_ACCOUNT_LOGIN_HINT };

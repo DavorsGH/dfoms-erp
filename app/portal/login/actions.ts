@@ -88,6 +88,7 @@ export async function portalLoginWithPassword(
     .from("lessees")
     .select("lessee_id, tenant_id")
     .eq("auth_user_id", signInData.user.id)
+    .neq("status", "former")
     .maybeSingle();
 
   if (lesseeError) {

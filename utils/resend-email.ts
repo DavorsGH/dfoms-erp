@@ -20,6 +20,15 @@ function attachmentContentBase64(
   return Buffer.from(content).toString("base64");
 }
 
+/** True when RESEND_API_KEY is present (non-empty after trim). */
+export function isResendConfigured(): boolean {
+  return Boolean((process.env.RESEND_API_KEY ?? "").trim());
+}
+
+export function resendNotConfiguredMessage(): string {
+  return "Email sending is not configured (RESEND_API_KEY is missing). No email was sent.";
+}
+
 /**
  * Minimal Resend sender. Env: RESEND_API_KEY
  * From: Davors Facilities ERP <noreply@davorsfacilities.com>
@@ -34,7 +43,7 @@ export async function sendResendEmail(options: {
 }): Promise<SendEmailResult> {
   const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
   if (!apiKey) {
-    return { ok: false, error: "RESEND_API_KEY is not configured." };
+    return { ok: false, error: resendNotConfiguredMessage() };
   }
 
   const from =

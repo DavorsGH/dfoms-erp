@@ -57,6 +57,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       deposit_id: result.depositId,
+      portal_revoked: result.portalRevoked,
+      portal_email_sent: result.portalEmailSent,
+      portal_revoke_error: result.portalRevokeError ?? null,
     });
   } catch (error) {
     const message =

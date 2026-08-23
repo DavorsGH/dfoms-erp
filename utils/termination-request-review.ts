@@ -104,7 +104,14 @@ ${options.reason ? `<p>Reason on file: ${escapeHtml(options.reason)}</p>` : ""}
 }
 
 export type ReviewTerminationRequestResult =
-  | { ok: true; action: "approve" | "reject"; depositId?: string | null }
+  | {
+      ok: true;
+      action: "approve" | "reject";
+      depositId?: string | null;
+      portalRevoked?: boolean;
+      portalEmailSent?: boolean;
+      portalRevokeError?: string;
+    }
   | { ok: false; error: string; status: number };
 
 /**
@@ -227,6 +234,9 @@ export async function reviewTerminationRequest(
       ok: true,
       action: "approve",
       depositId: result.depositId,
+      portalRevoked: result.portalRevoked,
+      portalEmailSent: result.portalEmailSent,
+      portalRevokeError: result.portalRevokeError,
     };
   } catch (error) {
     return {

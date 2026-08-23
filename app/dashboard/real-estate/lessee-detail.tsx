@@ -43,6 +43,10 @@ import {
   type LesseeDetail,
   type LesseeStatus,
 } from "./lessees-utils";
+import {
+  formatLesseePortalAccessState,
+  type LesseePortalAccessState,
+} from "@/utils/lessee-portal-access";
 
 type LesseeDetailViewProps = {
   initialDetail: LesseeDetail;
@@ -55,6 +59,9 @@ const primaryButtonClassName =
 const secondaryButtonClassName =
   "rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+const dangerButtonClassName =
+  "rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
 const textareaClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
@@ -63,6 +70,10 @@ const sectionClassName =
 
 const sectionTitleClassName =
   "text-sm font-semibold uppercase tracking-wide text-[#0f2744]";
+
+function revokePortalConfirmMessage(displayName: string) {
+  return `Revoke portal access for ${displayName}? They will no longer be able to sign in to this landlord's portal. Their login email can later be invited by another landlord.`;
+}
 
 export default function LesseeDetailView({
   initialDetail,
@@ -82,6 +93,12 @@ export default function LesseeDetailView({
   const [privateNotes, setPrivateNotes] = useState(
     initialDetail.privateNotes ?? "",
   );
+  const [portalActionLoading, setPortalActionLoading] = useState(false);
+  const [portalAccessState, setPortalAccessState] =
+    useState<LesseePortalAccessState>(initialDetail.portalAccessState);
+  const [pendingInviteExpiresAt, setPendingInviteExpiresAt] = useState(
+    initialDetail.pendingInviteExpiresAt,
+  );
 
   useEffect(() => {
     setDetail(initialDetail);
@@ -90,6 +107,8 @@ export default function LesseeDetailView({
     setEmail(initialDetail.email ?? "");
     setStatus(initialDetail.status);
     setPrivateNotes(initialDetail.privateNotes ?? "");
+    setPortalAccessState(initialDetail.portalAccessState);
+    setPendingInviteExpiresAt(initialDetail.pendingInviteExpiresAt);
     setError(fetchError);
     setEditing(false);
   }, [initialDetail, fetchError]);
@@ -129,10 +148,90 @@ export default function LesseeDetailView({
     router.refresh();
   }
 
+  async function handlePortalInvite() {
+    setPortalActionLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/admin/lessees/portal-invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: detail.tenantId,
+        lessee_id: detail.lesseeId,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      skipped?: boolean;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to send portal invite.");
+      setPortalActionLoading(false);
+      return;
+    }
+
+    setSuccess(
+      portalAccessState === "invited"
+        ? "Portal invite resent."
+        : "Portal invite sent.",
+    );
+    setPortalAccessState("invited");
+    setPortalActionLoading(false);
+    router.refresh();
+  }
+
+  async function handleRevokePortal() {
+    if (!window.confirm(revokePortalConfirmMessage(detail.fullName))) {
+      return;
+    }
+
+    setPortalActionLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/admin/lessees/revoke-portal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: detail.tenantId,
+        lessee_id: detail.lesseeId,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to revoke portal access.");
+      setPortalActionLoading(false);
+      return;
+    }
+
+    setSuccess("Portal access revoked.");
+    setPortalAccessState("former");
+    setPendingInviteExpiresAt(null);
+    setStatus("former");
+    setPortalActionLoading(false);
+    router.refresh();
+  }
+
   const backHref = `/dashboard/real-estate/lessees?landlord=${encodeURIComponent(detail.tenantId)}`;
   const rentLedgerHref = `/dashboard/real-estate/rent-ledger?landlord=${encodeURIComponent(detail.tenantId)}`;
   const maintenanceHref = `/dashboard/real-estate/maintenance?landlord=${encodeURIComponent(detail.tenantId)}`;
   const inspectionsHref = `/dashboard/real-estate/inspections?landlord=${encodeURIComponent(detail.tenantId)}`;
+
+  const canSendInvite =
+    (portalAccessState === "not_invited" ||
+      portalAccessState === "former" ||
+      portalAccessState === "invited") &&
+    Boolean(detail.email?.trim());
+  const inviteButtonLabel =
+    portalAccessState === "invited" ? "Resend invite" : "Send portal invite";
+  const canRevokePortal = portalAccessState === "active";
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -453,6 +552,55 @@ export default function LesseeDetailView({
               </div>
             )}
           </div>
+        </div>
+      </section>
+
+      <section className={sectionClassName}>
+        <h3 className={sectionTitleClassName}>Portal Access</h3>
+        <dl className="mt-3 grid gap-3 sm:grid-cols-2 text-sm">
+          <div>
+            <dt className="text-xs text-slate-500">Status</dt>
+            <dd className="font-medium text-[#0f2744]">
+              {formatLesseePortalAccessState(portalAccessState)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">Invite expires</dt>
+            <dd className="font-medium text-slate-900">
+              {portalAccessState === "invited"
+                ? formatLesseeDate(pendingInviteExpiresAt)
+                : "—"}
+            </dd>
+          </div>
+        </dl>
+        {!detail.email?.trim() &&
+        (portalAccessState === "not_invited" ||
+          portalAccessState === "former") ? (
+          <p className="mt-3 text-sm text-amber-800">
+            Add an email on this tenant before sending a portal invite.
+          </p>
+        ) : null}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {canSendInvite ? (
+            <button
+              type="button"
+              disabled={portalActionLoading}
+              onClick={handlePortalInvite}
+              className={primaryButtonClassName}
+            >
+              {portalActionLoading ? "Working…" : inviteButtonLabel}
+            </button>
+          ) : null}
+          {canRevokePortal ? (
+            <button
+              type="button"
+              disabled={portalActionLoading}
+              onClick={handleRevokePortal}
+              className={dangerButtonClassName}
+            >
+              {portalActionLoading ? "Working…" : "Revoke portal access"}
+            </button>
+          ) : null}
         </div>
       </section>
 

@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+/** Shown when an email/auth uid still has an active staff membership elsewhere. */
+export const ACTIVE_STAFF_OTHER_BUSINESS_MESSAGE =
+  "This email is in use by an active account at another business.";
+
 export type CrossPersonaTarget = "staff" | "lessee" | "landlord";
 
 export type CrossPersonaConflict =
@@ -15,6 +19,10 @@ function emailConflictMessage(
   conflictPersona: CrossPersonaConflict["persona"],
   target: CrossPersonaTarget,
 ): string {
+  if (conflictPersona === "staff" && target === "staff") {
+    return ACTIVE_STAFF_OTHER_BUSINESS_MESSAGE;
+  }
+
   if (target === "landlord") {
     switch (conflictPersona) {
       case "staff":
@@ -29,9 +37,9 @@ function emailConflictMessage(
   if (target === "lessee") {
     switch (conflictPersona) {
       case "staff":
-        return "This email is already linked to a staff ERP account, not the Tenant Portal.";
+        return "This email is already linked to an active staff ERP account, not the Tenant Portal.";
       case "lessee":
-        return "This email is already linked to a Tenant Portal account. Try signing in instead.";
+        return "This email is already linked to an active Tenant Portal account. Try signing in instead.";
       case "landlord":
         return "This email is already linked to a Landlord Portal account. Use a different email.";
     }
@@ -39,9 +47,9 @@ function emailConflictMessage(
 
   switch (conflictPersona) {
     case "staff":
-      return "This email is already linked to a staff ERP account. Ask them to sign in or use a different email.";
+      return "This email is already linked to an active staff ERP account. Ask them to sign in or use a different email.";
     case "lessee":
-      return "This email is already linked to a Tenant Portal account. Staff invites cannot use the same email.";
+      return "This email is already linked to an active Tenant Portal account. Staff invites cannot use the same email.";
     case "landlord":
       return "This email is already linked to a Landlord Portal account. Staff invites cannot use the same email.";
   }
@@ -51,6 +59,10 @@ function authUidConflictMessage(
   conflictPersona: CrossPersonaConflict["persona"],
   target: CrossPersonaTarget,
 ): string {
+  if (conflictPersona === "staff" && target === "staff") {
+    return ACTIVE_STAFF_OTHER_BUSINESS_MESSAGE;
+  }
+
   if (target === "landlord") {
     switch (conflictPersona) {
       case "staff":
@@ -65,9 +77,9 @@ function authUidConflictMessage(
   if (target === "lessee") {
     switch (conflictPersona) {
       case "staff":
-        return "This sign-in is already linked to a staff ERP account, not this portal.";
+        return "This sign-in is already linked to an active staff ERP account, not this portal.";
       case "lessee":
-        return "This sign-in is already linked to a Tenant Portal account. Try signing in instead.";
+        return "This sign-in is already linked to an active Tenant Portal account. Try signing in instead.";
       case "landlord":
         return "This sign-in is linked to a Landlord Portal account, not this portal.";
     }
@@ -75,16 +87,17 @@ function authUidConflictMessage(
 
   switch (conflictPersona) {
     case "staff":
-      return "This sign-in is already linked to a staff ERP account, not this portal.";
+      return "This sign-in is already linked to an active staff ERP account, not this portal.";
     case "lessee":
-      return "This sign-in is linked to a Tenant Portal account, not staff ERP.";
+      return "This sign-in is linked to an active Tenant Portal account, not staff ERP.";
     case "landlord":
       return "This sign-in is linked to a Landlord Portal account, not staff ERP.";
   }
 }
 
 /**
- * One email may only belong to one portal persona (staff OR lessee OR landlord).
+ * One email may only belong to one ACTIVE portal persona (staff OR lessee OR landlord).
+ * Inactive staff (is_active=false) and former/unlinked lessees do not block sequential reuse.
  * Call before staff invite send/accept, OAuth accept, and portal self-signup.
  */
 export async function findCrossPersonaConflictForEmail(
@@ -109,8 +122,9 @@ export async function findCrossPersonaConflictForEmail(
   if (!options?.allowStaff) {
     const { data: staffRow } = await admin
       .from("user_accounts")
-      .select("auth_uid, email, tenant_id")
+      .select("auth_uid, email, tenant_id, is_active")
       .ilike("email", normalized)
+      .eq("is_active", true)
       .maybeSingle();
 
     if (staffRow) {
@@ -123,9 +137,10 @@ export async function findCrossPersonaConflictForEmail(
 
   const { data: lesseeRow } = await admin
     .from("lessees")
-    .select("lessee_id, auth_user_id, email")
+    .select("lessee_id, auth_user_id, email, status")
     .ilike("email", normalized)
     .not("auth_user_id", "is", null)
+    .neq("status", "former")
     .maybeSingle();
 
   if (
@@ -165,7 +180,7 @@ export async function findCrossPersonaConflictForEmail(
 }
 
 /**
- * Reject when auth.uid() is already linked to a different portal persona.
+ * Reject when auth.uid() is already linked to a different ACTIVE portal persona.
  */
 export async function findCrossPersonaConflictForAuthUid(
   admin: SupabaseClient,
@@ -178,8 +193,9 @@ export async function findCrossPersonaConflictForAuthUid(
 
   const { data: staffRow } = await admin
     .from("user_accounts")
-    .select("auth_uid")
+    .select("auth_uid, is_active")
     .eq("auth_uid", authUid)
+    .eq("is_active", true)
     .maybeSingle();
 
   if (staffRow) {
@@ -193,6 +209,7 @@ export async function findCrossPersonaConflictForAuthUid(
     .from("lessees")
     .select("lessee_id")
     .eq("auth_user_id", authUid)
+    .neq("status", "former")
     .maybeSingle();
 
   if (lessee) {

@@ -64,7 +64,7 @@ export default async function LandlordPortalTenantDetailPage({
         </h1>
         <p className="mt-1 text-sm text-slate-600">
           {canEdit
-            ? "Update tenant contact details. Portal login is managed separately under Administration → User Accounts."
+            ? "Update tenant contact details and manage Tenant Portal access."
             : "View tenant contact details. Contact Davors staff to request changes."}
         </p>
       </div>

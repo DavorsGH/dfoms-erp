@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { acceptStaffPortalInviteWithPassword } from "@/utils/staff-portal-invite";
+import {
+  acceptStaffPortalInviteWithPassword,
+  staffInviteHasExistingAuthAccount,
+  REUSED_ACCOUNT_LOGIN_HINT,
+} from "@/utils/staff-portal-invite";
 
 type AcceptInviteBody = {
   token?: string;
@@ -8,8 +12,27 @@ type AcceptInviteBody = {
 };
 
 /**
- * Public endpoint: validate staff invite token, create Auth user, insert user_accounts.
+ * GET: peek whether invite email already has Auth credentials (reuse UX).
+ * POST: validate staff invite token, create or reassign Auth membership.
  */
+export async function GET(request: Request) {
+  const token = new URL(request.url).searchParams.get("token")?.trim() ?? "";
+  if (!token) {
+    return NextResponse.json({ error: "Invite token is required." }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  const result = await staffInviteHasExistingAuthAccount(admin, token);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+
+  return NextResponse.json({
+    existingAccount: result.existingAccount,
+    message: result.existingAccount ? REUSED_ACCOUNT_LOGIN_HINT : null,
+  });
+}
+
 export async function POST(request: Request) {
   let body: AcceptInviteBody;
   try {
@@ -36,5 +59,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    reusedExistingAccount: result.reusedExistingAccount,
+    message: result.reusedExistingAccount ? REUSED_ACCOUNT_LOGIN_HINT : null,
+  });
 }

@@ -69,5 +69,8 @@ export async function POST(request: Request) {
     success: true,
     action: "approve",
     deposit_id: result.depositId,
+    portal_revoked: result.portalRevoked ?? false,
+    portal_email_sent: result.portalEmailSent ?? false,
+    portal_revoke_error: result.portalRevokeError ?? null,
   });
 }
