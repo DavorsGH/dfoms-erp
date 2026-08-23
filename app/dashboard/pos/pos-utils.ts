@@ -151,6 +151,25 @@ export function formatProductOptionLabel(product: FinishedProductRecord): string
   return `${product.product_code} — ${product.product_name} (${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure} in stock)`;
 }
 
+export const POS_CUSTOMER_OTHER_VALUE = "__other__";
+
+export function resolvePosCustomerSelection(
+  clientSelect: string,
+  walkInName: string,
+): { clientId: string | null; customerName: string | null } {
+  const trimmedSelect = clientSelect.trim();
+  if (!trimmedSelect) {
+    return { clientId: null, customerName: null };
+  }
+  if (trimmedSelect === POS_CUSTOMER_OTHER_VALUE) {
+    return {
+      clientId: null,
+      customerName: walkInName.trim() || null,
+    };
+  }
+  return { clientId: trimmedSelect, customerName: null };
+}
+
 export function getCustomerDisplayName(
   clientId: string | null,
   customerName: string | null,

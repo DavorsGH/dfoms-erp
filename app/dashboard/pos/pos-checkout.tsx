@@ -36,12 +36,14 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import {
   POS_CHECKOUT_PAYMENT_METHODS,
+  POS_CUSTOMER_OTHER_VALUE,
   POS_MOMO_PAYMENT_METHOD,
   cartTotal,
   effectiveCartTotal,
   getAvailableStockForProduct,
   getCustomerDisplayName,
   lineSubtotal,
+  resolvePosCustomerSelection,
   runPosCheckout,
   type PosCartLine,
   type PosCheckoutRunSummary,
@@ -445,15 +447,10 @@ export default function PosCheckout({
     trimmedClientId: string | null;
     trimmedCustomerName: string | null;
   } | null {
-    const trimmedClientId = clientId.trim() || null;
-    const trimmedCustomerName = customerName.trim() || null;
+    const { clientId: trimmedClientId, customerName: trimmedCustomerName } =
+      resolvePosCustomerSelection(clientId, customerName);
 
-    if (!trimmedClientId && !trimmedCustomerName) {
-      setError(
-        "Select a customer or enter a walk-in / other payer name.",
-      );
-      return null;
-    }
+    // Customer / walk-in payer are optional — anonymous cash sales are allowed.
 
     if (cartLines.length === 0) {
       setError("Add at least one product to the cart.");
@@ -1220,6 +1217,11 @@ export default function PosCheckout({
                 const nextClientId = event.target.value;
                 setClientId(nextClientId);
                 clearCheckoutAdjustments();
+                if (nextClientId === POS_CUSTOMER_OTHER_VALUE) {
+                  setPayerEmail("");
+                  setPayerPhone("");
+                  return;
+                }
                 if (nextClientId) {
                   setCustomerName("");
                   const selected = initialClients.find(
@@ -1227,31 +1229,37 @@ export default function PosCheckout({
                   );
                   setPayerEmail(selected?.email?.trim() ?? "");
                   setPayerPhone(selected?.phone?.trim() ?? "");
+                  return;
                 }
+                setCustomerName("");
+                setPayerEmail("");
+                setPayerPhone("");
               }}
               className={inputClassName}
             >
-              <option value="">Select customer</option>
+              <option value="">Select customer (optional)</option>
               {initialClients.map((client) => (
                 <option key={client.client_id} value={client.client_id}>
                   {client.client_name}
                 </option>
               ))}
+              <option value={POS_CUSTOMER_OTHER_VALUE}>Other / Walk-in</option>
             </select>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Walk-in / Other Payer Name
-            </label>
-            <input
-              type="text"
-              value={customerName}
-              onChange={(event) => setCustomerName(event.target.value)}
-              placeholder="Optional — for one-off payers not in the customer list"
-              disabled={Boolean(clientId)}
-              className={`${inputClassName}${clientId ? " bg-slate-50 text-slate-600" : ""}`}
-            />
-          </div>
+          {clientId === POS_CUSTOMER_OTHER_VALUE ? (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Walk-in / Other Payer Name
+              </label>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
+                placeholder="Optional — one-off payer name"
+                className={inputClassName}
+              />
+            </div>
+          ) : null}
           <SalesRepSelect
             employees={initialEmployees}
             value={salesRepId}
