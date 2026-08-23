@@ -113,21 +113,27 @@ export default function PortalLoginPage() {
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
+          <p className="text-center text-sm text-slate-600">
+            <Link
+              href="/portal/forgot-password"
+              className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+            >
+              Forgot password?
+            </Link>
+          </p>
         </form>
 
         <div className="mt-4">
           <OAuthProviderButtons persona="lessee" flow="login" />
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Staff users should use the{" "}
+        <p className="mt-6 text-center text-sm text-slate-600">
           <Link
-            href="/login"
+            href="/"
             className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
           >
-            ERP login
+            Not a tenant? Choose your portal
           </Link>
-          .
         </p>
       </div>
     </div>

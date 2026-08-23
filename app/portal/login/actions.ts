@@ -121,7 +121,7 @@ export async function portalLoginWithPassword(
     return {
       ok: false,
       error:
-        "This account is not registered for the Tenant Portal. Use the staff login if you are a Davors user.",
+        "This account belongs to a different portal. Choose the correct portal to continue.",
     };
   }
 

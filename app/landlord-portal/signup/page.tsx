@@ -238,6 +238,14 @@ export default function LandlordPortalSignupPage() {
             Sign in
           </Link>
         </p>
+        <p className="mt-4 text-center text-sm text-slate-600">
+          <Link
+            href="/"
+            className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+          >
+            Not a landlord? Choose your portal
+          </Link>
+        </p>
       </div>
     </div>
   );

@@ -125,9 +125,14 @@ export async function middleware(request: NextRequest) {
   const isPortalPath = pathname.startsWith("/portal");
   const isLandlordPortalPath = pathname.startsWith("/landlord-portal");
   const isPortalPublicPath =
-    pathname === "/portal/login" || pathname === "/portal/accept-invite";
+    pathname === "/portal/login" ||
+    pathname === "/portal/forgot-password" ||
+    pathname === "/portal/reset-password" ||
+    pathname === "/portal/accept-invite";
   const isLandlordPortalPublicPath =
     pathname === "/landlord-portal/login" ||
+    pathname === "/landlord-portal/forgot-password" ||
+    pathname === "/landlord-portal/reset-password" ||
     pathname === "/landlord-portal/accept-invite" ||
     pathname === "/landlord-portal/signup" ||
     pathname === "/landlord-portal/verify-email";
@@ -148,9 +153,13 @@ export async function middleware(request: NextRequest) {
     "/verify-email",
     "/portal/login",
     "/portal/login/mfa",
+    "/portal/forgot-password",
+    "/portal/reset-password",
     "/portal/accept-invite",
     "/landlord-portal/login",
     "/landlord-portal/login/mfa",
+    "/landlord-portal/forgot-password",
+    "/landlord-portal/reset-password",
     "/landlord-portal/accept-invite",
     "/landlord-portal/signup",
     "/landlord-portal/verify-email",

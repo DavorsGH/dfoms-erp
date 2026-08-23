@@ -119,7 +119,7 @@ export async function landlordPortalLoginWithPassword(
     return {
       ok: false,
       error:
-        "This account is not registered for the Landlord Portal. Use the staff or Tenant Portal login if that applies to you.",
+        "This account belongs to a different portal. Choose the correct portal to continue.",
     };
   }
 

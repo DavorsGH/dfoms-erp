@@ -102,6 +102,14 @@ function LoginForm() {
           Forgot Password?
         </a>
       </p>
+      <p className="text-center text-sm text-zinc-600">
+        <a
+          href="/"
+          className="font-medium text-zinc-900 underline hover:text-zinc-700"
+        >
+          Not staff? Choose your portal
+        </a>
+      </p>
     </form>
   );
 }
