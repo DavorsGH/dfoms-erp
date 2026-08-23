@@ -18,6 +18,7 @@ import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
 const STAGING_PROJECT_REF = "wieflwbfdmjtsdnwbfii";
+const PRODUCTION_PROJECT_REF = "tvcurcnmasnocwdxzgvz";
 const VOYAGE_MODEL = "voyage-3";
 const EMBEDDING_DIMENSIONS = 1024;
 const MAX_WORDS_PER_CHUNK = 800;
@@ -69,9 +70,40 @@ function resolveEnvFile(): string {
   const envArg = process.argv.find((arg) => arg.startsWith("--env="));
   const envName = envArg?.split("=")[1] ?? "staging";
   if (envName === "production") {
-    return ".env.local";
+    for (const file of [".env.local.backup", ".env.vercel.production.local"]) {
+      try {
+        readFileSync(resolve(process.cwd(), file), "utf8");
+        return file;
+      } catch {
+        /* try next */
+      }
+    }
+    return ".env.local.backup";
   }
   return ".env.staging.local";
+}
+
+function loadVoyageKeyFromStagingIfMissing() {
+  if (process.env.VOYAGE_API_KEY?.trim()) {
+    return;
+  }
+  try {
+    const staging = readFileSync(resolve(process.cwd(), ".env.staging.local"), "utf8");
+    for (const line of staging.split(/\r?\n/)) {
+      if (line.startsWith("VOYAGE_API_KEY=")) {
+        const i = line.indexOf("=");
+        let v = line.slice(i + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        process.env.VOYAGE_API_KEY = v;
+        console.warn("Using VOYAGE_API_KEY from .env.staging.local (not set in production env file).");
+        return;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 function assertAllowedTarget(supabaseUrl: string) {
@@ -84,6 +116,11 @@ function assertAllowedTarget(supabaseUrl: string) {
     if (!allowProduction) {
       throw new Error(
         "Refusing production ingest. Set ALLOW_PRODUCTION_INGEST=true and pass --env=production to proceed.",
+      );
+    }
+    if (ref !== PRODUCTION_PROJECT_REF) {
+      throw new Error(
+        `Refusing production ingest: expected ${PRODUCTION_PROJECT_REF}, got ${ref}. Check production env file.`,
       );
     }
     console.warn(`WARNING: ingesting handbook chunks into production (${ref}).`);
@@ -305,6 +342,7 @@ async function main() {
   } catch {
     throw new Error(`Could not load ${envFile}.`);
   }
+  loadVoyageKeyFromStagingIfMissing();
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
