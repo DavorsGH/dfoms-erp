@@ -84,6 +84,11 @@ export default function ProductionBatches({
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [confirmingBatchId, setConfirmingBatchId] = useState<string | null>(
+    null,
+  );
+  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
 
   useEffect(() => {
     setBatches(initialBatches.map(normalizeProductionBatch));
@@ -287,6 +292,28 @@ export default function ProductionBatches({
     setLoading(false);
   }
 
+  async function handleDeleteBatch(batch: ProductionBatchRecord) {
+    setDeletingBatchId(batch.id);
+    setConfirmingBatchId(null);
+    setError(null);
+    setSuccess(null);
+
+    const { error: rpcError } = await supabase.rpc("delete_production_batch", {
+      p_batch_id: batch.id,
+    });
+
+    if (rpcError) {
+      setError(rpcError.message);
+      setDeletingBatchId(null);
+      return;
+    }
+
+    setBatches((current) => current.filter((row) => row.id !== batch.id));
+    setSuccess(`Batch ${batch.batch_number} deleted.`);
+    await refreshData();
+    setDeletingBatchId(null);
+  }
+
   return (
     <div className="space-y-6">
       {error ? (
@@ -295,10 +322,17 @@ export default function ProductionBatches({
         </p>
       ) : null}
 
+      {success ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {success}
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-slate-600">
           Record production batches. Raw material stock decreases, finished
           product stock increases, and a stock movement ledger entry is created.
+          Delete reverses a posted batch when enough finished stock remains.
         </p>
         {!readOnly ? (
         <button
@@ -550,13 +584,16 @@ export default function ProductionBatches({
               <th className={scrollableTableThClassName}>Total Cost</th>
               <th className={scrollableTableThClassName}>Cost / Unit</th>
               <th className={scrollableTableThClassName}>Materials</th>
+              {!readOnly ? (
+                <th className={scrollableTableThClassName}>Actions</th>
+              ) : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {batches.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={readOnly ? 7 : 8}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No production batches yet.
@@ -594,6 +631,50 @@ export default function ProductionBatches({
                       </div>
                     ))}
                   </td>
+                  {!readOnly ? (
+                    <td className="px-4 py-3">
+                      {confirmingBatchId === batch.id ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="whitespace-normal text-sm text-red-700">
+                            Delete this batch? This cannot be undone.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteBatch(batch)}
+                            disabled={deletingBatchId === batch.id}
+                            className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deletingBatchId === batch.id
+                              ? "Deleting…"
+                              : "Yes, delete"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingBatchId(null)}
+                            disabled={deletingBatchId === batch.id}
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError(null);
+                            setSuccess(null);
+                            setConfirmingBatchId(batch.id);
+                          }}
+                          disabled={deletingBatchId === batch.id}
+                          className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {deletingBatchId === batch.id
+                            ? "Deleting…"
+                            : "Delete"}
+                        </button>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}
