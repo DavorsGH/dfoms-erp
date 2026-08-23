@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LandlordPortalLesseeDetail } from "@/utils/landlord-portal-auth";
+import { fetchLesseeEmailDuplicateWarning } from "@/utils/lessee-email-duplicate";
 import {
   formatLesseePortalAccessState,
   type LesseePortalAccessState,
@@ -56,6 +57,9 @@ export default function LandlordPortalTenantEditForm({
   const [pendingInviteExpiresAt, setPendingInviteExpiresAt] = useState(
     detail.pendingInviteExpiresAt,
   );
+  const [emailDuplicateWarning, setEmailDuplicateWarning] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setFullName(detail.fullName);
@@ -74,6 +78,15 @@ export default function LandlordPortalTenantEditForm({
     setLoading(true);
     setError(null);
     setSuccess(null);
+
+    const duplicateWarning = await fetchLesseeEmailDuplicateWarning(
+      "landlord-portal",
+      {
+        email: email.trim() || "",
+        lessee_id: detail.lesseeId,
+      },
+    );
+    setEmailDuplicateWarning(duplicateWarning);
 
     const response = await fetch("/api/landlord-portal/lessees/update", {
       method: "POST",
@@ -106,6 +119,16 @@ export default function LandlordPortalTenantEditForm({
     setPortalLoading(true);
     setError(null);
     setSuccess(null);
+
+    const inviteEmail = email.trim() || detail.email?.trim() || "";
+    const duplicateWarning = await fetchLesseeEmailDuplicateWarning(
+      "landlord-portal",
+      {
+        email: inviteEmail,
+        lessee_id: detail.lesseeId,
+      },
+    );
+    setEmailDuplicateWarning(duplicateWarning);
 
     const response = await fetch(
       "/api/landlord-portal/lessee-accounts/resend-invite",
@@ -227,6 +250,11 @@ export default function LandlordPortalTenantEditForm({
             Add an email before sending a portal invite.
           </p>
         ) : null}
+        {emailDuplicateWarning ? (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {emailDuplicateWarning}
+          </p>
+        ) : null}
         {canEdit ? (
           <div className="mt-4 flex flex-wrap gap-2">
             {canSendInvite ? (
@@ -295,7 +323,10 @@ export default function LandlordPortalTenantEditForm({
               id="tenant-email"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmailDuplicateWarning(null);
+                setEmail(event.target.value);
+              }}
               disabled={!canEdit || loading}
               className={portalInputClassName}
             />

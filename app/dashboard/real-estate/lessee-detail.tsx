@@ -47,6 +47,7 @@ import {
   formatLesseePortalAccessState,
   type LesseePortalAccessState,
 } from "@/utils/lessee-portal-access";
+import { fetchLesseeEmailDuplicateWarning } from "@/utils/lessee-email-duplicate";
 
 type LesseeDetailViewProps = {
   initialDetail: LesseeDetail;
@@ -98,6 +99,9 @@ export default function LesseeDetailView({
     useState<LesseePortalAccessState>(initialDetail.portalAccessState);
   const [pendingInviteExpiresAt, setPendingInviteExpiresAt] = useState(
     initialDetail.pendingInviteExpiresAt,
+  );
+  const [emailDuplicateWarning, setEmailDuplicateWarning] = useState<string | null>(
+    null,
   );
 
   useEffect(() => {
@@ -152,6 +156,14 @@ export default function LesseeDetailView({
     setPortalActionLoading(true);
     setError(null);
     setSuccess(null);
+
+    const inviteEmail = (email.trim() || detail.email?.trim() || "");
+    const duplicateWarning = await fetchLesseeEmailDuplicateWarning("admin", {
+      email: inviteEmail,
+      lessee_id: detail.lesseeId,
+      tenant_id: detail.tenantId,
+    });
+    setEmailDuplicateWarning(duplicateWarning);
 
     const response = await fetch("/api/admin/lessees/portal-invite", {
       method: "POST",
@@ -238,6 +250,13 @@ export default function LesseeDetailView({
     setSaving(true);
     setError(null);
     setSuccess(null);
+
+    const duplicateWarning = await fetchLesseeEmailDuplicateWarning("admin", {
+      email: email.trim() || "",
+      lessee_id: detail.lesseeId,
+      tenant_id: detail.tenantId,
+    });
+    setEmailDuplicateWarning(duplicateWarning);
 
     const response = await fetch("/api/admin/lessees/update", {
       method: "POST",
@@ -458,7 +477,10 @@ export default function LesseeDetailView({
                         <input
                           type="email"
                           value={email}
-                          onChange={(event) => setEmail(event.target.value)}
+                          onChange={(event) => {
+                            setEmailDuplicateWarning(null);
+                            setEmail(event.target.value);
+                          }}
                           className={inputClassName}
                         />
                       </div>
@@ -578,6 +600,11 @@ export default function LesseeDetailView({
           portalAccessState === "former") ? (
           <p className="mt-3 text-sm text-amber-800">
             Add an email on this tenant before sending a portal invite.
+          </p>
+        ) : null}
+        {emailDuplicateWarning ? (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {emailDuplicateWarning}
           </p>
         ) : null}
         <div className="mt-4 flex flex-wrap gap-2">

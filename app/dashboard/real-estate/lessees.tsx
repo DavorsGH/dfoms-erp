@@ -12,6 +12,9 @@ import ScrollableTable, {
 import { inputClassName } from "../hr-payroll/hr-register-utils";
 import type { LandlordListRow } from "./landlords-utils";
 import {
+  fetchLesseeEmailDuplicateWarning,
+} from "@/utils/lessee-email-duplicate";
+import {
   LESSEE_STATUS_OPTIONS,
   formatLesseeDate,
   formatLesseeStatus,
@@ -61,6 +64,9 @@ export default function Lessees({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
+  const [emailDuplicateWarning, setEmailDuplicateWarning] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setRows(initialRows);
@@ -91,6 +97,7 @@ export default function Lessees({
   function openAddForm() {
     setEditingId(null);
     setForm(emptyForm);
+    setEmailDuplicateWarning(null);
     setShowForm(true);
   }
 
@@ -103,6 +110,7 @@ export default function Lessees({
       status: row.status,
       private_notes: row.privateNotes ?? "",
     });
+    setEmailDuplicateWarning(null);
     setShowForm(true);
   }
 
@@ -114,6 +122,13 @@ export default function Lessees({
 
     setLoading(true);
     setError(null);
+
+    const duplicateWarning = await fetchLesseeEmailDuplicateWarning("admin", {
+      email: form.email,
+      lessee_id: editingId ?? undefined,
+      tenant_id: selectedLandlordId,
+    });
+    setEmailDuplicateWarning(duplicateWarning);
 
     const endpoint = editingId
       ? "/api/admin/lessees/update"
@@ -219,6 +234,11 @@ export default function Lessees({
               <h3 className="text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
                 {editingId ? "Edit Tenant" : "New Tenant"}
               </h3>
+              {emailDuplicateWarning ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  {emailDuplicateWarning}
+                </p>
+              ) : null}
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -261,12 +281,13 @@ export default function Lessees({
                   <input
                     type="email"
                     value={form.email}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      setEmailDuplicateWarning(null);
                       setForm((current) => ({
                         ...current,
                         email: event.target.value,
-                      }))
-                    }
+                      }));
+                    }}
                     className={inputClassName}
                   />
                 </div>
