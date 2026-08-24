@@ -49,7 +49,8 @@ export default function PromoCodeField({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState<PromoCodeOption[]>([]);
-  const [optionsError, setOptionsError] = useState<string | null>(null);
+  /** True after a successful options fetch (including an empty active list). */
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [listOpen, setListOpen] = useState(false);
 
@@ -63,20 +64,27 @@ export default function PromoCodeField({
     async function loadOptions() {
       if (disabled) {
         setOptions([]);
+        setOptionsLoaded(false);
         setOptionsLoading(false);
         return;
       }
 
       setOptionsLoading(true);
-      setOptionsError(null);
+      setOptionsLoaded(false);
 
       const result = await fetchActivePromoCodeOptions(supabase, sourceType);
       if (cancelled) {
         return;
       }
 
-      setOptions(result.options);
-      setOptionsError(result.error);
+      if (result.error) {
+        // Optional picker — fail quietly; manual entry + Apply still work.
+        setOptions([]);
+        setOptionsLoaded(false);
+      } else {
+        setOptions(result.options);
+        setOptionsLoaded(true);
+      }
       setOptionsLoading(false);
     }
 
@@ -210,12 +218,7 @@ export default function PromoCodeField({
           </button>
         )}
       </div>
-      {optionsError ? (
-        <p className="text-xs text-amber-800">
-          Could not load promo codes — you can still type a code manually.
-        </p>
-      ) : null}
-      {!optionsLoading && !optionsError && options.length === 0 ? (
+      {optionsLoaded && !optionsLoading && options.length === 0 ? (
         <p className="text-xs text-slate-500">
           No active promo codes for this sale type — enter a code manually.
         </p>
