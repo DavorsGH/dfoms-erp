@@ -18,6 +18,8 @@ export type PosReceiptData = {
   amountReceived: number;
   cartTotal: number;
   lines: PosCartLine[];
+  /** Queued offline cash sale — provisional token, not a tax invoice. */
+  pendingSync?: boolean;
 };
 
 export function PosReceiptPrintStyles() {
@@ -106,6 +108,12 @@ export function PosReceiptPanel({
           title="Point of Sale Receipt"
           periodLabel={formatReportDate(receipt.saleDate)}
         />
+
+        {receipt.pendingSync ? (
+          <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">
+            Pending sync — not a tax invoice
+          </p>
+        ) : null}
 
         <div className="mb-6 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
           <p>

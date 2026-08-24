@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ClientCacheSession } from "@/lib/client-cache/keys";
 import { syncAttendanceQueueItem } from "@/lib/offline-write-queue/handlers/attendance";
 import { syncExpenseQueueItem } from "@/lib/offline-write-queue/handlers/expense";
+import { syncPosCashSaleQueueItem } from "@/lib/offline-write-queue/handlers/pos-cash-sale";
 import {
   deleteWriteQueueItem,
   listDrainableWriteQueueItems,
@@ -11,12 +12,14 @@ import type {
   AttendanceQueuePayload,
   ExpenseQueuePayload,
   OfflineWriteQueueItem,
+  PosCashSaleQueuePayload,
 } from "@/lib/offline-write-queue/types";
 
 export type DrainWriteQueueResult = {
   processed: number;
   succeeded: number;
   failed: number;
+  conflicts: number;
   skippedDuplicates: number;
   errors: { id: string; type: string; error: string }[];
 };
@@ -25,7 +28,7 @@ let drainInFlight: Promise<DrainWriteQueueResult> | null = null;
 
 /**
  * Process pending/failed queue items in createdAt order.
- * Failures do not block later items.
+ * Failures do not block later items. POS conflicts stay as status=conflict.
  */
 export async function drainWriteQueue(
   supabase: SupabaseClient,
@@ -40,6 +43,7 @@ export async function drainWriteQueue(
       processed: 0,
       succeeded: 0,
       failed: 0,
+      conflicts: 0,
       skippedDuplicates: 0,
       errors: [],
     };
@@ -70,8 +74,25 @@ export async function drainWriteQueue(
           continue;
         }
 
-        if (syncResult.duplicateNaturalKey) {
+        if ("duplicateNaturalKey" in syncResult && syncResult.duplicateNaturalKey) {
           result.skippedDuplicates += 1;
+        }
+
+        if ("conflict" in syncResult && syncResult.conflict) {
+          result.conflicts += 1;
+          const payload = item.payload as PosCashSaleQueuePayload;
+          await updateWriteQueueItem(item.id, {
+            status: "conflict",
+            syncedAt: new Date().toISOString(),
+            lastError: null,
+            notificationSent: syncResult.notificationSent,
+            payload: {
+              ...payload,
+              conflictId: syncResult.conflictId,
+              suspenseInvoiceNo: syncResult.suspenseInvoiceNo,
+            },
+          });
+          continue;
         }
 
         result.succeeded += 1;
@@ -81,7 +102,6 @@ export async function drainWriteQueue(
           lastError: null,
           notificationSent: syncResult.notificationSent,
         });
-        // Keep briefly then remove — UI already refreshed from live data.
         await deleteWriteQueueItem(item.id);
       } catch (error) {
         const message =
@@ -110,7 +130,19 @@ async function syncOneItem(
   supabase: SupabaseClient,
   item: OfflineWriteQueueItem,
 ): Promise<
-  | { ok: true; duplicateNaturalKey?: boolean; notificationSent?: boolean }
+  | {
+      ok: true;
+      duplicateNaturalKey?: boolean;
+      notificationSent?: boolean;
+      conflict?: false;
+    }
+  | {
+      ok: true;
+      conflict: true;
+      conflictId: string;
+      suspenseInvoiceNo: string;
+      notificationSent?: boolean;
+    }
   | { ok: false; error: string }
 > {
   if (item.type === "attendance") {
@@ -134,6 +166,26 @@ async function syncOneItem(
       notificationSent: Boolean(item.notificationSent),
     });
     if (!result.ok) return result;
+    return { ok: true, notificationSent: result.notificationSent };
+  }
+
+  if (item.type === "pos_cash_sale") {
+    const result = await syncPosCashSaleQueueItem(supabase, {
+      clientOpId: item.id,
+      tenantId: item.tenantId,
+      payload: item.payload as PosCashSaleQueuePayload,
+      notificationSent: Boolean(item.notificationSent),
+    });
+    if (!result.ok) return result;
+    if (result.outcome === "conflict") {
+      return {
+        ok: true,
+        conflict: true,
+        conflictId: result.conflictId,
+        suspenseInvoiceNo: result.suspenseInvoiceNo,
+        notificationSent: result.notificationSent,
+      };
+    }
     return { ok: true, notificationSent: result.notificationSent };
   }
 

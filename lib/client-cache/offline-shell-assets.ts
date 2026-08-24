@@ -79,6 +79,12 @@ export async function warmOfflineShellImageAssets(input: {
   await Promise.all(tasks);
 }
 
+/**
+ * Resolve avatar URL for display.
+ * Online → remote (or same-origin) photo URL.
+ * Offline path (`/__offline_assets/...`) is used only when !isOnline and the
+ * source is a remote http(s) URL that was warmed into the shell cache.
+ */
 export function offlineAvatarSrc(
   isOnline: boolean,
   photoUrl?: string | null,

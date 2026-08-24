@@ -144,6 +144,16 @@ export default function PosCacheShell({
     window.setTimeout(() => setRefreshing(false), 800);
   }, [isOnline, router]);
 
+  const reloadStockFromCache = useCallback(async () => {
+    const stock = await getCachedStockLevels(session);
+    if (!stock) {
+      return;
+    }
+    setProducts(stockCachePayloadToFinishedProducts(stock.payload));
+    setCachedAt(stock.cachedAt);
+    setUsingCachedSnapshot(true);
+  }, [session]);
+
   const balancesByClientId = customerBalances.customers;
 
   return (
@@ -155,7 +165,10 @@ export default function PosCacheShell({
             className="text-xs text-amber-800"
           >
             Showing cached snapshot
-            {!isOnline ? " (offline — sales recording is blocked)" : ""}.
+            {!isOnline
+              ? " (offline — cash sales can be queued; MoMo / Request Payment blocked)"
+              : ""}
+            .
           </p>
         ) : (
           <span />
@@ -167,7 +180,9 @@ export default function PosCacheShell({
               refreshFromNetwork();
               return;
             }
-            router.refresh();
+            // Avoid router.refresh() offline — it starts RSC fetches that hang
+            // in DevTools and can remount POS mid-checkout.
+            void reloadStockFromCache();
           }}
           refreshing={refreshing}
         />
@@ -197,6 +212,7 @@ export default function PosCacheShell({
           );
           setCachedAt(nextCachedAt);
         }}
+        onStockCacheChanged={reloadStockFromCache}
       />
     </div>
   );

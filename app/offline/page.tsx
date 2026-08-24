@@ -2,6 +2,7 @@ export const dynamic = "force-static";
 
 const AVAILABLE_OFFLINE = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/pos", label: "POS" },
   { href: "/dashboard/hr-payroll/attendance", label: "Attendance Register" },
   { href: "/dashboard/finance/expenses", label: "Expense Register" },
 ] as const;

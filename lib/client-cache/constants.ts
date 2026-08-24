@@ -29,7 +29,7 @@ export const OFFLINE_ASSET_WORKSPACE_LOGO_PATH =
   "/__offline_assets/workspace-logo";
 
 /** Must stay in sync with public/sw.js CACHE_NAME. */
-export const SHELL_CACHE_NAME = "davors-erp-shell-v8";
+export const SHELL_CACHE_NAME = "davors-erp-shell-v10";
 
 /** localStorage mirror so enqueue works after going offline mid-session. */
 export const CLIENT_CACHE_SESSION_STORAGE_KEY = "dfoms-client-cache-session";

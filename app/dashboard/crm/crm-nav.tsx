@@ -16,6 +16,7 @@ const navItems = [
   { label: "Quotations", href: "/dashboard/sales-crm/quotations" },
   { label: "Product Sales", href: "/dashboard/crm/product-sales" },
   { label: "POS", href: "/dashboard/pos" },
+  { label: "Offline sale conflicts", href: "/dashboard/crm/offline-sale-conflicts" },
   { label: "Sales Log", href: "/dashboard/crm/sales" },
   { label: "Sales Targets", href: "/dashboard/crm/sales-targets" },
   { label: "Sales Forecast", href: "/dashboard/crm/sales-forecast" },

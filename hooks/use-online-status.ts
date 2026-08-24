@@ -12,7 +12,12 @@ export function useOnlineStatus(): boolean {
       setIsOnline(navigator.onLine);
     }
 
-    window.addEventListener("online", sync);
+    function onOnline() {
+      // Force true on the online event — some browsers briefly lag navigator.onLine.
+      setIsOnline(true);
+    }
+
+    window.addEventListener("online", onOnline);
     window.addEventListener("offline", sync);
     window.addEventListener("pageshow", sync);
     document.addEventListener("visibilitychange", sync);
@@ -20,7 +25,7 @@ export function useOnlineStatus(): boolean {
     sync();
 
     return () => {
-      window.removeEventListener("online", sync);
+      window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", sync);
       window.removeEventListener("pageshow", sync);
       document.removeEventListener("visibilitychange", sync);

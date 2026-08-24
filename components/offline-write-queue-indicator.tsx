@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useWriteQueueOptional } from "@/components/write-queue-provider";
 
 /**
- * Persistent staff-shell indicator for pending/failed offline writes + Sync now.
+ * Persistent staff-shell indicator for pending/failed/conflict offline writes + Sync now.
  */
 export default function OfflineWriteQueueIndicator() {
   const queue = useWriteQueueOptional();
@@ -22,6 +23,11 @@ export default function OfflineWriteQueueIndicator() {
       `${queue.failedCount} failed${queue.failedCount === 1 ? "" : "s"}`,
     );
   }
+  if (queue.conflictCount > 0) {
+    parts.push(
+      `${queue.conflictCount} conflict${queue.conflictCount === 1 ? "" : "s"}`,
+    );
+  }
   if (queue.syncingCount > 0) {
     parts.push("syncing…");
   }
@@ -33,9 +39,23 @@ export default function OfflineWriteQueueIndicator() {
     >
       <span>
         Offline write queue: {parts.join(" · ") || `${queue.openCount} item(s)`}
-        {queue.failedCount > 0
-          ? " — open Attendance or Expenses to retry or discard failed items."
-          : ""}
+        {queue.conflictCount > 0 ? (
+          <>
+            {" "}
+            — review{" "}
+            <Link
+              href="/dashboard/crm/offline-sale-conflicts"
+              className="font-medium underline"
+            >
+              Offline sale conflicts
+            </Link>
+            .
+          </>
+        ) : queue.failedCount > 0 ? (
+          " — open Attendance, Expenses, or POS to retry or discard failed items."
+        ) : (
+          ""
+        )}
       </span>
       <button
         type="button"

@@ -10,6 +10,19 @@ export default function ServiceWorkerRegistrar() {
       return;
     }
 
+    // next dev serves Turbopack/HMR chunks that cannot be reliably precached.
+    // An active SW on localhost intercepts those requests; offline reload then
+    // leaves chunks "pending" forever and React never hydrates (POS Add to Cart
+    // appears dead). Production/staging builds use stable /_next/static assets.
+    if (process.env.NODE_ENV === "development") {
+      void navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          void registration.unregister();
+        }
+      });
+      return;
+    }
+
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then(() => {

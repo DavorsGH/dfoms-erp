@@ -1,4 +1,4 @@
-const CACHE_NAME = "davors-erp-shell-v8";
+const CACHE_NAME = "davors-erp-shell-v10";
 const CLIENT_CACHE_DB_NAME = "dfoms-client-cache";
 const CLIENT_CACHE_PURGE_MESSAGE = "PURGE_CLIENT_CACHE";
 const WARM_OFFLINE_NAV_MESSAGE = "WARM_OFFLINE_NAV_ROUTES";
@@ -219,22 +219,47 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Offline avatar/logo assets: cache-only. Never network-fetch on miss —
+  // Next would return HTML 404 that could be cached as the "image".
+  if (url.pathname.startsWith("/__offline_assets/")) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) {
+          return cached;
+        }
+        return new Response("", { status: 404 });
+      }),
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cached) => {
+    (async () => {
+      const cached = await caches.match(event.request);
       if (cached) {
         return cached;
       }
 
-      return fetch(event.request).then((response) => {
+      // Never leave cache-miss fetches pending forever when offline — that
+      // breaks React hydration (POS Add to Cart clicks appear to do nothing).
+      try {
+        const response = await fetch(event.request, {
+          signal: AbortSignal.timeout(8000),
+        });
         if (!response || response.status !== 200 || response.type === "opaque") {
           return response;
         }
-
         const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(event.request, copy);
         return response;
-      });
-    }),
+      } catch {
+        return new Response("Offline cache miss", {
+          status: 504,
+          statusText: "Offline cache miss",
+        });
+      }
+    })(),
   );
 });
 

@@ -58,6 +58,16 @@ import { recordQuoteSaleConversions } from "@/utils/sales-quotes-types";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
 import type { CustomerBalanceCacheRow } from "@/lib/client-cache/types";
+import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
+import { getCachedStockLevels } from "@/lib/client-cache/stock-levels-cache";
+import { stockCachePayloadToFinishedProducts } from "@/lib/client-cache/pos-cache-mappers";
+import { useWriteQueueOptional } from "@/components/write-queue-provider";
+import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
+import {
+  applyOptimisticStockDecrement,
+  buildOfflineProvisionalToken,
+} from "@/lib/offline-write-queue/pos-optimistic-stock";
+import type { PosCashSaleQueuePayload } from "@/lib/offline-write-queue/types";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -82,6 +92,8 @@ type PosCheckoutProps = {
   onStockLevelsChanged?: (
     products: FinishedProductRecord[],
   ) => void | Promise<void>;
+  /** Parent re-reads IDB stock after an optimistic offline decrement. */
+  onStockCacheChanged?: () => void | Promise<void>;
 };
 
 type MomoInitializeResponse = {
@@ -126,9 +138,11 @@ export default function PosCheckout({
   quoteNumber,
   fetchError,
   onStockLevelsChanged,
+  onStockCacheChanged,
 }: PosCheckoutProps) {
   const supabase = createClient();
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
+  const writeQueue = useWriteQueueOptional();
   const [products, setProducts] = useState(
     initialProducts.map(normalizeFinishedProduct),
   );
@@ -546,6 +560,7 @@ export default function PosCheckout({
     paymentMethod: string;
     lines: PosCartLine[];
     amountReceived: number;
+    pendingSync?: boolean;
   }) {
     const receiptTotal = cartTotal(input.lines);
     setReceipt({
@@ -553,10 +568,11 @@ export default function PosCheckout({
       saleDate: todayIsoDate(),
       customerLabel: input.customerLabel,
       paymentMethod: input.paymentMethod,
-      paymentStatus: "Paid",
+      paymentStatus: input.pendingSync ? "Pending sync" : "Paid",
       amountReceived: input.amountReceived,
       cartTotal: receiptTotal,
       lines: input.lines,
+      pendingSync: input.pendingSync,
     });
     setCheckoutResult(null);
     setPendingInvoiceNo(null);
@@ -564,6 +580,92 @@ export default function PosCheckout({
     setCartLines([]);
     setShowRequestPayment(false);
     setRequestPaymentDraft(null);
+  }
+
+  async function queueOfflineCashSale(
+    trimmedClientId: string | null,
+    trimmedCustomerName: string | null,
+  ) {
+    if (isMobileMoney) {
+      setError(
+        "Mobile Money cannot be queued offline. Use Cash, or reconnect to pay with MoMo.",
+      );
+      return;
+    }
+
+    if (promoDiscount > 0 || loyaltyDiscount > 0 || loyaltyPointsRedeemed > 0) {
+      setError("Promo/loyalty redeem cannot be used offline");
+      return;
+    }
+
+    const session =
+      writeQueue?.session ?? (await resolveClientCacheSession());
+    if (!session) {
+      setError("Unable to queue offline — session not available.");
+      return;
+    }
+
+    const provisionalToken = buildOfflineProvisionalToken();
+    const amountReceived = payableTotal;
+    const receiptLines = [...cartLines];
+    const queuePayload: PosCashSaleQueuePayload = {
+      saleDate: todayIsoDate(),
+      clientId: trimmedClientId,
+      customerName: trimmedClientId ? null : trimmedCustomerName,
+      salesRepId: salesRepId.trim() || null,
+      paymentMethod: "Cash",
+      amountReceived,
+      notes: notes.trim() || null,
+      provisionalToken,
+      lines: receiptLines.map((line) => ({
+        productId: line.productId,
+        productCode: line.productCode,
+        productName: line.productName,
+        unitOfMeasure: line.unitOfMeasure,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+      })),
+    };
+
+    await enqueueWriteQueueItem({
+      session,
+      type: "pos_cash_sale",
+      payload: queuePayload,
+    });
+
+    await applyOptimisticStockDecrement(
+      session,
+      queuePayload.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+      })),
+    );
+
+    const cached = await getCachedStockLevels(session);
+    if (cached) {
+      const nextProducts = stockCachePayloadToFinishedProducts(
+        cached.payload,
+      ).map(normalizeFinishedProduct);
+      setProducts(nextProducts);
+    }
+
+    await onStockCacheChanged?.();
+    await writeQueue?.refresh();
+
+    showPaidReceipt({
+      invoiceNo: provisionalToken,
+      customerLabel: getCustomerDisplayName(
+        trimmedClientId,
+        trimmedCustomerName,
+        initialClients,
+      ),
+      paymentMethod: "Cash",
+      lines: receiptLines,
+      amountReceived,
+      pendingSync: true,
+    });
+
+    clearCheckoutAdjustments();
   }
 
   async function completeCashSale(
@@ -838,10 +940,6 @@ export default function PosCheckout({
 
   async function handleCompleteSale(event: React.FormEvent) {
     event.preventDefault();
-    if (isOffline) {
-      setError(offlineWriteMessage);
-      return;
-    }
     setLoading(true);
     setError(null);
     setPaymentSettingsRequired(false);
@@ -850,6 +948,32 @@ export default function PosCheckout({
     const basics = validateCheckoutBasics();
     if (!basics) {
       setLoading(false);
+      return;
+    }
+
+    if (isOffline) {
+      if (isMobileMoney) {
+        setError(
+          "Mobile Money cannot be queued offline. Use Cash, or reconnect to pay with MoMo.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      try {
+        await queueOfflineCashSale(
+          basics.trimmedClientId,
+          basics.trimmedCustomerName,
+        );
+      } catch (queueError) {
+        setError(
+          queueError instanceof Error
+            ? queueError.message
+            : "Could not queue offline cash sale.",
+        );
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -1430,26 +1554,31 @@ export default function PosCheckout({
 
         {isOffline ? (
           <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-            {offlineWriteMessage} Stock levels and customer balances shown are
-            from a cached snapshot.
+            You are offline. Cash sales can be queued and will sync when you
+            reconnect. Mobile Money and Request Payment stay blocked. Stock
+            levels and customer balances shown are from a cached snapshot.
           </p>
         ) : null}
 
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
-            disabled={busy || cartLines.length === 0 || isOffline}
+            disabled={busy || cartLines.length === 0 || (isOffline && isMobileMoney)}
             className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {momoWaiting
               ? "Waiting for MoMo…"
               : loading
-                ? isMobileMoney
-                  ? "Opening payment…"
-                  : "Completing sale…"
+                ? isOffline
+                  ? "Queuing sale…"
+                  : isMobileMoney
+                    ? "Opening payment…"
+                    : "Completing sale…"
                 : isMobileMoney
                   ? "Pay with Mobile Money"
-                  : "Complete Sale"}
+                  : isOffline
+                    ? "Queue Cash Sale"
+                    : "Complete Sale"}
           </button>
           <button
             type="button"

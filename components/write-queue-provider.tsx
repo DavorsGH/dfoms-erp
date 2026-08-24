@@ -18,12 +18,17 @@ import {
 } from "@/lib/client-cache/session-context";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { drainWriteQueue } from "@/lib/offline-write-queue/drain";
+import { restoreOptimisticStockDecrement } from "@/lib/offline-write-queue/pos-optimistic-stock";
 import {
   countOpenWriteQueueItems,
   deleteWriteQueueItem,
+  getWriteQueueItem,
   listWriteQueueForSession,
 } from "@/lib/offline-write-queue/store";
-import type { OfflineWriteQueueItem } from "@/lib/offline-write-queue/types";
+import type {
+  OfflineWriteQueueItem,
+  PosCashSaleQueuePayload,
+} from "@/lib/offline-write-queue/types";
 
 type WriteQueueContextValue = {
   session: ClientCacheSession | null;
@@ -31,6 +36,7 @@ type WriteQueueContextValue = {
   pendingCount: number;
   failedCount: number;
   syncingCount: number;
+  conflictCount: number;
   openCount: number;
   draining: boolean;
   refresh: () => Promise<void>;
@@ -62,6 +68,7 @@ export function WriteQueueProvider({
     pending: 0,
     failed: 0,
     syncing: 0,
+    conflict: 0,
   });
   const [draining, setDraining] = useState(false);
   const wasOfflineRef = useRef(false);
@@ -86,7 +93,7 @@ export function WriteQueueProvider({
         : await resolveClientCacheSession());
     if (!active) {
       setItems([]);
-      setCounts({ pending: 0, failed: 0, syncing: 0 });
+      setCounts({ pending: 0, failed: 0, syncing: 0, conflict: 0 });
       return;
     }
     setSession(active);
@@ -136,10 +143,35 @@ export function WriteQueueProvider({
 
   const discardItem = useCallback(
     async (id: string) => {
+      const existing = await getWriteQueueItem(id);
+      const active =
+        session ??
+        (tenantId?.trim() && authUid?.trim()
+          ? { tenantId, authUid }
+          : await resolveClientCacheSession());
+
+      if (
+        existing?.type === "pos_cash_sale" &&
+        active &&
+        (existing.status === "pending" ||
+          existing.status === "failed" ||
+          existing.status === "conflict")
+      ) {
+        const payload = existing.payload as PosCashSaleQueuePayload;
+        await restoreOptimisticStockDecrement(
+          active,
+          payload.lines.map((line) => ({
+            productId: line.productId,
+            quantity: line.quantity,
+          })),
+        );
+      }
+
+      // Local discard only — server offline_sale_conflicts rows are retained.
       await deleteWriteQueueItem(id);
       await refresh();
     },
-    [refresh],
+    [refresh, session, tenantId, authUid],
   );
 
   const retryItem = useCallback(
@@ -156,7 +188,9 @@ export function WriteQueueProvider({
       pendingCount: counts.pending,
       failedCount: counts.failed,
       syncingCount: counts.syncing,
-      openCount: counts.pending + counts.failed + counts.syncing,
+      conflictCount: counts.conflict,
+      openCount:
+        counts.pending + counts.failed + counts.syncing + counts.conflict,
       draining,
       refresh,
       syncNow,

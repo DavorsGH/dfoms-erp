@@ -1,10 +1,14 @@
-export type OfflineWriteQueueType = "attendance" | "expense";
+export type OfflineWriteQueueType =
+  | "attendance"
+  | "expense"
+  | "pos_cash_sale";
 
 export type OfflineWriteQueueStatus =
   | "pending"
   | "syncing"
   | "failed"
-  | "synced";
+  | "synced"
+  | "conflict";
 
 export type AttendanceQueuePayload = {
   date: string;
@@ -46,9 +50,35 @@ export type ExpenseQueuePayload = {
   notification_detail: string;
 };
 
+export type PosCashSaleQueueLine = {
+  productId: string;
+  productCode: string;
+  productName: string;
+  unitOfMeasure: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+export type PosCashSaleQueuePayload = {
+  saleDate: string;
+  clientId: string | null;
+  customerName: string | null;
+  salesRepId: string | null;
+  paymentMethod: "Cash";
+  amountReceived: number;
+  notes: string | null;
+  /** Provisional offline token — not a tax invoice. */
+  provisionalToken: string;
+  lines: PosCashSaleQueueLine[];
+  /** Set when sync parks the item as a server conflict. */
+  conflictId?: string | null;
+  suspenseInvoiceNo?: string | null;
+};
+
 export type OfflineWriteQueuePayload =
   | AttendanceQueuePayload
-  | ExpenseQueuePayload;
+  | ExpenseQueuePayload
+  | PosCashSaleQueuePayload;
 
 export type OfflineWriteQueueItem = {
   /** Client-generated UUID — idempotency key. */
@@ -64,7 +94,7 @@ export type OfflineWriteQueueItem = {
   retryCount: number;
   lastError: string | null;
   syncedAt: string | null;
-  /** Expense: avoid re-firing admin notification on retry. */
+  /** Expense/POS: avoid re-firing admin notification on retry. */
   notificationSent?: boolean;
 };
 

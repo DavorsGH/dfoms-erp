@@ -61,6 +61,12 @@ export default function PromoCodeField({
     let cancelled = false;
 
     async function loadOptions() {
+      if (disabled) {
+        setOptions([]);
+        setOptionsLoading(false);
+        return;
+      }
+
       setOptionsLoading(true);
       setOptionsError(null);
 
@@ -79,7 +85,7 @@ export default function PromoCodeField({
     return () => {
       cancelled = true;
     };
-  }, [sourceType, supabase]);
+  }, [sourceType, supabase, disabled]);
 
   const filteredOptions = useMemo(() => {
     const query = code.trim().toUpperCase();

@@ -8,6 +8,7 @@ import {
   type OfflineWriteQueueItem,
   type OfflineWriteQueueStatus,
   type OfflineWriteQueueType,
+  type PosCashSaleQueuePayload,
 } from "@/lib/offline-write-queue/types";
 
 function assertBrowser(): void {
@@ -19,7 +20,10 @@ function assertBrowser(): void {
 export async function enqueueWriteQueueItem(input: {
   session: ClientCacheSession;
   type: OfflineWriteQueueType;
-  payload: AttendanceQueuePayload | ExpenseQueuePayload;
+  payload:
+    | AttendanceQueuePayload
+    | ExpenseQueuePayload
+    | PosCashSaleQueuePayload;
   id?: string;
 }): Promise<OfflineWriteQueueItem> {
   assertBrowser();
@@ -108,13 +112,19 @@ export async function deleteWriteQueueItem(id: string): Promise<void> {
 
 export async function countOpenWriteQueueItems(
   session: ClientCacheSession,
-): Promise<{ pending: number; failed: number; syncing: number }> {
+): Promise<{
+  pending: number;
+  failed: number;
+  syncing: number;
+  conflict: number;
+}> {
   const items = await listWriteQueueForSession(session);
-  const counts = { pending: 0, failed: 0, syncing: 0 };
+  const counts = { pending: 0, failed: 0, syncing: 0, conflict: 0 };
   for (const item of items) {
     if (item.status === "pending") counts.pending += 1;
     else if (item.status === "failed") counts.failed += 1;
     else if (item.status === "syncing") counts.syncing += 1;
+    else if (item.status === "conflict") counts.conflict += 1;
   }
   return counts;
 }
@@ -129,5 +139,10 @@ export async function listDrainableWriteQueueItems(
 }
 
 export function isOpenQueueStatus(status: OfflineWriteQueueStatus): boolean {
-  return status === "pending" || status === "failed" || status === "syncing";
+  return (
+    status === "pending" ||
+    status === "failed" ||
+    status === "syncing" ||
+    status === "conflict"
+  );
 }
