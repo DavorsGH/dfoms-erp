@@ -13,12 +13,15 @@ export function useOnlineStatus(): boolean {
     }
 
     function onOnline() {
-      // Force true on the online event — some browsers briefly lag navigator.onLine.
-      setIsOnline(true);
+      queueMicrotask(() => setIsOnline(navigator.onLine));
+    }
+
+    function onOffline() {
+      queueMicrotask(() => setIsOnline(navigator.onLine));
     }
 
     window.addEventListener("online", onOnline);
-    window.addEventListener("offline", sync);
+    window.addEventListener("offline", onOffline);
     window.addEventListener("pageshow", sync);
     document.addEventListener("visibilitychange", sync);
     // Pick up Playwright/DevTools offline flips that can race hydration.
@@ -26,7 +29,7 @@ export function useOnlineStatus(): boolean {
 
     return () => {
       window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", sync);
+      window.removeEventListener("offline", onOffline);
       window.removeEventListener("pageshow", sync);
       document.removeEventListener("visibilitychange", sync);
     };

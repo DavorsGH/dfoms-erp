@@ -6,6 +6,7 @@ import {
   REPORT_MONTH_OPTIONS,
 } from "./finance-reports-utils";
 import { useTenantBranding } from "../tenant-branding-context";
+import WorkspaceLogo from "../workspace-logo";
 import { DEFAULT_COMPANY_LEGAL_NAME } from "@/utils/tenant-branding-types";
 
 export const REPORT_COMPANY_NAME = DEFAULT_COMPANY_LEGAL_NAME;
@@ -104,17 +105,12 @@ export function ReportCompanyHeader({
   title: string;
   periodLabel: string;
 }) {
-  const { companyLegalName, workspaceLogoUrl } = useTenantBranding();
+  const { companyLegalName } = useTenantBranding();
 
   return (
     <header className="mb-6 border-b-4 border-[#0f2744] pb-4">
       <div className="flex items-start gap-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={workspaceLogoUrl}
-          alt={`${companyLegalName} logo`}
-          className="h-16 w-16 rounded-md object-cover"
-        />
+        <WorkspaceLogo name={companyLegalName} size="md" />
         <div>
           <h3 className="text-lg font-bold text-[#0f2744]">
             {companyLegalName}

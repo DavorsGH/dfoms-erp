@@ -951,7 +951,8 @@ export default function PosCheckout({
       return;
     }
 
-    if (isOffline) {
+    const offlineNow = isOffline || !navigator.onLine;
+    if (offlineNow) {
       if (isMobileMoney) {
         setError(
           "Mobile Money cannot be queued offline. Use Cash, or reconnect to pay with MoMo.",

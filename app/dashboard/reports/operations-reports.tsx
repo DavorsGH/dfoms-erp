@@ -52,6 +52,7 @@ import {
   formatReportDate,
 } from "./report-ui";
 import { useTenantBranding } from "../tenant-branding-context";
+import WorkspaceLogo from "../workspace-logo";
 
 type FetchErrorProps = {
   fetchError: string | null;
@@ -706,7 +707,7 @@ export function MonthlyClientServiceReport({
   incidentFetchError?: string | null;
   scopedClientId?: string | null;
 }) {
-  const { companyLegalName, workspaceLogoUrl } = useTenantBranding();
+  const { companyLegalName } = useTenantBranding();
   const { year, month, setYear, setMonth, periodLabel } =
     useMonthYearSelection(availableYears);
   const [selectedClientId, setSelectedClientId] = useState(
@@ -834,11 +835,10 @@ export function MonthlyClientServiceReport({
           className="rounded-lg border border-slate-300 bg-white p-8 shadow-sm"
         >
           <header className="mb-8 border-b-2 border-[#0f2744] pb-6 text-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={workspaceLogoUrl}
-              alt={`${companyLegalName} logo`}
-              className="mx-auto mb-4 h-20 w-20 rounded-md object-cover"
+            <WorkspaceLogo
+              name={companyLegalName}
+              size="lg"
+              className="mx-auto mb-4"
             />
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
               Service Performance Report

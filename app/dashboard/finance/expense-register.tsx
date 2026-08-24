@@ -703,8 +703,10 @@ export default function ExpenseRegister({
       inputVatAmount,
     });
 
+    const offlineNow = !isOnline || !navigator.onLine;
+
     let receiptNo = form.receipt_no.trim();
-    if (!editingId && isOnline) {
+    if (!editingId && !offlineNow) {
       // Create only: blank → generate_next_code('EXP'); filled → keep vendor paper receipt #.
       const resolved = await resolveManualExpenseReceiptNo(supabase, form.receipt_no);
       if (resolved.error || !resolved.receiptNo) {
@@ -737,7 +739,7 @@ export default function ExpenseRegister({
       notes: form.notes || null,
     };
 
-    if (!isOnline) {
+    if (offlineNow) {
       if (editingId) {
         setError("Editing saved expenses requires a connection.");
         setLoading(false);

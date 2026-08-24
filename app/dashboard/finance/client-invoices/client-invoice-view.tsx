@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { pdf } from "@react-pdf/renderer";
 import { LoadingState } from "@/components/loading-indicator";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
+import WorkspaceLogo from "@/app/dashboard/workspace-logo";
 import { tableWrapCellClassName } from "@/app/dashboard/scrollable-table";
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import {
@@ -344,11 +345,11 @@ export default function ClientInvoiceView({
         <header className="bg-[#0f2744] px-6 py-6">
           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={display.branding.workspaceLogoUrl}
-                alt={`${companyName} logo`}
-                className="h-16 w-16 rounded-md object-cover ring-2 ring-white/25"
+              <WorkspaceLogo
+                workspaceLogoUrl={display.branding.workspaceLogoUrl}
+                name={companyName}
+                size="md"
+                className="ring-2 ring-white/25"
               />
               <div>
                 <h3 className="text-lg font-bold text-white">

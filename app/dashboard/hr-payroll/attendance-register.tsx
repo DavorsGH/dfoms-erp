@@ -338,7 +338,8 @@ export default function AttendanceRegister({
       attendance_status: form.attendance_status || DEFAULT_ATTENDANCE_STATUS,
     };
 
-    if (!isOnline) {
+    const offlineNow = !isOnline || !navigator.onLine;
+    if (offlineNow) {
       if (editingId) {
         setError("Editing saved attendance requires a connection.");
         setLoading(false);

@@ -22,6 +22,7 @@ import {
 } from "./payroll-period-utils";
 import type { PayrollHistoryRow } from "./payroll-processing-utils";
 import { useTenantBranding } from "../tenant-branding-context";
+import WorkspaceLogo from "../workspace-logo";
 
 type PayslipEmployeeOption = {
   employee_id: string;
@@ -199,7 +200,7 @@ export default function Payslip({
   scopedEmployeeId = null,
 }: PayslipProps) {
   const supabase = useMemo(() => createClient(), []);
-  const { companyLegalName, workspaceLogoUrl } = useTenantBranding();
+  const { companyLegalName } = useTenantBranding();
 
   const [selectedMonth, setSelectedMonth] = useState(
     initialPayrollMonths[0] ?? "",
@@ -654,12 +655,7 @@ export default function Payslip({
           <header className="mb-8 border-b-4 border-[#0f2744] pb-6">
             <div className="flex items-start justify-between gap-6">
               <div className="flex items-center gap-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={workspaceLogoUrl}
-                  alt={`${companyLegalName} logo`}
-                  className="h-16 w-16 rounded-md object-cover"
-                />
+                <WorkspaceLogo name={companyLegalName} size="md" />
                 <div>
                   <h2 className="text-lg font-bold text-[#0f2744]">
                     {companyLegalName}
