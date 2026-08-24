@@ -82,6 +82,7 @@ export default async function InternalConsumptionPage() {
     supabase
       .from("projects")
       .select(CONTRACT_PROJECT_SELECT)
+      .eq("is_archived", false)
       .order("project_name", { ascending: true }),
     supabase
       .from("sites")

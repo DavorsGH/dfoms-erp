@@ -17,18 +17,21 @@ export type ProjectEntry = {
   project_code: string;
   project_name: string;
   required_staff?: number | null;
+  is_archived: boolean;
   sites?: ProjectSite[] | null;
 };
 
 export const PROJECT_SELECT =
-  "id, project_code, project_name, required_staff, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
+  "id, project_code, project_name, required_staff, is_archived, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
 
-export const CONTRACT_PROJECT_SELECT = "id, project_code, project_name";
+export const CONTRACT_PROJECT_SELECT =
+  "id, project_code, project_name, is_archived";
 
 export type ContractProjectOption = {
   id: string;
   project_code: string;
   project_name: string;
+  is_archived?: boolean;
 };
 
 export function normalizeProjectEntry(raw: ProjectEntry): ProjectEntry {
@@ -43,6 +46,7 @@ export function normalizeProjectEntry(raw: ProjectEntry): ProjectEntry {
 
   return {
     ...raw,
+    is_archived: raw.is_archived ?? false,
     sites,
   };
 }

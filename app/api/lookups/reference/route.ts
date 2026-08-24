@@ -45,6 +45,7 @@ export async function GET() {
       .from("projects")
       .select("project_code, project_name")
       .eq("tenant_id", tenantId)
+      .eq("is_archived", false)
       .order("project_name", { ascending: true }),
     supabase.from("shifts").select("name").order("name", { ascending: true }),
     supabase

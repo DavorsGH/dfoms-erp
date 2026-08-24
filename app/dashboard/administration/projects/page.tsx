@@ -30,17 +30,37 @@ export default async function ProjectsPage() {
     .from("customers")
     .select(CLIENT_SELECT)
     .order("client_name", { ascending: true });
+  const employeesQuery = supabase
+    .from("employees")
+    .select("contract_project")
+    .not("contract_project", "is", null);
+
   if (tenantId) {
     projectsQuery.eq("tenant_id", tenantId);
     sitesQuery.eq("tenant_id", tenantId);
     clientsQuery.eq("tenant_id", tenantId);
+    employeesQuery.eq("tenant_id", tenantId);
   }
 
   const [
     { data, error },
     { data: sites, error: sitesError },
     { data: clients, error: clientsError },
-  ] = await Promise.all([projectsQuery, sitesQuery, clientsQuery]);
+    { data: employees, error: employeesError },
+  ] = await Promise.all([
+    projectsQuery,
+    sitesQuery,
+    clientsQuery,
+    employeesQuery,
+  ]);
+
+  const employeeCountByProjectCode: Record<string, number> = {};
+  for (const row of employees ?? []) {
+    const code = row.contract_project as string | null;
+    if (!code) continue;
+    employeeCountByProjectCode[code] =
+      (employeeCountByProjectCode[code] ?? 0) + 1;
+  }
 
   return (
     <>
@@ -55,8 +75,13 @@ export default async function ProjectsPage() {
         }
         initialSites={(sites as SiteEntry[] | null) ?? []}
         initialClients={(clients as ClientEntry[] | null) ?? []}
+        initialEmployeeCountByProjectCode={employeeCountByProjectCode}
         fetchError={
-          error?.message ?? sitesError?.message ?? clientsError?.message ?? null
+          error?.message ??
+          sitesError?.message ??
+          clientsError?.message ??
+          employeesError?.message ??
+          null
         }
       />
     </>

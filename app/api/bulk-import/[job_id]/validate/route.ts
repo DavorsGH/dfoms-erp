@@ -192,7 +192,8 @@ export async function POST(
       supabase
         .from("projects")
         .select("project_name")
-        .eq("tenant_id", sectionAuth.tenantId),
+        .eq("tenant_id", sectionAuth.tenantId)
+        .eq("is_archived", false),
       supabase
         .from("employees")
         .select("full_name")

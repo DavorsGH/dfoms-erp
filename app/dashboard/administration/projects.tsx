@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { getProjectDeleteErrorMessage } from "@/utils/project-delete-errors";
 import type { ClientEntry } from "../operations/clients-utils";
 import { inputClassName } from "../employees/employee-record-utils";
 import RegisterRowActions, {
+  confirmArchiveEntry,
   confirmDeleteEntry,
+  confirmReactivateEntry,
   getStripedRowClassName,
 } from "../finance/register-row-actions";
 import ScrollableTable, {
@@ -32,6 +35,8 @@ type ProjectsProps = {
   initialProjects: ProjectEntry[];
   initialSites: SiteEntry[];
   initialClients: ClientEntry[];
+  /** employee count keyed by project_code */
+  initialEmployeeCountByProjectCode?: Record<string, number>;
   fetchError: string | null;
 };
 
@@ -44,15 +49,23 @@ export default function Projects({
   initialProjects,
   initialSites,
   initialClients,
+  initialEmployeeCountByProjectCode = {},
   fetchError,
 }: ProjectsProps) {
   const supabase = createClient();
-  const [projects, setProjects] = useState(initialProjects);
+  const [projects, setProjects] = useState(
+    initialProjects.map(normalizeProjectEntry),
+  );
   const [sites, setSites] = useState(initialSites.map(normalizeSiteEntry));
+  const [employeeCountByProjectCode, setEmployeeCountByProjectCode] = useState(
+    initialEmployeeCountByProjectCode,
+  );
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [showContractForm, setShowContractForm] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [archivingCode, setArchivingCode] = useState<string | null>(null);
+  const [reactivatingCode, setReactivatingCode] = useState<string | null>(null);
   const [contractForm, setContractForm] = useState(emptyContractForm);
   const [editingSiteCode, setEditingSiteCode] = useState<string | null>(null);
   const [siteStaffValue, setSiteStaffValue] = useState("");
@@ -60,12 +73,16 @@ export default function Projects({
   const [error, setError] = useState<string | null>(fetchError);
 
   useEffect(() => {
-    setProjects(initialProjects);
+    setProjects(initialProjects.map(normalizeProjectEntry));
   }, [initialProjects]);
 
   useEffect(() => {
     setSites(initialSites.map(normalizeSiteEntry));
   }, [initialSites]);
+
+  useEffect(() => {
+    setEmployeeCountByProjectCode(initialEmployeeCountByProjectCode);
+  }, [initialEmployeeCountByProjectCode]);
 
   const contractProjects = useMemo(
     () =>
@@ -90,6 +107,31 @@ export default function Projects({
       .sort((left, right) => left.site_name.localeCompare(right.site_name));
   }, [selectedProjectId, sites]);
 
+  async function refreshEmployeeCounts(projectCodes: string[]) {
+    if (projectCodes.length === 0) {
+      setEmployeeCountByProjectCode({});
+      return;
+    }
+
+    const { data, error: countError } = await supabase
+      .from("employees")
+      .select("contract_project")
+      .in("contract_project", projectCodes);
+
+    if (countError) {
+      // Keep prior counts if the refresh fails; delete/deactivate still works.
+      return;
+    }
+
+    const counts: Record<string, number> = {};
+    for (const row of data ?? []) {
+      const code = row.contract_project as string | null;
+      if (!code) continue;
+      counts[code] = (counts[code] ?? 0) + 1;
+    }
+    setEmployeeCountByProjectCode(counts);
+  }
+
   async function refreshData() {
     const [{ data: projectRows, error: projectError }, { data: siteRows, error: siteError }] =
       await Promise.all([
@@ -108,16 +150,17 @@ export default function Projects({
       return;
     }
 
-    setProjects(
-      ((projectRows as unknown as ProjectEntry[] | null) ?? []).map((project) =>
-        normalizeProjectEntry(project),
-      ),
-    );
+    const nextProjects = (
+      (projectRows as unknown as ProjectEntry[] | null) ?? []
+    ).map((project) => normalizeProjectEntry(project));
+
+    setProjects(nextProjects);
     setSites(
       ((siteRows as unknown as SiteEntry[] | null) ?? []).map((site) =>
         normalizeSiteEntry(site),
       ),
     );
+    await refreshEmployeeCounts(nextProjects.map((project) => project.project_code));
     setError(null);
   }
 
@@ -142,6 +185,56 @@ export default function Projects({
     setShowContractForm(true);
   }
 
+  async function handleArchiveContract(projectCode: string) {
+    if (!confirmArchiveEntry("contract/project")) {
+      return;
+    }
+
+    setArchivingCode(projectCode);
+    setError(null);
+
+    const { error: archiveError } = await supabase
+      .from("projects")
+      .update({ is_archived: true })
+      .eq("project_code", projectCode);
+
+    if (archiveError) {
+      setError("Unable to deactivate this contract/project. Try again.");
+      setArchivingCode(null);
+      return;
+    }
+
+    if (editingCode === projectCode) {
+      closeContractForm();
+    }
+
+    await refreshData();
+    setArchivingCode(null);
+  }
+
+  async function handleReactivateContract(projectCode: string) {
+    if (!confirmReactivateEntry("contract/project")) {
+      return;
+    }
+
+    setReactivatingCode(projectCode);
+    setError(null);
+
+    const { error: reactivateError } = await supabase
+      .from("projects")
+      .update({ is_archived: false })
+      .eq("project_code", projectCode);
+
+    if (reactivateError) {
+      setError("Unable to reactivate this contract/project. Try again.");
+      setReactivatingCode(null);
+      return;
+    }
+
+    await refreshData();
+    setReactivatingCode(null);
+  }
+
   async function handleDeleteContract(projectCode: string) {
     if (!confirmDeleteEntry()) {
       return;
@@ -156,7 +249,7 @@ export default function Projects({
       .eq("project_code", projectCode);
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(getProjectDeleteErrorMessage(deleteError));
       setDeletingCode(null);
       return;
     }
@@ -249,7 +342,8 @@ export default function Projects({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-sm text-slate-600">
             Manage contract projects and assign operational sites to each
-            contract.
+            contract. Contracts with employees assigned can be deactivated
+            instead of deleted so history is preserved.
           </p>
           <button
             type="button"
@@ -352,24 +446,58 @@ export default function Projects({
                   </td>
                 </tr>
               ) : (
-                contractProjects.map((project, index) => (
-                  <tr
-                    key={project.id}
-                    className={getStripedRowClassName(index)}
-                  >
-                    <td className="px-4 py-3">{project.project_code}</td>
-                    <td className="px-4 py-3">{project.project_name}</td>
-                    <td className="px-4 py-3">
-                      {getProjectClientName(project, sites)}
-                    </td>
-                    <td className="px-4 py-3">{getProjectSiteCount(project)}</td>
-                    <RegisterRowActions
-                      onEdit={() => openEditContractForm(project)}
-                      onDelete={() => handleDeleteContract(project.project_code)}
-                      deleting={deletingCode === project.project_code}
-                    />
-                  </tr>
-                ))
+                contractProjects.map((project, index) => {
+                  const employeeCount =
+                    employeeCountByProjectCode[project.project_code] ?? 0;
+                  const hasAssignedEmployees = employeeCount > 0;
+                  const showDeactivateAction =
+                    !project.is_archived && hasAssignedEmployees;
+
+                  return (
+                    <tr
+                      key={project.id}
+                      className={getStripedRowClassName(index)}
+                    >
+                      <td className="px-4 py-3">{project.project_code}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{project.project_name}</span>
+                          {project.is_archived ? (
+                            <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700">
+                              Inactive
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {getProjectClientName(project, sites)}
+                      </td>
+                      <td className="px-4 py-3">{getProjectSiteCount(project)}</td>
+                      <RegisterRowActions
+                        onEdit={() => openEditContractForm(project)}
+                        onDelete={
+                          showDeactivateAction || project.is_archived
+                            ? undefined
+                            : () => handleDeleteContract(project.project_code)
+                        }
+                        onArchive={
+                          showDeactivateAction
+                            ? () => handleArchiveContract(project.project_code)
+                            : undefined
+                        }
+                        onRestore={
+                          project.is_archived
+                            ? () => handleReactivateContract(project.project_code)
+                            : undefined
+                        }
+                        deleting={deletingCode === project.project_code}
+                        archiving={archivingCode === project.project_code}
+                        restoring={reactivatingCode === project.project_code}
+                        archiveLabel="Deactivate"
+                      />
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -391,6 +519,7 @@ export default function Projects({
               {contractProjects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.project_code} — {project.project_name}
+                  {project.is_archived ? " (Inactive)" : ""}
                 </option>
               ))}
             </select>

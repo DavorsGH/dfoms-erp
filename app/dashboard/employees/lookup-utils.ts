@@ -59,6 +59,7 @@ async function fetchProjects(
   let query = supabase
     .from("projects")
     .select("project_code, project_name")
+    .eq("is_archived", false)
     .order("project_name", { ascending: true });
   if (tenantId) {
     query = query.eq("tenant_id", tenantId);
