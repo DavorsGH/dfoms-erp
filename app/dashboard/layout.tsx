@@ -24,6 +24,8 @@ export default async function DashboardLayout({
         userLabel={shell.displayInfo.label}
         userPhotoUrl={shell.displayInfo.photoUrl}
         userFullName={shell.displayInfo.fullName ?? shell.displayInfo.email}
+        tenantId={shell.account?.tenant_id ?? null}
+        authUid={shell.authUser?.id ?? null}
       >
         {children}
       </DashboardShell>

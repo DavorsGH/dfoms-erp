@@ -1,35 +1,64 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import {
   CLIENT_CACHE_DB_NAME,
+  CLIENT_CACHE_DB_VERSION,
   CLIENT_CACHE_OBJECT_STORE,
+  WRITE_QUEUE_OBJECT_STORE,
 } from "@/lib/client-cache/constants";
 import type { CacheEnvelope } from "@/lib/client-cache/types";
+import type { OfflineWriteQueueItem } from "@/lib/offline-write-queue/types";
 
 interface ClientCacheDbSchema extends DBSchema {
   entries: {
     key: string;
     value: CacheEnvelope<unknown>;
   };
+  write_queue: {
+    key: string;
+    value: OfflineWriteQueueItem;
+    indexes: {
+      "by-createdAt": string;
+      "by-status": string;
+      "by-session": string;
+    };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<ClientCacheDbSchema>> | null = null;
 
-function getDb(): Promise<IDBPDatabase<ClientCacheDbSchema>> {
+export function getClientCacheDb(): Promise<IDBPDatabase<ClientCacheDbSchema>> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB is not available."));
   }
 
   if (!dbPromise) {
-    dbPromise = openDB<ClientCacheDbSchema>(CLIENT_CACHE_DB_NAME, 1, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains(CLIENT_CACHE_OBJECT_STORE)) {
-          db.createObjectStore(CLIENT_CACHE_OBJECT_STORE);
-        }
+    dbPromise = openDB<ClientCacheDbSchema>(
+      CLIENT_CACHE_DB_NAME,
+      CLIENT_CACHE_DB_VERSION,
+      {
+        upgrade(db, oldVersion) {
+          if (oldVersion < 1 && !db.objectStoreNames.contains(CLIENT_CACHE_OBJECT_STORE)) {
+            db.createObjectStore(CLIENT_CACHE_OBJECT_STORE);
+          }
+          if (oldVersion < 2 && !db.objectStoreNames.contains(WRITE_QUEUE_OBJECT_STORE)) {
+            const store = db.createObjectStore(WRITE_QUEUE_OBJECT_STORE, {
+              keyPath: "id",
+            });
+            store.createIndex("by-createdAt", "createdAt");
+            store.createIndex("by-status", "status");
+            store.createIndex("by-session", "sessionKey");
+          }
+        },
       },
-    });
+    );
   }
 
   return dbPromise;
+}
+
+/** @deprecated Prefer getClientCacheDb — kept for existing call sites. */
+function getDb(): Promise<IDBPDatabase<ClientCacheDbSchema>> {
+  return getClientCacheDb();
 }
 
 export async function readCacheEntry<T>(

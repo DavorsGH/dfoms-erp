@@ -71,6 +71,11 @@ import {
   resolveVendorNameFromSelect,
   VENDOR_OTHER_VALUE,
 } from "./vendor-select-utils";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import { useWriteQueueOptional } from "@/components/write-queue-provider";
+import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
+import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
+import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
 
 type ExpenseRegisterProps = {
   initialEntries: ExpenseRegisterEntry[];
@@ -162,6 +167,8 @@ export default function ExpenseRegister({
   fetchError,
 }: ExpenseRegisterProps) {
   const supabase = createClient();
+  const isOnline = useOnlineStatus();
+  const writeQueue = useWriteQueueOptional();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeExpenseRegisterEntry),
   );
@@ -254,16 +261,65 @@ export default function ExpenseRegister({
     [entries, categoryFilter, subCategoryFilter],
   );
 
-  const visibleEntries = useMemo(
-    () =>
-      entries.filter(
-        (entry) =>
-          columnValuePassesFilter(entry.expense_category, categoryFilter) &&
-          columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
-          columnValuePassesFilter(entry.description, descriptionFilter),
-      ),
-    [entries, categoryFilter, subCategoryFilter, descriptionFilter],
-  );
+  const visibleEntries = useMemo(() => {
+    type DisplayExpense = ExpenseRegisterEntry & {
+      pendingSync?: boolean;
+      queueFailed?: boolean;
+      queueError?: string | null;
+    };
+
+    const queued: DisplayExpense[] = (writeQueue?.items ?? [])
+      .filter((item) => item.type === "expense")
+      .map((item) => {
+        const payload = item.payload as ExpenseQueuePayload;
+        return {
+          id: item.id,
+          date: payload.date,
+          expense_category: payload.expense_category,
+          sub_category: payload.sub_category,
+          description: payload.description,
+          vendor: payload.vendor,
+          price: payload.price,
+          quantity: payload.quantity,
+          amount: payload.amount,
+          payment_method: payload.payment_method,
+          approved_by: payload.approved_by,
+          receipt_no: payload.supplied_receipt_no || "(pending EXP#)",
+          payment_status: payload.payment_status,
+          notes: payload.notes,
+          gross_before_wht: payload.gross_before_wht,
+          wht_rate: payload.wht_rate,
+          wht_amount: payload.wht_amount,
+          input_vat_amount: payload.input_vat_amount,
+          net_of_tax_amount: payload.net_of_tax_amount,
+          pendingSync: true,
+          queueFailed: item.status === "failed",
+          queueError: item.lastError,
+        };
+      });
+
+    const live = entries.filter(
+      (entry) =>
+        columnValuePassesFilter(entry.expense_category, categoryFilter) &&
+        columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
+        columnValuePassesFilter(entry.description, descriptionFilter),
+    );
+
+    const queuedFiltered = queued.filter(
+      (entry) =>
+        columnValuePassesFilter(entry.expense_category, categoryFilter) &&
+        columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
+        columnValuePassesFilter(entry.description, descriptionFilter),
+    );
+
+    return [...queuedFiltered, ...live] as DisplayExpense[];
+  }, [
+    entries,
+    writeQueue?.items,
+    categoryFilter,
+    subCategoryFilter,
+    descriptionFilter,
+  ]);
 
   const visibleNetPaidTotal = useMemo(() => {
     let total = 0;
@@ -406,7 +462,19 @@ export default function ExpenseRegister({
     setShowForm(false);
   }
 
-  function openEditForm(entry: ExpenseRegisterEntry) {
+  function openEditForm(
+    entry: ExpenseRegisterEntry & { pendingSync?: boolean },
+  ) {
+    if (entry.pendingSync) {
+      setError(
+        "Queued offline expenses sync as recorded. Discard and re-add to change them.",
+      );
+      return;
+    }
+    if (!isOnline) {
+      setError("Editing saved expenses requires a connection.");
+      return;
+    }
     const linkedProductSaleCogs = linkedProductSaleCogsByExpenseId.get(
       entry.id,
     );
@@ -483,6 +551,22 @@ export default function ExpenseRegister({
   }
 
   async function handleDelete(id: string) {
+    const pending = (writeQueue?.items ?? []).find(
+      (item) => item.id === id && item.type === "expense",
+    );
+    if (pending) {
+      if (!confirmDeleteEntry()) return;
+      setDeletingId(id);
+      await writeQueue?.discardItem(id);
+      setDeletingId(null);
+      return;
+    }
+
+    if (!isOnline) {
+      setError("Deleting saved expenses requires a connection.");
+      return;
+    }
+
     const knownLink = linkedProductSaleCogsByExpenseId.get(id);
     if (knownLink) {
       setError(formatLinkedProductSaleCogsDeleteMessage(knownLink));
@@ -620,7 +704,7 @@ export default function ExpenseRegister({
     });
 
     let receiptNo = form.receipt_no.trim();
-    if (!editingId) {
+    if (!editingId && isOnline) {
       // Create only: blank → generate_next_code('EXP'); filled → keep vendor paper receipt #.
       const resolved = await resolveManualExpenseReceiptNo(supabase, form.receipt_no);
       if (resolved.error || !resolved.receiptNo) {
@@ -652,6 +736,53 @@ export default function ExpenseRegister({
       net_of_tax_amount: purchaseTax.netOfTaxAmount,
       notes: form.notes || null,
     };
+
+    if (!isOnline) {
+      if (editingId) {
+        setError("Editing saved expenses requires a connection.");
+        setLoading(false);
+        return;
+      }
+      const session =
+        writeQueue?.session ?? (await resolveClientCacheSession());
+      if (!session) {
+        setError("Unable to queue offline — session not available.");
+        setLoading(false);
+        return;
+      }
+      const queuePayload: ExpenseQueuePayload = {
+        date: payload.date,
+        expense_category: payload.expense_category,
+        sub_category: payload.sub_category,
+        description: payload.description,
+        vendor: payload.vendor,
+        price: payload.price,
+        quantity: payload.quantity,
+        amount: payload.amount,
+        payment_method: payload.payment_method,
+        approved_by: payload.approved_by,
+        supplied_receipt_no: form.receipt_no.trim(),
+        payment_status: payload.payment_status,
+        gross_before_wht: payload.gross_before_wht,
+        wht_rate: payload.wht_rate,
+        wht_amount: payload.wht_amount,
+        input_vat_amount: payload.input_vat_amount,
+        net_of_tax_amount: payload.net_of_tax_amount,
+        notes: payload.notes,
+        wht_rate_pct: whtRate > 0 ? whtRate : null,
+        input_tax_component: purchaseTax.inputTaxComponent,
+        notification_detail: formatGHS(purchaseTax.netPaidToSupplier),
+      };
+      await enqueueWriteQueueItem({
+        session,
+        type: "expense",
+        payload: queuePayload,
+      });
+      await writeQueue?.refresh();
+      closeForm();
+      setLoading(false);
+      return;
+    }
 
     let savedId = editingId;
 
@@ -704,6 +835,7 @@ export default function ExpenseRegister({
 
     closeForm();
     await refreshEntries();
+    await writeQueue?.refresh();
 
     if (ledgerError) {
       setError(
@@ -818,6 +950,14 @@ export default function ExpenseRegister({
           </button>
         </div>
       </div>
+
+      {!isOnline ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Offline — new expenses are saved to the sync queue (receipt numbers
+          and tax ledger post on reconnect). Edits/deletes of confirmed rows need
+          a connection.
+        </p>
+      ) : null}
 
       {error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1143,7 +1283,9 @@ export default function ExpenseRegister({
                   ? "Saving…"
                   : editingId
                     ? "Save Changes"
-                    : "Save Entry"}
+                    : isOnline
+                      ? "Save Entry"
+                      : "Queue Entry"}
               </button>
               <button
                 type="button"
@@ -1251,6 +1393,25 @@ export default function ExpenseRegister({
                         })}
                       >
                         {entry.description ?? "—"}
+                        {"pendingSync" in entry && entry.pendingSync ? (
+                          <span
+                            className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
+                              "queueFailed" in entry && entry.queueFailed
+                                ? "bg-red-100 text-red-800"
+                                : "bg-amber-100 text-amber-900"
+                            }`}
+                            title={
+                              "queueError" in entry
+                                ? (entry.queueError as string | null) ??
+                                  undefined
+                                : undefined
+                            }
+                          >
+                            {"queueFailed" in entry && entry.queueFailed
+                              ? "Sync failed"
+                              : "Pending sync"}
+                          </span>
+                        ) : null}
                         {autoPosted ? (
                           <span className="ml-2 text-xs font-medium opacity-80">
                             (auto-posted)
@@ -1259,6 +1420,17 @@ export default function ExpenseRegister({
                           <span className="ml-2 text-xs font-medium opacity-80">
                             (product sale COGS)
                           </span>
+                        ) : null}
+                        {"queueFailed" in entry &&
+                        entry.queueFailed &&
+                        writeQueue ? (
+                          <button
+                            type="button"
+                            className="ml-2 text-xs font-medium text-sky-800 underline"
+                            onClick={() => void writeQueue.retryItem(entry.id)}
+                          >
+                            Retry
+                          </button>
                         ) : null}
                       </td>
                       <td className="px-4 py-3">{formatDate(entry.date)}</td>

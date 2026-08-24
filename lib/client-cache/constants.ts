@@ -1,7 +1,13 @@
 /** IndexedDB database name — shared by main thread and service worker purge. */
 export const CLIENT_CACHE_DB_NAME = "dfoms-client-cache";
 
+/** Bump when adding object stores (v2 = offline write_queue). */
+export const CLIENT_CACHE_DB_VERSION = 2;
+
 export const CLIENT_CACHE_OBJECT_STORE = "entries";
+
+/** Offline write-queue store (attendance / expense Phase 2+). */
+export const WRITE_QUEUE_OBJECT_STORE = "write_queue";
 
 /** Dashboard widget aggregates derived from fetchDashboardPageData pipeline. */
 export const DASHBOARD_SUMMARY_TTL_MS = 10 * 60 * 1000; // 10 minutes (within 5–15min spec)
@@ -10,3 +16,6 @@ export const DASHBOARD_SUMMARY_TTL_MS = 10 * 60 * 1000; // 10 minutes (within 5�
 export const REFERENCE_LOOKUPS_TTL_MS = 24 * 60 * 60 * 1000;
 
 export const CLIENT_CACHE_PURGE_MESSAGE = "PURGE_CLIENT_CACHE" as const;
+
+/** localStorage mirror so enqueue works after going offline mid-session. */
+export const CLIENT_CACHE_SESSION_STORAGE_KEY = "dfoms-client-cache-session";

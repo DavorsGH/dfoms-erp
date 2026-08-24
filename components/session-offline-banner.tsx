@@ -8,6 +8,7 @@ import { createClient } from "@/utils/supabase/client";
 /**
  * Shows whenever the browser is offline inside an authenticated shell.
  * On reconnect, refreshes Auth (getUser) in the background.
+ * Write-queue drain is handled by WriteQueueProvider.
  */
 export default function SessionOfflineBanner() {
   const isOnline = useOnlineStatus();
@@ -33,7 +34,7 @@ export default function SessionOfflineBanner() {
   return (
     <OfflineBanner
       show={!isOnline}
-      message="You're offline. Your session is still active — live data and writes need a connection."
+      message="You're offline. Your session is still active — Attendance and Expenses can be queued for sync; other writes need a connection."
     />
   );
 }

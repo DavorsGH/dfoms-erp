@@ -1,9 +1,11 @@
 import { CLIENT_CACHE_PURGE_MESSAGE } from "@/lib/client-cache/constants";
 import { deleteClientCacheDatabase } from "@/lib/client-cache/idb-store";
+import { clearRememberedClientCacheSession } from "@/lib/client-cache/session-context";
 
 /** Purge all IndexedDB client cache entries (main thread). */
 export async function purgeClientCacheMainThread(): Promise<void> {
   await deleteClientCacheDatabase();
+  clearRememberedClientCacheSession();
 }
 
 /** Ask the service worker to purge IndexedDB too (shared origin DB). */

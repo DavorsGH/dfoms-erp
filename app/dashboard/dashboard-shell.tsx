@@ -7,6 +7,8 @@ import Sidebar from "./sidebar";
 import TopBar from "./top-bar";
 import { TenantBrandingProvider } from "./tenant-branding-context";
 import SessionOfflineBanner from "@/components/session-offline-banner";
+import OfflineWriteQueueIndicator from "@/components/offline-write-queue-indicator";
+import { WriteQueueProvider } from "@/components/write-queue-provider";
 
 type DashboardShellProps = {
   children: React.ReactNode;
@@ -18,6 +20,8 @@ type DashboardShellProps = {
   userLabel: string;
   userPhotoUrl?: string | null;
   userFullName?: string | null;
+  tenantId?: string | null;
+  authUid?: string | null;
 };
 
 export default function DashboardShell({
@@ -30,6 +34,8 @@ export default function DashboardShell({
   userLabel,
   userPhotoUrl,
   userFullName,
+  tenantId = null,
+  authUid = null,
 }: DashboardShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -52,57 +58,60 @@ export default function DashboardShell({
 
   return (
     <TenantBrandingProvider branding={tenantBranding}>
-      <div className="flex min-h-screen min-w-0">
-      <div className="hidden shrink-0 md:flex">
-        <Sidebar
-          userRole={userRole}
-          showLeaveApprovals={showLeaveApprovals}
-          showPlatformSettings={showPlatformSettings}
-          showRealEstate={showRealEstate}
-          tenantBranding={tenantBranding}
-        />
-      </div>
-
-      {mobileNavOpen ? (
-        <>
-          <button
-            type="button"
-            aria-label="Close navigation menu"
-            className="fixed inset-0 z-40 bg-black/50 md:hidden"
-            onClick={closeMobileNav}
-          />
-          <div className="fixed inset-y-0 left-0 z-50 md:hidden">
+      <WriteQueueProvider tenantId={tenantId} authUid={authUid}>
+        <div className="flex min-h-screen min-w-0">
+          <div className="hidden shrink-0 md:flex">
             <Sidebar
               userRole={userRole}
               showLeaveApprovals={showLeaveApprovals}
               showPlatformSettings={showPlatformSettings}
               showRealEstate={showRealEstate}
               tenantBranding={tenantBranding}
-              onNavigate={closeMobileNav}
-              onClose={closeMobileNav}
-              mobile
             />
           </div>
-        </>
-      ) : null}
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <TopBar
-          userRole={userRole}
-          userLabel={userLabel}
-          userPhotoUrl={userPhotoUrl}
-          userFullName={userFullName}
-          onMenuToggle={() => setMobileNavOpen((current) => !current)}
-          mobileNavOpen={mobileNavOpen}
-        />
-        <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6">
-          <div className="mb-3">
-            <SessionOfflineBanner />
+          {mobileNavOpen ? (
+            <>
+              <button
+                type="button"
+                aria-label="Close navigation menu"
+                className="fixed inset-0 z-40 bg-black/50 md:hidden"
+                onClick={closeMobileNav}
+              />
+              <div className="fixed inset-y-0 left-0 z-50 md:hidden">
+                <Sidebar
+                  userRole={userRole}
+                  showLeaveApprovals={showLeaveApprovals}
+                  showPlatformSettings={showPlatformSettings}
+                  showRealEstate={showRealEstate}
+                  tenantBranding={tenantBranding}
+                  onNavigate={closeMobileNav}
+                  onClose={closeMobileNav}
+                  mobile
+                />
+              </div>
+            </>
+          ) : null}
+
+          <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+            <TopBar
+              userRole={userRole}
+              userLabel={userLabel}
+              userPhotoUrl={userPhotoUrl}
+              userFullName={userFullName}
+              onMenuToggle={() => setMobileNavOpen((current) => !current)}
+              mobileNavOpen={mobileNavOpen}
+            />
+            <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6">
+              <div className="mb-3">
+                <SessionOfflineBanner />
+                <OfflineWriteQueueIndicator />
+              </div>
+              {children}
+            </main>
           </div>
-          {children}
-        </main>
-      </div>
-      </div>
+        </div>
+      </WriteQueueProvider>
     </TenantBrandingProvider>
   );
 }

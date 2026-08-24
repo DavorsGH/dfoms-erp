@@ -34,6 +34,11 @@ import {
   inputClassName,
   toTimeInputValue,
 } from "./hr-register-utils";
+import { useOnlineStatus } from "@/hooks/use-online-status";
+import { useWriteQueueOptional } from "@/components/write-queue-provider";
+import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
+import type { AttendanceQueuePayload } from "@/lib/offline-write-queue/types";
+import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
 
 type AttendanceRegisterProps = {
   initialEntries: AttendanceRegisterEntry[];
@@ -41,6 +46,12 @@ type AttendanceRegisterProps = {
   initialYear: number;
   initialMonth: number;
   fetchError: string | null;
+};
+
+type DisplayAttendanceEntry = AttendanceRegisterEntry & {
+  pendingSync?: boolean;
+  queueFailed?: boolean;
+  queueError?: string | null;
 };
 
 const emptyForm = {
@@ -63,6 +74,8 @@ export default function AttendanceRegister({
   fetchError,
 }: AttendanceRegisterProps) {
   const supabase = createClient();
+  const isOnline = useOnlineStatus();
+  const writeQueue = useWriteQueueOptional();
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
   const [entries, setEntries] = useState(initialEntries);
@@ -85,6 +98,39 @@ export default function AttendanceRegister({
     return new Map(employees.map((employee) => [employee.staff_id, employee.full_name]));
   }, [employees]);
 
+  const pendingAttendance = useMemo(() => {
+    const items = writeQueue?.items ?? [];
+    return items.filter((item) => item.type === "attendance");
+  }, [writeQueue?.items]);
+
+  const displayEntries = useMemo((): DisplayAttendanceEntry[] => {
+    const { start, end } = getAttendanceMonthBounds(selectedYear, selectedMonth);
+    const queued: DisplayAttendanceEntry[] = pendingAttendance
+      .filter((item) => {
+        const payload = item.payload as AttendanceQueuePayload;
+        return payload.date >= start && payload.date <= end;
+      })
+      .map((item) => {
+        const payload = item.payload as AttendanceQueuePayload;
+        return {
+          id: item.id,
+          date: payload.date,
+          staff_id: payload.staff_id,
+          employment_type: payload.employment_type,
+          project_assignment: payload.project_assignment,
+          clock_in: payload.clock_in,
+          clock_out: payload.clock_out,
+          hours_worked: payload.hours_worked,
+          overtime_hours: payload.overtime_hours,
+          attendance_status: payload.attendance_status,
+          pendingSync: true,
+          queueFailed: item.status === "failed",
+          queueError: item.lastError,
+        };
+      });
+    return [...queued, ...entries];
+  }, [entries, pendingAttendance, selectedYear, selectedMonth]);
+
   useEffect(() => {
     setEntries(initialEntries);
   }, [initialEntries]);
@@ -94,6 +140,10 @@ export default function AttendanceRegister({
   }, [initialEmployees]);
 
   async function loadEntriesForPeriod(year: number, month: number) {
+    if (!isOnline) {
+      setLoadingEntries(false);
+      return;
+    }
     const { start, end } = getAttendanceMonthBounds(year, month);
     setLoadingEntries(true);
 
@@ -117,6 +167,7 @@ export default function AttendanceRegister({
 
   async function refreshEntries() {
     await loadEntriesForPeriod(selectedYear, selectedMonth);
+    await writeQueue?.refresh();
   }
 
   function handleMonthChange(month: number) {
@@ -147,12 +198,15 @@ export default function AttendanceRegister({
   }
 
   async function openBulkImport() {
+    if (!isOnline) {
+      setError("Bulk import requires a connection.");
+      return;
+    }
     setShowForm(false);
     setEditingId(null);
     setForm(emptyForm);
     setError(null);
 
-    // Duplicate detection must see all months, not just the filtered view.
     const { data, error: existingError } = await supabase
       .from("attendance_register")
       .select("date, staff_id");
@@ -174,7 +228,17 @@ export default function AttendanceRegister({
     setBulkImportExisting([]);
   }
 
-  function openEditForm(entry: AttendanceRegisterEntry) {
+  function openEditForm(entry: DisplayAttendanceEntry) {
+    if (entry.pendingSync) {
+      setError(
+        "Queued offline entries sync as recorded. Discard and re-add to change them.",
+      );
+      return;
+    }
+    if (!isOnline) {
+      setError("Editing saved attendance requires a connection.");
+      return;
+    }
     setEditingId(entry.id);
     setForm({
       date: toDateInputValue(entry.date),
@@ -217,18 +281,31 @@ export default function AttendanceRegister({
     });
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(entry: DisplayAttendanceEntry) {
+    if (entry.pendingSync) {
+      if (!confirmDeleteEntry()) return;
+      setDeletingId(entry.id);
+      await writeQueue?.discardItem(entry.id);
+      setDeletingId(null);
+      return;
+    }
+
+    if (!isOnline) {
+      setError("Deleting saved attendance requires a connection.");
+      return;
+    }
+
     if (!confirmDeleteEntry()) {
       return;
     }
 
-    setDeletingId(id);
+    setDeletingId(entry.id);
     setError(null);
 
     const { error: deleteError } = await supabase
       .from("attendance_register")
       .delete()
-      .eq("id", id);
+      .eq("id", entry.id);
 
     if (deleteError) {
       setError(deleteError.message);
@@ -236,7 +313,7 @@ export default function AttendanceRegister({
       return;
     }
 
-    if (editingId === id) {
+    if (editingId === entry.id) {
       closeForm();
     }
 
@@ -260,6 +337,31 @@ export default function AttendanceRegister({
       overtime_hours: form.overtime_hours ? Number(form.overtime_hours) : null,
       attendance_status: form.attendance_status || DEFAULT_ATTENDANCE_STATUS,
     };
+
+    if (!isOnline) {
+      if (editingId) {
+        setError("Editing saved attendance requires a connection.");
+        setLoading(false);
+        return;
+      }
+      const session =
+        writeQueue?.session ?? (await resolveClientCacheSession());
+      if (!session) {
+        setError("Unable to queue offline — session not available.");
+        setLoading(false);
+        return;
+      }
+      const staffName = employeeNameByStaffId.get(form.staff_id) ?? null;
+      await enqueueWriteQueueItem({
+        session,
+        type: "attendance",
+        payload: { ...payload, staff_name: staffName },
+      });
+      await writeQueue?.refresh();
+      closeForm();
+      setLoading(false);
+      return;
+    }
 
     const { error: saveError } = editingId
       ? await supabase
@@ -334,7 +436,8 @@ export default function AttendanceRegister({
             onClick={() =>
               showBulkImport ? closeBulkImport() : void openBulkImport()
             }
-            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+            disabled={!isOnline && !showBulkImport}
+            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {showBulkImport ? "Cancel Import" : "Bulk Import"}
           </button>
@@ -347,6 +450,13 @@ export default function AttendanceRegister({
           </button>
         </div>
       </div>
+
+      {!isOnline ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Offline — new attendance is saved to the sync queue. Edits/deletes of
+          confirmed rows need a connection.
+        </p>
+      ) : null}
 
       {error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -367,6 +477,11 @@ export default function AttendanceRegister({
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingId ? "Edit Attendance Entry" : "New Attendance Entry"}
+            {!isOnline && !editingId ? (
+              <span className="ml-2 text-sm font-normal text-amber-800">
+                (will queue until online)
+              </span>
+            ) : null}
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -498,7 +613,13 @@ export default function AttendanceRegister({
                 disabled={loading}
                 className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? "Saving…" : editingId ? "Save Changes" : "Add Entry"}
+                {loading
+                  ? "Saving…"
+                  : editingId
+                    ? "Save Changes"
+                    : isOnline
+                      ? "Add Entry"
+                      : "Queue Entry"}
               </button>
               <button
                 type="button"
@@ -514,8 +635,8 @@ export default function AttendanceRegister({
       )}
 
       <FilteredListCount
-        filteredCount={entries.length}
-        totalCount={entries.length}
+        filteredCount={displayEntries.length}
+        totalCount={displayEntries.length}
         itemSingular="entry"
       />
 
@@ -537,7 +658,7 @@ export default function AttendanceRegister({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {entries.length === 0 ? (
+            {displayEntries.length === 0 ? (
               <tr>
                 <td
                   colSpan={11}
@@ -549,7 +670,7 @@ export default function AttendanceRegister({
                 </td>
               </tr>
             ) : (
-              entries.map((entry, index) => (
+              displayEntries.map((entry, index) => (
                 <tr key={entry.id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{formatDate(entry.date)}</td>
                   <td className="px-4 py-3">{entry.staff_id}</td>
@@ -562,10 +683,35 @@ export default function AttendanceRegister({
                   <td className="px-4 py-3">{formatTime(entry.clock_out)}</td>
                   <td className="px-4 py-3">{entry.hours_worked ?? "—"}</td>
                   <td className="px-4 py-3">{entry.overtime_hours ?? "—"}</td>
-                  <td className="px-4 py-3">{entry.attendance_status}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1">
+                      <span>{entry.attendance_status}</span>
+                      {entry.pendingSync ? (
+                        <span
+                          className={`inline-flex w-fit rounded px-1.5 py-0.5 text-xs font-medium ${
+                            entry.queueFailed
+                              ? "bg-red-100 text-red-800"
+                              : "bg-amber-100 text-amber-900"
+                          }`}
+                          title={entry.queueError ?? undefined}
+                        >
+                          {entry.queueFailed ? "Sync failed" : "Pending sync"}
+                        </span>
+                      ) : null}
+                      {entry.queueFailed && writeQueue ? (
+                        <button
+                          type="button"
+                          className="text-left text-xs font-medium text-sky-800 underline"
+                          onClick={() => void writeQueue.retryItem(entry.id)}
+                        >
+                          Retry
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
                   <RegisterRowActions
                     onEdit={() => openEditForm(entry)}
-                    onDelete={() => handleDelete(entry.id)}
+                    onDelete={() => handleDelete(entry)}
                     deleting={deletingId === entry.id}
                   />
                 </tr>
