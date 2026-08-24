@@ -356,25 +356,21 @@ async function main() {
     }
   }
 
-  // Inventory month-by-month from engine
-  const { calculateInventoryByMonth } = await import(
+  // Inventory month-by-month from engine (legacy live-paint helper for probe)
+  const { calculateInventoryByMonthFromLiveStock } = await import(
     "../app/dashboard/inventory/inventory-balance-sheet-utils"
   );
   const { data: avgAll } = await admin.rpc("get_finished_product_average_costs", {
     p_tenant_id: TENANT,
   });
-  const invMonths = calculateInventoryByMonth(
-    {
-      config: invConfig ?? null,
-      rawMaterials: [],
-      finishedProducts: products ?? [],
-      finishedProductAverageCosts: avgAll ?? [],
-      cashPurchases: [],
-      productCashPurchases: purchases ?? [],
-    },
+  const invMonths = calculateInventoryByMonthFromLiveStock(
+    [],
+    products ?? [],
+    avgAll ?? [],
+    invConfig ?? null,
     2026,
   );
-  console.log("\n=== calculateInventoryByMonth FY2026 ===");
+  console.log("\n=== calculateInventoryByMonthFromLiveStock FY2026 ===");
   console.log(invMonths);
 }
 

@@ -28,6 +28,7 @@ import {
 import type {
   FinishedProductAverageCostRow,
   InventoryBalanceConfig,
+  InventoryValuationHistory,
 } from "../inventory/inventory-balance-sheet-utils";
 import {
   RAW_MATERIAL_SELECT,
@@ -154,6 +155,10 @@ export async function fetchInventoryBalanceSheetInput(
     { data: averageCostRows },
     { data: cashPurchases },
     { data: productCashPurchases },
+    { data: productionBatches },
+    { data: productPurchasesFull },
+    { data: productSaleCogs },
+    { data: rawPurchasesFull },
   ] = await Promise.all([
     supabase
       .from("inventory_balance_config")
@@ -183,10 +188,62 @@ export async function fetchInventoryBalanceSheetInput(
       .from("product_purchases")
       .select("purchase_date, total_cost, payment_method, created_at")
       .eq("tenant_id", tenantId),
+    supabase
+      .from("production_batches")
+      .select(
+        "id, finished_product_id, production_date, total_batch_cost, created_at",
+      )
+      .eq("tenant_id", tenantId),
+    supabase
+      .from("product_purchases")
+      .select("product_id, purchase_date, total_cost, created_at")
+      .eq("tenant_id", tenantId),
+    supabase
+      .from("income_register")
+      .select(
+        "product_id, date, cogs_expense_id, cogs_reversal_expense_id, entry_type",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("entry_type", "product_sale")
+      .not("product_id", "is", null),
+    supabase
+      .from("raw_material_purchases")
+      .select(
+        "material_id, purchase_date, quantity, cost_per_unit, created_at",
+      )
+      .eq("tenant_id", tenantId),
   ]);
 
   if (counter) {
-    tickRequestCounter(counter, 6);
+    tickRequestCounter(counter, 10);
+  }
+
+  const batchIds = (productionBatches ?? []).map((b) => String(b.id));
+  const batchDateById = new Map(
+    (productionBatches ?? []).map((b) => [
+      String(b.id),
+      String(b.production_date),
+    ]),
+  );
+
+  let batchMaterials: Array<{
+    material_id: string;
+    quantity_used: number;
+    batch_id: string;
+  }> = [];
+  if (batchIds.length > 0) {
+    const { data: materialRows } = await supabase
+      .from("production_batch_materials")
+      .select("material_id, quantity_used, batch_id")
+      .in("batch_id", batchIds);
+    if (counter) {
+      tickRequestCounter(counter, 1);
+    }
+    batchMaterials = (materialRows ?? []).map((row) => ({
+      material_id: String(row.material_id),
+      quantity_used: Number(row.quantity_used) || 0,
+      batch_id: String(row.batch_id),
+    }));
   }
 
   const config = configRows
@@ -201,6 +258,83 @@ export async function fetchInventoryBalanceSheetInput(
     normalizeFinishedProduct(row),
   );
 
+  const cogsExpenseIds = new Set<string>();
+  for (const sale of productSaleCogs ?? []) {
+    if (sale.cogs_expense_id) cogsExpenseIds.add(String(sale.cogs_expense_id));
+    if (sale.cogs_reversal_expense_id) {
+      cogsExpenseIds.add(String(sale.cogs_reversal_expense_id));
+    }
+  }
+
+  const cogsAmountById = new Map<string, number>();
+  if (cogsExpenseIds.size > 0) {
+    const { data: cogsExpenses } = await supabase
+      .from("expense_register")
+      .select("id, amount")
+      .eq("tenant_id", tenantId)
+      .in("id", [...cogsExpenseIds]);
+    if (counter) {
+      tickRequestCounter(counter, 1);
+    }
+    for (const row of cogsExpenses ?? []) {
+      cogsAmountById.set(String(row.id), Number(row.amount) || 0);
+    }
+  }
+
+  const valuationHistory: InventoryValuationHistory = {
+    finishedProductInflows: [
+      ...(productionBatches ?? []).map((batch) => ({
+        product_id: String(batch.finished_product_id),
+        source: "production" as const,
+        event_date: String(batch.production_date),
+        created_at: String(batch.created_at ?? batch.production_date),
+        total_cost: Number(batch.total_batch_cost) || 0,
+      })),
+      ...(productPurchasesFull ?? []).map((purchase) => ({
+        product_id: String(purchase.product_id),
+        source: "purchase" as const,
+        event_date: String(purchase.purchase_date),
+        created_at: String(purchase.created_at),
+        total_cost: Number(purchase.total_cost) || 0,
+      })),
+    ],
+    finishedProductCogs: (productSaleCogs ?? []).flatMap((sale) => {
+      const productId = sale.product_id ? String(sale.product_id) : "";
+      if (!productId) return [];
+      const rows: InventoryValuationHistory["finishedProductCogs"] = [];
+      if (sale.cogs_expense_id) {
+        rows.push({
+          product_id: productId,
+          sale_date: String(sale.date),
+          cogs_amount: cogsAmountById.get(String(sale.cogs_expense_id)) ?? 0,
+        });
+      }
+      if (sale.cogs_reversal_expense_id) {
+        rows.push({
+          product_id: productId,
+          sale_date: String(sale.date),
+          cogs_amount:
+            cogsAmountById.get(String(sale.cogs_reversal_expense_id)) ?? 0,
+        });
+      }
+      return rows;
+    }),
+    rawMaterialPurchases: (rawPurchasesFull ?? []).map((purchase) => ({
+      material_id: String(purchase.material_id),
+      purchase_date: String(purchase.purchase_date),
+      created_at: String(purchase.created_at),
+      quantity: Number(purchase.quantity) || 0,
+      cost_per_unit: Number(purchase.cost_per_unit) || 0,
+    })),
+    rawMaterialConsumptions: batchMaterials
+      .map((row) => ({
+        material_id: row.material_id,
+        consumption_date: batchDateById.get(row.batch_id) ?? "",
+        quantity_used: row.quantity_used,
+      }))
+      .filter((row) => row.consumption_date),
+  };
+
   return {
     config,
     rawMaterials: (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)),
@@ -213,6 +347,7 @@ export async function fetchInventoryBalanceSheetInput(
     })),
     cashPurchases: cashPurchases ?? [],
     productCashPurchases: productCashPurchases ?? [],
+    valuationHistory,
   };
 }
 

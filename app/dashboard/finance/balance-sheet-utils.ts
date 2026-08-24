@@ -36,8 +36,10 @@ import { getPeriodMonthParts } from "./cash-flow-utils";
 import {
   calculateInventoryByMonth,
   calculateInventoryOpeningEquityByMonth,
+  emptyInventoryValuationHistory,
   type FinishedProductAverageCostRow,
   type InventoryBalanceConfig,
+  type InventoryValuationHistory,
   type ProductPurchaseCashEntry,
   type RawMaterialPurchaseCashEntry,
 } from "../inventory/inventory-balance-sheet-utils";
@@ -133,6 +135,8 @@ export type InventoryBalanceSheetInput = {
   finishedProductAverageCosts: FinishedProductAverageCostRow[];
   cashPurchases: RawMaterialPurchaseCashEntry[];
   productCashPurchases: ProductPurchaseCashEntry[];
+  /** Point-in-time valuation history (purchases, production, COGS, consumption). */
+  valuationHistory?: InventoryValuationHistory;
   referenceDate?: Date;
 };
 
@@ -501,6 +505,7 @@ export function buildBalanceSheetReport(
     finishedProductAverageCosts: [],
     cashPurchases: [],
     productCashPurchases: [],
+    valuationHistory: emptyInventoryValuationHistory(),
   },
   manualEntries: CashMovementManualEntry[] = [],
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[] = [],
@@ -536,9 +541,7 @@ export function buildBalanceSheetReport(
   );
   const inventory = roundMonthlyTotals(
     calculateInventoryByMonth(
-      inventoryInput.rawMaterials,
-      inventoryInput.finishedProducts,
-      inventoryInput.finishedProductAverageCosts,
+      inventoryInput.valuationHistory ?? emptyInventoryValuationHistory(),
       inventoryInput.config,
       financialYear,
       inventoryInput.referenceDate,
