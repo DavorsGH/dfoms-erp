@@ -1,14 +1,15 @@
 "use client";
 
+import SessionOfflineBanner from "@/components/session-offline-banner";
+import OfflineWriteQueueIndicator from "@/components/offline-write-queue-indicator";
+import { WriteQueueProvider } from "@/components/write-queue-provider";
+import { requestOfflineNavWarm } from "@/lib/offline-nav-warm";
 import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
 import Sidebar from "./sidebar";
 import TopBar from "./top-bar";
 import { TenantBrandingProvider } from "./tenant-branding-context";
-import SessionOfflineBanner from "@/components/session-offline-banner";
-import OfflineWriteQueueIndicator from "@/components/offline-write-queue-indicator";
-import { WriteQueueProvider } from "@/components/write-queue-provider";
 
 type DashboardShellProps = {
   children: React.ReactNode;
@@ -38,6 +39,13 @@ export default function DashboardShell({
   authUid = null,
 }: DashboardShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (!authUid) {
+      return;
+    }
+    void requestOfflineNavWarm();
+  }, [authUid]);
 
   useEffect(() => {
     if (!mobileNavOpen) {

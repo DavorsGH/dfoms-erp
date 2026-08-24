@@ -1,17 +1,36 @@
-const CACHE_NAME = "davors-erp-shell-v4";
+const CACHE_NAME = "davors-erp-shell-v7";
 const CLIENT_CACHE_DB_NAME = "dfoms-client-cache";
 const CLIENT_CACHE_PURGE_MESSAGE = "PURGE_CLIENT_CACHE";
+const WARM_OFFLINE_NAV_MESSAGE = "WARM_OFFLINE_NAV_ROUTES";
 const OFFLINE_URL = "/offline";
 
+/** Public assets always cached at install (no auth). */
 const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.json",
+  "/favicon.ico",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
   "/icons/icon-maskable-192x192.png",
   "/icons/icon-maskable-512x512.png",
   "/icons/apple-touch-icon-180x180.png",
 ];
+
+/**
+ * Authenticated app shells warmed after login (credentials included).
+ * Install-time precache cannot fetch these (no session cookies).
+ */
+const OFFLINE_NAV_ROUTES = [
+  "/dashboard",
+  "/dashboard/hr-payroll/attendance",
+  "/dashboard/finance/expenses",
+];
+
+function isOfflineNavRoute(pathname) {
+  return OFFLINE_NAV_ROUTES.some(
+    (route) => pathname === route || pathname === `${route}/`,
+  );
+}
 
 function isCacheableStaticAsset(pathname) {
   return (
@@ -23,6 +42,94 @@ function isCacheableStaticAsset(pathname) {
     /^\/favicon-\d+x\d+\.png$/.test(pathname) ||
     /^\/apple-touch-icon.*\.png$/.test(pathname)
   );
+}
+
+function extractSameOriginAssetUrls(html, origin) {
+  const urls = new Set();
+  const patterns = [
+    /(?:src|href)=["']([^"']+)["']/gi,
+    /["'](\/_next\/static\/[^"']+)["']/gi,
+  ];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      try {
+        const absolute = new URL(match[1], origin);
+        if (
+          absolute.origin === origin &&
+          isCacheableStaticAsset(absolute.pathname)
+        ) {
+          urls.add(absolute.href);
+        }
+      } catch {
+        // ignore malformed
+      }
+    }
+  }
+  return [...urls];
+}
+
+async function cacheUrl(cache, url, init) {
+  try {
+    const response = await fetch(url, init);
+    if (!response || !response.ok) {
+      return false;
+    }
+    await cache.put(url, response.clone());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function matchCachedNavigation(cache, request, pathname) {
+  const absolute = new URL(pathname, self.location.origin).href;
+  const matchOpts = { ignoreSearch: true, ignoreVary: true };
+  return (
+    (await cache.match(request, matchOpts)) ||
+    (await cache.match(absolute, matchOpts)) ||
+    (await cache.match(pathname, matchOpts))
+  );
+}
+
+async function putNavigationCache(cache, pathname, response) {
+  const absolute = new URL(pathname, self.location.origin).href;
+  const request = new Request(absolute, {
+    method: "GET",
+    credentials: "include",
+  });
+  await cache.put(request, response.clone());
+}
+
+async function warmOfflineNavRoutes() {
+  const cache = await caches.open(CACHE_NAME);
+  const origin = self.location.origin;
+
+  for (const route of OFFLINE_NAV_ROUTES) {
+    const absolute = new URL(route, origin).href;
+    const response = await fetch(absolute, {
+      credentials: "include",
+      redirect: "follow",
+      cache: "no-store",
+    }).catch(() => null);
+
+    if (!response || !response.ok) {
+      continue;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    await putNavigationCache(cache, route, response);
+
+    if (contentType.includes("text/html")) {
+      const html = await response.clone().text();
+      const assetUrls = extractSameOriginAssetUrls(html, origin);
+      await Promise.all(
+        assetUrls.map((assetUrl) =>
+          cacheUrl(cache, assetUrl, { credentials: "same-origin" }),
+        ),
+      );
+    }
+  }
 }
 
 self.addEventListener("install", (event) => {
@@ -56,15 +163,36 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Network-first navigations; offline → cached /offline shell (no login bounce).
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => response)
-        .catch(async () => {
-          const cached = await caches.match(OFFLINE_URL);
-          if (cached) {
-            return cached;
+      (async () => {
+        try {
+          const response = await fetch(event.request);
+          if (response && response.ok && isOfflineNavRoute(url.pathname)) {
+            const cache = await caches.open(CACHE_NAME);
+            await putNavigationCache(cache, url.pathname, response);
+          }
+          return response;
+        } catch {
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            const exact = await matchCachedNavigation(
+              cache,
+              event.request,
+              url.pathname,
+            );
+            if (exact) {
+              return exact;
+            }
+            const offline = await cache.match(OFFLINE_URL, {
+              ignoreSearch: true,
+              ignoreVary: true,
+            });
+            if (offline) {
+              return offline;
+            }
+          } catch {
+            // fall through
           }
           return new Response(
             "<!DOCTYPE html><html><body><h1>Offline</h1><p>Reconnect to continue.</p></body></html>",
@@ -73,7 +201,8 @@ self.addEventListener("fetch", (event) => {
               headers: { "Content-Type": "text/html; charset=utf-8" },
             },
           );
-        }),
+        }
+      })(),
     );
     return;
   }
@@ -145,37 +274,46 @@ self.addEventListener("notificationclick", (event) => {
     (event.notification.data && event.notification.data.url) || "/";
 
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if ("focus" in client && client.url.startsWith(self.location.origin)) {
-          if ("navigate" in client && typeof client.navigate === "function") {
-            return client.focus().then(() => client.navigate(targetUrl));
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if ("focus" in client && client.url.startsWith(self.location.origin)) {
+            if ("navigate" in client && typeof client.navigate === "function") {
+              return client.focus().then(() => client.navigate(targetUrl));
+            }
+            return client.focus();
           }
-          return client.focus();
         }
-      }
 
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
 
-      return undefined;
-    }),
+        return undefined;
+      }),
   );
 });
 
 self.addEventListener("message", (event) => {
-  if (!event.data || event.data.type !== CLIENT_CACHE_PURGE_MESSAGE) {
+  if (!event.data || typeof event.data.type !== "string") {
     return;
   }
 
-  event.waitUntil(
-    new Promise((resolve, reject) => {
-      const request = indexedDB.deleteDatabase(CLIENT_CACHE_DB_NAME);
-      request.onsuccess = () => resolve();
-      request.onerror = () =>
-        reject(request.error ?? new Error("IndexedDB purge failed"));
-      request.onblocked = () => resolve();
-    }),
-  );
+  if (event.data.type === CLIENT_CACHE_PURGE_MESSAGE) {
+    event.waitUntil(
+      new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(CLIENT_CACHE_DB_NAME);
+        request.onsuccess = () => resolve();
+        request.onerror = () =>
+          reject(request.error ?? new Error("IndexedDB purge failed"));
+        request.onblocked = () => resolve();
+      }),
+    );
+    return;
+  }
+
+  if (event.data.type === WARM_OFFLINE_NAV_MESSAGE) {
+    event.waitUntil(warmOfflineNavRoutes());
+  }
 });
