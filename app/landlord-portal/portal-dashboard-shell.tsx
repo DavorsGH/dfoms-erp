@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { LandlordType } from "@/app/dashboard/real-estate/landlords-utils";
+import SessionOfflineBanner from "@/components/session-offline-banner";
 import LandlordPortalSidebar from "./portal-sidebar";
 import LandlordPortalTopBar from "./portal-top-bar";
 
@@ -82,6 +83,9 @@ export default function LandlordPortalDashboardShell({
           mobileNavOpen={mobileNavOpen}
         />
         <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6">
+          <div className="mb-3">
+            <SessionOfflineBanner />
+          </div>
           {billingPastDueBanner}
           {children}
         </main>

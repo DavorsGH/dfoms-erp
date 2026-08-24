@@ -1,8 +1,10 @@
-const CACHE_NAME = "davors-erp-shell-v3";
+const CACHE_NAME = "davors-erp-shell-v4";
 const CLIENT_CACHE_DB_NAME = "dfoms-client-cache";
 const CLIENT_CACHE_PURGE_MESSAGE = "PURGE_CLIENT_CACHE";
+const OFFLINE_URL = "/offline";
 
 const PRECACHE_URLS = [
+  OFFLINE_URL,
   "/manifest.json",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
@@ -17,6 +19,7 @@ function isCacheableStaticAsset(pathname) {
     pathname.startsWith("/icons/") ||
     pathname === "/manifest.json" ||
     pathname === "/favicon.ico" ||
+    pathname === OFFLINE_URL ||
     /^\/favicon-\d+x\d+\.png$/.test(pathname) ||
     /^\/apple-touch-icon.*\.png$/.test(pathname)
   );
@@ -53,7 +56,25 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network-first navigations; offline → cached /offline shell (no login bounce).
   if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => response)
+        .catch(async () => {
+          const cached = await caches.match(OFFLINE_URL);
+          if (cached) {
+            return cached;
+          }
+          return new Response(
+            "<!DOCTYPE html><html><body><h1>Offline</h1><p>Reconnect to continue.</p></body></html>",
+            {
+              status: 503,
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            },
+          );
+        }),
+    );
     return;
   }
 

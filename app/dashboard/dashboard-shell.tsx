@@ -6,6 +6,7 @@ import type { TenantBranding } from "@/utils/tenant-branding-types";
 import Sidebar from "./sidebar";
 import TopBar from "./top-bar";
 import { TenantBrandingProvider } from "./tenant-branding-context";
+import SessionOfflineBanner from "@/components/session-offline-banner";
 
 type DashboardShellProps = {
   children: React.ReactNode;
@@ -95,6 +96,9 @@ export default function DashboardShell({
           mobileNavOpen={mobileNavOpen}
         />
         <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6">
+          <div className="mb-3">
+            <SessionOfflineBanner />
+          </div>
           {children}
         </main>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SessionOfflineBanner from "@/components/session-offline-banner";
 import TenantPortalSidebar from "./portal-sidebar";
 import TenantPortalTopBar from "./portal-top-bar";
 
@@ -70,6 +71,9 @@ export default function TenantPortalDashboardShell({
           mobileNavOpen={mobileNavOpen}
         />
         <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6">
+          <div className="mb-3">
+            <SessionOfflineBanner />
+          </div>
           {children}
         </main>
       </div>

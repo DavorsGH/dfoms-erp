@@ -6,7 +6,6 @@ import Dashboard from "@/app/dashboard/dashboard";
 import type { DashboardViewModel } from "@/app/dashboard/dashboard-utils";
 import type { DashboardVisibility } from "@/utils/rbac-access";
 import CacheStaleIndicator from "@/components/cache-stale-indicator";
-import OfflineBanner from "@/components/offline-banner";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import {
   getCachedDashboardSummary,
@@ -43,7 +42,6 @@ export default function DashboardCacheShell({
   const [fetchError, setFetchError] = useState(initialFetchError);
   const [cachedAt, setCachedAt] = useState(initialCachedAt);
   const [refreshing, setRefreshing] = useState(false);
-  const [servingFromCache, setServingFromCache] = useState(false);
 
   useEffect(() => {
     void setCachedDashboardSummary(session, {
@@ -66,7 +64,6 @@ export default function DashboardCacheShell({
       setData(cached.payload.viewModel);
       setFetchError(cached.payload.fetchError);
       setCachedAt(cached.cachedAt);
-      setServingFromCache(true);
     })();
 
     return () => {
@@ -100,7 +97,6 @@ export default function DashboardCacheShell({
       setData(payload.viewModel);
       setFetchError(payload.fetchError);
       setCachedAt(payload.cachedAt);
-      setServingFromCache(false);
       await setCachedDashboardSummary(session, {
         viewModel: payload.viewModel,
         fetchError: payload.fetchError,
@@ -116,7 +112,6 @@ export default function DashboardCacheShell({
 
   return (
     <div className="space-y-3">
-      <OfflineBanner show={!isOnline && servingFromCache} />
       <div className="flex justify-end">
         <CacheStaleIndicator
           cachedAt={cachedAt}

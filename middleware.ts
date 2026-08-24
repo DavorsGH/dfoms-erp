@@ -14,6 +14,7 @@ import {
   resolveMiddlewarePersona,
   type MiddlewareAccountRow,
 } from "@/lib/middleware-persona";
+import { resolveMiddlewareAuthUser } from "@/lib/auth/middleware-resolve-user";
 import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
 
 /** Redirect to a validated relative path+query (pathname + search). */
@@ -117,10 +118,12 @@ export async function middleware(request: NextRequest) {
   const { supabase, response } = createClient(request);
   const perf = createPerfProbe();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, trustedLocalSession } = await resolveMiddlewareAuthUser(supabase);
   perf.countAuth();
+  if (trustedLocalSession) {
+    // Cookie JWT accepted without Auth network verify (offline / Auth unreachable).
+    response.headers.set("x-dfoms-auth-local-session", "1");
+  }
 
   const isPortalPath = pathname.startsWith("/portal");
   const isLandlordPortalPath = pathname.startsWith("/landlord-portal");
@@ -151,6 +154,7 @@ export async function middleware(request: NextRequest) {
     "/forgot-password",
     "/reset-password",
     "/verify-email",
+    "/offline",
     "/portal/login",
     "/portal/login/mfa",
     "/portal/forgot-password",
@@ -263,7 +267,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // MFA gate — must run before persona routing and login → dashboard redirects.
-  if (user && needsPersonaCheck) {
+  // Skip when Auth could not be network-verified (offline); do not bounce mid-session.
+  if (user && needsPersonaCheck && !trustedLocalSession) {
     const mfaRedirect = await getMfaChallengeRedirectPath({
       supabase,
       userId: user.id,
