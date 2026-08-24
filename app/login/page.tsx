@@ -3,7 +3,9 @@
 import Image from "next/image";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import StayLoggedInCheckbox from "@/components/auth/stay-logged-in-checkbox";
+import StayLoggedInCheckbox, {
+  DEFAULT_STAY_LOGGED_IN,
+} from "@/components/auth/stay-logged-in-checkbox";
 import OAuthProviderButtons from "@/components/auth/oauth-provider-buttons";
 import PasswordInput from "@/components/password-input";
 import { getSafeNext } from "@/utils/safe-redirect";
@@ -12,7 +14,7 @@ import { loginWithPassword } from "./actions";
 function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [stayLoggedIn, setStayLoggedIn] = useState(false);
+  const [stayLoggedIn, setStayLoggedIn] = useState(DEFAULT_STAY_LOGGED_IN);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();

@@ -5,6 +5,9 @@ type StayLoggedInCheckboxProps = {
   className?: string;
 };
 
+/** Default for fresh login forms — opt-out persistent session on trusted devices. */
+export const DEFAULT_STAY_LOGGED_IN = true;
+
 export default function StayLoggedInCheckbox({
   checked,
   onChange,
