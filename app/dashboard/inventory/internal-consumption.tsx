@@ -200,9 +200,11 @@ export default function InternalConsumption({
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-slate-600">
-          Record finished product drawn for Davors&apos; own internal cleaning
-          use. Entries are append-only and reduce finished product stock
-          automatically — nothing posts to Finance in this phase.
+          Record finished product drawn for Davors&apos; own internal use (not
+          sold to a customer). Entries are append-only: stock is reduced
+          automatically and a Non-Cash Direct Operational expense is posted at
+          the product&apos;s weighted-average cost from the go-live date
+          forward.
         </p>
         {!readOnly ? (
         <button

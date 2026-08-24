@@ -114,7 +114,7 @@ async function main() {
     .from("expense_register")
     .select("id, receipt_no, description, amount, sub_category")
     .or(
-      "receipt_no.ilike.COGS-%,receipt_no.ilike.VOID-COGS-%,receipt_no.ilike.IC-%,sub_category.eq.Cleaning Supplies - Internal Use,sub_category.eq.Product Sales",
+      "receipt_no.ilike.COGS-%,receipt_no.ilike.VOID-COGS-%,receipt_no.ilike.IC-%,sub_category.eq.Finished Goods - Internal Use,sub_category.eq.Product Sales",
     );
 
   if (extraExpenseError) throw new Error(extraExpenseError.message);

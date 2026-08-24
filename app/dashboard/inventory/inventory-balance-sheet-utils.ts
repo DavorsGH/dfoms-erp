@@ -15,7 +15,7 @@ function roundInventoryCurrency(value: number): number {
 
 export const INTERNAL_CONSUMPTION_EXPENSE_CATEGORY = "Direct Operational";
 export const INTERNAL_CONSUMPTION_EXPENSE_SUB_CATEGORY =
-  "Cleaning Supplies - Internal Use";
+  "Finished Goods - Internal Use";
 export const INTERNAL_CONSUMPTION_PAYMENT_STATUS = "Non-Cash";
 export const RAW_MATERIAL_AP_EXPENSE_CATEGORY = "Direct Operational";
 export const RAW_MATERIAL_AP_SUB_CATEGORY = "Raw Materials";
@@ -53,6 +53,16 @@ export type FinishedProductInventoryCogs = {
   cogs_amount: number;
 };
 
+/**
+ * Internal-consumption expense linked to finished-product carrying value.
+ * Matches finished_product_weighted_avg_cost / script 241: sum of linked expense amounts.
+ */
+export type FinishedProductInventoryInternalUse = {
+  product_id: string;
+  consumption_date: string;
+  amount: number;
+};
+
 /** Raw-material purchase lot for point-in-time qty/WAC reconstruction. */
 export type RawMaterialInventoryPurchase = {
   material_id: string;
@@ -72,6 +82,7 @@ export type RawMaterialInventoryConsumption = {
 export type InventoryValuationHistory = {
   finishedProductInflows: FinishedProductInventoryInflow[];
   finishedProductCogs: FinishedProductInventoryCogs[];
+  finishedProductInternalUse: FinishedProductInventoryInternalUse[];
   rawMaterialPurchases: RawMaterialInventoryPurchase[];
   rawMaterialConsumptions: RawMaterialInventoryConsumption[];
 };
@@ -243,12 +254,13 @@ function getRawMaterialPurchaseEffectiveDate(
 }
 
 /**
- * Finished-product carrying value as of asOfDate (inclusive), matching script 145
- * on-hand WAC identity: (production + purchases − booked COGS) at that date.
+ * Finished-product carrying value as of asOfDate (inclusive), matching script 145/241
+ * on-hand WAC identity: (production + purchases − booked COGS − internal use) at that date.
  */
 export function calculateFinishedProductValueAsOf(
   inflows: FinishedProductInventoryInflow[],
   cogs: FinishedProductInventoryCogs[],
+  internalUse: FinishedProductInventoryInternalUse[],
   config: InventoryBalanceConfig | null,
   asOfDate: string,
 ): number {
@@ -282,6 +294,14 @@ export function calculateFinishedProductValueAsOf(
       continue;
     }
     value -= Number(row.cogs_amount) || 0;
+  }
+
+  for (const row of internalUse) {
+    const consumptionDate = normalizeDate(row.consumption_date);
+    if (consumptionDate > asOf) {
+      continue;
+    }
+    value -= Number(row.amount) || 0;
   }
 
   return roundInventoryCurrency(Math.max(value, 0));
@@ -361,6 +381,7 @@ export function calculateInventoryValueAsOf(
     calculateFinishedProductValueAsOf(
       history.finishedProductInflows,
       history.finishedProductCogs,
+      history.finishedProductInternalUse,
       config,
       asOfDate,
     ) +
@@ -593,6 +614,7 @@ export function emptyInventoryValuationHistory(): InventoryValuationHistory {
   return {
     finishedProductInflows: [],
     finishedProductCogs: [],
+    finishedProductInternalUse: [],
     rawMaterialPurchases: [],
     rawMaterialConsumptions: [],
   };

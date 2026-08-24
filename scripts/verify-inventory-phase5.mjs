@@ -498,11 +498,11 @@ async function main() {
   const { data: subcategory } = await supabase
     .from("expense_subcategories")
     .select("name")
-    .eq("name", "Cleaning Supplies - Internal Use")
+    .eq("name", "Finished Goods - Internal Use")
     .maybeSingle();
 
   if (!subcategory?.name) {
-    throw new Error("Missing expense sub-category Cleaning Supplies - Internal Use.");
+    throw new Error("Missing expense sub-category Finished Goods - Internal Use.");
   }
   console.log("PASS: Internal consumption expense sub-category exists.");
 

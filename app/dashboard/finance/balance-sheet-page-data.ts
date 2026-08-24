@@ -158,6 +158,7 @@ export async function fetchInventoryBalanceSheetInput(
     { data: productionBatches },
     { data: productPurchasesFull },
     { data: productSaleCogs },
+    { data: internalConsumptionRows },
     { data: rawPurchasesFull },
   ] = await Promise.all([
     supabase
@@ -207,6 +208,11 @@ export async function fetchInventoryBalanceSheetInput(
       .eq("entry_type", "product_sale")
       .not("product_id", "is", null),
     supabase
+      .from("internal_consumption")
+      .select("product_id, consumption_date, expense_register_id")
+      .eq("tenant_id", tenantId)
+      .not("expense_register_id", "is", null),
+    supabase
       .from("raw_material_purchases")
       .select(
         "material_id, purchase_date, quantity, cost_per_unit, created_at",
@@ -215,7 +221,7 @@ export async function fetchInventoryBalanceSheetInput(
   ]);
 
   if (counter) {
-    tickRequestCounter(counter, 10);
+    tickRequestCounter(counter, 11);
   }
 
   const batchIds = (productionBatches ?? []).map((b) => String(b.id));
@@ -266,20 +272,30 @@ export async function fetchInventoryBalanceSheetInput(
     }
   }
 
-  const cogsAmountById = new Map<string, number>();
-  if (cogsExpenseIds.size > 0) {
-    const { data: cogsExpenses } = await supabase
+  const internalUseExpenseIds = new Set<string>();
+  for (const row of internalConsumptionRows ?? []) {
+    if (row.expense_register_id) {
+      internalUseExpenseIds.add(String(row.expense_register_id));
+    }
+  }
+
+  const expenseAmountById = new Map<string, number>();
+  const allExpenseIds = [...new Set([...cogsExpenseIds, ...internalUseExpenseIds])];
+  if (allExpenseIds.length > 0) {
+    const { data: linkedExpenses } = await supabase
       .from("expense_register")
       .select("id, amount")
       .eq("tenant_id", tenantId)
-      .in("id", [...cogsExpenseIds]);
+      .in("id", allExpenseIds);
     if (counter) {
       tickRequestCounter(counter, 1);
     }
-    for (const row of cogsExpenses ?? []) {
-      cogsAmountById.set(String(row.id), Number(row.amount) || 0);
+    for (const row of linkedExpenses ?? []) {
+      expenseAmountById.set(String(row.id), Number(row.amount) || 0);
     }
   }
+
+  const cogsAmountById = expenseAmountById;
 
   const valuationHistory: InventoryValuationHistory = {
     finishedProductInflows: [
@@ -318,6 +334,18 @@ export async function fetchInventoryBalanceSheetInput(
         });
       }
       return rows;
+    }),
+    finishedProductInternalUse: (internalConsumptionRows ?? []).flatMap((row) => {
+      const productId = row.product_id ? String(row.product_id) : "";
+      if (!productId || !row.expense_register_id) return [];
+      return [
+        {
+          product_id: productId,
+          consumption_date: String(row.consumption_date),
+          amount:
+            expenseAmountById.get(String(row.expense_register_id)) ?? 0,
+        },
+      ];
     }),
     rawMaterialPurchases: (rawPurchasesFull ?? []).map((purchase) => ({
       material_id: String(purchase.material_id),
