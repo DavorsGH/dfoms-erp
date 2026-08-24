@@ -7,8 +7,9 @@ function normalizeLesseeEmail(email: string): string {
 }
 
 /**
- * True when another lessee row (any landlord) already uses this email (case-insensitive).
- * Does not return or expose the other record — boolean only.
+ * True when another non-former lessee row (any landlord) already uses this email
+ * (case-insensitive). Former records are ignored (same rule as
+ * findCrossPersonaConflictForEmail). Does not return or expose the other record.
  */
 export async function hasDuplicateLesseeEmailOnAnotherRecord(
   admin: SupabaseClient,
@@ -24,6 +25,7 @@ export async function hasDuplicateLesseeEmailOnAnotherRecord(
     .from("lessees")
     .select("lessee_id")
     .ilike("email", normalized)
+    .neq("status", "former")
     .limit(5);
 
   if (error) {

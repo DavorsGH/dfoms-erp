@@ -108,6 +108,48 @@ export async function portalLoginWithPassword(
 
   if (!lessee) {
     await supabase.auth.signOut();
+
+    // (a) Revoked tenant portal access: former row still linked by auth_uid, OR
+    // auth_user_id was cleared on revoke — detect via former row for this email.
+    const { data: formerByAuth } = await admin
+      .from("lessees")
+      .select("lessee_id, tenant_id")
+      .eq("auth_user_id", signInData.user.id)
+      .eq("status", "former")
+      .limit(1)
+      .maybeSingle();
+
+    const { data: formerByEmail } = formerByAuth
+      ? { data: null }
+      : await admin
+          .from("lessees")
+          .select("lessee_id, tenant_id")
+          .ilike("email", trimmedEmail)
+          .eq("status", "former")
+          .limit(1)
+          .maybeSingle();
+
+    const revokedLessee = formerByAuth ?? formerByEmail;
+    if (revokedLessee) {
+      logAuthActivity({
+        persona: "lessee",
+        eventName: "login.password_failure",
+        status: "failure",
+        email: trimmedEmail,
+        ip,
+        tenantId: revokedLessee.tenant_id,
+        authUserId: signInData.user.id,
+        method: "password",
+        failureReason: "portal_access_revoked",
+      });
+      return {
+        ok: false,
+        error:
+          "Your access to this tenant portal has ended. Contact your landlord if you believe this is a mistake.",
+      };
+    }
+
+    // (b) Auth succeeds but this identity was never an (active or former) lessee link.
     logAuthActivity({
       persona: "lessee",
       eventName: "login.password_failure",
