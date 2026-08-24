@@ -51,6 +51,7 @@ export async function getTenantBrandingById(
 
   const rawLogoUrl = data.logo_url?.trim() || "";
   let workspaceLogoUrl = DEFAULT_WORKSPACE_LOGO;
+  const workspaceLogoReference = rawLogoUrl || DEFAULT_WORKSPACE_LOGO;
   if (rawLogoUrl) {
     workspaceLogoUrl =
       (await createTenantLogosSignedUrl(admin, rawLogoUrl)) ?? rawLogoUrl;
@@ -67,6 +68,7 @@ export async function getTenantBrandingById(
   return {
     workspaceName: data.name?.trim() || DEFAULT_WORKSPACE_NAME,
     workspaceLogoUrl,
+    workspaceLogoReference,
     companyLegalName: data.name?.trim() || DEFAULT_COMPANY_LEGAL_NAME,
     address: data.address?.trim() || null,
     phone: data.phone?.trim() || null,

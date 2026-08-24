@@ -106,6 +106,7 @@ export function normalizeClientQuotationDetail(
     branding: {
       workspaceName: "",
       workspaceLogoUrl: "",
+      workspaceLogoReference: "",
       companyLegalName: "",
       address: null,
       phone: null,

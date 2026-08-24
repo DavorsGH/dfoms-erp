@@ -120,6 +120,7 @@ export function normalizeClientInvoiceDetail(
     branding: {
       workspaceName: "",
       workspaceLogoUrl: "",
+      workspaceLogoReference: "",
       companyLegalName: "",
       address: null,
       phone: null,

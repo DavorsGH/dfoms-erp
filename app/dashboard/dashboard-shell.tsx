@@ -3,7 +3,14 @@
 import SessionOfflineBanner from "@/components/session-offline-banner";
 import OfflineWriteQueueIndicator from "@/components/offline-write-queue-indicator";
 import { WriteQueueProvider } from "@/components/write-queue-provider";
-import { requestOfflineNavWarm } from "@/lib/offline-nav-warm";
+import {
+  buildOfflineWarmSessionKey,
+  hasOfflineRouteWarmCompleted,
+  markOfflineRouteWarmCompleted,
+  requestOfflineRouteWarm,
+  requestOfflineShellImageWarm,
+  stableAvatarWarmKey,
+} from "@/lib/offline-nav-warm";
 import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
@@ -39,16 +46,35 @@ export default function DashboardShell({
   authUid = null,
 }: DashboardShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const avatarWarmKey = stableAvatarWarmKey(userPhotoUrl);
+  const logoWarmKey = tenantBranding.workspaceLogoReference;
+
+  useEffect(() => {
+    if (!authUid || !tenantId) {
+      return;
+    }
+
+    const sessionKey = buildOfflineWarmSessionKey(tenantId, authUid);
+    if (hasOfflineRouteWarmCompleted(sessionKey)) {
+      return;
+    }
+
+    void requestOfflineRouteWarm().then(() => {
+      markOfflineRouteWarmCompleted(sessionKey);
+    });
+  }, [authUid, tenantId]);
 
   useEffect(() => {
     if (!authUid) {
       return;
     }
-    void requestOfflineNavWarm({
+
+    void requestOfflineShellImageWarm({
       avatarUrl: userPhotoUrl,
       workspaceLogoUrl: tenantBranding.workspaceLogoUrl,
     });
-  }, [authUid, userPhotoUrl, tenantBranding.workspaceLogoUrl]);
+    // logoWarmKey / avatarWarmKey are stable; omit signed workspaceLogoUrl from deps.
+  }, [authUid, avatarWarmKey, logoWarmKey]);
 
   useEffect(() => {
     if (!mobileNavOpen) {
