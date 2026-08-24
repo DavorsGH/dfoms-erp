@@ -44,8 +44,11 @@ export default function DashboardShell({
     if (!authUid) {
       return;
     }
-    void requestOfflineNavWarm();
-  }, [authUid]);
+    void requestOfflineNavWarm({
+      avatarUrl: userPhotoUrl,
+      workspaceLogoUrl: tenantBranding.workspaceLogoUrl,
+    });
+  }, [authUid, userPhotoUrl, tenantBranding.workspaceLogoUrl]);
 
   useEffect(() => {
     if (!mobileNavOpen) {

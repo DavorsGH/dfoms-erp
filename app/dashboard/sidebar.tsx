@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
   DAVORS_PLATFORM_LOGO,
+  DEFAULT_WORKSPACE_LOGO,
   type TenantBranding,
 } from "@/utils/tenant-branding-types";
 import {
@@ -16,6 +17,11 @@ import {
   getSidebarNavItems,
   type SidebarNavItem,
 } from "@/utils/rbac-access";
+import {
+  offlineWorkspaceLogoSrc,
+  OFFLINE_WORKSPACE_LOGO_PATH,
+} from "@/lib/client-cache/offline-shell-assets";
+import { useOnlineStatus } from "@/hooks/use-online-status";
 import {
   getHrManagementSidebarLinks,
   isHrManagementGroupActive,
@@ -207,13 +213,18 @@ export default function Sidebar({
   onClose,
 }: SidebarProps) {
   const pathname = usePathname();
+  const isOnline = useOnlineStatus();
   const navItems = getSidebarNavItems(userRole);
   const administrationLinks = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: showPlatformSettings,
   });
   const workspaceLogoUrl = tenantBranding.workspaceLogoUrl;
   const workspaceName = tenantBranding.workspaceName;
-  const usesRemoteLogo = workspaceLogoUrl.startsWith("http");
+  const logoSrc = offlineWorkspaceLogoSrc(isOnline, workspaceLogoUrl);
+  const usesRemoteLogo = logoSrc.startsWith("http");
+  const usesCachedOfflineLogo = logoSrc === OFFLINE_WORKSPACE_LOGO_PATH;
+  const usesLocalStaticLogo =
+    logoSrc === DEFAULT_WORKSPACE_LOGO || logoSrc.startsWith("/");
 
   if (showRealEstate) {
     const operationsIndex = navItems.findIndex(
@@ -461,16 +472,17 @@ export default function Sidebar({
             </button>
           ) : null}
           <div className="flex flex-col items-center gap-2 text-center">
-            {usesRemoteLogo ? (
+            {usesRemoteLogo || usesCachedOfflineLogo || usesLocalStaticLogo ? (
+              // Plain <img> so /logo.jpg and SW-cached offline assets work without the Next optimizer.
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={workspaceLogoUrl}
+                src={logoSrc}
                 alt={`${workspaceName} logo`}
                 className="h-14 w-14 shrink-0 rounded-sm object-cover"
               />
             ) : (
               <Image
-                src={workspaceLogoUrl}
+                src={logoSrc}
                 alt={`${workspaceName} logo`}
                 width={56}
                 height={56}
@@ -489,16 +501,16 @@ export default function Sidebar({
         </div>
       ) : (
         <div className="flex items-center gap-4 border-b border-white/10 px-5 py-8">
-          {usesRemoteLogo ? (
+          {usesRemoteLogo || usesCachedOfflineLogo || usesLocalStaticLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={workspaceLogoUrl}
+              src={logoSrc}
               alt={`${workspaceName} logo`}
               className="h-20 w-20 shrink-0 rounded-sm object-cover"
             />
           ) : (
             <Image
-              src={workspaceLogoUrl}
+              src={logoSrc}
               alt={`${workspaceName} logo`}
               width={80}
               height={80}

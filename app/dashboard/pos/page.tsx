@@ -1,6 +1,11 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserEmployeeId, getCurrentUserRole } from "@/utils/dashboard-auth";
+import {
+  getCurrentAuthUid,
+  getCurrentUserEmployeeId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import { canAccessCrmSection } from "@/utils/rbac-access";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { CLIENT_SELECT, type ClientEntry } from "../operations/clients-utils";
@@ -17,12 +22,14 @@ import {
 } from "@/utils/sales-quotes-types";
 import { buildPosCartLinesFromQuote } from "./pos-utils";
 import CrmShell from "../crm/crm-shell";
-import PosCheckout from "./pos-checkout";
+import PosCacheShell from "./pos-cache-shell";
 import {
   filterActiveEmployees,
   HR_EMPLOYEE_SELECT,
   type HrEmployee,
 } from "../hr-payroll/employee-utils";
+import { buildCustomerBalancesPayload } from "@/lib/client-cache/pos-cache-mappers";
+import { LOYALTY_ACCOUNT_SELECT } from "@/utils/loyalty-types";
 
 type PosPageProps = {
   searchParams: Promise<{ quoteId?: string | string[] }>;
@@ -40,11 +47,17 @@ export default async function PosPage({ searchParams }: PosPageProps) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [role, defaultSalesRepId] = await Promise.all([
+  const [role, defaultSalesRepId, tenantId, authUid] = await Promise.all([
     getCurrentUserRole(),
     getCurrentUserEmployeeId(),
+    getCurrentUserTenantId(),
+    getCurrentAuthUid(),
   ]);
   const showCrmNav = canAccessCrmSection(role as AppRole | null);
+
+  if (!tenantId || !authUid) {
+    throw new Error("Unable to resolve workspace session for POS cache.");
+  }
 
   const quoteFetchPromise = quoteId
     ? Promise.all([
@@ -66,6 +79,8 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     { data: products, error: productsError },
     { data: paymentMethods, error: paymentMethodsError },
     { data: employees, error: employeesError },
+    { data: loyaltyAccounts, error: loyaltyError },
+    { data: openArRows, error: openArError },
     quoteResults,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", {
@@ -80,6 +95,14 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       ascending: true,
     }),
     supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+    supabase
+      .from("loyalty_accounts")
+      .select(LOYALTY_ACCOUNT_SELECT),
+    supabase
+      .from("income_register")
+      .select("client_id, outstanding_balance")
+      .gt("outstanding_balance", 0)
+      .not("client_id", "is", null),
     quoteFetchPromise,
   ]);
 
@@ -89,6 +112,45 @@ export default async function PosPage({ searchParams }: PosPageProps) {
   const normalizedProducts = (
     (products as FinishedProductRecord[] | null) ?? []
   ).map((row) => normalizeFinishedProduct(row));
+
+  const clientRows = (clients as ClientEntry[] | null) ?? [];
+  const loyaltyByClientId = new Map<string, number>();
+  for (const row of loyaltyAccounts ?? []) {
+    const clientId = String(
+      (row as { client_id?: string }).client_id ?? "",
+    ).trim();
+    if (!clientId) continue;
+    loyaltyByClientId.set(
+      clientId,
+      Number((row as { points_balance?: number }).points_balance) || 0,
+    );
+  }
+
+  const openArByClientId = new Map<string, number>();
+  for (const row of openArRows ?? []) {
+    const clientId = String(
+      (row as { client_id?: string }).client_id ?? "",
+    ).trim();
+    if (!clientId) continue;
+    const outstanding =
+      Number((row as { outstanding_balance?: number }).outstanding_balance) ||
+      0;
+    if (outstanding <= 0) continue;
+    openArByClientId.set(
+      clientId,
+      Math.round(((openArByClientId.get(clientId) ?? 0) + outstanding) * 100) /
+        100,
+    );
+  }
+
+  const customerBalances = buildCustomerBalancesPayload({
+    clients: clientRows.map((c) => ({
+      client_id: c.client_id,
+      client_name: c.client_name,
+    })),
+    loyaltyByClientId,
+    openArByClientId,
+  });
 
   const quote =
     quoteRow &&
@@ -113,6 +175,8 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     productsError?.message ??
     paymentMethodsError?.message ??
     employeesError?.message ??
+    loyaltyError?.message ??
+    openArError?.message ??
     null;
 
   if (quoteId && !quote) {
@@ -126,10 +190,12 @@ export default async function PosPage({ searchParams }: PosPageProps) {
   }
 
   const checkout = (
-    <PosCheckout
+    <PosCacheShell
+      session={{ tenantId, authUid }}
       showTitle={!showCrmNav}
-      initialClients={(clients as ClientEntry[] | null) ?? []}
+      initialClients={clientRows}
       initialProducts={normalizedProducts}
+      initialCustomerBalances={customerBalances}
       initialEmployees={filterActiveEmployees(
         (employees as HrEmployee[] | null) ?? [],
       )}
@@ -145,6 +211,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       initialClientId={quote?.client_id ?? ""}
       initialNotes={quote?.notes ?? ""}
       fetchError={fetchError}
+      initialCachedAt={new Date().toISOString()}
     />
   );
 

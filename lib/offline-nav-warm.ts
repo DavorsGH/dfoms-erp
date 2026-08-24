@@ -1,5 +1,7 @@
 "use client";
 
+import { warmOfflineShellImageAssets } from "@/lib/client-cache/offline-shell-assets";
+
 export const WARM_OFFLINE_NAV_MESSAGE = "WARM_OFFLINE_NAV_ROUTES" as const;
 
 /** Routes guaranteed for offline hard-navigation after a successful warm. */
@@ -7,6 +9,7 @@ export const OFFLINE_NAV_ROUTES = [
   "/dashboard",
   "/dashboard/hr-payroll/attendance",
   "/dashboard/finance/expenses",
+  "/dashboard/pos",
 ] as const;
 
 /**
@@ -14,7 +17,10 @@ export const OFFLINE_NAV_ROUTES = [
  * route in a hidden iframe so /_next/static chunks are also cached via the SW
  * static-asset handler (HTML alone is not enough for App Router pages).
  */
-export async function requestOfflineNavWarm(): Promise<void> {
+export async function requestOfflineNavWarm(options?: {
+  avatarUrl?: string | null;
+  workspaceLogoUrl?: string | null;
+}): Promise<void> {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return;
   }
@@ -31,7 +37,13 @@ export async function requestOfflineNavWarm(): Promise<void> {
     // Non-fatal
   }
 
-  await warmRoutesViaHiddenIframes([...OFFLINE_NAV_ROUTES]);
+  await Promise.all([
+    warmRoutesViaHiddenIframes([...OFFLINE_NAV_ROUTES]),
+    warmOfflineShellImageAssets({
+      avatarUrl: options?.avatarUrl,
+      workspaceLogoUrl: options?.workspaceLogoUrl,
+    }),
+  ]);
 }
 
 function warmRoutesViaHiddenIframes(routes: string[]): Promise<void> {
@@ -70,7 +82,6 @@ function warmRoutesViaHiddenIframes(routes: string[]): Promise<void> {
 
       iframe.onload = finish;
       iframe.onerror = finish;
-      // Safety timeout — don't block the app if a route hangs.
       window.setTimeout(finish, 20000);
       document.body.appendChild(iframe);
     }

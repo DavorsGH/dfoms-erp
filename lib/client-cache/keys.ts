@@ -26,6 +26,18 @@ export function buildReferenceLookupsCacheKey(session: ClientCacheSession): stri
   return `t:${session.tenantId}:u:${session.authUid}:lookups:reference`;
 }
 
+export function buildStockLevelsCacheKey(session: ClientCacheSession): string {
+  assertCacheSession(session);
+  return `t:${session.tenantId}:u:${session.authUid}:stock-levels`;
+}
+
+export function buildCustomerBalancesCacheKey(
+  session: ClientCacheSession,
+): string {
+  assertCacheSession(session);
+  return `t:${session.tenantId}:u:${session.authUid}:customer-balances`;
+}
+
 /** Prefix for purging all keys belonging to one session. */
 export function buildSessionCachePrefix(session: ClientCacheSession): string {
   assertCacheSession(session);

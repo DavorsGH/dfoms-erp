@@ -1,4 +1,4 @@
-const CACHE_NAME = "davors-erp-shell-v7";
+const CACHE_NAME = "davors-erp-shell-v8";
 const CLIENT_CACHE_DB_NAME = "dfoms-client-cache";
 const CLIENT_CACHE_PURGE_MESSAGE = "PURGE_CLIENT_CACHE";
 const WARM_OFFLINE_NAV_MESSAGE = "WARM_OFFLINE_NAV_ROUTES";
@@ -9,6 +9,7 @@ const PRECACHE_URLS = [
   OFFLINE_URL,
   "/manifest.json",
   "/favicon.ico",
+  "/logo.jpg",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
   "/icons/icon-maskable-192x192.png",
@@ -24,6 +25,7 @@ const OFFLINE_NAV_ROUTES = [
   "/dashboard",
   "/dashboard/hr-payroll/attendance",
   "/dashboard/finance/expenses",
+  "/dashboard/pos",
 ];
 
 function isOfflineNavRoute(pathname) {
@@ -36,8 +38,10 @@ function isCacheableStaticAsset(pathname) {
   return (
     pathname.startsWith("/_next/static/") ||
     pathname.startsWith("/icons/") ||
+    pathname.startsWith("/__offline_assets/") ||
     pathname === "/manifest.json" ||
     pathname === "/favicon.ico" ||
+    pathname === "/logo.jpg" ||
     pathname === OFFLINE_URL ||
     /^\/favicon-\d+x\d+\.png$/.test(pathname) ||
     /^\/apple-touch-icon.*\.png$/.test(pathname)

@@ -1,4 +1,8 @@
+"use client";
+
 import { getInitialsFromName } from "@/utils/employee-photo";
+import { offlineAvatarSrc } from "@/lib/client-cache/offline-shell-assets";
+import { useOnlineStatus } from "@/hooks/use-online-status";
 
 type EmployeePhotoAvatarProps = {
   photoUrl?: string | null;
@@ -37,15 +41,17 @@ export default function EmployeePhotoAvatar({
   className = "",
   square = false,
 }: EmployeePhotoAvatarProps) {
+  const isOnline = useOnlineStatus();
   const sizeClass = sizeClasses[size];
   const shapeClass = square ? "rounded-lg" : "rounded-full";
   const initials = getInitialsFromName(fullName);
+  const resolvedPhotoUrl = offlineAvatarSrc(isOnline, photoUrl);
 
-  if (photoUrl?.trim()) {
+  if (resolvedPhotoUrl?.trim()) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={photoUrl}
+        src={resolvedPhotoUrl}
         alt={fullName ? `${fullName} photo` : "Employee photo"}
         className={`${sizeClass} ${shapeClass} shrink-0 object-cover bg-slate-100 ${className}`}
       />

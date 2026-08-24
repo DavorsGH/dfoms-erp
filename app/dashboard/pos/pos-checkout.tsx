@@ -56,6 +56,8 @@ import {
 } from "./paystack-inline";
 import { recordQuoteSaleConversions } from "@/utils/sales-quotes-types";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
+import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
+import type { CustomerBalanceCacheRow } from "@/lib/client-cache/types";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -63,6 +65,8 @@ type PosCheckoutProps = {
   showTitle?: boolean;
   initialClients: ClientEntry[];
   initialProducts: FinishedProductRecord[];
+  /** Loyalty + open AR snapshot (from IDB / SSR). */
+  initialCustomerBalances?: CustomerBalanceCacheRow[];
   initialEmployees: HrEmployee[];
   defaultSalesRepId?: string;
   /** Kept for API compat; POS checkout uses Cash / Mobile Money only. */
@@ -74,6 +78,10 @@ type PosCheckoutProps = {
   quoteConversionId?: string;
   quoteNumber?: string;
   fetchError: string | null;
+  /** Persist refreshed stock after an online sale (Phase 3 cache). */
+  onStockLevelsChanged?: (
+    products: FinishedProductRecord[],
+  ) => void | Promise<void>;
 };
 
 type MomoInitializeResponse = {
@@ -107,6 +115,7 @@ export default function PosCheckout({
   showTitle = true,
   initialClients,
   initialProducts,
+  initialCustomerBalances,
   initialEmployees,
   defaultSalesRepId = "",
   initialPaymentMethods,
@@ -116,8 +125,10 @@ export default function PosCheckout({
   quoteConversionId,
   quoteNumber,
   fetchError,
+  onStockLevelsChanged,
 }: PosCheckoutProps) {
   const supabase = createClient();
+  const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
   const [products, setProducts] = useState(
     initialProducts.map(normalizeFinishedProduct),
   );
@@ -164,8 +175,17 @@ export default function PosCheckout({
   const [loyaltyRedeemInput, setLoyaltyRedeemInput] = useState("");
   const [loyaltyRedeemError, setLoyaltyRedeemError] = useState<string | null>(null);
   const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
+  const [openArBalance, setOpenArBalance] = useState<number | null>(null);
 
   void initialPaymentMethods;
+
+  useEffect(() => {
+    setProducts(initialProducts.map(normalizeFinishedProduct));
+  }, [initialProducts]);
+
+  useEffect(() => {
+    setError(fetchError);
+  }, [fetchError]);
 
   async function recordQuoteConversionsForIncomeIds(incomeIds: string[]) {
     if (!quoteConversionId || incomeIds.length === 0) {
@@ -215,10 +235,30 @@ export default function PosCheckout({
   useEffect(() => {
     let cancelled = false;
 
-    async function loadLoyaltyBalance() {
+    async function loadCustomerBalances() {
       if (!clientId) {
         setLoyaltyBalance(null);
+        setOpenArBalance(null);
         return;
+      }
+
+      const cached = (initialCustomerBalances ?? []).find(
+        (row) => row.client_id === clientId,
+      );
+      if (isOffline) {
+        if (cached) {
+          setLoyaltyBalance(cached.loyalty_points);
+          setOpenArBalance(cached.open_ar);
+        } else {
+          setLoyaltyBalance(0);
+          setOpenArBalance(0);
+        }
+        return;
+      }
+
+      if (cached) {
+        setLoyaltyBalance(cached.loyalty_points);
+        setOpenArBalance(cached.open_ar);
       }
 
       const { data, error: loyaltyError } = await supabase
@@ -232,7 +272,9 @@ export default function PosCheckout({
       }
 
       if (loyaltyError) {
-        setLoyaltyBalance(null);
+        if (!cached) {
+          setLoyaltyBalance(null);
+        }
         return;
       }
 
@@ -241,14 +283,17 @@ export default function PosCheckout({
           ? normalizeLoyaltyAccount(data as LoyaltyAccountRow).points_balance
           : 0,
       );
+      if (cached) {
+        setOpenArBalance(cached.open_ar);
+      }
     }
 
-    void loadLoyaltyBalance();
+    void loadCustomerBalances();
 
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [clientId, isOffline, initialCustomerBalances]);
 
   function clearCheckoutAdjustments() {
     setAppliedPromoCode(null);
@@ -271,11 +316,11 @@ export default function PosCheckout({
       return;
     }
 
-    setProducts(
-      ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
-        normalizeFinishedProduct(row),
-      ),
+    const next = ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
+      normalizeFinishedProduct(row),
     );
+    setProducts(next);
+    await onStockLevelsChanged?.(next);
   }
 
   function addProductToCart(product: FinishedProductRecord) {
@@ -361,6 +406,10 @@ export default function PosCheckout({
   }
 
   async function handleRedeemLoyaltyPoints() {
+    if (isOffline) {
+      setLoyaltyRedeemError(offlineWriteMessage);
+      return;
+    }
     if (!clientId) {
       setLoyaltyRedeemError("Select a customer to redeem points.");
       return;
@@ -789,6 +838,10 @@ export default function PosCheckout({
 
   async function handleCompleteSale(event: React.FormEvent) {
     event.preventDefault();
+    if (isOffline) {
+      setError(offlineWriteMessage);
+      return;
+    }
     setLoading(true);
     setError(null);
     setPaymentSettingsRequired(false);
@@ -831,6 +884,10 @@ export default function PosCheckout({
    * No sale / stock change until Paystack webhook (or confirm) fulfills.
    */
   function handleRequestPaymentLink() {
+    if (isOffline) {
+      setError(offlineWriteMessage);
+      return;
+    }
     setError(null);
     setPaymentSettingsRequired(false);
     setReceipt(null);
@@ -1010,6 +1067,9 @@ export default function PosCheckout({
                         >
                           {formatInventoryQuantity(available)} {product.unit_of_measure}
                         </span>
+                        {isOffline ? (
+                          <span className="ml-1 text-xs text-amber-800">(cached)</span>
+                        ) : null}
                         {" · "}
                         Price: {formatInventoryMoney(product.standard_selling_price)}
                       </p>
@@ -1152,17 +1212,34 @@ export default function PosCheckout({
             setAppliedPromoCode(null);
             setPromoDiscount(0);
           }}
-          disabled={busy || cartLines.length === 0}
+          disabled={busy || cartLines.length === 0 || isOffline}
         />
 
         {clientId ? (
           <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-[#0f2744]">Customer balances</p>
+            <p className="text-sm text-slate-600">
+              Loyalty points:{" "}
+              {loyaltyBalance == null
+                ? "Loading…"
+                : `${formatLoyaltyPoints(loyaltyBalance)} pts`}
+            </p>
+            <p className="text-sm text-slate-600">
+              Open AR:{" "}
+              {openArBalance == null ? "Loading…" : formatGHS(openArBalance)}
+              {isOffline ? (
+                <span className="ml-1 text-xs text-amber-800">(cached)</span>
+              ) : null}
+            </p>
             <p className="text-sm font-medium text-[#0f2744]">Redeem Points</p>
             <p className="text-sm text-slate-600">
               Available balance:{" "}
               {loyaltyBalance == null
                 ? "Loading…"
                 : `${formatLoyaltyPoints(loyaltyBalance)} pts`}
+              {isOffline ? (
+                <span className="ml-1 text-xs text-amber-800">(cached)</span>
+              ) : null}
             </p>
             {loyaltyDiscount > 0 ? (
               <div className="flex flex-wrap items-center gap-3">
@@ -1187,13 +1264,18 @@ export default function PosCheckout({
                   value={loyaltyRedeemInput}
                   onChange={(event) => setLoyaltyRedeemInput(event.target.value)}
                   placeholder="Points to redeem"
-                  disabled={busy || loyaltyRedeemLoading}
+                  disabled={busy || loyaltyRedeemLoading || isOffline}
                   className={`${inputClassName} min-w-[180px] flex-1`}
                 />
                 <button
                   type="button"
                   onClick={() => void handleRedeemLoyaltyPoints()}
-                  disabled={busy || loyaltyRedeemLoading || !loyaltyRedeemInput.trim()}
+                  disabled={
+                    busy ||
+                    loyaltyRedeemLoading ||
+                    !loyaltyRedeemInput.trim() ||
+                    isOffline
+                  }
                   className="rounded-md border border-[#0f2744] px-3 py-1.5 text-sm font-medium text-[#0f2744] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loyaltyRedeemLoading ? "Redeeming…" : "Redeem"}
@@ -1346,10 +1428,17 @@ export default function PosCheckout({
           apply, and remittance to your account may take up to 24 hours.
         </p>
 
+        {isOffline ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            {offlineWriteMessage} Stock levels and customer balances shown are
+            from a cached snapshot.
+          </p>
+        ) : null}
+
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
-            disabled={busy || cartLines.length === 0}
+            disabled={busy || cartLines.length === 0 || isOffline}
             className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {momoWaiting
@@ -1364,7 +1453,7 @@ export default function PosCheckout({
           </button>
           <button
             type="button"
-            disabled={busy || cartLines.length === 0}
+            disabled={busy || cartLines.length === 0 || isOffline}
             onClick={() => handleRequestPaymentLink()}
             className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
