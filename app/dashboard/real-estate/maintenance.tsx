@@ -19,6 +19,7 @@ import {
   formatMaintenanceDate,
   formatMaintenanceLandlordApproval,
   formatMaintenanceMoney,
+  formatMaintenanceReportedBy,
   formatMaintenanceStatus,
   type ActiveLeaseOption,
   type MaintenanceListRow,
@@ -616,7 +617,7 @@ export default function Maintenance({
                         {row.unitLabel}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
-                        {row.reportedBy === "tenant" ? "Tenant" : "Staff"}
+                        {formatMaintenanceReportedBy(row.reportedBy)}
                         {row.tenantSelfFix ? " · Self-fix" : ""}
                       </td>
                       <td className={`${scrollableTableWrapTdClassName} text-sm text-slate-700`}>
@@ -668,7 +669,7 @@ export default function Maintenance({
                 </h3>
                 <p className="mt-1 text-sm text-slate-600">
                   {expandedRow.lesseeName} · {expandedRow.unitLabel} · Source:{" "}
-                  {expandedRow.reportedBy === "tenant" ? "Tenant" : "Staff"}
+                  {formatMaintenanceReportedBy(expandedRow.reportedBy)}
                   {expandedRow.tenantSelfFix ? " (self-fix)" : ""}
                 </p>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
@@ -821,8 +822,8 @@ export default function Maintenance({
                   <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
                     Reported by
                   </dt>
-                  <dd className="mt-1 text-sm capitalize text-slate-900">
-                    {expandedRow.reportedBy}
+                  <dd className="mt-1 text-sm text-slate-900">
+                    {formatMaintenanceReportedBy(expandedRow.reportedBy)}
                   </dd>
                 </div>
                 <div>

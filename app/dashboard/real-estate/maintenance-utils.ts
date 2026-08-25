@@ -1,4 +1,4 @@
-export type MaintenanceReportedBy = "staff" | "tenant";
+export type MaintenanceReportedBy = "staff" | "tenant" | "facility_manager";
 export type MaintenanceStatus =
   | "submitted"
   | "approved"
@@ -72,7 +72,27 @@ export function isLandlordApprovalStatus(
 export function isMaintenanceReportedBy(
   value: string,
 ): value is MaintenanceReportedBy {
-  return value === "staff" || value === "tenant";
+  return (
+    value === "staff" || value === "tenant" || value === "facility_manager"
+  );
+}
+
+export function formatMaintenanceReportedBy(
+  value: string | null | undefined,
+): string {
+  if (value === "tenant") {
+    return "Tenant";
+  }
+  if (value === "facility_manager") {
+    return "Facility Manager";
+  }
+  if (value === "staff") {
+    return "Staff";
+  }
+  if (!value) {
+    return "—";
+  }
+  return value.replace(/_/g, " ");
 }
 
 export function formatMaintenanceStatus(
