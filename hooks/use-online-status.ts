@@ -2,10 +2,16 @@
 
 import { useEffect, useState } from "react";
 
+/**
+ * Browser online/offline status for UI.
+ *
+ * SSR-safe: always returns `true` on the server and on the client's first paint.
+ * Real `navigator.onLine` is applied only after mount (useEffect), so server HTML
+ * and the hydration pass stay identical — same pattern as EmployeePhotoAvatar /
+ * WorkspaceLogo offline asset switching.
+ */
 export function useOnlineStatus(): boolean {
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator === "undefined" ? true : navigator.onLine,
-  );
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
     function sync() {
@@ -24,7 +30,7 @@ export function useOnlineStatus(): boolean {
     window.addEventListener("offline", onOffline);
     window.addEventListener("pageshow", sync);
     document.addEventListener("visibilitychange", sync);
-    // Pick up Playwright/DevTools offline flips that can race hydration.
+    // Apply real status after mount (never during the hydration render).
     sync();
 
     return () => {

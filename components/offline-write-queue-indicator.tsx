@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { useWriteQueueOptional } from "@/components/write-queue-provider";
+import { useOnlineStatus } from "@/hooks/use-online-status";
 
 /**
  * Persistent staff-shell indicator for pending/failed/conflict offline writes + Sync now.
  */
 export default function OfflineWriteQueueIndicator() {
   const queue = useWriteQueueOptional();
+  // Hydration-safe: do not read navigator.onLine during the first paint.
+  const isOnline = useOnlineStatus();
   if (!queue || queue.openCount === 0) {
     return null;
   }
@@ -60,7 +63,7 @@ export default function OfflineWriteQueueIndicator() {
       <button
         type="button"
         onClick={() => void queue.syncNow()}
-        disabled={queue.draining || !navigator.onLine}
+        disabled={queue.draining || !isOnline}
         className="rounded-md border border-sky-300 bg-white px-3 py-1 text-xs font-medium text-sky-900 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {queue.draining ? "Syncing…" : "Sync now"}
