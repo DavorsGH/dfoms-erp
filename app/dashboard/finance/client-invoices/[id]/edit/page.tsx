@@ -71,6 +71,24 @@ export default async function EditClientInvoicePage({
     notFound();
   }
 
+  if (detail.invoice.status === "voided") {
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Finance</h1>
+        <FinanceNav />
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Voided invoices cannot be edited.{" "}
+          <Link
+            href={`/dashboard/finance/client-invoices/${id}`}
+            className="font-medium underline"
+          >
+            View invoice
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
   const fetchError =
     detail.error ??
     customersError?.message ??

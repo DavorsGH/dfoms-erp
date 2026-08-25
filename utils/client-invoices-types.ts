@@ -5,7 +5,13 @@ import {
 } from "@/app/dashboard/finance/tax-utils";
 import { computeLineItemTotals } from "@/utils/line-items-totals";
 
-export const CLIENT_INVOICE_STATUSES = ["draft", "sent", "partial", "paid"] as const;
+export const CLIENT_INVOICE_STATUSES = [
+  "draft",
+  "sent",
+  "partial",
+  "paid",
+  "voided",
+] as const;
 export type ClientInvoiceStatus = (typeof CLIENT_INVOICE_STATUSES)[number];
 
 export const CLIENT_INVOICE_LIST_SELECT =
@@ -324,6 +330,8 @@ export function formatInvoiceStatus(status: string) {
       return "Partial";
     case "paid":
       return "Paid";
+    case "voided":
+      return "Voided";
     default:
       return "Draft";
   }
@@ -331,6 +339,21 @@ export function formatInvoiceStatus(status: string) {
 
 export function invoiceHasBeenSent(status: ClientInvoiceStatus | string | undefined) {
   return Boolean(status && status !== "draft");
+}
+
+export function invoiceIsVoided(status: ClientInvoiceStatus | string | undefined) {
+  return status === "voided";
+}
+
+/** Hard-delete is only allowed for drafts; sent/partial/paid/voided use Void. */
+export function invoiceAllowsHardDelete(
+  status: ClientInvoiceStatus | string | undefined,
+) {
+  return !status || status === "draft";
+}
+
+export function invoiceAllowsVoid(status: ClientInvoiceStatus | string | undefined) {
+  return status === "sent" || status === "partial" || status === "paid";
 }
 
 export function formatInvoiceMoney(value: unknown) {
@@ -469,7 +492,12 @@ export function validateClientInvoiceBody(body: ClientInvoiceWriteBody): string 
 }
 
 export function normalizeStatus(value: unknown): ClientInvoiceStatus {
-  if (value === "sent" || value === "partial" || value === "paid") {
+  if (
+    value === "sent" ||
+    value === "partial" ||
+    value === "paid" ||
+    value === "voided"
+  ) {
     return value;
   }
 

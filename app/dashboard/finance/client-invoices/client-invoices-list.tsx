@@ -17,6 +17,8 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
   formatInvoiceStatus,
+  invoiceAllowsHardDelete,
+  invoiceAllowsVoid,
   normalizeClientInvoiceListRow,
   resolveSourceContractLink,
   resolveSourceQuotationLink,
@@ -39,6 +41,9 @@ const secondaryButtonClassName =
 
 const dangerButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const warnButtonClassName =
+  "rounded-md border border-amber-300 px-3 py-1.5 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 const traceabilityBadgeClassName =
   "inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800 hover:bg-sky-100";
@@ -98,7 +103,9 @@ export default function ClientInvoicesList({
   );
   const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [voidingId, setVoidingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [confirmingVoidId, setConfirmingVoidId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingInvoiceAction | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [recordingInvoice, setRecordingInvoice] = useState<ClientInvoiceListRow | null>(
@@ -177,6 +184,34 @@ export default function ClientInvoicesList({
       setError("Unable to delete invoice. Check your connection and try again.");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function handleVoid(invoice: ClientInvoiceListRow) {
+    setConfirmingVoidId(null);
+    setVoidingId(invoice.id);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/client-invoices/${invoice.id}/void`, {
+        method: "POST",
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | { client_invoice?: ClientInvoiceListRow; error?: string }
+        | null;
+
+      if (!response.ok || !payload?.client_invoice) {
+        setError(payload?.error ?? "Unable to void invoice.");
+        return;
+      }
+
+      updateInvoiceInList(payload.client_invoice);
+      router.refresh();
+    } catch {
+      setError("Unable to void invoice. Check your connection and try again.");
+    } finally {
+      setVoidingId(null);
     }
   }
 
@@ -282,7 +317,9 @@ export default function ClientInvoicesList({
                           >
                             Edit
                           </Link>
-                          {invoice.status !== "draft" && invoice.status !== "paid" ? (
+                          {invoice.status !== "draft" &&
+                          invoice.status !== "paid" &&
+                          invoice.status !== "voided" ? (
                             <button
                               type="button"
                               onClick={() => setRecordingInvoice(invoice)}
@@ -291,40 +328,85 @@ export default function ClientInvoicesList({
                               Record Payment
                             </button>
                           ) : null}
-                          {confirmingId === invoice.id ? (
-                            <span className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap">
-                              <span className="text-sm text-red-700">
-                                Delete {invoice.invoice_number}?
+                          {invoiceAllowsHardDelete(invoice.status) ? (
+                            confirmingId === invoice.id ? (
+                              <span className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap">
+                                <span className="text-sm text-red-700">
+                                  Delete {invoice.invoice_number}?
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDelete(invoice)}
+                                  className={dangerButtonClassName}
+                                >
+                                  Yes, delete
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmingId(null)}
+                                  className={secondaryButtonClassName}
+                                >
+                                  Cancel
+                                </button>
                               </span>
+                            ) : (
                               <button
                                 type="button"
-                                onClick={() => void handleDelete(invoice)}
+                                onClick={() => {
+                                  setError(null);
+                                  setPendingAction(null);
+                                  setConfirmingVoidId(null);
+                                  setConfirmingId(invoice.id);
+                                }}
+                                disabled={deletingId === invoice.id}
                                 className={dangerButtonClassName}
                               >
-                                Yes, delete
+                                {deletingId === invoice.id ? "Deleting…" : "Delete"}
                               </button>
+                            )
+                          ) : null}
+                          {invoiceAllowsVoid(invoice.status) ? (
+                            confirmingVoidId === invoice.id ? (
+                              <span className="inline-flex max-w-md flex-col gap-2 whitespace-normal">
+                                <span className="text-sm text-amber-900">
+                                  Void {invoice.invoice_number}? This cannot be
+                                  undone. The invoice will be marked Voided (not
+                                  removed) and will no longer appear as due in the
+                                  Customer Portal.
+                                </span>
+                                <span className="inline-flex flex-nowrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleVoid(invoice)}
+                                    className={warnButtonClassName}
+                                  >
+                                    Yes, void
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmingVoidId(null)}
+                                    className={secondaryButtonClassName}
+                                  >
+                                    Cancel
+                                  </button>
+                                </span>
+                              </span>
+                            ) : (
                               <button
                                 type="button"
-                                onClick={() => setConfirmingId(null)}
-                                className={secondaryButtonClassName}
+                                onClick={() => {
+                                  setError(null);
+                                  setPendingAction(null);
+                                  setConfirmingId(null);
+                                  setConfirmingVoidId(invoice.id);
+                                }}
+                                disabled={voidingId === invoice.id}
+                                className={warnButtonClassName}
                               >
-                                Cancel
+                                {voidingId === invoice.id ? "Voiding…" : "Void"}
                               </button>
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setError(null);
-                                setPendingAction(null);
-                                setConfirmingId(invoice.id);
-                              }}
-                              disabled={deletingId === invoice.id}
-                              className={dangerButtonClassName}
-                            >
-                              {deletingId === invoice.id ? "Deleting…" : "Delete"}
-                            </button>
-                          )}
+                            )
+                          ) : null}
                           {pendingAction?.invoiceId === invoice.id ? (
                             <span className="inline-flex flex-nowrap items-center gap-2 whitespace-nowrap">
                               <span className="text-sm text-slate-700">
@@ -355,6 +437,7 @@ export default function ClientInvoicesList({
                               onSelect={(item) => {
                                 setError(null);
                                 setConfirmingId(null);
+                                setConfirmingVoidId(null);
                                 setPendingAction({
                                   invoiceId: invoice.id,
                                   action: item.action,

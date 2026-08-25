@@ -28,6 +28,7 @@ export default async function ClientPortalInvoicesPage() {
     .from("income_register")
     .select(SERVICE_INCOME_REGISTER_SELECT)
     .eq("entry_type", "service")
+    .neq("payment_status", "Voided")
     .order("date", { ascending: false });
 
   const { data: receiptRows } = await supabase

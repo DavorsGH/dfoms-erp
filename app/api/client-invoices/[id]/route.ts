@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { requireRoleIn, requireTenantRoleIn } from "@/utils/admin-auth";
 import { deleteTaxLedgerEntriesForSource } from "@/app/dashboard/finance/tax-ledger-sync";
 import {
   findClientInvoiceIncomeRegisterId,
@@ -11,10 +11,17 @@ import {
   validateClientInvoiceBody,
   type ClientInvoiceWriteBody,
 } from "@/utils/client-invoices-types";
-import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
+import {
+  CLIENT_PORTAL_SECTION_ROLES,
+  FINANCE_SECTION_ROLES,
+} from "@/utils/rbac-access";
 import { PAYMENT_ACCOUNT_SELECT, type PaymentAccountRow } from "@/utils/payment-accounts-types";
 import { loadClientReceiptsForInvoice } from "@/utils/client-invoice-payments-api";
 import { createClient } from "@/utils/supabase/server";
+import {
+  getCurrentUserClientId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -36,8 +43,41 @@ function rejectClientTenantId(body: unknown): NextResponse | null {
   return null;
 }
 
+async function authorizeInvoiceReadAccess() {
+  const staffAuth = await requireTenantRoleIn(FINANCE_SECTION_ROLES);
+  if (staffAuth.ok) {
+    return {
+      ok: true as const,
+      tenantId: staffAuth.tenantId,
+      isClientPortal: false,
+      clientId: null as string | null,
+    };
+  }
+
+  const clientAuth = await requireRoleIn(CLIENT_PORTAL_SECTION_ROLES);
+  if (!clientAuth.ok) {
+    return { ok: false as const, response: clientAuth.response };
+  }
+
+  const tenantId = await getCurrentUserTenantId();
+  const clientId = await getCurrentUserClientId();
+  if (!tenantId || !clientId) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  return {
+    ok: true as const,
+    tenantId,
+    isClientPortal: true,
+    clientId,
+  };
+}
+
 export async function GET(_request: Request, context: RouteContext) {
-  const auth = await requireTenantRoleIn(FINANCE_SECTION_ROLES);
+  const auth = await authorizeInvoiceReadAccess();
   if (!auth.ok) {
     return auth.response;
   }
@@ -51,6 +91,15 @@ export async function GET(_request: Request, context: RouteContext) {
       { error: detail.error ?? "Invoice not found." },
       { status: detail.error === "Invoice not found." ? 404 : 500 },
     );
+  }
+
+  if (auth.isClientPortal) {
+    if (detail.invoice.client_id !== auth.clientId) {
+      return NextResponse.json({ error: "Invoice not found." }, { status: 404 });
+    }
+    if (detail.invoice.status === "draft") {
+      return NextResponse.json({ error: "Invoice not found." }, { status: 404 });
+    }
   }
 
   let paymentAccounts: PaymentAccountRow[] = [];
@@ -127,6 +176,13 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
+  if (existing.invoice.status === "voided") {
+    return NextResponse.json(
+      { error: "Voided invoices cannot be edited." },
+      { status: 400 },
+    );
+  }
+
   const { invoice, error } = await updateClientInvoice(
     supabase,
     auth.tenantId,
@@ -163,19 +219,32 @@ export async function DELETE(_request: Request, context: RouteContext) {
     );
   }
 
-  // Deleting the invoice removes its linked income_register row (matched by
-  // invoice_no). Clear tax ledger legs keyed on that income id first.
+  if (existing.invoice.status !== "draft") {
+    return NextResponse.json(
+      {
+        error:
+          "Only draft invoices can be deleted. Use Void for sent or later invoices.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // Drafts should not have income_register rows; clear tax legs if a stray
+  // row exists, then hard-delete. Linked income_register rows cascade via
+  // client_invoice_id when that FK is populated.
   const { incomeId } = await findClientInvoiceIncomeRegisterId(
     supabase,
     auth.tenantId,
     existing.invoice.invoice_number,
+    existing.invoice.id,
   );
 
   const { error } = await supabase
     .from("client_invoices")
     .delete()
     .eq("id", id)
-    .eq("tenant_id", auth.tenantId);
+    .eq("tenant_id", auth.tenantId)
+    .eq("status", "draft");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -194,6 +263,12 @@ export async function DELETE(_request: Request, context: RouteContext) {
         warning: `Invoice deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
       });
     }
+
+    await supabase
+      .from("income_register")
+      .delete()
+      .eq("id", incomeId)
+      .eq("tenant_id", auth.tenantId);
   }
 
   return NextResponse.json({ success: true });

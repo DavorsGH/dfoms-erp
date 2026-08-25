@@ -57,6 +57,7 @@ export default function MyInvoices({
             <th className={scrollableTableThClassName}>Status</th>
             <th className={scrollableTableThClassName}>Due Date</th>
             <th className={scrollableTableThClassName}>Receipts</th>
+            <th className={scrollableTableThClassName}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -64,11 +65,20 @@ export default function MyInvoices({
             const linkedReceipts = entry.client_invoice_id
               ? receiptsByInvoiceId[entry.client_invoice_id] ?? []
               : [];
+            const detailHref = entry.client_invoice_id
+              ? `/dashboard/client-portal/invoices/${entry.client_invoice_id}`
+              : null;
 
             return (
             <tr key={entry.id} className="border-b border-slate-100">
-              <td className="px-4 py-3 text-sm text-slate-900">
-                {entry.invoice_no}
+              <td className="px-4 py-3 text-sm font-medium text-[#0f2744]">
+                {detailHref ? (
+                  <Link href={detailHref} className="hover:underline">
+                    {entry.invoice_no}
+                  </Link>
+                ) : (
+                  entry.invoice_no
+                )}
               </td>
               <td className="px-4 py-3 text-sm text-slate-700">
                 {formatDate(entry.date)}
@@ -103,6 +113,18 @@ export default function MyInvoices({
                       </Link>
                     ))}
                   </span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-sm">
+                {detailHref ? (
+                  <Link
+                    href={detailHref}
+                    className="font-medium text-[#0f2744] hover:underline"
+                  >
+                    View
+                  </Link>
+                ) : (
+                  <span className="text-slate-400">—</span>
                 )}
               </td>
             </tr>

@@ -39,7 +39,10 @@ import { toNumber, resolveSourceContractLink, resolveSourceQuotationLink } from 
 type ClientInvoiceViewProps = {
   invoiceId: string;
   billingSettings: BillingSettingsHeaderFields | null;
-  paymentMethods: string[];
+  paymentMethods?: string[];
+  backHref?: string;
+  backLabel?: string;
+  showStaffActions?: boolean;
 };
 
 const primaryButtonClassName =
@@ -86,7 +89,10 @@ function ClientInvoicePrintStyles() {
 export default function ClientInvoiceView({
   invoiceId,
   billingSettings,
-  paymentMethods,
+  paymentMethods = [],
+  backHref = "/dashboard/finance/client-invoices",
+  backLabel = "Back to list",
+  showStaffActions = true,
 }: ClientInvoiceViewProps) {
   const branding = useTenantBranding();
   const [payload, setPayload] = useState<ClientInvoiceDetailPayload | null>(null);
@@ -231,13 +237,22 @@ export default function ClientInvoiceView({
   const sourceQuotation = resolveSourceQuotationLink(invoice);
   const sourceContract = resolveSourceContractLink(invoice);
   const canRecordPayment =
-    invoice.status !== "draft" && invoice.status !== "paid";
+    showStaffActions &&
+    invoice.status !== "draft" &&
+    invoice.status !== "paid" &&
+    invoice.status !== "voided";
 
   return (
     <div className="space-y-4">
       <ClientInvoicePrintStyles />
 
-      {sourceQuotation ? (
+      {invoice.status === "voided" ? (
+        <div className="no-print rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This invoice has been voided and is no longer payable.
+        </div>
+      ) : null}
+
+      {showStaffActions && sourceQuotation ? (
         <div className="no-print">
           <Link
             href={`/dashboard/sales-crm/quotations/${sourceQuotation.id}`}
@@ -248,7 +263,7 @@ export default function ClientInvoiceView({
         </div>
       ) : null}
 
-      {sourceContract ? (
+      {showStaffActions && sourceContract ? (
         <div className="no-print">
           <Link
             href={`/dashboard/finance/service-contracts/${sourceContract.id}`}
@@ -284,17 +299,16 @@ export default function ClientInvoiceView({
             Record Payment
           </button>
         ) : null}
-        <Link
-          href={`/dashboard/finance/client-invoices/${invoiceId}/edit`}
-          className={secondaryButtonClassName}
-        >
-          Edit
-        </Link>
-        <Link
-          href="/dashboard/finance/client-invoices"
-          className={secondaryButtonClassName}
-        >
-          Back to list
+        {showStaffActions ? (
+          <Link
+            href={`/dashboard/finance/client-invoices/${invoiceId}/edit`}
+            className={secondaryButtonClassName}
+          >
+            Edit
+          </Link>
+        ) : null}
+        <Link href={backHref} className={secondaryButtonClassName}>
+          {backLabel}
         </Link>
       </div>
 
@@ -312,7 +326,11 @@ export default function ClientInvoiceView({
                   {formatReceiptMoney(receipt.amount)}
                 </span>
                 <Link
-                  href={`/dashboard/finance/client-receipts/${receipt.id}`}
+                  href={
+                    showStaffActions
+                      ? `/dashboard/finance/client-receipts/${receipt.id}`
+                      : `/dashboard/client-portal/receipts/${receipt.id}`
+                  }
                   className={secondaryButtonClassName}
                 >
                   View receipt

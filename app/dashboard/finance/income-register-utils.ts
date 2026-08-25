@@ -110,11 +110,23 @@ export function isVoidedProductSale(entry: {
   );
 }
 
+export function isVoidedClientInvoiceIncome(entry: {
+  service_category?: string | null;
+  payment_status?: string | null;
+}): boolean {
+  return (
+    (entry.service_category ?? "").trim() === "Client Invoice" &&
+    (entry.payment_status ?? "").trim().toLowerCase() === "voided"
+  );
+}
+
 export function isActiveIncomeForReporting(entry: {
   entry_type?: IncomeEntryType | null;
   sale_status?: ProductSaleStatus | null;
+  service_category?: string | null;
+  payment_status?: string | null;
 }): boolean {
-  return !isVoidedProductSale(entry);
+  return !isVoidedProductSale(entry) && !isVoidedClientInvoiceIncome(entry);
 }
 
 export function getIncomeCustomerDisplayName(

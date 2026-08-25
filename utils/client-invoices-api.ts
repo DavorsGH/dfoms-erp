@@ -21,6 +21,7 @@ import {
   type ClientInvoiceAuthorizedSignerOption,
   type ClientInvoiceHeaderRow,
   type ClientInvoiceLineItemInput,
+  type ClientInvoiceStatus,
   type ClientInvoiceWriteBody,
 } from "@/utils/client-invoices-types";
 
@@ -284,17 +285,32 @@ async function allocateInvoiceNumber(supabase: DbClient, tenantId: string) {
 
 /**
  * Income Register row id owned by one client invoice.
- * Client invoices link to income_register via invoice_no = invoice_number
- * (service_category "Client Invoice") within tenant — not a FK column.
- * The tax ledger keys off this income row (source_type=income_register), so
- * callers that are about to remove the income row — draft revert or invoice
- * delete — look it up first to clear the ledger legs.
+ * Prefer client_invoice_id; fall back to invoice_no + service_category for
+ * legacy rows that predate the FK link.
  */
 export async function findClientInvoiceIncomeRegisterId(
   supabase: DbClient,
   tenantId: string,
   invoiceNumber: string,
+  clientInvoiceId?: string | null,
 ): Promise<{ incomeId: string | null; error: string | null }> {
+  if (clientInvoiceId) {
+    const byId = await supabase
+      .from("income_register")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("client_invoice_id", clientInvoiceId)
+      .maybeSingle();
+
+    if (byId.error) {
+      return { incomeId: null, error: byId.error.message };
+    }
+
+    if (byId.data) {
+      return { incomeId: (byId.data as { id: string }).id, error: null };
+    }
+  }
+
   const { data, error } = await supabase
     .from("income_register")
     .select("id")
@@ -344,6 +360,7 @@ export async function syncIncomeRegisterFromClientInvoice(
         supabase,
         tenantId,
         invoice.invoice_number,
+        invoice.id,
       );
 
     if (lookupError) {
@@ -377,27 +394,26 @@ export async function syncIncomeRegisterFromClientInvoice(
   }
 
   const amount = toNumber(invoice.total_amount_due);
-  const amountReceived =
-    invoice.status === "paid" || invoice.status === "partial"
+  const isVoided = invoice.status === "voided";
+  const amountReceived = isVoided
+    ? toNumber(invoice.amount_received)
+    : invoice.status === "paid" || invoice.status === "partial"
       ? toNumber(invoice.amount_received)
       : 0;
-  // total_amount_due = subtotal + tax_due, so the Income Register amount is
-  // tax-inclusive and its net-of-tax base is the invoice subtotal.
   const outputVatAmount = roundMoney(toNumber(invoice.tax_due));
   const whtAmount = roundMoney(toNumber(invoice.wht_amount));
-  const outstandingBalance = calculateIncomeOutstanding(
-    amount,
-    amountReceived,
-    whtAmount,
-  );
+  const outstandingBalance = isVoided
+    ? 0
+    : calculateIncomeOutstanding(amount, amountReceived, whtAmount);
 
   let paymentStatus: string;
-  if (invoice.status === "paid") {
+  if (isVoided) {
+    paymentStatus = "Voided";
+  } else if (invoice.status === "paid") {
     paymentStatus = "Paid";
   } else if (invoice.status === "partial") {
     paymentStatus = "Partial";
   } else {
-    // status === "sent"
     const today = new Date().toISOString().slice(0, 10);
     const dueDate = invoice.due_date ?? invoice.invoice_date;
     paymentStatus = dueDate && dueDate < today ? "Overdue" : "Pending";
@@ -407,6 +423,7 @@ export async function syncIncomeRegisterFromClientInvoice(
     tenant_id: tenantId,
     date: invoice.invoice_date,
     invoice_no: invoice.invoice_number,
+    client_invoice_id: invoice.id,
     client_id: invoice.client_id,
     customer_name: invoice.bill_to_name,
     entry_type: "service" as const,
@@ -430,6 +447,7 @@ export async function syncIncomeRegisterFromClientInvoice(
       supabase,
       tenantId,
       invoice.invoice_number,
+      invoice.id,
     );
 
   if (lookupError) {
@@ -453,12 +471,19 @@ export async function syncIncomeRegisterFromClientInvoice(
     return { error: error?.message ?? "Unable to sync the Income Register row." };
   }
 
-  // Tax ledger legs keyed on the income row (single source, same as manual
-  // Income Register entries) using the per-invoice rates/amounts — the invoice
-  // wins over tax_settings defaults. Output vat_bundle on the tax-inclusive
-  // total; WHT receivable only when the client actually withholds.
+  const incomeId = (incomeRow as { id: string }).id;
+
+  if (isVoided) {
+    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
+      supabase,
+      "income_register",
+      incomeId,
+    );
+    return { error: ledgerError };
+  }
+
   const { error: ledgerError } = await syncIncomeRegisterTaxLedger(supabase, {
-    sourceId: (incomeRow as { id: string }).id,
+    sourceId: incomeId,
     entryDate: invoice.invoice_date,
     amount,
     whtRatePct: whtAmount > 0 ? roundMoney(toNumber(invoice.wht_rate)) || null : null,
@@ -564,13 +589,14 @@ export async function createClientInvoice(
 }
 
 const INVOICE_STATUS_TRANSITIONS: Record<
-  "draft" | "sent" | "partial" | "paid",
-  Array<"sent" | "paid">
+  ClientInvoiceStatus,
+  Array<"sent" | "paid" | "voided">
 > = {
   draft: ["sent"],
-  sent: ["paid"],
-  partial: [],
-  paid: [],
+  sent: ["paid", "voided"],
+  partial: ["voided"],
+  paid: ["voided"],
+  voided: [],
 };
 
 export async function updateClientInvoiceStatus(
@@ -619,6 +645,65 @@ export async function updateClientInvoiceStatus(
     return {
       invoice: null,
       error: error?.message ?? "Unable to update invoice status.",
+    };
+  }
+
+  const syncResult = await syncIncomeRegisterFromClientInvoice(
+    supabase,
+    tenantId,
+    invoice as ClientInvoiceHeaderRow,
+  );
+
+  if (syncResult.error) {
+    return {
+      invoice: invoice as ClientInvoiceHeaderRow,
+      error: syncResult.error,
+    };
+  }
+
+  return { invoice: invoice as ClientInvoiceHeaderRow, error: null };
+}
+
+export async function voidClientInvoice(
+  supabase: DbClient,
+  tenantId: string,
+  invoiceId: string,
+) {
+  const detail = await loadClientInvoiceDetail(supabase, tenantId, invoiceId);
+  if (detail.error || !detail.invoice) {
+    return { invoice: null, error: detail.error ?? "Invoice not found." };
+  }
+
+  const currentStatus = normalizeStatus(detail.invoice.status);
+  const allowed = INVOICE_STATUS_TRANSITIONS[currentStatus] ?? [];
+  if (!allowed.includes("voided")) {
+    return {
+      invoice: null,
+      error:
+        currentStatus === "draft"
+          ? "Draft invoices should be deleted, not voided."
+          : currentStatus === "voided"
+            ? "This invoice is already voided."
+            : `Cannot void an invoice with status ${currentStatus}.`,
+    };
+  }
+
+  const { data: invoice, error } = await supabase
+    .from("client_invoices")
+    .update({
+      status: "voided",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", invoiceId)
+    .eq("tenant_id", tenantId)
+    .eq("status", currentStatus)
+    .select(CLIENT_INVOICE_HEADER_SELECT)
+    .single();
+
+  if (error || !invoice) {
+    return {
+      invoice: null,
+      error: error?.message ?? "Unable to void invoice.",
     };
   }
 
