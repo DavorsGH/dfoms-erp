@@ -192,7 +192,7 @@ export default function AssistantChatWidget() {
         <section
           aria-labelledby={titleId}
           aria-hidden={!isOpen}
-          className={`absolute bottom-[calc(100%+0.75rem)] right-0 flex w-[min(24rem,calc(100vw-2rem))] max-h-[min(32rem,calc(100dvh-8rem))] origin-bottom flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none ${
+          className={`absolute bottom-[calc(100%+0.75rem)] right-0 flex w-[min(24rem,calc(100vw-2rem))] max-h-[min(32rem,calc(100dvh-8rem))] origin-bottom flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl transition duration-300 ease-out motion-reduce:transition-none ${
             isOpen
               ? "translate-y-0 scale-100 opacity-100"
               : "hidden"

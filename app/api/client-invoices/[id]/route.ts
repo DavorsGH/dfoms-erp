@@ -183,7 +183,7 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
-  const { invoice, error } = await updateClientInvoice(
+  const { invoice, error, syncWarning } = await updateClientInvoice(
     supabase,
     auth.tenantId,
     id,
@@ -196,6 +196,17 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json(
       { error: error ?? "Unable to update invoice." },
       { status: 400 },
+    );
+  }
+
+  if (syncWarning) {
+    return NextResponse.json(
+      {
+        client_invoice: invoice,
+        error: `Invoice saved, but tax ledger sync failed: ${syncWarning}`,
+        sync_warning: syncWarning,
+      },
+      { status: 500 },
     );
   }
 

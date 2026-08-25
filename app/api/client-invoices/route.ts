@@ -94,7 +94,7 @@ export async function POST(request: Request) {
   }
 
   const supabase = await getTenantSupabase();
-  const { invoice, error } = await createClientInvoice(
+  const { invoice, error, syncWarning } = await createClientInvoice(
     supabase,
     auth.tenantId,
     body,
@@ -104,6 +104,17 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: error ?? "Unable to create invoice." },
       { status: 400 },
+    );
+  }
+
+  if (syncWarning) {
+    return NextResponse.json(
+      {
+        client_invoice: invoice,
+        error: `Invoice created, but tax ledger sync failed: ${syncWarning}`,
+        sync_warning: syncWarning,
+      },
+      { status: 500 },
     );
   }
 

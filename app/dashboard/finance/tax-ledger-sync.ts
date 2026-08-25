@@ -136,55 +136,42 @@ export async function deleteTaxLedgerEntriesForSource(
 /**
  * Replace the tax ledger rows owned by one Income Register entry.
  *
- * Nothing references tax_ledger_entries.id (script 113 adds no inbound FKs), so
- * delete-then-insert is the simplest way to guarantee no duplicates and to drop
- * a leg that no longer applies — e.g. WHT cleared back to 0 on edit. Deletes and
- * inserts both run through the caller's RLS client, so they stay tenant-scoped.
+ * Active legs are unique on (tenant_id, source_type, source_id, direction,
+ * tax_component) — see tax_ledger_entries_active_source_component_uidx — so
+ * insert-then-delete-old is impossible. We use the Postgres RPC
+ * replace_income_register_tax_ledger_entries (script 246) so DELETE + INSERT
+ * run in one transaction: a failed insert rolls the delete back.
+ *
+ * RLS still applies (SECURITY INVOKER). No tenant-specific branching.
  */
 export async function syncIncomeRegisterTaxLedger(
   supabase: SupabaseClient,
   input: IncomeTaxLedgerInput,
 ): Promise<{ error: string | null }> {
-  // Defense in depth: never write tax legs for non-cash system adjustments.
-  const { data: sourceRow, error: sourceError } = await supabase
-    .from("income_register")
-    .select("is_system_adjustment")
-    .eq("id", input.sourceId)
-    .maybeSingle();
+  const rows = buildIncomeTaxLedgerRows(input);
+  const payload = rows.map((row) => ({
+    tenant_id: row.tenant_id ?? null,
+    entry_date: row.entry_date,
+    period_month: row.period_month,
+    direction: row.direction,
+    tax_component: row.tax_component,
+    rate_pct: row.rate_pct,
+    taxable_base: row.taxable_base,
+    tax_amount: row.tax_amount,
+    status: row.status,
+    counterparty_name: row.counterparty_name,
+    notes: row.notes,
+  }));
 
-  if (sourceError) {
-    return { error: sourceError.message };
-  }
-
-  if (sourceRow?.is_system_adjustment) {
-    const { error: deleteError } = await deleteTaxLedgerEntriesForSource(
-      supabase,
-      "income_register",
-      input.sourceId,
-    );
-    return { error: deleteError };
-  }
-
-  const { error: deleteError } = await deleteTaxLedgerEntriesForSource(
-    supabase,
-    "income_register",
-    input.sourceId,
+  const { error } = await supabase.rpc(
+    "replace_income_register_tax_ledger_entries",
+    {
+      p_source_id: input.sourceId,
+      p_rows: payload,
+    },
   );
 
-  if (deleteError) {
-    return { error: deleteError };
-  }
-
-  const rows = buildIncomeTaxLedgerRows(input);
-  if (rows.length === 0) {
-    return { error: null };
-  }
-
-  const { error: insertError } = await supabase
-    .from(TAX_LEDGER_TABLE)
-    .insert(rows);
-
-  return { error: insertError?.message ?? null };
+  return { error: error?.message ?? null };
 }
 
 export type PurchaseTaxLedgerSourceType =
