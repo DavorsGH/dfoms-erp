@@ -62,6 +62,9 @@ export default function MyInvoices({
         </thead>
         <tbody>
           {initialEntries.map((entry) => {
+            // View is gated on resolving a client_invoices id (not payment_status).
+            // Pending/Overdue/Partial/Paid/Voided all link when the id is known;
+            // drafts never appear here (no income_register sync).
             const linkedReceipts = entry.client_invoice_id
               ? receiptsByInvoiceId[entry.client_invoice_id] ?? []
               : [];

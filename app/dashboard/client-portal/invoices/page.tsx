@@ -8,6 +8,58 @@ import {
 import ClientPortalShell from "../client-portal-shell";
 import MyInvoices from "../my-invoices";
 
+/**
+ * Portal list reads income_register; View links need client_invoice_id.
+ * Legacy rows may lack that FK — resolve via invoice_no for this client's
+ * non-draft invoices so Pending/Overdue/Partial/Paid (and Voided) all link.
+ */
+async function resolveClientInvoiceIdsForPortal(
+  entries: IncomeRegisterEntry[],
+  clientId: string,
+  supabase: ReturnType<typeof createClient>,
+): Promise<IncomeRegisterEntry[]> {
+  const missingNos = [
+    ...new Set(
+      entries
+        .filter((entry) => !entry.client_invoice_id?.trim() && entry.invoice_no?.trim())
+        .map((entry) => entry.invoice_no.trim()),
+    ),
+  ];
+
+  if (missingNos.length === 0) {
+    return entries;
+  }
+
+  const { data: invoices } = await supabase
+    .from("client_invoices")
+    .select("id, invoice_number, status")
+    .eq("client_id", clientId)
+    .in("invoice_number", missingNos)
+    .neq("status", "draft");
+
+  const idByNumber = new Map<string, string>();
+  for (const invoice of invoices ?? []) {
+    if (invoice.invoice_number && invoice.id) {
+      idByNumber.set(invoice.invoice_number, invoice.id);
+    }
+  }
+
+  if (idByNumber.size === 0) {
+    return entries;
+  }
+
+  return entries.map((entry) => {
+    if (entry.client_invoice_id?.trim() || !entry.invoice_no?.trim()) {
+      return entry;
+    }
+    const resolvedId = idByNumber.get(entry.invoice_no.trim());
+    if (!resolvedId) {
+      return entry;
+    }
+    return { ...entry, client_invoice_id: resolvedId };
+  });
+}
+
 export default async function ClientPortalInvoicesPage() {
   const clientId = await getCurrentUserClientId();
 
@@ -24,12 +76,21 @@ export default async function ClientPortalInvoicesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  // Include Voided rows so clients can open them (detail shows a voided banner).
+  // Draft client invoices never sync to income_register.
   const { data, error } = await supabase
     .from("income_register")
     .select(SERVICE_INCOME_REGISTER_SELECT)
     .eq("entry_type", "service")
-    .neq("payment_status", "Voided")
     .order("date", { ascending: false });
+
+  const resolvedEntries = error
+    ? []
+    : await resolveClientInvoiceIdsForPortal(
+        (data as IncomeRegisterEntry[] | null) ?? [],
+        clientId,
+        supabase,
+      );
 
   const { data: receiptRows } = await supabase
     .from("client_receipts")
@@ -50,7 +111,7 @@ export default async function ClientPortalInvoicesPage() {
   return (
     <ClientPortalShell sectionTitle="My Invoices">
       <MyInvoices
-        initialEntries={(data as IncomeRegisterEntry[] | null) ?? []}
+        initialEntries={resolvedEntries}
         receiptsByInvoiceId={receiptsByInvoiceId}
         fetchError={error?.message ?? null}
       />
