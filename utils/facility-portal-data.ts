@@ -3,11 +3,32 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FacilityManagerPortalSession } from "@/utils/facility-portal-auth";
 import type {
+  FacilityCollectionListRow,
+  FacilityComplaintListRow,
+  FacilityInspectionListRow,
+  FacilityOutstandingLedgerRow,
   FacilityPortalDashboardSummary,
   FacilityPropertyOption,
   FacilityServiceRecordRow,
   FacilityUnitOption,
 } from "@/utils/facility-portal-types";
+import {
+  formatLesseeComplaintDate,
+  formatLesseeComplaintRaisedBy,
+  formatLesseeComplaintStatus,
+  isLesseeComplaintRaisedBy,
+  isLesseeComplaintStatus,
+} from "@/app/dashboard/real-estate/complaints-utils";
+import {
+  formatInspectionDate,
+  formatInspectionType,
+  isInspectionType,
+  normalizeInspectionChecklist,
+} from "@/app/dashboard/real-estate/inspections-utils";
+import {
+  formatRentLedgerStatus,
+  rentOutstandingGhs,
+} from "@/app/dashboard/real-estate/rent-ledger-utils";
 import {
   formatMaintenanceDate,
   formatMaintenanceLandlordApproval,
@@ -25,6 +46,10 @@ import {
 } from "@/app/dashboard/real-estate/maintenance-utils";
 
 export type {
+  FacilityCollectionListRow,
+  FacilityComplaintListRow,
+  FacilityInspectionListRow,
+  FacilityOutstandingLedgerRow,
   FacilityPortalDashboardSummary,
   FacilityPropertyOption,
   FacilityServiceRecordRow,
@@ -204,6 +229,736 @@ export async function assertFacilityLeaseOnAssignedProperty(
     leaseId: lease.lease_id as string,
     propertyId: unit.property_id as string,
     status: String(lease.status ?? ""),
+  };
+}
+
+async function fetchFacilityScopeLeaseIds(
+  admin: SupabaseClient,
+  session: FacilityManagerPortalSession,
+): Promise<string[]> {
+  if (session.assignedPropertyIds.length === 0) {
+    return [];
+  }
+  const { data: units } = await admin
+    .from("property_units")
+    .select("unit_id")
+    .eq("tenant_id", session.tenantId)
+    .in("property_id", session.assignedPropertyIds);
+  const unitIds = (units ?? []).map((u) => u.unit_id as string);
+  if (unitIds.length === 0) {
+    return [];
+  }
+  const { data: leases } = await admin
+    .from("leases")
+    .select("lease_id")
+    .eq("tenant_id", session.tenantId)
+    .in("unit_id", unitIds);
+  return (leases ?? []).map((l) => l.lease_id as string);
+}
+
+export async function assertFacilityComplaintOnAssignedProperty(
+  admin: SupabaseClient,
+  session: FacilityManagerPortalSession,
+  complaintId: string,
+): Promise<
+  | { ok: true; complaintId: string; leaseId: string; raisedBy: string }
+  | { ok: false; error: string; status: number }
+> {
+  const { data: complaint, error } = await admin
+    .from("lessee_complaints")
+    .select("complaint_id, lease_id, raised_by")
+    .eq("tenant_id", session.tenantId)
+    .eq("complaint_id", complaintId)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false, error: error.message, status: 400 };
+  }
+  if (!complaint) {
+    return { ok: false, error: "Complaint not found.", status: 404 };
+  }
+
+  const leaseCheck = await assertFacilityLeaseOnAssignedProperty(
+    admin,
+    session,
+    complaint.lease_id as string,
+  );
+  if (!leaseCheck.ok) {
+    return { ok: false, error: leaseCheck.error, status: leaseCheck.status };
+  }
+
+  return {
+    ok: true,
+    complaintId: complaint.complaint_id as string,
+    leaseId: complaint.lease_id as string,
+    raisedBy: String(complaint.raised_by ?? "tenant"),
+  };
+}
+
+export async function fetchFacilityComplaints(
+  admin: SupabaseClient,
+  session: FacilityManagerPortalSession,
+): Promise<{ rows: FacilityComplaintListRow[]; error: string | null }> {
+  const leaseIds = await fetchFacilityScopeLeaseIds(admin, session);
+  if (leaseIds.length === 0) {
+    return { rows: [], error: null };
+  }
+
+  const [
+    { data: complaints, error: complaintsError },
+    { data: leases, error: leasesError },
+    { data: units, error: unitsError },
+    { data: properties, error: propertiesError },
+    { data: lessees, error: lesseesError },
+  ] = await Promise.all([
+    admin
+      .from("lessee_complaints")
+      .select(
+        "complaint_id, lease_id, lessee_id, subject, description, status, raised_by, staff_response, date_reported",
+      )
+      .eq("tenant_id", session.tenantId)
+      .in("lease_id", leaseIds)
+      .order("date_reported", { ascending: false }),
+    admin
+      .from("leases")
+      .select("lease_id, unit_id, lessee_id")
+      .eq("tenant_id", session.tenantId)
+      .in("lease_id", leaseIds),
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id")
+      .eq("tenant_id", session.tenantId)
+      .in("property_id", session.assignedPropertyIds),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", session.tenantId)
+      .in("property_id", session.assignedPropertyIds),
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name")
+      .eq("tenant_id", session.tenantId),
+  ]);
+
+  if (complaintsError) {
+    return { rows: [], error: complaintsError.message };
+  }
+  if (leasesError || unitsError || propertiesError || lesseesError) {
+    return {
+      rows: [],
+      error:
+        leasesError?.message ??
+        unitsError?.message ??
+        propertiesError?.message ??
+        lesseesError?.message ??
+        "Unable to load complaints.",
+    };
+  }
+
+  const propertyById = new Map(
+    (properties ?? []).map((p) => [
+      p.property_id as string,
+      String(p.name ?? "Property"),
+    ]),
+  );
+  const unitById = new Map(
+    (units ?? []).map((u) => [
+      u.unit_id as string,
+      {
+        unitNumber: String(u.unit_number ?? ""),
+        propertyId: u.property_id as string,
+      },
+    ]),
+  );
+  const leaseById = new Map(
+    (leases ?? []).map((l) => [
+      l.lease_id as string,
+      { unitId: l.unit_id as string, lesseeId: l.lessee_id as string },
+    ]),
+  );
+  const lesseeById = new Map(
+    (lessees ?? []).map((l) => [
+      l.lessee_id as string,
+      String(l.full_name ?? "Lessee"),
+    ]),
+  );
+
+  const rows: FacilityComplaintListRow[] = [];
+  for (const row of complaints ?? []) {
+    if (!isLesseeComplaintStatus(String(row.status))) {
+      continue;
+    }
+    const lease = leaseById.get(row.lease_id as string);
+    const unit = lease ? unitById.get(lease.unitId) : undefined;
+    const propertyName = unit
+      ? (propertyById.get(unit.propertyId) ?? "Property")
+      : "Property";
+    const unitLabel = unit?.unitNumber
+      ? `${propertyName} / Unit ${unit.unitNumber}`
+      : propertyName;
+    const raisedBy = isLesseeComplaintRaisedBy(String(row.raised_by))
+      ? row.raised_by
+      : "tenant";
+    const status = row.status as string;
+
+    rows.push({
+      complaintId: row.complaint_id as string,
+      leaseId: row.lease_id as string,
+      lesseeName: lease
+        ? (lesseeById.get(lease.lesseeId) ?? "Lessee")
+        : "Lessee",
+      unitLabel,
+      subject: String(row.subject ?? ""),
+      description: String(row.description ?? ""),
+      status,
+      statusLabel: formatLesseeComplaintStatus(status),
+      raisedBy,
+      raisedByLabel: formatLesseeComplaintRaisedBy(
+        raisedBy as "tenant" | "landlord",
+      ),
+      staffResponse: row.staff_response
+        ? String(row.staff_response)
+        : null,
+      dateReported: String(row.date_reported ?? ""),
+      dateLabel: formatLesseeComplaintDate(String(row.date_reported ?? "")),
+      isOpen: status === "submitted" || status === "in_progress",
+    });
+  }
+
+  return { rows, error: null };
+}
+
+export async function fetchFacilityInspections(
+  admin: SupabaseClient,
+  session: FacilityManagerPortalSession,
+): Promise<{ rows: FacilityInspectionListRow[]; error: string | null }> {
+  const leaseIds = await fetchFacilityScopeLeaseIds(admin, session);
+  if (leaseIds.length === 0) {
+    return { rows: [], error: null };
+  }
+
+  const [
+    { data: inspections, error: inspectionsError },
+    { data: leases, error: leasesError },
+    { data: units, error: unitsError },
+    { data: properties, error: propertiesError },
+    { data: lessees, error: lesseesError },
+  ] = await Promise.all([
+    admin
+      .from("inspections")
+      .select(
+        "inspection_id, lease_id, inspection_type, inspection_date, conducted_by, checklist, notes",
+      )
+      .eq("tenant_id", session.tenantId)
+      .in("lease_id", leaseIds)
+      .order("inspection_date", { ascending: false }),
+    admin
+      .from("leases")
+      .select("lease_id, unit_id, lessee_id")
+      .eq("tenant_id", session.tenantId)
+      .in("lease_id", leaseIds),
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id")
+      .eq("tenant_id", session.tenantId)
+      .in("property_id", session.assignedPropertyIds),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", session.tenantId)
+      .in("property_id", session.assignedPropertyIds),
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name")
+      .eq("tenant_id", session.tenantId),
+  ]);
+
+  if (inspectionsError) {
+    return { rows: [], error: inspectionsError.message };
+  }
+  if (leasesError || unitsError || propertiesError || lesseesError) {
+    return {
+      rows: [],
+      error:
+        leasesError?.message ??
+        unitsError?.message ??
+        propertiesError?.message ??
+        lesseesError?.message ??
+        "Unable to load inspections.",
+    };
+  }
+
+  const propertyById = new Map(
+    (properties ?? []).map((p) => [
+      p.property_id as string,
+      String(p.name ?? "Property"),
+    ]),
+  );
+  const unitById = new Map(
+    (units ?? []).map((u) => [
+      u.unit_id as string,
+      {
+        unitNumber: String(u.unit_number ?? ""),
+        propertyId: u.property_id as string,
+      },
+    ]),
+  );
+  const leaseById = new Map(
+    (leases ?? []).map((l) => [
+      l.lease_id as string,
+      { unitId: l.unit_id as string, lesseeId: l.lessee_id as string },
+    ]),
+  );
+  const lesseeById = new Map(
+    (lessees ?? []).map((l) => [
+      l.lessee_id as string,
+      String(l.full_name ?? "Lessee"),
+    ]),
+  );
+
+  const rows: FacilityInspectionListRow[] = [];
+  for (const row of inspections ?? []) {
+    if (!isInspectionType(String(row.inspection_type))) {
+      continue;
+    }
+    const lease = leaseById.get(row.lease_id as string);
+    const unit = lease ? unitById.get(lease.unitId) : undefined;
+    const propertyName = unit
+      ? (propertyById.get(unit.propertyId) ?? "Property")
+      : "Property";
+    const unitLabel = unit?.unitNumber
+      ? `${propertyName} / Unit ${unit.unitNumber}`
+      : propertyName;
+    const checklist = normalizeInspectionChecklist(row.checklist);
+
+    rows.push({
+      inspectionId: row.inspection_id as string,
+      leaseId: row.lease_id as string,
+      lesseeName: lease
+        ? (lesseeById.get(lease.lesseeId) ?? "Lessee")
+        : "Lessee",
+      unitLabel,
+      inspectionType: row.inspection_type as string,
+      inspectionTypeLabel: formatInspectionType(row.inspection_type as string),
+      inspectionDate: String(row.inspection_date ?? ""),
+      dateLabel: formatInspectionDate(String(row.inspection_date ?? "")),
+      conductedBy: row.conducted_by ? String(row.conducted_by) : null,
+      notes: row.notes ? String(row.notes) : null,
+      checklistItemCount: checklist.length,
+    });
+  }
+
+  return { rows, error: null };
+}
+
+export async function fetchFacilityInspectionLeaseOptions(
+  admin: SupabaseClient,
+  session: FacilityManagerPortalSession,
+): Promise<{ leases: ActiveLeaseOption[]; error: string | null }> {
+  return fetchFacilityActiveLeaseOptions(admin, session);
+}
+
+const FM_COLLECTION_METHOD_LABELS: Record<string, string> = {
+  cash: "Cash",
+  momo: "Mobile Money",
+  bank_transfer: "Bank Transfer",
+};
+
+const FM_COLLECTION_STATUS_LABELS: Record<string, string> = {
+  pending_landlord_confirmation: "Pending confirmation",
+  confirmed: "Confirmed",
+  rejected: "Rejected",
+  cancelled: "Cancelled",
+};
+
+export async function fetchFacilityOutstandingRentLedger(
+  admin: SupabaseClient,
+  session: FacilityManagerPortalSession,
+): Promise<{ rows: FacilityOutstandingLedgerRow[]; error: string | null }> {
+  if (!session.canCollectRent && !session.canCollectCharges) {
+    return { rows: [], error: null };
+  }
+
+  const leaseIds = await fetchFacilityScopeLeaseIds(admin, session);
+  if (leaseIds.length === 0) {
+    return { rows: [], error: null };
+  }
+
+  const [
+    { data: ledgerRows, error: ledgerError },
+    { data: leases, error: leasesError },
+    { data: units, error: unitsError },
+    { data: properties, error: propertiesError },
+    { data: lessees, error: lesseesError },
+    { data: pendingCollections, error: pendingError },
+  ] = await Promise.all([
+    admin
+      .from("rent_ledger")
+      .select(
+        "entry_id, lease_id, charge_type, description, period_start, period_end, amount_due_ghs, amount_paid_ghs, credit_ghs, status",
+      )
+      .eq("tenant_id", session.tenantId)
+      .in("lease_id", leaseIds)
+      .neq("status", "paid")
+      .order("period_start", { ascending: false }),
+    admin
+      .from("leases")
+      .select("lease_id, unit_id, lessee_id, status")
+      .eq("tenant_id", session.tenantId)
+      .in("lease_id", leaseIds)
+      .eq("status", "active"),
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id")
+      .eq("tenant_id", session.tenantId)
+      .in("property_id", session.assignedPropertyIds),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", session.tenantId)
+      .in("property_id", session.assignedPropertyIds),
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name")
+      .eq("tenant_id", session.tenantId),
+    admin
+      .from("facility_manager_collections")
+      .select("rent_ledger_entry_id")
+      .eq("tenant_id", session.tenantId)
+      .eq("status", "pending_landlord_confirmation"),
+  ]);
+
+  if (ledgerError) {
+    return { rows: [], error: ledgerError.message };
+  }
+  if (leasesError || unitsError || propertiesError || lesseesError) {
+    return {
+      rows: [],
+      error:
+        leasesError?.message ??
+        unitsError?.message ??
+        propertiesError?.message ??
+        lesseesError?.message ??
+        "Unable to load outstanding ledger.",
+    };
+  }
+  if (pendingError) {
+    return { rows: [], error: pendingError.message };
+  }
+
+  const pendingEntryIds = new Set(
+    (pendingCollections ?? []).map((r) => r.rent_ledger_entry_id as string),
+  );
+
+  const propertyById = new Map(
+    (properties ?? []).map((p) => [
+      p.property_id as string,
+      String(p.name ?? "Property"),
+    ]),
+  );
+  const unitById = new Map(
+    (units ?? []).map((u) => [
+      u.unit_id as string,
+      {
+        unitNumber: String(u.unit_number ?? ""),
+        propertyId: u.property_id as string,
+      },
+    ]),
+  );
+  const leaseById = new Map(
+    (leases ?? []).map((l) => [
+      l.lease_id as string,
+      { unitId: l.unit_id as string, lesseeId: l.lessee_id as string },
+    ]),
+  );
+  const lesseeById = new Map(
+    (lessees ?? []).map((l) => [
+      l.lessee_id as string,
+      String(l.full_name ?? "Lessee"),
+    ]),
+  );
+
+  const rows: FacilityOutstandingLedgerRow[] = [];
+  for (const row of ledgerRows ?? []) {
+    const lease = leaseById.get(row.lease_id as string);
+    if (!lease) {
+      continue;
+    }
+    const chargeType = String(row.charge_type ?? "rent");
+    const isRent = chargeType === "rent";
+    const isCharge = chargeType === "one_time";
+    if (isRent && !session.canCollectRent) {
+      continue;
+    }
+    if (isCharge && !session.canCollectCharges) {
+      continue;
+    }
+    if (!isRent && !isCharge) {
+      continue;
+    }
+
+    const unit = unitById.get(lease.unitId);
+    const propertyId = unit?.propertyId ?? "";
+    const propertyName = unit
+      ? (propertyById.get(unit.propertyId) ?? "Property")
+      : "Property";
+    const unitLabel = unit?.unitNumber
+      ? `${propertyName} / Unit ${unit.unitNumber}`
+      : propertyName;
+
+    const amountDue = toNumber(row.amount_due_ghs as number | string | null) ?? 0;
+    const amountPaid = toNumber(row.amount_paid_ghs as number | string | null) ?? 0;
+    const credit = toNumber(row.credit_ghs as number | string | null) ?? 0;
+    const outstanding = rentOutstandingGhs(amountDue, amountPaid, credit);
+    if (outstanding <= 0) {
+      continue;
+    }
+
+    rows.push({
+      entryId: row.entry_id as string,
+      leaseId: row.lease_id as string,
+      propertyId,
+      lesseeName: lesseeById.get(lease.lesseeId) ?? "Lessee",
+      unitLabel,
+      chargeType,
+      description: row.description ? String(row.description) : null,
+      periodStart: String(row.period_start ?? ""),
+      periodEnd: String(row.period_end ?? ""),
+      amountDueGhs: amountDue,
+      amountPaidGhs: amountPaid,
+      outstandingGhs: outstanding,
+      status: String(row.status ?? ""),
+      statusLabel: formatRentLedgerStatus(String(row.status ?? "")),
+      hasPendingCollection: pendingEntryIds.has(row.entry_id as string),
+    });
+  }
+
+  return { rows, error: null };
+}
+
+export async function fetchFacilityManagerCollections(
+  admin: SupabaseClient,
+  session: FacilityManagerPortalSession,
+): Promise<{ rows: FacilityCollectionListRow[]; error: string | null }> {
+  if (!session.canCollectRent && !session.canCollectCharges) {
+    return { rows: [], error: null };
+  }
+
+  const { data: collections, error: collectionsError } = await admin
+    .from("facility_manager_collections")
+    .select(
+      "collection_id, rent_ledger_entry_id, property_id, lease_id, amount_ghs, payment_method, collected_at, notes, status, rejection_reason",
+    )
+    .eq("tenant_id", session.tenantId)
+    .eq("facility_manager_id", session.facilityManagerId)
+    .order("collected_at", { ascending: false });
+
+  if (collectionsError) {
+    return { rows: [], error: collectionsError.message };
+  }
+
+  const entryIds = (collections ?? []).map(
+    (r) => r.rent_ledger_entry_id as string,
+  );
+  const leaseIds = (collections ?? []).map((r) => r.lease_id as string);
+
+  const [
+    { data: ledgerRows },
+    { data: leases },
+    { data: units },
+    { data: properties },
+    { data: lessees },
+  ] = await Promise.all([
+    entryIds.length
+      ? admin
+          .from("rent_ledger")
+          .select("entry_id, description, charge_type")
+          .eq("tenant_id", session.tenantId)
+          .in("entry_id", entryIds)
+      : Promise.resolve({ data: [] }),
+    leaseIds.length
+      ? admin
+          .from("leases")
+          .select("lease_id, unit_id, lessee_id")
+          .eq("tenant_id", session.tenantId)
+          .in("lease_id", leaseIds)
+      : Promise.resolve({ data: [] }),
+    admin
+      .from("property_units")
+      .select("unit_id, unit_number, property_id")
+      .eq("tenant_id", session.tenantId)
+      .in("property_id", session.assignedPropertyIds),
+    admin
+      .from("properties")
+      .select("property_id, name")
+      .eq("tenant_id", session.tenantId)
+      .in("property_id", session.assignedPropertyIds),
+    admin
+      .from("lessees")
+      .select("lessee_id, full_name")
+      .eq("tenant_id", session.tenantId),
+  ]);
+
+  const ledgerById = new Map(
+    (ledgerRows ?? []).map((r) => [
+      r.entry_id as string,
+      {
+        description: r.description ? String(r.description) : null,
+        chargeType: String(r.charge_type ?? "rent"),
+      },
+    ]),
+  );
+  const propertyById = new Map(
+    (properties ?? []).map((p) => [
+      p.property_id as string,
+      String(p.name ?? "Property"),
+    ]),
+  );
+  const unitById = new Map(
+    (units ?? []).map((u) => [
+      u.unit_id as string,
+      {
+        unitNumber: String(u.unit_number ?? ""),
+        propertyId: u.property_id as string,
+      },
+    ]),
+  );
+  const leaseById = new Map(
+    (leases ?? []).map((l) => [
+      l.lease_id as string,
+      { unitId: l.unit_id as string, lesseeId: l.lessee_id as string },
+    ]),
+  );
+  const lesseeById = new Map(
+    (lessees ?? []).map((l) => [
+      l.lessee_id as string,
+      String(l.full_name ?? "Lessee"),
+    ]),
+  );
+
+  const rows: FacilityCollectionListRow[] = (collections ?? []).map((row) => {
+    const lease = leaseById.get(row.lease_id as string);
+    const unit = lease ? unitById.get(lease.unitId) : undefined;
+    const propertyName =
+      propertyById.get(row.property_id as string) ?? "Property";
+    const unitLabel = unit?.unitNumber
+      ? `${propertyName} / Unit ${unit.unitNumber}`
+      : propertyName;
+    const ledger = ledgerById.get(row.rent_ledger_entry_id as string);
+    const method = String(row.payment_method ?? "");
+    const status = String(row.status ?? "");
+    const collectedAt = String(row.collected_at ?? "");
+
+    return {
+      collectionId: row.collection_id as string,
+      rentLedgerEntryId: row.rent_ledger_entry_id as string,
+      propertyId: row.property_id as string,
+      propertyName,
+      leaseId: row.lease_id as string,
+      lesseeName: lease
+        ? (lesseeById.get(lease.lesseeId) ?? "Lessee")
+        : "Lessee",
+      unitLabel,
+      amountGhs: toNumber(row.amount_ghs as number | string | null) ?? 0,
+      paymentMethod: method,
+      paymentMethodLabel:
+        FM_COLLECTION_METHOD_LABELS[method] ?? method.replace(/_/g, " "),
+      collectedAt,
+      collectedAtLabel: formatMaintenanceDate(collectedAt),
+      notes: row.notes ? String(row.notes) : null,
+      status,
+      statusLabel:
+        FM_COLLECTION_STATUS_LABELS[status] ?? status.replace(/_/g, " "),
+      rejectionReason: row.rejection_reason
+        ? String(row.rejection_reason)
+        : null,
+      ledgerDescription: ledger?.description ?? null,
+    };
+  });
+
+  return { rows, error: null };
+}
+
+export async function assertFacilityRentLedgerEntryOnAssignedProperty(
+  admin: SupabaseClient,
+  session: FacilityManagerPortalSession,
+  entryId: string,
+): Promise<
+  | {
+      ok: true;
+      entryId: string;
+      leaseId: string;
+      propertyId: string;
+      chargeType: string;
+      outstandingGhs: number;
+    }
+  | { ok: false; error: string; status: number }
+> {
+  const { data: entry, error } = await admin
+    .from("rent_ledger")
+    .select(
+      "entry_id, lease_id, charge_type, amount_due_ghs, amount_paid_ghs, credit_ghs, status",
+    )
+    .eq("tenant_id", session.tenantId)
+    .eq("entry_id", entryId)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false, error: error.message, status: 400 };
+  }
+  if (!entry) {
+    return { ok: false, error: "Rent ledger entry not found.", status: 404 };
+  }
+  if (entry.status === "paid") {
+    return { ok: false, error: "This entry is already fully paid.", status: 400 };
+  }
+
+  const chargeType = String(entry.charge_type ?? "rent");
+  const isRent = chargeType === "rent";
+  const isCharge = chargeType === "one_time";
+  if (isRent && !session.canCollectRent) {
+    return {
+      ok: false,
+      error: "You do not have permission to collect rent.",
+      status: 403,
+    };
+  }
+  if (isCharge && !session.canCollectCharges) {
+    return {
+      ok: false,
+      error: "You do not have permission to collect charges.",
+      status: 403,
+    };
+  }
+  if (!isRent && !isCharge) {
+    return { ok: false, error: "Unsupported charge type.", status: 400 };
+  }
+
+  const leaseCheck = await assertFacilityLeaseOnAssignedProperty(
+    admin,
+    session,
+    entry.lease_id as string,
+    { requireActive: true },
+  );
+  if (!leaseCheck.ok) {
+    return { ok: false, error: leaseCheck.error, status: leaseCheck.status };
+  }
+
+  const amountDue = toNumber(entry.amount_due_ghs as number | string | null) ?? 0;
+  const amountPaid = toNumber(entry.amount_paid_ghs as number | string | null) ?? 0;
+  const credit = toNumber(entry.credit_ghs as number | string | null) ?? 0;
+  const outstanding = rentOutstandingGhs(amountDue, amountPaid, credit);
+  if (outstanding <= 0) {
+    return { ok: false, error: "Nothing outstanding on this entry.", status: 400 };
+  }
+
+  return {
+    ok: true,
+    entryId: entry.entry_id as string,
+    leaseId: entry.lease_id as string,
+    propertyId: leaseCheck.propertyId,
+    chargeType,
+    outstandingGhs: outstanding,
   };
 }
 
@@ -615,7 +1370,7 @@ export async function fetchFacilityPortalDashboardSummary(
       .select("collection_id", { count: "exact", head: true })
       .eq("tenant_id", session.tenantId)
       .eq("facility_manager_id", session.facilityManagerId)
-      .eq("status", "pending");
+      .eq("status", "pending_landlord_confirmation");
     pendingCollectionsCount = count ?? 0;
   }
 

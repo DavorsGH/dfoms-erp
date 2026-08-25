@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { createAdminClient } from "@/utils/supabase/admin";
 import {
   fetchLandlordPortalRentLedgerBrowse,
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
 } from "@/utils/landlord-portal-auth";
+import { fetchLandlordPendingCollections } from "@/utils/landlord-portal-collections";
 import { formatRentMoney } from "@/app/dashboard/real-estate/rent-ledger-utils";
 import ScrollableTable, {
   scrollableTableBodyClassName,
@@ -19,6 +21,7 @@ import {
   portalSectionTitleClassName,
 } from "../../portal-ui";
 import LandlordPortalPendingApprovalView from "../../pending-approval-view";
+import LandlordPendingCollectionsPanel from "./pending-collections-panel";
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
@@ -47,6 +50,10 @@ export default async function LandlordPortalRentLedgerPage() {
   }
 
   const { rows, error } = await fetchLandlordPortalRentLedgerBrowse(session);
+  const canAct = session.landlordType === "platform_only";
+  const admin = createAdminClient();
+  const { rows: pendingCollections, error: pendingError } =
+    await fetchLandlordPendingCollections(admin, session);
 
   return (
     <div className="space-y-4">
@@ -67,6 +74,14 @@ export default async function LandlordPortalRentLedgerPage() {
       </div>
 
       {error ? <div className={portalErrorBannerClassName}>{error}</div> : null}
+      {pendingError ? (
+        <div className={portalErrorBannerClassName}>{pendingError}</div>
+      ) : (
+        <LandlordPendingCollectionsPanel
+          rows={pendingCollections}
+          canAct={canAct}
+        />
+      )}
 
       {rows.length === 0 ? (
         <section className={portalSectionClassName}>

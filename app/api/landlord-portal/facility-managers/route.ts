@@ -5,6 +5,7 @@ import {
   createAndSendFacilityManagerPortalInvite,
   DEFAULT_FACILITY_MANAGER_CAPABILITIES,
   fetchPendingFacilityManagerInviteExpiresAt,
+  rejectDavorsManagedFacilityManagerCollectionCapabilities,
   type FacilityManagerCapabilityFlags,
 } from "@/utils/facility-manager-portal-invite";
 import {
@@ -205,6 +206,16 @@ export async function POST(request: Request) {
   }
 
   const capabilities = parseCapabilities(body);
+  const collectionCapabilityError =
+    rejectDavorsManagedFacilityManagerCollectionCapabilities({
+      landlordType: auth.session.landlordType,
+      canCollectRent: capabilities.can_collect_rent,
+      canCollectCharges: capabilities.can_collect_charges,
+    });
+  if (collectionCapabilityError) {
+    return NextResponse.json({ error: collectionCapabilityError }, { status: 400 });
+  }
+
   const nowIso = new Date().toISOString();
 
   const { data: created, error: createError } = await auth.admin

@@ -3,6 +3,7 @@ import { requireApprovedLandlordSession } from "@/utils/landlord-portal-auth";
 import {
   assertPropertiesBelongToTenant,
   DEFAULT_FACILITY_MANAGER_CAPABILITIES,
+  rejectDavorsManagedFacilityManagerCollectionCapabilities,
   type FacilityManagerCapabilityFlags,
 } from "@/utils/facility-manager-portal-invite";
 
@@ -81,6 +82,19 @@ export async function PATCH(
     );
   }
 
+  const capabilityUpdates = pickCapabilityUpdates(body);
+  const collectionCapabilityError =
+    rejectDavorsManagedFacilityManagerCollectionCapabilities({
+      landlordType: auth.session.landlordType,
+      canCollectRent:
+        typeof body.can_collect_rent === "boolean" && body.can_collect_rent,
+      canCollectCharges:
+        typeof body.can_collect_charges === "boolean" && body.can_collect_charges,
+    });
+  if (collectionCapabilityError) {
+    return NextResponse.json({ error: collectionCapabilityError }, { status: 400 });
+  }
+
   const nowIso = new Date().toISOString();
   const updates: Record<string, unknown> = { updated_at: nowIso };
 
@@ -93,7 +107,7 @@ export async function PATCH(
         ? body.phone.trim()
         : null;
   }
-  Object.assign(updates, pickCapabilityUpdates(body));
+  Object.assign(updates, capabilityUpdates);
 
   if (Object.keys(updates).length > 1) {
     const { error: updateError } = await auth.admin
