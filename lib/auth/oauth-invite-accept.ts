@@ -9,6 +9,7 @@ import {
 import { normalizeOAuthEmail } from "@/lib/auth/oauth-persona-resolve";
 import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
 import { assignStaffMembership } from "@/utils/email-reuse";
+import { hashFacilityManagerInviteToken } from "@/utils/facility-manager-portal-invite";
 import { hashLandlordInviteToken } from "@/utils/landlord-portal-invite";
 import { hashLesseeInviteToken } from "@/utils/lessee-portal-invite";
 import {
@@ -387,5 +388,148 @@ export async function acceptLandlordInviteWithOAuth(
   }
 
   await syncAuthUserPortalMetadata(authUserId, "landlord");
+  return { ok: true };
+}
+
+export async function acceptFacilityManagerInviteWithOAuth(
+  admin: SupabaseClient,
+  authUserId: string,
+  oauthEmail: string,
+  rawToken: string,
+): Promise<AcceptResult> {
+  const tokenHash = hashFacilityManagerInviteToken(rawToken.trim());
+  const nowIso = new Date().toISOString();
+
+  const { data: invite, error: inviteError } = await admin
+    .from("facility_manager_portal_invites")
+    .select(
+      "invite_id, tenant_id, facility_manager_id, email, expires_at, used_at",
+    )
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (inviteError) {
+    return { ok: false, error: inviteError.message, status: 400 };
+  }
+  if (!invite) {
+    return { ok: false, error: "This invite link is invalid.", status: 400 };
+  }
+  if (invite.used_at) {
+    return {
+      ok: false,
+      error: "This invite link has already been used.",
+      status: 400,
+    };
+  }
+  if (new Date(invite.expires_at).getTime() < Date.now()) {
+    return {
+      ok: false,
+      error:
+        "This invite link has expired. Ask your landlord for a new invite.",
+      status: 400,
+    };
+  }
+
+  const inviteEmail = String(invite.email).trim().toLowerCase();
+  if (inviteEmailMismatch(inviteEmail, oauthEmail)) {
+    return {
+      ok: false,
+      error: `This invite was sent to ${inviteEmail}. Sign in with that email address to accept it.`,
+      status: 400,
+    };
+  }
+
+  const crossByAuth = await findCrossPersonaConflictForAuthUid(
+    admin,
+    authUserId,
+    {
+      targetPersona: "facility_manager",
+      excludeFacilityManagerId: invite.facility_manager_id,
+    },
+  );
+  if (crossByAuth) {
+    return {
+      ok: false,
+      error: crossPersonaErrorMessage(crossByAuth),
+      status: 409,
+    };
+  }
+
+  const crossByEmail = await findCrossPersonaConflictForEmail(
+    admin,
+    inviteEmail,
+    {
+      targetPersona: "facility_manager",
+      excludeFacilityManagerId: invite.facility_manager_id,
+    },
+  );
+  if (crossByEmail) {
+    return {
+      ok: false,
+      error: crossPersonaErrorMessage(crossByEmail),
+      status: 409,
+    };
+  }
+
+  const { data: fm } = await admin
+    .from("facility_managers")
+    .select("facility_manager_id, auth_user_id, full_name, status")
+    .eq("tenant_id", invite.tenant_id)
+    .eq("facility_manager_id", invite.facility_manager_id)
+    .maybeSingle();
+
+  if (!fm) {
+    return {
+      ok: false,
+      error: "Facility manager record not found for this invite.",
+      status: 404,
+    };
+  }
+  if (fm.status === "revoked") {
+    return {
+      ok: false,
+      error: "This facility manager invite has been revoked.",
+      status: 400,
+    };
+  }
+  if (fm.auth_user_id) {
+    return {
+      ok: false,
+      error: "This facility manager already has a portal account. Please log in.",
+      status: 400,
+    };
+  }
+
+  const { error: linkError } = await admin
+    .from("facility_managers")
+    .update({
+      auth_user_id: authUserId,
+      status: "active",
+      activated_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq("tenant_id", invite.tenant_id)
+    .eq("facility_manager_id", invite.facility_manager_id)
+    .is("auth_user_id", null);
+
+  if (linkError) {
+    return { ok: false, error: linkError.message, status: 400 };
+  }
+
+  const { error: markUsedError } = await admin
+    .from("facility_manager_portal_invites")
+    .update({ used_at: nowIso })
+    .eq("invite_id", invite.invite_id)
+    .is("used_at", null);
+
+  if (markUsedError) {
+    return {
+      ok: false,
+      error: `Account linked, but invite could not be marked used: ${markUsedError.message}`,
+      status: 400,
+    };
+  }
+
+  await syncAuthUserPortalMetadata(authUserId, "facility_manager");
   return { ok: true };
 }

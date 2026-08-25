@@ -17,9 +17,11 @@ import {
 function resolvePersona(options: {
   isLesseePortalUser: boolean;
   isLandlordPortalUser: boolean;
+  isFacilityManagerPortalUser: boolean;
 }): MfaPersona {
   if (options.isLesseePortalUser) return "lessee";
   if (options.isLandlordPortalUser) return "landlord";
+  if (options.isFacilityManagerPortalUser) return "facility_manager";
   return "staff";
 }
 
@@ -49,6 +51,7 @@ export async function getMfaChallengeRedirectPath(options: {
   searchParams: URLSearchParams;
   isLesseePortalUser: boolean;
   isLandlordPortalUser: boolean;
+  isFacilityManagerPortalUser: boolean;
 }): Promise<string | null> {
   if (!isMfaEnforcementEnabled()) {
     return null;
@@ -100,6 +103,7 @@ export async function shouldBlockLoginAutoRedirect(options: {
   pathname: string;
   isLesseePortalUser: boolean;
   isLandlordPortalUser: boolean;
+  isFacilityManagerPortalUser: boolean;
 }): Promise<boolean> {
   if (!isMfaEnforcementEnabled()) {
     return false;

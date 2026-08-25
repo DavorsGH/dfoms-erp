@@ -12,21 +12,27 @@ export type MiddlewareAccountRow = {
 export type PersonaResolution = {
   isLesseePortalUser: boolean;
   isLandlordPortalUser: boolean;
+  isFacilityManagerPortalUser: boolean;
   portal: PortalKind;
   extraDbCalls: number;
 };
 
 function portalFromMetadata(user: User): PortalKind | null {
   const meta = user.user_metadata?.portal;
-  if (meta === "lessee" || meta === "landlord" || meta === "staff") {
+  if (
+    meta === "lessee" ||
+    meta === "landlord" ||
+    meta === "staff" ||
+    meta === "facility_manager"
+  ) {
     return meta;
   }
   return null;
 }
 
 /**
- * Resolve lessee/landlord/staff persona with minimal DB round trips.
- * Skips lessees/landlords probes on /dashboard/* when a staff user_accounts row exists.
+ * Resolve lessee/landlord/facility_manager/staff persona with minimal DB round trips.
+ * Skips portal probes on /dashboard/* when a staff user_accounts row exists.
  */
 export async function resolveMiddlewarePersona(options: {
   supabase: SupabaseClient;
@@ -39,6 +45,7 @@ export async function resolveMiddlewarePersona(options: {
     return {
       isLesseePortalUser: true,
       isLandlordPortalUser: false,
+      isFacilityManagerPortalUser: false,
       portal: "lessee",
       extraDbCalls: 0,
     };
@@ -47,7 +54,17 @@ export async function resolveMiddlewarePersona(options: {
     return {
       isLesseePortalUser: false,
       isLandlordPortalUser: true,
+      isFacilityManagerPortalUser: false,
       portal: "landlord",
+      extraDbCalls: 0,
+    };
+  }
+  if (fromMeta === "facility_manager") {
+    return {
+      isLesseePortalUser: false,
+      isLandlordPortalUser: false,
+      isFacilityManagerPortalUser: true,
+      portal: "facility_manager",
       extraDbCalls: 0,
     };
   }
@@ -55,6 +72,7 @@ export async function resolveMiddlewarePersona(options: {
     return {
       isLesseePortalUser: false,
       isLandlordPortalUser: false,
+      isFacilityManagerPortalUser: false,
       portal: "staff",
       extraDbCalls: 0,
     };
@@ -64,39 +82,49 @@ export async function resolveMiddlewarePersona(options: {
     return {
       isLesseePortalUser: false,
       isLandlordPortalUser: false,
+      isFacilityManagerPortalUser: false,
       portal: "staff",
       extraDbCalls: 0,
     };
   }
 
-  const [{ data: lessee }, { data: landlord }] = await Promise.all([
-    options.supabase
-      .from("lessees")
-      .select("lessee_id")
-      .eq("auth_user_id", options.user.id)
-      .neq("status", "former")
-      .maybeSingle(),
-    options.supabase
-      .from("landlords")
-      .select("tenant_id")
-      .eq("auth_user_id", options.user.id)
-      .maybeSingle(),
-  ]);
+  const [{ data: lessee }, { data: landlord }, { data: facilityManager }] =
+    await Promise.all([
+      options.supabase
+        .from("lessees")
+        .select("lessee_id")
+        .eq("auth_user_id", options.user.id)
+        .neq("status", "former")
+        .maybeSingle(),
+      options.supabase
+        .from("landlords")
+        .select("tenant_id")
+        .eq("auth_user_id", options.user.id)
+        .maybeSingle(),
+      options.supabase
+        .from("facility_managers")
+        .select("facility_manager_id")
+        .eq("auth_user_id", options.user.id)
+        .eq("status", "active")
+        .maybeSingle(),
+    ]);
 
   const isLesseePortalUser = Boolean(lessee);
   const isLandlordPortalUser = Boolean(landlord);
+  const isFacilityManagerPortalUser = Boolean(facilityManager);
   const portal: PortalKind = isLesseePortalUser
     ? "lessee"
     : isLandlordPortalUser
       ? "landlord"
-      : options.accountRow
-        ? "staff"
+      : isFacilityManagerPortalUser
+        ? "facility_manager"
         : "staff";
 
   return {
     isLesseePortalUser,
     isLandlordPortalUser,
+    isFacilityManagerPortalUser,
     portal,
-    extraDbCalls: 2,
+    extraDbCalls: 3,
   };
 }

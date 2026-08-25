@@ -2,7 +2,7 @@
 
 export const AUTH_CONTEXT_HEADER = "x-dfoms-auth-context";
 
-export type PortalKind = "staff" | "lessee" | "landlord";
+export type PortalKind = "staff" | "lessee" | "landlord" | "facility_manager";
 
 export type MiddlewareAuthContext = {
   authUid: string;

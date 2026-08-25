@@ -64,6 +64,18 @@ export async function findAuthUserIdByEmail(
     if (landlord?.auth_user_id) return landlord.auth_user_id as string;
   }
 
+  const { data: facilityManager } = await admin
+    .from("facility_managers")
+    .select("auth_user_id")
+    .ilike("email", normalized)
+    .not("auth_user_id", "is", null)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+  if (facilityManager?.auth_user_id) {
+    return facilityManager.auth_user_id as string;
+  }
+
   for (let page = 1; page <= 25; page += 1) {
     const { data, error } = await admin.auth.admin.listUsers({
       page,

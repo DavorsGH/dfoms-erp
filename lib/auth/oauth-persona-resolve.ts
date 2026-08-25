@@ -6,7 +6,12 @@ type AdminClient = SupabaseClient;
 export type ResolvedPersona =
   | { persona: "staff"; tenantId: string; role: string }
   | { persona: "lessee"; tenantId: string; lesseeId: string }
-  | { persona: "landlord"; tenantId: string };
+  | { persona: "landlord"; tenantId: string }
+  | {
+      persona: "facility_manager";
+      tenantId: string;
+      facilityManagerId: string;
+    };
 
 export async function findStaffPersonaByAuthUid(
   admin: AdminClient,
@@ -71,6 +76,28 @@ export async function findLandlordPersonaByAuthUid(
   };
 }
 
+export async function findFacilityManagerPersonaByAuthUid(
+  admin: AdminClient,
+  authUid: string,
+): Promise<Extract<ResolvedPersona, { persona: "facility_manager" }> | null> {
+  const { data } = await admin
+    .from("facility_managers")
+    .select("tenant_id, facility_manager_id")
+    .eq("auth_user_id", authUid)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    persona: "facility_manager",
+    tenantId: data.tenant_id,
+    facilityManagerId: data.facility_manager_id,
+  };
+}
+
 export async function findAnyPersonaByAuthUid(
   admin: AdminClient,
   authUid: string,
@@ -83,6 +110,12 @@ export async function findAnyPersonaByAuthUid(
 
   const landlord = await findLandlordPersonaByAuthUid(admin, authUid);
   if (landlord) return landlord;
+
+  const facilityManager = await findFacilityManagerPersonaByAuthUid(
+    admin,
+    authUid,
+  );
+  if (facilityManager) return facilityManager;
 
   return null;
 }
@@ -99,6 +132,8 @@ export async function findPersonaByAuthUid(
       return findLesseePersonaByAuthUid(admin, authUid);
     case "landlord":
       return findLandlordPersonaByAuthUid(admin, authUid);
+    case "facility_manager":
+      return findFacilityManagerPersonaByAuthUid(admin, authUid);
   }
 }
 

@@ -27,6 +27,12 @@ const PERSONA_DESTINATIONS: Record<
       "Password updated — taking you to the Landlord Portal login.",
     persona: "landlord",
   },
+  facility_manager: {
+    loginPath: "/facility-portal/login",
+    successMessage:
+      "Password updated — taking you to the Facility Manager Portal login.",
+    persona: "facility_manager",
+  },
 };
 
 /**

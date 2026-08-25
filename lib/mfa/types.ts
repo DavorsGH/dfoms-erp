@@ -1,6 +1,6 @@
 export type MfaMethod = "none" | "totp" | "sms";
 
-export type MfaPersona = "staff" | "lessee" | "landlord";
+export type MfaPersona = "staff" | "lessee" | "landlord" | "facility_manager";
 
 export type MfaGateStatus = "not_required" | "pending" | "satisfied";
 
@@ -64,10 +64,16 @@ export const MFA_CHALLENGE_ROUTES: Record<MfaPersona, MfaChallengeRoute> = {
     loginPath: "/landlord-portal/login",
     defaultNext: "/landlord-portal/dashboard",
   },
+  facility_manager: {
+    challengePath: "/facility-portal/login/mfa",
+    loginPath: "/facility-portal/login",
+    defaultNext: "/facility-portal/dashboard",
+  },
 };
 
 export const MFA_PENDING_PUBLIC_PATHS = new Set([
   "/login/mfa",
   "/portal/login/mfa",
   "/landlord-portal/login/mfa",
+  "/facility-portal/login/mfa",
 ]);

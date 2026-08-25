@@ -12,6 +12,8 @@ function loginPathForPersona(persona: string): string {
       return "/portal/login";
     case "landlord":
       return "/landlord-portal/login";
+    case "facility_manager":
+      return "/facility-portal/login";
     case "staff":
     default:
       return "/login";
@@ -24,6 +26,8 @@ function personaLabel(persona: string): string {
       return "Tenant Portal";
     case "landlord":
       return "Landlord Portal";
+    case "facility_manager":
+      return "Facility Manager Portal";
     case "staff":
     default:
       return "Staff ERP";

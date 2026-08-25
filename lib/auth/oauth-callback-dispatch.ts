@@ -7,6 +7,7 @@ import {
   findCrossPersonaConflictForEmail,
 } from "@/lib/auth/cross-persona-guard";
 import {
+  acceptFacilityManagerInviteWithOAuth,
   acceptLandlordInviteWithOAuth,
   acceptLesseeInviteWithOAuth,
   acceptStaffInviteWithOAuth,
@@ -503,6 +504,14 @@ async function handleAcceptInviteFlow(
       break;
     case "landlord":
       acceptResult = await acceptLandlordInviteWithOAuth(
+        admin,
+        authUid,
+        oauthEmail,
+        rawToken,
+      );
+      break;
+    case "facility_manager":
+      acceptResult = await acceptFacilityManagerInviteWithOAuth(
         admin,
         authUid,
         oauthEmail,

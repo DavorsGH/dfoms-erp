@@ -1,4 +1,8 @@
-export type UserActivityPersona = "staff" | "lessee" | "landlord";
+export type UserActivityPersona =
+  | "staff"
+  | "lessee"
+  | "landlord"
+  | "facility_manager";
 
 export type UserActivityStatus = "success" | "failure";
 
@@ -30,6 +34,7 @@ export const USER_ACTIVITY_PERSONA_VALUES: readonly UserActivityPersona[] = [
   "staff",
   "lessee",
   "landlord",
+  "facility_manager",
 ];
 
 export const USER_ACTIVITY_STATUS_VALUES: readonly UserActivityStatus[] = [

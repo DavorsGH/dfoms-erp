@@ -82,6 +82,30 @@ async function resolveSmsEnrollmentPhoneE164(
     return { ok: true, phoneE164 };
   }
 
+  if (persona === "facility_manager") {
+    if (resolved.phoneE164 && resolved.source === "facility_managers.phone") {
+      return { ok: true, phoneE164: resolved.phoneE164 };
+    }
+
+    const trimmed = phoneOverride?.trim();
+    if (!trimmed) {
+      return {
+        ok: false,
+        error: "Enter a mobile number to receive the verification code.",
+      };
+    }
+
+    const phoneE164 = toGhanaE164(trimmed);
+    if (!phoneE164) {
+      return {
+        ok: false,
+        error: "Enter a valid Ghana mobile number (e.g. 024XXXXXXX).",
+      };
+    }
+
+    return { ok: true, phoneE164 };
+  }
+
   if (resolved.phoneE164 && resolved.source === "landlords.notification_phone") {
     return { ok: true, phoneE164: resolved.phoneE164 };
   }

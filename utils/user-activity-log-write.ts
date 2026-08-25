@@ -122,6 +122,16 @@ export async function resolveAuthActivityTenantId(
       return data?.tenant_id ?? null;
     }
 
+    if (options.persona === "facility_manager") {
+      const { data } = await admin
+        .from("facility_managers")
+        .select("tenant_id")
+        .eq("auth_user_id", options.authUserId)
+        .eq("status", "active")
+        .maybeSingle();
+      return data?.tenant_id ?? null;
+    }
+
     const { data } = await admin
       .from("landlords")
       .select("tenant_id")

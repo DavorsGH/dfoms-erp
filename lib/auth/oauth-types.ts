@@ -44,7 +44,12 @@ export function parseOAuthProvider(value: string | null | undefined): OAuthProvi
 
 export function parseOAuthPersona(value: string | null | undefined): OAuthPersona | null {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "staff" || normalized === "lessee" || normalized === "landlord") {
+  if (
+    normalized === "staff" ||
+    normalized === "lessee" ||
+    normalized === "landlord" ||
+    normalized === "facility_manager"
+  ) {
     return normalized;
   }
   return null;
@@ -70,5 +75,7 @@ export function defaultDashboardForPersona(persona: OAuthPersona): string {
       return "/portal/dashboard";
     case "landlord":
       return "/landlord-portal/dashboard";
+    case "facility_manager":
+      return "/facility-portal/dashboard";
   }
 }

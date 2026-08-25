@@ -61,6 +61,21 @@ export async function resolveSmsPhoneForPersona(
     };
   }
 
+  if (persona === "facility_manager") {
+    const { data: fm } = await admin
+      .from("facility_managers")
+      .select("phone")
+      .eq("auth_user_id", authUid)
+      .eq("status", "active")
+      .maybeSingle();
+
+    const phoneE164 = pickFirstPhone(fm?.phone);
+    return {
+      phoneE164,
+      source: phoneE164 ? "facility_managers.phone" : null,
+    };
+  }
+
   const { data: landlord } = await admin
     .from("landlords")
     .select("notification_phone, tenant_id")
