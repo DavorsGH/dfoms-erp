@@ -350,6 +350,12 @@ export default function ClientQuotationForm({
       initialAuthorizedSigners,
     );
 
+    if (!authorizedBy.authorized_by_name?.trim()) {
+      setError("Authorized By is required.");
+      setSaving(false);
+      return;
+    }
+
     const payload: ClientQuotationWriteBody = {
       client_id: form.client_id,
       opportunity_id: form.opportunity_id?.trim() || null,
@@ -844,16 +850,18 @@ export default function ClientQuotationForm({
         <div>
           <h3 className="text-sm font-medium text-slate-700">Authorized By</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Optional signature block shown on the printed quotation.
+            Required. Name and title print on the quotation; the workspace signature
+            image is shown when configured.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Authorized By
+              Authorized By <span className="text-red-600">*</span>
             </label>
             <select
               disabled={isConverted}
+              required
               value={form.authorized_by_selection}
               onChange={(event) =>
                 setForm((current) => ({
@@ -863,7 +871,7 @@ export default function ClientQuotationForm({
               }
               className={inputClassName}
             >
-              <option value="">None</option>
+              <option value="">Select authorized by…</option>
               {initialAuthorizedSigners.map((signer) => (
                 <option key={signer.employee_id} value={signer.employee_id}>
                   {formatAuthorizedSignerLabel(signer)}
@@ -876,11 +884,12 @@ export default function ClientQuotationForm({
             <>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Name
+                  Name <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="text"
                   disabled={isConverted}
+                  required
                   value={form.authorized_by_other_name}
                   onChange={(event) =>
                     setForm((current) => ({

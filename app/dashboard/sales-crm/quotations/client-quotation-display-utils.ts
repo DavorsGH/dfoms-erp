@@ -32,6 +32,7 @@ import {
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
   resolveInvoiceCompanyName,
+  resolveSignatureImageUrl,
   tenantHeaderContactLines,
 } from "@/app/dashboard/finance/client-invoices/client-invoice-display-utils";
 
@@ -300,5 +301,6 @@ export {
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
   resolveInvoiceCompanyName,
+  resolveSignatureImageUrl,
   tenantHeaderContactLines,
 };

@@ -19,6 +19,7 @@ import {
   quotationValidityAndPaymentFooter,
   resolveAuthorizedByDisplayTitle,
   resolveInvoiceCompanyName,
+  resolveSignatureImageUrl,
   sumQuotationLineItemColumns,
   tenantHeaderContactLines,
   type ClientQuotationDisplayProps,
@@ -49,6 +50,7 @@ export default function ClientQuotationPrintLayout({
     quotation.authorized_by_title,
     branding,
   );
+  const signatureImageUrl = resolveSignatureImageUrl(branding.signatureImageUrl);
   const headerDiscountLabel = quotationHeaderDiscountLabel(quotation);
   const showDistinctShipTo = quotationHasDistinctShipTo(quotation);
   const isPercentageDiscount =
@@ -349,6 +351,14 @@ export default function ClientQuotationPrintLayout({
         {hasAuthorizedBySignature(quotation) ? (
           <section className="pt-4 text-left">
             <p className="text-xs font-medium text-slate-600">Authorized By:</p>
+            {signatureImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={signatureImageUrl}
+                alt="Authorized signature"
+                className="mt-2 h-12 max-w-[180px] object-contain"
+              />
+            ) : null}
             <p className="mt-1 text-sm font-bold text-[#0f2744]">
               {quotation.authorized_by_name?.trim()}
             </p>
@@ -356,15 +366,25 @@ export default function ClientQuotationPrintLayout({
               {authorizedByTitle ? (
                 <>
                   <span>{authorizedByTitle},</span>
-                  <span className="ml-3">Signature:</span>
+                  {!signatureImageUrl ? (
+                    <>
+                      <span className="ml-3">Signature:</span>
+                      <span
+                        className="ml-1.5 mb-1 inline-block h-0 w-[180px] min-w-[180px] shrink-0 border-b border-solid border-[#0f2744]"
+                        aria-hidden="true"
+                      />
+                    </>
+                  ) : null}
                 </>
-              ) : (
-                <span>Signature:</span>
-              )}
-              <span
-                className="ml-1.5 mb-1 inline-block h-0 w-[180px] min-w-[180px] shrink-0 border-b border-solid border-[#0f2744]"
-                aria-hidden="true"
-              />
+              ) : !signatureImageUrl ? (
+                <>
+                  <span>Signature:</span>
+                  <span
+                    className="ml-1.5 mb-1 inline-block h-0 w-[180px] min-w-[180px] shrink-0 border-b border-solid border-[#0f2744]"
+                    aria-hidden="true"
+                  />
+                </>
+              ) : null}
             </div>
           </section>
         ) : null}

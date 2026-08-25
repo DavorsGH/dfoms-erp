@@ -742,6 +742,10 @@ export function validateClientQuotationBody(body: ClientQuotationWriteBody): str
     return "Payment account selection is invalid.";
   }
 
+  if (!body.authorized_by_name?.trim()) {
+    return "Authorized By is required.";
+  }
+
   return null;
 }
 
