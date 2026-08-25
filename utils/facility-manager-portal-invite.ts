@@ -10,6 +10,7 @@ import {
   findAuthUserIdByEmail,
   REUSED_ACCOUNT_LOGIN_HINT,
 } from "@/utils/email-reuse";
+import { buildPortalInviteEmail } from "@/utils/portal-invite-email";
 import {
   isResendConfigured,
   resendNotConfiguredMessage,
@@ -52,14 +53,6 @@ function siteBaseUrl(): string {
   );
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 function buildFacilityManagerInviteEmailContent(args: {
   displayName: string;
   landlordName: string;
@@ -67,35 +60,21 @@ function buildFacilityManagerInviteEmailContent(args: {
   existingAuthAccount: boolean;
 }): { subject: string; html: string; text: string } {
   const { displayName, landlordName, inviteUrl, existingAuthAccount } = args;
-  const safeName = escapeHtml(displayName);
-  const safeLandlord = escapeHtml(landlordName);
 
-  if (existingAuthAccount) {
-    return {
-      subject: "Facility Manager access — Davors Facilities",
-      html: `
-      <h2>Davors Facility Manager Portal</h2>
-      <p>Hi ${safeName},</p>
-      <p>${safeLandlord} has invited you to manage properties on the Facility Manager Portal.</p>
-      <p>You already have a portal account. <a href="${inviteUrl}">Accept this invite</a> to link your Facility Manager access, then sign in with your existing password.</p>
-      <p>${escapeHtml(REUSED_ACCOUNT_LOGIN_HINT)}</p>
-      <p>This link expires in ${FACILITY_MANAGER_INVITE_EXPIRY_DAYS} days. If you did not expect this email, you can ignore it.</p>
-    `,
-      text: `Hi ${displayName},\n\n${landlordName} has invited you to the Davors Facility Manager Portal.\n\nYou already have an account. Accept this invite to link access, then sign in with your existing password:\n${inviteUrl}\n\n${REUSED_ACCOUNT_LOGIN_HINT}\n\nThis link expires in ${FACILITY_MANAGER_INVITE_EXPIRY_DAYS} days.`,
-    };
-  }
-
-  return {
+  return buildPortalInviteEmail({
+    portalName: "Facility Manager Portal",
+    inviteeDisplayName: displayName,
+    inviterLine: `${landlordName} has invited you to manage properties on Davors Facilities.`,
+    inviteUrl,
+    expiryDays: FACILITY_MANAGER_INVITE_EXPIRY_DAYS,
     subject: "You're invited as a Facility Manager — Davors Facilities",
-    html: `
-      <h2>Welcome to the Facility Manager Portal</h2>
-      <p>Hi ${safeName},</p>
-      <p>${safeLandlord} has invited you to manage properties on Davors Facilities.</p>
-      <p><a href="${inviteUrl}">Accept invite and set your password</a></p>
-      <p>This link expires in ${FACILITY_MANAGER_INVITE_EXPIRY_DAYS} days. If you did not expect this email, you can ignore it.</p>
-    `,
-    text: `Hi ${displayName},\n\n${landlordName} has invited you to the Davors Facility Manager Portal.\n\nAccept your invite and set a password:\n${inviteUrl}\n\nThis link expires in ${FACILITY_MANAGER_INVITE_EXPIRY_DAYS} days.`,
-  };
+    existingAuthAccount,
+    reuseSubject: "Facility Manager access — Davors Facilities",
+    reuseHeading: "Davors Facility Manager Portal",
+    reuseInviterLine: `${landlordName} has invited you to manage properties on the Facility Manager Portal.`,
+    reuseLinkPurpose: "link your Facility Manager access",
+    reuseHint: REUSED_ACCOUNT_LOGIN_HINT,
+  });
 }
 
 /**

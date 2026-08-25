@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildPortalInviteEmail } from "@/utils/portal-invite-email";
 import { sendResendEmail } from "@/utils/resend-email";
 
 export const LANDLORD_INVITE_EXPIRY_DAYS = 7;
@@ -115,17 +116,21 @@ export async function createAndSendLandlordPortalInvite(
       ? tenant.name.trim()
       : "there";
 
+  const content = buildPortalInviteEmail({
+    portalName: "Davors Landlord Portal",
+    inviteeDisplayName: displayName,
+    inviterLine:
+      "Your landlord account with Davors Facilities is approved. Use the link below to set a password and view your properties, leases, and rent collection status online.",
+    inviteUrl,
+    expiryDays: LANDLORD_INVITE_EXPIRY_DAYS,
+    subject: "You're invited to the Davors Landlord Portal",
+  });
+
   const emailResult = await sendResendEmail({
     to: email,
-    subject: "You're invited to the Davors Landlord Portal",
-    html: `
-      <h2>Welcome to the Davors Landlord Portal</h2>
-      <p>Hi ${escapeHtml(displayName)},</p>
-      <p>Your landlord account with Davors Facilities is approved. Use the link below to set a password and view your properties, leases, and rent collection status online.</p>
-      <p><a href="${inviteUrl}">Accept invite and set your password</a></p>
-      <p>This link expires in ${LANDLORD_INVITE_EXPIRY_DAYS} days. If you did not expect this email, you can ignore it.</p>
-    `,
-    text: `Hi ${displayName},\n\nAccept your Davors Landlord Portal invite and set a password:\n${inviteUrl}\n\nThis link expires in ${LANDLORD_INVITE_EXPIRY_DAYS} days.`,
+    subject: content.subject,
+    html: content.html,
+    text: content.text,
   });
 
   if (!emailResult.ok) {
@@ -133,12 +138,4 @@ export async function createAndSendLandlordPortalInvite(
   }
 
   return { ok: true, status: "sent" };
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

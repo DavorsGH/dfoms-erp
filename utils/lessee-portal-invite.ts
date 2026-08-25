@@ -10,6 +10,7 @@ import {
   findAuthUserIdByEmail,
   REUSED_ACCOUNT_LOGIN_HINT,
 } from "@/utils/email-reuse";
+import { buildPortalInviteEmail } from "@/utils/portal-invite-email";
 import {
   isResendConfigured,
   resendNotConfiguredMessage,
@@ -39,34 +40,23 @@ function buildLesseeInviteEmailContent(args: {
   existingAuthAccount: boolean;
 }): { subject: string; html: string; text: string } {
   const { displayName, inviteUrl, existingAuthAccount } = args;
-  const safeName = escapeHtml(displayName);
 
-  if (existingAuthAccount) {
-    return {
-      subject: "New lease linked — Davors Tenant Portal",
-      html: `
-      <h2>Davors Tenant Portal</h2>
-      <p>Hi ${safeName},</p>
-      <p>Your landlord (managed by Davors Facilities) has invited you to view a lease on the Tenant Portal.</p>
-      <p>You already have a portal account. <a href="${inviteUrl}">Accept this invite</a> to link the lease, then sign in with your existing password.</p>
-      <p>${escapeHtml(REUSED_ACCOUNT_LOGIN_HINT)}</p>
-      <p>This link expires in ${LESSEE_INVITE_EXPIRY_DAYS} days. If you did not expect this email, you can ignore it.</p>
-    `,
-      text: `Hi ${displayName},\n\nYour landlord has invited you to view a lease on the Davors Tenant Portal.\n\nYou already have an account. Accept this invite to link the lease, then sign in with your existing password:\n${inviteUrl}\n\n${REUSED_ACCOUNT_LOGIN_HINT}\n\nThis link expires in ${LESSEE_INVITE_EXPIRY_DAYS} days.`,
-    };
-  }
-
-  return {
+  return buildPortalInviteEmail({
+    portalName: "Davors Tenant Portal",
+    inviteeDisplayName: displayName,
+    inviterLine:
+      "Your landlord (managed by Davors Facilities) has invited you to view your lease and rent status online.",
+    inviteUrl,
+    expiryDays: LESSEE_INVITE_EXPIRY_DAYS,
     subject: "You're invited to the Davors Tenant Portal",
-    html: `
-      <h2>Welcome to the Davors Tenant Portal</h2>
-      <p>Hi ${safeName},</p>
-      <p>Your landlord (managed by Davors Facilities) has invited you to view your lease and rent status online.</p>
-      <p><a href="${inviteUrl}">Accept invite and set your password</a></p>
-      <p>This link expires in ${LESSEE_INVITE_EXPIRY_DAYS} days. If you did not expect this email, you can ignore it.</p>
-    `,
-    text: `Hi ${displayName},\n\nAccept your Davors Tenant Portal invite and set a password:\n${inviteUrl}\n\nThis link expires in ${LESSEE_INVITE_EXPIRY_DAYS} days.`,
-  };
+    existingAuthAccount,
+    reuseSubject: "New lease linked — Davors Tenant Portal",
+    reuseHeading: "Davors Tenant Portal",
+    reuseInviterLine:
+      "Your landlord (managed by Davors Facilities) has invited you to view a lease on the Tenant Portal.",
+    reuseLinkPurpose: "link the lease",
+    reuseHint: REUSED_ACCOUNT_LOGIN_HINT,
+  });
 }
 
 /**
@@ -251,12 +241,4 @@ export async function fetchPendingLesseeInviteExpiresAt(
     .maybeSingle();
 
   return typeof data?.expires_at === "string" ? data.expires_at : null;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

@@ -25,6 +25,7 @@ import {
   mapSupabasePasswordError,
   validatePasswordLength,
 } from "@/utils/password-policy";
+import { buildPortalInviteEmail } from "@/utils/portal-invite-email";
 import { sendResendEmail } from "@/utils/resend-email";
 import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 
@@ -217,17 +218,28 @@ export async function createAndSendStaffPortalInvite(
 
   const siteUrl = resolvePublicSiteUrl().replace(/\/$/, "");
   const inviteUrl = `${siteUrl}/accept-invite?token=${encodeURIComponent(rawToken)}`;
+  const [inviterName, inviteeDisplayName] = await Promise.all([
+    resolveStaffInviterDisplayName(admin, input.tenantId, input.invitedBy),
+    resolveStaffInviteeDisplayName(admin, {
+      employeeId: built.payload.employee_id,
+      clientId: built.payload.client_id,
+    }),
+  ]);
+
+  const content = buildPortalInviteEmail({
+    portalName: "Staff ERP Portal",
+    inviteeDisplayName,
+    inviterLine: `${inviterName} has invited you to join the Staff ERP Portal.`,
+    inviteUrl,
+    expiryDays: STAFF_INVITE_EXPIRY_DAYS,
+    subject: "You're invited to Davors Facilities ERP",
+  });
 
   const emailResult = await sendResendEmail({
     to: email,
-    subject: "You're invited to Davors Facilities ERP",
-    html: `
-      <h2>Welcome to Davors Facilities ERP</h2>
-      <p>You have been invited to join your organization's ERP workspace.</p>
-      <p><a href="${inviteUrl}">Accept invite and set your password</a></p>
-      <p>This link expires in ${STAFF_INVITE_EXPIRY_DAYS} days. If you did not expect this email, you can ignore it.</p>
-    `,
-    text: `You have been invited to Davors Facilities ERP.\n\nAccept your invite and set a password:\n${inviteUrl}\n\nThis link expires in ${STAFF_INVITE_EXPIRY_DAYS} days.`,
+    subject: content.subject,
+    html: content.html,
+    text: content.text,
   });
 
   if (!emailResult.ok) {
@@ -522,6 +534,105 @@ export async function acceptStaffPortalInviteWithPassword(
   }
 
   return { ok: true, reusedExistingAccount: false };
+}
+
+/**
+ * Resolve invitee greeting name from linked employee or customer, matching
+ * Lessee/FM/Landlord fallback to "there" when no display name is available.
+ */
+async function resolveStaffInviteeDisplayName(
+  admin: SupabaseClient,
+  ids: { employeeId?: string | null; clientId?: string | null },
+): Promise<string> {
+  const employeeId = ids.employeeId?.trim() || null;
+  if (employeeId) {
+    const { data: employee } = await admin
+      .from("employees")
+      .select("full_name")
+      .eq("employee_id", employeeId)
+      .maybeSingle();
+    const fullName =
+      typeof employee?.full_name === "string" ? employee.full_name.trim() : "";
+    if (fullName) {
+      return fullName;
+    }
+  }
+
+  const clientId = ids.clientId?.trim() || null;
+  if (clientId) {
+    const { data: client } = await admin
+      .from("customers")
+      .select("client_name")
+      .eq("client_id", clientId)
+      .maybeSingle();
+    const clientName =
+      typeof client?.client_name === "string" ? client.client_name.trim() : "";
+    if (clientName) {
+      return clientName;
+    }
+  }
+
+  return "there";
+}
+
+async function resolveStaffInviterDisplayName(
+  admin: SupabaseClient,
+  tenantId: string,
+  invitedBy: string | null | undefined,
+): Promise<string> {
+  const authUid = invitedBy?.trim();
+  if (!authUid) {
+    return "Your administrator";
+  }
+
+  const { data: account } = await admin
+    .from("user_accounts")
+    .select("email, employee_id, client_id")
+    .eq("tenant_id", tenantId)
+    .eq("auth_uid", authUid)
+    .maybeSingle();
+
+  if (!account) {
+    return "Your administrator";
+  }
+
+  if (account.employee_id) {
+    const { data: employee } = await admin
+      .from("employees")
+      .select("full_name")
+      .eq("employee_id", account.employee_id)
+      .maybeSingle();
+    const fullName =
+      typeof employee?.full_name === "string"
+        ? employee.full_name.trim()
+        : "";
+    if (fullName) {
+      return fullName;
+    }
+  }
+
+  if (account.client_id) {
+    const { data: client } = await admin
+      .from("customers")
+      .select("client_name")
+      .eq("client_id", account.client_id)
+      .maybeSingle();
+    const clientName =
+      typeof client?.client_name === "string"
+        ? client.client_name.trim()
+        : "";
+    if (clientName) {
+      return clientName;
+    }
+  }
+
+  const email =
+    typeof account.email === "string" ? account.email.trim() : "";
+  if (email) {
+    return email;
+  }
+
+  return "Your administrator";
 }
 
 export { REUSED_ACCOUNT_LOGIN_HINT };

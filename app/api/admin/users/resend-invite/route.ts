@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { createClient } from "@/utils/supabase/server";
 import { createAndSendStaffPortalInvite } from "@/utils/staff-portal-invite";
 
 type ResendInviteBody = {
@@ -61,6 +63,12 @@ export async function POST(request: Request) {
     .select("site_code")
     .eq("invite_id", pendingInvite.invite_id);
 
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const result = await createAndSendStaffPortalInvite(admin, {
     tenantId: auth.tenantId,
     email,
@@ -68,6 +76,7 @@ export async function POST(request: Request) {
     employee_id: pendingInvite.employee_id,
     client_id: pendingInvite.client_id,
     supervisor_site_codes: (siteRows ?? []).map((row) => row.site_code),
+    invitedBy: user?.id ?? null,
   });
 
   if (!result.ok) {
