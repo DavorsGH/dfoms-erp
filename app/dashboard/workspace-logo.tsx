@@ -53,12 +53,17 @@ export default function WorkspaceLogo({
   const name =
     nameProp ?? branding.workspaceName ?? branding.companyLegalName;
 
-  const logoSrc = offlineWorkspaceLogoSrc(isOnline, workspaceLogoUrl);
+  // SSR + first client paint must match: always start with the real URL.
+  // Switch to the offline placeholder only after mount.
+  const [logoSrc, setLogoSrc] = useState(() =>
+    offlineWorkspaceLogoSrc(true, workspaceLogoUrl),
+  );
   const sizeClass = sizeClasses[size];
   const roundedClass = roundedClasses[rounded];
   const initials = getInitialsFromName(name);
 
   useEffect(() => {
+    setLogoSrc(offlineWorkspaceLogoSrc(isOnline, workspaceLogoUrl));
     setImageFailed(false);
   }, [workspaceLogoUrl, isOnline]);
 

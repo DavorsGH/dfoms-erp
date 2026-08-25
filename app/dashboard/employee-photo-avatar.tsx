@@ -43,21 +43,26 @@ export default function EmployeePhotoAvatar({
   square = false,
 }: EmployeePhotoAvatarProps) {
   const isOnline = useOnlineStatus();
+  // SSR + first client paint must match: always start with the real URL.
+  // Switch to the offline placeholder only after mount.
+  const [displaySrc, setDisplaySrc] = useState(() =>
+    offlineAvatarSrc(true, photoUrl),
+  );
   const [imageFailed, setImageFailed] = useState(false);
   const sizeClass = sizeClasses[size];
   const shapeClass = square ? "rounded-lg" : "rounded-full";
   const initials = getInitialsFromName(fullName);
-  const resolvedPhotoUrl = offlineAvatarSrc(isOnline, photoUrl);
 
   useEffect(() => {
+    setDisplaySrc(offlineAvatarSrc(isOnline, photoUrl));
     setImageFailed(false);
   }, [photoUrl, isOnline]);
 
-  if (resolvedPhotoUrl?.trim() && !imageFailed) {
+  if (displaySrc?.trim() && !imageFailed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={resolvedPhotoUrl}
+        src={displaySrc}
         alt={fullName ? `${fullName} photo` : "Employee photo"}
         className={`${sizeClass} ${shapeClass} shrink-0 object-cover bg-slate-100 ${className}`}
         onError={() => setImageFailed(true)}

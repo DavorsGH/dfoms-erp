@@ -84,6 +84,10 @@ export async function warmOfflineShellImageAssets(input: {
  * Online → remote (or same-origin) photo URL.
  * Offline path (`/__offline_assets/...`) is used only when !isOnline and the
  * source is a remote http(s) URL that was warmed into the shell cache.
+ *
+ * SSR-safe usage: callers must pass isOnline=true for the initial render
+ * (server + first client paint), then re-resolve with the real online flag
+ * in a post-mount effect — never drive first-paint src from navigator.onLine.
  */
 export function offlineAvatarSrc(
   isOnline: boolean,
@@ -99,6 +103,10 @@ export function offlineAvatarSrc(
   return OFFLINE_ASSET_USER_AVATAR_PATH;
 }
 
+/**
+ * Resolve workspace logo URL for display (same online/offline rules as avatar).
+ * Callers must keep the initial render on the online path for hydration safety.
+ */
 export function offlineWorkspaceLogoSrc(
   isOnline: boolean,
   workspaceLogoUrl: string,
