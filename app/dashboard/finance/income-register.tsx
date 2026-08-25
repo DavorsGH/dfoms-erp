@@ -34,6 +34,7 @@ import RegisterRowActions, {
   toDateInputValue,
 } from "./register-row-actions";
 import {
+  detectAutoPostedIncomeRegisterEntry,
   getRegisterRowClassName,
   isAutoPostedIncomeRegisterEntry,
 } from "./register-auto-posted-utils";
@@ -271,9 +272,11 @@ export default function IncomeRegister({
   }
 
   function openEditForm(entry: IncomeRegisterEntry) {
-    if (isAutoPostedIncomeRegisterEntry(entry)) {
+    const lock = detectAutoPostedIncomeRegisterEntry(entry);
+    if (lock.autoPosted) {
       setError(
-        "This is a system non-cash adjustment (payroll / forfeit). It cannot be edited in the Income Register — editing would re-apply VAT/WHT and AR.",
+        lock.lockMessage ??
+          "This system-managed income row cannot be edited in the Income Register.",
       );
       return;
     }
@@ -292,7 +295,7 @@ export default function IncomeRegister({
       wht_amount: entry.wht_amount == null ? "" : String(entry.wht_amount),
       tax_inclusive: entry.tax_inclusive ?? true,
       payment_status: entry.payment_status,
-      due_date: toDateInputValue(entry.due_date),
+      due_date: entry.due_date ? toDateInputValue(entry.due_date) : "",
       notes: entry.notes ?? "",
     });
     setShowForm(true);
@@ -300,11 +303,15 @@ export default function IncomeRegister({
 
   async function handleDelete(id: string) {
     const target = entries.find((entry) => entry.id === id);
-    if (target && isAutoPostedIncomeRegisterEntry(target)) {
-      setError(
-        "System non-cash adjustments cannot be deleted from the Income Register. Reverse them via payroll unlock / the originating correction script.",
-      );
-      return;
+    if (target) {
+      const lock = detectAutoPostedIncomeRegisterEntry(target);
+      if (lock.autoPosted) {
+        setError(
+          lock.lockMessage ??
+            "This system-managed income row cannot be deleted from the Income Register.",
+        );
+        return;
+      }
     }
     if (!confirmDeleteEntry()) {
       return;
@@ -352,9 +359,10 @@ export default function IncomeRegister({
 
     if (editingId) {
       const editing = entries.find((entry) => entry.id === editingId);
-      if (editing?.is_system_adjustment) {
+      if (editing && isAutoPostedIncomeRegisterEntry(editing)) {
         setError(
-          "System non-cash adjustments cannot be saved from the Income Register.",
+          detectAutoPostedIncomeRegisterEntry(editing).lockMessage ??
+            "This system-managed income row cannot be saved from the Income Register.",
         );
         setLoading(false);
         return;
@@ -849,7 +857,8 @@ export default function IncomeRegister({
             ) : (
               visibleEntries.map((entry, index) => {
                 const outstanding = getIncomeEntryOutstanding(entry);
-                const autoPosted = isAutoPostedIncomeRegisterEntry(entry);
+                const autoLock = detectAutoPostedIncomeRegisterEntry(entry);
+                const autoPosted = autoLock.autoPosted;
 
                 return (
                   <tr
@@ -885,6 +894,8 @@ export default function IncomeRegister({
                       deleting={deletingId === entry.id}
                       disableEdit={autoPosted}
                       disableDelete={autoPosted}
+                      editDisabledTitle={autoLock.lockMessage ?? undefined}
+                      deleteDisabledTitle={autoLock.lockMessage ?? undefined}
                     />
                   </tr>
                 );

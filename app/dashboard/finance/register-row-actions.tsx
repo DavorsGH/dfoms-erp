@@ -16,6 +16,7 @@ type RegisterRowActionsProps = {
   printing?: boolean;
   disableEdit?: boolean;
   disableDelete?: boolean;
+  editDisabledTitle?: string;
   deleteDisabledTitle?: string;
   disableArchive?: boolean;
   disableVoid?: boolean;
@@ -105,6 +106,7 @@ export default function RegisterRowActions({
   printing = false,
   disableEdit = false,
   disableDelete = false,
+  editDisabledTitle,
   deleteDisabledTitle,
   disableArchive = false,
   disableVoid = false,
@@ -148,10 +150,16 @@ export default function RegisterRowActions({
             {markingPaid ? "Marking…" : markPaidLabel}
           </button>
         ) : null}
-        {onEdit && !disableEdit ? (
+        {onEdit ? (
           <button
             type="button"
             onClick={onEdit}
+            disabled={disableEdit}
+            title={
+              disableEdit
+                ? (editDisabledTitle ?? "This entry cannot be edited")
+                : undefined
+            }
             className={editButtonClassName}
           >
             Edit

@@ -31,6 +31,34 @@ const EMPLOYER_SSNIT_TAX_COMPONENTS = [
   "ssnit_tier2",
 ] as const;
 
+/** Mirrored from paystack-finance-posting (avoid server-only import in client UI). */
+const PLATFORM_BILLING_INCOME_CATEGORY = "Platform Billing";
+const ERP_SUITE_SUBSCRIPTION_INCOME_CATEGORY = "ERP Suite";
+const PAYSTACK_INCOME_INVOICE_PREFIX = "PSK-INC-";
+
+/** Client Invoice sync stamps this service_category (even before client_invoice_id). */
+export const CLIENT_INVOICE_INCOME_CATEGORY = "Client Invoice";
+
+/** Davors Real Estate payout remittance fee (auto-posted from mark-remitted). */
+export const REAL_ESTATE_MANAGEMENT_FEE_INCOME_CATEGORY =
+  "Real Estate Management Fee";
+
+const RE_MGMT_FEE_INVOICE_PREFIX = "RE-MGMT-FEE-";
+
+export type AutoPostedIncomeKind =
+  | "system_adjustment"
+  | "client_invoice"
+  | "platform_billing"
+  | "product_sale"
+  | "management_fee";
+
+export type AutoPostedIncomeDetection = {
+  autoPosted: boolean;
+  kind: AutoPostedIncomeKind | null;
+  /** Short UI tooltip / banner explaining how to change or remove the row. */
+  lockMessage: string | null;
+};
+
 export function getRegisterRowClassName(
   index: number,
   autoPosted: boolean,
@@ -53,30 +81,122 @@ export function isAutoPostedExpenseRegisterEntry(entry: {
   return isPayrollAutoPostedExpense(entry);
 }
 
+function isPlatformBillingIncomeCategory(category: string | null | undefined) {
+  const normalized = (category ?? "").trim();
+  return (
+    normalized === PLATFORM_BILLING_INCOME_CATEGORY ||
+    normalized === ERP_SUITE_SUBSCRIPTION_INCOME_CATEGORY
+  );
+}
+
 /**
- * Income Register auto-post detection (DEDSAV / system adj):
- * is_system_adjustment flag, or PAYROLL-DEDSAV-* invoice, or Auto-posted description.
+ * Classify Income Register rows written by an upstream system (not manual Add Entry).
+ * Used to lock Edit/Delete. No new column — existing signals only.
  */
-export function isAutoPostedIncomeRegisterEntry(entry: {
+export function detectAutoPostedIncomeRegisterEntry(entry: {
   description?: string | null;
   invoice_no?: string | null;
   is_system_adjustment?: boolean | null;
-}): boolean {
+  client_invoice_id?: string | null;
+  service_category?: string | null;
+  entry_type?: string | null;
+}): AutoPostedIncomeDetection {
   if (entry.is_system_adjustment) {
-    return true;
+    return {
+      autoPosted: true,
+      kind: "system_adjustment",
+      lockMessage:
+        "System non-cash adjustment (payroll / forfeit). Reverse via payroll unlock or the originating correction — do not edit or delete here.",
+    };
   }
 
   const invoice = (entry.invoice_no ?? "").trim();
   if (
     new RegExp(`^PAYROLL-${PAYROLL_INCOME_RECEIPT_SUFFIX}-`, "i").test(invoice)
   ) {
-    return true;
+    return {
+      autoPosted: true,
+      kind: "system_adjustment",
+      lockMessage:
+        "Payroll auto-posted income. Reverse via payroll unlock — do not edit or delete here.",
+    };
   }
 
   const description = (entry.description ?? "").trim().toLowerCase();
-  return description.startsWith(
-    PAYROLL_EXPENSE_AUTO_DESCRIPTION_PREFIX.toLowerCase(),
-  );
+  if (
+    description.startsWith(
+      PAYROLL_EXPENSE_AUTO_DESCRIPTION_PREFIX.toLowerCase(),
+    )
+  ) {
+    return {
+      autoPosted: true,
+      kind: "system_adjustment",
+      lockMessage:
+        "Payroll auto-posted income. Reverse via payroll unlock — do not edit or delete here.",
+    };
+  }
+
+  const category = (entry.service_category ?? "").trim();
+  if (
+    Boolean(entry.client_invoice_id) ||
+    category === CLIENT_INVOICE_INCOME_CATEGORY
+  ) {
+    return {
+      autoPosted: true,
+      kind: "client_invoice",
+      lockMessage:
+        "Synced from a Client Invoice. Void or delete the Client Invoice instead — editing this row directly can desync AR/tax and unbalance the Balance Sheet.",
+    };
+  }
+
+  if (
+    isPlatformBillingIncomeCategory(category) ||
+    invoice.toUpperCase().startsWith(PAYSTACK_INCOME_INVOICE_PREFIX)
+  ) {
+    return {
+      autoPosted: true,
+      kind: "platform_billing",
+      lockMessage:
+        "Auto-posted from Platform Billing / Paystack. Manage the subscription charge at its source — do not edit or delete here.",
+    };
+  }
+
+  if ((entry.entry_type ?? "").trim() === "product_sale") {
+    return {
+      autoPosted: true,
+      kind: "product_sale",
+      lockMessage:
+        "Product sale (POS). Void or adjust the sale from Product Sales / POS — do not edit or delete here.",
+    };
+  }
+
+  if (
+    category === REAL_ESTATE_MANAGEMENT_FEE_INCOME_CATEGORY ||
+    invoice.toUpperCase().startsWith(RE_MGMT_FEE_INVOICE_PREFIX)
+  ) {
+    return {
+      autoPosted: true,
+      kind: "management_fee",
+      lockMessage:
+        "Auto-posted from Real Estate payout remittance. Reverse from the payout remittance flow — do not edit or delete here.",
+    };
+  }
+
+  return { autoPosted: false, kind: null, lockMessage: null };
+}
+
+/**
+ * Income Register auto-post detection (DEDSAV / Client Invoice / Platform Billing / …).
+ */
+export function isAutoPostedIncomeRegisterEntry(entry: {
+  description?: string | null;
+  invoice_no?: string | null;
+  is_system_adjustment?: boolean | null;
+  client_invoice_id?: string | null;
+  service_category?: string | null;
+  entry_type?: string | null;
+}): boolean {
+  return detectAutoPostedIncomeRegisterEntry(entry).autoPosted;
 }
 
 export function isPayrollEssnitExpense(entry: {
