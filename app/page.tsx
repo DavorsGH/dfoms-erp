@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
+import PortalPropertyManagementMobile from "./portal-property-management-section";
 
 export const metadata: Metadata = {
   title: "Davors Facilities — Portals",
@@ -77,10 +78,13 @@ export default function PortalChooserPage() {
           </section>
 
           <section>
-            <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-300 sm:text-sm">
+            <h2 className="mb-3 hidden text-center text-xs font-semibold uppercase tracking-wider text-slate-300 sm:text-sm md:block">
               Property Management
             </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5">
+
+            <PortalPropertyManagementMobile />
+
+            <div className="hidden gap-5 md:grid md:grid-cols-3">
               <section className={cardClassName}>
                 <h3 className="text-lg font-semibold text-[#0f2744]">
                   I&apos;m a Landlord
