@@ -254,8 +254,8 @@ async function sendFallbackDueReminder(options: {
     if (creditOk) {
       const sms =
         options.kind === "overdue"
-          ? `Davors: Invoice ${options.invoiceNo} balance ${options.amountLabel} was due ${dueLabel} and is overdue. Please pay soon.`
-          : `Davors: Reminder — ${options.amountLabel} due by ${dueLabel} on invoice ${options.invoiceNo}.`;
+          ? `${options.tenantName}: Your invoice ${options.invoiceNo} balance ${options.amountLabel} was due ${dueLabel} and is overdue. Please pay soon.`
+          : `${options.tenantName}: Reminder — Your invoice ${options.invoiceNo} balance ${options.amountLabel} is due by ${dueLabel}. Please pay soon.`;
       const result = await sendHubtelSms({
         to: phone,
         content: sms,
@@ -398,8 +398,8 @@ async function notifyBusinessOwnerDueReminder(options: {
     try {
       const sms =
         options.kind === "overdue"
-          ? `Davors: ${options.customerName} overdue ${options.amountLabel} on invoice ${options.invoiceNo} (due ${dueLabel}). Customer reminded.`
-          : `Davors: ${options.customerName} — ${options.amountLabel} due by ${dueLabel} on invoice ${options.invoiceNo}. Customer reminded.`;
+          ? `${options.ownerName?.trim() || "Workspace"}: ${options.customerName} overdue ${options.amountLabel} on invoice ${options.invoiceNo} (due ${dueLabel}). Customer reminded.`
+          : `${options.ownerName?.trim() || "Workspace"}: ${options.customerName} — ${options.amountLabel} due by ${dueLabel} on invoice ${options.invoiceNo}. Customer reminded.`;
       const result = await sendHubtelSms({
         to: phone,
         content: sms,

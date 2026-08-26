@@ -115,7 +115,7 @@ async function deliverPaymentLink(options: {
     const smsLink = await smsPaymentLinkUrl(options.link);
     const smsResult = await sendHubtelSms({
       to: options.deliveryPhone,
-      content: `Davors: Pay GHS ${options.amountLabel} for ${options.invoiceLabel}: ${smsLink}`,
+      content: `${options.tenantName}: Pay GHS ${options.amountLabel} for ${options.invoiceLabel}: ${smsLink}`,
       tenantName: options.tenantName,
       recipientName: options.recipientName,
     });

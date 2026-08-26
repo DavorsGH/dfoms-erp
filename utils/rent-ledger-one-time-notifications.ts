@@ -139,7 +139,7 @@ export async function notifyLesseeOneTimeChargeAdded(options: {
 
   const phone = normalizeGhanaPhone(lessee?.phone);
   if (phone) {
-    const sms = `Davors: New charge ${amountLabel} (${chargeLabel}) on ${place}. Sign in to your portal to pay.`;
+    const sms = `${tenantName}: New charge ${amountLabel} (${chargeLabel}) on ${place}. Sign in to your portal to pay.`;
     const result = await sendHubtelSms({
       to: phone,
       content: sms,

@@ -417,7 +417,7 @@ async function notifyLesseeRentDue(options: {
 
   const phone = normalizeGhanaPhone(options.phone);
   if (phone) {
-    const sms = `Davors: Rent ${options.amountLabel} due ${daysLabel} (${options.periodEnd}) for ${place}. Please pay soon.`;
+    const sms = `${options.tenantName}: Rent ${options.amountLabel} due ${daysLabel} (${options.periodEnd}) for ${place}. Please pay soon.`;
     const result = await sendHubtelSms({
       to: phone,
       content: sms,

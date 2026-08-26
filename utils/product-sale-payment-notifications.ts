@@ -145,7 +145,7 @@ ${options.paymentReference ? `<p>Reference: ${escapeHtml(options.paymentReferenc
   if (phone) {
     const creditOk = await tryDebitSmsCredit(options.tenantId);
     if (creditOk) {
-      const sms = `Davors: Received ${options.amountReceivedLabel} on invoice ${options.invoiceNo}. Balance: ${options.outstandingLabel}.`;
+      const sms = `${options.tenantName}: Payment of ${options.amountReceivedLabel} received for invoice ${options.invoiceNo}. Balance: ${options.outstandingLabel}.`;
       const result = await sendHubtelSms({
         to: phone,
         content: sms,
@@ -226,7 +226,7 @@ async function notifyBusinessOwnerPaymentReceived(options: {
 
   if (phone) {
     try {
-      const sms = `Davors: ${options.customerName} paid ${options.amountReceivedLabel} on invoice ${options.invoiceNo}. Balance: ${options.outstandingLabel}.`;
+      const sms = `${options.tenantName}: Payment of ${options.amountReceivedLabel} received from ${options.customerName} for invoice ${options.invoiceNo}. Balance: ${options.outstandingLabel}.`;
       const result = await sendHubtelSms({
         to: phone,
         content: sms,
