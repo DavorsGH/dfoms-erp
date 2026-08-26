@@ -24,10 +24,12 @@ import {
   resolveRaisedContractLink,
   type ClientQuotationListRow,
 } from "@/utils/client-quotations-types";
+import type { ActiveServiceContractSummary } from "@/utils/service-contracts-api";
 
 type ClientQuotationsListProps = {
   initialQuotations: ClientQuotationListRow[];
   fetchError: string | null;
+  activeContractByClientId?: Record<string, ActiveServiceContractSummary>;
 };
 
 type QuotationStatusAction = "send" | "accept" | "decline" | "raise-contract" | "convert";
@@ -62,6 +64,7 @@ const dangerButtonClassName =
 
 function getQuotationStatusActions(
   quotation: ClientQuotationListRow,
+  activeContractByClientId: Record<string, ActiveServiceContractSummary> = {},
 ): ListRowStatusActionItem<QuotationStatusAction>[] {
   if (quotation.status === "draft") {
     return [
@@ -91,7 +94,7 @@ function getQuotationStatusActions(
   if (quotation.status === "accepted") {
     const actions: ListRowStatusActionItem<QuotationStatusAction>[] = [];
 
-    if (!quotation.contract_id) {
+    if (!quotation.contract_id && !activeContractByClientId[quotation.client_id]) {
       actions.push({
         action: "raise-contract",
         label: "Raise Contract",
@@ -116,6 +119,7 @@ function getQuotationStatusActions(
 export default function ClientQuotationsList({
   initialQuotations,
   fetchError,
+  activeContractByClientId = {},
 }: ClientQuotationsListProps) {
   const router = useRouter();
   const [quotations, setQuotations] = useState(
@@ -303,6 +307,11 @@ export default function ClientQuotationsList({
                   const isConverted = Boolean(quotation.converted_invoice_id);
                   const convertedInvoice = resolveConvertedInvoiceLink(quotation);
                   const raisedContract = resolveRaisedContractLink(quotation);
+                  const customerActiveContract = activeContractByClientId[quotation.client_id];
+                  const raiseContractBlocked =
+                    quotation.status === "accepted" &&
+                    !quotation.contract_id &&
+                    Boolean(customerActiveContract);
 
                   return (
                     <tr key={quotation.id} className={getStripedRowClassName(index)}>
@@ -346,7 +355,16 @@ export default function ClientQuotationsList({
                               Converted → {convertedInvoice.invoice_number}
                             </Link>
                           ) : null}
-                          {!raisedContract && !convertedInvoice ? (
+                          {raiseContractBlocked && customerActiveContract ? (
+                            <span
+                              className="text-xs text-amber-800"
+                              title={`This customer already has active contract ${customerActiveContract.contract_number}. Raise Contract is disabled to prevent duplicate billing.`}
+                            >
+                              Active contract {customerActiveContract.contract_number} — Raise
+                              Contract disabled
+                            </span>
+                          ) : null}
+                          {!raisedContract && !convertedInvoice && !raiseContractBlocked ? (
                             <span className="text-sm text-slate-500">—</span>
                           ) : null}
                         </div>
@@ -427,7 +445,10 @@ export default function ClientQuotationsList({
                             </span>
                           ) : (
                             <ListRowStatusActionsMenu
-                              items={getQuotationStatusActions(quotation)}
+                              items={getQuotationStatusActions(
+                                quotation,
+                                activeContractByClientId,
+                              )}
                               disabled={actingId === quotation.id}
                               buttonClassName={statusMenuButtonClassName}
                               onSelect={(item) => {

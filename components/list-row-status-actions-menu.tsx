@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 
 export type ListRowStatusActionItem<T extends string = string> = {
   action: T;
@@ -30,21 +31,57 @@ export default function ListRowStatusActionsMenu<T extends string>({
   menuItemClassName = defaultMenuItemClassName,
 }: ListRowStatusActionsMenuProps<T>) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
+    function positionMenu() {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return;
+      }
+      setMenuStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+        minWidth: "11rem",
+      });
+    }
+
+    positionMenu();
+
     function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        buttonRef.current?.contains(target) ||
+        menuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
         setOpen(false);
       }
     }
 
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
     document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [open]);
 
   if (items.length === 0) {
@@ -52,8 +89,9 @@ export default function ListRowStatusActionsMenu<T extends string>({
   }
 
   return (
-    <div ref={rootRef} className="relative inline-block">
+    <div className="inline-block">
       <button
+        ref={buttonRef}
         type="button"
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
@@ -63,27 +101,32 @@ export default function ListRowStatusActionsMenu<T extends string>({
       >
         Actions ▾
       </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 z-20 mt-1 min-w-[11rem] rounded-md border border-slate-200 bg-white py-1 shadow-lg"
-        >
-          {items.map((item) => (
-            <button
-              key={item.action}
-              type="button"
-              role="menuitem"
-              className={menuItemClassName}
-              onClick={() => {
-                setOpen(false);
-                onSelect(item);
-              }}
+      {open
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={menuStyle}
+              className="z-[80] rounded-md border border-slate-200 bg-white py-1 shadow-lg"
             >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
+              {items.map((item) => (
+                <button
+                  key={item.action}
+                  type="button"
+                  role="menuitem"
+                  className={menuItemClassName}
+                  onClick={() => {
+                    setOpen(false);
+                    onSelect(item);
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
