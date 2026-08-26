@@ -482,6 +482,13 @@ export async function executeAssistantTool(
     return executeLandlordAssistantTool(toolName, toolInput);
   }
 
+  if (persona === "facility_manager") {
+    const { executeFacilityManagerAssistantTool } = await import(
+      "@/utils/assistant-facility-manager-tools"
+    );
+    return executeFacilityManagerAssistantTool(toolName, toolInput);
+  }
+
   if (persona === "staff") {
     const { executeStaffAssistantTool } = await import(
       "@/utils/assistant-staff-tools"

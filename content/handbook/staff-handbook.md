@@ -54,6 +54,8 @@ Subscription*
 
 18\. Glossary of Terms
 
+19\. AI Assistant
+
 # **Section 1 --- Welcome**
 
 Welcome to the Davors Facilities ERP --- a single system for managing
@@ -353,6 +355,14 @@ header to search and select one or more values, narrowing the list to
 just those entries --- the total shown below the table updates to match
 whatever is currently visible.
 
+Entries synced in automatically from a Client Invoice, Platform Billing,
+or a system payroll adjustment show an "(auto-posted)" label and cannot
+be edited or deleted from this screen --- Edit and Delete are shown
+disabled, with a note pointing you to the source (for example, "Void or
+delete the Client Invoice instead"). This keeps the register in step
+with its source instead of drifting out of sync. Entries you add
+yourself here, through Add Entry, keep full Edit and Delete as normal.
+
 ## **6.2 Expense Register**
 
 Records all business expenses by category. Use Finance Settings to
@@ -433,6 +443,17 @@ the ERP, matching your standard invoice format.
     sync as the status changes. An invoice generated automatically from
     a Service Contract (Section 6.12) shows a "From Contract DF-SC-00XX"
     badge linking back to it.
+
+-   Void --- once an invoice has been sent, Delete is replaced with
+    Void, so a document your customer has already seen is never silently
+    removed. A voided invoice is clearly marked Voided, drops out of
+    your outstanding totals, and stays in your records for reference.
+    Only Draft invoices can still be deleted outright.
+
+-   Customer Portal --- your customer can view, print, and download any
+    invoice you've sent them, at any status (Pending, Overdue, Partial,
+    or Paid). Draft invoices, since they haven't been sent yet, are not
+    shown to them.
 
 Manage your saved payment profiles under Administration → Payment
 Accounts (see Section 13.3).
@@ -870,9 +891,11 @@ your company logo, address, and payment details already on the document.
 -   **Payment Accounts:** choose which of your saved bank or mobile
     money accounts appear on the document.
 
--   **Authorized By:** select who is signing off from a dropdown of your
-    active users, or type a name and title manually --- the document
-    prints a signature line beneath it.
+-   **Authorized By:** required on every quotation --- select who is
+    signing off from a dropdown of your active users, or type a name and
+    title manually. If your workspace has a stored signature image set
+    up (Workspace Settings), it prints automatically alongside the name
+    and title; otherwise a blank signature line is shown.
 
 -   **Status:** every new quotation starts as Draft (there is no status
     field to set when creating one). From the Quotations list, one-click
@@ -1669,3 +1692,20 @@ you paid at the warehouse.
   Notification Rule  An automatic customer-facing message triggered by a
                      real event (a sale, a payment, an invoice),
                      configured under the Notification Rules tab
+
+# **Section 19 --- AI Assistant**
+
+A built-in chat assistant is available inside the ERP, for questions
+about your own data or how to do something in the system.
+
+Ask it things like "what's my outstanding balance for Central
+University" or "how do I raise a purchase order" --- it can look up your
+own workspace data and explain how a feature works.
+
+It only ever sees data your own account already has access to --- the
+same role-based access that applies to the rest of the ERP applies to
+what it can answer.
+
+It answers questions and points you to the right screen --- it does not
+create, edit, or delete records on your behalf. Any change still has to
+be made by you, the normal way.

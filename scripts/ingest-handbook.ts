@@ -33,6 +33,7 @@ const HANDBOOK_FILES = [
   { file: "staff-handbook.md", persona: "staff" as const },
   { file: "landlord-handbook.md", persona: "landlord" as const },
   { file: "tenant-handbook.md", persona: "tenant" as const },
+  { file: "facility-handbook.md", persona: "facility_manager" as const },
 ];
 
 type Persona = (typeof HANDBOOK_FILES)[number]["persona"];

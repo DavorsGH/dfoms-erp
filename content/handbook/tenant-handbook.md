@@ -71,6 +71,11 @@ photos your landlord attached showing the finished work.
 Go to Complaints for anything that isn't a repair - a subject and
 description is enough. Your landlord will respond and mark it resolved.
 
+Your landlord, or a Facility Manager they've assigned to your property,
+can also file a complaint about something on their end - you'll see it
+in Complaints labeled "From landlord" or "From Facility Manager" so it's
+always clear who raised it, and you can respond the same way.
+
 My Issues gives you a combined view of everything you've submitted -
 both repair requests and complaints - with their current status, all in
 one place.

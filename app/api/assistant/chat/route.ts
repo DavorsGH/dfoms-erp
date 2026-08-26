@@ -13,6 +13,10 @@ import {
   landlordAccountToolsSystemPromptAddition,
 } from "@/utils/assistant-landlord-tools";
 import {
+  FACILITY_MANAGER_ASSISTANT_TOOLS,
+  facilityManagerAccountToolsSystemPromptAddition,
+} from "@/utils/assistant-facility-manager-tools";
+import {
   getStaffAssistantTools,
   staffAccountToolsSystemPromptAddition,
 } from "@/utils/assistant-staff-tools";
@@ -77,9 +81,11 @@ function buildBaseSystemPrompt(
       ? tenantAccountToolsSystemPromptAddition()
       : persona === "landlord"
         ? landlordAccountToolsSystemPromptAddition()
-        : persona === "staff"
-          ? staffAccountToolsSystemPromptAddition(staffRole, { showRealEstate })
-          : STAFF_ACCOUNT_ACCESS;
+        : persona === "facility_manager"
+          ? facilityManagerAccountToolsSystemPromptAddition()
+          : persona === "staff"
+            ? staffAccountToolsSystemPromptAddition(staffRole, { showRealEstate })
+            : STAFF_ACCOUNT_ACCESS;
 
   return `${SYSTEM_PROMPT_BASE}\n\n${accountAccessLine}`;
 }
@@ -105,11 +111,13 @@ async function runAssistantWithTools(options: {
       ? TENANT_ASSISTANT_TOOLS
       : options.persona === "landlord"
         ? LANDLORD_ASSISTANT_TOOLS
-        : options.persona === "staff"
-          ? getStaffAssistantTools(options.staffRole, {
-              showRealEstate: options.showRealEstate === true,
-            })
-          : undefined;
+        : options.persona === "facility_manager"
+          ? FACILITY_MANAGER_ASSISTANT_TOOLS
+          : options.persona === "staff"
+            ? getStaffAssistantTools(options.staffRole, {
+                showRealEstate: options.showRealEstate === true,
+              })
+            : undefined;
   let currentMessages = [...options.messages];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {

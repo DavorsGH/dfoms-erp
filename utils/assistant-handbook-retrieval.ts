@@ -12,7 +12,11 @@ import {
 } from "@/utils/handbook-screenshots-storage";
 import { createAdminClient } from "@/utils/supabase/admin";
 
-export type HandbookPersona = "staff" | "landlord" | "tenant";
+export type HandbookPersona =
+  | "staff"
+  | "landlord"
+  | "tenant"
+  | "facility_manager";
 
 export type HandbookChunkMatch = {
   id: string;
@@ -163,6 +167,9 @@ export function portalToHandbookPersona(portal: PortalKind): HandbookPersona {
   }
   if (portal === "landlord") {
     return "landlord";
+  }
+  if (portal === "facility_manager") {
+    return "facility_manager";
   }
   return "staff";
 }

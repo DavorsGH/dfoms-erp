@@ -1,3 +1,4 @@
+import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
 import { getFacilityManagerSession } from "@/utils/facility-portal-auth";
 import { getFacilityPortalNavLinks } from "./portal-nav-config";
 import PortalLayoutClient from "./portal-layout-client";
@@ -20,6 +21,7 @@ export default async function FacilityPortalLayout({
       isAuthenticated={Boolean(session)}
     >
       {children}
+      {session ? <AssistantChatWidget /> : null}
     </PortalLayoutClient>
   );
 }
