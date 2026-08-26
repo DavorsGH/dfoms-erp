@@ -83,7 +83,7 @@ export default async function PortalIssuesPage() {
     raisedByLabel: formatLesseeComplaintRaisedBy(row.raisedBy),
     dateLabel: formatLesseeComplaintDate(row.dateReported),
     detail: row.staffResponse,
-    isLandlordRaised: row.raisedBy === "landlord",
+    isLandlordRaised: row.raisedBy === "landlord" || row.raisedBy === "facility_manager",
     costSelfFixLabel: null,
     hasPhotos: false,
   }));

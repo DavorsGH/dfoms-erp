@@ -153,7 +153,7 @@ export type LandlordPortalComplaintRow = {
   description: string;
   status: string;
   statusLabel: string;
-  raisedBy: "tenant" | "landlord";
+  raisedBy: "tenant" | "landlord" | "facility_manager";
   raisedByLabel: string;
   staffResponse: string | null;
   dateReported: string;

@@ -7,6 +7,7 @@ import { sendResendEmail } from "@/utils/resend-email";
 import {
   isLesseeComplaintRaisedBy,
   isLesseeComplaintStatus,
+  isLesseeComplaintTenantRespondable,
   type LesseeComplaintListRow,
   type LesseeComplaintRaisedBy,
   type LesseeComplaintStatus,
@@ -58,6 +59,7 @@ export async function createLesseeComplaint(
     raisedBy: LesseeComplaintRaisedBy;
     lesseeName?: string | null;
     landlordName?: string | null;
+    facilityManagerName?: string | null;
   },
 ): Promise<CreateLesseeComplaintResult> {
   const subject = options.subject.trim();
@@ -118,6 +120,31 @@ export async function createLesseeComplaint(
       subject,
       description,
       lesseeName: options.lesseeName,
+    });
+  } else if (options.raisedBy === "facility_manager") {
+    const lesseeName = options.lesseeName?.trim() || "Tenant";
+    const facilityManagerName =
+      options.facilityManagerName?.trim() || "Facility Manager";
+    void insertLesseePortalNotification({
+      landlordTenantId: options.tenantId,
+      lesseeId: options.lesseeId,
+      title: "New complaint from your Facility Manager",
+      body: [
+        `Your Facility Manager filed a complaint: “${subject}”.`,
+        description,
+        "Open Complaints to respond.",
+      ].join("\n"),
+      actionUrl: "/portal/complaints",
+      context: `complaint-fm-raised:${complaintId}`,
+    });
+    await notifyStaffLandlordRaisedComplaint({
+      landlordTenantId: options.tenantId,
+      leaseId,
+      complaintId,
+      subject,
+      description,
+      lesseeName,
+      facilityManagerName,
     });
   } else {
     const lesseeName = options.lesseeName?.trim() || "Tenant";
@@ -184,10 +211,14 @@ export async function respondToLesseeComplaintAsTenant(
   if (existing.lessee_id !== options.lesseeId) {
     return { ok: false, error: "Access denied.", status: 403 };
   }
-  if (existing.raised_by !== "landlord") {
+  const raisedByRaw = String(existing.raised_by ?? "");
+  if (
+    !isLesseeComplaintRaisedBy(raisedByRaw) ||
+    !isLesseeComplaintTenantRespondable(raisedByRaw)
+  ) {
     return {
       ok: false,
-      error: "Only landlord-raised complaints can be answered here.",
+      error: "Only landlord- or Facility Manager–raised complaints can be answered here.",
       status: 400,
     };
   }
@@ -300,8 +331,11 @@ export async function updateLesseeComplaint(
     return { ok: false, error: updateError.message, status: 400 };
   }
 
-  const raisedBy =
-    existing.raised_by === "landlord" ? "landlord" : "tenant";
+  const raisedBy: LesseeComplaintRaisedBy = isLesseeComplaintRaisedBy(
+    existing.raised_by,
+  )
+    ? existing.raised_by
+    : "tenant";
   const previousResponse =
     typeof existing.staff_response === "string"
       ? existing.staff_response.trim() || null
@@ -371,11 +405,19 @@ export async function updateLesseeComplaint(
         ? approved
           ? "Your complaint was resolved"
           : "Update on your complaint"
-        : approved
-          ? "Landlord complaint closed"
-          : "Update on landlord complaint";
+        : raisedBy === "facility_manager"
+          ? approved
+            ? "Facility Manager complaint closed"
+            : "Update on Facility Manager complaint"
+          : approved
+            ? "Landlord complaint closed"
+            : "Update on landlord complaint";
     const responseLabel =
-      raisedBy === "tenant" ? "Landlord response" : "Resolution note";
+      raisedBy === "tenant"
+        ? "Landlord response"
+        : raisedBy === "facility_manager"
+          ? "Facility Manager note"
+          : "Resolution note";
     const responseLine = staffResponse
       ? `${responseLabel}: ${staffResponse}`
       : null;
@@ -390,12 +432,19 @@ export async function updateLesseeComplaint(
           ]
             .filter(Boolean)
             .join("\n")
-        : [
-            `Regarding the complaint about you (“${existing.subject}”): status is now ${status}.`,
-            responseLine,
-          ]
-            .filter(Boolean)
-            .join("\n");
+        : raisedBy === "facility_manager"
+          ? [
+              `Regarding the complaint from your Facility Manager (“${existing.subject}”): status is now ${status}.`,
+              responseLine,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : [
+              `Regarding the complaint about you (“${existing.subject}”): status is now ${status}.`,
+              responseLine,
+            ]
+              .filter(Boolean)
+              .join("\n");
 
     const email = lessee?.email?.trim();
     if (email) {

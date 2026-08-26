@@ -3,6 +3,7 @@ import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import {
   formatLesseeComplaintStatus,
+  type LesseeComplaintRaisedBy,
 } from "@/app/dashboard/real-estate/complaints-utils";
 import {
   formatMaintenanceLandlordApproval,
@@ -195,7 +196,7 @@ function formatRepairStatusLabel(
 
 function formatComplaintStatusLabel(
   status: string,
-  raisedBy: "tenant" | "landlord",
+  raisedBy: LesseeComplaintRaisedBy,
   tenantAcknowledgedAt: string | null,
 ): string {
   return [

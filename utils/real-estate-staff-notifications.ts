@@ -659,7 +659,7 @@ export async function notifyStaffNewComplaint(options: {
   }
 }
 
-/** Landlord (or staff on behalf) filed a complaint about a tenant. */
+/** Landlord or staff on behalf filed a complaint about a tenant; FM uses facilityManagerName. */
 export async function notifyStaffLandlordRaisedComplaint(options: {
   landlordTenantId: string;
   leaseId: string;
@@ -668,6 +668,7 @@ export async function notifyStaffLandlordRaisedComplaint(options: {
   description: string;
   lesseeName?: string | null;
   landlordName?: string | null;
+  facilityManagerName?: string | null;
 }): Promise<void> {
   try {
     const [ctx, recipients] = await Promise.all([
@@ -677,8 +678,12 @@ export async function notifyStaffLandlordRaisedComplaint(options: {
       }),
     ]);
     const lesseeName = options.lesseeName?.trim() || ctx.lesseeName;
-    const landlordName =
-      options.landlordName?.trim() || "Landlord";
+    const facilityManagerName = options.facilityManagerName?.trim() || "";
+    const filedByFm = facilityManagerName.length > 0;
+    const filerName = filedByFm
+      ? facilityManagerName
+      : options.landlordName?.trim() || "Landlord";
+    const filerLabel = filedByFm ? "Facility Manager" : "Landlord";
     const actionPath = landlordFilteredPath(
       "complaints",
       options.landlordTenantId,
@@ -686,9 +691,11 @@ export async function notifyStaffLandlordRaisedComplaint(options: {
     const deepLink = staffDashboardUrl(actionPath);
     const smsLink = await smsDeepLinkUrl(deepLink);
 
-    const title = "Landlord complaint about tenant";
+    const title = filedByFm
+      ? "Facility Manager complaint about tenant"
+      : "Landlord complaint about tenant";
     const body = [
-      `${landlordName} filed a complaint about ${lesseeName}.`,
+      `${filerName} (${filerLabel}) filed a complaint about ${lesseeName}.`,
       `Subject: ${options.subject}`,
       `Property: ${ctx.propertyName} / Unit ${ctx.unitNumber}`,
     ].join("\n");
@@ -696,7 +703,7 @@ export async function notifyStaffLandlordRaisedComplaint(options: {
     const { html, text } = buildEmailShell(
       title,
       [
-        ["Landlord", landlordName],
+        [filerLabel, filerName],
         ["Tenant", lesseeName],
         ["Subject", options.subject],
         ["Property", ctx.propertyName],
@@ -709,11 +716,17 @@ export async function notifyStaffLandlordRaisedComplaint(options: {
       title,
       body,
       actionUrl: actionPath,
-      emailSubject: `Real Estate: Landlord complaint — ${options.subject}`,
+      emailSubject: filedByFm
+        ? `Real Estate: FM complaint — ${options.subject}`
+        : `Real Estate: Landlord complaint — ${options.subject}`,
       emailHtml: html,
       emailText: text,
-      smsContent: `Davors RE: Complaint from ${landlordName} about ${lesseeName}: ${options.subject}. ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
-      context: `complaint-landlord:${options.complaintId}`,
+      smsContent: filedByFm
+        ? `Davors RE: Complaint from FM ${filerName} about ${lesseeName}: ${options.subject}. ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`
+        : `Davors RE: Complaint from ${filerName} about ${lesseeName}: ${options.subject}. ${ctx.propertyName} unit ${ctx.unitNumber}. ${smsLink}`,
+      context: filedByFm
+        ? `complaint-fm:${options.complaintId}`
+        : `complaint-landlord:${options.complaintId}`,
       landlordTenantId: options.landlordTenantId,
       recipients,
       landlordPortal: {

@@ -5,7 +5,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Davors Facilities — Portals",
   description:
-    "Sign in to the Davors Facilities ERP, landlord portal, or tenant portal.",
+    "Sign in to the Davors Facilities ERP, landlord, tenant, or facility manager portal.",
 };
 
 const cardClassName =
@@ -23,7 +23,7 @@ const signUpPromptClassName =
 export default function PortalChooserPage() {
   return (
     <div className="flex min-h-screen flex-col items-center bg-[#0F2744] px-4 py-10 sm:py-14">
-      <div className="w-full max-w-3xl">
+      <div className="w-full max-w-5xl">
         <header className="text-center">
           <div className="mb-4 flex justify-center">
             <Image
@@ -80,7 +80,7 @@ export default function PortalChooserPage() {
             <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-300 sm:text-sm">
               Property Management
             </h2>
-            <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5">
               <section className={cardClassName}>
                 <h3 className="text-lg font-semibold text-[#0f2744]">
                   I&apos;m a Landlord
@@ -118,6 +118,27 @@ export default function PortalChooserPage() {
                 <div className="mt-6 space-y-3">
                   <Link
                     href="/portal/login"
+                    className="inline-flex w-full items-center justify-center rounded-md bg-[#0f2744] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+                  >
+                    Log In
+                  </Link>
+                  <p className="text-center text-xs text-slate-500">
+                    Your landlord will send you an invite.
+                  </p>
+                </div>
+              </section>
+
+              <section className={cardClassName}>
+                <h3 className="text-lg font-semibold text-[#0f2744]">
+                  I&apos;m a Facility Manager
+                </h3>
+                <p className="mt-2 flex-1 text-sm text-slate-600">
+                  Manage maintenance, complaints, and services for your assigned
+                  properties.
+                </p>
+                <div className="mt-6 space-y-3">
+                  <Link
+                    href="/facility-portal/login"
                     className="inline-flex w-full items-center justify-center rounded-md bg-[#0f2744] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
                   >
                     Log In

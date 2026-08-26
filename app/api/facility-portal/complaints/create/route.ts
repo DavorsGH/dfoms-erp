@@ -74,9 +74,9 @@ export async function POST(request: Request) {
     lesseeId: lease.lessee_id as string,
     subject,
     description,
-    raisedBy: "landlord",
+    raisedBy: "facility_manager",
     lesseeName: typeof lessee?.full_name === "string" ? lessee.full_name : null,
-    landlordName: session.fullName,
+    facilityManagerName: session.fullName,
   });
 
   if (!result.ok) {

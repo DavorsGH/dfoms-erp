@@ -4,7 +4,7 @@ export type LesseeComplaintStatus =
   | "resolved"
   | "rejected";
 
-export type LesseeComplaintRaisedBy = "tenant" | "landlord";
+export type LesseeComplaintRaisedBy = "tenant" | "landlord" | "facility_manager";
 
 export type LesseeComplaintListRow = {
   complaintId: string;
@@ -44,13 +44,30 @@ export function isLesseeComplaintStatus(
 export function isLesseeComplaintRaisedBy(
   value: string,
 ): value is LesseeComplaintRaisedBy {
-  return value === "tenant" || value === "landlord";
+  return (
+    value === "tenant" ||
+    value === "landlord" ||
+    value === "facility_manager"
+  );
+}
+
+/** Landlord or FM filed about the tenant — tenant may respond in lessee portal. */
+export function isLesseeComplaintTenantRespondable(
+  value: LesseeComplaintRaisedBy,
+): boolean {
+  return value === "landlord" || value === "facility_manager";
 }
 
 export function formatLesseeComplaintRaisedBy(
   value: LesseeComplaintRaisedBy,
 ): string {
-  return value === "landlord" ? "From landlord" : "From tenant";
+  if (value === "landlord") {
+    return "From landlord";
+  }
+  if (value === "facility_manager") {
+    return "From Facility Manager";
+  }
+  return "From tenant";
 }
 
 export function formatLesseeComplaintStatus(

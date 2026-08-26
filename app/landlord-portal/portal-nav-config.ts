@@ -46,6 +46,10 @@ export function getLandlordPortalNavSections(
     },
     { label: "Tenants", href: "/landlord-portal/real-estate/tenants" },
     { label: "Leases", href: "/landlord-portal/real-estate/leases" },
+    {
+      label: "Facility Managers",
+      href: "/landlord-portal/real-estate/facility-managers",
+    },
   ];
 
   if (landlordType === "platform_only") {

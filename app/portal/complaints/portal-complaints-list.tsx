@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useState } from "react";
+import { isLesseeComplaintTenantRespondable } from "@/app/dashboard/real-estate/complaints-utils";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableBodyClassName,
@@ -17,7 +18,7 @@ export type PortalComplaintListItem = {
   complaintId: string;
   subject: string;
   description: string;
-  raisedBy: "tenant" | "landlord";
+  raisedBy: "tenant" | "landlord" | "facility_manager";
   raisedByLabel: string;
   dateLabel: string;
   statusLabel: string;
@@ -164,13 +165,15 @@ function ComplaintActionControl({
 }
 
 function getComplaintRowState(row: PortalComplaintListItem) {
-  const isLandlordRaised = row.raisedBy === "landlord";
+  const isFilerRaised = isLesseeComplaintTenantRespondable(row.raisedBy);
   const isTenantRaised = row.raisedBy === "tenant";
   const needsAcknowledgment = row.needsAcknowledgment === true;
-  const canRespond = isLandlordRaised && row.isOpen;
+  const canRespond = isFilerRaised && row.isOpen;
 
   return {
-    isLandlordRaised,
+    isLandlordRaised: row.raisedBy === "landlord",
+    isFacilityManagerRaised: row.raisedBy === "facility_manager",
+    isFilerRaised,
     isTenantRaised,
     needsAcknowledgment,
     canRespond,

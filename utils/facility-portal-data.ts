@@ -413,9 +413,7 @@ export async function fetchFacilityComplaints(
       status,
       statusLabel: formatLesseeComplaintStatus(status),
       raisedBy,
-      raisedByLabel: formatLesseeComplaintRaisedBy(
-        raisedBy as "tenant" | "landlord",
-      ),
+      raisedByLabel: formatLesseeComplaintRaisedBy(raisedBy),
       staffResponse: row.staff_response
         ? String(row.staff_response)
         : null,

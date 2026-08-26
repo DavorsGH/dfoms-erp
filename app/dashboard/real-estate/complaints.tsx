@@ -97,8 +97,10 @@ function ComplaintDetailPanel({
         </div>
         <div className="sm:col-span-2">
           <label className="mb-1 block text-xs font-medium text-slate-600">
-            {row.raisedBy === "landlord"
-              ? "Tenant response / closing note"
+            {row.raisedBy === "landlord" || row.raisedBy === "facility_manager"
+              ? row.raisedBy === "facility_manager"
+                ? "Tenant response / FM closing note"
+                : "Tenant response / closing note"
               : "Staff response"}
           </label>
           <textarea
@@ -108,7 +110,7 @@ function ComplaintDetailPanel({
             onChange={(event) => onResponseChange(event.target.value)}
             disabled={loading}
             placeholder={
-              row.raisedBy === "landlord"
+              row.raisedBy === "landlord" || row.raisedBy === "facility_manager"
                 ? "Optional closing note…"
                 : "Reply to the tenant…"
             }
