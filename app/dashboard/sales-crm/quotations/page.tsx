@@ -6,6 +6,7 @@ import {
   normalizeClientQuotationListRow,
   type ClientQuotationListRow,
 } from "@/utils/client-quotations-types";
+import { loadActiveServiceContractsByClientId } from "@/utils/service-contracts-api";
 import CrmShell from "@/app/dashboard/crm/crm-shell";
 import ClientQuotationsList from "./client-quotations-list";
 
@@ -25,12 +26,15 @@ export default async function ClientQuotationsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const { data, error } = await supabase
-    .from("client_quotations")
-    .select(CLIENT_QUOTATION_LIST_SELECT)
-    .eq("tenant_id", tenantId)
-    .order("issue_date", { ascending: false })
-    .order("quotation_sequence", { ascending: false });
+  const [{ data, error }, activeContractByClientId] = await Promise.all([
+    supabase
+      .from("client_quotations")
+      .select(CLIENT_QUOTATION_LIST_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("issue_date", { ascending: false })
+      .order("quotation_sequence", { ascending: false }),
+    loadActiveServiceContractsByClientId(supabase, tenantId),
+  ]);
 
   return (
     <CrmShell sectionTitle="Quotations">
@@ -41,6 +45,7 @@ export default async function ClientQuotationsPage() {
           )
         }
         fetchError={error?.message ?? null}
+        activeContractByClientId={activeContractByClientId}
       />
     </CrmShell>
   );

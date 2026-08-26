@@ -297,6 +297,64 @@ export async function createServiceContract(
   return { contract: contract as ServiceContractHeaderRow, error: null };
 }
 
+export type ActiveServiceContractSummary = {
+  id: string;
+  contract_number: string;
+};
+
+export async function findActiveServiceContractForClient(
+  supabase: DbClient,
+  tenantId: string,
+  clientId: string,
+): Promise<ActiveServiceContractSummary | null> {
+  const { data, error } = await supabase
+    .from("service_contracts")
+    .select("id, contract_number")
+    .eq("tenant_id", tenantId)
+    .eq("client_id", clientId.trim())
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data?.id || !data.contract_number) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    contract_number: data.contract_number,
+  };
+}
+
+export async function loadActiveServiceContractsByClientId(
+  supabase: DbClient,
+  tenantId: string,
+): Promise<Record<string, ActiveServiceContractSummary>> {
+  const { data, error } = await supabase
+    .from("service_contracts")
+    .select("id, client_id, contract_number")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active");
+
+  if (error || !data) {
+    return {};
+  }
+
+  const map: Record<string, ActiveServiceContractSummary> = {};
+  for (const row of data) {
+    if (!row.client_id || !row.contract_number || map[row.client_id]) {
+      continue;
+    }
+    map[row.client_id] = {
+      id: row.id,
+      contract_number: row.contract_number,
+    };
+  }
+
+  return map;
+}
+
 export async function updateServiceContract(
   supabase: DbClient,
   tenantId: string,
