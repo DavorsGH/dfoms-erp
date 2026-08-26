@@ -16,6 +16,7 @@ import {
   portalAuthPrimaryButtonClassName,
   portalLabelClassName,
 } from "../portal-ui";
+import { createClient } from "@/utils/supabase/client";
 
 export default function FacilityAcceptInvitePage() {
   const [password, setPassword] = useState("");
@@ -118,9 +119,16 @@ export default function FacilityAcceptInvitePage() {
         : "Account created. Redirecting to login…",
     );
     setSuccess(true);
-    setTimeout(() => {
-      router.push("/facility-portal/login");
-    }, 2500);
+    // Accept is token-based and independent of any existing persona session.
+    // Clear leftover cookies so login lands as the new FM, not a prior landlord/staff/tenant.
+    void createClient()
+      .auth.signOut()
+      .catch(() => undefined)
+      .finally(() => {
+        setTimeout(() => {
+          router.push("/facility-portal/login");
+        }, 2500);
+      });
   }
 
   const expiryLabel = expiresAt

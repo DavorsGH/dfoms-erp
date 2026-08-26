@@ -17,6 +17,7 @@ import {
   portalAuthPrimaryButtonClassName,
   portalLabelClassName,
 } from "../portal-ui";
+import { createClient } from "@/utils/supabase/client";
 
 export default function LandlordAcceptInvitePage() {
   const [password, setPassword] = useState("");
@@ -70,9 +71,14 @@ export default function LandlordAcceptInvitePage() {
     }
 
     setSuccess(true);
-    setTimeout(() => {
-      router.push("/landlord-portal/login");
-    }, 2000);
+    void createClient()
+      .auth.signOut()
+      .catch(() => undefined)
+      .finally(() => {
+        setTimeout(() => {
+          router.push("/landlord-portal/login");
+        }, 2000);
+      });
   }
 
   return (

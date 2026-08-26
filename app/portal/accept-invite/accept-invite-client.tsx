@@ -17,6 +17,7 @@ import {
   portalAuthPrimaryButtonClassName,
   portalLabelClassName,
 } from "../portal-ui";
+import { createClient } from "@/utils/supabase/client";
 
 export default function AcceptInvitePage() {
   const [password, setPassword] = useState("");
@@ -110,9 +111,14 @@ export default function AcceptInvitePage() {
         : "Account created. Redirecting to login…",
     );
     setSuccess(true);
-    setTimeout(() => {
-      router.push("/portal/login");
-    }, 2500);
+    void createClient()
+      .auth.signOut()
+      .catch(() => undefined)
+      .finally(() => {
+        setTimeout(() => {
+          router.push("/portal/login");
+        }, 2500);
+      });
   }
 
   return (

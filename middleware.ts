@@ -27,6 +27,30 @@ function redirectToRelativePath(request: NextRequest, relativePath: string) {
   return NextResponse.redirect(url);
 }
 
+/**
+ * Persona "home" redirects must never carry invite tokens or other query
+ * params from the page that triggered the bounce.
+ */
+function redirectHomeClean(request: NextRequest, homePath: string) {
+  const url = request.nextUrl.clone();
+  url.pathname = homePath;
+  url.search = "";
+  url.hash = "";
+  return NextResponse.redirect(url);
+}
+
+/** Invite acceptance must stay reachable regardless of active persona session. */
+const ACCEPT_INVITE_PATHS = new Set([
+  "/accept-invite",
+  "/portal/accept-invite",
+  "/landlord-portal/accept-invite",
+  "/facility-portal/accept-invite",
+]);
+
+function isAcceptInvitePath(pathname: string): boolean {
+  return ACCEPT_INVITE_PATHS.has(pathname);
+}
+
 const ACCOUNT_SETTINGS_ALIASES: Record<string, string> = {
   "/portal/account-security": "/portal/account",
   "/portal/account-security/mfa": "/portal/account/mfa",
@@ -113,6 +137,8 @@ export async function middleware(request: NextRequest) {
     }
     const url = request.nextUrl.clone();
     url.pathname = "/maintenance";
+    url.search = "";
+    url.hash = "";
     return NextResponse.redirect(url);
   }
 
@@ -250,9 +276,7 @@ export async function middleware(request: NextRequest) {
 
     if (needsAccountGate && accountRow?.is_active === false) {
       await supabase.auth.signOut();
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      return NextResponse.redirect(url);
+      return redirectHomeClean(request, "/login");
     }
   }
 
@@ -304,51 +328,46 @@ export async function middleware(request: NextRequest) {
   }
 
   // Authenticated lessees use /portal/*, not staff /dashboard or other portals.
+  // Accept-invite pages stay reachable so a different persona's invite can be completed.
   if (
     user &&
     isLesseePortalUser &&
+    !isAcceptInvitePath(pathname) &&
     (pathname === "/login" ||
       pathname === "/signup" ||
-      pathname === "/accept-invite" ||
       pathname.startsWith("/dashboard") ||
       isLandlordPortalPath ||
       isFacilityPortalPath)
   ) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/portal/dashboard";
-    return NextResponse.redirect(url);
+    return redirectHomeClean(request, "/portal/dashboard");
   }
 
   // Authenticated landlords use /landlord-portal/*, not staff /dashboard or other portals.
   if (
     user &&
     isLandlordPortalUser &&
+    !isAcceptInvitePath(pathname) &&
     (pathname === "/login" ||
       pathname === "/signup" ||
-      pathname === "/accept-invite" ||
       pathname.startsWith("/dashboard") ||
       isPortalPath ||
       isFacilityPortalPath)
   ) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/landlord-portal/dashboard";
-    return NextResponse.redirect(url);
+    return redirectHomeClean(request, "/landlord-portal/dashboard");
   }
 
   // Authenticated facility managers use /facility-portal/*.
   if (
     user &&
     isFacilityManagerPortalUser &&
+    !isAcceptInvitePath(pathname) &&
     (pathname === "/login" ||
       pathname === "/signup" ||
-      pathname === "/accept-invite" ||
       pathname.startsWith("/dashboard") ||
       isPortalPath ||
       isLandlordPortalPath)
   ) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/facility-portal/dashboard";
-    return NextResponse.redirect(url);
+    return redirectHomeClean(request, "/facility-portal/dashboard");
   }
 
   if (
@@ -356,7 +375,7 @@ export async function middleware(request: NextRequest) {
     !isLesseePortalUser &&
     !isLandlordPortalUser &&
     !isFacilityManagerPortalUser &&
-    (pathname === "/login" || pathname === "/signup" || pathname === "/accept-invite")
+    (pathname === "/login" || pathname === "/signup")
   ) {
     const blockDashboardRedirect = await shouldBlockLoginAutoRedirect({
       supabase,
@@ -383,7 +402,12 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  if (user && isPortalPublicPath && isLesseePortalUser) {
+  if (
+    user &&
+    isPortalPublicPath &&
+    isLesseePortalUser &&
+    !isAcceptInvitePath(pathname)
+  ) {
     const blockRedirect = await shouldBlockLoginAutoRedirect({
       supabase,
       userId: user.id,
@@ -393,9 +417,7 @@ export async function middleware(request: NextRequest) {
       isFacilityManagerPortalUser,
     });
     if (!blockRedirect) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/portal/dashboard";
-      return NextResponse.redirect(url);
+      return redirectHomeClean(request, "/portal/dashboard");
     }
     const nextParam = request.nextUrl.searchParams.get("next");
     return redirectToRelativePath(
@@ -404,7 +426,12 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  if (user && isLandlordPortalPublicPath && isLandlordPortalUser) {
+  if (
+    user &&
+    isLandlordPortalPublicPath &&
+    isLandlordPortalUser &&
+    !isAcceptInvitePath(pathname)
+  ) {
     const blockRedirect = await shouldBlockLoginAutoRedirect({
       supabase,
       userId: user.id,
@@ -414,9 +441,7 @@ export async function middleware(request: NextRequest) {
       isFacilityManagerPortalUser,
     });
     if (!blockRedirect) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/landlord-portal/dashboard";
-      return NextResponse.redirect(url);
+      return redirectHomeClean(request, "/landlord-portal/dashboard");
     }
     const nextParam = request.nextUrl.searchParams.get("next");
     return redirectToRelativePath(
@@ -425,7 +450,12 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  if (user && isFacilityPortalPublicPath && isFacilityManagerPortalUser) {
+  if (
+    user &&
+    isFacilityPortalPublicPath &&
+    isFacilityManagerPortalUser &&
+    !isAcceptInvitePath(pathname)
+  ) {
     const blockRedirect = await shouldBlockLoginAutoRedirect({
       supabase,
       userId: user.id,
@@ -435,9 +465,7 @@ export async function middleware(request: NextRequest) {
       isFacilityManagerPortalUser,
     });
     if (!blockRedirect) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/facility-portal/dashboard";
-      return NextResponse.redirect(url);
+      return redirectHomeClean(request, "/facility-portal/dashboard");
     }
     const nextParam = request.nextUrl.searchParams.get("next");
     return redirectToRelativePath(
@@ -448,13 +476,14 @@ export async function middleware(request: NextRequest) {
 
   // Non-lessee sessions cannot use the tenant portal dashboard.
   if (user && isPortalPath && !isPortalPublicPath && !isLesseePortalUser) {
-    const url = request.nextUrl.clone();
-    url.pathname = isLandlordPortalUser
-      ? "/landlord-portal/dashboard"
-      : isFacilityManagerPortalUser
-        ? "/facility-portal/dashboard"
-        : "/dashboard";
-    return NextResponse.redirect(url);
+    return redirectHomeClean(
+      request,
+      isLandlordPortalUser
+        ? "/landlord-portal/dashboard"
+        : isFacilityManagerPortalUser
+          ? "/facility-portal/dashboard"
+          : "/dashboard",
+    );
   }
 
   // Non-landlord sessions cannot use the landlord portal dashboard.
@@ -464,13 +493,14 @@ export async function middleware(request: NextRequest) {
     !isLandlordPortalPublicPath &&
     !isLandlordPortalUser
   ) {
-    const url = request.nextUrl.clone();
-    url.pathname = isLesseePortalUser
-      ? "/portal/dashboard"
-      : isFacilityManagerPortalUser
-        ? "/facility-portal/dashboard"
-        : "/dashboard";
-    return NextResponse.redirect(url);
+    return redirectHomeClean(
+      request,
+      isLesseePortalUser
+        ? "/portal/dashboard"
+        : isFacilityManagerPortalUser
+          ? "/facility-portal/dashboard"
+          : "/dashboard",
+    );
   }
 
   // Non-facility-manager sessions cannot use the facility portal dashboard.
@@ -480,13 +510,14 @@ export async function middleware(request: NextRequest) {
     !isFacilityPortalPublicPath &&
     !isFacilityManagerPortalUser
   ) {
-    const url = request.nextUrl.clone();
-    url.pathname = isLesseePortalUser
-      ? "/portal/dashboard"
-      : isLandlordPortalUser
-        ? "/landlord-portal/dashboard"
-        : "/dashboard";
-    return NextResponse.redirect(url);
+    return redirectHomeClean(
+      request,
+      isLesseePortalUser
+        ? "/portal/dashboard"
+        : isLandlordPortalUser
+          ? "/landlord-portal/dashboard"
+          : "/dashboard",
+    );
   }
 
   // Trial / suspension enforcement runs in app/dashboard/layout.tsx only — not on

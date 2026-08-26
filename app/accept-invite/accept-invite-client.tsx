@@ -11,6 +11,7 @@ import {
   PASSWORD_POLICY_HINT,
   validatePasswordClient,
 } from "@/utils/password-policy";
+import { createClient } from "@/utils/supabase/client";
 
 export default function StaffAcceptInviteClient() {
   const [password, setPassword] = useState("");
@@ -105,9 +106,14 @@ export default function StaffAcceptInviteClient() {
         : "Account created. Redirecting to login…",
     );
     setSuccess(true);
-    setTimeout(() => {
-      router.push("/login");
-    }, 2500);
+    void createClient()
+      .auth.signOut()
+      .catch(() => undefined)
+      .finally(() => {
+        setTimeout(() => {
+          router.push("/login");
+        }, 2500);
+      });
   }
 
   return (
