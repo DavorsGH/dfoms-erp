@@ -10,7 +10,7 @@ import {
   type FinishedProductRecord,
 } from "@/app/dashboard/inventory/finished-products-utils";
 import { peekNextQuotationNumber } from "@/utils/client-quotations-api";
-import { getCurrentTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
+import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
 import {
   emptyQuotationForm,
   type ClientQuotationSiteOption,
@@ -44,6 +44,7 @@ export default async function NewClientQuotationPage() {
     nextQuotationNumberResult,
     authorizedSignersResult,
     billingSettings,
+    graTin,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
@@ -70,6 +71,7 @@ export default async function NewClientQuotationPage() {
     peekNextQuotationNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
     getCurrentTenantBillingSettingsHeader(),
+    getCurrentTenantGraTin(),
   ]);
 
   const fetchError =
@@ -98,6 +100,7 @@ export default async function NewClientQuotationPage() {
         tenantId={tenantId}
         nextQuotationNumberPreview={nextQuotationNumberResult.quotationNumber}
         billingSettings={billingSettings}
+        graTin={graTin}
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
         initialOpportunities={
           (opportunities as

@@ -17,6 +17,7 @@ import {
   quotationPrintTitle,
   quotationTaxBasisNote,
   quotationValidityAndPaymentFooter,
+  quotationPortalValidityAndPaymentFooter,
   resolveAuthorizedByDisplayTitle,
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
@@ -24,25 +25,32 @@ import {
   tenantHeaderContactLines,
   type ClientQuotationDisplayProps,
 } from "./client-quotation-display-utils";
+import { resolvePortalQuotationExpiryDisplay } from "@/utils/client-quotations-types";
 import WorkspaceLogo from "@/app/dashboard/workspace-logo";
 
 type ClientQuotationPrintLayoutProps = {
   display: ClientQuotationDisplayProps;
   printAreaId: string;
   className?: string;
+  portalQuotationDates?: boolean;
 };
 
 export default function ClientQuotationPrintLayout({
   display,
   printAreaId,
   className = "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm",
+  portalQuotationDates = false,
 }: ClientQuotationPrintLayoutProps) {
-  const { quotation, lineItems, paymentAccounts, branding, billingSettings } = display;
+  const { quotation, lineItems, paymentAccounts, branding, billingSettings, graTin } = display;
   const groupedLines = buildClientQuotationGroups(lineItems);
   const lineColumnTotals = sumQuotationLineItemColumns(lineItems);
   const taxBasisNote = quotationTaxBasisNote(quotation);
   const companyName = resolveInvoiceCompanyName(branding, billingSettings);
-  const companyContactLines = tenantHeaderContactLines(branding, billingSettings);
+  const companyContactLines = tenantHeaderContactLines(
+    branding,
+    billingSettings,
+    graTin,
+  );
   const printTitle = quotationPrintTitle(quotation.document_type);
   const numberMetaLabel = quotationNumberMetaLabel(quotation.document_type);
   const opportunityName = resolveQuotationOpportunityName(quotation);
@@ -55,6 +63,9 @@ export default function ClientQuotationPrintLayout({
   const showDistinctShipTo = quotationHasDistinctShipTo(quotation);
   const isPercentageDiscount =
     normalizeQuotationDiscountType(quotation.discount_type) === "percentage";
+  const expiryDisplay = portalQuotationDates
+    ? resolvePortalQuotationExpiryDisplay(quotation)
+    : null;
 
   return (
     <div id={printAreaId} className={className}>
@@ -90,9 +101,15 @@ export default function ClientQuotationPrintLayout({
                 </dd>
               </div>
               <div>
-                <dt className="inline font-semibold text-[#0f2744]">Valid Until: </dt>
+                <dt className="inline font-semibold text-[#0f2744]">
+                  {portalQuotationDates && expiryDisplay
+                    ? expiryDisplay.metaLabel
+                    : "Valid Until: "}
+                </dt>
                 <dd className="inline text-slate-900">
-                  {formatInvoiceDate(quotation.valid_until)}
+                  {portalQuotationDates && expiryDisplay
+                    ? expiryDisplay.metaValue
+                    : formatInvoiceDate(quotation.valid_until)}
                 </dd>
               </div>
               {opportunityName ? (
@@ -342,10 +359,15 @@ export default function ClientQuotationPrintLayout({
         ) : null}
 
         <footer className="rounded-lg border-2 border-[#0f2744]/25 bg-[#e8f4f8] px-4 py-3 text-sm text-slate-800">
-          {quotationValidityAndPaymentFooter(
-            quotation.valid_until,
-            quotation.payment_terms,
-          )}
+          {portalQuotationDates
+            ? quotationPortalValidityAndPaymentFooter(
+                quotation,
+                quotation.payment_terms,
+              )
+            : quotationValidityAndPaymentFooter(
+                quotation.valid_until,
+                quotation.payment_terms,
+              )}
         </footer>
 
         {hasAuthorizedBySignature(quotation) ? (

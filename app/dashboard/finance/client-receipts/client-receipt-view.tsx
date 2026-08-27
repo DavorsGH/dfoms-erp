@@ -27,6 +27,7 @@ import WorkspaceLogo from "@/app/dashboard/workspace-logo";
 type ClientReceiptViewProps = {
   receiptId: string;
   billingSettings: BillingSettingsHeaderFields | null;
+  graTin: string | null;
   backHref?: string;
   backLabel?: string;
 };
@@ -69,6 +70,7 @@ function ClientReceiptPrintStyles() {
 export default function ClientReceiptView({
   receiptId,
   billingSettings,
+  graTin,
   backHref = "/dashboard/finance/client-receipts",
   backLabel = "Back to receipts",
 }: ClientReceiptViewProps) {
@@ -124,8 +126,9 @@ export default function ClientReceiptView({
       ...normalized,
       branding,
       billingSettings,
+      graTin,
     };
-  }, [payload, branding, billingSettings]);
+  }, [payload, branding, billingSettings, graTin]);
 
   const logoUrl = display
     ? resolveBrandingLogoUrl(display.branding.workspaceLogoUrl)
@@ -169,6 +172,7 @@ export default function ClientReceiptView({
   const companyContactLines = tenantHeaderContactLines(
     display.branding,
     display.billingSettings,
+    display.graTin,
   );
 
   return (

@@ -28,6 +28,7 @@ export type ClientInvoiceDisplayProps = {
   paymentAccounts: PaymentAccountRow[];
   branding: TenantBranding;
   billingSettings: BillingSettingsHeaderFields | null;
+  graTin: string | null;
 };
 
 function splitAddressLines(address: string) {
@@ -71,11 +72,22 @@ export function resolveInvoiceCompanyAddressLines(
   return [];
 }
 
+export function formatTenantTinLine(graTin: string | null | undefined): string | null {
+  const trimmed = graTin?.trim();
+  return trimmed ? `TIN: ${trimmed}` : null;
+}
+
 export function tenantHeaderContactLines(
   branding: TenantBranding,
   billingSettings: BillingSettingsHeaderFields | null | undefined = null,
+  graTin: string | null | undefined = null,
 ) {
   const lines = resolveInvoiceCompanyAddressLines(branding, billingSettings);
+  const tinLine = formatTenantTinLine(graTin);
+
+  if (tinLine) {
+    lines.push(tinLine);
+  }
 
   if (branding.phone?.trim()) {
     lines.push(branding.phone.trim());
@@ -130,6 +142,7 @@ export function normalizeClientInvoiceDetail(
       signatureAuthorTitle: null,
     },
     billingSettings: null,
+    graTin: null,
   };
 }
 

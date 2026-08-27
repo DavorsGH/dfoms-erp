@@ -175,11 +175,12 @@ export default function ClientReceiptPdfDocument({
   invoice,
   branding,
   billingSettings,
+  graTin,
   logoUrl,
   signatureImageUrl,
 }: ClientReceiptPdfDocumentProps) {
   const companyName = resolveInvoiceCompanyName(branding, billingSettings);
-  const contactLines = tenantHeaderContactLines(branding, billingSettings);
+  const contactLines = tenantHeaderContactLines(branding, billingSettings, graTin);
   const authorizedByName =
     receipt.authorized_by_name?.trim() || branding.signatureAuthorName?.trim() || "";
   const authorizedByTitle = resolveAuthorizedByDisplayTitle(

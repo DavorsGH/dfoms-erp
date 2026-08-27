@@ -5,6 +5,7 @@ import {
   getCurrentUserAccount,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
+import { loadTenantGraTin } from "@/app/dashboard/finance/tax-utils";
 import WorkspaceSettings from "../workspace-settings";
 
 export default async function WorkspaceSettingsPage() {
@@ -25,13 +26,16 @@ export default async function WorkspaceSettingsPage() {
     );
   }
 
-  const { data, error } = await supabase
-    .from("tenants")
-    .select(
-      "name, logo_url, signature_url, signature_author_name, signature_author_title, address, phone, email",
-    )
-    .eq("id", tenantId)
-    .maybeSingle();
+  const [{ data, error }, initialGraTin] = await Promise.all([
+    supabase
+      .from("tenants")
+      .select(
+        "name, logo_url, signature_url, signature_author_name, signature_author_title, address, phone, email",
+      )
+      .eq("id", tenantId)
+      .maybeSingle(),
+    loadTenantGraTin(supabase, tenantId),
+  ]);
 
   let initialPhone = data?.phone ?? null;
   let initialEmail = data?.email ?? null;
@@ -77,6 +81,7 @@ export default async function WorkspaceSettingsPage() {
         initialSignatureAuthorName={data?.signature_author_name ?? null}
         initialSignatureAuthorTitle={data?.signature_author_title ?? null}
         initialAddress={data?.address ?? null}
+        initialGraTin={initialGraTin}
         initialPhone={initialPhone}
         initialEmail={initialEmail}
         fetchError={error?.message ?? null}

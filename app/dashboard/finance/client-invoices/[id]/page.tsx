@@ -1,6 +1,6 @@
 import FinanceNav from "../../finance-nav";
 import ClientInvoiceView from "../client-invoice-view";
-import { getCurrentTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
+import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
@@ -13,7 +13,10 @@ export default async function ViewClientInvoicePage({
   params,
 }: ViewClientInvoicePageProps) {
   const { id } = await params;
-  const billingSettings = await getCurrentTenantBillingSettingsHeader();
+  const [billingSettings, graTin] = await Promise.all([
+    getCurrentTenantBillingSettingsHeader(),
+    getCurrentTenantGraTin(),
+  ]);
   const tenantId = await getCurrentUserTenantId();
 
   let paymentMethods: string[] = [];
@@ -40,6 +43,7 @@ export default async function ViewClientInvoicePage({
       <ClientInvoiceView
         invoiceId={id}
         billingSettings={billingSettings}
+        graTin={graTin}
         paymentMethods={paymentMethods}
       />
     </div>

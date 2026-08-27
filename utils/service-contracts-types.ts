@@ -61,6 +61,21 @@ export const SERVICE_CONTRACT_LINE_ITEM_SELECT =
 export const SERVICE_CONTRACT_CUSTOMER_360_SELECT =
   "id, contract_number, start_date, end_date, status, next_billing_date, total_amount_due" as const;
 
+export const SERVICE_CONTRACT_PORTAL_LIST_SELECT =
+  "id, contract_number, start_date, end_date, billing_frequency, status, document_url, subtotal, total_amount_due" as const;
+
+export type ServiceContractPortalListRow = {
+  id: string;
+  contract_number: string;
+  start_date: string;
+  end_date: string;
+  billing_frequency: ServiceContractBillingFrequency;
+  status: ServiceContractStatus;
+  document_url: string | null;
+  subtotal: number;
+  total_amount_due: number;
+};
+
 export type ServiceContractCustomer = {
   client_id: string;
   client_name: string;

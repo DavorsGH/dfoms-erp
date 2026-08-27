@@ -39,6 +39,7 @@ import { toNumber, resolveSourceContractLink, resolveSourceQuotationLink } from 
 type ClientInvoiceViewProps = {
   invoiceId: string;
   billingSettings: BillingSettingsHeaderFields | null;
+  graTin: string | null;
   paymentMethods?: string[];
   backHref?: string;
   backLabel?: string;
@@ -89,6 +90,7 @@ function ClientInvoicePrintStyles() {
 export default function ClientInvoiceView({
   invoiceId,
   billingSettings,
+  graTin,
   paymentMethods = [],
   backHref = "/dashboard/finance/client-invoices",
   backLabel = "Back to list",
@@ -144,8 +146,9 @@ export default function ClientInvoiceView({
       ...normalized,
       branding,
       billingSettings,
+      graTin,
     };
-  }, [payload, branding, billingSettings]);
+  }, [payload, branding, billingSettings, graTin]);
 
   const groupedLines = useMemo(
     () => (display ? buildClientInvoiceGroups(display.lineItems) : []),
@@ -177,7 +180,7 @@ export default function ClientInvoiceView({
     : "";
 
   const companyContactLines = display
-    ? tenantHeaderContactLines(display.branding, display.billingSettings)
+    ? tenantHeaderContactLines(display.branding, display.billingSettings, display.graTin)
     : [];
 
   const handlePrint = useCallback(() => {

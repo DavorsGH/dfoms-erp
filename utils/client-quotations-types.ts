@@ -75,13 +75,13 @@ export const CLIENT_QUOTATION_LIST_SELECT =
   "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, contract_id, converted_invoice_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_QUOTATION_HEADER_SELECT =
-  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, contract_id, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, converted_invoice_id, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
+  "id, tenant_id, client_id, opportunity_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, contract_id, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, converted_invoice_id, accepted_at, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_QUOTATION_LINE_ITEM_SELECT =
   "id, quotation_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, product_id, quantity, unit_price, sort_order" as const;
 
 export const CLIENT_QUOTATION_PORTAL_LIST_SELECT =
-  "id, tenant_id, client_id, quotation_number, quotation_type, document_type, issue_date, valid_until, total_amount_due, status, created_at" as const;
+  "id, tenant_id, client_id, quotation_number, quotation_type, document_type, issue_date, valid_until, total_amount_due, status, contract_id, accepted_at, created_at, source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export type ClientQuotationCustomer = {
   client_id: string;
@@ -133,7 +133,10 @@ export type ClientQuotationPortalListRow = {
   valid_until: string | null;
   total_amount_due: number;
   status: ClientQuotationStatus;
+  contract_id: string | null;
+  accepted_at: string | null;
   created_at: string;
+  source_contract?: ClientQuotationSourceContract | ClientQuotationSourceContract[] | null;
 };
 
 export type ClientQuotationLineItemRow = {
@@ -190,6 +193,7 @@ export type ClientQuotationHeaderRow = {
   authorized_by_title: string | null;
   contract_id: string | null;
   converted_invoice_id: string | null;
+  accepted_at: string | null;
   created_at: string;
   updated_at: string;
   opportunity?:
@@ -561,6 +565,64 @@ export function formatQuotationStatus(status: string) {
   }
 }
 
+export function quotationShowsAcceptedDate(status: ClientQuotationStatus | string) {
+  return status === "accepted";
+}
+
+export function resolveQuotationAcceptedOnDate(
+  quotation: Pick<ClientQuotationHeaderRow, "accepted_at">,
+) {
+  const raw = quotation.accepted_at?.trim();
+  if (!raw) {
+    return null;
+  }
+
+  return raw.slice(0, 10);
+}
+
+export type QuotationExpiryDisplay = {
+  columnLabel: string;
+  metaLabel: string;
+  metaValue: string | null;
+  footerValidityText: string;
+};
+
+export function resolvePortalQuotationExpiryDisplay(
+  quotation: Pick<
+    ClientQuotationHeaderRow,
+    "status" | "valid_until" | "accepted_at"
+  >,
+): QuotationExpiryDisplay {
+  if (quotationShowsAcceptedDate(quotation.status)) {
+    const acceptedOn = resolveQuotationAcceptedOnDate(quotation);
+    const formattedAcceptedOn = acceptedOn ? formatInvoiceDate(acceptedOn) : "—";
+    return {
+      columnLabel: "Accepted on",
+      metaLabel: "Accepted on: ",
+      metaValue: formattedAcceptedOn,
+      footerValidityText: acceptedOn
+        ? `This quotation was accepted on ${formattedAcceptedOn}.`
+        : "This quotation has been accepted.",
+    };
+  }
+
+  const formattedValidUntil = formatInvoiceDate(quotation.valid_until);
+  return {
+    columnLabel: "Valid Until",
+    metaLabel: "Valid Until: ",
+    metaValue: formattedValidUntil,
+    footerValidityText: quotationValidityFooter(quotation.valid_until),
+  };
+}
+
+function quotationValidityFooter(validUntil: string | null | undefined) {
+  if (!validUntil?.trim()) {
+    return "This document is subject to the validity period shown above.";
+  }
+
+  return `This document is valid until ${formatInvoiceDate(validUntil)} unless otherwise agreed in writing.`;
+}
+
 export function defaultValidUntil(fromDate = new Date()) {
   const valid = new Date(fromDate);
   valid.setDate(valid.getDate() + 30);
@@ -682,6 +744,9 @@ export function normalizeClientQuotationPortalListRow(
     ...row,
     quotation_type: normalizeQuotationType(row.quotation_type),
     total_amount_due: toNumber(row.total_amount_due),
+    source_contract: Array.isArray(row.source_contract)
+      ? (row.source_contract[0] ?? null)
+      : (row.source_contract ?? null),
   };
 }
 

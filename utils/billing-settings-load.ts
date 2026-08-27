@@ -9,6 +9,7 @@ import {
   BILLING_SETTINGS_HEADER_SELECT,
   type BillingSettingsHeaderFields,
 } from "@/utils/billing-settings-types";
+import { loadTenantGraTin } from "@/app/dashboard/finance/tax-utils";
 
 export async function loadTenantBillingSettingsHeader(
   supabase: SupabaseClient,
@@ -40,3 +41,15 @@ export const getCurrentTenantBillingSettingsHeader = cache(
     return loadTenantBillingSettingsHeader(supabase, tenantId);
   },
 );
+
+export const getCurrentTenantGraTin = cache(async (): Promise<string | null> => {
+  const tenantId = await getCurrentUserTenantId();
+  if (!tenantId) {
+    return null;
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  return loadTenantGraTin(supabase, tenantId);
+});

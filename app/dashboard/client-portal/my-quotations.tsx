@@ -13,6 +13,8 @@ import {
   formatQuotationStatus,
   formatQuotationType,
   normalizeClientQuotationPortalListRow,
+  resolvePortalQuotationExpiryDisplay,
+  resolveRaisedContractLink,
   type ClientQuotationPortalListRow,
 } from "@/utils/client-quotations-types";
 
@@ -34,6 +36,10 @@ export default function MyQuotations({
   }
 
   const quotations = initialQuotations.map(normalizeClientQuotationPortalListRow);
+  const expiryColumnLabel =
+    quotations.some((quotation) => quotation.status === "accepted")
+      ? "Accepted / Valid Until"
+      : "Valid Until";
 
   if (quotations.length === 0) {
     return (
@@ -52,14 +58,18 @@ export default function MyQuotations({
             <th className={scrollableTableThClassName}>Type</th>
             <th className={scrollableTableThClassName}>Document</th>
             <th className={scrollableTableThClassName}>Issue Date</th>
-            <th className={scrollableTableThClassName}>Valid Until</th>
+            <th className={scrollableTableThClassName}>{expiryColumnLabel}</th>
             <th className={scrollableTableThClassName}>Total</th>
             <th className={scrollableTableThClassName}>Status</th>
             <th className={scrollableTableThClassName}>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {quotations.map((quotation) => (
+          {quotations.map((quotation) => {
+            const expiryDisplay = resolvePortalQuotationExpiryDisplay(quotation);
+            const linkedContract = resolveRaisedContractLink(quotation);
+
+            return (
             <tr key={quotation.id} className="border-b border-slate-100">
               <td className="px-4 py-3 text-sm font-medium text-[#0f2744]">
                 {quotation.quotation_number}
@@ -74,13 +84,24 @@ export default function MyQuotations({
                 {formatInvoiceDate(quotation.issue_date)}
               </td>
               <td className="px-4 py-3 text-sm text-slate-700">
-                {formatInvoiceDate(quotation.valid_until)}
+                {expiryDisplay.metaValue}
               </td>
               <td className="px-4 py-3 text-sm text-slate-700">
                 {formatInvoiceMoney(quotation.total_amount_due)}
               </td>
               <td className="px-4 py-3 text-sm text-slate-700">
-                {formatQuotationStatus(quotation.status)}
+                <div className="space-y-1">
+                  <p>{formatQuotationStatus(quotation.status)}</p>
+                  {linkedContract ? (
+                    <Link
+                      href="/dashboard/client-portal/contract"
+                      className="inline-flex text-xs font-medium text-violet-800 hover:underline"
+                    >
+                      Linked to Service Contract {linkedContract.contract_number} — View My
+                      Contract
+                    </Link>
+                  ) : null}
+                </div>
               </td>
               <td className="px-4 py-3 text-sm">
                 <Link
@@ -91,7 +112,8 @@ export default function MyQuotations({
                 </Link>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </ScrollableTable>

@@ -12,6 +12,7 @@ import {
   quotationNumberMetaLabel,
   resolveQuotationTaxBasis,
   resolveConvertedInvoiceLink,
+  resolvePortalQuotationExpiryDisplay,
   roundMoney,
   toNumber,
   type ClientQuotationHeaderRow,
@@ -51,6 +52,7 @@ export type ClientQuotationDisplayProps = {
   paymentAccounts: PaymentAccountRow[];
   branding: TenantBranding;
   billingSettings: BillingSettingsHeaderFields | null;
+  graTin: string | null;
 };
 
 export function normalizeClientQuotationDetail(
@@ -117,6 +119,7 @@ export function normalizeClientQuotationDetail(
       signatureAuthorTitle: null,
     },
     billingSettings: null,
+    graTin: null,
   };
 }
 
@@ -169,10 +172,23 @@ export function quotationValidityFooter(validUntil: string | null | undefined) {
 export function quotationValidityAndPaymentFooter(
   validUntil: string | null | undefined,
   paymentTerms: string | null | undefined,
+  validityOverride?: string,
 ) {
-  const validity = quotationValidityFooter(validUntil);
+  const validity = validityOverride ?? quotationValidityFooter(validUntil);
   const terms = quotationPaymentTermsLabel(paymentTerms);
   return `${validity} Payment terms: ${terms}.`;
+}
+
+export function quotationPortalValidityAndPaymentFooter(
+  quotation: Pick<ClientQuotationHeaderRow, "status" | "valid_until" | "accepted_at">,
+  paymentTerms: string | null | undefined,
+) {
+  const expiry = resolvePortalQuotationExpiryDisplay(quotation);
+  return quotationValidityAndPaymentFooter(
+    quotation.valid_until,
+    paymentTerms,
+    expiry.footerValidityText,
+  );
 }
 
 export function buildClientQuotationPreviewDisplay(input: {
@@ -187,6 +203,7 @@ export function buildClientQuotationPreviewDisplay(input: {
   };
   branding: TenantBranding;
   billingSettings: BillingSettingsHeaderFields | null;
+  graTin?: string | null;
 }): ClientQuotationDisplayProps {
   const quotationType = normalizeQuotationType(input.form.quotation_type);
   const taxBasis = resolveQuotationTaxBasis(input.form.tax_basis, quotationType);
@@ -268,6 +285,7 @@ export function buildClientQuotationPreviewDisplay(input: {
     authorized_by_title: input.authorizedBy.authorized_by_title,
     contract_id: null,
     converted_invoice_id: null,
+    accepted_at: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     opportunity: input.opportunityName
@@ -286,6 +304,7 @@ export function buildClientQuotationPreviewDisplay(input: {
     ),
     branding: input.branding,
     billingSettings: input.billingSettings,
+    graTin: input.graTin?.trim() || null,
   };
 }
 

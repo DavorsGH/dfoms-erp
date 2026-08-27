@@ -34,11 +34,12 @@ export type ClientReceiptDisplayProps = {
   invoice: ClientReceiptDetailPayload["invoice"];
   branding: TenantBranding;
   billingSettings: BillingSettingsHeaderFields | null;
+  graTin: string | null;
 };
 
 export function normalizeClientReceiptDetail(
   payload: ClientReceiptDetailPayload,
-): Omit<ClientReceiptDisplayProps, "branding" | "billingSettings"> {
+): Omit<ClientReceiptDisplayProps, "branding" | "billingSettings" | "graTin"> {
   return {
     receipt: payload.receipt,
     invoice: payload.invoice,

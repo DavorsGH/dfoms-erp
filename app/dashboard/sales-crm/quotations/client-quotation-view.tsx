@@ -16,6 +16,7 @@ import {
   type ClientQuotationDetailPayload,
 } from "./client-quotation-display-utils";
 import { resolveRaisedContractLink } from "@/utils/client-quotations-types";
+import type { ActiveServiceContractSummary } from "@/utils/service-contracts-api";
 import ClientQuotationPdfDocument from "./client-quotation-pdf-document";
 import ClientQuotationPrintLayout from "./client-quotation-print-layout";
 import { ClientQuotationPrintStyles } from "./client-quotation-print-styles";
@@ -23,10 +24,13 @@ import { ClientQuotationPrintStyles } from "./client-quotation-print-styles";
 type ClientQuotationViewProps = {
   quotationId: string;
   billingSettings: BillingSettingsHeaderFields | null;
+  graTin: string | null;
   canConvertToInvoice?: boolean;
   backHref?: string;
   backLabel?: string;
   showStaffActions?: boolean;
+  portalQuotationDates?: boolean;
+  customerActiveContract?: ActiveServiceContractSummary | null;
 };
 
 const primaryButtonClassName =
@@ -48,10 +52,13 @@ function ClientQuotationPrintStylesLegacy() {
 export default function ClientQuotationView({
   quotationId,
   billingSettings,
+  graTin,
   canConvertToInvoice = false,
   backHref = "/dashboard/sales-crm/quotations",
   backLabel = "Back to list",
   showStaffActions = true,
+  portalQuotationDates = false,
+  customerActiveContract = null,
 }: ClientQuotationViewProps) {
   const router = useRouter();
   const branding = useTenantBranding();
@@ -114,8 +121,9 @@ export default function ClientQuotationView({
       ...normalized,
       branding,
       billingSettings,
+      graTin,
     };
-  }, [payload, branding, billingSettings]);
+  }, [payload, branding, billingSettings, graTin]);
 
   const convertedInvoice = display
     ? resolveConvertedInvoiceLink(display.quotation)
@@ -144,6 +152,7 @@ export default function ClientQuotationView({
           {...display}
           logoUrl={logoUrl}
           signatureImageUrl={signatureImageUrl}
+          portalQuotationDates={portalQuotationDates}
         />,
       ).toBlob();
       const url = URL.createObjectURL(blob);
@@ -159,7 +168,7 @@ export default function ClientQuotationView({
     } finally {
       setDownloading(false);
     }
-  }, [display]);
+  }, [display, portalQuotationDates]);
 
   const handleConvertToInvoice = useCallback(async () => {
     setConverting(true);
@@ -250,7 +259,10 @@ export default function ClientQuotationView({
   const showRaiseContractButton =
     showStaffActions &&
     quotation.status === "accepted" &&
-    !quotation.contract_id;
+    !quotation.contract_id &&
+    !customerActiveContract;
+
+  const portalContractHref = "/dashboard/client-portal/contract";
 
   return (
     <div className="space-y-4">
@@ -275,13 +287,33 @@ export default function ClientQuotationView({
 
       {raisedContract ? (
         <div className="no-print">
-          <Link
-            href={`/dashboard/finance/service-contracts/${raisedContract.id}`}
-            className={contractTraceabilityBadgeClassName}
-          >
-            Contract Raised → {raisedContract.contract_number}
-          </Link>
+          {portalQuotationDates ? (
+            <Link
+              href={portalContractHref}
+              className={contractTraceabilityBadgeClassName}
+            >
+              Linked to Service Contract {raisedContract.contract_number} — View My Contract
+            </Link>
+          ) : (
+            <Link
+              href={`/dashboard/finance/service-contracts/${raisedContract.id}`}
+              className={contractTraceabilityBadgeClassName}
+            >
+              Contract Raised → {raisedContract.contract_number}
+            </Link>
+          )}
         </div>
+      ) : null}
+
+      {showStaffActions &&
+      customerActiveContract &&
+      quotation.status === "accepted" &&
+      !quotation.contract_id ? (
+        <p className="no-print rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This customer already has an active service contract (
+          {customerActiveContract.contract_number}). Raise Contract is disabled to prevent
+          duplicate billing.
+        </p>
       ) : null}
 
       {confirmAction === "convert" ? (
@@ -396,6 +428,7 @@ export default function ClientQuotationView({
       <ClientQuotationPrintLayout
         display={display}
         printAreaId={CLIENT_QUOTATION_PRINT_AREA_ID}
+        portalQuotationDates={portalQuotationDates}
       />
     </div>
   );

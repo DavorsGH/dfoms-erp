@@ -63,6 +63,7 @@ type ClientQuotationFormProps = {
   existingQuotationNumber?: string;
   isConverted?: boolean;
   billingSettings?: BillingSettingsHeaderFields | null;
+  graTin?: string | null;
   initialCustomers: ClientEntry[];
   initialOpportunities: ClientQuotationPipelineOpportunityOption[];
   initialSites: ClientQuotationSiteOption[];
@@ -109,6 +110,7 @@ export default function ClientQuotationForm({
   existingQuotationNumber,
   isConverted = false,
   billingSettings = null,
+  graTin = null,
   initialCustomers,
   initialOpportunities,
   initialSites,
@@ -250,6 +252,7 @@ export default function ClientQuotationForm({
       authorizedBy,
       branding,
       billingSettings,
+      graTin,
     });
   }, [
     previewOpen,
@@ -263,6 +266,7 @@ export default function ClientQuotationForm({
     initialPaymentAccounts,
     branding,
     billingSettings,
+    graTin,
   ]);
 
   function handleQuotationTypeChange(nextType: ClientQuotationType) {

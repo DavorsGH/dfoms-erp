@@ -333,13 +333,18 @@ export default function ClientInvoicePdfDocument({
   paymentAccounts,
   branding,
   billingSettings,
+  graTin,
   logoUrl,
   signatureImageUrl,
 }: ClientInvoicePdfDocumentProps) {
   const groupedLines = buildClientInvoiceGroups(lineItems);
   const lineColumnTotals = sumLineItemColumns(lineItems);
   const companyName = resolveInvoiceCompanyName(branding, billingSettings);
-  const companyContactLines = tenantHeaderContactLines(branding, billingSettings);
+  const companyContactLines = tenantHeaderContactLines(
+    branding,
+    billingSettings,
+    graTin,
+  );
   const billingPeriod = formatBillingPeriodLabel(
     invoice.billing_period_start,
     invoice.billing_period_end,

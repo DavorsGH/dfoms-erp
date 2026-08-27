@@ -7,6 +7,7 @@ import {
   type ClientInvoiceDetailPayload,
 } from "@/app/dashboard/finance/client-invoices/client-invoice-display-utils";
 import { loadTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
+import { loadTenantGraTin } from "@/app/dashboard/finance/tax-utils";
 import { loadClientInvoiceDetail } from "@/utils/client-invoices-api";
 import { resolvePdfBrandingImages } from "@/utils/pdf-branding-images";
 import { renderPdfBuffer } from "@/utils/render-pdf-buffer";
@@ -54,9 +55,10 @@ export async function renderClientInvoicePdfBuffer(options: {
     paymentAccounts = (data as PaymentAccountRow[] | null) ?? [];
   }
 
-  const [branding, billingSettings] = await Promise.all([
+  const [branding, billingSettings, graTin] = await Promise.all([
     getTenantBrandingById(options.tenantId),
     loadTenantBillingSettingsHeader(options.supabase, options.tenantId),
+    loadTenantGraTin(options.supabase, options.tenantId),
   ]);
 
   const payload: ClientInvoiceDetailPayload = {
@@ -69,6 +71,7 @@ export async function renderClientInvoicePdfBuffer(options: {
   const display = normalizeClientInvoiceDetail(payload);
   display.branding = branding;
   display.billingSettings = billingSettings;
+  display.graTin = graTin;
 
   const { logoUrl, signatureImageUrl } = await resolvePdfBrandingImages({
     supabase: options.supabase,

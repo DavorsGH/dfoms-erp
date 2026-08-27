@@ -17,6 +17,7 @@ type WorkspaceSettingsProps = {
   initialSignatureAuthorName: string | null;
   initialSignatureAuthorTitle: string | null;
   initialAddress: string | null;
+  initialGraTin: string | null;
   initialPhone: string | null;
   initialEmail: string | null;
   fetchError: string | null;
@@ -33,6 +34,7 @@ export default function WorkspaceSettings({
   initialSignatureAuthorName,
   initialSignatureAuthorTitle,
   initialAddress,
+  initialGraTin,
   initialPhone,
   initialEmail,
   fetchError,
@@ -42,6 +44,7 @@ export default function WorkspaceSettings({
 
   const [workspaceName, setWorkspaceName] = useState(initialName);
   const [workspaceAddress, setWorkspaceAddress] = useState(initialAddress ?? "");
+  const [workspaceTin, setWorkspaceTin] = useState(initialGraTin ?? "");
   const [workspacePhone, setWorkspacePhone] = useState(initialPhone ?? "");
   const [workspaceEmail, setWorkspaceEmail] = useState(initialEmail ?? "");
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
@@ -79,6 +82,7 @@ export default function WorkspaceSettings({
     setSuccess(null);
 
     const trimmedAddress = workspaceAddress.trim();
+    const trimmedTin = workspaceTin.trim();
     const trimmedPhone = workspacePhone.trim();
 
     const { error: updateError } = await supabase
@@ -98,8 +102,28 @@ export default function WorkspaceSettings({
       return;
     }
 
+    await supabase.from("tax_settings").upsert(
+      { tenant_id: tenantId },
+      { onConflict: "tenant_id", ignoreDuplicates: true },
+    );
+
+    const { error: tinUpdateError } = await supabase
+      .from("tax_settings")
+      .update({
+        gra_tin: trimmedTin || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("tenant_id", tenantId);
+
+    if (tinUpdateError) {
+      setError(tinUpdateError.message);
+      setSavingName(false);
+      return;
+    }
+
     setWorkspaceName(trimmedName);
     setWorkspaceAddress(trimmedAddress);
+    setWorkspaceTin(trimmedTin);
     setWorkspacePhone(trimmedPhone);
     setWorkspaceEmail(trimmedEmail);
     setSuccess("Workspace details saved.");
@@ -265,6 +289,27 @@ export default function WorkspaceSettings({
             placeholder="Street, city, region"
             className={inputClassName}
           />
+        </div>
+        <div>
+          <label
+            htmlFor="workspace_tin"
+            className="mb-1 block text-sm font-medium text-slate-700"
+          >
+            TIN / Tax Identification Number{" "}
+            <span className="font-normal text-slate-500">(optional)</span>
+          </label>
+          <input
+            id="workspace_tin"
+            type="text"
+            value={workspaceTin}
+            onChange={(event) => setWorkspaceTin(event.target.value)}
+            className={inputClassName}
+            placeholder="GRA taxpayer identification number"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            Shown on customer invoices, quotations, and receipts when set. Same
+            value as Statutory Ledger GRA TIN.
+          </p>
         </div>
         <div>
           <label

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { createClientInvoice } from "@/utils/client-invoices-api";
 import type { ClientInvoiceWriteBody } from "@/utils/client-invoices-types";
-import { createServiceContract } from "@/utils/service-contracts-api";
+import { createServiceContract, findActiveServiceContractForClient } from "@/utils/service-contracts-api";
 import type { ServiceContractLineItemInput } from "@/utils/service-contracts-types";
 import {
   CLIENT_QUOTATION_ENTITY_TYPE,
@@ -416,12 +416,22 @@ export async function updateClientQuotationStatus(
     };
   }
 
+  const nowIso = new Date().toISOString();
+  const updatePayload: {
+    status: ClientQuotationStatus;
+    updated_at: string;
+    accepted_at?: string;
+  } = {
+    status: nextStatus,
+    updated_at: nowIso,
+  };
+  if (nextStatus === "accepted") {
+    updatePayload.accepted_at = nowIso;
+  }
+
   const { data: quotation, error } = await supabase
     .from("client_quotations")
-    .update({
-      status: nextStatus,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("id", quotationId)
     .eq("tenant_id", tenantId)
     .eq("status", currentStatus)
@@ -475,6 +485,18 @@ export async function raiseContractFromQuotation(
     return {
       contract: null,
       error: "This quotation already has a linked service contract.",
+    };
+  }
+
+  const activeContract = await findActiveServiceContractForClient(
+    supabase,
+    tenantId,
+    quotation.client_id,
+  );
+  if (activeContract) {
+    return {
+      contract: null,
+      error: `This customer already has an active service contract (${activeContract.contract_number}). Raise Contract is disabled to prevent duplicate billing.`,
     };
   }
 

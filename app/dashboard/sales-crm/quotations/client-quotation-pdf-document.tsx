@@ -18,6 +18,7 @@ import {
   quotationNumberMetaLabel,
   quotationTaxBasisNote,
   quotationValidityAndPaymentFooter,
+  quotationPortalValidityAndPaymentFooter,
   resolveInvoiceCompanyName,
   sumQuotationLineItemColumns,
   tenantHeaderContactLines,
@@ -27,6 +28,7 @@ import {
   normalizeQuotationDiscountType,
   quotationHasDistinctShipTo,
   quotationHeaderDiscountLabel,
+  resolvePortalQuotationExpiryDisplay,
   resolveQuotationOpportunityName,
 } from "@/utils/client-quotations-types";
 
@@ -351,6 +353,7 @@ const styles = StyleSheet.create({
 type ClientQuotationPdfDocumentProps = ClientQuotationDisplayProps & {
   logoUrl: string;
   signatureImageUrl?: string | null;
+  portalQuotationDates?: boolean;
 };
 
 export default function ClientQuotationPdfDocument({
@@ -359,13 +362,19 @@ export default function ClientQuotationPdfDocument({
   paymentAccounts,
   branding,
   billingSettings,
+  graTin,
   logoUrl,
   signatureImageUrl,
+  portalQuotationDates = false,
 }: ClientQuotationPdfDocumentProps) {
   const groupedLines = buildClientQuotationGroups(lineItems);
   const lineColumnTotals = sumQuotationLineItemColumns(lineItems);
   const companyName = resolveInvoiceCompanyName(branding, billingSettings);
-  const companyContactLines = tenantHeaderContactLines(branding, billingSettings);
+  const companyContactLines = tenantHeaderContactLines(
+    branding,
+    billingSettings,
+    graTin,
+  );
   const printTitle = quotationPrintTitle(quotation.document_type);
   const numberMetaLabel = quotationNumberMetaLabel(quotation.document_type);
   const opportunityName = resolveQuotationOpportunityName(quotation);
@@ -378,6 +387,9 @@ export default function ClientQuotationPdfDocument({
   const isPercentageDiscount =
     normalizeQuotationDiscountType(quotation.discount_type) === "percentage";
   const showDistinctShipTo = quotationHasDistinctShipTo(quotation);
+  const expiryDisplay = portalQuotationDates
+    ? resolvePortalQuotationExpiryDisplay(quotation)
+    : null;
 
   let lineRowIndex = 0;
 
@@ -410,8 +422,16 @@ export default function ClientQuotationPdfDocument({
               <Text style={styles.metaValue}>{formatInvoiceDate(quotation.issue_date)}</Text>
             </Text>
             <Text style={styles.metaLine}>
-              <Text style={styles.metaLabel}>Valid Until: </Text>
-              <Text style={styles.metaValue}>{formatInvoiceDate(quotation.valid_until)}</Text>
+              <Text style={styles.metaLabel}>
+                {portalQuotationDates && expiryDisplay
+                  ? expiryDisplay.metaLabel
+                  : "Valid Until: "}
+              </Text>
+              <Text style={styles.metaValue}>
+                {portalQuotationDates && expiryDisplay
+                  ? (expiryDisplay.metaValue ?? "—")
+                  : formatInvoiceDate(quotation.valid_until)}
+              </Text>
             </Text>
             {opportunityName ? (
               <Text style={styles.metaLine}>
@@ -625,10 +645,15 @@ export default function ClientQuotationPdfDocument({
 
         <View wrap={false} style={styles.documentClosingBlock}>
           <Text style={[styles.footerBox, styles.footerNoticeText]} wrap={false}>
-            {quotationValidityAndPaymentFooter(
-              quotation.valid_until,
-              quotation.payment_terms,
-            )}
+            {portalQuotationDates
+              ? quotationPortalValidityAndPaymentFooter(
+                  quotation,
+                  quotation.payment_terms,
+                )
+              : quotationValidityAndPaymentFooter(
+                  quotation.valid_until,
+                  quotation.payment_terms,
+                )}
           </Text>
 
           {hasAuthorizedBySignature(quotation) ? (

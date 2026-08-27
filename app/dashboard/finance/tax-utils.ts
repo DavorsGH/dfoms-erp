@@ -335,6 +335,23 @@ export function resolveDefaultWhtRate(settings: TaxSettings | null): number {
   return settings ? settings.default_wht_rate : DEFAULT_WHT_RATE;
 }
 
+export async function loadTenantGraTin(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("tax_settings")
+    .select("gra_tin")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error || !data?.gra_tin?.trim()) {
+    return null;
+  }
+
+  return data.gra_tin.trim();
+}
+
 export async function loadTenantSalesTaxBasis(
   supabase: SupabaseClient,
   tenantId: string,
