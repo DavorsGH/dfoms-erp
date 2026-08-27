@@ -83,11 +83,6 @@ export function tenantHeaderContactLines(
   graTin: string | null | undefined = null,
 ) {
   const lines = resolveInvoiceCompanyAddressLines(branding, billingSettings);
-  const tinLine = formatTenantTinLine(graTin);
-
-  if (tinLine) {
-    lines.push(tinLine);
-  }
 
   if (branding.phone?.trim()) {
     lines.push(branding.phone.trim());
@@ -95,6 +90,11 @@ export function tenantHeaderContactLines(
 
   if (branding.email?.trim()) {
     lines.push(branding.email.trim());
+  }
+
+  const tinLine = formatTenantTinLine(graTin);
+  if (tinLine) {
+    lines.push(tinLine);
   }
 
   return lines;
