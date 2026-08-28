@@ -20,6 +20,7 @@ import type { DashboardViewModel } from "./dashboard-utils";
 import type { DashboardVisibility } from "@/utils/rbac-access";
 import DashboardSpendingAnalysis from "./dashboard-spending-analysis";
 import DashboardSalesAnalysis from "./dashboard-sales-analysis";
+import { DashboardBudgetStatusCard } from "./dashboard-budget-status-card";
 import { SummaryCard } from "./summary-card";
 import DashboardBalanceSheetIntegrityBanner from "./dashboard-balance-sheet-integrity-banner";
 
@@ -79,13 +80,14 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
   const displayedProductPurchases = isYtdMode
     ? summary.productPurchasesYtd
     : summary.productPurchases;
-  const displayedProductSales = isYtdMode
-    ? summary.productSalesYtd
-    : summary.productSales;
   const selectedPeriodSubtitle = isYtdMode
     ? summary.ytdThroughLabel
     : summary.periodLabel;
   const asOfLabel = `as of ${summary.periodLabel}`;
+  const budgetMonthKey = isYtdMode ? data.defaultMonthKey : selectedMonthKey;
+  const budgetStatus =
+    data.budgetStatusByMonthKey[budgetMonthKey] ??
+    data.budgetStatusByMonthKey[data.defaultMonthKey];
 
   return (
     <div className="min-w-0 space-y-6">
@@ -194,11 +196,29 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           showTotal={false}
           href="/dashboard/reports/finance/fixed-asset-schedule"
         />
-        <SummaryCard
-          title={`Product Sales (${selectedPeriodLabel})`}
-          subtitle={selectedPeriodSubtitle}
-          value={formatGHS(displayedProductSales)}
-          href="/dashboard/crm/product-sales"
+        <DashboardBudgetStatusCard
+          snapshot={
+            budgetStatus ?? {
+              month: {
+                label: `Month (${summary.periodLabel})`,
+                budgeted: 0,
+                actual: 0,
+                remaining: 0,
+                status: "green",
+                utilizationPercent: null,
+                hasBudgetLines: false,
+              },
+              ytd: {
+                label: `YTD (${summary.ytdThroughLabel})`,
+                budgeted: 0,
+                actual: 0,
+                remaining: 0,
+                status: "green",
+                utilizationPercent: null,
+                hasBudgetLines: false,
+              },
+            }
+          }
         />
         <SummaryCard
           title="Cash Position"

@@ -18,7 +18,16 @@ import {
 import {
   fetchFixedAssetScheduleReportData,
   fetchStatutoryLiabilitiesReportData,
+  fetchBudgetVsActualReportData,
 } from "@/app/dashboard/reports/finance-report-data";
+import {
+  ALL_PROJECTS_FILTER,
+  buildBudgetVsActualReport,
+  budgetHealthStatusLabel,
+  formatBudgetVsActualViewPeriodLabel,
+  sumBudgetVsActualTotals,
+} from "@/app/dashboard/reports/budget-vs-actual-utils";
+import { monthIndexFromMonthNumber } from "@/app/dashboard/reports/finance-reports-utils";
 import {
   CLIENT_INVOICE_LIST_SELECT,
   normalizeClientInvoiceListRow,
@@ -40,6 +49,7 @@ import {
   requireStaffSession,
   resolveFinancialPeriodSelection,
 } from "@/utils/assistant-staff-tool-common";
+import { getCurrentCalendarMonth } from "@/app/dashboard/dashboard-utils";
 
 function invoiceOutstanding(row: ClientInvoiceListRow): number {
   return Math.max(
@@ -428,4 +438,126 @@ export async function getBalanceSheetStatus(): Promise<unknown> {
       : `Out of balance by ${formatGHS(Math.abs(difference))}`,
     fetchWarning: dashboardResult.fetchError,
   };
+}
+
+function parseBudgetStatusParams(toolInput: unknown): {
+  year: number;
+  month: number;
+  projectId: string | null;
+} {
+  const { year: currentYear, month: currentMonth } = getCurrentCalendarMonth();
+
+  if (!toolInput || typeof toolInput !== "object") {
+    return { year: currentYear, month: currentMonth, projectId: null };
+  }
+
+  const input = toolInput as Record<string, unknown>;
+  let year = currentYear;
+  let month = currentMonth;
+
+  if (typeof input.year === "number" && Number.isFinite(input.year)) {
+    year = Math.trunc(input.year);
+  }
+
+  if (typeof input.month === "number" && Number.isFinite(input.month)) {
+    month = Math.min(Math.max(Math.trunc(input.month), 1), 12);
+  }
+
+  let projectId: string | null = null;
+  if (typeof input.project_id === "string") {
+    const trimmed = input.project_id.trim();
+    if (trimmed) {
+      projectId = trimmed;
+    }
+  }
+
+  return { year, month, projectId };
+}
+
+export async function getBudgetStatus(toolInput?: unknown): Promise<unknown> {
+  const sessionResult = await requireStaffSession();
+  if ("error" in sessionResult) {
+    return sessionResult;
+  }
+  if (!canAccessFinanceSection(sessionResult.session.role)) {
+    return { error: "You do not have access to budget status data." };
+  }
+
+  const { year, month, projectId } = parseBudgetStatusParams(toolInput);
+  const monthIndex = monthIndexFromMonthNumber(month);
+  const projectFilter = projectId ?? ALL_PROJECTS_FILTER;
+
+  try {
+    const supabase = await getStaffSupabase();
+    const data = await fetchBudgetVsActualReportData(supabase);
+    const report = buildBudgetVsActualReport({
+      viewMode: "monthly-prorated",
+      budgets: data.initialBudgets,
+      expenses: data.initialExpenses,
+      rawMaterialPurchases: data.initialRawMaterialPurchases,
+      productPurchases: data.initialProductPurchases,
+      payrollRows: data.initialPayrollRows,
+      projects: data.initialProjects,
+      year,
+      month,
+      monthIndex,
+      projectFilter,
+    });
+    const totals = sumBudgetVsActualTotals(report);
+    const periodLabel = formatBudgetVsActualViewPeriodLabel({
+      viewMode: "monthly-prorated",
+      year,
+      month,
+    });
+
+    const projectLabel =
+      projectFilter === ALL_PROJECTS_FILTER
+        ? "All projects (company-wide + per-project)"
+        : (() => {
+            const project = data.initialProjects.find(
+              (entry) => entry.id === projectFilter,
+            );
+            if (!project) {
+              return "Selected project";
+            }
+
+            return `${project.project_code} — ${project.project_name}`;
+          })();
+
+    const variancePercentTotal =
+      totals.budgeted > 0
+        ? Math.round((totals.variance / totals.budgeted) * 10000) / 100
+        : null;
+
+    return {
+      viewMode: "monthly-prorated" as const,
+      periodLabel,
+      year,
+      month,
+      projectFilter:
+        projectFilter === ALL_PROJECTS_FILTER ? "all" : projectFilter,
+      projectLabel,
+      currency: "GHS" as const,
+      categories: report.map((row) => ({
+        category: row.category,
+        budgetedGhs: row.budgeted,
+        actualGhs: row.actual,
+        varianceGhs: row.variance,
+        variancePercent: row.variancePercent,
+        remainingGhs: row.remaining,
+        status: budgetHealthStatusLabel(row.status),
+      })),
+      totals: {
+        budgetedGhs: totals.budgeted,
+        actualGhs: totals.actual,
+        varianceGhs: totals.variance,
+        variancePercent: variancePercentTotal,
+        remainingGhs: totals.remaining,
+      },
+      fetchWarning: data.fetchError,
+    };
+  } catch (error) {
+    console.error("[assistant] get_budget_status threw:", error);
+    return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+  }
 }

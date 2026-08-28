@@ -13,6 +13,7 @@ import {
 } from "@/utils/assistant-staff-tools-crm";
 import {
   getBalanceSheetStatus,
+  getBudgetStatus,
   getExpenseBreakdown,
   getFinancialSummary,
   getFixedAssetsSummary,
@@ -61,6 +62,7 @@ export {
 
 export const GET_FINANCIAL_SUMMARY_TOOL_NAME = "get_financial_summary";
 export const GET_BALANCE_SHEET_STATUS_TOOL_NAME = "get_balance_sheet_status";
+export const GET_BUDGET_STATUS_TOOL_NAME = "get_budget_status";
 export const GET_OUTSTANDING_INVOICES_TOOL_NAME = "get_outstanding_invoices";
 export const GET_OUTSTANDING_PAYABLES_TOOL_NAME = "get_outstanding_payables";
 export const GET_TAX_LEDGER_STATUS_TOOL_NAME = "get_tax_ledger_status";
@@ -137,6 +139,25 @@ export function getStaffAssistantTools(
       tool(
         GET_BALANCE_SHEET_STATUS_TOOL_NAME,
         "Current Balance Sheet Check (balanced vs out-of-balance) — same as the Dashboard card.",
+      ),
+      tool(
+        GET_BUDGET_STATUS_TOOL_NAME,
+        "Budget vs Actual in Monthly (Pro-rated) mode — budgeted, actual, variance, and status per expense category. Optional month (1–12), year, and project_id (omit project for company-wide All view).",
+        {
+          month: {
+            type: "number",
+            description: "Calendar month 1–12 (default: current month).",
+          },
+          year: {
+            type: "number",
+            description: "Calendar year (default: current year).",
+          },
+          project_id: {
+            type: "string",
+            description:
+              "Optional project UUID for a single project/contract; omit for company-wide All view.",
+          },
+        },
       ),
       tool(
         GET_OUTSTANDING_INVOICES_TOOL_NAME,
@@ -310,6 +331,8 @@ export async function executeStaffAssistantTool(
       return getFinancialSummary(toolInput);
     case GET_BALANCE_SHEET_STATUS_TOOL_NAME:
       return getBalanceSheetStatus();
+    case GET_BUDGET_STATUS_TOOL_NAME:
+      return getBudgetStatus(toolInput);
     case GET_OUTSTANDING_INVOICES_TOOL_NAME:
       return getOutstandingInvoices();
     case GET_OUTSTANDING_PAYABLES_TOOL_NAME:
@@ -374,6 +397,7 @@ export function staffAccountToolsSystemPromptAddition(
   if (canAccessFinanceSection(role)) {
     lines.push(
       "- get_financial_summary / get_balance_sheet_status: Dashboard financial summary and balance sheet check",
+      "- get_budget_status: Budget vs Actual (Monthly Pro-rated) — budgeted/actual/variance/status per category (optional month, year, project_id); use for budget status, budget vs actual, over/under budget, and category spend vs budget questions instead of handbook RAG",
       "- get_outstanding_invoices / get_outstanding_payables: unpaid client invoices and supplier payables with aging",
       "- get_tax_ledger_status: open WHT/VAT/PAYE/SSNIT statutory balances",
       "- get_expense_breakdown: top expense categories (optional period: this_month, last_month, ytd)",
@@ -457,5 +481,6 @@ When asked about workspace data you cannot retrieve, explain politely that their
 export {
   getFinancialSummary,
   getBalanceSheetStatus,
+  getBudgetStatus,
   getPendingApprovals,
 };

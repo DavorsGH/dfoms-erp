@@ -13,10 +13,13 @@ import {
 import type { ProductSaleEntry } from "./crm/product-sales-utils";
 import { toSalesAnalysisRows } from "./dashboard-sales-analysis-utils";
 import type { SalesAnalysisRow } from "./dashboard-sales-analysis-utils";
+import type { BudgetVsActualReportData } from "./dashboard-budget-status-utils";
+import { fetchBudgetVsActualReportData } from "./reports/finance-report-data";
 import type { BalanceSheetIncomeEntry } from "./finance/balance-sheet-utils";
 
 export type DashboardPageData = BalanceSheetPageData & {
   salesAnalysisEntries: SalesAnalysisRow[];
+  budgetVsActualReportData: BudgetVsActualReportData;
   /** Supabase HTTP requests issued by this orchestrator (balance sheet loader + crm_sales). */
   supabaseRequestCount: number;
 };
@@ -92,12 +95,13 @@ export async function fetchDashboardPageData(
 ): Promise<DashboardPageData> {
   const requestCounter = options.requestCounter ?? { count: 0 };
 
-  const [balanceSheetData, { data: webhookSaleRows, error: webhookSaleError }] =
+  const [balanceSheetData, budgetVsActualReportData, { data: webhookSaleRows, error: webhookSaleError }] =
     await Promise.all([
       fetchBalanceSheetPageData(supabase, tenantId, {
         ...options,
         requestCounter,
       }),
+      fetchBudgetVsActualReportData(supabase),
       supabase
         .from("crm_sales")
         .select(CRM_WEBHOOK_SALE_SELECT)
@@ -114,8 +118,12 @@ export async function fetchDashboardPageData(
   return {
     ...balanceSheetData,
     salesAnalysisEntries,
+    budgetVsActualReportData,
     supabaseRequestCount: requestCounter.count,
     fetchError:
-      balanceSheetData.fetchError ?? webhookSaleError?.message ?? null,
+      balanceSheetData.fetchError ??
+      budgetVsActualReportData.fetchError ??
+      webhookSaleError?.message ??
+      null,
   };
 }

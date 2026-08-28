@@ -42,6 +42,9 @@ import type {
   SpendingAnalysisIncomeRow,
 } from "./dashboard-spending-analysis-utils";
 import type { SalesAnalysisRow } from "./dashboard-sales-analysis-utils";
+import type {
+  DashboardBudgetStatusSnapshot,
+} from "./dashboard-budget-status-utils";
 import { isActiveIncomeForReporting } from "./finance/income-register-utils";
 import type { TenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status-core";
 import { emptyTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status-core";
@@ -145,6 +148,7 @@ export type DashboardViewModel = {
   spendingAnalysisIncome: SpendingAnalysisIncomeRow[];
   spendingAnalysisExpenses: SpendingAnalysisExpenseRow[];
   salesAnalysisEntries: SalesAnalysisRow[];
+  budgetStatusByMonthKey: Record<string, DashboardBudgetStatusSnapshot>;
 };
 
 export type DashboardProfitTrendPoint = {
@@ -878,6 +882,7 @@ export function buildDashboardViewModel(input: {
     spendingAnalysisIncome: [],
     spendingAnalysisExpenses: [],
     salesAnalysisEntries: [],
+    budgetStatusByMonthKey: {},
   };
 }
 

@@ -4,6 +4,7 @@ import {
   toSpendingAnalysisIncomeRows,
 } from "@/app/dashboard/dashboard-spending-analysis-utils";
 import { buildDashboardViewModel, type DashboardViewModel } from "@/app/dashboard/dashboard-utils";
+import { buildDashboardBudgetStatusByMonthKey } from "@/app/dashboard/dashboard-budget-status-utils";
 import { countLowStockRawMaterials } from "@/app/dashboard/reports/inventory-reports-utils";
 
 /**
@@ -32,6 +33,7 @@ export function buildOwnerDashboardViewModel(
     initialInventoryBalanceSheet: inventoryBalanceSheetInput,
     initialTaxLedgerEntries: taxLedgerEntries,
     salesAnalysisEntries,
+    budgetVsActualReportData,
   } = dashboardPageData;
 
   const lowStockRawMaterialCount = countLowStockRawMaterials(
@@ -107,5 +109,9 @@ export function buildOwnerDashboardViewModel(
     spendingAnalysisIncome: toSpendingAnalysisIncomeRows(incomeEntries ?? []),
     spendingAnalysisExpenses: toSpendingAnalysisExpenseRows(expenseEntries ?? []),
     salesAnalysisEntries,
+    budgetStatusByMonthKey: buildDashboardBudgetStatusByMonthKey(
+      budgetVsActualReportData,
+      dashboardData.monthOptions,
+    ),
   };
 }
