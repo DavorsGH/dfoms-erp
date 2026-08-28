@@ -1,0 +1,23 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will error in a future major version of npm. See `npm help 
+npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\HP\AppData\Roaming\npm ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm notice run dfoms-erp-app@0.1.0 npx
+npm notice run tsx scripts/test-income-auto-lock-staging-browser.ts
+scenario=client_invoice invoice=DF-INV-0002 detector.autoPosted=true kind=client_invoice
+scenario=manual invoice=DF-INC-0002 detector.autoPosted=false kind=null
+scenario=platform_billing invoice=PSK-INC-69an7s19bb detector.autoPosted=true kind=platform_billing
+[FAIL] system_adjustment: No staging Davors row found for scenario system_adjustment
+[PASS] client_invoice: DF-INV-0002: Edit/Delete disabled; titles OK; click did not edit/delete. editTitle="Synced from a Client Invoice. Void or delete the Client Invoice instead ΓÇö editin├óΓé¼┬ª"
+[PASS] platform_billing: PSK-INC-69an7s19bb: Edit/Delete disabled; titles OK; click did not edit/delete. editTitle="Auto-posted from Platform Billing / Paystack. Manage the subscription charge at ├óΓé¼┬ª"
+[FAIL] manual: DF-INC-0002: Edit click did not show Edit Income Entry form
+
+=== SUMMARY ===
+FAIL	system_adjustment	No staging Davors row found for scenario system_adjustment
+PASS	client_invoice	DF-INV-0002: Edit/Delete disabled; titles OK; click did not edit/delete. editTitle="Synced from a Client Invoice. Void or delete the Client Invoice instead ΓÇö editin├óΓé¼┬ª"
+PASS	platform_billing	PSK-INC-69an7s19bb: Edit/Delete disabled; titles OK; click did not edit/delete. editTitle="Auto-posted from Platform Billing / Paystack. Manage the subscription charge at ├óΓé¼┬ª"
+FAIL	manual	DF-INC-0002: Edit click did not show Edit Income Entry form

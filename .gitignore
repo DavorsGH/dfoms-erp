@@ -48,3 +48,5 @@ tsc-output.txt
 # local backups / scratch archives - never commit
 backups/
 scripts.zip
+
+.next-bak-*/

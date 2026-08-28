@@ -44,6 +44,7 @@ export type ExpenseQueuePayload = {
   input_vat_amount: number;
   net_of_tax_amount: number;
   notes: string | null;
+  project_id?: string | null;
   /** Tax ledger fields for syncPurchaseTaxLedger replay. */
   wht_rate_pct: number | null;
   input_tax_component: "vat_bundle" | "vfrs" | null;

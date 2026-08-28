@@ -1,0 +1,100 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will error in a future major version of npm. See `npm help 
+npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\HP\AppData\Roaming\npm ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm notice run dfoms-erp-app@0.1.0 npx
+npm notice run tsx scripts/_probe-aug2026-imbalance-income-production-readonly.ts --env-file .env.local.backup 
+--allow-production --all-tenants
+
+=== August 2026 BS + income probe (read-only) ===
+Today filter: 2026-08-21
+
+
+======================================================================
+BROOK LANKS (d70beb5f-17af-4f44-b7a3-326a7d24ce6d)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Caanta Market (12df4ee6-3fd1-459f-8d5c-792b5d5b3821)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Contagion Ghana Limited (125e830a-cba7-4323-b75f-abec9cb04e72)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Contemporary TNT (55bd1d8a-3df0-4380-9148-17e446a0a373)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Davors Facilities (00000001-0000-4000-8000-000000000001)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Edits by noelle (d3840f8f-67e1-432b-8723-9ac99d22d298)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Get Knitted (bb6cb707-3eb0-4e03-bad1-601a506dc3a0)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Lavish Mayor Casual (aab9355c-4604-4e79-9e54-0364dacda521)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Mimshack-Glo-Ltd (dc7c89d4-df61-4ea5-b2ef-65ab6221c06e)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Mrs Esinam Ifeoma Anagbonu (089feb6c-d856-41c5-8111-63f811ad2287)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+NET+I ENGINEERING LIMITED (1a61a344-1c4b-477b-bc61-6ededcb2ab47)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Nextronics (da8b968e-dd42-48d5-93c5-a3147ff5de72)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+On-Site Supplies Africa Limited (1c9fd26d-1ef5-4493-90ff-2f733dbaed7a)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Paystack Live Test Co (2b7f91fb-c4a5-4292-9b25-43fe74733fa2)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+PlannedbyPoquah (8de86bfe-1411-4339-b080-e26fcaffaf5b)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+TechTalk (c4cc6678-170f-4810-b9f9-d444afd0ea18)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist
+
+======================================================================
+Wraphoria (8f40f84d-413a-460b-95fb-30efd93a5bfa)
+======================================================================
+ERROR: income_register query: column income_register.updated_at does not exist

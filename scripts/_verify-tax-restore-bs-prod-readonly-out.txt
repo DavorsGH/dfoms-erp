@@ -1,0 +1,58 @@
+=== Post-restore BS verification (PRODUCTION READ-ONLY) ===
+Connected via .env.local.backup
+Now UTC: 2026-08-25T13:19:12.407Z
+BEFORE (confirmed gap): Davors Jul=2615.06 Aug=5230.12
+
+A) Restored tax legs for DF-INV-0001/0004: 4
+{"source_id":"1b09a1e5-30d3-4b51-98b5-05bc4a2f470d","invoice_no":"DF-INV-0001","direction":"output","tax_component":"vat_bundle","tax_amount":"4184.09","entry_date":"2026-07-20","period_month":"2026-07-01","notes":"Invoice DF-INV-0001","created_at":"2026-08-25 13:12:48.945704+00"}
+{"source_id":"1b09a1e5-30d3-4b51-98b5-05bc4a2f470d","invoice_no":"DF-INV-0001","direction":"wht_receivable","tax_component":"wht","tax_amount":"1569.03","entry_date":"2026-07-20","period_month":"2026-07-01","notes":"Invoice DF-INV-0001","created_at":"2026-08-25 13:12:48.945704+00"}
+{"source_id":"fd539e43-29cd-4d08-9dd6-b2bb1fa53252","invoice_no":"DF-INV-0004","direction":"output","tax_component":"vat_bundle","tax_amount":"4184.09","entry_date":"2026-08-20","period_month":"2026-08-01","notes":"Invoice DF-INV-0004","created_at":"2026-08-25 13:12:48.945704+00"}
+{"source_id":"fd539e43-29cd-4d08-9dd6-b2bb1fa53252","invoice_no":"DF-INV-0004","direction":"wht_receivable","tax_component":"wht","tax_amount":"1569.03","entry_date":"2026-08-20","period_month":"2026-08-01","notes":"Invoice DF-INV-0004","created_at":"2026-08-25 13:12:48.945704+00"}
+
+B) Davors FY2026 Balance Sheet (live):
+  Jan  diff=      0.00 balanced=true
+  Feb  diff=      0.00 balanced=true
+  Mar  diff=      0.00 balanced=true
+  Apr  diff=      0.00 balanced=true
+  May  diff=      0.00 balanced=true
+  Jun  diff=      0.00 balanced=true
+  Jul  diff=      0.00 balanced=true ★ TARGET OK
+  Aug  diff=      0.00 balanced=true ★ TARGET OK
+  Sep  diff=      0.00 balanced=true
+  Oct  diff=      0.00 balanced=true
+  Nov  diff=      0.00 balanced=true
+  Dec  diff=      0.00 balanced=true
+  FULL_YEAR diff=0.00 balanced=true
+
+B2) BEFORE → AFTER (Davors focus months):
+  Jul: 2615.06 → 0.00  (closed=true)
+  Aug: 5230.12 → 0.00  (closed=true)
+
+C) Platform-wide FY2026 sweep (all tenants):
+Tenant count: 18
+  OK         BROOK LANKS                                Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Caanta Market                              Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Contagion Ghana Limited                    Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Contemporary TNT                           Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Davors Facilities                          Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Edits by noelle                            Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Get Knitted                                Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Lavish Mayor Casual                        Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Le Parisienne Bakery                       Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Mimshack-Glo-Ltd                           Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Mrs Esinam Ifeoma Anagbonu                 Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         NET+I ENGINEERING LIMITED                  Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Nextronics                                 Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         On-Site Supplies Africa Limited            Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Paystack Live Test Co                      Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         PlannedbyPoquah                            Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         TechTalk                                   Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+  OK         Wraphoria                                  Jul=0.00 Aug=0.00 FY=0.00 worst=-/0.00 months=[]
+
+Tenants with any FY2026 month imbalance / fetch error: 0
+
+D) Platform Client Invoice income with VAT/WHT > 0 but ZERO tax_ledger legs:
+Count: 0
+(none — no remaining same-class wipes across platform)
+
+=== END ===

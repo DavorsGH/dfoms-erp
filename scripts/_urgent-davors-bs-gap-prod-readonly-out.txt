@@ -1,0 +1,72 @@
+=== Davors BS investigation (PRODUCTION tvcurcnmasnocwdxzgvz) ===
+Tenant: 00000001-0000-4000-8000-000000000001
+Focus date: 2026-08-23
+
+--- 1) FY2026 month-by-month Balance Sheet check ---
+Jan          idx=0  diff=1260.02  assets=1260.02  L+E=0.00  balanced=false
+Feb          idx=1  diff=1260.02  assets=1260.02  L+E=0.00  balanced=false
+Mar          idx=2  diff=1260.02  assets=1260.02  L+E=0.00  balanced=false
+Apr          idx=3  diff=1260.02  assets=1260.02  L+E=0.00  balanced=false
+May          idx=4  diff=1260.02  assets=1260.02  L+E=0.00  balanced=false
+Jun          idx=5  diff=1260.02  assets=25732.65  L+E=24472.63  balanced=false
+Jul          idx=6  diff=1260.02  assets=55032.29  L+E=53772.27  balanced=false
+Aug          idx=7  diff=0.00  assets=92455.50  L+E=92455.50  balanced=true
+Sep          idx=8  diff=0.00  assets=92080.21  L+E=92080.21  balanced=true
+Oct          idx=9  diff=0.00  assets=91704.91  L+E=91704.91  balanced=true
+Nov          idx=10  diff=0.00  assets=91329.62  L+E=91329.62  balanced=true
+Dec          idx=11  diff=0.00  assets=90954.32  L+E=90954.32  balanced=true
+
+FULL_YEAR(idx12) diff=0.00 assets=90954.32 L+E=90954.32 balanced=true
+Dec vs FULL_YEAR gap (FULL_YEAR - Dec): 0.00
+Imbalanced months (abs>=0.01): 7
+Worst: Jan GHS 1260.02 (signed 1260.02)
+
+--- Inventory opening config ---
+{
+  "go_live_date": "2026-01-01",
+  "opening_inventory_value": 0,
+  "created_at": "2026-07-14T11:50:24.50935+00:00"
+}
+
+--- 2) Rows dated 2026-08-23 (Davors) ---
+income_register: ERROR column income_register.created_at does not exist
+expense_register: ERROR column expense_register.created_at does not exist
+manual_financial_entries: ERROR column manual_financial_entries.entry_date does not exist
+fixed_assets (date/created/updated): ERROR column fixed_assets.id does not exist
+stock_movements: ERROR column stock_movements.unit_cost does not exist
+product_purchases: 0 row(s)
+raw_material_purchases: 1 row(s)
+  {"id":"683e41e8-967e-48fa-a177-1e3cf468c489","purchase_date":"2026-08-23","total_cost":1000,"payment_method":"POS/VISA","created_at":"2026-08-23T16:15:27.840816+00:00"}
+production_batches: ERROR column production_batches.batch_date does not exist
+accounts_payable_payments: ERROR column accounts_payable_payments.payable_id does not exist
+directors_loan_repayments: ERROR column directors_loan_repayments.payment_date does not exist
+accounts_payable (touch): ERROR column accounts_payable.created_at does not exist
+
+--- 2b) Rows created_at/updated_at on 2026-08-23 (any business date) ---
+income_register created/updated: ERROR column income_register.created_at does not exist
+expense_register created/updated: ERROR column expense_register.created_at does not exist
+
+--- System-adjustment income (all) ---
+is_system_adjustment=true: ERROR column income_register.updated_at does not exist
+
+--- 3) Latest BS integrity cron rows (Davors) ---
+2026-08-24T04:00:53.323182+00:00 status=failure imbalanced=[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object] worst=1260.02 month=?
+  meta_keys=kind,runId,tenantId,durationMs,fetchError,fiscalYear,imbalances,maxAbsDiff,tenantName,monthsChecked,referenceDate
+  imbalances=[{"diff":1260.02,"monthIndex":0,"monthLabel":"Jan 2026","totalAssets":1260.02,"totalLiabilitiesAndEquity":0},{"diff":1260.02,"monthIndex":1,"monthLabel":"Feb 2026","totalAssets":1260.02,"totalLiabilitiesAndEquity":0},{"diff":1260.02,"monthIndex":2,"monthLabel":"Mar 2026","totalAssets":1260.02,"totalLiabilitiesAndEquity":0},{"diff":1260.02,"monthIndex":3,"monthLabel":"Apr 2026","totalAssets":1260.02,"totalLiabilitiesAndEquity":0},{"diff":1260.02,"monthIndex":4,"monthLabel":"May 2026","totalAssets":1260.02,"totalLiabilitiesAndEquity":0},{"diff":1260.02,"monthIndex":5,"monthLabel":"Jun 2026","totalAssets":25732.65,"totalLiabilitiesAndEquity":24472.63},{"diff":1260.02,"monthIndex":6,"monthLabel":"Jul 2026","totalAssets":55032.29,"totalLiabilitiesAndEquity":53772.27}]
+2026-08-23T04:03:19.899901+00:00 status=success imbalanced= worst=0 month=?
+  meta_keys=kind,runId,tenantId,durationMs,fetchError,fiscalYear,imbalances,maxAbsDiff,tenantName,monthsChecked,referenceDate
+  imbalances=[]
+2026-08-22T04:01:27.307174+00:00 status=success imbalanced= worst=0 month=?
+  meta_keys=kind,runId,tenantId,durationMs,fetchError,fiscalYear,imbalances,maxAbsDiff,tenantName,monthsChecked,referenceDate
+  imbalances=[]
+2026-08-21T04:01:29.184972+00:00 status=success imbalanced= worst=0 month=?
+  meta_keys=kind,runId,tenantId,durationMs,fetchError,fiscalYear,imbalances,maxAbsDiff,tenantName,monthsChecked,referenceDate
+  imbalances=[]
+2026-08-20T04:01:20.969989+00:00 status=success imbalanced= worst=0 month=?
+  meta_keys=kind,runId,tenantId,durationMs,fetchError,fiscalYear,imbalances,maxAbsDiff,tenantName,monthsChecked,referenceDate
+  imbalances=[]
+
+--- 3b) Platform-wide FY2026 live sweep (imbalanced tenants only) ---
+Tenants with any monthly/FY gap: 2
+  On-Site Supplies Africa Limited: months=1 worst=Jul 350000.00 Dec=0.00 FY=0.00 id=1c9fd26d-1ef5-4493-90ff-2f733dbaed7a
+  Davors Facilities: months=7 worst=Jan 1260.02 Dec=0.00 FY=0.00 id=00000001-0000-4000-8000-000000000001

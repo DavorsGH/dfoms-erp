@@ -34,6 +34,11 @@ export type ContractProjectOption = {
   is_archived?: boolean;
 };
 
+export function resolveOptionalProjectId(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function normalizeProjectEntry(raw: ProjectEntry): ProjectEntry {
   const sites = Array.isArray(raw.sites)
     ? raw.sites.map((site) => ({

@@ -36,11 +36,16 @@ import {
 } from "./raw-materials-utils";
 import { isRawMaterialLowStock } from "../reports/inventory-reports-utils";
 import type { NamedLookup } from "../lookup-types";
+import {
+  resolveOptionalProjectId,
+  type ContractProjectOption,
+} from "../administration/projects-utils";
 
 type RawMaterialsProps = {
   initialMaterials: RawMaterialRecord[];
   initialPurchases: RawMaterialPurchaseRecord[];
   initialPaymentMethods: NamedLookup[];
+  initialProjects: ContractProjectOption[];
   fetchError: string | null;
   readOnly?: boolean;
 };
@@ -60,12 +65,14 @@ const emptyPurchaseForm = {
   supplier: "",
   payment_method: "",
   notes: "",
+  project_id: "",
 };
 
 export default function RawMaterials({
   initialMaterials,
   initialPurchases,
   initialPaymentMethods,
+  initialProjects,
   fetchError,
   readOnly = false,
 }: RawMaterialsProps) {
@@ -296,6 +303,7 @@ export default function RawMaterials({
       supplier: purchase.supplier ?? "",
       payment_method: purchase.payment_method ?? "",
       notes: purchase.notes ?? "",
+      project_id: purchase.project_id ?? "",
     });
     setShowPurchaseForm(false);
   }
@@ -355,6 +363,19 @@ export default function RawMaterials({
 
     if (updateError) {
       setError(updateError.message);
+      setLoading(false);
+      return;
+    }
+
+    const { error: projectUpdateError } = await supabase
+      .from("raw_material_purchases")
+      .update({
+        project_id: resolveOptionalProjectId(purchaseEditForm.project_id),
+      })
+      .eq("id", editingPurchaseId);
+
+    if (projectUpdateError) {
+      setError(projectUpdateError.message);
       setLoading(false);
       return;
     }
@@ -434,6 +455,7 @@ export default function RawMaterials({
         supplier: nullableText(purchaseForm.supplier),
         payment_method: purchaseForm.payment_method.trim(),
         notes: nullableText(purchaseForm.notes),
+        project_id: resolveOptionalProjectId(purchaseForm.project_id),
       });
 
     if (insertError) {
@@ -757,6 +779,29 @@ export default function RawMaterials({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Project / Contract
+                </label>
+                <select
+                  value={purchaseForm.project_id}
+                  onChange={(event) =>
+                    setPurchaseForm((current) => ({
+                      ...current,
+                      project_id: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                >
+                  <option value="">Unassigned</option>
+                  {initialProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.project_code} — {project.project_name}
+                      {project.is_archived ? " (Inactive)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
                   Supplier
                 </label>
                 <input
@@ -944,6 +989,29 @@ export default function RawMaterials({
                   {paymentMethods.map((method) => (
                     <option key={method.name} value={method.name}>
                       {method.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Project / Contract
+                </label>
+                <select
+                  value={purchaseEditForm.project_id}
+                  onChange={(event) =>
+                    setPurchaseEditForm((current) => ({
+                      ...current,
+                      project_id: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                >
+                  <option value="">Unassigned</option>
+                  {initialProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.project_code} — {project.project_name}
+                      {project.is_archived ? " (Inactive)" : ""}
                     </option>
                   ))}
                 </select>

@@ -18,6 +18,7 @@ export type ExpenseRegisterEntry = {
   wht_rate?: number | null;
   wht_amount?: number | null;
   gross_before_wht?: number | null;
+  project_id?: string | null;
 };
 
 /** Manual expense receipts use generate_next_code(..., 'EXP', 4). */

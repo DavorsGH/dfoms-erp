@@ -29,6 +29,19 @@ import {
   normalizeIncomeRegisterEntry,
   type IncomeRegisterEntry,
 } from "../finance/income-register-utils";
+import {
+  CONTRACT_PROJECT_SELECT,
+  type ContractProjectOption,
+} from "../administration/projects-utils";
+import {
+  normalizeBudgetRecord,
+  type BudgetRecord,
+} from "../finance/budget-utils";
+import type {
+  BudgetActualExpenseEntry,
+  BudgetActualInventoryPurchaseEntry,
+  BudgetActualPayrollRow,
+} from "./budget-vs-actual-utils";
 
 export async function fetchMonthlyPlReportData(supabase: SupabaseClient) {
   const [
@@ -286,5 +299,109 @@ export async function fetchExpenseReportData(supabase: SupabaseClient) {
       [],
     ),
     fetchError: error?.message ?? null,
+  };
+}
+
+export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
+  const tenantId = await getCurrentUserTenantId();
+  if (!tenantId) {
+    return {
+      initialBudgets: [] as BudgetRecord[],
+      initialExpenses: [] as BudgetActualExpenseEntry[],
+      initialRawMaterialPurchases: [] as BudgetActualInventoryPurchaseEntry[],
+      initialProductPurchases: [] as BudgetActualInventoryPurchaseEntry[],
+      initialPayrollRows: [] as BudgetActualPayrollRow[],
+      initialProjects: [] as ContractProjectOption[],
+      availableYears: buildAvailableYears([], []),
+      fetchError: "Unable to resolve tenant for Budget vs Actual report.",
+    };
+  }
+
+  const [
+    { data: budgets, error: budgetsError },
+    { data: expenses, error: expensesError },
+    { data: rawMaterialPurchases, error: rawMaterialPurchasesError },
+    { data: productPurchases, error: productPurchasesError },
+    { data: payrollHistory, error: payrollHistoryError },
+    { data: payrollProcessing, error: payrollProcessingError },
+    { data: projects, error: projectsError },
+  ] = await Promise.all([
+    supabase
+      .from("budgets")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .order("period_month", { ascending: true }),
+    supabase
+      .from("expense_register")
+      .select("date, expense_category, amount, project_id")
+      .eq("tenant_id", tenantId)
+      .order("date", { ascending: true }),
+    supabase
+      .from("raw_material_purchases")
+      .select("purchase_date, total_cost, project_id")
+      .order("purchase_date", { ascending: true }),
+    supabase
+      .from("product_purchases")
+      .select("purchase_date, total_cost, project_id")
+      .eq("tenant_id", tenantId)
+      .order("purchase_date", { ascending: true }),
+    supabase
+      .from("payroll_history")
+      .select("payroll_month, gross_pay, project_contract")
+      .eq("tenant_id", tenantId)
+      .order("payroll_month", { ascending: true }),
+    supabase
+      .from("payroll_processing")
+      .select("payroll_month, gross_pay, project_contract")
+      .eq("tenant_id", tenantId)
+      .order("payroll_month", { ascending: true }),
+    supabase
+      .from("projects")
+      .select(CONTRACT_PROJECT_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("project_name", { ascending: true }),
+  ]);
+
+  const payrollRows: BudgetActualPayrollRow[] = [
+    ...((payrollHistory as BudgetActualPayrollRow[] | null) ?? []),
+    ...((payrollProcessing as BudgetActualPayrollRow[] | null) ?? []),
+  ].map((row) => ({
+    payroll_month: row.payroll_month,
+    gross_pay: Number(row.gross_pay) || 0,
+    project_contract: row.project_contract,
+  }));
+
+  const normalizedBudgets =
+    ((budgets as BudgetRecord[] | null) ?? []).map(normalizeBudgetRecord);
+
+  return {
+    initialBudgets: normalizedBudgets,
+    initialExpenses: (expenses as BudgetActualExpenseEntry[] | null) ?? [],
+    initialRawMaterialPurchases:
+      (rawMaterialPurchases as BudgetActualInventoryPurchaseEntry[] | null) ??
+      [],
+    initialProductPurchases:
+      (productPurchases as BudgetActualInventoryPurchaseEntry[] | null) ?? [],
+    initialPayrollRows: payrollRows,
+    initialProjects: (projects as ContractProjectOption[] | null) ?? [],
+    availableYears: buildAvailableYears(
+      (expenses ?? []).map((entry) => entry.date),
+      [],
+      [
+        ...normalizedBudgets.map((entry) => entry.period_month),
+        ...payrollRows.map((entry) => entry.payroll_month),
+        ...(rawMaterialPurchases ?? []).map((entry) => entry.purchase_date),
+        ...(productPurchases ?? []).map((entry) => entry.purchase_date),
+      ],
+    ),
+    fetchError:
+      budgetsError?.message ??
+      expensesError?.message ??
+      rawMaterialPurchasesError?.message ??
+      productPurchasesError?.message ??
+      payrollHistoryError?.message ??
+      payrollProcessingError?.message ??
+      projectsError?.message ??
+      null,
   };
 }

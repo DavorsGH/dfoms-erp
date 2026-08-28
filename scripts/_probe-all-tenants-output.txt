@@ -1,0 +1,98 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will error in a future major version of npm. See `npm help 
+npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\HP\AppData\Roaming\npm ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm notice run dfoms-erp-app@0.1.0 npx
+npm notice run tsx scripts/_probe-all-tenants-aug2026-bs-readonly.ts
+
+=== All tenants August 2026 ===
+
+Caanta Market (12df4ee6-3fd1-459f-8d5c-792b5d5b3821) 
+  Aug income sum: GHS 10.00 (2 rows) 
+  Dashboard totalRevenue: GHS 10.00 
+  BS: Assets=-17.00 L+E=-17.00 diff=0.00 BALANCED
+
+Contemporary TNT (55bd1d8a-3df0-4380-9148-17e446a0a373) 
+  Aug income sum: GHS 3848.00 (1 rows) 
+  Dashboard totalRevenue: GHS 3848.00 
+  BS: Assets=3848.00 L+E=3848.00 diff=0.00 BALANCED
+
+Davors Facilities (00000001-0000-4000-8000-000000000001) 
+  Aug income sum: GHS 36114.22 (4 rows) 
+  Dashboard totalRevenue: GHS 36114.22 
+  BS: Assets=92518.00 L+E=92518.00 diff=0.00 BALANCED
+
+Lavish Mayor Casual (aab9355c-4604-4e79-9e54-0364dacda521) 
+  Aug income sum: GHS 600.00 (1 rows) 
+  Dashboard totalRevenue: GHS 600.00 
+  BS: Assets=400.00 L+E=400.00 diff=0.00 BALANCED
+
+Mimshack-Glo-Ltd (dc7c89d4-df61-4ea5-b2ef-65ab6221c06e) 
+  Aug income sum: GHS 1500.00 (1 rows) 
+  Dashboard totalRevenue: GHS 1500.00 
+  BS: Assets=4500.00 L+E=4500.00 diff=0.00 BALANCED
+
+Nextronics (da8b968e-dd42-48d5-93c5-a3147ff5de72) 
+  Aug income sum: GHS 7970.00 (7 rows) 
+  Dashboard totalRevenue: GHS 7970.00 
+  BS: Assets=2960.00 L+E=2960.00 diff=0.00 BALANCED
+
+On-Site Supplies Africa Limited (1c9fd26d-1ef5-4493-90ff-2f733dbaed7a) 
+  Aug income sum: GHS 1500000.00 (2 rows) 
+  Dashboard totalRevenue: GHS 3000000.00 
+  BS: Assets=450000.00 L+E=450000.00 diff=0.00 BALANCED
+
+PlannedbyPoquah (8de86bfe-1411-4339-b080-e26fcaffaf5b) 
+  Aug income sum: GHS 23500.00 (1 rows) 
+  Dashboard totalRevenue: GHS 23500.00 
+  BS: Assets=23500.00 L+E=23500.00 diff=0.00 BALANCED
+
+
+=== Tax ledger income links created today ===
+
+=== Income voided today ===
+[]
+
+=== Client invoices Aug updated/created today ===
+{
+  "invoice": {
+    "id": "0a221a97-4125-4fda-8741-d40dfd2db240",
+    "tenant_id": "00000001-0000-4000-8000-000000000001",
+    "client_id": "CL-001",
+    "invoice_number": "DF-INV-0003",
+    "invoice_sequence": 3,
+    "invoice_date": "2026-08-21",
+    "due_date": "2026-08-21",
+    "billing_period_start": "2026-06-15",
+    "billing_period_end": "2028-06-14",
+    "bill_to_name": "Central University",
+    "bill_to_address": "Central University, Miotso, Ghana",
+    "bill_to_phone": "0303251478",
+    "subtotal": 31825.14,
+    "vat_nhil_getfund_rate": 20,
+    "tax_due": 4184.08,
+    "wht_rate": 7.5,
+    "wht_amount": 1569.03,
+    "total_amount_due": 36009.22,
+    "status": "sent",
+    "notes": "Generated from service contract DF-SC-0001. Payment is due within 30 days. Please include the invoice number on your payment.",
+    "created_at": "2026-08-21T05:00:30.509682+00:00",
+    "updated_at": "2026-08-21T19:29:32.996+00:00",
+    "amount_received": 0,
+    "authorized_by_name": null,
+    "authorized_by_title": null,
+    "sales_rep_id": null,
+    "contract_id": "72736a11-e690-4d3f-a618-2598a96ca051",
+    "tenant": {
+      "name": "Davors Facilities"
+    }
+  },
+  "income": []
+}
+
+=== Mis-shaped is_system_adjustment rows (any date) ===
+[]

@@ -192,6 +192,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const { error: projectUpdateError } = await supabase
+    .from("product_purchases")
+    .update({ project_id: trimmed.project_id })
+    .eq("id", resolvedPurchaseId)
+    .eq("tenant_id", auth.tenantId);
+
+  if (projectUpdateError) {
+    return NextResponse.json({ error: projectUpdateError.message }, { status: 400 });
+  }
+
   const { data, error } = await supabase
     .from("product_purchases")
     .select(PRODUCT_PURCHASE_LIST_SELECT)

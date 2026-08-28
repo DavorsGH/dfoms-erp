@@ -1,5 +1,5 @@
 export const PRODUCT_PURCHASE_LIST_SELECT =
-  "id, product_id, purchase_date, quantity, cost_per_unit, total_cost, supplier_id, payment_method, notes, created_at, tenant_id, product:finished_products!product_id(product_code, product_name, unit_of_measure), supplier:suppliers!supplier_id(name)" as const;
+  "id, product_id, purchase_date, quantity, cost_per_unit, total_cost, supplier_id, payment_method, notes, project_id, created_at, tenant_id, product:finished_products!product_id(product_code, product_name, unit_of_measure), supplier:suppliers!supplier_id(name)" as const;
 
 export const PURCHASED_PRODUCT_SELECT =
   "id, product_code, product_name, unit_of_measure, sourcing_type" as const;
@@ -32,6 +32,7 @@ export type ProductPurchaseListRow = {
   supplier_id: string | null;
   payment_method: string;
   notes: string | null;
+  project_id?: string | null;
   created_at: string;
   tenant_id: string;
   product?: ProductPurchaseProduct | null;
@@ -50,6 +51,7 @@ export type ProductPurchaseWriteBody = {
   expiration_date?: string | null;
   po_id?: string | null;
   po_item_id?: string | null;
+  project_id?: string | null;
 };
 
 export function emptyProductPurchaseForm() {
@@ -63,6 +65,7 @@ export function emptyProductPurchaseForm() {
     notes: "",
     manufacturing_date: "",
     expiration_date: "",
+    project_id: "",
   };
 }
 
@@ -123,6 +126,7 @@ export function trimProductPurchaseInput(body: ProductPurchaseWriteBody) {
     expiration_date: (body.expiration_date ?? "").trim() || null,
     po_id: (body.po_id ?? "").trim() || null,
     po_item_id: (body.po_item_id ?? "").trim() || null,
+    project_id: (body.project_id ?? "").trim() || null,
   };
 }
 

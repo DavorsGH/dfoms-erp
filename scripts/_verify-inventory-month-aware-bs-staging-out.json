@@ -1,0 +1,489 @@
+{
+  "refDate": "2026-08-24T12:00:00.000Z",
+  "davors": {
+    "label": "Davors Facilities",
+    "tenantId": "00000001-0000-4000-8000-000000000001",
+    "goLive": "2026-01-01",
+    "openingEquity": 0,
+    "liveValue": 0,
+    "historyAsOfToday": 0,
+    "liveVsHistoryGap": 0,
+    "fetchMs": 2173,
+    "historyCounts": {
+      "fpInflows": 0,
+      "fpCogs": 8,
+      "rmPurchases": 0,
+      "rmConsumptions": 0
+    },
+    "months": [
+      {
+        "month": "Jan",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Feb",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Mar",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Apr",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "May",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Jun",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Jul",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Aug",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 36.9,
+        "balanced": false
+      },
+      {
+        "month": "Sep",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 36.9,
+        "balanced": false
+      },
+      {
+        "month": "Oct",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 36.9,
+        "balanced": false
+      },
+      {
+        "month": "Nov",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 36.9,
+        "balanced": false
+      },
+      {
+        "month": "Dec",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 36.9,
+        "balanced": false
+      }
+    ],
+    "fullYearDiff": 36.9,
+    "decemberDiff": 36.9,
+    "fullYearMatchesDecember": true,
+    "imbalancedMonths": [
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
+    ]
+  },
+  "caanta": {
+    "label": "Caanta Market",
+    "tenantId": "61e8e5d9-9cdb-4b8d-9e44-ed0acc23d87b",
+    "goLive": "2026-01-01",
+    "openingEquity": 0,
+    "liveValue": 27,
+    "historyAsOfToday": 27,
+    "liveVsHistoryGap": 0,
+    "fetchMs": 376,
+    "historyCounts": {
+      "fpInflows": 0,
+      "fpCogs": 0,
+      "rmPurchases": 2,
+      "rmConsumptions": 0
+    },
+    "months": [
+      {
+        "month": "Jan",
+        "legacyInv": 27,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Feb",
+        "legacyInv": 27,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Mar",
+        "legacyInv": 27,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Apr",
+        "legacyInv": 27,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "May",
+        "legacyInv": 27,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Jun",
+        "legacyInv": 27,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Jul",
+        "legacyInv": 27,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Aug",
+        "legacyInv": 27,
+        "newInv": 27,
+        "bsInventory": 27,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Sep",
+        "legacyInv": 27,
+        "newInv": 27,
+        "bsInventory": 27,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Oct",
+        "legacyInv": 27,
+        "newInv": 27,
+        "bsInventory": 27,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Nov",
+        "legacyInv": 27,
+        "newInv": 27,
+        "bsInventory": 27,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Dec",
+        "legacyInv": 27,
+        "newInv": 27,
+        "bsInventory": 27,
+        "diff": 0,
+        "balanced": true
+      }
+    ],
+    "fullYearDiff": 0,
+    "decemberDiff": 0,
+    "fullYearMatchesDecember": true,
+    "imbalancedMonths": []
+  },
+  "details": [
+    {
+      "label": "Davors Facilities",
+      "tenantId": "00000001-0000-4000-8000-000000000001",
+      "goLive": "2026-01-01",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 2173,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 8,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 36.9,
+          "balanced": false
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 36.9,
+          "balanced": false
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 36.9,
+          "balanced": false
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 36.9,
+          "balanced": false
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 36.9,
+          "balanced": false
+        }
+      ],
+      "fullYearDiff": 36.9,
+      "decemberDiff": 36.9,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": [
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec"
+      ]
+    },
+    {
+      "label": "Caanta Market",
+      "tenantId": "61e8e5d9-9cdb-4b8d-9e44-ed0acc23d87b",
+      "goLive": "2026-01-01",
+      "openingEquity": 0,
+      "liveValue": 27,
+      "historyAsOfToday": 27,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 376,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 2,
+        "rmConsumptions": 0
+      },
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 27,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 27,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 27,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 27,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 27,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 27,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 27,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 27,
+          "newInv": 27,
+          "bsInventory": 27,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 27,
+          "newInv": 27,
+          "bsInventory": 27,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 27,
+          "newInv": 27,
+          "bsInventory": 27,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 27,
+          "newInv": 27,
+          "bsInventory": 27,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 27,
+          "newInv": 27,
+          "bsInventory": 27,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    }
+  ]
+}

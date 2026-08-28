@@ -30,12 +30,14 @@ import {
   type PurchasedProductOption,
 } from "@/utils/product-purchases-types";
 import type { SupplierRow } from "@/utils/suppliers-types";
+import type { ContractProjectOption } from "../administration/projects-utils";
 
 type ProductPurchasesProps = {
   initialPurchases: ProductPurchaseListRow[];
   initialProducts: PurchasedProductOption[];
   initialSuppliers: SupplierRow[];
   initialPaymentMethods: NamedLookup[];
+  initialProjects: ContractProjectOption[];
   fetchError: string | null;
   readOnly?: boolean;
 };
@@ -56,6 +58,7 @@ export default function ProductPurchases({
   initialProducts,
   initialSuppliers,
   initialPaymentMethods,
+  initialProjects,
   fetchError,
   readOnly = false,
 }: ProductPurchasesProps) {
@@ -128,6 +131,7 @@ export default function ProductPurchases({
       notes: purchase.notes ?? "",
       manufacturing_date: "",
       expiration_date: "",
+      project_id: purchase.project_id ?? "",
     });
     setModalOpen(true);
     setError(null);
@@ -477,6 +481,30 @@ export default function ProductPurchases({
                   {suppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Project / Contract
+                </label>
+                <select
+                  value={form.project_id}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      project_id: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                >
+                  <option value="">Unassigned</option>
+                  {initialProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.project_code} — {project.project_name}
+                      {project.is_archived ? " (Inactive)" : ""}
                     </option>
                   ))}
                 </select>

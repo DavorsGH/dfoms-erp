@@ -27,6 +27,26 @@ function formatMoneyLabel(value: number): string {
   })}`;
 }
 
+/** Customer-facing payment-received SMS body (Issue A tenant branding). */
+export function buildProductSalePaymentReceivedCustomerSms(options: {
+  tenantName: string;
+  amountReceivedLabel: string;
+  invoiceNo: string;
+  outstandingLabel: string;
+}): string {
+  return `${options.tenantName}: Payment of ${options.amountReceivedLabel} received for invoice ${options.invoiceNo}. Balance: ${options.outstandingLabel}.`;
+}
+
+export function formatProductSalePaymentSmsMoney(value: number): string {
+  return formatMoneyLabel(value);
+}
+
+export function formatProductSalePaymentOutstandingLabel(
+  outstanding: number,
+): string {
+  return formatOutstandingLabel(outstanding);
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -145,7 +165,12 @@ ${options.paymentReference ? `<p>Reference: ${escapeHtml(options.paymentReferenc
   if (phone) {
     const creditOk = await tryDebitSmsCredit(options.tenantId);
     if (creditOk) {
-      const sms = `${options.tenantName}: Payment of ${options.amountReceivedLabel} received for invoice ${options.invoiceNo}. Balance: ${options.outstandingLabel}.`;
+      const sms = buildProductSalePaymentReceivedCustomerSms({
+        tenantName: options.tenantName,
+        amountReceivedLabel: options.amountReceivedLabel,
+        invoiceNo: options.invoiceNo,
+        outstandingLabel: options.outstandingLabel,
+      });
       const result = await sendHubtelSms({
         to: phone,
         content: sms,

@@ -1,0 +1,20 @@
+=== Auto-income delete asymmetry probe (PRODUCTION READ-ONLY) ===
+Now UTC: 2026-08-25T12:16:47.184Z
+
+A) Non-draft/non-voided client_invoices with NO income_register match: 0
+
+A-Davors) client_invoices missing income_register: 0
+
+C) Client Invoice income_register with NO client_invoices row: 0
+
+D) Davors Client Invoice income with output VAT + tax leg count:
+  {"invoice_no":"DF-INV-0002","date":"2026-06-30","output_vat_amount":"2092.04","wht_amount":"784.52","linked":true,"tax_leg_count":2}
+  {"invoice_no":"DF-INV-0001","date":"2026-07-20","output_vat_amount":"4184.09","wht_amount":"1569.03","linked":true,"tax_leg_count":0}
+  {"invoice_no":"DF-INV-0004","date":"2026-08-20","output_vat_amount":"4184.09","wht_amount":"1569.03","linked":true,"tax_leg_count":0}
+
+E) Platform Billing / PSK-INC income counts by tenant:
+  {"name":"Davors Facilities","n":3,"min_date":"2026-08-07","max_date":"2026-08-15"}
+
+=== NOTE ===
+Postgres has no row-level delete audit. 'Direct delete' is inferred when client_invoices exists without income, or tax legs vanish while income remains.
+=== END ===

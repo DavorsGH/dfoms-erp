@@ -18,6 +18,10 @@ import {
   type TaxSettings,
 } from "../tax-utils";
 import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
+import {
+  CONTRACT_PROJECT_SELECT,
+  type ContractProjectOption,
+} from "../../administration/projects-utils";
 
 export default async function ExpensesPage() {
   const tenantId = await getCurrentUserTenantId();
@@ -33,6 +37,7 @@ export default async function ExpensesPage() {
     { data: suppliers, error: suppliersError },
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
+    { data: projects, error: projectsError },
   ] = await Promise.all([
     supabase
       .from("expense_register")
@@ -65,6 +70,13 @@ export default async function ExpensesPage() {
       .select(TAX_RATE_CATALOG_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
+    tenantId
+      ? supabase
+          .from("projects")
+          .select(CONTRACT_PROJECT_SELECT)
+          .eq("tenant_id", tenantId)
+          .order("project_name", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const fetchError =
@@ -76,6 +88,7 @@ export default async function ExpensesPage() {
     suppliersError?.message ??
     taxSettingsError?.message ??
     taxRateCatalogError?.message ??
+    projectsError?.message ??
     null;
 
   return (
@@ -104,6 +117,7 @@ export default async function ExpensesPage() {
             normalizeTaxRateCatalogEntry(entry),
           ) ?? []
         }
+        initialProjects={(projects as ContractProjectOption[] | null) ?? []}
         fetchError={fetchError}
       />
     </div>

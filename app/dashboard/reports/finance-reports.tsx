@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import { getStripedRowClassName } from "../finance/register-row-actions";
@@ -28,6 +28,22 @@ import {
   type ProfitLossIncomeEntry,
 } from "../finance/profit-loss-utils";
 import type { IncomeRegisterEntry } from "../finance/income-register-utils";
+import type { ContractProjectOption } from "../administration/projects-utils";
+import type { BudgetRecord } from "../finance/budget-utils";
+import { inputClassName } from "../employees/employee-record-utils";
+import {
+  ALL_PROJECTS_FILTER,
+  BUDGET_VS_ACTUAL_VIEW_OPTIONS,
+  buildBudgetVsActualReport,
+  budgetHealthStatusClassName,
+  budgetHealthStatusLabel,
+  formatBudgetVsActualViewPeriodLabel,
+  sumBudgetVsActualTotals,
+  type BudgetActualExpenseEntry,
+  type BudgetActualInventoryPurchaseEntry,
+  type BudgetActualPayrollRow,
+  type BudgetVsActualViewMode,
+} from "./budget-vs-actual-utils";
 import type {
   BalanceSheetAccountsPayableEntry,
   BalanceSheetIncomeEntry,
@@ -1232,6 +1248,321 @@ export function ExpenseReport({
             </div>
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+export function BudgetVsActualReport({
+  initialBudgets,
+  initialExpenses,
+  initialRawMaterialPurchases,
+  initialProductPurchases,
+  initialPayrollRows,
+  initialProjects,
+  availableYears,
+  fetchError,
+}: {
+  initialBudgets: BudgetRecord[];
+  initialExpenses: BudgetActualExpenseEntry[];
+  initialRawMaterialPurchases: BudgetActualInventoryPurchaseEntry[];
+  initialProductPurchases: BudgetActualInventoryPurchaseEntry[];
+  initialPayrollRows: BudgetActualPayrollRow[];
+  initialProjects: ContractProjectOption[];
+  availableYears: number[];
+  fetchError: string | null;
+}) {
+  const { year, month, setYear, setMonth, monthIndex } =
+    useMonthYearSelection(availableYears);
+  const [projectFilter, setProjectFilter] = useState(ALL_PROJECTS_FILTER);
+  const [viewMode, setViewMode] =
+    useState<BudgetVsActualViewMode>("monthly-prorated");
+
+  const report = useMemo(
+    () =>
+      buildBudgetVsActualReport({
+        viewMode,
+        budgets: initialBudgets,
+        expenses: initialExpenses,
+        rawMaterialPurchases: initialRawMaterialPurchases,
+        productPurchases: initialProductPurchases,
+        payrollRows: initialPayrollRows,
+        projects: initialProjects,
+        year,
+        month,
+        monthIndex,
+        projectFilter,
+      }),
+    [
+      viewMode,
+      initialBudgets,
+      initialExpenses,
+      initialRawMaterialPurchases,
+      initialProductPurchases,
+      initialPayrollRows,
+      initialProjects,
+      year,
+      month,
+      monthIndex,
+      projectFilter,
+    ],
+  );
+
+  const periodLabel = formatBudgetVsActualViewPeriodLabel({
+    viewMode,
+    year,
+    month,
+  });
+
+  const projectLabel =
+    projectFilter === ALL_PROJECTS_FILTER
+      ? "All projects (company-wide + per-project)"
+      : (() => {
+          const project = initialProjects.find((entry) => entry.id === projectFilter);
+          if (!project) {
+            return "Selected project";
+          }
+
+          return `${project.project_code} — ${project.project_name}`;
+        })();
+
+  const totals = useMemo(() => sumBudgetVsActualTotals(report), [report]);
+
+  const viewModeLabel =
+    BUDGET_VS_ACTUAL_VIEW_OPTIONS.find((option) => option.value === viewMode)
+      ?.label ?? viewMode;
+
+  function exportCsv() {
+    const periodSlug =
+      viewMode === "annual"
+        ? `${year}-annual`
+        : `${year}-${String(month).padStart(2, "0")}-${viewMode}`;
+
+    downloadCsv(
+      `budget-vs-actual-${periodSlug}.csv`,
+      [
+        "Category",
+        "Budgeted",
+        "Actual",
+        "Variance (GHS)",
+        "Variance (%)",
+        "Remaining",
+        "Status",
+      ],
+      [
+        ...report.map((row) => [
+          row.rowLabel,
+          row.budgeted,
+          row.actual,
+          row.variance,
+          row.variancePercent ?? "",
+          row.remaining,
+          budgetHealthStatusLabel(row.status),
+        ]),
+        [
+          "TOTAL",
+          totals.budgeted,
+          totals.actual,
+          totals.variance,
+          totals.budgeted > 0
+            ? Math.round((totals.variance / totals.budgeted) * 10000) / 100
+            : "",
+          totals.remaining,
+          "",
+        ],
+      ],
+    );
+  }
+
+  function formatVariancePercent(value: number | null): string {
+    if (value === null) {
+      return "—";
+    }
+
+    const prefix = value > 0 ? "+" : "";
+    return `${prefix}${value.toLocaleString("en-GH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}%`;
+  }
+
+  return (
+    <div className="space-y-6">
+      <ReportPrintStyles />
+      <ReportActionBar
+        onPrint={handleReportPrint}
+        onExportCsv={exportCsv}
+        exportDisabled={report.length === 0}
+      >
+        <div className="min-w-[220px]">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            View
+          </label>
+          <select
+            value={viewMode}
+            onChange={(event) =>
+              setViewMode(event.target.value as BudgetVsActualViewMode)
+            }
+            className={inputClassName}
+          >
+            {BUDGET_VS_ACTUAL_VIEW_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {viewMode !== "annual" ? (
+          <ReportMonthYearSelector
+            year={year}
+            month={month}
+            availableYears={availableYears}
+            onYearChange={setYear}
+            onMonthChange={setMonth}
+          />
+        ) : (
+          <div className="min-w-[160px]">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Year
+            </label>
+            <select
+              value={year}
+              onChange={(event) => setYear(Number(event.target.value))}
+              className={inputClassName}
+            >
+              {availableYears.map((optionYear) => (
+                <option key={optionYear} value={optionYear}>
+                  {optionYear}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div className="min-w-[240px]">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Project / Contract
+          </label>
+          <select
+            value={projectFilter}
+            onChange={(event) => setProjectFilter(event.target.value)}
+            className={inputClassName}
+          >
+            <option value={ALL_PROJECTS_FILTER}>All</option>
+            {initialProjects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.project_code} — {project.project_name}
+                {project.is_archived ? " (Inactive)" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      </ReportActionBar>
+      <ReportFetchError fetchError={fetchError} />
+      <div
+        id={FINANCE_REPORT_PRINT_AREA_ID}
+        className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <ReportCompanyHeader
+          title={`Budget vs Actual — ${viewModeLabel}`}
+          periodLabel={`${periodLabel} · ${projectLabel}`}
+        />
+        <ScrollableTable>
+          <table className={scrollableTableClassName}>
+            <thead className={scrollableTableHeadClassName}>
+              <tr>
+                <th className={scrollableTableThClassName}>Category</th>
+                <th className={`${scrollableTableThClassName} text-right`}>
+                  Budgeted
+                </th>
+                <th className={`${scrollableTableThClassName} text-right`}>
+                  Actual
+                </th>
+                <th className={`${scrollableTableThClassName} text-right`}>
+                  Variance
+                </th>
+                <th className={`${scrollableTableThClassName} text-right`}>
+                  Variance %
+                </th>
+                <th className={`${scrollableTableThClassName} text-right`}>
+                  Remaining
+                </th>
+                <th className={scrollableTableThClassName}>Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {report.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-4 py-8 text-center text-slate-500"
+                  >
+                    No budget or actual activity for {periodLabel}
+                    {projectFilter !== ALL_PROJECTS_FILTER
+                      ? " on the selected project"
+                      : ""}
+                    .
+                  </td>
+                </tr>
+              ) : (
+                report.map((row, index) => (
+                  <tr key={row.rowKey} className={getStripedRowClassName(index)}>
+                    <td className="px-4 py-3">{row.rowLabel}</td>
+                    <td className="px-4 py-3 text-right">
+                      {formatReportCurrency(row.budgeted)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {formatReportCurrency(row.actual)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {formatReportCurrency(row.variance)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {formatVariancePercent(row.variancePercent)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {formatReportCurrency(row.remaining)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${budgetHealthStatusClassName(row.status)}`}
+                      >
+                        {budgetHealthStatusLabel(row.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {report.length > 0 ? (
+              <tfoot>
+                <tr className="bg-slate-50 font-semibold text-[#0f2744]">
+                  <td className="px-4 py-3">Total</td>
+                  <td className="px-4 py-3 text-right">
+                    {formatReportCurrency(totals.budgeted)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {formatReportCurrency(totals.actual)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {formatReportCurrency(totals.variance)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {formatVariancePercent(
+                      totals.budgeted > 0
+                        ? Math.round((totals.variance / totals.budgeted) * 10000) /
+                            100
+                        : null,
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {formatReportCurrency(totals.remaining)}
+                  </td>
+                  <td className="px-4 py-3" />
+                </tr>
+              </tfoot>
+            ) : null}
+          </table>
+        </ScrollableTable>
       </div>
     </div>
   );

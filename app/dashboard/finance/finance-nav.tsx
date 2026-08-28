@@ -9,6 +9,7 @@ const navItems = [
   { label: "Service Contracts", href: "/dashboard/finance/service-contracts" },
   { label: "Customer Receipts", href: "/dashboard/finance/client-receipts" },
   { label: "Expense Register", href: "/dashboard/finance/expenses" },
+  { label: "Budget", href: "/dashboard/finance/budget" },
   { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
   { label: "Fixed Assets", href: "/dashboard/finance/fixed-assets" },
   {
@@ -47,7 +48,10 @@ export default function FinanceNav() {
                   : item.href === "/dashboard/finance/tax-ledger"
                   ? pathname === item.href ||
                     pathname.startsWith("/dashboard/finance/tax-ledger/")
-                  : pathname === item.href;
+                  : item.href === "/dashboard/finance/budget"
+                    ? pathname === item.href ||
+                      pathname.startsWith("/dashboard/finance/budget/")
+                    : pathname === item.href;
 
           return (
             <Link

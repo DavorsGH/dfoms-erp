@@ -1,0 +1,3188 @@
+{
+  "refDate": "2026-08-24T12:00:00.000Z",
+  "davors": {
+    "label": "Davors Facilities",
+    "tenantId": "00000001-0000-4000-8000-000000000001",
+    "goLive": "2026-01-01",
+    "openingEquity": 0,
+    "liveValue": 1260.02,
+    "historyAsOfToday": 1260.02,
+    "liveVsHistoryGap": 0,
+    "fetchMs": 1835,
+    "historyCounts": {
+      "fpInflows": 1,
+      "fpCogs": 0,
+      "rmPurchases": 8,
+      "rmConsumptions": 8
+    },
+    "rmLines": [
+      {
+        "name": "Base (SLES/Texapon)",
+        "stock": 0,
+        "avg": 50,
+        "val": 0
+      },
+      {
+        "name": "Booster (SLS Rice)",
+        "stock": 0,
+        "avg": 0.18,
+        "val": 0
+      },
+      {
+        "name": "Colour",
+        "stock": 0,
+        "avg": 2,
+        "val": 0
+      },
+      {
+        "name": "Glycerine",
+        "stock": 0,
+        "avg": 2.86,
+        "val": 0
+      },
+      {
+        "name": "Nitrosol (\tThickener Powder)",
+        "stock": 0,
+        "avg": 0.2,
+        "val": 0
+      },
+      {
+        "name": "Preservative (Methylparaben)",
+        "stock": 0,
+        "avg": 3,
+        "val": 0
+      },
+      {
+        "name": "Salt (NaCl)",
+        "stock": 0,
+        "avg": 15,
+        "val": 0
+      },
+      {
+        "name": "Water",
+        "stock": 9950,
+        "avg": 0.1,
+        "val": 995
+      }
+    ],
+    "fpLines": [
+      {
+        "name": "Liquid Soap",
+        "stock": 50,
+        "avg": 5.3004,
+        "val": 265.02
+      }
+    ],
+    "snaps": [
+      {
+        "d": "2026-01-31",
+        "fp": 0,
+        "rm": 0,
+        "tot": 0
+      },
+      {
+        "d": "2026-07-31",
+        "fp": 0,
+        "rm": 0,
+        "tot": 0
+      },
+      {
+        "d": "2026-08-23",
+        "fp": 0,
+        "rm": 1260.02,
+        "tot": 1260.02
+      },
+      {
+        "d": "2026-08-24",
+        "fp": 265.02,
+        "rm": 995,
+        "tot": 1260.02
+      }
+    ],
+    "months": [
+      {
+        "month": "Jan",
+        "legacyInv": 1260.02,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Feb",
+        "legacyInv": 1260.02,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Mar",
+        "legacyInv": 1260.02,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Apr",
+        "legacyInv": 1260.02,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "May",
+        "legacyInv": 1260.02,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Jun",
+        "legacyInv": 1260.02,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Jul",
+        "legacyInv": 1260.02,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Aug",
+        "legacyInv": 1260.02,
+        "newInv": 1260.02,
+        "bsInventory": 1260.02,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Sep",
+        "legacyInv": 1260.02,
+        "newInv": 1260.02,
+        "bsInventory": 1260.02,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Oct",
+        "legacyInv": 1260.02,
+        "newInv": 1260.02,
+        "bsInventory": 1260.02,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Nov",
+        "legacyInv": 1260.02,
+        "newInv": 1260.02,
+        "bsInventory": 1260.02,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Dec",
+        "legacyInv": 1260.02,
+        "newInv": 1260.02,
+        "bsInventory": 1260.02,
+        "diff": 0,
+        "balanced": true
+      }
+    ],
+    "fullYearDiff": 0,
+    "decemberDiff": 0,
+    "fullYearMatchesDecember": true,
+    "imbalancedMonths": []
+  },
+  "caanta": {
+    "label": "Caanta Market",
+    "tenantId": "12df4ee6-3fd1-459f-8d5c-792b5d5b3821",
+    "goLive": "2026-07-24",
+    "openingEquity": 3247,
+    "liveValue": 3285,
+    "historyAsOfToday": 3285,
+    "liveVsHistoryGap": 0,
+    "fetchMs": 1604,
+    "historyCounts": {
+      "fpInflows": 2,
+      "fpCogs": 3,
+      "rmPurchases": 8,
+      "rmConsumptions": 8
+    },
+    "rmLines": [
+      {
+        "name": "Buttons",
+        "stock": 19,
+        "avg": 20,
+        "val": 380
+      },
+      {
+        "name": "Crepe Cotton  Fabrics  (Black)",
+        "stock": 14,
+        "avg": 120,
+        "val": 1680
+      },
+      {
+        "name": "Hemming Gum",
+        "stock": 44,
+        "avg": 0.7,
+        "val": 30.8
+      },
+      {
+        "name": "Interface (Stiff)",
+        "stock": 4,
+        "avg": 10,
+        "val": 40
+      },
+      {
+        "name": "Lining",
+        "stock": 19,
+        "avg": 8,
+        "val": 152
+      },
+      {
+        "name": "Matching tread",
+        "stock": 11.5,
+        "avg": 3,
+        "val": 34.5
+      },
+      {
+        "name": "Waistbands",
+        "stock": 18,
+        "avg": 6,
+        "val": 108
+      },
+      {
+        "name": "zip",
+        "stock": 8,
+        "avg": 5,
+        "val": 40
+      }
+    ],
+    "fpLines": [
+      {
+        "name": "Men Kimono",
+        "stock": 1,
+        "avg": 785.7,
+        "val": 785.7
+      },
+      {
+        "name": "Soda Water",
+        "stock": 17,
+        "avg": 2,
+        "val": 34
+      },
+      {
+        "name": "Women Kimono",
+        "stock": 0,
+        "avg": 0,
+        "val": 0
+      }
+    ],
+    "snaps": [
+      {
+        "d": "2026-01-31",
+        "fp": 0,
+        "rm": 0,
+        "tot": 0
+      },
+      {
+        "d": "2026-07-31",
+        "fp": 38,
+        "rm": 0,
+        "tot": 38
+      },
+      {
+        "d": "2026-08-23",
+        "fp": 819.7,
+        "rm": 2465.3,
+        "tot": 3285
+      },
+      {
+        "d": "2026-08-24",
+        "fp": 819.7,
+        "rm": 2465.3,
+        "tot": 3285
+      }
+    ],
+    "months": [
+      {
+        "month": "Jan",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Feb",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Mar",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Apr",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "May",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Jun",
+        "legacyInv": 0,
+        "newInv": 0,
+        "bsInventory": 0,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Jul",
+        "legacyInv": 3285,
+        "newInv": 38,
+        "bsInventory": 38,
+        "diff": -3247,
+        "balanced": false
+      },
+      {
+        "month": "Aug",
+        "legacyInv": 3285,
+        "newInv": 3285,
+        "bsInventory": 3285,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Sep",
+        "legacyInv": 3285,
+        "newInv": 3285,
+        "bsInventory": 3285,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Oct",
+        "legacyInv": 3285,
+        "newInv": 3285,
+        "bsInventory": 3285,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Nov",
+        "legacyInv": 3285,
+        "newInv": 3285,
+        "bsInventory": 3285,
+        "diff": 0,
+        "balanced": true
+      },
+      {
+        "month": "Dec",
+        "legacyInv": 3285,
+        "newInv": 3285,
+        "bsInventory": 3285,
+        "diff": 0,
+        "balanced": true
+      }
+    ],
+    "fullYearDiff": 0,
+    "decemberDiff": 0,
+    "fullYearMatchesDecember": true,
+    "imbalancedMonths": [
+      "Jul"
+    ]
+  },
+  "details": [
+    {
+      "label": "Davors Facilities",
+      "tenantId": "00000001-0000-4000-8000-000000000001",
+      "goLive": "2026-01-01",
+      "openingEquity": 0,
+      "liveValue": 1260.02,
+      "historyAsOfToday": 1260.02,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 1835,
+      "historyCounts": {
+        "fpInflows": 1,
+        "fpCogs": 0,
+        "rmPurchases": 8,
+        "rmConsumptions": 8
+      },
+      "rmLines": [
+        {
+          "name": "Base (SLES/Texapon)",
+          "stock": 0,
+          "avg": 50,
+          "val": 0
+        },
+        {
+          "name": "Booster (SLS Rice)",
+          "stock": 0,
+          "avg": 0.18,
+          "val": 0
+        },
+        {
+          "name": "Colour",
+          "stock": 0,
+          "avg": 2,
+          "val": 0
+        },
+        {
+          "name": "Glycerine",
+          "stock": 0,
+          "avg": 2.86,
+          "val": 0
+        },
+        {
+          "name": "Nitrosol (\tThickener Powder)",
+          "stock": 0,
+          "avg": 0.2,
+          "val": 0
+        },
+        {
+          "name": "Preservative (Methylparaben)",
+          "stock": 0,
+          "avg": 3,
+          "val": 0
+        },
+        {
+          "name": "Salt (NaCl)",
+          "stock": 0,
+          "avg": 15,
+          "val": 0
+        },
+        {
+          "name": "Water",
+          "stock": 9950,
+          "avg": 0.1,
+          "val": 995
+        }
+      ],
+      "fpLines": [
+        {
+          "name": "Liquid Soap",
+          "stock": 50,
+          "avg": 5.3004,
+          "val": 265.02
+        }
+      ],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 1260.02,
+          "tot": 1260.02
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 265.02,
+          "rm": 995,
+          "tot": 1260.02
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 1260.02,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 1260.02,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 1260.02,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 1260.02,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 1260.02,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 1260.02,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 1260.02,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 1260.02,
+          "newInv": 1260.02,
+          "bsInventory": 1260.02,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 1260.02,
+          "newInv": 1260.02,
+          "bsInventory": 1260.02,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 1260.02,
+          "newInv": 1260.02,
+          "bsInventory": 1260.02,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 1260.02,
+          "newInv": 1260.02,
+          "bsInventory": 1260.02,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 1260.02,
+          "newInv": 1260.02,
+          "bsInventory": 1260.02,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Paystack Live Test Co",
+      "tenantId": "2b7f91fb-c4a5-4292-9b25-43fe74733fa2",
+      "goLive": "2026-07-23",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 1515,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "On-Site Supplies Africa Limited",
+      "tenantId": "1c9fd26d-1ef5-4493-90ff-2f733dbaed7a",
+      "goLive": "2026-07-24",
+      "openingEquity": 0,
+      "liveValue": 350000,
+      "historyAsOfToday": 350000,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 1065,
+      "historyCounts": {
+        "fpInflows": 1,
+        "fpCogs": 3,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [
+        {
+          "name": "Hardox 500",
+          "stock": 10,
+          "avg": 35000,
+          "val": 350000
+        }
+      ],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 350000,
+          "rm": 0,
+          "tot": 350000
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 350000,
+          "rm": 0,
+          "tot": 350000
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 350000,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 350000,
+          "newInv": 350000,
+          "bsInventory": 350000,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 350000,
+          "newInv": 350000,
+          "bsInventory": 350000,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 350000,
+          "newInv": 350000,
+          "bsInventory": 350000,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 350000,
+          "newInv": 350000,
+          "bsInventory": 350000,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 350000,
+          "newInv": 350000,
+          "bsInventory": 350000,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "NET+I ENGINEERING LIMITED",
+      "tenantId": "1a61a344-1c4b-477b-bc61-6ededcb2ab47",
+      "goLive": "2026-08-04",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 808,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Get Knitted",
+      "tenantId": "bb6cb707-3eb0-4e03-bad1-601a506dc3a0",
+      "goLive": "2026-08-05",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 817,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Nextronics",
+      "tenantId": "da8b968e-dd42-48d5-93c5-a3147ff5de72",
+      "goLive": "2026-08-05",
+      "openingEquity": 0,
+      "liveValue": 1525,
+      "historyAsOfToday": 1525,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 974,
+      "historyCounts": {
+        "fpInflows": 14,
+        "fpCogs": 7,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [
+        {
+          "name": "Car Phone Holder",
+          "stock": 2,
+          "avg": 10,
+          "val": 20
+        },
+        {
+          "name": "Dust Prof Keyboard Protector",
+          "stock": 1,
+          "avg": 20,
+          "val": 20
+        },
+        {
+          "name": "Free Arc Pod Case",
+          "stock": 1,
+          "avg": 30,
+          "val": 30
+        },
+        {
+          "name": "HP Laptop Bag & Mini pouch",
+          "stock": 0,
+          "avg": 0,
+          "val": 0
+        },
+        {
+          "name": "IPhone 17 Pro Max Case",
+          "stock": 1,
+          "avg": 20,
+          "val": 20
+        },
+        {
+          "name": "Metal Laptop Stand",
+          "stock": 2,
+          "avg": 30,
+          "val": 60
+        },
+        {
+          "name": "Mini Laptop Stand (Sticker)",
+          "stock": 10,
+          "avg": 10,
+          "val": 100
+        },
+        {
+          "name": "Monitor Screen '14",
+          "stock": 0,
+          "avg": 0,
+          "val": 0
+        },
+        {
+          "name": "Monitor Screen \"18",
+          "stock": 1,
+          "avg": 1000,
+          "val": 1000
+        },
+        {
+          "name": "Monitor Stand",
+          "stock": 5,
+          "avg": 55,
+          "val": 275
+        },
+        {
+          "name": "Portable Monitor “16",
+          "stock": 0,
+          "avg": 0,
+          "val": 0
+        },
+        {
+          "name": "Xiami 17 PM Case",
+          "stock": 0,
+          "avg": 0,
+          "val": 0
+        }
+      ],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 1525,
+          "rm": 0,
+          "tot": 1525
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 1525,
+          "rm": 0,
+          "tot": 1525
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 1525,
+          "newInv": 1525,
+          "bsInventory": 1525,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 1525,
+          "newInv": 1525,
+          "bsInventory": 1525,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 1525,
+          "newInv": 1525,
+          "bsInventory": 1525,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 1525,
+          "newInv": 1525,
+          "bsInventory": 1525,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 1525,
+          "newInv": 1525,
+          "bsInventory": 1525,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Mimshack-Glo-Ltd",
+      "tenantId": "dc7c89d4-df61-4ea5-b2ef-65ab6221c06e",
+      "goLive": "2026-08-08",
+      "openingEquity": 0,
+      "liveValue": 4000,
+      "historyAsOfToday": 4000,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 1396,
+      "historyCounts": {
+        "fpInflows": 1,
+        "fpCogs": 1,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [
+        {
+          "name": "Club de Nuit",
+          "stock": 4,
+          "avg": 1000,
+          "val": 4000
+        }
+      ],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 4000,
+          "rm": 0,
+          "tot": 4000
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 4000,
+          "rm": 0,
+          "tot": 4000
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 4000,
+          "newInv": 4000,
+          "bsInventory": 4000,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 4000,
+          "newInv": 4000,
+          "bsInventory": 4000,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 4000,
+          "newInv": 4000,
+          "bsInventory": 4000,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 4000,
+          "newInv": 4000,
+          "bsInventory": 4000,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 4000,
+          "newInv": 4000,
+          "bsInventory": 4000,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Lavish Mayor Casual",
+      "tenantId": "aab9355c-4604-4e79-9e54-0364dacda521",
+      "goLive": "2026-08-10",
+      "openingEquity": 0,
+      "liveValue": 800,
+      "historyAsOfToday": 800,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 1198,
+      "historyCounts": {
+        "fpInflows": 1,
+        "fpCogs": 1,
+        "rmPurchases": 1,
+        "rmConsumptions": 1
+      },
+      "rmLines": [
+        {
+          "name": "Bills off white",
+          "stock": 0,
+          "avg": 50,
+          "val": 0
+        }
+      ],
+      "fpLines": [
+        {
+          "name": "Casual",
+          "stock": 4,
+          "avg": 200,
+          "val": 800
+        }
+      ],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 800,
+          "rm": 0,
+          "tot": 800
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 800,
+          "rm": 0,
+          "tot": 800
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 800,
+          "newInv": 800,
+          "bsInventory": 800,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 800,
+          "newInv": 800,
+          "bsInventory": 800,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 800,
+          "newInv": 800,
+          "bsInventory": 800,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 800,
+          "newInv": 800,
+          "bsInventory": 800,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 800,
+          "newInv": 800,
+          "bsInventory": 800,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Wraphoria",
+      "tenantId": "8f40f84d-413a-460b-95fb-30efd93a5bfa",
+      "goLive": "2026-08-13",
+      "openingEquity": 0,
+      "liveValue": 392,
+      "historyAsOfToday": 392,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 1097,
+      "historyCounts": {
+        "fpInflows": 1,
+        "fpCogs": 0,
+        "rmPurchases": 7,
+        "rmConsumptions": 7
+      },
+      "rmLines": [
+        {
+          "name": "Carrot",
+          "stock": 0,
+          "avg": 7,
+          "val": 0
+        },
+        {
+          "name": "Cheese",
+          "stock": 0,
+          "avg": 175,
+          "val": 0
+        },
+        {
+          "name": "Chicken breast",
+          "stock": 0,
+          "avg": 50,
+          "val": 0
+        },
+        {
+          "name": "Cow Meat",
+          "stock": 0,
+          "avg": 0,
+          "val": 0
+        },
+        {
+          "name": "Onions",
+          "stock": 0,
+          "avg": 30,
+          "val": 0
+        },
+        {
+          "name": "pepper",
+          "stock": 0,
+          "avg": 30,
+          "val": 0
+        },
+        {
+          "name": "Soft Flour",
+          "stock": 0,
+          "avg": 15,
+          "val": 0
+        },
+        {
+          "name": "Spice",
+          "stock": 0,
+          "avg": 10,
+          "val": 0
+        }
+      ],
+      "fpLines": [
+        {
+          "name": "Spring Rolls (Chicken)",
+          "stock": 30,
+          "avg": 13.0667,
+          "val": 392
+        }
+      ],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 392,
+          "rm": 0,
+          "tot": 392
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 392,
+          "rm": 0,
+          "tot": 392
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 392,
+          "newInv": 392,
+          "bsInventory": 392,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 392,
+          "newInv": 392,
+          "bsInventory": 392,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 392,
+          "newInv": 392,
+          "bsInventory": 392,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 392,
+          "newInv": 392,
+          "bsInventory": 392,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 392,
+          "newInv": 392,
+          "bsInventory": 392,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "TechTalk",
+      "tenantId": "c4cc6678-170f-4810-b9f9-d444afd0ea18",
+      "goLive": "2026-08-16",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 879,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Contagion Ghana Limited",
+      "tenantId": "125e830a-cba7-4323-b75f-abec9cb04e72",
+      "goLive": "2026-08-17",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 794,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Caanta Market",
+      "tenantId": "12df4ee6-3fd1-459f-8d5c-792b5d5b3821",
+      "goLive": "2026-07-24",
+      "openingEquity": 3247,
+      "liveValue": 3285,
+      "historyAsOfToday": 3285,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 1604,
+      "historyCounts": {
+        "fpInflows": 2,
+        "fpCogs": 3,
+        "rmPurchases": 8,
+        "rmConsumptions": 8
+      },
+      "rmLines": [
+        {
+          "name": "Buttons",
+          "stock": 19,
+          "avg": 20,
+          "val": 380
+        },
+        {
+          "name": "Crepe Cotton  Fabrics  (Black)",
+          "stock": 14,
+          "avg": 120,
+          "val": 1680
+        },
+        {
+          "name": "Hemming Gum",
+          "stock": 44,
+          "avg": 0.7,
+          "val": 30.8
+        },
+        {
+          "name": "Interface (Stiff)",
+          "stock": 4,
+          "avg": 10,
+          "val": 40
+        },
+        {
+          "name": "Lining",
+          "stock": 19,
+          "avg": 8,
+          "val": 152
+        },
+        {
+          "name": "Matching tread",
+          "stock": 11.5,
+          "avg": 3,
+          "val": 34.5
+        },
+        {
+          "name": "Waistbands",
+          "stock": 18,
+          "avg": 6,
+          "val": 108
+        },
+        {
+          "name": "zip",
+          "stock": 8,
+          "avg": 5,
+          "val": 40
+        }
+      ],
+      "fpLines": [
+        {
+          "name": "Men Kimono",
+          "stock": 1,
+          "avg": 785.7,
+          "val": 785.7
+        },
+        {
+          "name": "Soda Water",
+          "stock": 17,
+          "avg": 2,
+          "val": 34
+        },
+        {
+          "name": "Women Kimono",
+          "stock": 0,
+          "avg": 0,
+          "val": 0
+        }
+      ],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 38,
+          "rm": 0,
+          "tot": 38
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 819.7,
+          "rm": 2465.3,
+          "tot": 3285
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 819.7,
+          "rm": 2465.3,
+          "tot": 3285
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 3285,
+          "newInv": 38,
+          "bsInventory": 38,
+          "diff": -3247,
+          "balanced": false
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 3285,
+          "newInv": 3285,
+          "bsInventory": 3285,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 3285,
+          "newInv": 3285,
+          "bsInventory": 3285,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 3285,
+          "newInv": 3285,
+          "bsInventory": 3285,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 3285,
+          "newInv": 3285,
+          "bsInventory": 3285,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 3285,
+          "newInv": 3285,
+          "bsInventory": 3285,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": [
+        "Jul"
+      ]
+    },
+    {
+      "label": "PlannedbyPoquah",
+      "tenantId": "8de86bfe-1411-4339-b080-e26fcaffaf5b",
+      "goLive": "2026-08-19",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 775,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Contemporary TNT",
+      "tenantId": "55bd1d8a-3df0-4380-9148-17e446a0a373",
+      "goLive": "2026-08-19",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 767,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "BROOK LANKS",
+      "tenantId": "d70beb5f-17af-4f44-b7a3-326a7d24ce6d",
+      "goLive": "2026-08-19",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 761,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Edits by noelle",
+      "tenantId": "d3840f8f-67e1-432b-8723-9ac99d22d298",
+      "goLive": "2026-08-19",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 773,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    },
+    {
+      "label": "Le Parisienne Bakery",
+      "tenantId": "9f1c2d26-67c0-4871-b1c7-426b2405f5bb",
+      "goLive": "2026-08-22",
+      "openingEquity": 0,
+      "liveValue": 0,
+      "historyAsOfToday": 0,
+      "liveVsHistoryGap": 0,
+      "fetchMs": 794,
+      "historyCounts": {
+        "fpInflows": 0,
+        "fpCogs": 0,
+        "rmPurchases": 0,
+        "rmConsumptions": 0
+      },
+      "rmLines": [],
+      "fpLines": [],
+      "snaps": [
+        {
+          "d": "2026-01-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-07-31",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-23",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        },
+        {
+          "d": "2026-08-24",
+          "fp": 0,
+          "rm": 0,
+          "tot": 0
+        }
+      ],
+      "months": [
+        {
+          "month": "Jan",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Feb",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Mar",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Apr",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "May",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jun",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Jul",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Aug",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Sep",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Oct",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Nov",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        },
+        {
+          "month": "Dec",
+          "legacyInv": 0,
+          "newInv": 0,
+          "bsInventory": 0,
+          "diff": 0,
+          "balanced": true
+        }
+      ],
+      "fullYearDiff": 0,
+      "decemberDiff": 0,
+      "fullYearMatchesDecember": true,
+      "imbalancedMonths": []
+    }
+  ]
+}

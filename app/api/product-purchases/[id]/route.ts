@@ -160,6 +160,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: rpcError.message }, { status: 400 });
   }
 
+  const { error: projectUpdateError } = await supabase
+    .from("product_purchases")
+    .update({ project_id: trimmed.project_id })
+    .eq("id", id)
+    .eq("tenant_id", auth.tenantId);
+
+  if (projectUpdateError) {
+    return NextResponse.json({ error: projectUpdateError.message }, { status: 400 });
+  }
+
   const { data, error } = await supabase
     .from("product_purchases")
     .select(PRODUCT_PURCHASE_LIST_SELECT)

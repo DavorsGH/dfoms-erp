@@ -12,6 +12,10 @@ import {
   type PurchasedProductOption,
 } from "@/utils/product-purchases-types";
 import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
+import {
+  CONTRACT_PROJECT_SELECT,
+  type ContractProjectOption,
+} from "../../administration/projects-utils";
 import type { NamedLookup } from "../../lookup-types";
 import InventoryShell from "../inventory-shell";
 import ProductPurchases from "../product-purchases";
@@ -37,6 +41,7 @@ export default async function ProductPurchasesPage() {
     { data: products, error: productsError },
     { data: suppliers, error: suppliersError },
     { data: paymentMethods, error: paymentMethodsError },
+    { data: projects, error: projectsError },
   ] = await Promise.all([
     supabase
       .from("product_purchases")
@@ -58,6 +63,11 @@ export default async function ProductPurchasesPage() {
       .eq("is_active", true)
       .order("name", { ascending: true }),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
+    supabase
+      .from("projects")
+      .select(CONTRACT_PROJECT_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("project_name", { ascending: true }),
   ]);
 
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -77,11 +87,13 @@ export default async function ProductPurchasesPage() {
         }
         initialSuppliers={(suppliers as SupplierRow[] | null) ?? []}
         initialPaymentMethods={(paymentMethods as NamedLookup[] | null) ?? []}
+        initialProjects={(projects as ContractProjectOption[] | null) ?? []}
         fetchError={
           purchasesError?.message ??
           productsError?.message ??
           suppliersError?.message ??
           paymentMethodsError?.message ??
+          projectsError?.message ??
           null
         }
         readOnly={!canEditInventory(role)}

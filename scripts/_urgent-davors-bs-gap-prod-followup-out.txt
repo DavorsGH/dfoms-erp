@@ -1,0 +1,261 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will error in a future major version of npm. See `npm help 
+npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\HP\AppData\Roaming\npm ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm notice run dfoms-erp-app@0.1.0 npx
+npm notice run tsx scripts/_urgent-davors-bs-gap-prod-followup.ts
+
+=== Month idx 0: diff=1260.02 assets=1260.02 LE=0 ===
+  data       Inventory: 1260.02
+  subtotal   TOTAL ASSETS: 1260.02
+
+=== Month idx 6: diff=1260.02 assets=55032.29 LE=53772.27 ===
+  data       Cash and Cash Equivalents: -6681.99
+  data       Accounts Receivable: 51660.36
+  data       WHT Receivable: 2353.55
+  data       Fixed Assets (Net): 6440.35
+  data       Inventory: 1260.02
+  subtotal   TOTAL ASSETS: 55032.29
+  data       Accrued Wages Payable: 543.03
+  data       Net VAT Payable: 6276.13
+  data       PAYE Payable: 1147.95
+  data       SSNIT Payable: 1454.35
+  subtotal   TOTAL LIABILITIES: 9421.46
+  data       Share Capital: 40000.00
+  data       Retained Earnings: 4350.81
+  subtotal   TOTAL EQUITY: 44350.81
+  total      TOTAL LIABILITIES + EQUITY: 53772.27
+
+=== Month idx 7: diff=0 assets=92455.5 LE=92455.5 ===
+  data       Cash and Cash Equivalents: -7968.70
+  data       Accounts Receivable: 86100.55
+  data       WHT Receivable: 3922.58
+  data       Fixed Assets (Net): 9141.05
+  data       Inventory: 1260.02
+  subtotal   TOTAL ASSETS: 92455.50
+  data       Accounts Payable: 1600.00
+  data       Accrued Wages Payable: 543.03
+  data       Net VAT Payable: 10460.21
+  data       PAYE Payable: 1147.95
+  data       SSNIT Payable: 1454.35
+  data       Director's Loan: 3200.00
+  subtotal   TOTAL LIABILITIES: 18405.54
+  data       Share Capital: 40000.00
+  data       Retained Earnings: 34049.96
+  subtotal   TOTAL EQUITY: 74049.96
+  total      TOTAL LIABILITIES + EQUITY: 92455.50
+
+=== Exact ┬▒1260.02 matches (any month 0-11) ===
+M1 data Inventory = 1260.02
+M2 data Inventory = 1260.02
+M3 data Inventory = 1260.02
+M4 data Inventory = 1260.02
+M5 data Inventory = 1260.02
+M6 data Inventory = 1260.02
+M7 data Inventory = 1260.02
+M8 data Inventory = 1260.02
+M9 data Inventory = 1260.02
+M10 data Inventory = 1260.02
+M11 data Inventory = 1260.02
+M12 data Inventory = 1260.02
+M1 subtotal TOTAL ASSETS = 1260.02
+M2 subtotal TOTAL ASSETS = 1260.02
+M3 subtotal TOTAL ASSETS = 1260.02
+M4 subtotal TOTAL ASSETS = 1260.02
+M5 subtotal TOTAL ASSETS = 1260.02
+
+=== Inventory config / stocks ===
+{
+  "go_live_date": "2026-01-01",
+  "opening_inventory_value": 0,
+  "created_at": "2026-07-14T11:50:24.50935+00:00"
+}
+rawMaterials [
+  {
+    "id": "53d83643-d618-4ec9-b4ca-e9aca5fd6b64",
+    "name": "Base (SLES/Texapon)",
+    "stock": 0,
+    "unit_cost": null
+  },
+  {
+    "id": "e3dc6e84-4eeb-422f-9d47-93c7f3a51bfa",
+    "name": "Booster (SLS Rice)",
+    "stock": 0,
+    "unit_cost": null
+  },
+  {
+    "id": "70e40075-853e-4d02-9af6-f3586577caf3",
+    "name": "Colour",
+    "stock": 0,
+    "unit_cost": null
+  },
+  {
+    "id": "ddef5a31-c738-441f-82e0-10bff221a086",
+    "name": "Glycerine",
+    "stock": 0,
+    "unit_cost": null
+  },
+  {
+    "id": "db94280e-888d-4bfd-bb30-68a30f1fb2ec",
+    "name": "Nitrosol (\tThickener Powder)",
+    "stock": 0,
+    "unit_cost": null
+  },
+  {
+    "id": "3ece7293-1760-4a34-b32d-b07d164f8aa4",
+    "name": "Preservative (Methylparaben)",
+    "stock": 0,
+    "unit_cost": null
+  },
+  {
+    "id": "d8586ec1-b906-4f1f-8f39-a1ff73dbf9e2",
+    "name": "Salt (NaCl)",
+    "stock": 0,
+    "unit_cost": null
+  },
+  {
+    "id": "39acc84c-91e7-43d9-8988-7de1a62b0537",
+    "name": "Water",
+    "stock": 9950,
+    "unit_cost": null
+  }
+]
+finishedProducts [
+  {
+    "id": "5f9f08d6-e931-4314-aeb7-f49758ed8cb8",
+    "name": "Liquid Soap",
+    "stock": 50
+  }
+]
+avgCosts [
+  {
+    "product_id": "5f9f08d6-e931-4314-aeb7-f49758ed8cb8",
+    "average_cost": 5.3004
+  }
+]
+cashPurchases count 8
+productCashPurchases count 0
+
+=== Activity dated 2026-08-23 ===
+income []
+expense []
+raw_material_purchases [
+  {
+    "id": "683e41e8-967e-48fa-a177-1e3cf468c489",
+    "material_id": "39acc84c-91e7-43d9-8988-7de1a62b0537",
+    "purchase_date": "2026-08-23",
+    "quantity": 10000,
+    "cost_per_unit": 0.1,
+    "total_cost": 1000,
+    "supplier": "Ghana Water",
+    "payment_method": "POS/VISA",
+    "notes": null,
+    "created_at": "2026-08-23T16:15:27.840816+00:00",
+    "accounts_payable_id": null,
+    "tenant_id": "00000001-0000-4000-8000-000000000001",
+    "po_id": null,
+    "po_item_id": null
+  }
+]
+product_purchases []
+stock_movements []
+production_batches []
+ap_payments []
+ap invoices []
+fixed_assets []
+manual_financial_entries all: [
+  {
+    "period_month": "2026-07-01",
+    "cash_on_hand": 0,
+    "bank_balance": 0,
+    "prepayments_wht_receivable": 0,
+    "inventory_consumables": 0,
+    "accrued_expenses": 0,
+    "withholding_tax_payable": 0,
+    "vat_payable": 2092.04,
+    "bank_loans": 0,
+    "other_long_term_liabilities": 0,
+    "share_capital": 21379.74,
+    "retained_earnings_prior_years": 0,
+    "purchase_of_fixed_assets": 0,
+    "loan_proceeds": 0,
+    "loan_repayments": 0,
+    "opening_cash_balance": 0,
+    "notes": null,
+    "tenant_id": "00000001-0000-4000-8000-000000000001",
+    "directors_loan": 0,
+    "other_cash_inflows": 0
+  },
+  {
+    "period_month": "2026-08-01",
+    "cash_on_hand": 0,
+    "bank_balance": 0,
+    "prepayments_wht_receivable": 0,
+    "inventory_consumables": 0,
+    "accrued_expenses": 0,
+    "withholding_tax_payable": 0,
+    "vat_payable": 0,
+    "bank_loans": 0,
+    "other_long_term_liabilities": 0,
+    "share_capital": 0,
+    "retained_earnings_prior_years": 0,
+    "purchase_of_fixed_assets": 0,
+    "loan_proceeds": 3200,
+    "loan_repayments": 0,
+    "opening_cash_balance": 0,
+    "notes": null,
+    "tenant_id": "00000001-0000-4000-8000-000000000001",
+    "directors_loan": 3200,
+    "other_cash_inflows": 0
+  }
+]
+system_adjustment income: [
+  {
+    "id": "99e34c23-7069-488e-aa70-074336c9e074",
+    "date": "2026-06-30",
+    "invoice_no": "ADJ-JUNE-FORFEIT-2026",
+    "description": "June correction forfeited (DF0007, DF0015, DF0018, DF0019)",
+    "amount": 88.09,
+    "is_system_adjustment": true,
+    "payment_status": "Unpaid",
+    "outstanding_balance": 0
+  },
+  {
+    "id": "1c91fcdb-4cf4-4870-b430-7fea48084a92",
+    "date": "2026-07-31",
+    "invoice_no": "PAYROLL-DEDSAV-2026-07",
+    "description": "Auto-posted from Payroll July 2026 - Deduction Savings (absence/loan/advance/welfare/other)",
+    "amount": 109.15,
+    "is_system_adjustment": true,
+    "payment_status": "Unpaid",
+    "outstanding_balance": 0
+  },
+  {
+    "id": "820a37bd-3cbe-4e89-bf8c-5923ca3fcfc1",
+    "date": "2026-06-30",
+    "invoice_no": "PAYROLL-DEDSAV-2026-06",
+    "description": "Auto-posted from Payroll June 2026 - Deduction Savings (absence/loan/advance/welfare/other)",
+    "amount": 244.94,
+    "is_system_adjustment": true,
+    "payment_status": "Unpaid",
+    "outstanding_balance": 0
+  }
+]
+
+=== Lines that changed JulΓåÆAug by ~1260 or closed gap ===
+data Cash and Cash Equivalents: Jul=-6681.99 Aug=-7968.70 delta=-1286.71
+data Accounts Receivable: Jul=51660.36 Aug=86100.55 delta=34440.19
+data WHT Receivable: Jul=2353.55 Aug=3922.58 delta=1569.03
+data Fixed Assets (Net): Jul=6440.35 Aug=9141.05 delta=2700.70
+subtotal TOTAL ASSETS: Jul=55032.29 Aug=92455.50 delta=37423.21
+data Accounts Payable: Jul=0.00 Aug=1600.00 delta=1600.00
+data Net VAT Payable: Jul=6276.13 Aug=10460.21 delta=4184.08
+data Director's Loan: Jul=0.00 Aug=3200.00 delta=3200.00
+subtotal TOTAL LIABILITIES: Jul=9421.46 Aug=18405.54 delta=8984.08
+data Retained Earnings: Jul=4350.81 Aug=34049.96 delta=29699.15
+subtotal TOTAL EQUITY: Jul=44350.81 Aug=74049.96 delta=29699.15
+total TOTAL LIABILITIES + EQUITY: Jul=53772.27 Aug=92455.50 delta=38683.23

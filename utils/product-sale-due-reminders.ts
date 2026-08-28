@@ -106,6 +106,24 @@ function formatMoneyLabel(value: number): string {
   })}`;
 }
 
+/** Customer-facing due/overdue reminder SMS body (Issue A tenant branding). */
+export function buildProductSaleDueReminderCustomerSms(options: {
+  tenantName: string;
+  invoiceNo: string;
+  amountLabel: string;
+  dueDate: string;
+  kind: "approaching" | "overdue";
+}): string {
+  const dueLabel = options.dueDate;
+  return options.kind === "overdue"
+    ? `${options.tenantName}: Your invoice ${options.invoiceNo} balance ${options.amountLabel} was due ${dueLabel} and is overdue. Please pay soon.`
+    : `${options.tenantName}: Reminder — Your invoice ${options.invoiceNo} balance ${options.amountLabel} is due by ${dueLabel}. Please pay soon.`;
+}
+
+export function formatProductSaleDueReminderSmsMoney(value: number): string {
+  return formatMoneyLabel(value);
+}
+
 function resolveOutstanding(row: SaleRow): number {
   if (row.outstanding_balance !== null && row.outstanding_balance !== undefined) {
     return Math.max(0, roundMoney(Number(row.outstanding_balance)));
@@ -252,10 +270,13 @@ async function sendFallbackDueReminder(options: {
   if (phone) {
     const creditOk = await tryDebitSmsCredit(options.tenantId);
     if (creditOk) {
-      const sms =
-        options.kind === "overdue"
-          ? `${options.tenantName}: Your invoice ${options.invoiceNo} balance ${options.amountLabel} was due ${dueLabel} and is overdue. Please pay soon.`
-          : `${options.tenantName}: Reminder — Your invoice ${options.invoiceNo} balance ${options.amountLabel} is due by ${dueLabel}. Please pay soon.`;
+      const sms = buildProductSaleDueReminderCustomerSms({
+        tenantName: options.tenantName,
+        invoiceNo: options.invoiceNo,
+        amountLabel: options.amountLabel,
+        dueDate: options.dueDate,
+        kind: options.kind,
+      });
       const result = await sendHubtelSms({
         to: phone,
         content: sms,

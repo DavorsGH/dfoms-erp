@@ -1,0 +1,111 @@
+﻿diff --git a/app/dashboard/sales-crm/quotations/page.tsx b/app/dashboard/sales-crm/quotations/page.tsx
+index 4b450ba..a8e2aa3 100644
+--- a/app/dashboard/sales-crm/quotations/page.tsx
++++ b/app/dashboard/sales-crm/quotations/page.tsx
+@@ -6,6 +6,7 @@ import {
+   normalizeClientQuotationListRow,
+   type ClientQuotationListRow,
+ } from "@/utils/client-quotations-types";
++import { loadActiveServiceContractsByClientId } from "@/utils/service-contracts-api";
+ import CrmShell from "@/app/dashboard/crm/crm-shell";
+ import ClientQuotationsList from "./client-quotations-list";
+ 
+@@ -25,12 +26,15 @@ export default async function ClientQuotationsPage() {
+   const cookieStore = await cookies();
+   const supabase = createClient(cookieStore);
+ 
+-  const { data, error } = await supabase
+-    .from("client_quotations")
+-    .select(CLIENT_QUOTATION_LIST_SELECT)
+-    .eq("tenant_id", tenantId)
+-    .order("issue_date", { ascending: false })
+-    .order("quotation_sequence", { ascending: false });
++  const [{ data, error }, activeContractByClientId] = await Promise.all([
++    supabase
++      .from("client_quotations")
++      .select(CLIENT_QUOTATION_LIST_SELECT)
++      .eq("tenant_id", tenantId)
++      .order("issue_date", { ascending: false })
++      .order("quotation_sequence", { ascending: false }),
++    loadActiveServiceContractsByClientId(supabase, tenantId),
++  ]);
+ 
+   return (
+     <CrmShell sectionTitle="Quotations">
+@@ -41,6 +45,7 @@ export default async function ClientQuotationsPage() {
+           )
+         }
+         fetchError={error?.message ?? null}
++        activeContractByClientId={activeContractByClientId}
+       />
+     </CrmShell>
+   );
+diff --git a/utils/service-contracts-api.ts b/utils/service-contracts-api.ts
+index 7b42d19..1fcc5a8 100644
+--- a/utils/service-contracts-api.ts
++++ b/utils/service-contracts-api.ts
+@@ -297,6 +297,64 @@ export async function createServiceContract(
+   return { contract: contract as ServiceContractHeaderRow, error: null };
+ }
+ 
++export type ActiveServiceContractSummary = {
++  id: string;
++  contract_number: string;
++};
++
++export async function findActiveServiceContractForClient(
++  supabase: DbClient,
++  tenantId: string,
++  clientId: string,
++): Promise<ActiveServiceContractSummary | null> {
++  const { data, error } = await supabase
++    .from("service_contracts")
++    .select("id, contract_number")
++    .eq("tenant_id", tenantId)
++    .eq("client_id", clientId.trim())
++    .eq("status", "active")
++    .order("created_at", { ascending: false })
++    .limit(1)
++    .maybeSingle();
++
++  if (error || !data?.id || !data.contract_number) {
++    return null;
++  }
++
++  return {
++    id: data.id,
++    contract_number: data.contract_number,
++  };
++}
++
++export async function loadActiveServiceContractsByClientId(
++  supabase: DbClient,
++  tenantId: string,
++): Promise<Record<string, ActiveServiceContractSummary>> {
++  const { data, error } = await supabase
++    .from("service_contracts")
++    .select("id, client_id, contract_number")
++    .eq("tenant_id", tenantId)
++    .eq("status", "active");
++
++  if (error || !data) {
++    return {};
++  }
++
++  const map: Record<string, ActiveServiceContractSummary> = {};
++  for (const row of data) {
++    if (!row.client_id || !row.contract_number || map[row.client_id]) {
++      continue;
++    }
++    map[row.client_id] = {
++      id: row.id,
++      contract_number: row.contract_number,
++    };
++  }
++
++  return map;
++}
++
+ export async function updateServiceContract(
+   supabase: DbClient,
+   tenantId: string,

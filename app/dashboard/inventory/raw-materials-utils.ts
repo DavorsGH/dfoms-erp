@@ -20,6 +20,7 @@ export type RawMaterialPurchaseRecord = {
   supplier: string | null;
   payment_method: string | null;
   notes: string | null;
+  project_id?: string | null;
   created_at: string;
   material?: {
     material_code: string;
@@ -32,7 +33,7 @@ export const RAW_MATERIAL_SELECT =
   "id, material_code, material_name, unit_of_measure, current_stock, average_cost_per_unit, reorder_level, created_at, updated_at";
 
 export const RAW_MATERIAL_PURCHASE_SELECT =
-  "id, material_id, purchase_date, quantity, cost_per_unit, total_cost, supplier, payment_method, notes, created_at, material:raw_materials!material_id(material_code, material_name, unit_of_measure)";
+  "id, material_id, purchase_date, quantity, cost_per_unit, total_cost, supplier, payment_method, notes, project_id, created_at, material:raw_materials!material_id(material_code, material_name, unit_of_measure)";
 
 export function normalizeRawMaterial(raw: RawMaterialRecord): RawMaterialRecord {
   return {

@@ -353,6 +353,23 @@ async function resolveLandlordContacts(
   return contacts;
 }
 
+/** Lessee-facing rent-due SMS body (Issue A landlord branding). */
+export function buildLesseeRentDueSms(options: {
+  tenantName: string;
+  amountLabel: string;
+  daysUntil: number;
+  periodEnd: string;
+  place: string;
+}): string {
+  const daysLabel =
+    options.daysUntil === 0
+      ? "today"
+      : options.daysUntil === 1
+        ? "in 1 day"
+        : `in ${options.daysUntil} days`;
+  return `${options.tenantName}: Rent ${options.amountLabel} due ${daysLabel} (${options.periodEnd}) for ${options.place}. Please pay soon.`;
+}
+
 async function notifyLesseeRentDue(options: {
   landlordTenantId: string;
   lesseeId: string | null;
@@ -417,7 +434,13 @@ async function notifyLesseeRentDue(options: {
 
   const phone = normalizeGhanaPhone(options.phone);
   if (phone) {
-    const sms = `${options.tenantName}: Rent ${options.amountLabel} due ${daysLabel} (${options.periodEnd}) for ${place}. Please pay soon.`;
+    const sms = buildLesseeRentDueSms({
+      tenantName: options.tenantName,
+      amountLabel: options.amountLabel,
+      daysUntil: options.daysUntil,
+      periodEnd: options.periodEnd,
+      place,
+    });
     const result = await sendHubtelSms({
       to: phone,
       content: sms,

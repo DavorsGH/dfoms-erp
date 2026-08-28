@@ -76,6 +76,10 @@ import { useWriteQueueOptional } from "@/components/write-queue-provider";
 import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
+import {
+  resolveOptionalProjectId,
+  type ContractProjectOption,
+} from "../administration/projects-utils";
 
 type ExpenseRegisterProps = {
   initialEntries: ExpenseRegisterEntry[];
@@ -86,6 +90,7 @@ type ExpenseRegisterProps = {
   initialSuppliers: SupplierRow[];
   taxSettings: TaxSettings | null;
   taxRateCatalog: TaxRateCatalogEntry[];
+  initialProjects: ContractProjectOption[];
   fetchError: string | null;
 };
 
@@ -107,6 +112,7 @@ type ExpenseFormState = {
   wht_amount: string;
   input_vat_amount: string;
   notes: string;
+  project_id: string;
 };
 
 const emptyForm: ExpenseFormState = {
@@ -127,6 +133,7 @@ const emptyForm: ExpenseFormState = {
   wht_amount: "",
   input_vat_amount: "",
   notes: "",
+  project_id: "",
 };
 
 const PAYMENT_STATUS_OPTIONS = [
@@ -164,6 +171,7 @@ export default function ExpenseRegister({
   initialSuppliers,
   taxSettings,
   taxRateCatalog,
+  initialProjects,
   fetchError,
 }: ExpenseRegisterProps) {
   const supabase = createClient();
@@ -517,6 +525,7 @@ export default function ExpenseRegister({
           ? ""
           : String(entry.input_vat_amount),
       notes: entry.notes ?? "",
+      project_id: entry.project_id ?? "",
     });
     setShowForm(true);
   }
@@ -737,6 +746,7 @@ export default function ExpenseRegister({
       input_vat_amount: purchaseTax.inputVatAmount,
       net_of_tax_amount: purchaseTax.netOfTaxAmount,
       notes: form.notes || null,
+      project_id: resolveOptionalProjectId(form.project_id),
     };
 
     if (offlineNow) {
@@ -771,6 +781,7 @@ export default function ExpenseRegister({
         input_vat_amount: payload.input_vat_amount,
         net_of_tax_amount: payload.net_of_tax_amount,
         notes: payload.notes,
+        project_id: payload.project_id,
         wht_rate_pct: whtRate > 0 ? whtRate : null,
         input_tax_component: purchaseTax.inputTaxComponent,
         notification_detail: formatGHS(purchaseTax.netPaidToSupplier),
@@ -1013,6 +1024,24 @@ export default function ExpenseRegister({
                   {expenseCategories.map((category) => (
                     <option key={category.name} value={category.name}>
                       {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Project / Contract
+                </label>
+                <select
+                  value={form.project_id}
+                  onChange={(e) => updateField("project_id", e.target.value)}
+                  className={inputClassName}
+                >
+                  <option value="">Unassigned</option>
+                  {initialProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.project_code} — {project.project_name}
+                      {project.is_archived ? " (Inactive)" : ""}
                     </option>
                   ))}
                 </select>

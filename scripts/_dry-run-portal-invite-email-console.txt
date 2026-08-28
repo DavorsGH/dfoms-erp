@@ -1,0 +1,19 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will error in a future major version of npm. See `npm help 
+npmrc` for supported config options.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\HP\AppData\Roaming\npm ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm notice run dfoms-erp-app@0.1.0 npx
+npm notice run tsx scripts/_dry-run-portal-invite-email.ts
+staff: subject="You're invited to Davors Facilities ERP" ignoreHtml=true ignoreText=true cta=true
+landlord: subject="You're invited to the Davors Landlord Portal" ignoreHtml=true ignoreText=true cta=true
+lessee_new: subject="You're invited to the Davors Tenant Portal" ignoreHtml=true ignoreText=true cta=true
+lessee_reuse: subject="New lease linked ΓÇö Davors Tenant Portal" ignoreHtml=true ignoreText=true cta=true
+fm_new: subject="You're invited as a Facility Manager ΓÇö Davors Facilities" ignoreHtml=true ignoreText=true cta=true
+fm_reuse: subject="Facility Manager access ΓÇö Davors Facilities" ignoreHtml=true ignoreText=true cta=true
+Wrote scripts/_dry-run-portal-invite-email-out.txt
+PASS dry-run portal invite email renders
+exit=0
