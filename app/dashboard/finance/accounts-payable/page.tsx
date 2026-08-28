@@ -7,6 +7,7 @@ import {
   type AccountsPayableEntry,
 } from "../accounts-payable-utils";
 import FinanceNav from "../finance-nav";
+import { queryExpenseSubcategoryLookups } from "../expense-register-utils";
 import {
   normalizeTaxRateCatalogEntry,
   normalizeTaxSettings,
@@ -35,10 +36,7 @@ export default async function AccountsPayablePage() {
       .from("expense_categories")
       .select("name")
       .order("name", { ascending: true }),
-    supabase
-      .from("expense_subcategories")
-      .select("name")
-      .order("name", { ascending: true }),
+    queryExpenseSubcategoryLookups(supabase),
     supabase.from("tax_settings").select(TAX_SETTINGS_SELECT).limit(1).maybeSingle(),
     supabase
       .from("tax_rate_catalog")

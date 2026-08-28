@@ -11,6 +11,7 @@ import {
   formatGHS,
   getExpenseGrossBeforeWht,
   normalizeExpenseRegisterEntry,
+  queryExpenseSubcategoryLookups,
   type ExpenseRegisterEntry,
 } from "./expense-register-utils";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
@@ -367,10 +368,7 @@ export default function ExpenseRegister({
           .from("expense_categories")
           .select("name")
           .order("name", { ascending: true }),
-        client
-          .from("expense_subcategories")
-          .select("name")
-          .order("name", { ascending: true }),
+        queryExpenseSubcategoryLookups(client),
         client
           .from("payment_methods")
           .select("name")

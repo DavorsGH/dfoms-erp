@@ -9,6 +9,7 @@ import Budget from "../budget";
 import FinanceNav from "../finance-nav";
 import type { BudgetRecord } from "../budget-utils";
 import type { NamedLookup } from "../../lookup-types";
+import { queryExpenseSubcategoryLookups } from "../expense-register-utils";
 
 export default async function BudgetPage() {
   const cookieStore = await cookies();
@@ -22,6 +23,7 @@ export default async function BudgetPage() {
   const [
     { data: budgets, error: budgetsError },
     { data: expenseCategories, error: categoriesError },
+    { data: expenseSubcategories, error: subcategoriesError },
     { data: projects, error: projectsError },
   ] = await Promise.all([
     supabase
@@ -34,6 +36,7 @@ export default async function BudgetPage() {
       .from("expense_categories")
       .select("name")
       .order("name", { ascending: true }),
+    queryExpenseSubcategoryLookups(supabase),
     supabase
       .from("projects")
       .select(CONTRACT_PROJECT_SELECT)
@@ -44,6 +47,7 @@ export default async function BudgetPage() {
   const fetchError =
     budgetsError?.message ??
     categoriesError?.message ??
+    subcategoriesError?.message ??
     projectsError?.message ??
     null;
 
@@ -56,6 +60,7 @@ export default async function BudgetPage() {
         tenantId={tenantId}
         initialEntries={(budgets as BudgetRecord[] | null) ?? []}
         expenseCategories={(expenseCategories as NamedLookup[] | null) ?? []}
+        expenseSubcategories={(expenseSubcategories as NamedLookup[] | null) ?? []}
         projects={(projects as ContractProjectOption[] | null) ?? []}
         fetchError={fetchError}
       />

@@ -85,3 +85,25 @@ export function normalizeOptionalReceiptNo(value: string | null | undefined): st
   const trimmed = (value ?? "").trim();
   return trimmed ? trimmed : null;
 }
+
+export const EXPENSE_SUBCATEGORIES_LOOKUP_SELECT = "name";
+
+/** Same lookup Expense Register uses for the Sub-Category field (tenant-scoped via RLS). */
+export function queryExpenseSubcategoryLookups(client: {
+  from: (table: string) => {
+    select: (columns: string) => {
+      order: (
+        column: string,
+        options?: { ascending?: boolean },
+      ) => unknown;
+    };
+  };
+}) {
+  return client
+    .from("expense_subcategories")
+    .select(EXPENSE_SUBCATEGORIES_LOOKUP_SELECT)
+    .order("name", { ascending: true }) as PromiseLike<{
+    data: Array<{ name: string }> | null;
+    error: { message: string } | null;
+  }>;
+}

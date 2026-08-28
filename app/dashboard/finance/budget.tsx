@@ -22,6 +22,7 @@ import {
   emptyBudgetForm,
   entryToBudgetForm,
   findDuplicateBudget,
+  formatBudgetCategoryLabel,
   formatBudgetPeriodLabel,
   formatBudgetProjectLabel,
   formatDuplicateBudgetMessage,
@@ -32,6 +33,8 @@ import {
   normalizeBudgetRecord,
   resolveBudgetFormPeriodMonth,
   resolveBudgetProjectId,
+  resolveBudgetSubcategory,
+  WHOLE_CATEGORY_SUBCATEGORY_VALUE,
   type BudgetFormState,
   type BudgetListPeriodTypeFilter,
   type BudgetPeriodType,
@@ -43,6 +46,7 @@ type BudgetProps = {
   tenantId: string;
   initialEntries: BudgetRecord[];
   expenseCategories: NamedLookup[];
+  expenseSubcategories: NamedLookup[];
   projects: ContractProjectOption[];
   fetchError: string | null;
 };
@@ -82,6 +86,7 @@ export default function Budget({
   tenantId,
   initialEntries,
   expenseCategories,
+  expenseSubcategories,
   projects,
   fetchError,
 }: BudgetProps) {
@@ -126,6 +131,21 @@ export default function Budget({
       }),
     [entries, selectedYear, selectedMonth, listPeriodTypeFilter],
   );
+
+  const subcategoryOptionsForCategory = useMemo(() => {
+    const names = new Set(
+      expenseSubcategories.map((entry) => entry.name.trim()).filter(Boolean),
+    );
+    const current = form.subcategory.trim();
+    if (current && current !== WHOLE_CATEGORY_SUBCATEGORY_VALUE) {
+      names.add(current);
+    }
+
+    return Array.from(names).sort((left, right) => left.localeCompare(right));
+  }, [expenseSubcategories, form.subcategory]);
+
+  const showSubcategoryField =
+    form.category.trim() !== "" && subcategoryOptionsForCategory.length > 0;
 
   const listSummaryLabel = useMemo(() => {
     if (listPeriodTypeFilter === "annual") {
@@ -205,11 +225,16 @@ export default function Budget({
       return false;
     }
 
+    const subcategory = showSubcategoryField
+      ? resolveBudgetSubcategory(form.subcategory)
+      : null;
+
     const duplicate = findDuplicateBudget(
       entries,
       {
         project_id: resolveBudgetProjectId(form.project_id),
         category,
+        subcategory,
         period_month: periodMonth,
         period_type: periodType,
       },
@@ -270,6 +295,9 @@ export default function Budget({
       tenant_id: tenantId,
       project_id: resolveBudgetProjectId(form.project_id),
       category: form.category.trim(),
+      subcategory: showSubcategoryField
+        ? resolveBudgetSubcategory(form.subcategory)
+        : null,
       period_month: periodMonth,
       period_type: periodType,
       budgeted_amount: Number(form.budgeted_amount) || 0,
@@ -293,6 +321,7 @@ export default function Budget({
         const existing = findDuplicateBudget(entries, {
           project_id: payload.project_id,
           category: payload.category,
+          subcategory: payload.subcategory,
           period_month: payload.period_month,
           period_type: payload.period_type,
         });
@@ -301,7 +330,7 @@ export default function Budget({
           setError(formatDuplicateBudgetMessage(existing, projects));
         } else {
           setError(
-            "A budget line already exists for this project, category, period type, and period.",
+            "A budget line already exists for this project, category, subcategory, period type, and period.",
           );
         }
       } else {
@@ -322,7 +351,17 @@ export default function Budget({
     key: K,
     value: BudgetFormState[K],
   ) {
-    setForm((current) => ({ ...current, [key]: value }));
+    setForm((current) => {
+      if (key === "category") {
+        return {
+          ...current,
+          category: value as BudgetFormState["category"],
+          subcategory: WHOLE_CATEGORY_SUBCATEGORY_VALUE,
+        };
+      }
+
+      return { ...current, [key]: value };
+    });
   }
 
   function setFormPeriodType(periodType: BudgetPeriodType) {
@@ -494,6 +533,29 @@ export default function Budget({
                 ))}
               </select>
             </div>
+            {showSubcategoryField ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Subcategory
+                </label>
+                <select
+                  value={form.subcategory}
+                  onChange={(event) =>
+                    updateField("subcategory", event.target.value)
+                  }
+                  className={inputClassName}
+                >
+                  <option value={WHOLE_CATEGORY_SUBCATEGORY_VALUE}>
+                    Whole category
+                  </option>
+                  {subcategoryOptionsForCategory.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Budgeted amount (GHS)
@@ -626,7 +688,7 @@ export default function Budget({
                     {formatBudgetProjectLabel(entry.project_id, projects)}
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">
-                    {entry.category}
+                    {formatBudgetCategoryLabel(entry.category, entry.subcategory)}
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">
                     {formatGHS(entry.budgeted_amount)}

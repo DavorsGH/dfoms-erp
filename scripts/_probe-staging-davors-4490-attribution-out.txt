@@ -1,0 +1,48 @@
+=== Staging Davors Aug 2026 BS check ===
+diff=44.9 assets=2082.61 LE=2037.71
+
+--- Pattern A: cash received vs P&L revenue (active Aug income) ---
+  RE-MGMT-FEE-1b2225f5-182d-4f1c-a97a-8034aa52e5ae: received=410 revenue=341.67 gap=68.33 status=Paid sale=active
+  DF-INV-0002: received=221.4 revenue=184.5 gap=36.9 status=Paid sale=active
+  DF-PSI-0001: received=22 revenue=25 gap=-3 status=Partial sale=active
+  Sum cash-vs-revenue gaps (Aug active): 102.23
+
+--- Pattern B: voided / inactive income still with COGS ---
+  COGS-IC241MT7R2KM1-SALE: cogs=50 revenue=75 invoice=IC241MT7R2KM1-SALE
+  COGS-IC241MT7R4833-SALE: cogs=50 revenue=75 invoice=IC241MT7R4833-SALE
+  COGS-DF-POS-0009: cogs=8 linked=MISSING active=false
+  COGS-DF-POS-0010: cogs=8 revenue=20 invoice=DF-POS-0010
+  Sum orphan COGS (no active revenue): 8
+
+--- Pattern C: DF-POS-0009 / offline conflict cluster ---
+  (missing row)
+  DF-POS-0010: amount=20 received=20 sale=active active=true cogs_id=none
+  DF-INC-0002: amount=80 received=80 sale=active active=true cogs_id=none
+  COGS-DF-POS-0009 amount=8
+  COGS-DF-POS-0010 amount=8
+
+--- Pattern D: voided sales with non-zero received ---
+  DF-PSI-0002: voided/inactive but received=10 sale=voided pay=Partial
+  DF-POS-0006: voided/inactive but received=0.25 sale=voided pay=Paid
+  DF-POS-0005: voided/inactive but received=0.25 sale=voided pay=Paid
+  DF-POS-0007: voided/inactive but received=0.25 sale=voided pay=Paid
+  (voided rows excluded from cash engine — leak if >0 would NOT hit BS cash)
+
+--- Pattern E: inventory vs COGS reconciliation Aug ---
+  inventory Jul=0 Aug=1892 delta=1892
+  raw_material cash purchases Aug=2000
+  COGS expense_register Aug=116
+  implied inventory build=1884 vs actual delta=1892
+  inventory COGS mismatch=8
+
+--- Pattern F: manual directors loan / loan proceeds Aug ---
+  2026-08-01: directors_loan=1600 loan_proceeds=1600 loan_repayments=0 opening_cash=0
+
+--- Attribution summary ---
+  cash-vs-revenue gap sum: 102.23
+  orphan COGS sum: 8
+  combined attributed: 110.23
+  actual BS diff: 44.9
+  residual: -65.33
+
+Aug cash component incomeReceived=1022.4

@@ -2,7 +2,9 @@ import { PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES } from "../hr-payroll/payroll-l
 import type { ContractProjectOption } from "../administration/projects-utils";
 import {
   buildAnnualPeriodMonth,
+  formatBudgetCategoryLabel,
   isAnnualBudget,
+  normalizeBudgetSubcategory,
   normalizePeriodMonth,
   type BudgetRecord,
 } from "../finance/budget-utils";
@@ -12,6 +14,8 @@ import { getEntryMonthIndex } from "../finance/profit-loss-utils";
 export type BudgetActualExpenseEntry = {
   date: string;
   expense_category: string | null;
+  /** Matches expense_register.sub_category */
+  sub_category?: string | null;
   amount: number;
   project_id?: string | null;
 };
@@ -41,6 +45,7 @@ export type BudgetHealthStatus = "green" | "amber" | "red";
 export type BudgetVsActualRow = {
   rowKey: string;
   category: string;
+  subcategory: string | null;
   rowLabel: string;
   budgeted: number;
   actual: number;
@@ -135,9 +140,90 @@ function budgetInYear(entry: BudgetRecord, year: number): boolean {
   return parts?.year === year;
 }
 
-function sumExpensesForCategoryInMonthRange(
+function makeBudgetLineKey(
+  category: string,
+  subcategory: string | null | undefined,
+): string {
+  return `${category.trim()}\u0000${normalizeBudgetSubcategory(subcategory) ?? ""}`;
+}
+
+function parseBudgetLineKey(key: string): {
+  category: string;
+  subcategory: string | null;
+} {
+  const separator = key.indexOf("\u0000");
+  if (separator === -1) {
+    return { category: key, subcategory: null };
+  }
+
+  const category = key.slice(0, separator);
+  const subcategoryPart = key.slice(separator + 1);
+  return {
+    category,
+    subcategory: subcategoryPart === "" ? null : subcategoryPart,
+  };
+}
+
+function budgetLineKeyFromEntry(entry: BudgetRecord): string {
+  return makeBudgetLineKey(entry.category, entry.subcategory);
+}
+
+function isInventoryPseudoCategory(category: string): boolean {
+  return (
+    category === BUDGET_ACTUAL_CATEGORY_RAW_MATERIALS ||
+    category === BUDGET_ACTUAL_CATEGORY_PURCHASED_INVENTORY
+  );
+}
+
+function budgetedSubcategoriesByCategory(
+  budgets: BudgetRecord[],
+): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+
+  for (const entry of budgets) {
+    const subcategory = normalizeBudgetSubcategory(entry.subcategory);
+    if (!subcategory || isInventoryPseudoCategory(entry.category.trim())) {
+      continue;
+    }
+
+    const category = entry.category.trim();
+    const set = map.get(category) ?? new Set<string>();
+    set.add(subcategory);
+    map.set(category, set);
+  }
+
+  return map;
+}
+
+function expenseMatchesLine(params: {
+  entry: BudgetActualExpenseEntry;
+  category: string;
+  subcategory: string | null;
+  budgetedSubs: Set<string>;
+}): boolean {
+  if ((params.entry.expense_category ?? "").trim() !== params.category) {
+    return false;
+  }
+
+  const expenseSub = normalizeBudgetSubcategory(params.entry.sub_category);
+
+  if (params.subcategory !== null) {
+    return expenseSub === params.subcategory;
+  }
+
+  // Whole-category row: exclude actuals already claimed by a separately budgeted subcategory.
+  if (expenseSub && params.budgetedSubs.has(expenseSub)) {
+    return false;
+  }
+
+  return true;
+}
+
+function sumExpensesForLineInMonthRange(
   expenses: BudgetActualExpenseEntry[],
   category: string,
+  subcategory: string | null,
+  budgetedSubs: Set<string>,
   year: number,
   fromMonthIndex: number,
   throughMonthIndex: number,
@@ -145,7 +231,14 @@ function sumExpensesForCategoryInMonthRange(
 ): number {
   return roundCurrency(
     expenses.reduce((sum, entry) => {
-      if ((entry.expense_category ?? "").trim() !== category) {
+      if (
+        !expenseMatchesLine({
+          entry,
+          category,
+          subcategory,
+          budgetedSubs,
+        })
+      ) {
         return sum;
       }
 
@@ -226,8 +319,10 @@ function sumPayrollInMonthRange(
   );
 }
 
-function computeActualForCategory(params: {
+function computeActualForLine(params: {
   category: string;
+  subcategory: string | null;
+  budgetedSubs: Set<string>;
   year: number;
   month: number;
   fromMonthIndex: number;
@@ -241,6 +336,8 @@ function computeActualForCategory(params: {
 }): number {
   const {
     category,
+    subcategory,
+    budgetedSubs,
     year,
     fromMonthIndex,
     throughMonthIndex,
@@ -253,6 +350,10 @@ function computeActualForCategory(params: {
   } = params;
 
   if (category === BUDGET_ACTUAL_CATEGORY_RAW_MATERIALS) {
+    if (subcategory !== null) {
+      return 0;
+    }
+
     return sumInventoryPurchasesInMonthRange(
       rawMaterialPurchases,
       year,
@@ -263,6 +364,10 @@ function computeActualForCategory(params: {
   }
 
   if (category === BUDGET_ACTUAL_CATEGORY_PURCHASED_INVENTORY) {
+    if (subcategory !== null) {
+      return 0;
+    }
+
     return sumInventoryPurchasesInMonthRange(
       productPurchases,
       year,
@@ -274,14 +379,21 @@ function computeActualForCategory(params: {
 
   if (category === PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES) {
     if (projectFilter === ALL_PROJECTS_FILTER) {
-      return sumExpensesForCategoryInMonthRange(
+      return sumExpensesForLineInMonthRange(
         expenses,
         category,
+        subcategory,
+        budgetedSubs,
         year,
         fromMonthIndex,
         throughMonthIndex,
         ALL_PROJECTS_FILTER,
       );
+    }
+
+    // Project-scoped payroll actuals come from payroll history (no subcategory).
+    if (subcategory !== null) {
+      return 0;
     }
 
     const project = projects.find((entry) => entry.id === projectFilter);
@@ -298,9 +410,11 @@ function computeActualForCategory(params: {
     );
   }
 
-  return sumExpensesForCategoryInMonthRange(
+  return sumExpensesForLineInMonthRange(
     expenses,
     category,
+    subcategory,
+    budgetedSubs,
     year,
     fromMonthIndex,
     throughMonthIndex,
@@ -308,14 +422,15 @@ function computeActualForCategory(params: {
   );
 }
 
-function collectActualCategories(params: {
+function collectActualLineKeys(params: {
   year: number;
   fromMonthIndex: number;
   throughMonthIndex: number;
   projectFilter: string;
   expenses: BudgetActualExpenseEntry[];
+  budgetedSubsByCategory: Map<string, Set<string>>;
 }): Set<string> {
-  const categories = new Set<string>();
+  const keys = new Set<string>();
 
   for (const entry of params.expenses) {
     const monthIndex = getEntryMonthIndex(entry.date, params.year);
@@ -332,24 +447,38 @@ function collectActualCategories(params: {
     }
 
     const category = (entry.expense_category ?? "").trim();
-    if (category) {
-      categories.add(category);
+    if (!category) {
+      continue;
+    }
+
+    if (isInventoryPseudoCategory(category)) {
+      keys.add(makeBudgetLineKey(category, null));
+      continue;
+    }
+
+    const expenseSub = normalizeBudgetSubcategory(entry.sub_category);
+    const budgetedSubs = params.budgetedSubsByCategory.get(category) ?? new Set();
+    if (expenseSub && budgetedSubs.has(expenseSub)) {
+      keys.add(makeBudgetLineKey(category, expenseSub));
+    } else {
+      keys.add(makeBudgetLineKey(category, null));
     }
   }
 
-  categories.add(BUDGET_ACTUAL_CATEGORY_RAW_MATERIALS);
-  categories.add(BUDGET_ACTUAL_CATEGORY_PURCHASED_INVENTORY);
+  keys.add(makeBudgetLineKey(BUDGET_ACTUAL_CATEGORY_RAW_MATERIALS, null));
+  keys.add(makeBudgetLineKey(BUDGET_ACTUAL_CATEGORY_PURCHASED_INVENTORY, null));
 
   if (params.projectFilter !== ALL_PROJECTS_FILTER) {
-    categories.add(PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES);
+    keys.add(makeBudgetLineKey(PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES, null));
   }
 
-  return categories;
+  return keys;
 }
 
 function buildReportRow(params: {
   rowKey: string;
   category: string;
+  subcategory: string | null;
   rowLabel: string;
   budgeted: number;
   actual: number;
@@ -363,6 +492,7 @@ function buildReportRow(params: {
   return {
     rowKey: params.rowKey,
     category: params.category,
+    subcategory: params.subcategory,
     rowLabel: params.rowLabel,
     budgeted: params.budgeted,
     actual: params.actual,
@@ -451,12 +581,13 @@ function allMonthlyBudgetsInYear(
   );
 }
 
-function sumBudgetAmountsByCategory(entries: BudgetRecord[]): Map<string, number> {
+function sumBudgetAmountsByLineKey(entries: BudgetRecord[]): Map<string, number> {
   const totals = new Map<string, number>();
 
   for (const entry of entries) {
-    const current = totals.get(entry.category) ?? 0;
-    totals.set(entry.category, roundCurrency(current + entry.budgeted_amount));
+    const key = budgetLineKeyFromEntry(entry);
+    const current = totals.get(key) ?? 0;
+    totals.set(key, roundCurrency(current + entry.budgeted_amount));
   }
 
   return totals;
@@ -476,6 +607,58 @@ type BuildBudgetVsActualReportParams = {
   projectFilter: string;
 };
 
+function buildRowsForLineKeys(params: {
+  lineKeys: Set<string>;
+  budgetedByLineKey: Map<string, number>;
+  budgetedSubsByCategory: Map<string, Set<string>>;
+  rowKeySuffix: string;
+  year: number;
+  month: number;
+  fromMonthIndex: number;
+  throughMonthIndex: number;
+  projectFilter: string;
+  projects: ContractProjectOption[];
+  expenses: BudgetActualExpenseEntry[];
+  rawMaterialPurchases: BudgetActualInventoryPurchaseEntry[];
+  productPurchases: BudgetActualInventoryPurchaseEntry[];
+  payrollRows: BudgetActualPayrollRow[];
+}): BudgetVsActualRow[] {
+  return Array.from(params.lineKeys)
+    .sort((left, right) => left.localeCompare(right))
+    .map((lineKey) => {
+      const { category, subcategory } = parseBudgetLineKey(lineKey);
+      const budgeted = params.budgetedByLineKey.get(lineKey) ?? 0;
+      const budgetedSubs =
+        params.budgetedSubsByCategory.get(category) ?? new Set<string>();
+      const actual = computeActualForLine({
+        category,
+        subcategory,
+        budgetedSubs,
+        year: params.year,
+        month: params.month,
+        fromMonthIndex: params.fromMonthIndex,
+        throughMonthIndex: params.throughMonthIndex,
+        projectFilter: params.projectFilter,
+        projects: params.projects,
+        expenses: params.expenses,
+        rawMaterialPurchases: params.rawMaterialPurchases,
+        productPurchases: params.productPurchases,
+        payrollRows: params.payrollRows,
+      });
+
+      return buildReportRow({
+        rowKey: `${lineKey}:${params.rowKeySuffix}`,
+        category,
+        subcategory,
+        rowLabel: formatBudgetCategoryLabel(category, subcategory),
+        budgeted,
+        actual,
+        countActualInTotals: true,
+      });
+    })
+    .filter((row) => row.budgeted !== 0 || row.actual !== 0);
+}
+
 function buildMonthlyProratedReport(
   params: Omit<BuildBudgetVsActualReportParams, "viewMode">,
 ): BudgetVsActualRow[] {
@@ -490,63 +673,53 @@ function buildMonthlyProratedReport(
     params.year,
     params.projectFilter,
   );
+  const budgetsInScope = [...monthlyBudgets, ...annualBudgets];
+  const budgetedSubsByCategory = budgetedSubcategoriesByCategory(budgetsInScope);
 
-  const categories = new Set<string>([
-    ...monthlyBudgets.map((entry) => entry.category),
-    ...annualBudgets.map((entry) => entry.category),
-    ...collectActualCategories({
+  const budgetedByLineKey = new Map<string, number>();
+  for (const entry of monthlyBudgets) {
+    const key = budgetLineKeyFromEntry(entry);
+    budgetedByLineKey.set(
+      key,
+      roundCurrency((budgetedByLineKey.get(key) ?? 0) + entry.budgeted_amount),
+    );
+  }
+  for (const entry of annualBudgets) {
+    const key = budgetLineKeyFromEntry(entry);
+    budgetedByLineKey.set(
+      key,
+      roundCurrency((budgetedByLineKey.get(key) ?? 0) + entry.budgeted_amount / 12),
+    );
+  }
+
+  const lineKeys = new Set<string>([
+    ...budgetedByLineKey.keys(),
+    ...collectActualLineKeys({
       year: params.year,
       fromMonthIndex: params.monthIndex,
       throughMonthIndex: params.monthIndex,
       projectFilter: params.projectFilter,
       expenses: params.expenses,
+      budgetedSubsByCategory,
     }),
   ]);
 
-  const rows: BudgetVsActualRow[] = [];
-
-  for (const category of Array.from(categories).sort((left, right) =>
-    left.localeCompare(right),
-  )) {
-    const actual = computeActualForCategory({
-      category,
-      year: params.year,
-      month: params.month,
-      fromMonthIndex: params.monthIndex,
-      throughMonthIndex: params.monthIndex,
-      projectFilter: params.projectFilter,
-      projects: params.projects,
-      expenses: params.expenses,
-      rawMaterialPurchases: params.rawMaterialPurchases,
-      productPurchases: params.productPurchases,
-      payrollRows: params.payrollRows,
-    });
-
-    const monthlyTotal = monthlyBudgets
-      .filter((entry) => entry.category === category)
-      .reduce((sum, entry) => sum + entry.budgeted_amount, 0);
-
-    const annualTotal = annualBudgets
-      .filter((entry) => entry.category === category)
-      .reduce((sum, entry) => sum + entry.budgeted_amount, 0);
-
-    const budgeted = roundCurrency(monthlyTotal + annualTotal / 12);
-
-    if (budgeted !== 0 || actual !== 0) {
-      rows.push(
-        buildReportRow({
-          rowKey: `${category}:prorated:${periodMonth}`,
-          category,
-          rowLabel: category,
-          budgeted,
-          actual,
-          countActualInTotals: true,
-        }),
-      );
-    }
-  }
-
-  return rows.filter((row) => row.budgeted !== 0 || row.actual !== 0);
+  return buildRowsForLineKeys({
+    lineKeys,
+    budgetedByLineKey,
+    budgetedSubsByCategory,
+    rowKeySuffix: `prorated:${periodMonth}`,
+    year: params.year,
+    month: params.month,
+    fromMonthIndex: params.monthIndex,
+    throughMonthIndex: params.monthIndex,
+    projectFilter: params.projectFilter,
+    projects: params.projects,
+    expenses: params.expenses,
+    rawMaterialPurchases: params.rawMaterialPurchases,
+    productPurchases: params.productPurchases,
+    payrollRows: params.payrollRows,
+  });
 }
 
 function buildMonthlyYtdReport(
@@ -563,55 +736,46 @@ function buildMonthlyYtdReport(
     params.year,
     params.projectFilter,
   );
+  const budgetsInScope = [...monthlyThrough, ...annualBudgets];
+  const budgetedSubsByCategory = budgetedSubcategoriesByCategory(budgetsInScope);
 
-  const budgetedByCategory = sumBudgetAmountsByCategory(monthlyThrough);
+  const budgetedByLineKey = sumBudgetAmountsByLineKey(monthlyThrough);
   for (const entry of annualBudgets) {
-    const current = budgetedByCategory.get(entry.category) ?? 0;
-    budgetedByCategory.set(
-      entry.category,
-      roundCurrency(current + entry.budgeted_amount),
+    const key = budgetLineKeyFromEntry(entry);
+    budgetedByLineKey.set(
+      key,
+      roundCurrency((budgetedByLineKey.get(key) ?? 0) + entry.budgeted_amount),
     );
   }
 
-  const categories = new Set<string>([
-    ...budgetedByCategory.keys(),
-    ...collectActualCategories({
+  const lineKeys = new Set<string>([
+    ...budgetedByLineKey.keys(),
+    ...collectActualLineKeys({
       year: params.year,
       fromMonthIndex: 0,
       throughMonthIndex: params.monthIndex,
       projectFilter: params.projectFilter,
       expenses: params.expenses,
+      budgetedSubsByCategory,
     }),
   ]);
 
-  return Array.from(categories)
-    .sort((left, right) => left.localeCompare(right))
-    .map((category) => {
-      const budgeted = budgetedByCategory.get(category) ?? 0;
-      const actual = computeActualForCategory({
-        category,
-        year: params.year,
-        month: params.month,
-        fromMonthIndex: 0,
-        throughMonthIndex: params.monthIndex,
-        projectFilter: params.projectFilter,
-        projects: params.projects,
-        expenses: params.expenses,
-        rawMaterialPurchases: params.rawMaterialPurchases,
-        productPurchases: params.productPurchases,
-        payrollRows: params.payrollRows,
-      });
-
-      return buildReportRow({
-        rowKey: `${category}:ytd:${params.year}-${params.month}`,
-        category,
-        rowLabel: category,
-        budgeted,
-        actual,
-        countActualInTotals: true,
-      });
-    })
-    .filter((row) => row.budgeted !== 0 || row.actual !== 0);
+  return buildRowsForLineKeys({
+    lineKeys,
+    budgetedByLineKey,
+    budgetedSubsByCategory,
+    rowKeySuffix: `ytd:${params.year}-${params.month}`,
+    year: params.year,
+    month: params.month,
+    fromMonthIndex: 0,
+    throughMonthIndex: params.monthIndex,
+    projectFilter: params.projectFilter,
+    projects: params.projects,
+    expenses: params.expenses,
+    rawMaterialPurchases: params.rawMaterialPurchases,
+    productPurchases: params.productPurchases,
+    payrollRows: params.payrollRows,
+  });
 }
 
 function buildAnnualViewReport(
@@ -632,55 +796,46 @@ function buildAnnualViewReport(
     params.year,
     params.projectFilter,
   );
+  const budgetsInScope = [...monthlyInYear, ...annualBudgets];
+  const budgetedSubsByCategory = budgetedSubcategoriesByCategory(budgetsInScope);
 
-  const budgetedByCategory = sumBudgetAmountsByCategory(monthlyInYear);
+  const budgetedByLineKey = sumBudgetAmountsByLineKey(monthlyInYear);
   for (const entry of annualBudgets) {
-    const current = budgetedByCategory.get(entry.category) ?? 0;
-    budgetedByCategory.set(
-      entry.category,
-      roundCurrency(current + entry.budgeted_amount),
+    const key = budgetLineKeyFromEntry(entry);
+    budgetedByLineKey.set(
+      key,
+      roundCurrency((budgetedByLineKey.get(key) ?? 0) + entry.budgeted_amount),
     );
   }
 
-  const categories = new Set<string>([
-    ...budgetedByCategory.keys(),
-    ...collectActualCategories({
+  const lineKeys = new Set<string>([
+    ...budgetedByLineKey.keys(),
+    ...collectActualLineKeys({
       year: params.year,
       fromMonthIndex: 0,
       throughMonthIndex,
       projectFilter: params.projectFilter,
       expenses: params.expenses,
+      budgetedSubsByCategory,
     }),
   ]);
 
-  return Array.from(categories)
-    .sort((left, right) => left.localeCompare(right))
-    .map((category) => {
-      const budgeted = budgetedByCategory.get(category) ?? 0;
-      const actual = computeActualForCategory({
-        category,
-        year: params.year,
-        month: throughMonthIndex + 1,
-        fromMonthIndex: 0,
-        throughMonthIndex,
-        projectFilter: params.projectFilter,
-        projects: params.projects,
-        expenses: params.expenses,
-        rawMaterialPurchases: params.rawMaterialPurchases,
-        productPurchases: params.productPurchases,
-        payrollRows: params.payrollRows,
-      });
-
-      return buildReportRow({
-        rowKey: `${category}:annual:${params.year}`,
-        category,
-        rowLabel: category,
-        budgeted,
-        actual,
-        countActualInTotals: true,
-      });
-    })
-    .filter((row) => row.budgeted !== 0 || row.actual !== 0);
+  return buildRowsForLineKeys({
+    lineKeys,
+    budgetedByLineKey,
+    budgetedSubsByCategory,
+    rowKeySuffix: `annual:${params.year}`,
+    year: params.year,
+    month: throughMonthIndex + 1,
+    fromMonthIndex: 0,
+    throughMonthIndex,
+    projectFilter: params.projectFilter,
+    projects: params.projects,
+    expenses: params.expenses,
+    rawMaterialPurchases: params.rawMaterialPurchases,
+    productPurchases: params.productPurchases,
+    payrollRows: params.payrollRows,
+  });
 }
 
 export function buildBudgetVsActualReport(
@@ -702,17 +857,14 @@ export function sumBudgetVsActualTotals(rows: BudgetVsActualRow[]): {
   variance: number;
   remaining: number;
 } {
-  const actualByCategory = new Map<string, number>();
-
-  for (const row of rows) {
-    if (row.countActualInTotals) {
-      actualByCategory.set(row.category, row.actual);
-    }
-  }
-
+  // Rows are partitioned by (category, subcategory) with non-overlapping actuals,
+  // so totals sum every counted row (do not collapse on category alone).
   const budgeted = roundCurrency(rows.reduce((sum, row) => sum + row.budgeted, 0));
   const actual = roundCurrency(
-    Array.from(actualByCategory.values()).reduce((sum, value) => sum + value, 0),
+    rows.reduce(
+      (sum, row) => (row.countActualInTotals ? sum + row.actual : sum),
+      0,
+    ),
   );
   const variance = roundCurrency(actual - budgeted);
   const remaining = roundCurrency(budgeted - actual);

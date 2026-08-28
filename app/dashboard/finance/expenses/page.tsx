@@ -6,6 +6,7 @@ import type { Approver, NamedLookup } from "../../lookup-types";
 import ExpenseRegister from "../expense-register";
 import {
   normalizeExpenseRegisterEntry,
+  queryExpenseSubcategoryLookups,
   type ExpenseRegisterEntry,
 } from "../expense-register-utils";
 import FinanceNav from "../finance-nav";
@@ -47,10 +48,7 @@ export default async function ExpensesPage() {
       .from("expense_categories")
       .select("name")
       .order("name", { ascending: true }),
-    supabase
-      .from("expense_subcategories")
-      .select("name")
-      .order("name", { ascending: true }),
+    queryExpenseSubcategoryLookups(supabase),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
     supabase
       .from("approvers")

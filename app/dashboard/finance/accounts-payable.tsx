@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { NamedLookup } from "../lookup-types";
+import { queryExpenseSubcategoryLookups } from "./expense-register-utils";
 import {
   calculateBalanceDue,
   calculateDaysOutstanding,
@@ -174,10 +175,7 @@ export default function AccountsPayable({
           .from("expense_categories")
           .select("name")
           .order("name", { ascending: true }),
-        client
-          .from("expense_subcategories")
-          .select("name")
-          .order("name", { ascending: true }),
+        queryExpenseSubcategoryLookups(client),
       ]);
 
       const lookupError =

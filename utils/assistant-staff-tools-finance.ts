@@ -539,7 +539,8 @@ export async function getBudgetStatus(toolInput?: unknown): Promise<unknown> {
       projectLabel,
       currency: "GHS" as const,
       categories: report.map((row) => ({
-        category: row.category,
+        category: row.rowLabel,
+        subcategory: row.subcategory,
         budgetedGhs: row.budgeted,
         actualGhs: row.actual,
         varianceGhs: row.variance,

@@ -333,7 +333,7 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
       .order("period_month", { ascending: true }),
     supabase
       .from("expense_register")
-      .select("date, expense_category, amount, project_id")
+      .select("date, expense_category, sub_category, amount, project_id")
       .eq("tenant_id", tenantId)
       .order("date", { ascending: true }),
     supabase

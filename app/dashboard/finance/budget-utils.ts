@@ -12,6 +12,7 @@ export type BudgetRecord = {
   tenant_id: string;
   project_id: string | null;
   category: string;
+  subcategory?: string | null;
   period_month: string;
   period_type: BudgetPeriodType;
   budgeted_amount: number;
@@ -21,12 +22,14 @@ export type BudgetRecord = {
 };
 
 export const COMPANY_WIDE_PROJECT_VALUE = "__company_wide__";
+export const WHOLE_CATEGORY_SUBCATEGORY_VALUE = "";
 
 export type BudgetListPeriodTypeFilter = "all" | "monthly" | "annual";
 
 export type BudgetFormState = {
   project_id: string;
   category: string;
+  subcategory: string;
   budgeted_amount: string;
   notes: string;
   period_type: BudgetPeriodType;
@@ -37,6 +40,7 @@ export type BudgetFormState = {
 export const emptyBudgetForm = (): BudgetFormState => ({
   project_id: COMPANY_WIDE_PROJECT_VALUE,
   category: "",
+  subcategory: WHOLE_CATEGORY_SUBCATEGORY_VALUE,
   budgeted_amount: "",
   notes: "",
   period_type: "monthly",
@@ -100,10 +104,46 @@ export function resolveBudgetFormPeriodMonth(form: BudgetFormState): string {
   return buildPeriodMonth(year, Number(form.period_month));
 }
 
+export function normalizeBudgetSubcategory(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+export function resolveBudgetSubcategory(value: string): string | null {
+  return normalizeBudgetSubcategory(value);
+}
+
+export function budgetFormSubcategoryValue(
+  subcategory: string | null | undefined,
+): string {
+  return normalizeBudgetSubcategory(subcategory) ?? WHOLE_CATEGORY_SUBCATEGORY_VALUE;
+}
+
+/**
+ * Matches unique index:
+ * (tenant_id, COALESCE(project_id::text,''), category, COALESCE(subcategory,''), period_month, period_type)
+ */
+export function coalesceBudgetUniquePart(
+  value: string | null | undefined,
+): string {
+  return value ?? "";
+}
+
+export function formatBudgetCategoryLabel(
+  category: string,
+  subcategory?: string | null,
+): string {
+  const sub = normalizeBudgetSubcategory(subcategory);
+  return sub ? `${category} — ${sub}` : category;
+}
+
 export function normalizeBudgetRecord(raw: BudgetRecord): BudgetRecord {
   return {
     ...raw,
     period_type: raw.period_type === "annual" ? "annual" : "monthly",
+    subcategory: normalizeBudgetSubcategory(raw.subcategory),
     budgeted_amount: Number(raw.budgeted_amount) || 0,
   };
 }
@@ -137,6 +177,7 @@ export function findDuplicateBudget(
   candidate: {
     project_id: string | null;
     category: string;
+    subcategory?: string | null;
     period_month: string;
     period_type: BudgetPeriodType;
   },
@@ -144,7 +185,10 @@ export function findDuplicateBudget(
 ): BudgetRecord | null {
   const normalizedMonth = normalizePeriodMonth(candidate.period_month);
   const normalizedCategory = candidate.category.trim();
-  const candidateProject = candidate.project_id ?? null;
+  const candidateProject = coalesceBudgetUniquePart(candidate.project_id);
+  const candidateSubcategory = coalesceBudgetUniquePart(
+    normalizeBudgetSubcategory(candidate.subcategory),
+  );
 
   return (
     entries.find((entry) => {
@@ -164,7 +208,16 @@ export function findDuplicateBudget(
         return false;
       }
 
-      return (entry.project_id ?? null) === candidateProject;
+      if (
+        coalesceBudgetUniquePart(entry.project_id) !== candidateProject
+      ) {
+        return false;
+      }
+
+      return (
+        coalesceBudgetUniquePart(normalizeBudgetSubcategory(entry.subcategory)) ===
+        candidateSubcategory
+      );
     }) ?? null
   );
 }
@@ -176,7 +229,7 @@ export function formatDuplicateBudgetMessage(
   return `A budget line already exists for ${formatBudgetProjectLabel(
     duplicate.project_id,
     projects,
-  )}, ${duplicate.category}, ${formatBudgetPeriodLabel(duplicate)}. Edit the existing line or change project, category, period type, or period.`;
+  )}, ${formatBudgetCategoryLabel(duplicate.category, duplicate.subcategory)}, ${formatBudgetPeriodLabel(duplicate)}. Edit the existing line or change project, category, subcategory, period type, or period.`;
 }
 
 export function isBudgetDuplicateError(message: string): boolean {
@@ -193,6 +246,7 @@ export function entryToBudgetForm(entry: BudgetRecord): BudgetFormState {
   return {
     project_id: budgetFormProjectValue(entry.project_id),
     category: entry.category,
+    subcategory: budgetFormSubcategoryValue(entry.subcategory),
     budgeted_amount: String(entry.budgeted_amount ?? 0),
     notes: entry.notes?.trim() ?? "",
     period_type: entry.period_type,
@@ -255,7 +309,18 @@ export function budgetEntriesForList(
         return leftProject.localeCompare(rightProject);
       }
 
-      return left.category.localeCompare(right.category);
+      const categoryCompare = left.category.localeCompare(right.category);
+      if (categoryCompare !== 0) {
+        return categoryCompare;
+      }
+
+      const leftSub = coalesceBudgetUniquePart(
+        normalizeBudgetSubcategory(left.subcategory),
+      );
+      const rightSub = coalesceBudgetUniquePart(
+        normalizeBudgetSubcategory(right.subcategory),
+      );
+      return leftSub.localeCompare(rightSub);
     });
 }
 
