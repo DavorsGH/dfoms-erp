@@ -177,16 +177,3 @@ export function buildDashboardBudgetStatusByMonthKey(
 
   return snapshots;
 }
-
-export function budgetUtilizationTextClassName(
-  status: BudgetHealthStatus,
-): string {
-  switch (status) {
-    case "green":
-      return "text-emerald-700";
-    case "amber":
-      return "text-amber-800";
-    case "red":
-      return "text-red-700";
-  }
-}

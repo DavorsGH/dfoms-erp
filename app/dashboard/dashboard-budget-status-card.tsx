@@ -3,16 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatGHS } from "./finance/income-register-utils";
-import {
-  budgetUtilizationTextClassName,
-  type DashboardBudgetStatusRow,
-  type DashboardBudgetStatusSnapshot,
+import type {
+  DashboardBudgetStatusRow,
+  DashboardBudgetStatusSnapshot,
 } from "./dashboard-budget-status-utils";
 
 type BudgetStatusPeriodMode = "month" | "ytd";
 
 const cardClassName =
   "block rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-[#0f2744] hover:shadow-md";
+
+/** Same token as SummaryCard big numbers (Net Profit, Revenue, Expenses). */
+const WITHIN_BUDGET_VALUE_CLASS =
+  "text-2xl font-semibold tabular-nums text-[#0f2744]";
+const OVER_BUDGET_VALUE_CLASS =
+  "text-2xl font-semibold tabular-nums text-red-700";
+const NO_BUDGET_VALUE_CLASS = "text-2xl font-semibold text-slate-500";
 
 function periodFromMonthLabel(label: string): string {
   const match = /^Month \((.+)\)$/.exec(label);
@@ -29,10 +35,16 @@ function budgetStatusValueClassName(
   showNeutralEmptyState: boolean,
 ): string {
   if (showNeutralEmptyState || row.budgeted <= 0) {
-    return "text-2xl font-semibold text-slate-500";
+    return NO_BUDGET_VALUE_CLASS;
   }
 
-  return `text-2xl font-semibold tabular-nums ${budgetUtilizationTextClassName(row.status)}`;
+  // Within budget (under 100%, including amber 80–100%) → same navy as other metric cards.
+  // Over budget only stays red.
+  if (row.status === "red") {
+    return OVER_BUDGET_VALUE_CLASS;
+  }
+
+  return WITHIN_BUDGET_VALUE_CLASS;
 }
 
 function BudgetStatusFigure({
