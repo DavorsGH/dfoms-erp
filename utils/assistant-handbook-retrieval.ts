@@ -37,6 +37,12 @@ const VOYAGE_MODEL = "voyage-3";
 const EMBEDDING_DIMENSIONS = 1024;
 const DEFAULT_MATCH_COUNT = 5;
 
+/**
+ * When true, RAG-grounded replies may append signed handbook screenshot markdown.
+ * Kept false for now — text/RAG answers still run; flip to true to re-enable images.
+ */
+export const SHOW_HANDBOOK_SCREENSHOTS = false;
+
 /** e.g. "Section 6 — Finance — 6.2 Expense Register" -> "6.2"; Section 5 only -> "5.1" */
 export function extractHandbookSectionKey(sectionTitle: string): string | null {
   const subsection = sectionTitle.match(/\b(\d+\.\d+)\b/);
@@ -139,6 +145,10 @@ export async function appendHandbookScreenshotsToReply(options: {
   textReply: string;
   admin?: SupabaseClient;
 }): Promise<string> {
+  if (!SHOW_HANDBOOK_SCREENSHOTS) {
+    return options.textReply;
+  }
+
   const sectionKeys = collectHandbookSectionKeys(options.handbookChunks);
   if (sectionKeys.length === 0) {
     return options.textReply;
