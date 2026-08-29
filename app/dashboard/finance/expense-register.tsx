@@ -817,6 +817,7 @@ export default function ExpenseRegister({
         notes: payload.notes,
         project_id: payload.project_id,
         business_unit_id: stampId,
+        wht_rate_pct: whtRate > 0 ? whtRate : null,
         input_tax_component: purchaseTax.inputTaxComponent,
         notification_detail: formatGHS(purchaseTax.netPaidToSupplier),
       };
