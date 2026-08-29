@@ -51,10 +51,13 @@ import RegisterRowActions, {
 } from "./register-row-actions";
 import {
   RegisterColumnFilterHeader,
+  RegisterDateRangeFilterHeader,
   RegisterFilteredTotal,
   collectDistinctColumnValues,
   columnValuePassesFilter,
+  dateValuePassesRangeFilter,
   type RegisterColumnFilterValue,
+  type RegisterDateRangeFilterValue,
 } from "./register-column-filter";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -190,6 +193,8 @@ export default function ExpenseRegister({
     useState<RegisterColumnFilterValue>(null);
   const [descriptionFilter, setDescriptionFilter] =
     useState<RegisterColumnFilterValue>(null);
+  const [dateFilter, setDateFilter] =
+    useState<RegisterDateRangeFilterValue>(null);
   const [expenseCategories, setExpenseCategories] = useState(
     initialExpenseCategories,
   );
@@ -237,12 +242,16 @@ export default function ExpenseRegister({
         entries
           .filter(
             (entry) =>
+              dateValuePassesRangeFilter(
+                toDateInputValue(entry.date),
+                dateFilter,
+              ) &&
               columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
               columnValuePassesFilter(entry.description, descriptionFilter),
           )
           .map((entry) => entry.expense_category),
       ),
-    [entries, subCategoryFilter, descriptionFilter],
+    [entries, dateFilter, subCategoryFilter, descriptionFilter],
   );
 
   const subCategoryOptions = useMemo(
@@ -251,12 +260,16 @@ export default function ExpenseRegister({
         entries
           .filter(
             (entry) =>
+              dateValuePassesRangeFilter(
+                toDateInputValue(entry.date),
+                dateFilter,
+              ) &&
               columnValuePassesFilter(entry.expense_category, categoryFilter) &&
               columnValuePassesFilter(entry.description, descriptionFilter),
           )
           .map((entry) => entry.sub_category),
       ),
-    [entries, categoryFilter, descriptionFilter],
+    [entries, dateFilter, categoryFilter, descriptionFilter],
   );
 
   const descriptionOptions = useMemo(
@@ -265,12 +278,16 @@ export default function ExpenseRegister({
         entries
           .filter(
             (entry) =>
+              dateValuePassesRangeFilter(
+                toDateInputValue(entry.date),
+                dateFilter,
+              ) &&
               columnValuePassesFilter(entry.expense_category, categoryFilter) &&
               columnValuePassesFilter(entry.sub_category, subCategoryFilter),
           )
           .map((entry) => entry.description),
       ),
-    [entries, categoryFilter, subCategoryFilter],
+    [entries, dateFilter, categoryFilter, subCategoryFilter],
   );
 
   const visibleEntries = useMemo(() => {
@@ -312,6 +329,7 @@ export default function ExpenseRegister({
 
     const live = entries.filter(
       (entry) =>
+        dateValuePassesRangeFilter(toDateInputValue(entry.date), dateFilter) &&
         columnValuePassesFilter(entry.expense_category, categoryFilter) &&
         columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
         columnValuePassesFilter(entry.description, descriptionFilter),
@@ -319,6 +337,7 @@ export default function ExpenseRegister({
 
     const queuedFiltered = queued.filter(
       (entry) =>
+        dateValuePassesRangeFilter(toDateInputValue(entry.date), dateFilter) &&
         columnValuePassesFilter(entry.expense_category, categoryFilter) &&
         columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
         columnValuePassesFilter(entry.description, descriptionFilter),
@@ -328,6 +347,7 @@ export default function ExpenseRegister({
   }, [
     entries,
     writeQueue?.items,
+    dateFilter,
     categoryFilter,
     subCategoryFilter,
     descriptionFilter,
@@ -1344,6 +1364,7 @@ export default function ExpenseRegister({
           categoryFilter,
           subCategoryFilter,
           descriptionFilter,
+          dateFilter,
         )}
       />
 
@@ -1359,7 +1380,13 @@ export default function ExpenseRegister({
                     onApply={setDescriptionFilter}
                   />
                 </th>
-                <th className={scrollableTableThClassName}>Date</th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterDateRangeFilterHeader
+                    label="Date"
+                    applied={dateFilter}
+                    onApply={setDateFilter}
+                  />
+                </th>
                 <th className={scrollableTableThClassName}>
                   <RegisterColumnFilterHeader
                     label="Expense Category"

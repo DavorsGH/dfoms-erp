@@ -2,7 +2,9 @@
 
 import {
   isColumnFilterActive,
+  isDateRangeFilterActive,
   type RegisterColumnFilterValue,
+  type RegisterDateRangeFilterValue,
 } from "./finance/register-column-filter";
 
 type FilteredListCountLabelOptions = {
@@ -72,7 +74,15 @@ export default function FilteredListCount({
 }
 
 export function anyRegisterColumnFiltersActive(
-  ...filters: RegisterColumnFilterValue[]
+  ...filters: Array<RegisterColumnFilterValue | RegisterDateRangeFilterValue>
 ): boolean {
-  return filters.some(isColumnFilterActive);
+  return filters.some((filter) => {
+    if (filter == null) {
+      return false;
+    }
+    if (filter instanceof Set) {
+      return isColumnFilterActive(filter);
+    }
+    return isDateRangeFilterActive(filter);
+  });
 }

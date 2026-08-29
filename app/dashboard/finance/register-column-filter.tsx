@@ -38,6 +38,40 @@ export function isColumnFilterActive(filter: RegisterColumnFilterValue): boolean
   return filter !== null;
 }
 
+/** null = no filter. Empty from/to = open-ended on that side. */
+export type RegisterDateRangeFilterValue = { from: string; to: string } | null;
+
+export function isDateRangeFilterActive(
+  filter: RegisterDateRangeFilterValue,
+): boolean {
+  return filter !== null && (filter.from !== "" || filter.to !== "");
+}
+
+/** `date` should already be YYYY-MM-DD (e.g. via toDateInputValue). */
+export function dateValuePassesRangeFilter(
+  date: string,
+  filter: RegisterDateRangeFilterValue,
+): boolean {
+  if (!filter) {
+    return true;
+  }
+  const from = filter.from;
+  const to = filter.to;
+  return (!from || date >= from) && (!to || date <= to);
+}
+
+function normalizeDateRangeDraft(from: string, to: string): RegisterDateRangeFilterValue {
+  let nextFrom = from;
+  let nextTo = to;
+  if (nextFrom && nextTo && nextFrom > nextTo) {
+    [nextFrom, nextTo] = [nextTo, nextFrom];
+  }
+  if (!nextFrom && !nextTo) {
+    return null;
+  }
+  return { from: nextFrom, to: nextTo };
+}
+
 type RegisterColumnFilterHeaderProps = {
   label: string;
   options: string[];
@@ -269,6 +303,179 @@ export function RegisterColumnFilterHeader({
                     ))}
                   </>
                 )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => setOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#16355c]"
+                  onClick={applyDraft}
+                >
+                  OK
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
+type RegisterDateRangeFilterHeaderProps = {
+  label: string;
+  applied: RegisterDateRangeFilterValue;
+  onApply: (next: RegisterDateRangeFilterValue) => void;
+};
+
+export function RegisterDateRangeFilterHeader({
+  label,
+  applied,
+  onApply,
+}: RegisterDateRangeFilterHeaderProps) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState("");
+  const [draftTo, setDraftTo] = useState("");
+  const [panelStyle, setPanelStyle] = useState<CSSProperties>({});
+
+  const active = isDateRangeFilterActive(applied);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setDraftFrom(applied?.from ?? "");
+    setDraftTo(applied?.to ?? "");
+
+    function positionPanel() {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return;
+      }
+      const width = 280;
+      const left = Math.min(
+        Math.max(8, rect.left),
+        window.innerWidth - width - 8,
+      );
+      setPanelStyle({
+        position: "fixed",
+        top: rect.bottom + 6,
+        left,
+        width,
+      });
+    }
+
+    positionPanel();
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (
+        buttonRef.current?.contains(target) ||
+        panelRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+
+    window.addEventListener("resize", positionPanel);
+    window.addEventListener("scroll", positionPanel, true);
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("resize", positionPanel);
+      window.removeEventListener("scroll", positionPanel, true);
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, applied]);
+
+  function applyDraft() {
+    onApply(normalizeDateRangeDraft(draftFrom, draftTo));
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative inline-flex items-center gap-1.5">
+      <span>{label}</span>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`inline-flex h-5 w-5 items-center justify-center rounded transition-colors ${
+          active
+            ? "bg-white/20 text-white"
+            : "text-white/80 hover:bg-white/10 hover:text-white"
+        }`}
+        aria-label={`Filter ${label}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <FilterGlyph active={active} />
+      </button>
+
+      {open
+        ? createPortal(
+            <div
+              ref={panelRef}
+              role="dialog"
+              aria-label={`Filter ${label}`}
+              style={panelStyle}
+              className="z-[80] rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg"
+            >
+              <div className="space-y-3 p-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    From
+                  </label>
+                  <input
+                    type="date"
+                    value={draftFrom}
+                    onChange={(event) => setDraftFrom(event.target.value)}
+                    className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    To
+                  </label>
+                  <input
+                    type="date"
+                    value={draftTo}
+                    onChange={(event) => setDraftTo(event.target.value)}
+                    className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-3 py-2 text-xs">
+                <button
+                  type="button"
+                  className="font-medium text-slate-600 hover:underline"
+                  onClick={() => {
+                    setDraftFrom("");
+                    setDraftTo("");
+                  }}
+                >
+                  Clear
+                </button>
               </div>
 
               <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2">
