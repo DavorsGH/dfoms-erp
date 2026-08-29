@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import { getCurrentFinancialYear } from "./finance-year-utils";
@@ -41,6 +41,8 @@ type DirectorsLoanRepaymentsPanelProps = {
   fetchError?: string | null;
   /** Create-only stamp; null = All Businesses. */
   activeBusinessUnitId?: string | null;
+  /** Keep parent Director's Loan card net outstanding in sync after edits. */
+  onRepaymentsChange?: (rows: DirectorsLoanRepaymentRecord[]) => void;
 };
 
 const inputClassName =
@@ -53,6 +55,7 @@ export default function DirectorsLoanRepaymentsPanel({
   initialRepayments,
   fetchError = null,
   activeBusinessUnitId = null,
+  onRepaymentsChange,
 }: DirectorsLoanRepaymentsPanelProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
@@ -68,6 +71,10 @@ export default function DirectorsLoanRepaymentsPanel({
     amount: "",
     notes: "",
   });
+
+  useEffect(() => {
+    setRepayments(initialRepayments);
+  }, [initialRepayments]);
 
   const manualStock = useMemo(
     () =>
@@ -111,7 +118,9 @@ export default function DirectorsLoanRepaymentsPanel({
       return;
     }
 
-    setRepayments((data as DirectorsLoanRepaymentRecord[] | null) ?? []);
+    const next = (data as DirectorsLoanRepaymentRecord[] | null) ?? [];
+    setRepayments(next);
+    onRepaymentsChange?.(next);
     setError(null);
   }
 

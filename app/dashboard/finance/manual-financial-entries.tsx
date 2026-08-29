@@ -44,7 +44,11 @@ import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-a
 import DirectorsLoanRepaymentsPanel, {
   type DirectorsLoanRepaymentRecord,
 } from "./directors-loan-repayments-panel";
-import type { AccountsPayablePaymentRow } from "./directors-loan-utils";
+import {
+  calculateDirectorsLoanOutstandingAsAt,
+  type AccountsPayablePaymentRow,
+} from "./directors-loan-utils";
+import { calculateManualLiabilityStockByMonth } from "./balance-sheet-utils";
 import type { CashMovementManualEntry } from "./cash-movement-utils";
 
 type ManualFinancialEntriesProps = {
@@ -140,6 +144,13 @@ export default function ManualFinancialEntries({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [directorsLoanRepayments, setDirectorsLoanRepayments] = useState(
+    initialDirectorsLoanRepayments,
+  );
+
+  useEffect(() => {
+    setDirectorsLoanRepayments(initialDirectorsLoanRepayments);
+  }, [initialDirectorsLoanRepayments]);
 
   const availableYears = useMemo(() => {
     const years = new Set<number>([
@@ -164,6 +175,35 @@ export default function ManualFinancialEntries({
     () => entries.map(entryToCashMovementManualEntry),
     [entries],
   );
+
+  /** Display-only net for Director's Loan card (matches Repayments panel / BS). */
+  const directorsLoanNetOutstanding = useMemo(() => {
+    const year = Number(selectedYear);
+    const month = Number(selectedMonth);
+    const manualStock = calculateManualLiabilityStockByMonth(
+      liveManualCashEntries.length > 0
+        ? liveManualCashEntries
+        : initialManualCashEntries,
+      "directors_loan",
+      year,
+    );
+    return calculateDirectorsLoanOutstandingAsAt(
+      manualStock,
+      initialApPayments,
+      directorsLoanRepayments,
+      tenantId,
+      buildPeriodMonth(year, month),
+      year,
+    ).netOutstanding;
+  }, [
+    directorsLoanRepayments,
+    initialApPayments,
+    initialManualCashEntries,
+    liveManualCashEntries,
+    selectedMonth,
+    selectedYear,
+    tenantId,
+  ]);
 
   useEffect(() => {
     setEntries(initialEntries);
@@ -439,12 +479,18 @@ export default function ManualFinancialEntries({
     options: { includeRepay: boolean },
   ) {
     const label = LIABILITY_STOCK_LABELS[stockKey];
-    const outstanding = resolveLiabilityStockAsAt(
+    // Guided actions still stamp against raw manual stock (receive adds to stock).
+    const stockOutstanding = resolveLiabilityStockAsAt(
       entries,
       stockKey,
       Number(selectedYear),
       Number(selectedMonth),
     );
+    // Director's Loan headline only: net after AP + repayments (same as panel / BS).
+    const displayOutstanding =
+      stockKey === "directors_loan"
+        ? directorsLoanNetOutstanding
+        : stockOutstanding;
     const isActive =
       activeAction &&
       (activeAction.kind === "receive" ||
@@ -456,15 +502,15 @@ export default function ManualFinancialEntries({
     let preview: string | null = null;
     if (isActive && previewAmount > 0) {
       if (activeAction.kind === "receive") {
-        preview = `Will set ${label} to ${formatGHS(outstanding)} → ${formatGHS(outstanding + previewAmount)} and add ${formatGHS(previewAmount)} to Loan Proceeds for ${periodLabel}.`;
+        preview = `Will set ${label} to ${formatGHS(stockOutstanding)} → ${formatGHS(stockOutstanding + previewAmount)} and add ${formatGHS(previewAmount)} to Loan Proceeds for ${periodLabel}.`;
       } else if (activeAction.kind === "repay") {
-        preview = `Will set ${label} to ${formatGHS(outstanding)} → ${formatGHS(Math.max(0, outstanding - previewAmount))} and add ${formatGHS(previewAmount)} to Loan Repayments for ${periodLabel}.`;
+        preview = `Will set ${label} to ${formatGHS(stockOutstanding)} → ${formatGHS(Math.max(0, stockOutstanding - previewAmount))} and add ${formatGHS(previewAmount)} to Loan Repayments for ${periodLabel}.`;
       } else {
         const next =
           nonCashDirection === "increase"
-            ? outstanding + previewAmount
-            : Math.max(0, outstanding - previewAmount);
-        preview = `Will change ${label} ${formatGHS(outstanding)} → ${formatGHS(next)} only. Cash flow fields will not change.`;
+            ? stockOutstanding + previewAmount
+            : Math.max(0, stockOutstanding - previewAmount);
+        preview = `Will change ${label} ${formatGHS(stockOutstanding)} → ${formatGHS(next)} only. Cash flow fields will not change.`;
       }
     }
 
@@ -479,7 +525,7 @@ export default function ManualFinancialEntries({
             <p className="mt-1 text-sm text-slate-600">
               Outstanding as of {periodLabel}:{" "}
               <span className="font-medium text-[#0f2744]">
-                {formatGHS(outstanding)}
+                {formatGHS(displayOutstanding)}
               </span>
             </p>
             {stockKey === "directors_loan" ? (
@@ -953,7 +999,8 @@ export default function ManualFinancialEntries({
             : initialManualCashEntries
         }
         apPayments={initialApPayments}
-        initialRepayments={initialDirectorsLoanRepayments}
+        initialRepayments={directorsLoanRepayments}
+        onRepaymentsChange={setDirectorsLoanRepayments}
         activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>
