@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
+  getActiveBusinessUnitId,
   getCurrentUserClientId,
   getCurrentUserEmployeeId,
   getCurrentUserRole,
@@ -205,8 +206,11 @@ export default async function DashboardPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const tenantId = await getCurrentUserTenantId();
-  const authUid = await getCurrentAuthUid();
+  const [tenantId, authUid, activeBusinessUnitId] = await Promise.all([
+    getCurrentUserTenantId(),
+    getCurrentAuthUid(),
+    getActiveBusinessUnitId(),
+  ]);
 
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
@@ -216,7 +220,9 @@ export default async function DashboardPage() {
     throw new Error("Unable to resolve the current user.");
   }
 
-  const dashboardPageData = await fetchDashboardPageData(supabase, tenantId);
+  const dashboardPageData = await fetchDashboardPageData(supabase, tenantId, {
+    activeBusinessUnitId,
+  });
   const [dashboardDataBase, balanceSheetIntegrity] = await Promise.all([
     Promise.resolve(buildOwnerDashboardViewModel(dashboardPageData, tenantId)),
     fetchTenantBalanceSheetIntegrityStatus(tenantId),

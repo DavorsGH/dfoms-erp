@@ -46,6 +46,10 @@ import type {
   AccountsPayablePaymentRow,
   DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
+import {
+  aggregateManualEntriesByPeriodMonth,
+  type ManualFinancialEntryRecord,
+} from "./manual-financial-entries-utils";
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
@@ -72,6 +76,11 @@ export type FetchBalanceSheetPageDataOptions = {
   includePayrollLiveRecalc?: boolean | "auto";
   /** Optional dev counter — incremented once per Supabase HTTP request in this loader. */
   requestCounter?: { count: number };
+  /**
+   * Specific BU → filter manual_financial_entries + month_end_close to that BU.
+   * null / omitted (All Businesses) → load all rows; SUM manual entries by period.
+   */
+  activeBusinessUnitId?: string | null;
 };
 
 export function getDefaultBalanceSheetDateRange(
@@ -432,6 +441,7 @@ export async function fetchBalanceSheetPageData(
       ? getDefaultBalanceSheetDateRange()
       : options.dateRange;
   const requestCounter = options.requestCounter;
+  const activeBusinessUnitId = options.activeBusinessUnitId ?? null;
 
   let incomeQuery = supabase
     .from("income_register")
@@ -455,6 +465,28 @@ export async function fetchBalanceSheetPageData(
     .select(PAYROLL_PROCESSING_SELECT)
     .eq("tenant_id", tenantId)
     .order("payroll_month", { ascending: true });
+
+  let manualEntriesQuery = supabase
+    .from("manual_financial_entries")
+    .select(MANUAL_FINANCIAL_ENTRY_SELECT)
+    .eq("tenant_id", tenantId)
+    .order("period_month", { ascending: true });
+  let monthEndCloseQuery = supabase
+    .from("month_end_close")
+    .select(MONTH_END_CLOSE_SELECT)
+    .eq("tenant_id", tenantId)
+    .order("month", { ascending: false });
+
+  if (activeBusinessUnitId) {
+    manualEntriesQuery = manualEntriesQuery.eq(
+      "business_unit_id",
+      activeBusinessUnitId,
+    );
+    monthEndCloseQuery = monthEndCloseQuery.eq(
+      "business_unit_id",
+      activeBusinessUnitId,
+    );
+  }
 
   if (dateRange) {
     incomeQuery = applyDateRangeFilter(incomeQuery, "date", dateRange);
@@ -519,18 +551,10 @@ export async function fetchBalanceSheetPageData(
       .select("id, date, contributed_by, amount, description, notes")
       .eq("tenant_id", tenantId)
       .order("date", { ascending: true }),
-    supabase
-      .from("manual_financial_entries")
-      .select(MANUAL_FINANCIAL_ENTRY_SELECT)
-      .eq("tenant_id", tenantId)
-      .order("period_month", { ascending: true }),
+    manualEntriesQuery,
     payrollHistoryQuery,
     payrollProcessingQuery,
-    supabase
-      .from("month_end_close")
-      .select(MONTH_END_CLOSE_SELECT)
-      .eq("tenant_id", tenantId)
-      .order("month", { ascending: false }),
+    monthEndCloseQuery,
     supabase
       .from("tax_ledger_entries")
       .select(
@@ -608,6 +632,14 @@ export async function fetchBalanceSheetPageData(
       notes: entry.notes ?? null,
     })) ?? [];
 
+  const rawManualEntries =
+    (manualEntries as ManualFinancialEntryRecord[] | null) ?? [];
+  const resolvedManualEntries: ManualFinancialEntry[] = activeBusinessUnitId
+    ? (rawManualEntries as ManualFinancialEntry[])
+    : (aggregateManualEntriesByPeriodMonth(
+        rawManualEntries,
+      ) as ManualFinancialEntry[]);
+
   return {
     tenantId,
     initialIncomeEntries: incomeEntries ?? [],
@@ -638,7 +670,7 @@ export async function fetchBalanceSheetPageData(
         payroll_month: entry.payroll_month,
         gross_pay: Number(entry.gross_pay) || 0,
       })),
-    initialManualEntries: manualEntries ?? [],
+    initialManualEntries: resolvedManualEntries,
     initialInventoryBalanceSheet: inventoryBalanceSheet,
     initialTaxLedgerEntries:
       (taxLedgerEntries as BalanceSheetTaxLedgerEntry[] | null) ?? [],
@@ -647,7 +679,7 @@ export async function fetchBalanceSheetPageData(
       (expenseEntries ?? []).map((entry) => entry.date),
       [
         ...(capitalContributions ?? []).map((entry) => entry.date),
-        ...(manualEntries ?? []).map((entry) => entry.period_month),
+        ...resolvedManualEntries.map((entry) => entry.period_month),
         ...(payableEntries ?? []).map((entry) => entry.invoice_date),
         ...(payrollHistory ?? []).map((entry) => entry.payroll_month),
         ...(taxLedgerEntries ?? []).map((entry) => entry.entry_date),

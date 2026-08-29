@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { TAX_SETTINGS_ON_CONFLICT } from "@/utils/phase5e-key-structure";
 
 export type TaxSettingReviewField =
   | "sales_tax_basis_reviewed_at"
@@ -10,6 +11,8 @@ export type TaxSettingReviewField =
 
 type TaxSettingReviewBannerProps = {
   tenantId: string;
+  /** Active BU for upsert (null = default/All Businesses row). */
+  activeBusinessUnitId?: string | null;
   title: string;
   body: string;
   currentSettingLabel: string;
@@ -24,6 +27,7 @@ const confirmButtonClassName =
 
 export default function TaxSettingReviewBanner({
   tenantId,
+  activeBusinessUnitId = null,
   title,
   body,
   currentSettingLabel,
@@ -53,9 +57,10 @@ export default function TaxSettingReviewBanner({
     const { error: saveError } = await supabase.from("tax_settings").upsert(
       {
         tenant_id: tenantId,
+        business_unit_id: activeBusinessUnitId,
         [reviewField]: new Date().toISOString(),
       },
-      { onConflict: "tenant_id" },
+      { onConflict: TAX_SETTINGS_ON_CONFLICT },
     );
 
     if (saveError) {

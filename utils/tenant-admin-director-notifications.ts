@@ -8,7 +8,6 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { insertEmployeeInAppNotifications } from "@/utils/employee-in-app-notifications";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 import { isDavorsPlatformTenant } from "@/utils/tenant-signup";
-
 const ADMIN_DIRECTOR_ROLES = ["super_admin", "director"] as const;
 
 /**
@@ -335,6 +334,7 @@ export async function loadProductSaleNotificationThreshold(
       .from("tax_settings")
       .select("product_sale_notification_threshold")
       .eq("tenant_id", normalizedTenantId)
+      .is("business_unit_id", null)
       .maybeSingle();
 
     if (error) {
@@ -345,7 +345,25 @@ export async function loadProductSaleNotificationThreshold(
       return DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD;
     }
 
-    const parsed = Number(data?.product_sale_notification_threshold);
+    let thresholdValue = data?.product_sale_notification_threshold;
+    if (thresholdValue == null) {
+      const { data: fallback, error: fallbackError } = await admin
+        .from("tax_settings")
+        .select("product_sale_notification_threshold")
+        .eq("tenant_id", normalizedTenantId)
+        .limit(1)
+        .maybeSingle();
+      if (fallbackError) {
+        console.error(
+          "[tenant-admin-director-notifications] threshold fallback failed:",
+          fallbackError.message,
+        );
+        return DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD;
+      }
+      thresholdValue = fallback?.product_sale_notification_threshold;
+    }
+
+    const parsed = Number(thresholdValue);
     if (!Number.isFinite(parsed) || parsed < 0) {
       return DEFAULT_PRODUCT_SALE_NOTIFICATION_THRESHOLD;
     }

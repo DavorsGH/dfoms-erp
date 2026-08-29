@@ -4,6 +4,7 @@ import {
   getActiveBusinessUnitId,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
+import { scopeToBusinessUnitId } from "@/utils/phase5e-key-structure";
 import FinanceNav from "../finance-nav";
 import ManualFinancialEntries from "../manual-financial-entries";
 import type { ManualFinancialEntryRecord } from "../manual-financial-entries-utils";
@@ -25,11 +26,13 @@ export default async function ManualFinancialEntriesPage() {
     { data: apPayments, error: apPaymentsError },
     { data: repayments, error: repaymentsError },
   ] = await Promise.all([
-    supabase
-      .from("manual_financial_entries")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .order("period_month", { ascending: false }),
+    scopeToBusinessUnitId(
+      supabase
+        .from("manual_financial_entries")
+        .select("*")
+        .eq("tenant_id", tenantId),
+      activeBusinessUnitId,
+    ).order("period_month", { ascending: false }),
     supabase
       .from("accounts_payable_payments")
       .select("tenant_id, payment_date, amount, payment_source")

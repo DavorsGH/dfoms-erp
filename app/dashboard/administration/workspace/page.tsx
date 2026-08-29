@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
   getCurrentAuthUser,
   getCurrentUserAccount,
   getCurrentUserTenantId,
@@ -11,7 +12,10 @@ import WorkspaceSettings from "../workspace-settings";
 export default async function WorkspaceSettingsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const tenantId = await getCurrentUserTenantId();
+  const [tenantId, activeBusinessUnitId] = await Promise.all([
+    getCurrentUserTenantId(),
+    getActiveBusinessUnitId(),
+  ]);
 
   if (!tenantId) {
     return (
@@ -34,7 +38,7 @@ export default async function WorkspaceSettingsPage() {
       )
       .eq("id", tenantId)
       .maybeSingle(),
-    loadTenantGraTin(supabase, tenantId),
+    loadTenantGraTin(supabase, tenantId, activeBusinessUnitId),
   ]);
 
   let initialPhone = data?.phone ?? null;
@@ -75,6 +79,7 @@ export default async function WorkspaceSettingsPage() {
       </h2>
       <WorkspaceSettings
         tenantId={tenantId}
+        activeBusinessUnitId={activeBusinessUnitId}
         initialName={data?.name ?? ""}
         initialLogoUrl={data?.logo_url ?? null}
         initialSignatureUrl={data?.signature_url ?? null}

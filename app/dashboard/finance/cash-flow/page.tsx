@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import { buildAvailableYears } from "../finance-year-utils";
 import { fetchCashFlowInventoryPurchaseInput } from "../balance-sheet-page-data";
 import type {
@@ -14,6 +17,11 @@ import {
 import type { PayrollProcessingRow } from "../../hr-payroll/payroll-processing-utils";
 import type { AccountsPayablePaymentRow } from "../directors-loan-utils";
 import type { DirectorsLoanRepaymentRow } from "../directors-loan-utils";
+import {
+  aggregateManualEntriesByPeriodMonth,
+  type ManualFinancialEntryRecord,
+} from "../manual-financial-entries-utils";
+import type { ManualFinancialEntry } from "../cash-flow-utils";
 import FinanceNav from "../finance-nav";
 import CashFlow from "../cash-flow";
 
@@ -21,9 +29,32 @@ export default async function CashFlowPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const tenantId = await getCurrentUserTenantId();
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
+  }
+
+  let manualEntriesQuery = supabase
+    .from("manual_financial_entries")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("period_month", { ascending: true });
+  let monthEndCloseQuery = supabase
+    .from("month_end_close")
+    .select("month, total_net_pay")
+    .eq("tenant_id", tenantId)
+    .order("month", { ascending: true });
+
+  if (activeBusinessUnitId) {
+    manualEntriesQuery = manualEntriesQuery.eq(
+      "business_unit_id",
+      activeBusinessUnitId,
+    );
+    monthEndCloseQuery = monthEndCloseQuery.eq(
+      "business_unit_id",
+      activeBusinessUnitId,
+    );
   }
 
   const [
@@ -53,11 +84,7 @@ export default async function CashFlowPage() {
       )
       .eq("tenant_id", tenantId)
       .order("date", { ascending: true }),
-    supabase
-      .from("manual_financial_entries")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .order("period_month", { ascending: true }),
+    manualEntriesQuery,
     supabase
       .from("fixed_assets")
       .select(
@@ -99,14 +126,18 @@ export default async function CashFlowPage() {
       .select("*")
       .eq("tenant_id", tenantId)
       .order("payroll_month", { ascending: true }),
-    supabase
-      .from("month_end_close")
-      .select("month, total_net_pay")
-      .eq("tenant_id", tenantId)
-      .order("month", { ascending: true }),
+    monthEndCloseQuery,
     fetchCashFlowInventoryPurchaseInput(supabase, tenantId),
     fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
   ]);
+
+  const rawManualEntries =
+    (manualEntries as ManualFinancialEntryRecord[] | null) ?? [];
+  const resolvedManualEntries: ManualFinancialEntry[] = activeBusinessUnitId
+    ? (rawManualEntries as ManualFinancialEntry[])
+    : (aggregateManualEntriesByPeriodMonth(
+        rawManualEntries,
+      ) as ManualFinancialEntry[]);
 
   const fetchError =
     incomeError?.message ??
@@ -127,7 +158,7 @@ export default async function CashFlowPage() {
     (incomeEntries ?? []).map((entry) => entry.date),
     (expenseEntries ?? []).map((entry) => entry.date),
     [
-      ...(manualEntries ?? []).map((entry) => entry.period_month),
+      ...resolvedManualEntries.map((entry) => entry.period_month),
       ...(fixedAssets ?? []).map((entry) => entry.purchase_date),
       ...(capitalContributions ?? []).map((entry) => entry.date),
       ...(payableEntries ?? []).map((entry) => entry.invoice_date),
@@ -150,7 +181,7 @@ export default async function CashFlowPage() {
         tenantId={tenantId}
         initialIncomeEntries={incomeEntries ?? []}
         initialExpenseEntries={expenseEntries ?? []}
-        initialManualEntries={manualEntries ?? []}
+        initialManualEntries={resolvedManualEntries}
         initialInventoryPurchases={inventoryPurchases}
         initialFixedAssets={fixedAssets ?? []}
         initialCapitalContributions={capitalContributions ?? []}

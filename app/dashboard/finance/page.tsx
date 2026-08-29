@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 
 import { createClient } from "@/utils/supabase/server";
 import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 
 import { CLIENT_SELECT, type ClientEntry } from "../operations/clients-utils";
 
@@ -30,6 +31,7 @@ export default async function FinancePage() {
   const cookieStore = await cookies();
 
   const supabase = createClient(cookieStore);
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   const [
     { data, error },
@@ -37,7 +39,6 @@ export default async function FinancePage() {
     { data: clients, error: clientsError },
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
-    activeBusinessUnitId,
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -49,9 +50,10 @@ export default async function FinancePage() {
 
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
 
-    // RLS narrows tax_settings to the caller's tenant; limit(1) keeps the
-    // super-admin bypass policy from turning this into a multiple-rows error.
-    supabase.from("tax_settings").select(TAX_SETTINGS_SELECT).limit(1).maybeSingle(),
+    scopeTaxSettingsRead(
+      supabase.from("tax_settings").select(TAX_SETTINGS_SELECT),
+      activeBusinessUnitId,
+    ).maybeSingle(),
 
     // Tenant overrides plus system defaults (tenant_id IS NULL), per the read policy.
     supabase
@@ -59,8 +61,6 @@ export default async function FinancePage() {
       .select(TAX_RATE_CATALOG_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
-
-    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =

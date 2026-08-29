@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import { scopeToBusinessUnitId } from "@/utils/phase5e-key-structure";
 import { PAYROLL_PERIOD_MANAGE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -38,14 +40,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "payrollMonth is required" }, { status: 400 });
   }
 
+  const businessUnitId = await getActiveBusinessUnitId();
   const admin = createAdminClient();
 
-  const { data: closeRecord, error: closeFetchError } = await admin
+  let closeQuery = admin
     .from("month_end_close")
     .select("*")
     .eq("tenant_id", tenantId)
-    .eq("month", payrollMonth)
-    .maybeSingle();
+    .eq("month", payrollMonth);
+  closeQuery = scopeToBusinessUnitId(closeQuery, businessUnitId);
+  const { data: closeRecord, error: closeFetchError } =
+    await closeQuery.maybeSingle();
 
   if (closeFetchError) {
     return NextResponse.json({ error: closeFetchError.message }, { status: 400 });

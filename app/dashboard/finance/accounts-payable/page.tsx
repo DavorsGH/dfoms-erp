@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import type { NamedLookup } from "../../lookup-types";
 import AccountsPayable from "../accounts-payable";
 import {
@@ -39,7 +40,10 @@ export default async function AccountsPayablePage() {
       .select("name")
       .order("name", { ascending: true }),
     queryExpenseSubcategoryLookups(supabase),
-    supabase.from("tax_settings").select(TAX_SETTINGS_SELECT).limit(1).maybeSingle(),
+    scopeTaxSettingsRead(
+      supabase.from("tax_settings").select(TAX_SETTINGS_SELECT),
+      activeBusinessUnitId,
+    ).maybeSingle(),
     supabase
       .from("tax_rate_catalog")
       .select(TAX_RATE_CATALOG_SELECT)

@@ -11,6 +11,7 @@ import {
 type ProductSaleIncomeTaxRow = {
   id: string;
   tenant_id: string;
+  business_unit_id: string | null;
   date: string;
   amount: number;
   invoice_no: string | null;
@@ -21,8 +22,13 @@ type ProductSaleIncomeTaxRow = {
     | null;
 };
 
+type TaxSettingsWithBu = Partial<TaxSettings> & {
+  tenant_id?: string;
+  business_unit_id?: string | null;
+};
+
 const PRODUCT_SALE_TAX_SELECT =
-  "id, tenant_id, date, amount, invoice_no, customer_name, client:customers!income_register_client_id_fkey(client_name)";
+  "id, tenant_id, business_unit_id, date, amount, invoice_no, customer_name, client:customers!income_register_client_id_fkey(client_name)";
 
 function resolveCounterpartyName(row: ProductSaleIncomeTaxRow): string | null {
   const client = Array.isArray(row.client) ? (row.client[0] ?? null) : row.client;
@@ -35,35 +41,68 @@ function resolveCounterpartyName(row: ProductSaleIncomeTaxRow): string | null {
   return customerName || null;
 }
 
-async function loadTaxSettingsByTenant(
+/**
+ * Prefer the tax_settings row matching the sale's business_unit_id; otherwise
+ * the null (default) BU row; otherwise any remaining row for the tenant.
+ */
+function pickTaxSettingsForSale(
+  rows: TaxSettingsWithBu[],
+  businessUnitId: string | null,
+): TaxSettings | null {
+  if (businessUnitId) {
+    const match = rows.find((row) => row.business_unit_id === businessUnitId);
+    if (match) {
+      return normalizeTaxSettings(match);
+    }
+  }
+
+  const nullBu = rows.find(
+    (row) => row.business_unit_id == null || row.business_unit_id === undefined,
+  );
+  if (nullBu) {
+    return normalizeTaxSettings(nullBu);
+  }
+
+  return normalizeTaxSettings(rows[0] ?? null);
+}
+
+async function loadTaxSettingsRowsByTenant(
   supabase: SupabaseClient,
   tenantIds: string[],
-): Promise<{ settings: Map<string, TaxSettings | null>; error: string | null }> {
-  const settings = new Map<string, TaxSettings | null>();
+): Promise<{
+  settingsByTenant: Map<string, TaxSettingsWithBu[]>;
+  error: string | null;
+}> {
+  const settingsByTenant = new Map<string, TaxSettingsWithBu[]>();
   if (tenantIds.length === 0) {
-    return { settings, error: null };
+    return { settingsByTenant, error: null };
   }
 
   const { data, error } = await supabase
     .from("tax_settings")
-    .select(TAX_SETTINGS_SELECT)
+    .select(`${TAX_SETTINGS_SELECT}, business_unit_id`)
     .in("tenant_id", tenantIds);
 
   if (error) {
-    return { settings, error: error.message };
+    return { settingsByTenant, error: error.message };
   }
 
   for (const tenantId of tenantIds) {
-    const raw = (data ?? []).find(
-      (row) => (row as { tenant_id?: string }).tenant_id === tenantId,
-    );
-    settings.set(
-      tenantId,
-      normalizeTaxSettings((raw as Partial<TaxSettings> | undefined) ?? null),
-    );
+    settingsByTenant.set(tenantId, []);
   }
 
-  return { settings, error: null };
+  for (const raw of data ?? []) {
+    const row = raw as TaxSettingsWithBu;
+    const tenantId = row.tenant_id;
+    if (!tenantId) {
+      continue;
+    }
+    const list = settingsByTenant.get(tenantId) ?? [];
+    list.push(row);
+    settingsByTenant.set(tenantId, list);
+  }
+
+  return { settingsByTenant, error: null };
 }
 
 /**
@@ -108,8 +147,8 @@ export async function syncProductSaleVfrsTax(
   }
 
   const tenantIds = [...new Set(rows.map((row) => row.tenant_id))];
-  const { settings: settingsByTenant, error: settingsError } =
-    await loadTaxSettingsByTenant(supabase, tenantIds);
+  const { settingsByTenant, error: settingsError } =
+    await loadTaxSettingsRowsByTenant(supabase, tenantIds);
 
   if (settingsError) {
     return { error: settingsError };
@@ -119,11 +158,15 @@ export async function syncProductSaleVfrsTax(
 
   for (const row of rows) {
     const amount = Number(row.amount) || 0;
+    const settings = pickTaxSettingsForSale(
+      settingsByTenant.get(row.tenant_id) ?? [],
+      row.business_unit_id ?? null,
+    );
     const outputTax = computeOutputTax({
       amount,
       entryType: "product_sale",
       taxInclusive: true,
-      settings: settingsByTenant.get(row.tenant_id) ?? null,
+      settings,
     });
 
     const { error: updateError } = await supabase

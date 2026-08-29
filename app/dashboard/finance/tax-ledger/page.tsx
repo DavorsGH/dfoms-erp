@@ -4,6 +4,10 @@ import {
   getActiveBusinessUnitId,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
+import {
+  TAX_SETTINGS_ON_CONFLICT,
+  scopeTaxSettingsRead,
+} from "@/utils/phase5e-key-structure";
 import FinanceNav from "../finance-nav";
 import TaxLedger from "../tax-ledger";
 import {
@@ -37,31 +41,32 @@ export default async function TaxLedgerPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
-  // Upsert-on-first-load (same pattern as billing_settings): ensure one
-  // tax_settings row exists for this tenant before the editor mounts.
+  // Upsert-on-first-load: ensure one tax_settings row for this tenant + BU
+  // context (null BU = default/All Businesses row).
   const { error: ensureError } = await supabase.from("tax_settings").upsert(
-    { tenant_id: tenantId },
-    { onConflict: "tenant_id", ignoreDuplicates: true },
+    { tenant_id: tenantId, business_unit_id: activeBusinessUnitId },
+    { onConflict: TAX_SETTINGS_ON_CONFLICT, ignoreDuplicates: true },
   );
 
   const [
     { data: settingsData, error: settingsError },
     { data: entriesData, error: entriesError },
-    activeBusinessUnitId,
   ] = await Promise.all([
-    supabase
-      .from("tax_settings")
-      .select(TAX_SETTINGS_FULL_SELECT)
-      .eq("tenant_id", tenantId)
-      .maybeSingle(),
+    scopeTaxSettingsRead(
+      supabase
+        .from("tax_settings")
+        .select(TAX_SETTINGS_FULL_SELECT)
+        .eq("tenant_id", tenantId),
+      activeBusinessUnitId,
+    ).maybeSingle(),
     supabase
       .from("tax_ledger_entries")
       .select(TAX_LEDGER_SELECT)
       .eq("tenant_id", tenantId)
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false }),
-    getActiveBusinessUnitId(),
   ]);
 
   let settings =
@@ -79,10 +84,13 @@ export default async function TaxLedgerPage() {
   let autoAdvanceError: string | null = null;
 
   if (Object.keys(dueDatePatch).length > 0) {
-    const { data: advancedRow, error: advanceError } = await supabase
-      .from("tax_settings")
-      .update(dueDatePatch)
-      .eq("tenant_id", tenantId)
+    const { data: advancedRow, error: advanceError } = await scopeTaxSettingsRead(
+      supabase
+        .from("tax_settings")
+        .update(dueDatePatch)
+        .eq("tenant_id", tenantId),
+      activeBusinessUnitId,
+    )
       .select(TAX_SETTINGS_FULL_SELECT)
       .single();
 

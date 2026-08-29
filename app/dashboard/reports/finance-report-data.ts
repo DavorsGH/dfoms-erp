@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
+import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import {
   fetchBalanceSheetPageData,
   fetchCashFlowInventoryPurchaseInput,
@@ -42,6 +46,11 @@ import type {
   BudgetActualInventoryPurchaseEntry,
   BudgetActualPayrollRow,
 } from "./budget-vs-actual-utils";
+import {
+  aggregateManualEntriesByPeriodMonth,
+  type ManualFinancialEntryRecord,
+} from "../finance/manual-financial-entries-utils";
+import type { ManualFinancialEntry } from "../finance/cash-flow-utils";
 
 export async function fetchMonthlyPlReportData(supabase: SupabaseClient) {
   const [
@@ -89,13 +98,39 @@ export async function fetchMonthlyBalanceSheetReportData(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
-  return fetchBalanceSheetPageData(supabase, tenantId, { dateRange: null });
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  return fetchBalanceSheetPageData(supabase, tenantId, {
+    dateRange: null,
+    activeBusinessUnitId,
+  });
 }
 
 export async function fetchCashFlowReportData(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
+
+  let manualEntriesQuery = supabase
+    .from("manual_financial_entries")
+    .select("*")
+    .order("period_month", { ascending: true });
+  let monthEndCloseQuery = supabase
+    .from("month_end_close")
+    .select("month, total_net_pay")
+    .order("month", { ascending: true });
+
+  if (activeBusinessUnitId) {
+    manualEntriesQuery = manualEntriesQuery.eq(
+      "business_unit_id",
+      activeBusinessUnitId,
+    );
+    monthEndCloseQuery = monthEndCloseQuery.eq(
+      "business_unit_id",
+      activeBusinessUnitId,
+    );
+  }
+
   const [
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
@@ -119,9 +154,7 @@ export async function fetchCashFlowReportData(
         "date, sub_category, amount, payment_status, expense_category, description, receipt_no, notes",
       )
       .order("date", { ascending: true }),
-    supabase.from("manual_financial_entries").select("*").order("period_month", {
-      ascending: true,
-    }),
+    manualEntriesQuery,
     supabase
       .from("fixed_assets")
       .select(
@@ -147,18 +180,23 @@ export async function fetchCashFlowReportData(
       .from("payroll_processing")
       .select("*")
       .order("payroll_month", { ascending: true }),
-    supabase
-      .from("month_end_close")
-      .select("month, total_net_pay")
-      .order("month", { ascending: true }),
+    monthEndCloseQuery,
     fetchCashFlowInventoryPurchaseInput(supabase, tenantId),
     fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
   ]);
 
+  const rawManualEntries =
+    (manualEntries as ManualFinancialEntryRecord[] | null) ?? [];
+  const resolvedManualEntries: ManualFinancialEntry[] = activeBusinessUnitId
+    ? (rawManualEntries as ManualFinancialEntry[])
+    : (aggregateManualEntriesByPeriodMonth(
+        rawManualEntries,
+      ) as ManualFinancialEntry[]);
+
   return {
     initialIncomeEntries: incomeEntries ?? [],
     initialExpenseEntries: expenseEntries ?? [],
-    initialManualEntries: manualEntries ?? [],
+    initialManualEntries: resolvedManualEntries,
     initialInventoryPurchases: inventoryPurchases,
     initialFixedAssets: fixedAssets ?? [],
     initialCapitalContributions: capitalContributions ?? [],
@@ -175,7 +213,7 @@ export async function fetchCashFlowReportData(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),
       [
-        ...(manualEntries ?? []).map((entry) => entry.period_month),
+        ...resolvedManualEntries.map((entry) => entry.period_month),
         ...(fixedAssets ?? []).map((entry) => entry.purchase_date),
         ...(capitalContributions ?? []).map((entry) => entry.date),
         ...(payableEntries ?? []).map((entry) => entry.invoice_date),
@@ -214,7 +252,10 @@ export async function fetchArAgingReportData(supabase: SupabaseClient) {
 export async function fetchStatutoryLiabilitiesReportData(
   supabase: SupabaseClient,
 ) {
-  const tenantId = await getCurrentUserTenantId();
+  const [tenantId, activeBusinessUnitId] = await Promise.all([
+    getCurrentUserTenantId(),
+    getActiveBusinessUnitId(),
+  ]);
   if (!tenantId) {
     return {
       initialTaxLedgerEntries: [],
@@ -232,13 +273,15 @@ export async function fetchStatutoryLiabilitiesReportData(
       .select(TAX_LEDGER_SELECT)
       .eq("tenant_id", tenantId)
       .order("entry_date", { ascending: false }),
-    supabase
-      .from("tax_settings")
-      .select(
-        "next_ssnit_due_date, next_tier2_due_date, next_paye_due_date, next_vat_due_date, next_wht_due_date",
-      )
-      .eq("tenant_id", tenantId)
-      .maybeSingle(),
+    scopeTaxSettingsRead(
+      supabase
+        .from("tax_settings")
+        .select(
+          "next_ssnit_due_date, next_tier2_due_date, next_paye_due_date, next_vat_due_date, next_wht_due_date",
+        )
+        .eq("tenant_id", tenantId),
+      activeBusinessUnitId,
+    ).maybeSingle(),
   ]);
 
   return {

@@ -370,7 +370,11 @@ export default function PayrollProcessing({
           return null;
         }
 
-        const closeRecord = findMonthEndCloseForKey(monthEndCloseRows, key);
+        const closeRecord = findMonthEndCloseForKey(
+          monthEndCloseRows,
+          key,
+          activeBusinessUnitId,
+        );
 
         return {
           key,
@@ -382,7 +386,12 @@ export default function PayrollProcessing({
         };
       })
       .filter((option): option is { key: string; label: string } => option !== null);
-  }, [knownPayrollMonths, monthEndCloseRows, selectedPeriodKey]);
+  }, [
+    knownPayrollMonths,
+    monthEndCloseRows,
+    selectedPeriodKey,
+    activeBusinessUnitId,
+  ]);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -412,11 +421,16 @@ export default function PayrollProcessing({
   async function fetchMonthEndClose(
     payrollMonth: string,
   ): Promise<MonthEndCloseRecord | null> {
-    const { data, error: closeError } = await supabase
+    let query = supabase
       .from("month_end_close")
       .select("*")
-      .eq("month", payrollMonth)
-      .maybeSingle();
+      .eq("month", payrollMonth);
+    if (activeBusinessUnitId) {
+      query = query.eq("business_unit_id", activeBusinessUnitId);
+    } else {
+      query = query.is("business_unit_id", null);
+    }
+    const { data, error: closeError } = await query.maybeSingle();
 
     if (closeError) {
       throw new Error(closeError.message);

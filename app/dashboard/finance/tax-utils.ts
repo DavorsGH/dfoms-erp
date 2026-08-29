@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
+
 import type { IncomeEntryType } from "./income-register-utils";
 
 export type TaxKind = "wht" | "vat_bundle" | "vfrs";
@@ -338,12 +340,22 @@ export function resolveDefaultWhtRate(settings: TaxSettings | null): number {
 export async function loadTenantGraTin(
   supabase: SupabaseClient,
   tenantId: string,
+  businessUnitId?: string | null,
 ): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("tax_settings")
-    .select("gra_tin")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
+  const buId =
+    businessUnitId === undefined
+      ? await (
+          await import("@/utils/dashboard-auth")
+        ).getActiveBusinessUnitId()
+      : businessUnitId;
+
+  const { data, error } = await scopeTaxSettingsRead(
+    supabase
+      .from("tax_settings")
+      .select("gra_tin")
+      .eq("tenant_id", tenantId),
+    buId,
+  ).maybeSingle();
 
   if (error || !data?.gra_tin?.trim()) {
     return null;
@@ -355,16 +367,26 @@ export async function loadTenantGraTin(
 export async function loadTenantSalesTaxBasis(
   supabase: SupabaseClient,
   tenantId: string,
+  businessUnitId?: string | null,
 ): Promise<{
   salesTaxBasis: SalesTaxBasis;
   salesTaxBasisReviewedAt: string | null;
   error: string | null;
 }> {
-  const { data, error } = await supabase
-    .from("tax_settings")
-    .select("sales_tax_basis, sales_tax_basis_reviewed_at")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
+  const buId =
+    businessUnitId === undefined
+      ? await (
+          await import("@/utils/dashboard-auth")
+        ).getActiveBusinessUnitId()
+      : businessUnitId;
+
+  const { data, error } = await scopeTaxSettingsRead(
+    supabase
+      .from("tax_settings")
+      .select("sales_tax_basis, sales_tax_basis_reviewed_at")
+      .eq("tenant_id", tenantId),
+    buId,
+  ).maybeSingle();
 
   if (error) {
     return {

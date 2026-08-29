@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { TAX_SETTINGS_ON_CONFLICT } from "@/utils/phase5e-key-structure";
 import {
-  DEFAULT_SALES_TAX_BASIS,
   SALES_TAX_BASIS_OPTIONS,
   formatSalesTaxBasisReviewLabel,
   normalizeSalesTaxBasis,
@@ -14,6 +14,8 @@ import TaxSettingReviewBanner from "@/app/dashboard/finance/tax-setting-review-b
 
 type SalesTaxBasisSettingsProps = {
   tenantId: string;
+  /** Active BU for upsert (null = default/All Businesses row). */
+  activeBusinessUnitId?: string | null;
   initialSalesTaxBasis: SalesTaxBasis;
   initialSalesTaxBasisReviewedAt: string | null;
   fetchError?: string | null;
@@ -27,6 +29,7 @@ const primaryButtonClassName =
 
 export default function SalesTaxBasisSettings({
   tenantId,
+  activeBusinessUnitId = null,
   initialSalesTaxBasis,
   initialSalesTaxBasisReviewedAt,
   fetchError = null,
@@ -49,10 +52,11 @@ export default function SalesTaxBasisSettings({
     const { error: saveError } = await supabase.from("tax_settings").upsert(
       {
         tenant_id: tenantId,
+        business_unit_id: activeBusinessUnitId,
         sales_tax_basis: salesTaxBasis,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "tenant_id" },
+      { onConflict: TAX_SETTINGS_ON_CONFLICT },
     );
 
     if (saveError) {
@@ -70,6 +74,7 @@ export default function SalesTaxBasisSettings({
     <div className="max-w-2xl space-y-4">
       <TaxSettingReviewBanner
         tenantId={tenantId}
+        activeBusinessUnitId={activeBusinessUnitId}
         title="Review VAT/WHT calculation basis"
         body="New workspaces start with a default basis for Client Invoices and Quotations. Confirm or change it before you start invoicing — this does not block document creation."
         currentSettingLabel={formatSalesTaxBasisReviewLabel(salesTaxBasis)}

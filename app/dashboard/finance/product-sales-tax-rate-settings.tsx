@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { TAX_SETTINGS_ON_CONFLICT } from "@/utils/phase5e-key-structure";
 import {
   PRODUCT_SALES_TAX_RATE_OPTIONS,
   normalizeProductSalesTaxRate,
@@ -11,6 +12,8 @@ import {
 
 type ProductSalesTaxRateSettingsProps = {
   tenantId: string;
+  /** Active BU for upsert (null = default/All Businesses row). */
+  activeBusinessUnitId?: string | null;
   initialProductSalesTaxRate: ProductSalesTaxRate;
   fetchError?: string | null;
 };
@@ -23,6 +26,7 @@ const primaryButtonClassName =
 
 export default function ProductSalesTaxRateSettings({
   tenantId,
+  activeBusinessUnitId = null,
   initialProductSalesTaxRate,
   fetchError = null,
 }: ProductSalesTaxRateSettingsProps) {
@@ -47,10 +51,11 @@ export default function ProductSalesTaxRateSettings({
     const { error: saveError } = await supabase.from("tax_settings").upsert(
       {
         tenant_id: tenantId,
+        business_unit_id: activeBusinessUnitId,
         product_sales_tax_rate: productSalesTaxRate,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "tenant_id" },
+      { onConflict: TAX_SETTINGS_ON_CONFLICT },
     );
 
     if (saveError) {

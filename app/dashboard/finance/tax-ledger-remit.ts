@@ -7,6 +7,7 @@
  * employer P&L stays on the accrual row while remittance cash is not double-counted.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import {
   isAccruedPaymentStatus,
   isPaidStatus,
@@ -603,10 +604,13 @@ export async function remitTaxForPeriod(
 
   let dueDateAdvanced = false;
   if (Object.keys(dueDatePatch).length > 0) {
-    const { error: advanceError } = await supabase
-      .from("tax_settings")
-      .update(dueDatePatch)
-      .eq("tenant_id", tenantId);
+    const { error: advanceError } = await scopeTaxSettingsRead(
+      supabase
+        .from("tax_settings")
+        .update(dueDatePatch)
+        .eq("tenant_id", tenantId),
+      params.businessUnitId ?? null,
+    );
 
     if (advanceError) {
       return {

@@ -14,6 +14,7 @@ export type PayrollPeriod = SelectedPayrollPeriod;
 
 export type MonthEndCloseRecord = {
   month: string;
+  business_unit_id?: string | null;
   employees_recorded: number | null;
   total_net_pay: number | null;
   lock_status: string | null;
@@ -195,10 +196,29 @@ export function isPartiallyLockedMonth(
 export function findMonthEndCloseForKey(
   records: MonthEndCloseRecord[],
   periodKey: string,
+  businessUnitId?: string | null,
 ): MonthEndCloseRecord | undefined {
-  return records.find(
+  const matches = records.filter(
     (record) => payrollMonthToPeriodKey(record.month) === periodKey,
   );
+  if (businessUnitId === undefined) {
+    return matches[0];
+  }
+  const normalized = businessUnitId?.trim() || null;
+  return matches.find((record) => {
+    const rowBu = record.business_unit_id?.trim() || null;
+    return rowBu === normalized;
+  });
+}
+
+/** Sum total_net_pay for a period across all BU rows (All Businesses reads). */
+export function sumMonthEndCloseNetPayForKey(
+  records: MonthEndCloseRecord[],
+  periodKey: string,
+): number {
+  return records
+    .filter((record) => payrollMonthToPeriodKey(record.month) === periodKey)
+    .reduce((sum, record) => sum + (Number(record.total_net_pay) || 0), 0);
 }
 
 export function getPeriodDisplayStatus(

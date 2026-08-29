@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import {
+  MONTH_END_CLOSE_ON_CONFLICT,
+  scopeToBusinessUnitId,
+} from "@/utils/phase5e-key-structure";
+import { assertLockBusinessUnitAllowed } from "@/utils/phase5e-lock";
 import { PAYROLL_PERIOD_MANAGE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -66,6 +71,7 @@ async function promotePartialToFullLock(params: {
   payrollMonth: string;
   periodYear?: number;
   periodMonth?: number;
+  businessUnitId: string | null;
   existingCloseRecord: {
     employees_recorded: number | null;
     total_net_pay: number | null;
@@ -78,6 +84,7 @@ async function promotePartialToFullLock(params: {
     payrollMonth,
     periodYear,
     periodMonth,
+    businessUnitId,
     existingCloseRecord,
   } = params;
 
@@ -173,6 +180,7 @@ async function promotePartialToFullLock(params: {
   const monthEndPayload = {
     tenant_id: tenantId,
     month: payrollMonth,
+    business_unit_id: businessUnitId,
     employees_recorded: historyRows.length,
     total_net_pay: Math.round(totalNetPay * 100) / 100,
     lock_status: PAYROLL_STATUS_LOCKED,
@@ -182,7 +190,7 @@ async function promotePartialToFullLock(params: {
 
   const { data: closeRecord, error: closeError } = await admin
     .from("month_end_close")
-    .upsert(monthEndPayload, { onConflict: "tenant_id,month" })
+    .upsert(monthEndPayload, { onConflict: MONTH_END_CLOSE_ON_CONFLICT })
     .select("*")
     .single();
 
@@ -207,7 +215,7 @@ async function promotePartialToFullLock(params: {
         markStaffSalariesPaid: true,
         // Loans already applied on Partial Lock — do not double-apply.
         skipLoanRepayments: true,
-        businessUnitId: await getActiveBusinessUnitId(),
+        businessUnitId,
       },
     );
 
@@ -253,6 +261,7 @@ export async function POST(request: Request) {
   const payrollMonth = body.payrollMonth?.slice(0, 10);
   const lockStatus = body.lockStatus;
   const rows = body.rows ?? [];
+  const businessUnitId = await getActiveBusinessUnitId();
 
   if (!payrollMonth) {
     return NextResponse.json({ error: "payrollMonth is required" }, { status: 400 });
@@ -265,14 +274,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid lock status" }, { status: 400 });
   }
 
+  const lockBuGate = await assertLockBusinessUnitAllowed(
+    tenantId,
+    businessUnitId,
+  );
+  if (!lockBuGate.ok) {
+    return NextResponse.json({ error: lockBuGate.error }, { status: 400 });
+  }
+
   const admin = createAdminClient();
 
-  const { data: existingCloseRecord, error: closeFetchError } = await admin
+  let closeQuery = admin
     .from("month_end_close")
     .select("*")
     .eq("tenant_id", tenantId)
-    .eq("month", payrollMonth)
-    .maybeSingle();
+    .eq("month", payrollMonth);
+  closeQuery = scopeToBusinessUnitId(closeQuery, businessUnitId);
+  const { data: existingCloseRecord, error: closeFetchError } =
+    await closeQuery.maybeSingle();
 
   if (closeFetchError) {
     return NextResponse.json({ error: closeFetchError.message }, { status: 400 });
@@ -289,6 +308,7 @@ export async function POST(request: Request) {
       payrollMonth,
       periodYear: body.periodYear,
       periodMonth: body.periodMonth,
+      businessUnitId,
       existingCloseRecord,
     });
   }
@@ -416,7 +436,7 @@ export async function POST(request: Request) {
     admin,
     tenantId,
     payrollMonth,
-    { fallbackBusinessUnitId: await getActiveBusinessUnitId() },
+    { fallbackBusinessUnitId: businessUnitId },
   );
   if (allowancePromote.error) {
     return NextResponse.json(
@@ -428,6 +448,7 @@ export async function POST(request: Request) {
   const monthEndPayload = {
     tenant_id: tenantId,
     month: payrollMonth,
+    business_unit_id: businessUnitId,
     employees_recorded: historyRows.length,
     total_net_pay: Math.round(totalNetPay * 100) / 100,
     lock_status: lockStatus,
@@ -436,7 +457,7 @@ export async function POST(request: Request) {
 
   const { data: closeRecord, error: closeError } = await admin
     .from("month_end_close")
-    .upsert(monthEndPayload, { onConflict: "tenant_id,month" })
+    .upsert(monthEndPayload, { onConflict: MONTH_END_CLOSE_ON_CONFLICT })
     .select("*")
     .single();
 
@@ -453,7 +474,7 @@ export async function POST(request: Request) {
       {
         // Permanent Lock → Paid (SAL only). Partial Lock stays Accrued.
         markStaffSalariesPaid: isFullyLocked,
-        businessUnitId: await getActiveBusinessUnitId(),
+        businessUnitId,
       },
     );
 

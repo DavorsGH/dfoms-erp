@@ -20,6 +20,10 @@ import {
   normalizeTaxSettings,
 } from "./tax-utils";
 import {
+  TAX_SETTINGS_ON_CONFLICT,
+  scopeTaxSettingsRead,
+} from "@/utils/phase5e-key-structure";
+import {
   TAX_LEDGER_SELECT,
   GRA_TAX_COMPONENTS,
   PAYE_COMPONENTS,
@@ -675,6 +679,7 @@ export default function TaxLedger({
 
     const payload = {
       tenant_id: tenantId,
+      business_unit_id: activeBusinessUnitId,
       vat_registered: form.vat_registered,
       gra_tin: form.gra_tin.trim() || null,
       default_vat_bundle_rate: Number(form.default_vat_bundle_rate) || 0,
@@ -696,7 +701,7 @@ export default function TaxLedger({
 
     const { data, error: saveError } = await supabase
       .from("tax_settings")
-      .upsert(payload, { onConflict: "tenant_id" })
+      .upsert(payload, { onConflict: TAX_SETTINGS_ON_CONFLICT })
       .select(TAX_SETTINGS_FULL_SELECT)
       .single();
 
@@ -772,11 +777,13 @@ export default function TaxLedger({
     }
 
     if (result.dueDateAdvanced || result.legsCleared > 0) {
-      const { data: settingsRow } = await supabase
-        .from("tax_settings")
-        .select(TAX_SETTINGS_FULL_SELECT)
-        .eq("tenant_id", tenantId)
-        .maybeSingle();
+      const { data: settingsRow } = await scopeTaxSettingsRead(
+        supabase
+          .from("tax_settings")
+          .select(TAX_SETTINGS_FULL_SELECT)
+          .eq("tenant_id", tenantId),
+        activeBusinessUnitId ?? null,
+      ).maybeSingle();
       if (settingsRow) {
         const normalized =
           normalizeTaxSettings(settingsRow as TaxSettings) ?? settings;
@@ -1030,6 +1037,7 @@ export default function TaxLedger({
 
           <TaxSettingReviewBanner
             tenantId={tenantId}
+            activeBusinessUnitId={activeBusinessUnitId}
             title="Review Product Sales Tax Rate"
             body="New workspaces default product sales and POS checkout tax treatment. Confirm or change it before processing product sales — this does not block sales."
             currentSettingLabel={formatProductSalesTaxRateReviewLabel(
@@ -1171,6 +1179,7 @@ export default function TaxLedger({
         <div className="space-y-6">
         <TaxSettingReviewBanner
           tenantId={tenantId}
+          activeBusinessUnitId={activeBusinessUnitId}
           title="Review Product Sales Tax Rate"
           body="Confirm the default output tax rate for Product Sales and POS checkout, or change it below."
           currentSettingLabel={formatProductSalesTaxRateReviewLabel(
@@ -1472,11 +1481,13 @@ export default function TaxLedger({
 
         <ProductSalesTaxRateSettings
           tenantId={tenantId}
+          activeBusinessUnitId={activeBusinessUnitId}
           initialProductSalesTaxRate={settings.product_sales_tax_rate}
         />
 
         <ProductSaleNotificationThresholdSettings
           tenantId={tenantId}
+          activeBusinessUnitId={activeBusinessUnitId}
           initialThreshold={settings.product_sale_notification_threshold}
         />
         </div>

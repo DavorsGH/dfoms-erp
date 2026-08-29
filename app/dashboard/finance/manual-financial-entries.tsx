@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import {
+  MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT,
+  scopeToBusinessUnitId,
+} from "@/utils/phase5e-key-structure";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -121,7 +125,11 @@ export default function ManualFinancialEntries({
       Number(selectedYear),
       Number(selectedMonth),
     );
-    const existing = findEntryByPeriodMonth(entries, periodMonth);
+    const existing = findEntryByPeriodMonth(
+      entries,
+      periodMonth,
+      activeBusinessUnitId,
+    );
 
     if (
       existing &&
@@ -143,13 +151,20 @@ export default function ManualFinancialEntries({
     if (!existing) {
       setInfoMessage(null);
     }
-  }, [showForm, selectedYear, selectedMonth, entries, editingPeriodMonth]);
+  }, [
+    showForm,
+    selectedYear,
+    selectedMonth,
+    entries,
+    editingPeriodMonth,
+    activeBusinessUnitId,
+  ]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("manual_financial_entries")
-      .select("*")
-      .order("period_month", { ascending: false });
+    const { data, error: refreshError } = await scopeToBusinessUnitId(
+      supabase.from("manual_financial_entries").select("*"),
+      activeBusinessUnitId,
+    ).order("period_month", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);
@@ -163,7 +178,11 @@ export default function ManualFinancialEntries({
   function openAddForm() {
     const period = getDefaultPeriodSelection();
     const periodMonth = buildPeriodMonth(period.year, period.month);
-    const existing = findEntryByPeriodMonth(entries, periodMonth);
+    const existing = findEntryByPeriodMonth(
+      entries,
+      periodMonth,
+      activeBusinessUnitId,
+    );
 
     if (existing) {
       openEditForm(existing);
@@ -207,10 +226,13 @@ export default function ManualFinancialEntries({
     setDeletingPeriodMonth(normalized);
     setError(null);
 
-    let query = supabase
-      .from("manual_financial_entries")
-      .delete()
-      .eq("period_month", normalized);
+    let query = scopeToBusinessUnitId(
+      supabase
+        .from("manual_financial_entries")
+        .delete()
+        .eq("period_month", normalized),
+      activeBusinessUnitId,
+    );
     if (tenantId) {
       query = query.eq("tenant_id", tenantId);
     }
@@ -242,41 +264,45 @@ export default function ManualFinancialEntries({
       Number(selectedYear),
       Number(selectedMonth),
     );
-    const existing = findEntryByPeriodMonth(entries, periodMonth);
-    const updateKey =
-      editingPeriodMonth ??
-      (existing ? normalizePeriodMonth(existing.period_month) : null);
-    const updateTenantId =
-      (updateKey &&
-        entries.find(
-          (entry) =>
-            normalizePeriodMonth(entry.period_month) === updateKey,
-        )?.tenant_id) ||
-      existing?.tenant_id;
-    const payload = formToPayload(form, periodMonth);
+    const existing = findEntryByPeriodMonth(
+      entries,
+      periodMonth,
+      activeBusinessUnitId,
+    );
+    const wasNew = !existing && !editingPeriodMonth;
+    const payload = {
+      ...formToPayload(form, periodMonth),
+      tenant_id: tenantId,
+      business_unit_id: activeBusinessUnitId,
+    };
 
-    let saveError;
-    if (updateKey) {
-      let updateQuery = supabase
-        .from("manual_financial_entries")
-        .update(payload)
-        .eq("period_month", updateKey);
-      if (updateTenantId) {
-        updateQuery = updateQuery.eq("tenant_id", updateTenantId);
-      }
-      ({ error: saveError } = await updateQuery);
-    } else {
-      ({ error: saveError } = await supabase
-        .from("manual_financial_entries")
-        .insert(payload));
+    const { error: saveError } = await supabase
+      .from("manual_financial_entries")
+      .upsert(payload, { onConflict: MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT });
 
-      if (!saveError) {
-        requestTenantAdminDirectorNotification({
-          title: "Director's loan entry recorded",
-          detail: formatGHS(Number(form.directors_loan) || 0),
-          actionUrl: "/dashboard/finance/manual-financial-entries",
-        });
-      }
+    if (
+      !saveError &&
+      editingPeriodMonth &&
+      normalizePeriodMonth(editingPeriodMonth) !==
+        normalizePeriodMonth(periodMonth)
+    ) {
+      let deleteOldQuery = scopeToBusinessUnitId(
+        supabase
+          .from("manual_financial_entries")
+          .delete()
+          .eq("period_month", normalizePeriodMonth(editingPeriodMonth))
+          .eq("tenant_id", tenantId),
+        activeBusinessUnitId,
+      );
+      await deleteOldQuery;
+    }
+
+    if (!saveError && wasNew) {
+      requestTenantAdminDirectorNotification({
+        title: "Director's loan entry recorded",
+        detail: formatGHS(Number(form.directors_loan) || 0),
+        actionUrl: "/dashboard/finance/manual-financial-entries",
+      });
     }
 
     if (saveError) {
@@ -284,7 +310,11 @@ export default function ManualFinancialEntries({
         saveError.message.includes("duplicate key") ||
         saveError.message.includes("manual_financial_entries_period_month")
       ) {
-        const duplicate = findEntryByPeriodMonth(entries, periodMonth);
+        const duplicate = findEntryByPeriodMonth(
+          entries,
+          periodMonth,
+          activeBusinessUnitId,
+        );
         if (duplicate) {
           openEditForm(duplicate);
           setError(

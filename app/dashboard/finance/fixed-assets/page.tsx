@@ -4,6 +4,7 @@ import {
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
 import { createClient } from "@/utils/supabase/server";
+import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import { mapApproverRows } from "../../approver-utils";
 import type { Approver, NamedLookup } from "../../lookup-types";
 import FixedAssets from "../fixed-assets";
@@ -23,6 +24,7 @@ export default async function FixedAssetsPage() {
   const tenantId = await getCurrentUserTenantId();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   const [
     { data, error },
@@ -33,7 +35,6 @@ export default async function FixedAssetsPage() {
     { data: suppliers, error: suppliersError },
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
-    activeBusinessUnitId,
   ] = await Promise.all([
     supabase.from("fixed_assets").select("*").order("asset_id", { ascending: true }),
     supabase.from("asset_categories").select("name").order("name", { ascending: true }),
@@ -54,13 +55,15 @@ export default async function FixedAssetsPage() {
           .eq("is_active", true)
           .order("name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
-    supabase.from("tax_settings").select(TAX_SETTINGS_SELECT).limit(1).maybeSingle(),
+    scopeTaxSettingsRead(
+      supabase.from("tax_settings").select(TAX_SETTINGS_SELECT),
+      activeBusinessUnitId,
+    ).maybeSingle(),
     supabase
       .from("tax_rate_catalog")
       .select(TAX_RATE_CATALOG_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
-    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =

@@ -8,9 +8,14 @@ import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import { DEFAULT_WORKSPACE_LOGO } from "@/utils/tenant-branding-types";
 import { uploadTenantLogo } from "@/utils/tenant-logo";
 import { uploadTenantSignature } from "@/utils/tenant-signature";
+import {
+  TAX_SETTINGS_ON_CONFLICT,
+} from "@/utils/phase5e-key-structure";
 
 type WorkspaceSettingsProps = {
   tenantId: string;
+  /** Active BU for tax_settings TIN write (null = default row). */
+  activeBusinessUnitId?: string | null;
   initialName: string;
   initialLogoUrl: string | null;
   initialSignatureUrl: string | null;
@@ -28,6 +33,7 @@ const inputClassName =
 
 export default function WorkspaceSettings({
   tenantId,
+  activeBusinessUnitId = null,
   initialName,
   initialLogoUrl,
   initialSignatureUrl,
@@ -102,18 +108,15 @@ export default function WorkspaceSettings({
       return;
     }
 
-    await supabase.from("tax_settings").upsert(
-      { tenant_id: tenantId },
-      { onConflict: "tenant_id", ignoreDuplicates: true },
-    );
-
-    const { error: tinUpdateError } = await supabase
-      .from("tax_settings")
-      .update({
+    const { error: tinUpdateError } = await supabase.from("tax_settings").upsert(
+      {
+        tenant_id: tenantId,
+        business_unit_id: activeBusinessUnitId,
         gra_tin: trimmedTin || null,
         updated_at: new Date().toISOString(),
-      })
-      .eq("tenant_id", tenantId);
+      },
+      { onConflict: TAX_SETTINGS_ON_CONFLICT },
+    );
 
     if (tinUpdateError) {
       setError(tinUpdateError.message);

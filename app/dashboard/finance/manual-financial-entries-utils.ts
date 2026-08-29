@@ -29,6 +29,7 @@ export type ManualEntryLegacyColumnKey =
 export type ManualFinancialEntryRecord = {
   period_month: string;
   tenant_id?: string;
+  business_unit_id?: string | null;
 } & Partial<Record<ManualEntryFormFieldKey | ManualEntryLegacyColumnKey, number>> & {
   notes?: string | null;
 };
@@ -137,6 +138,23 @@ export const MANUAL_ENTRY_FORM_FIELD_KEYS = MANUAL_ENTRY_FIELD_SECTIONS.flatMap(
   (section) => section.fields.map((field) => field.key),
 );
 
+const MANUAL_ENTRY_LEGACY_COLUMN_KEYS: ManualEntryLegacyColumnKey[] = [
+  "cash_on_hand",
+  "bank_balance",
+  "prepayments_wht_receivable",
+  "inventory_consumables",
+  "accrued_expenses",
+  "withholding_tax_payable",
+  "vat_payable",
+  "retained_earnings_prior_years",
+  "share_capital",
+  "purchase_of_fixed_assets",
+];
+
+const MANUAL_ENTRY_NUMERIC_KEYS: Array<
+  ManualEntryFormFieldKey | ManualEntryLegacyColumnKey
+> = [...MANUAL_ENTRY_FORM_FIELD_KEYS, ...MANUAL_ENTRY_LEGACY_COLUMN_KEYS];
+
 export const emptyManualEntryForm: Record<ManualEntryFormFieldKey, string> =
   Object.fromEntries(
     MANUAL_ENTRY_FORM_FIELD_KEYS.map((key) => [key, ""]),
@@ -173,13 +191,58 @@ export function formatPeriodMonthLabel(periodMonth: string): string {
 export function findEntryByPeriodMonth(
   entries: ManualFinancialEntryRecord[],
   periodMonth: string,
+  businessUnitId?: string | null,
 ): ManualFinancialEntryRecord | null {
   const normalized = normalizePeriodMonth(periodMonth);
+  const matchBu =
+    businessUnitId === undefined
+      ? undefined
+      : businessUnitId?.trim() || null;
 
   return (
-    entries.find(
-      (entry) => normalizePeriodMonth(entry.period_month) === normalized,
-    ) ?? null
+    entries.find((entry) => {
+      if (normalizePeriodMonth(entry.period_month) !== normalized) {
+        return false;
+      }
+      if (matchBu === undefined) {
+        return true;
+      }
+      const rowBu = entry.business_unit_id?.trim() || null;
+      return rowBu === matchBu;
+    }) ?? null
+  );
+}
+
+/** All Businesses: SUM numeric fields by period_month (do not last-wins). */
+export function aggregateManualEntriesByPeriodMonth(
+  entries: ManualFinancialEntryRecord[],
+): ManualFinancialEntryRecord[] {
+  const byPeriod = new Map<string, ManualFinancialEntryRecord>();
+
+  for (const entry of entries) {
+    const periodMonth = normalizePeriodMonth(entry.period_month);
+    const existing = byPeriod.get(periodMonth);
+    if (!existing) {
+      const seeded: ManualFinancialEntryRecord = {
+        period_month: periodMonth,
+        tenant_id: entry.tenant_id,
+        business_unit_id: null,
+        notes: entry.notes ?? null,
+      };
+      for (const key of MANUAL_ENTRY_NUMERIC_KEYS) {
+        seeded[key] = Number(entry[key]) || 0;
+      }
+      byPeriod.set(periodMonth, seeded);
+      continue;
+    }
+
+    for (const key of MANUAL_ENTRY_NUMERIC_KEYS) {
+      existing[key] = (Number(existing[key]) || 0) + (Number(entry[key]) || 0);
+    }
+  }
+
+  return [...byPeriod.values()].sort((left, right) =>
+    left.period_month.localeCompare(right.period_month),
   );
 }
 

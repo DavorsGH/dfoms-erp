@@ -412,11 +412,19 @@ export function buildNetPayByPayrollMonth(
 ): Map<string, number> {
   const totals = sumNetPayByPayrollMonth(payrollHistory);
 
+  const closeSumByMonth = new Map<string, number>();
   for (const record of monthEndCloseRecords) {
     const payrollMonth = normalizePayrollMonthKey(record.month);
     const closeTotal = roundCurrency(Number(record.total_net_pay) || 0);
-    const historyTotal = totals.get(payrollMonth) ?? 0;
+    // Multiple BU rows for the same month (All Businesses) must sum.
+    closeSumByMonth.set(
+      payrollMonth,
+      (closeSumByMonth.get(payrollMonth) ?? 0) + closeTotal,
+    );
+  }
 
+  for (const [payrollMonth, closeTotal] of closeSumByMonth) {
+    const historyTotal = totals.get(payrollMonth) ?? 0;
     if (closeTotal > historyTotal) {
       totals.set(payrollMonth, closeTotal);
     }
