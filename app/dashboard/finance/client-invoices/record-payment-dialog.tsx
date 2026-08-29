@@ -2,13 +2,19 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { formatInvoiceMoney, todayIsoDate } from "@/utils/client-invoices-types";
+import {
+  computeClientInvoiceCashOutstanding,
+  computeClientInvoiceNetCashDue,
+} from "@/utils/client-invoice-payment-utils";
+import { formatInvoiceMoney, todayIsoDate, toNumber } from "@/utils/client-invoices-types";
 import type { RecordClientInvoicePaymentBody } from "@/utils/client-receipts-types";
 
 type RecordPaymentDialogProps = {
   invoiceId: string;
   invoiceNumber: string;
   totalDue: number;
+  whtRate?: number;
+  whtAmount?: number;
   amountReceived: number;
   paymentMethods: string[];
   onClose: () => void;
@@ -22,16 +28,24 @@ export default function RecordPaymentDialog({
   invoiceId,
   invoiceNumber,
   totalDue,
+  whtRate = 0,
+  whtAmount = 0,
   amountReceived,
   paymentMethods,
   onClose,
   onSuccess,
 }: RecordPaymentDialogProps) {
   const router = useRouter();
-  const outstanding = Math.max(totalDue - amountReceived, 0);
+  const hasWht = toNumber(whtAmount) > 0;
+  const netCashDue = computeClientInvoiceNetCashDue(totalDue, whtAmount);
+  const cashOutstanding = computeClientInvoiceCashOutstanding(
+    totalDue,
+    whtAmount,
+    amountReceived,
+  );
 
   const [paymentDate, setPaymentDate] = useState(todayIsoDate());
-  const [amount, setAmount] = useState(outstanding > 0 ? outstanding : 0);
+  const [amount, setAmount] = useState(cashOutstanding > 0 ? cashOutstanding : 0);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0] ?? "");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -91,9 +105,38 @@ export default function RecordPaymentDialog({
           Record Payment
         </h3>
         <p className="mt-1 text-sm text-slate-600">
-          Invoice {invoiceNumber} — outstanding{" "}
-          <span className="font-medium">{formatInvoiceMoney(outstanding)}</span>
+          Invoice {invoiceNumber} — cash outstanding{" "}
+          <span className="font-medium">{formatInvoiceMoney(cashOutstanding)}</span>
         </p>
+
+        {hasWht ? (
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm">
+            <dl className="space-y-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-slate-700">Total due</dt>
+                <dd className="font-medium text-slate-900">{formatInvoiceMoney(totalDue)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-slate-700">
+                  Less WHT ({toNumber(whtRate)}%)
+                </dt>
+                <dd className="font-medium text-slate-900">
+                  {formatInvoiceMoney(whtAmount)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-1.5">
+                <dt className="font-medium text-[#0f2744]">Net cash expected</dt>
+                <dd className="font-semibold text-[#0f2744]">
+                  {formatInvoiceMoney(netCashDue)}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-2 text-xs text-slate-500">
+              WHT is set on the invoice — enter cash received only. Do not include
+              withheld tax in the payment amount.
+            </p>
+          </div>
+        ) : null}
 
         {error ? (
           <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -126,7 +169,7 @@ export default function RecordPaymentDialog({
               required
               min={0.01}
               step={0.01}
-              max={outstanding}
+              max={cashOutstanding}
               value={amount}
               onChange={(event) => setAmount(Number(event.target.value))}
               className={inputClassName}
@@ -186,7 +229,7 @@ export default function RecordPaymentDialog({
             </button>
             <button
               type="submit"
-              disabled={submitting || outstanding <= 0}
+              disabled={submitting || cashOutstanding <= 0}
               className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? "Recording…" : "Record payment"}

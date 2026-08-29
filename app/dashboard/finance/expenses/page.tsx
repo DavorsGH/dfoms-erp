@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import { createClient } from "@/utils/supabase/server";
 import { mapApproverRows } from "../../approver-utils";
 import type { Approver, NamedLookup } from "../../lookup-types";
@@ -39,6 +42,7 @@ export default async function ExpensesPage() {
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
     { data: projects, error: projectsError },
+    activeBusinessUnitId,
   ] = await Promise.all([
     supabase
       .from("expense_register")
@@ -75,6 +79,7 @@ export default async function ExpensesPage() {
           .eq("tenant_id", tenantId)
           .order("project_name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
+    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =
@@ -117,6 +122,7 @@ export default async function ExpensesPage() {
         }
         initialProjects={(projects as ContractProjectOption[] | null) ?? []}
         fetchError={fetchError}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>
   );

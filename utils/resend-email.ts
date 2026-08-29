@@ -29,9 +29,33 @@ export function resendNotConfiguredMessage(): string {
   return "Email sending is not configured (RESEND_API_KEY is missing). No email was sent.";
 }
 
+/** Verified Resend sending address (domain must stay fixed). */
+export const RESEND_NOREPLY_ADDRESS = "noreply@davorsfacilities.com";
+
+/** Platform default From when no tenant display name applies (invites, signup, etc.). */
+export const RESEND_PLATFORM_FROM = `Davors Facilities ERP <${RESEND_NOREPLY_ADDRESS}>`;
+
+/**
+ * Build a Resend `from` value: `"Display Name <noreply@…>"`.
+ * Only the display name changes; the verified address is always `RESEND_NOREPLY_ADDRESS`.
+ */
+export function formatResendFrom(displayName: string): string {
+  const cleaned = displayName
+    .replace(/[\r\n<>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const name = cleaned || "Notification";
+  const needsQuotes = /[,;@"]/.test(name);
+  const safeName = needsQuotes
+    ? `"${name.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+    : name;
+  return `${safeName} <${RESEND_NOREPLY_ADDRESS}>`;
+}
+
 /**
  * Minimal Resend sender. Env: RESEND_API_KEY
- * From: Davors Facilities ERP <noreply@davorsfacilities.com>
+ * Default From: Davors Facilities ERP <noreply@davorsfacilities.com>
+ * Pass `from` via formatResendFrom(tenantCompanyName) for tenant-branded mail.
  */
 export async function sendResendEmail(options: {
   to: string;
@@ -46,9 +70,7 @@ export async function sendResendEmail(options: {
     return { ok: false, error: resendNotConfiguredMessage() };
   }
 
-  const from =
-    options.from?.trim() ||
-    "Davors Facilities ERP <noreply@davorsfacilities.com>";
+  const from = options.from?.trim() || RESEND_PLATFORM_FROM;
 
   try {
     const response = await fetch("https://api.resend.com/emails", {

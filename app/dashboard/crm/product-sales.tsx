@@ -63,6 +63,8 @@ type ProductSalesProps = {
   initialFinishedProducts: FinishedProductRecord[];
   initialPaymentMethods: string[];
   fetchError: string | null;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 const emptyForm = {
@@ -86,6 +88,7 @@ export default function ProductSales({
   initialFinishedProducts,
   initialPaymentMethods,
   fetchError,
+  activeBusinessUnitId = null,
 }: ProductSalesProps) {
   const supabase = createClient();
   const [entries, setEntries] = useState(
@@ -448,6 +451,7 @@ export default function ProductSales({
         p_due_date: outstanding > 0 ? form.due_date : form.due_date || form.date,
         p_description: null,
         p_notes: form.notes || null,
+        p_business_unit_id: activeBusinessUnitId,
       },
     );
 
@@ -605,6 +609,7 @@ export default function ProductSales({
         <ProductSalesBulkImport
           clients={initialClients}
           finishedProducts={finishedProducts}
+          activeBusinessUnitId={activeBusinessUnitId}
           onClose={closeBulkImport}
           onImported={refreshEntries}
         />

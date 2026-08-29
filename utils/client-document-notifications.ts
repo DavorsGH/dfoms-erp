@@ -6,6 +6,8 @@ import { insertClientPortalNotification } from "@/utils/client-portal-notificati
 import { renderClientInvoicePdfBuffer } from "@/utils/client-invoice-pdf-server";
 import { renderClientQuotationPdfBuffer } from "@/utils/client-quotation-pdf-server";
 import { renderClientReceiptPdfBuffer } from "@/utils/client-receipt-pdf-server";
+import { formatReceiptAmountSectionForEmail } from "@/app/dashboard/finance/client-receipts/client-receipt-display-utils";
+import { toNumber } from "@/utils/client-invoices-types";
 import { fireTransactionalNotification } from "@/utils/transactional-notification-trigger";
 import type { TransactionalEventType } from "@/utils/transactional-notification-types";
 
@@ -220,7 +222,13 @@ export async function notifyClientReceiptIssued(options: {
   customerName: string;
   amount: string;
   paymentDate: string;
+  /** Optional — when omitted, loaded from the receipt's invoice for WHT breakdown. */
+  invoiceTotalDue?: number | string;
+  whtRate?: number | string;
+  whtAmount?: number | string;
 }): Promise<void> {
+  const amountSection = await resolveReceiptIssuedAmountSection(options);
+
   await notifyClientDocumentEvent({
     tenantId: options.tenantId,
     clientId: options.clientId,
@@ -232,6 +240,7 @@ export async function notifyClientReceiptIssued(options: {
       receipt_number: options.receiptNumber,
       invoice_number: options.invoiceNumber,
       amount: options.amount,
+      amount_section: amountSection,
       payment_date: options.paymentDate,
     },
     inbox: {
@@ -241,6 +250,55 @@ export async function notifyClientReceiptIssued(options: {
     },
     context: `receipt_issued/${options.receiptId}`,
   });
+}
+
+async function resolveReceiptIssuedAmountSection(options: {
+  tenantId: string;
+  receiptId: string;
+  amount: string;
+  invoiceTotalDue?: number | string;
+  whtRate?: number | string;
+  whtAmount?: number | string;
+}): Promise<string> {
+  let invoice = {
+    total_amount_due: toNumber(options.invoiceTotalDue),
+    wht_rate: toNumber(options.whtRate),
+    wht_amount: toNumber(options.whtAmount),
+  };
+
+  const needsLookup =
+    options.invoiceTotalDue == null || options.whtAmount == null;
+
+  if (needsLookup) {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("client_receipts")
+      .select(
+        "amount, invoice:client_invoices!client_receipts_invoice_id_fkey(total_amount_due, wht_rate, wht_amount)",
+      )
+      .eq("tenant_id", options.tenantId)
+      .eq("id", options.receiptId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(
+        `[client-document-notifications] receipt amount lookup failed (${options.receiptId}):`,
+        error.message,
+      );
+    } else {
+      const linked = data?.invoice;
+      const inv = Array.isArray(linked) ? linked[0] : linked;
+      if (inv) {
+        invoice = {
+          total_amount_due: toNumber(inv.total_amount_due),
+          wht_rate: toNumber(inv.wht_rate),
+          wht_amount: toNumber(inv.wht_amount),
+        };
+      }
+    }
+  }
+
+  return formatReceiptAmountSectionForEmail(invoice, options.amount);
 }
 
 export async function notifyClientContractRaised(options: {

@@ -27,6 +27,10 @@ import {
   type ClientQuotationType,
   type ClientQuotationWriteBody,
 } from "@/utils/client-quotations-types";
+import {
+  resolveCreateBusinessUnitId,
+  type CreateBusinessUnitStampOptions,
+} from "@/utils/business-unit-stamp";
 
 type DbClient = SupabaseClient;
 
@@ -316,6 +320,7 @@ export async function createClientQuotation(
   supabase: DbClient,
   tenantId: string,
   body: ClientQuotationWriteBody,
+  options?: CreateBusinessUnitStampOptions,
 ) {
   const { quotationNumber, error: allocateError } = await allocateQuotationNumber(
     supabase,
@@ -346,9 +351,15 @@ export async function createClientQuotation(
   );
   headerPayload.status = "draft";
 
+  const businessUnitId = await resolveCreateBusinessUnitId(options);
+  const insertPayload = {
+    ...headerPayload,
+    business_unit_id: businessUnitId,
+  };
+
   const { data: quotation, error: insertError } = await supabase
     .from("client_quotations")
-    .insert(headerPayload)
+    .insert(insertPayload)
     .select(CLIENT_QUOTATION_HEADER_SELECT)
     .single();
 
@@ -548,6 +559,8 @@ export async function raiseContractFromQuotation(
     document_url: null,
     notes: `Raised from quotation ${quotation.quotation_number}.`,
     line_items: contractLines,
+  }, {
+    businessUnitId: quotation.business_unit_id ?? null,
   });
 
   if (createError || !contract) {
@@ -733,6 +746,7 @@ export async function convertClientQuotationToInvoice(
         total_amount_due: toNumber(quotation.total_amount_due),
       },
       contractId: quotation.contract_id,
+      businessUnitId: quotation.business_unit_id ?? null,
     },
   );
 

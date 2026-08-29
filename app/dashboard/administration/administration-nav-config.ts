@@ -115,6 +115,10 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
     label: "Workspace Settings",
     items: [
       {
+        label: "Business Units",
+        href: "/dashboard/administration/business-units",
+      },
+      {
         label: "Workspace Settings",
         href: "/dashboard/administration/workspace",
       },

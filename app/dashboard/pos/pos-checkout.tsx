@@ -94,6 +94,8 @@ type PosCheckoutProps = {
   ) => void | Promise<void>;
   /** Parent re-reads IDB stock after an optimistic offline decrement. */
   onStockCacheChanged?: () => void | Promise<void>;
+  /** Create-only stamp for product sales; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 type MomoInitializeResponse = {
@@ -139,6 +141,7 @@ export default function PosCheckout({
   fetchError,
   onStockLevelsChanged,
   onStockCacheChanged,
+  activeBusinessUnitId = null,
 }: PosCheckoutProps) {
   const supabase = createClient();
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
@@ -617,6 +620,7 @@ export default function PosCheckout({
       amountReceived,
       notes: notes.trim() || null,
       provisionalToken,
+      business_unit_id: activeBusinessUnitId,
       lines: receiptLines.map((line) => ({
         productId: line.productId,
         productCode: line.productCode,
@@ -685,6 +689,7 @@ export default function PosCheckout({
       dueDate,
       notes: notes.trim() || null,
       cartLines,
+      businessUnitId: activeBusinessUnitId,
     });
 
     await refreshProducts();

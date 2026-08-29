@@ -19,6 +19,7 @@ import {
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
   tenantHeaderContactLines,
+  buildReceiptAmountBreakdown,
   type ClientReceiptDetailPayload,
 } from "./client-receipt-display-utils";
 import { resolveBrandingLogoUrl } from "../client-invoices/client-invoice-display-utils";
@@ -164,6 +165,7 @@ export default function ClientReceiptView({
   }
 
   const { receipt, invoice } = display;
+  const amountBreakdown = buildReceiptAmountBreakdown(invoice, receipt.amount);
   const authorizedByTitle = resolveAuthorizedByDisplayTitle(
     receipt.authorized_by_title,
     display.branding,
@@ -179,7 +181,7 @@ export default function ClientReceiptView({
     <div className="space-y-4">
       <ClientReceiptPrintStyles />
 
-      <div className="no-print">
+      <div className="no-print flex flex-wrap gap-3">
         <ReceiptDocumentActions
           fileName={`${receipt.receipt_number}.pdf`}
           printAreaId={CLIENT_RECEIPT_PRINT_AREA_ID}
@@ -187,7 +189,7 @@ export default function ClientReceiptView({
           primaryButtonClassName={primaryButtonClassName}
           secondaryButtonClassName={secondaryButtonClassName}
         />
-        <Link href={backHref} className={`${secondaryButtonClassName} ml-2 inline-block`}>
+        <Link href={backHref} className={secondaryButtonClassName}>
           {backLabel}
         </Link>
       </div>
@@ -266,12 +268,42 @@ export default function ClientReceiptView({
             </div>
           </section>
 
-          <div className="flex items-center justify-between rounded-md bg-[#0f2744] px-4 py-3">
-            <span className="font-semibold text-white">Amount Received</span>
-            <span className="text-lg font-bold text-[#c9a227]">
-              {formatReceiptMoney(receipt.amount)}
-            </span>
-          </div>
+          {amountBreakdown.showWht ? (
+            <section className="overflow-hidden rounded-lg border border-[#0f2744]/25">
+              <h4 className="bg-[#0f2744] px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white">
+                Amount Summary
+              </h4>
+              <dl className="space-y-0 border-t border-[#0f2744]/10 bg-[#e8f4f8]/50 px-4 py-3 text-sm">
+                <div className="flex items-center justify-between border-b border-slate-200 py-2">
+                  <dt className="text-slate-700">Invoice Total</dt>
+                  <dd className="font-semibold text-[#0f2744]">
+                    {formatReceiptMoney(amountBreakdown.invoiceTotal)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between border-b border-slate-200 py-2">
+                  <dt className="text-slate-700">
+                    WHT Withheld ({amountBreakdown.whtRate}%)
+                  </dt>
+                  <dd className="font-semibold text-slate-800">
+                    {formatReceiptMoney(amountBreakdown.whtAmount)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <dt className="font-semibold text-[#0f2744]">Net Amount Received</dt>
+                  <dd className="text-lg font-bold text-[#c9a227]">
+                    {formatReceiptMoney(amountBreakdown.netReceived)}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          ) : (
+            <div className="flex items-center justify-between rounded-md bg-[#0f2744] px-4 py-3">
+              <span className="font-semibold text-white">Amount Received</span>
+              <span className="text-lg font-bold text-[#c9a227]">
+                {formatReceiptMoney(receipt.amount)}
+              </span>
+            </div>
+          )}
 
           {hasReceiptAuthorizedBy(receipt) ? (
             <section className="pt-2 text-left">

@@ -27,6 +27,7 @@ type SalaryRatesProps = {
   initialRates: SalaryRateEntry[];
   initialPositions: string[];
   fetchError: string | null;
+  activeBusinessUnitId?: string | null;
 };
 
 const emptyForm = {
@@ -41,6 +42,7 @@ export default function SalaryRates({
   initialRates,
   initialPositions,
   fetchError,
+  activeBusinessUnitId = null,
 }: SalaryRatesProps) {
   const supabase = createClient();
   const [rates, setRates] = useState(initialRates);
@@ -173,7 +175,10 @@ export default function SalaryRates({
           .from("salary_rate_config")
           .update(payload)
           .eq("id", editingId)
-      : await supabase.from("salary_rate_config").insert(payload);
+      : await supabase.from("salary_rate_config").insert({
+          ...payload,
+          business_unit_id: activeBusinessUnitId,
+        });
 
     if (saveError) {
       setError(saveError.message);

@@ -349,6 +349,8 @@ export default function ClientInvoiceView({
           invoiceId={invoiceId}
           invoiceNumber={invoice.invoice_number}
           totalDue={toNumber(invoice.total_amount_due)}
+          whtRate={toNumber(invoice.wht_rate)}
+          whtAmount={toNumber(invoice.wht_amount)}
           amountReceived={toNumber(invoice.amount_received ?? 0)}
           paymentMethods={paymentMethods}
           onClose={() => setShowRecordPayment(false)}

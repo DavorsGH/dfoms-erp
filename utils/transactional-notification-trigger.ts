@@ -7,7 +7,7 @@ import {
   templateBodyToEmailHtml,
 } from "@/utils/message-template-render";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
-import { sendResendEmail, type ResendEmailAttachment } from "@/utils/resend-email";
+import { sendResendEmail, formatResendFrom, type ResendEmailAttachment } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { buildClientDocumentPortalUrlVars } from "@/utils/client-document-notification-templates";
@@ -208,6 +208,7 @@ export async function fireTransactionalNotification(
           subject,
           html,
           text: rawBody,
+          from: formatResendFrom(tenantName),
           attachments: options?.emailAttachments,
         });
         if (!result.ok) {

@@ -15,10 +15,10 @@ export const CLIENT_INVOICE_STATUSES = [
 export type ClientInvoiceStatus = (typeof CLIENT_INVOICE_STATUSES)[number];
 
 export const CLIENT_INVOICE_LIST_SELECT =
-  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, amount_received, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name), source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number), source_contract:service_contracts!client_invoices_contract_id_fkey(id, contract_number)" as const;
+  "id, tenant_id, client_id, invoice_number, invoice_sequence, invoice_date, due_date, bill_to_name, subtotal, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, created_at, client:customers!client_invoices_tenant_id_client_id_fkey(client_id, client_name), source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number), source_contract:service_contracts!client_invoices_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_INVOICE_HEADER_SELECT =
-  "id, tenant_id, client_id, contract_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, authorized_by_name, authorized_by_title, created_at, updated_at, source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number), source_contract:service_contracts!client_invoices_contract_id_fkey(id, contract_number)" as const;
+  "id, tenant_id, client_id, contract_id, business_unit_id, invoice_number, invoice_sequence, invoice_date, due_date, billing_period_start, billing_period_end, bill_to_name, bill_to_address, bill_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, total_amount_due, amount_received, status, notes, authorized_by_name, authorized_by_title, created_at, updated_at, source_quotation:client_quotations!client_quotations_converted_invoice_id_fkey(id, quotation_number), source_contract:service_contracts!client_invoices_contract_id_fkey(id, contract_number)" as const;
 
 export const AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT =
   "auth_uid, employee_id, employees!user_accounts_employee_id_fkey(full_name, position)" as const;
@@ -183,6 +183,7 @@ export type ClientInvoiceListRow = {
   bill_to_name: string;
   subtotal: number;
   tax_due: number;
+  wht_rate: number;
   wht_amount: number;
   total_amount_due: number;
   amount_received: number;
@@ -213,6 +214,7 @@ export type ClientInvoiceHeaderRow = {
   tenant_id: string;
   client_id: string;
   contract_id: string | null;
+  business_unit_id: string | null;
   invoice_number: string;
   invoice_sequence: number;
   invoice_date: string;
@@ -448,6 +450,7 @@ export function normalizeClientInvoiceListRow(row: ClientInvoiceListRow): Client
     ...row,
     subtotal: toNumber(row.subtotal),
     tax_due: toNumber(row.tax_due),
+    wht_rate: toNumber(row.wht_rate),
     wht_amount: toNumber(row.wht_amount),
     total_amount_due: toNumber(row.total_amount_due),
     amount_received: toNumber(row.amount_received),

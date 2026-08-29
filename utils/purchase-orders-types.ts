@@ -11,7 +11,7 @@ export const PURCHASE_ORDER_LIST_SELECT =
   "id, po_number, supplier_id, status, order_date, expected_date, notes, created_at, tenant_id, supplier:suppliers!supplier_id(name), items:purchase_order_items(quantity_ordered, unit_cost)" as const;
 
 export const PURCHASE_ORDER_DETAIL_SELECT =
-  "id, po_number, supplier_id, status, order_date, expected_date, notes, created_at, updated_at, tenant_id, supplier:suppliers!supplier_id(name), items:purchase_order_items(id, item_type, raw_material_id, finished_product_id, quantity_ordered, quantity_received, unit_cost, raw_material:raw_materials!raw_material_id(material_code, material_name, unit_of_measure), finished_product:finished_products!finished_product_id(product_code, product_name, unit_of_measure))" as const;
+  "id, po_number, supplier_id, status, order_date, expected_date, notes, created_at, updated_at, tenant_id, business_unit_id, supplier:suppliers!supplier_id(name), items:purchase_order_items(id, item_type, raw_material_id, finished_product_id, quantity_ordered, quantity_received, unit_cost, raw_material:raw_materials!raw_material_id(material_code, material_name, unit_of_measure), finished_product:finished_products!finished_product_id(product_code, product_name, unit_of_measure))" as const;
 
 export const PO_RAW_MATERIAL_OPTION_SELECT =
   "id, material_code, material_name, unit_of_measure" as const;
@@ -91,6 +91,7 @@ export type PurchaseOrderDetailRow = {
   created_at: string;
   updated_at: string;
   tenant_id: string;
+  business_unit_id?: string | null;
   supplier?: PurchaseOrderSupplier | PurchaseOrderSupplier[] | null;
   items?: PurchaseOrderItemRow[] | null;
 };

@@ -28,6 +28,8 @@ export type PosCheckoutInput = {
   dueDate: string;
   notes: string | null;
   cartLines: PosCartLine[];
+  /** Create-only stamp; null = All Businesses. */
+  businessUnitId?: string | null;
 };
 
 export type PosCheckoutLineResult = {
@@ -261,6 +263,7 @@ export async function runPosCheckout(
       p_notes: notes,
       p_invoice_entity_type: POS_INVOICE_ENTITY_TYPE,
       p_sales_rep_id: input.salesRepId?.trim() || null,
+      p_business_unit_id: input.businessUnitId ?? null,
     });
 
     if (error) {

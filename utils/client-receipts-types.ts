@@ -59,6 +59,8 @@ export type ClientReceiptDetailPayload = {
     bill_to_address: string | null;
     bill_to_phone: string | null;
     total_amount_due: number;
+    wht_rate: number;
+    wht_amount: number;
     client_id: string;
   };
 };

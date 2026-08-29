@@ -10,7 +10,7 @@ import {
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
-import { sendResendEmail } from "@/utils/resend-email";
+import { sendResendEmail, formatResendFrom } from "@/utils/resend-email";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 function escapeHtml(value: string): string {
@@ -128,6 +128,7 @@ export async function notifyLesseeOneTimeChargeAdded(options: {
       subject,
       html,
       text,
+      from: formatResendFrom(tenantName),
     });
     if (!result.ok) {
       console.error(

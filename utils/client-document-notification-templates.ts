@@ -92,7 +92,7 @@ View your invoices: ${portal.portal_invoices_url}`,
       body_email: `Dear {{customer_name}},
 
 Your receipt {{receipt_number}} for invoice {{invoice_number}} is attached.
-Amount: {{amount}}
+{{amount_section}}
 Date: {{payment_date}}
 
 View your receipts: ${portal.portal_receipts_url}`,
@@ -104,6 +104,7 @@ View your receipts: ${portal.portal_receipts_url}`,
         "receipt_number",
         "invoice_number",
         "amount",
+        "amount_section",
         "payment_date",
         "portal_receipts_url",
       ],

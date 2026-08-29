@@ -422,59 +422,6 @@ function computeActualForLine(params: {
   );
 }
 
-function collectActualLineKeys(params: {
-  year: number;
-  fromMonthIndex: number;
-  throughMonthIndex: number;
-  projectFilter: string;
-  expenses: BudgetActualExpenseEntry[];
-  budgetedSubsByCategory: Map<string, Set<string>>;
-}): Set<string> {
-  const keys = new Set<string>();
-
-  for (const entry of params.expenses) {
-    const monthIndex = getEntryMonthIndex(entry.date, params.year);
-    if (
-      monthIndex === null ||
-      monthIndex < params.fromMonthIndex ||
-      monthIndex > params.throughMonthIndex
-    ) {
-      continue;
-    }
-
-    if (!matchesProjectFilter(entry.project_id, params.projectFilter)) {
-      continue;
-    }
-
-    const category = (entry.expense_category ?? "").trim();
-    if (!category) {
-      continue;
-    }
-
-    if (isInventoryPseudoCategory(category)) {
-      keys.add(makeBudgetLineKey(category, null));
-      continue;
-    }
-
-    const expenseSub = normalizeBudgetSubcategory(entry.sub_category);
-    const budgetedSubs = params.budgetedSubsByCategory.get(category) ?? new Set();
-    if (expenseSub && budgetedSubs.has(expenseSub)) {
-      keys.add(makeBudgetLineKey(category, expenseSub));
-    } else {
-      keys.add(makeBudgetLineKey(category, null));
-    }
-  }
-
-  keys.add(makeBudgetLineKey(BUDGET_ACTUAL_CATEGORY_RAW_MATERIALS, null));
-  keys.add(makeBudgetLineKey(BUDGET_ACTUAL_CATEGORY_PURCHASED_INVENTORY, null));
-
-  if (params.projectFilter !== ALL_PROJECTS_FILTER) {
-    keys.add(makeBudgetLineKey(PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES, null));
-  }
-
-  return keys;
-}
-
 function buildReportRow(params: {
   rowKey: string;
   category: string;
@@ -605,7 +552,92 @@ type BuildBudgetVsActualReportParams = {
   month: number;
   monthIndex: number;
   projectFilter: string;
+  /**
+   * @internal Probe / regression only. Legacy behaviour that unions unbudgeted
+   * spend into the row set (false "Over budget" alarms). Default false.
+   */
+  includeUnbudgetedActualRows?: boolean;
 };
+
+function collectActualLineKeys(params: {
+  year: number;
+  fromMonthIndex: number;
+  throughMonthIndex: number;
+  projectFilter: string;
+  expenses: BudgetActualExpenseEntry[];
+  budgetedSubsByCategory: Map<string, Set<string>>;
+}): Set<string> {
+  const keys = new Set<string>();
+
+  for (const entry of params.expenses) {
+    const monthIndex = getEntryMonthIndex(entry.date, params.year);
+    if (
+      monthIndex === null ||
+      monthIndex < params.fromMonthIndex ||
+      monthIndex > params.throughMonthIndex
+    ) {
+      continue;
+    }
+
+    if (!matchesProjectFilter(entry.project_id, params.projectFilter)) {
+      continue;
+    }
+
+    const category = (entry.expense_category ?? "").trim();
+    if (!category) {
+      continue;
+    }
+
+    if (isInventoryPseudoCategory(category)) {
+      keys.add(makeBudgetLineKey(category, null));
+      continue;
+    }
+
+    const expenseSub = normalizeBudgetSubcategory(entry.sub_category);
+    const budgetedSubs = params.budgetedSubsByCategory.get(category) ?? new Set();
+    if (expenseSub && budgetedSubs.has(expenseSub)) {
+      keys.add(makeBudgetLineKey(category, expenseSub));
+    } else {
+      keys.add(makeBudgetLineKey(category, null));
+    }
+  }
+
+  keys.add(makeBudgetLineKey(BUDGET_ACTUAL_CATEGORY_RAW_MATERIALS, null));
+  keys.add(makeBudgetLineKey(BUDGET_ACTUAL_CATEGORY_PURCHASED_INVENTORY, null));
+
+  if (params.projectFilter !== ALL_PROJECTS_FILTER) {
+    keys.add(makeBudgetLineKey(PAYROLL_EXPENSE_CATEGORY_STAFF_SALARIES, null));
+  }
+
+  return keys;
+}
+
+function resolveLineKeys(params: {
+  budgetedByLineKey: Map<string, number>;
+  includeUnbudgetedActualRows: boolean | undefined;
+  year: number;
+  fromMonthIndex: number;
+  throughMonthIndex: number;
+  projectFilter: string;
+  expenses: BudgetActualExpenseEntry[];
+  budgetedSubsByCategory: Map<string, Set<string>>;
+}): Set<string> {
+  if (!params.includeUnbudgetedActualRows) {
+    return new Set<string>(params.budgetedByLineKey.keys());
+  }
+
+  return new Set<string>([
+    ...params.budgetedByLineKey.keys(),
+    ...collectActualLineKeys({
+      year: params.year,
+      fromMonthIndex: params.fromMonthIndex,
+      throughMonthIndex: params.throughMonthIndex,
+      projectFilter: params.projectFilter,
+      expenses: params.expenses,
+      budgetedSubsByCategory: params.budgetedSubsByCategory,
+    }),
+  ]);
+}
 
 function buildRowsForLineKeys(params: {
   lineKeys: Set<string>;
@@ -692,17 +724,18 @@ function buildMonthlyProratedReport(
     );
   }
 
-  const lineKeys = new Set<string>([
-    ...budgetedByLineKey.keys(),
-    ...collectActualLineKeys({
-      year: params.year,
-      fromMonthIndex: params.monthIndex,
-      throughMonthIndex: params.monthIndex,
-      projectFilter: params.projectFilter,
-      expenses: params.expenses,
-      budgetedSubsByCategory,
-    }),
-  ]);
+  // Budgeted lines only — unbudgeted spend must not create false "Over budget" rows
+  // (unless includeUnbudgetedActualRows is set for legacy/probe comparison).
+  const lineKeys = resolveLineKeys({
+    budgetedByLineKey,
+    includeUnbudgetedActualRows: params.includeUnbudgetedActualRows,
+    year: params.year,
+    fromMonthIndex: params.monthIndex,
+    throughMonthIndex: params.monthIndex,
+    projectFilter: params.projectFilter,
+    expenses: params.expenses,
+    budgetedSubsByCategory,
+  });
 
   return buildRowsForLineKeys({
     lineKeys,
@@ -748,17 +781,18 @@ function buildMonthlyYtdReport(
     );
   }
 
-  const lineKeys = new Set<string>([
-    ...budgetedByLineKey.keys(),
-    ...collectActualLineKeys({
-      year: params.year,
-      fromMonthIndex: 0,
-      throughMonthIndex: params.monthIndex,
-      projectFilter: params.projectFilter,
-      expenses: params.expenses,
-      budgetedSubsByCategory,
-    }),
-  ]);
+  // Budgeted lines only — unbudgeted spend must not create false "Over budget" rows
+  // (unless includeUnbudgetedActualRows is set for legacy/probe comparison).
+  const lineKeys = resolveLineKeys({
+    budgetedByLineKey,
+    includeUnbudgetedActualRows: params.includeUnbudgetedActualRows,
+    year: params.year,
+    fromMonthIndex: 0,
+    throughMonthIndex: params.monthIndex,
+    projectFilter: params.projectFilter,
+    expenses: params.expenses,
+    budgetedSubsByCategory,
+  });
 
   return buildRowsForLineKeys({
     lineKeys,
@@ -808,17 +842,18 @@ function buildAnnualViewReport(
     );
   }
 
-  const lineKeys = new Set<string>([
-    ...budgetedByLineKey.keys(),
-    ...collectActualLineKeys({
-      year: params.year,
-      fromMonthIndex: 0,
-      throughMonthIndex,
-      projectFilter: params.projectFilter,
-      expenses: params.expenses,
-      budgetedSubsByCategory,
-    }),
-  ]);
+  // Budgeted lines only — unbudgeted spend must not create false "Over budget" rows
+  // (unless includeUnbudgetedActualRows is set for legacy/probe comparison).
+  const lineKeys = resolveLineKeys({
+    budgetedByLineKey,
+    includeUnbudgetedActualRows: params.includeUnbudgetedActualRows,
+    year: params.year,
+    fromMonthIndex: 0,
+    throughMonthIndex,
+    projectFilter: params.projectFilter,
+    expenses: params.expenses,
+    budgetedSubsByCategory,
+  });
 
   return buildRowsForLineKeys({
     lineKeys,

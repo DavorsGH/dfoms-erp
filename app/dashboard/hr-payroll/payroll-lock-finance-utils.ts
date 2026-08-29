@@ -224,6 +224,7 @@ function buildExpenseRegisterPayload(
   receiptSuffix: string,
   tenantId: string,
   paymentStatus: string = PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
+  businessUnitId: string | null = null,
 ) {
   const description = buildPayrollExpenseAutoDescription(period.monthLabel);
   const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
@@ -243,6 +244,7 @@ function buildExpenseRegisterPayload(
     receipt_no: buildPayrollExpenseReceiptNo(receiptSuffix, periodKey),
     payment_status: paymentStatus,
     notes: null,
+    business_unit_id: businessUnitId,
   };
 }
 
@@ -836,6 +838,8 @@ export async function postPayrollLockFinanceEntries(
      * Skip re-applying so balances are not double-reduced.
      */
     skipLoanRepayments?: boolean;
+    /** Create-only stamp for new payroll expense rows; null = All Businesses. */
+    businessUnitId?: string | null;
   },
 ): Promise<{
   insertedExpenses: number;
@@ -866,6 +870,7 @@ export async function postPayrollLockFinanceEntries(
   const staffSalariesPaymentStatus = options?.markStaffSalariesPaid
     ? PAYROLL_EXPENSE_PAYMENT_STATUS_PAID
     : PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED;
+  const businessUnitId = options?.businessUnitId ?? null;
 
   const staffSalariesPayload =
     totals.totalStaffSalariesExpense > 0
@@ -877,6 +882,7 @@ export async function postPayrollLockFinanceEntries(
           "SAL",
           tenantId,
           staffSalariesPaymentStatus,
+          businessUnitId,
         )
       : null;
 
@@ -908,6 +914,7 @@ export async function postPayrollLockFinanceEntries(
           "ESSNIT",
           tenantId,
           PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED,
+          businessUnitId,
         )
       : null;
 
@@ -951,6 +958,7 @@ export async function postPayrollLockFinanceEntries(
     period,
     rows,
     tenantId,
+    { businessUnitId },
   );
 
   return {

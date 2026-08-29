@@ -75,3 +75,18 @@ export function isCrmCustomerListOnlyRole(role: AppRole | null): boolean {
 export function roleShowsEmployeePicker(role: AppRole): boolean {
   return role !== "client";
 }
+
+/** Staff dashboard roles eligible for the business-unit switcher (excludes client portal). */
+export const STAFF_BUSINESS_UNIT_SWITCHER_ROLES: readonly AppRole[] =
+  USER_ROLE_OPTIONS.map((option) => option.value).filter(
+    (role): role is AppRole => role !== "client",
+  );
+
+export function isStaffBusinessUnitSwitcherRole(
+  role: AppRole | string | null | undefined,
+): boolean {
+  return (
+    typeof role === "string" &&
+    (STAFF_BUSINESS_UNIT_SWITCHER_ROLES as readonly string[]).includes(role)
+  );
+}

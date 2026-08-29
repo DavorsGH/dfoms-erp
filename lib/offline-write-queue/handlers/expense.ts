@@ -82,6 +82,7 @@ export async function syncExpenseQueueItem(
       net_of_tax_amount: payload.net_of_tax_amount,
       notes: payload.notes,
       project_id: payload.project_id ?? null,
+      business_unit_id: payload.business_unit_id ?? null,
     };
 
     const { data: inserted, error: insertError } = await supabase

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
   getCurrentAuthUid,
   getCurrentUserEmployeeId,
   getCurrentUserRole,
@@ -47,12 +48,14 @@ export default async function PosPage({ searchParams }: PosPageProps) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [role, defaultSalesRepId, tenantId, authUid] = await Promise.all([
-    getCurrentUserRole(),
-    getCurrentUserEmployeeId(),
-    getCurrentUserTenantId(),
-    getCurrentAuthUid(),
-  ]);
+  const [role, defaultSalesRepId, tenantId, authUid, activeBusinessUnitId] =
+    await Promise.all([
+      getCurrentUserRole(),
+      getCurrentUserEmployeeId(),
+      getCurrentUserTenantId(),
+      getCurrentAuthUid(),
+      getActiveBusinessUnitId(),
+    ]);
   const showCrmNav = canAccessCrmSection(role as AppRole | null);
 
   if (!tenantId || !authUid) {
@@ -212,6 +215,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       initialNotes={quote?.notes ?? ""}
       fetchError={fetchError}
       initialCachedAt={new Date().toISOString()}
+      activeBusinessUnitId={activeBusinessUnitId}
     />
   );
 

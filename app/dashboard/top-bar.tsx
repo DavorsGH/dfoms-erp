@@ -1,6 +1,9 @@
 "use client";
 
 import type { AppRole } from "@/app/dashboard/user-account-types";
+import BusinessUnitSwitcher, {
+  type BusinessUnitSwitcherOption,
+} from "./business-unit-switcher";
 import ClientNotificationBell from "./client-notification-bell";
 import NotificationBell from "./notification-bell";
 import UserAccountMenu from "./user-account-menu";
@@ -12,6 +15,10 @@ type TopBarProps = {
   userFullName?: string | null;
   onMenuToggle: () => void;
   mobileNavOpen: boolean;
+  businessUnitSwitcher?: {
+    units: BusinessUnitSwitcherOption[];
+    activeBusinessUnitId: string | null;
+  } | null;
 };
 
 function MenuIcon() {
@@ -38,6 +45,7 @@ export default function TopBar({
   userFullName,
   onMenuToggle,
   mobileNavOpen,
+  businessUnitSwitcher = null,
 }: TopBarProps) {
   return (
     <header className="flex min-h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-2 md:px-6">
@@ -54,6 +62,12 @@ export default function TopBar({
       <div className="hidden md:block" aria-hidden />
 
       <div className="flex items-center gap-1 md:gap-2">
+        {businessUnitSwitcher ? (
+          <BusinessUnitSwitcher
+            units={businessUnitSwitcher.units}
+            activeBusinessUnitId={businessUnitSwitcher.activeBusinessUnitId}
+          />
+        ) : null}
         {userRole === "client" ? <ClientNotificationBell /> : <NotificationBell />}
         <UserAccountMenu
           userLabel={userLabel}

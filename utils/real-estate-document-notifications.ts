@@ -10,7 +10,7 @@ import { formatDepositStatus } from "@/app/dashboard/real-estate/leases-utils";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { fetchEscrowBalanceForLandlord } from "@/utils/payout-management";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
-import { sendResendEmail, type ResendEmailAttachment } from "@/utils/resend-email";
+import { sendResendEmail, formatResendFrom, type ResendEmailAttachment } from "@/utils/resend-email";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
@@ -19,6 +19,7 @@ import { renderRentPaymentReceiptPdfBuffer } from "@/utils/rent-payment-receipt-
 import { renderSecurityDepositReceiptPdfBuffer } from "@/utils/security-deposit-receipt-pdf-server";
 import { resolveLeaseEmailAttachment } from "@/utils/lease-pdf-server";
 import { fetchLeaseDetail } from "@/utils/lease-management";
+import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 function escapeHtml(value: string): string {
   return value
@@ -34,6 +35,13 @@ function asString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+async function resolveResendFromForTenant(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<string> {
+  return formatResendFrom(await resolveTenantDisplayName(admin, tenantId));
 }
 
 async function loadRentReceiptAttachment(options: {
@@ -142,6 +150,7 @@ export async function notifyRentPaymentSuccess(options: {
 
   const lesseeName = lessee?.full_name?.trim() || "Tenant";
   const landlordName = landlordTenant?.name?.trim() || "Landlord";
+  const from = await resolveResendFromForTenant(admin, options.tenantId);
 
   const receiptAttachment = await loadRentReceiptAttachment({
     admin,
@@ -178,6 +187,7 @@ export async function notifyRentPaymentSuccess(options: {
       subject: tenantSubject,
       html: tenantHtml,
       text: tenantText,
+      from,
       attachments: receiptAttachment ? [receiptAttachment] : undefined,
     });
     if (!emailResult.ok) {
@@ -253,6 +263,7 @@ ${receiptAttachment ? "<p>The payment receipt is attached.</p>" : ""}
       subject: landlordSubject,
       html: landlordHtml,
       text: landlordText,
+      from,
       attachments: receiptAttachment ? [receiptAttachment] : undefined,
     });
     if (!emailResult.ok) {
@@ -354,6 +365,7 @@ export async function notifySecurityDepositCollected(options: {
 
   const amountLabel = formatRentMoney(detail.deposit?.amountGhs ?? 0);
   const unitLabel = `${detail.propertyName} · ${detail.unitNumber}`;
+  const from = await resolveResendFromForTenant(admin, options.tenantId);
 
   const tenantSubject = `Security deposit receipt — ${unitLabel}`;
   const tenantText = [
@@ -377,6 +389,7 @@ export async function notifySecurityDepositCollected(options: {
       subject: tenantSubject,
       html: tenantHtml,
       text: tenantText,
+      from,
       attachments: attachment ? [attachment] : undefined,
     });
     if (!emailResult.ok) {
@@ -426,6 +439,7 @@ ${attachment ? "<p>The collection receipt is attached.</p>" : ""}
       subject: landlordSubject,
       html: landlordHtml,
       text: landlordText,
+      from,
       attachments: attachment ? [attachment] : undefined,
     });
     if (!emailResult.ok) {
@@ -477,6 +491,7 @@ export async function notifySecurityDepositResolved(options: {
     detail.deposit?.amountReturnedGhs != null
       ? formatRentMoney(detail.deposit.amountReturnedGhs)
       : "—";
+  const from = await resolveResendFromForTenant(admin, options.tenantId);
 
   const tenantSubject = `Security deposit resolution — ${unitLabel}`;
   const tenantText = [
@@ -502,6 +517,7 @@ export async function notifySecurityDepositResolved(options: {
       subject: tenantSubject,
       html: tenantHtml,
       text: tenantText,
+      from,
       attachments: attachment ? [attachment] : undefined,
     });
     if (!emailResult.ok) {
@@ -552,6 +568,7 @@ export async function notifySecurityDepositResolved(options: {
 ${attachment ? "<p>The resolution receipt is attached.</p>" : ""}
 <p>Davors Facilities</p>`,
       text: landlordText,
+      from,
       attachments: attachment ? [attachment] : undefined,
     });
     if (!emailResult.ok) {
@@ -604,6 +621,7 @@ async function sendLeaseDocumentEmails(options: {
   const attachmentNote = attachment
     ? "The tenancy agreement is attached to this email."
     : "Sign in to your portal to review the tenancy agreement.";
+  const from = await resolveResendFromForTenant(admin, options.tenantId);
 
   if (detail.lesseeEmail) {
     const tenantText = [
@@ -626,6 +644,7 @@ async function sendLeaseDocumentEmails(options: {
 <p>${escapeHtml(attachmentNote)}</p>
 <p>Davors Facilities</p>`,
       text: tenantText,
+      from,
       attachments: attachment ? [attachment] : undefined,
     });
     if (!emailResult.ok) {
@@ -675,6 +694,7 @@ async function sendLeaseDocumentEmails(options: {
 <p>${escapeHtml(attachmentNote)}</p>
 <p>Davors Facilities</p>`,
       text: landlordText,
+      from,
       attachments: attachment ? [attachment] : undefined,
     });
     if (!emailResult.ok) {

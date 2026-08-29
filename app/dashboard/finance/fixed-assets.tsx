@@ -64,6 +64,8 @@ type FixedAssetsProps = {
   taxSettings: TaxSettings | null;
   taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 type FixedAssetFormState = {
@@ -134,6 +136,7 @@ export default function FixedAssets({
   taxSettings,
   taxRateCatalog,
   fetchError,
+  activeBusinessUnitId = null,
 }: FixedAssetsProps) {
   const supabase = createClient();
   const [assets, setAssets] = useState(initialAssets);
@@ -540,6 +543,7 @@ export default function FixedAssets({
       const { error: saveError } = await supabase.from("fixed_assets").insert({
         ...payload,
         asset_id: allocated.assetId,
+        business_unit_id: activeBusinessUnitId,
       });
 
       if (saveError) {

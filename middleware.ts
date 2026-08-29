@@ -267,7 +267,7 @@ export async function middleware(request: NextRequest) {
   if (user && (needsAccountGate || needsPersonaCheck)) {
     const { data: account } = await supabase
       .from("user_accounts")
-      .select("is_active, tenant_id, role, employee_id, client_id")
+      .select("is_active, tenant_id, role, employee_id, client_id, active_business_unit_id")
       .eq("auth_uid", user.id)
       .maybeSingle();
     perf.countDb();
@@ -540,6 +540,7 @@ export async function middleware(request: NextRequest) {
       role: accountRow.role,
       employeeId: accountRow.employee_id,
       clientId: accountRow.client_id,
+      activeBusinessUnitId: accountRow.active_business_unit_id,
       isActive: accountRow.is_active ?? true,
       portal: resolvedPortal,
       email: user.email ?? null,

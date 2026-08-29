@@ -53,6 +53,8 @@ type AccountsPayableProps = {
   taxSettings: TaxSettings | null;
   taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 type PayableFormState = {
@@ -110,6 +112,7 @@ export default function AccountsPayable({
   taxSettings,
   taxRateCatalog,
   fetchError,
+  activeBusinessUnitId = null,
 }: AccountsPayableProps) {
   const supabase = createClient();
   const [entries, setEntries] = useState(
@@ -353,7 +356,10 @@ export default function AccountsPayable({
     } else {
       const { data: inserted, error: insertError } = await supabase
         .from("accounts_payable")
-        .insert(payload)
+        .insert({
+          ...payload,
+          business_unit_id: activeBusinessUnitId,
+        })
         .select("id")
         .single();
 
@@ -462,6 +468,7 @@ export default function AccountsPayable({
         amount,
         payment_source: paymentForm.payment_source,
         notes: paymentForm.notes.trim() || null,
+        business_unit_id: paymentEntry.business_unit_id ?? null,
       });
 
     if (insertError) {

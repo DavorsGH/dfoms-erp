@@ -266,6 +266,7 @@ async function testReceiptIssued(admin, to, invoiceId) {
       notes: "Phase 2 production test payment (automated)",
     },
     null,
+    { notify: false },
   );
 
   if (result.error && !result.receipt) {

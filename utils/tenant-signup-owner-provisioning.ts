@@ -160,6 +160,7 @@ export async function provisionSignupOwnerEmployeeAndApprovers(
       approver_user_account_id: authUid,
       effective_from: signupDate,
       notes: "Initial tenant owner",
+      business_unit_id: null,
     });
 
   if (leaveApproverError) {

@@ -93,6 +93,8 @@ type ExpenseRegisterProps = {
   taxRateCatalog: TaxRateCatalogEntry[];
   initialProjects: ContractProjectOption[];
   fetchError: string | null;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 type ExpenseFormState = {
@@ -174,6 +176,7 @@ export default function ExpenseRegister({
   taxRateCatalog,
   initialProjects,
   fetchError,
+  activeBusinessUnitId = null,
 }: ExpenseRegisterProps) {
   const supabase = createClient();
   const isOnline = useOnlineStatus();
@@ -780,6 +783,7 @@ export default function ExpenseRegister({
         net_of_tax_amount: payload.net_of_tax_amount,
         notes: payload.notes,
         project_id: payload.project_id,
+        business_unit_id: activeBusinessUnitId,
         wht_rate_pct: whtRate > 0 ? whtRate : null,
         input_tax_component: purchaseTax.inputTaxComponent,
         notification_detail: formatGHS(purchaseTax.netPaidToSupplier),
@@ -811,7 +815,10 @@ export default function ExpenseRegister({
     } else {
       const { data: inserted, error: insertError } = await supabase
         .from("expense_register")
-        .insert(payload)
+        .insert({
+          ...payload,
+          business_unit_id: activeBusinessUnitId,
+        })
         .select("id")
         .single();
 

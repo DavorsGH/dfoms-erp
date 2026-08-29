@@ -67,6 +67,8 @@ type TaxLedgerProps = {
   initialSettings: TaxSettings;
   initialEntries: TaxLedgerEntry[];
   fetchError: string | null;
+  /** Create-only stamp for remittance expenses; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 type LedgerTab = "overview" | "gra" | "paye" | "ssnit" | "settings";
@@ -458,6 +460,7 @@ export default function TaxLedger({
   initialSettings,
   initialEntries,
   fetchError,
+  activeBusinessUnitId = null,
 }: TaxLedgerProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -759,6 +762,7 @@ export default function TaxLedger({
       kind,
       settings,
       entries,
+      businessUnitId: activeBusinessUnitId,
     });
 
     if (result.error) {

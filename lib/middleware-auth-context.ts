@@ -10,6 +10,7 @@ export type MiddlewareAuthContext = {
   role: string | null;
   employeeId: string | null;
   clientId: string | null;
+  activeBusinessUnitId: string | null;
   isActive: boolean;
   portal: PortalKind;
   email: string | null;

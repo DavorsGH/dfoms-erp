@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
+import type { BusinessUnitSwitcherOption } from "./business-unit-switcher";
 import Sidebar from "./sidebar";
 import TopBar from "./top-bar";
 import { TenantBrandingProvider } from "./tenant-branding-context";
@@ -30,6 +31,10 @@ type DashboardShellProps = {
   userFullName?: string | null;
   tenantId?: string | null;
   authUid?: string | null;
+  businessUnitSwitcher?: {
+    units: BusinessUnitSwitcherOption[];
+    activeBusinessUnitId: string | null;
+  } | null;
 };
 
 export default function DashboardShell({
@@ -44,6 +49,7 @@ export default function DashboardShell({
   userFullName,
   tenantId = null,
   authUid = null,
+  businessUnitSwitcher = null,
 }: DashboardShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const avatarWarmKey = stableAvatarWarmKey(userPhotoUrl);
@@ -138,6 +144,7 @@ export default function DashboardShell({
               userFullName={userFullName}
               onMenuToggle={() => setMobileNavOpen((current) => !current)}
               mobileNavOpen={mobileNavOpen}
+              businessUnitSwitcher={businessUnitSwitcher}
             />
             <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6">
               <div className="mb-3">

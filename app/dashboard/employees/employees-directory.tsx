@@ -107,6 +107,8 @@ type EmployeesDirectoryProps = {
   fetchError: string | null;
   canEditEmployees: boolean;
   canViewSalary: boolean;
+  /** Active business-unit context for create-only stamping; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 const emptyForm = {
@@ -402,6 +404,7 @@ export default function EmployeesDirectory({
   fetchError,
   canEditEmployees,
   canViewSalary,
+  activeBusinessUnitId = null,
 }: EmployeesDirectoryProps) {
   const supabase = createClient();
   const formRef = useRef<HTMLElement>(null);
@@ -1037,6 +1040,7 @@ export default function EmployeesDirectory({
       const { error: saveError } = await supabase.from("employees").insert({
         employee_id: allocated.employeeId,
         ...payload,
+        business_unit_id: activeBusinessUnitId,
       });
 
       if (saveError) {

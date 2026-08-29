@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import FinanceNav from "../finance-nav";
 import ManualFinancialEntries from "../manual-financial-entries";
 import type { ManualFinancialEntryRecord } from "../manual-financial-entries-utils";
@@ -11,6 +14,7 @@ export default async function ManualFinancialEntriesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const tenantId = await getCurrentUserTenantId();
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
@@ -67,6 +71,7 @@ export default async function ManualFinancialEntriesPage() {
         fetchError={
           error?.message ?? apPaymentsError?.message ?? repaymentsError?.message ?? null
         }
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>
   );

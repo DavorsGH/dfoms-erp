@@ -1,5 +1,8 @@
 import type { AppRole } from "@/app/dashboard/user-account-types";
+import { isStaffBusinessUnitSwitcherRole } from "@/app/dashboard/user-account-role-utils";
+import type { BusinessUnitSwitcherOption } from "@/app/dashboard/business-unit-switcher";
 import {
+  getActiveBusinessUnitId,
   getCurrentAuthUser,
   getCurrentUserAccount,
   getCurrentUserRole,
@@ -14,6 +17,7 @@ import type { TenantBranding } from "@/utils/tenant-branding-types";
 import { ensureTrialAccess } from "@/utils/trial-enforcement";
 import { ensureSecurityNotifications } from "@/utils/security-notifications";
 import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
+import { createAdminClient } from "@/utils/supabase/admin";
 
 export type DashboardShellData = {
   displayInfo: UserDisplayInfo;
@@ -24,8 +28,37 @@ export type DashboardShellData = {
   tenantBranding: TenantBranding;
   authUser: Awaited<ReturnType<typeof getCurrentAuthUser>>;
   account: Awaited<ReturnType<typeof getCurrentUserAccount>>;
+  businessUnitSwitcher: {
+    units: BusinessUnitSwitcherOption[];
+    activeBusinessUnitId: string | null;
+  } | null;
   perf?: ReturnType<typeof createPerfProbe>;
 };
+
+async function loadBusinessUnitSwitcherOptions(
+  tenantId: string,
+): Promise<BusinessUnitSwitcherOption[]> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("business_units")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error(
+      "[dashboard-shell] business unit switcher load failed:",
+      error.message,
+    );
+    return [];
+  }
+
+  return ((data ?? []) as Array<{ id: string; name: string }>).map((row) => ({
+    id: row.id,
+    name: row.name,
+  }));
+}
 
 export async function loadDashboardShellData(): Promise<DashboardShellData> {
   const perf = createPerfProbe();
@@ -41,6 +74,7 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
     tenantBranding,
     authUser,
     account,
+    activeBusinessUnitId,
   ] = await Promise.all([
     getUserDisplayInfo(),
     getCurrentUserRole(),
@@ -50,7 +84,24 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
     getCurrentTenantBranding(),
     getCurrentAuthUser(),
     getCurrentUserAccount(),
+    getActiveBusinessUnitId(),
   ]);
+
+  let businessUnitSwitcher: DashboardShellData["businessUnitSwitcher"] = null;
+  if (isStaffBusinessUnitSwitcherRole(userRole) && account?.tenant_id) {
+    const units = await loadBusinessUnitSwitcherOptions(account.tenant_id);
+    if (units.length >= 1) {
+      const activeStillListed =
+        activeBusinessUnitId &&
+        units.some((unit) => unit.id === activeBusinessUnitId)
+          ? activeBusinessUnitId
+          : null;
+      businessUnitSwitcher = {
+        units,
+        activeBusinessUnitId: activeStillListed,
+      };
+    }
+  }
 
   if (authUser && account?.tenant_id) {
     await ensureSecurityNotifications({
@@ -84,6 +135,7 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
     tenantBranding,
     authUser,
     account,
+    businessUnitSwitcher,
     perf: isPerfProbeEnabled() ? perf : undefined,
   };
 }

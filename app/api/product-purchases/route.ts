@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import {
   INVENTORY_EDIT_ROLES,
   INVENTORY_SECTION_ROLES,
@@ -161,6 +162,29 @@ export async function POST(request: Request) {
     }
   }
 
+  let businessUnitId: string | null = null;
+  if (trimmed.po_id) {
+    const { data: poRow, error: poError } = await supabase
+      .from("purchase_orders")
+      .select("id, business_unit_id")
+      .eq("id", trimmed.po_id)
+      .eq("tenant_id", auth.tenantId)
+      .maybeSingle();
+
+    if (poError) {
+      return NextResponse.json({ error: poError.message }, { status: 400 });
+    }
+    if (!poRow) {
+      return NextResponse.json(
+        { error: "Purchase order not found." },
+        { status: 404 },
+      );
+    }
+    businessUnitId = (poRow.business_unit_id as string | null) ?? null;
+  } else {
+    businessUnitId = await getActiveBusinessUnitId();
+  }
+
   const { data: purchaseId, error: rpcError } = await supabase.rpc(
     "create_product_purchase",
     {
@@ -175,6 +199,7 @@ export async function POST(request: Request) {
       p_po_item_id: trimmed.po_item_id,
       p_manufacturing_date: trimmed.manufacturing_date,
       p_expiration_date: trimmed.expiration_date,
+      p_business_unit_id: businessUnitId,
     },
   );
 

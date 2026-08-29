@@ -8,6 +8,7 @@ import {
   deleteTaxLedgerEntriesForSource,
   syncIncomeRegisterTaxLedger,
 } from "@/app/dashboard/finance/tax-ledger-sync";
+import { deriveClientInvoiceStatusFromPayments } from "@/utils/client-invoice-payment-utils";
 import {
   AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT,
   CLIENT_INVOICE_HEADER_SELECT,
@@ -24,6 +25,10 @@ import {
   type ClientInvoiceStatus,
   type ClientInvoiceWriteBody,
 } from "@/utils/client-invoices-types";
+import {
+  resolveCreateBusinessUnitId,
+  type CreateBusinessUnitStampOptions,
+} from "@/utils/business-unit-stamp";
 
 type DbClient = SupabaseClient;
 
@@ -38,7 +43,7 @@ export type CreateClientInvoiceOptions = {
   };
   taxBasisOverride?: SalesTaxBasis;
   contractId?: string | null;
-};
+} & CreateBusinessUnitStampOptions;
 
 function nullableText(value: string | null | undefined) {
   const trimmed = (value ?? "").trim();
@@ -440,6 +445,8 @@ export async function syncIncomeRegisterFromClientInvoice(
     wht_amount: whtAmount,
     payment_status: paymentStatus,
     due_date: invoice.due_date ?? invoice.invoice_date,
+    // Inherit invoice BU (create stamp / convert / contract). Do not use live switcher.
+    business_unit_id: invoice.business_unit_id ?? null,
   };
 
   const { incomeId: existingIncomeId, error: lookupError } =
@@ -550,9 +557,15 @@ export async function createClientInvoice(
   headerPayload.status = "draft";
   headerPayload.amount_received = 0;
 
+  const businessUnitId = await resolveCreateBusinessUnitId(options);
+  const insertPayload = {
+    ...headerPayload,
+    business_unit_id: businessUnitId,
+  };
+
   const { data: invoice, error: insertError } = await supabase
     .from("client_invoices")
-    .insert(headerPayload)
+    .insert(insertPayload)
     .select(CLIENT_INVOICE_HEADER_SELECT)
     .single();
 
@@ -750,7 +763,7 @@ export async function updateClientInvoice(
   if (paymentsTotal > 0) {
     const { data: existingInvoice, error: existingError } = await supabase
       .from("client_invoices")
-      .select("total_amount_due")
+      .select("total_amount_due, wht_amount")
       .eq("id", invoiceId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
@@ -760,15 +773,16 @@ export async function updateClientInvoice(
     }
 
     const totalDue = toNumber(existingInvoice.total_amount_due);
+    const whtAmount = toNumber(existingInvoice.wht_amount);
     writeBody = {
       ...body,
       amount_received: paymentsTotal,
-      status:
-        paymentsTotal >= totalDue
-          ? "paid"
-          : paymentsTotal > 0
-            ? "partial"
-            : body.status,
+      status: deriveClientInvoiceStatusFromPayments(
+        paymentsTotal,
+        totalDue,
+        whtAmount,
+        body.status ?? "sent",
+      ),
     };
   }
 

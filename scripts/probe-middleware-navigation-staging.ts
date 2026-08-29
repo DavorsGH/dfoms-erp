@@ -345,6 +345,7 @@ async function main() {
       role: "finance",
       employeeId: null,
       clientId: null,
+      activeBusinessUnitId: null,
       isActive: true,
       portal: "staff",
       email,

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 
 import { createClient } from "@/utils/supabase/server";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 
 import { CLIENT_SELECT, type ClientEntry } from "../operations/clients-utils";
 
@@ -36,6 +37,7 @@ export default async function FinancePage() {
     { data: clients, error: clientsError },
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
+    activeBusinessUnitId,
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -57,6 +59,8 @@ export default async function FinancePage() {
       .select(TAX_RATE_CATALOG_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
+
+    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =
@@ -92,6 +96,7 @@ export default async function FinancePage() {
           ) ?? []
         }
         fetchError={fetchError}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>
   );

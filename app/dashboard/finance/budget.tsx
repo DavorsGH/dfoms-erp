@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import type { ContractProjectOption } from "../administration/projects-utils";
@@ -378,13 +379,21 @@ export default function Budget({
             project, category, and year.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openAddForm}
-          className={primaryButtonClassName}
-        >
-          Add budget line
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={`/dashboard/reports/finance/budget-vs-actual?year=${encodeURIComponent(selectedYear)}&month=${encodeURIComponent(selectedMonth)}`}
+            className={secondaryButtonClassName}
+          >
+            View budget vs actual
+          </Link>
+          <button
+            type="button"
+            onClick={openAddForm}
+            className={primaryButtonClassName}
+          >
+            Add budget line
+          </button>
+        </div>
       </div>
 
       {error ? (

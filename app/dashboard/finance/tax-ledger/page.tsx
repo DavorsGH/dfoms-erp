@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import FinanceNav from "../finance-nav";
 import TaxLedger from "../tax-ledger";
 import {
@@ -45,6 +48,7 @@ export default async function TaxLedgerPage() {
   const [
     { data: settingsData, error: settingsError },
     { data: entriesData, error: entriesError },
+    activeBusinessUnitId,
   ] = await Promise.all([
     supabase
       .from("tax_settings")
@@ -57,6 +61,7 @@ export default async function TaxLedgerPage() {
       .eq("tenant_id", tenantId)
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false }),
+    getActiveBusinessUnitId(),
   ]);
 
   let settings =
@@ -106,6 +111,7 @@ export default async function TaxLedgerPage() {
         initialSettings={settings}
         initialEntries={entries}
         fetchError={fetchError}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>
   );

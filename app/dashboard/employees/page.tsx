@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
   getCurrentUserRole,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
@@ -34,11 +35,13 @@ export default async function EmployeesPage() {
     employeeQuery.eq("tenant_id", tenantId);
   }
 
-  const [{ data, error }, lookups, payConfig] = await Promise.all([
-    employeeQuery,
-    loadEmployeeLookups(supabase, tenantId),
-    loadEmployeePayConfig(supabase, tenantId),
-  ]);
+  const [{ data, error }, lookups, payConfig, activeBusinessUnitId] =
+    await Promise.all([
+      employeeQuery,
+      loadEmployeeLookups(supabase, tenantId),
+      loadEmployeePayConfig(supabase, tenantId),
+      getActiveBusinessUnitId(),
+    ]);
 
   const employees = (data as EmployeeRecord[] | null) ?? [];
   const netPayContext = await loadDirectoryNetPayContext(
@@ -62,6 +65,7 @@ export default async function EmployeesPage() {
         fetchError={error?.message ?? null}
         canEditEmployees={canEditEmployees(role)}
         canViewSalary={canViewEmployeeSalary(role)}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </HrPayrollShell>
   );

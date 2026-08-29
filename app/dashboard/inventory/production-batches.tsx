@@ -38,6 +38,8 @@ type ProductionBatchesProps = {
   initialMaterials: RawMaterialRecord[];
   fetchError: string | null;
   readOnly?: boolean;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 type MaterialLine = {
@@ -66,6 +68,7 @@ export default function ProductionBatches({
   initialMaterials,
   fetchError,
   readOnly = false,
+  activeBusinessUnitId = null,
 }: ProductionBatchesProps) {
   const supabase = createClient();
   const [batches, setBatches] = useState(
@@ -279,6 +282,7 @@ export default function ProductionBatches({
       p_materials: materialPayload,
       p_manufacturing_date: nullableText(batchForm.manufacturing_date),
       p_expiration_date: nullableText(batchForm.expiration_date),
+      p_business_unit_id: activeBusinessUnitId,
     });
 
     if (rpcError) {

@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import {
   AUTH_CONTEXT_HEADER,
@@ -16,6 +17,7 @@ type UserAccountRow = {
   employee_id: string | null;
   client_id: string | null;
   tenant_id: string | null;
+  active_business_unit_id: string | null;
 };
 
 type LayoutPerfCounters = {
@@ -91,6 +93,7 @@ export const getCurrentUserAccount = cache(
         employee_id: trusted.employeeId,
         client_id: trusted.clientId,
         tenant_id: trusted.tenantId,
+        active_business_unit_id: trusted.activeBusinessUnitId ?? null,
       };
     }
 
@@ -105,7 +108,7 @@ export const getCurrentUserAccount = cache(
     layoutPerf.dbCalls += 1;
     const { data: account } = await supabase
       .from("user_accounts")
-      .select("role, employee_id, client_id, tenant_id")
+      .select("role, employee_id, client_id, tenant_id, active_business_unit_id")
       .eq("auth_uid", user.id)
       .maybeSingle();
 
@@ -137,6 +140,42 @@ export async function getCurrentUserTenantId(): Promise<string | null> {
   const account = await getCurrentUserAccount();
   return account?.tenant_id ?? null;
 }
+
+/**
+ * Active business-unit context for the current staff user.
+ * null = "All Businesses", or when the stored unit is missing/inactive/wrong tenant.
+ */
+export const getActiveBusinessUnitId = cache(async (): Promise<string | null> => {
+  const account = await getCurrentUserAccount();
+  const storedId = account?.active_business_unit_id?.trim() || null;
+  if (!storedId) {
+    return null;
+  }
+
+  const tenantId = account?.tenant_id?.trim() || null;
+  if (!tenantId) {
+    return null;
+  }
+
+  const admin = createAdminClient();
+
+  layoutPerf.dbCalls += 1;
+  const { data: unit } = await admin
+    .from("business_units")
+    .select("id, tenant_id, is_active")
+    .eq("id", storedId)
+    .maybeSingle();
+
+  if (
+    !unit ||
+    unit.tenant_id !== tenantId ||
+    unit.is_active !== true
+  ) {
+    return null;
+  }
+
+  return unit.id;
+});
 
 /** One leave-approver RPC result per request. */
 export const getCurrentLeaveApproverAuthUid = cache(

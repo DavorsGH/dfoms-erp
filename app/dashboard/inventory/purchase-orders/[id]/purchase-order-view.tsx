@@ -311,6 +311,8 @@ export default function PurchaseOrderDetailView({
                                   supplierName === "—" ? "" : supplierName,
                                 remaining_quantity: remaining,
                                 po_unit_cost: item.unit_cost,
+                                business_unit_id:
+                                  purchaseOrder.business_unit_id ?? null,
                               });
                             }}
                             className={receiveButtonClassName}

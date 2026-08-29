@@ -1,5 +1,8 @@
 import { cookies } from "next/headers";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import { createClient } from "@/utils/supabase/server";
 import { mapApproverRows } from "../../approver-utils";
 import type { Approver, NamedLookup } from "../../lookup-types";
@@ -30,6 +33,7 @@ export default async function FixedAssetsPage() {
     { data: suppliers, error: suppliersError },
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
+    activeBusinessUnitId,
   ] = await Promise.all([
     supabase.from("fixed_assets").select("*").order("asset_id", { ascending: true }),
     supabase.from("asset_categories").select("name").order("name", { ascending: true }),
@@ -56,6 +60,7 @@ export default async function FixedAssetsPage() {
       .select(TAX_RATE_CATALOG_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
+    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =
@@ -90,6 +95,7 @@ export default async function FixedAssetsPage() {
           normalizeTaxRateCatalogEntry(entry as TaxRateCatalogEntry),
         )}
         fetchError={fetchError}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>
   );

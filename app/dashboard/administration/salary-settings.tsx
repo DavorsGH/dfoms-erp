@@ -32,6 +32,7 @@ type SalarySettingsProps = {
   initialAllowanceTypes: AllowanceTypeRow[];
   initialPolicies: CompensationPolicyRow[];
   fetchError: string | null;
+  activeBusinessUnitId?: string | null;
 };
 
 const emptyPolicyForm = {

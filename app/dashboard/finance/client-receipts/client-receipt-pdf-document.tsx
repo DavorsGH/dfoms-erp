@@ -16,6 +16,7 @@ import {
   resolveInvoiceCompanyName,
   tenantHeaderContactLines,
   type ClientReceiptDisplayProps,
+  buildReceiptAmountBreakdown,
 } from "./client-receipt-display-utils";
 
 const C = CLIENT_INVOICE_COLORS;
@@ -115,6 +116,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
   },
+  breakdownRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#cbd5e1",
+  },
+  breakdownLabel: {
+    color: C.textDark,
+  },
+  breakdownValue: {
+    fontWeight: "bold",
+    color: C.navy,
+  },
+  breakdownNetRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingTop: 8,
+  },
+  breakdownNetLabel: {
+    fontWeight: "bold",
+    color: C.navy,
+  },
+  breakdownNetValue: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: C.gold,
+  },
   signatureBlock: {
     marginTop: 16,
     alignSelf: "flex-start",
@@ -191,6 +220,7 @@ export default function ClientReceiptPdfDocument({
     receipt,
     signatureImageUrl,
   });
+  const amountBreakdown = buildReceiptAmountBreakdown(invoice, receipt.amount);
 
   return (
     <Document title={receipt.receipt_number}>
@@ -253,10 +283,40 @@ export default function ClientReceiptPdfDocument({
           </View>
         </View>
 
-        <View style={styles.amountRow}>
-          <Text style={styles.amountLabel}>Amount Received</Text>
-          <Text style={styles.amountValue}>{formatReceiptMoney(receipt.amount)}</Text>
-        </View>
+        {amountBreakdown.showWht ? (
+          <View style={styles.sectionBox}>
+            <View style={styles.sectionBar}>
+              <Text style={styles.sectionBarText}>Amount Summary</Text>
+            </View>
+            <View style={styles.sectionBody}>
+              <View style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Invoice Total</Text>
+                <Text style={styles.breakdownValue}>
+                  {formatReceiptMoney(amountBreakdown.invoiceTotal)}
+                </Text>
+              </View>
+              <View style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>
+                  WHT Withheld ({amountBreakdown.whtRate}%)
+                </Text>
+                <Text style={styles.breakdownValue}>
+                  {formatReceiptMoney(amountBreakdown.whtAmount)}
+                </Text>
+              </View>
+              <View style={styles.breakdownNetRow}>
+                <Text style={styles.breakdownNetLabel}>Net Amount Received</Text>
+                <Text style={styles.breakdownNetValue}>
+                  {formatReceiptMoney(amountBreakdown.netReceived)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.amountRow}>
+            <Text style={styles.amountLabel}>Amount Received</Text>
+            <Text style={styles.amountValue}>{formatReceiptMoney(receipt.amount)}</Text>
+          </View>
+        )}
 
         {showSignatureBlock ? (
           <View style={styles.signatureBlock} wrap={false}>

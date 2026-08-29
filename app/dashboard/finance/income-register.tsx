@@ -61,6 +61,8 @@ type IncomeRegisterProps = {
   taxSettings: TaxSettings | null;
   taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 type IncomeFormState = {
@@ -118,6 +120,7 @@ export default function IncomeRegister({
   taxSettings,
   taxRateCatalog,
   fetchError,
+  activeBusinessUnitId = null,
 }: IncomeRegisterProps) {
   const supabase = createClient();
   const [entries, setEntries] = useState(
@@ -431,7 +434,10 @@ export default function IncomeRegister({
     } else {
       const { data: inserted, error: insertError } = await supabase
         .from("income_register")
-        .insert(payload)
+        .insert({
+          ...payload,
+          business_unit_id: activeBusinessUnitId,
+        })
         .select("id")
         .single();
 

@@ -15,6 +15,8 @@ export type ReceiveRawMaterialTarget = {
   supplier_name: string;
   remaining_quantity: number;
   po_unit_cost: number;
+  /** Inherit from PO header; not the live switcher. */
+  business_unit_id: string | null;
 };
 
 type ReceiveRawMaterialModalProps = {
@@ -119,6 +121,7 @@ export default function ReceiveRawMaterialModal({
         notes: nullableText(notes),
         po_id: target.po_id,
         po_item_id: target.po_item_id,
+        business_unit_id: target.business_unit_id,
       });
 
     if (insertError) {

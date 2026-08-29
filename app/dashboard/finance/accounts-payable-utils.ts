@@ -17,6 +17,7 @@ export type AccountsPayableEntry = {
   wht_rate?: number | null;
   wht_amount?: number | null;
   gross_before_wht?: number | null;
+  business_unit_id?: string | null;
 };
 
 export type PayableStatus = "Paid" | "Overdue" | "Outstanding";

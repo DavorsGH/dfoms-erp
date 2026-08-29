@@ -52,6 +52,7 @@ export async function syncPosCashSaleQueueItem(
         unit_price: line.unitPrice,
       })),
     },
+    p_business_unit_id: input.payload.business_unit_id ?? null,
   });
 
   if (error) {

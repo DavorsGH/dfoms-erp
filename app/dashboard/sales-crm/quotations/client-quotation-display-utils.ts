@@ -251,6 +251,8 @@ export function buildClientQuotationPreviewDisplay(input: {
     tenant_id: input.tenantId,
     client_id: input.form.client_id,
     opportunity_id: input.form.opportunity_id ?? null,
+    // Synthetic form preview — BU is stamped on create, not carried in WriteBody.
+    business_unit_id: null,
     quotation_number: input.quotationNumber,
     quotation_sequence: 0,
     document_type: input.form.document_type ?? "quotation",

@@ -7,6 +7,7 @@ export type MiddlewareAccountRow = {
   role: string | null;
   employee_id: string | null;
   client_id: string | null;
+  active_business_unit_id: string | null;
 };
 
 export type PersonaResolution = {

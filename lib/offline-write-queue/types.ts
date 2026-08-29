@@ -45,6 +45,8 @@ export type ExpenseQueuePayload = {
   net_of_tax_amount: number;
   notes: string | null;
   project_id?: string | null;
+  /** Create-only stamp captured at queue time; null = All Businesses. */
+  business_unit_id?: string | null;
   /** Tax ledger fields for syncPurchaseTaxLedger replay. */
   wht_rate_pct: number | null;
   input_tax_component: "vat_bundle" | "vfrs" | null;
@@ -71,6 +73,8 @@ export type PosCashSaleQueuePayload = {
   /** Provisional offline token — not a tax invoice. */
   provisionalToken: string;
   lines: PosCashSaleQueueLine[];
+  /** Queue-time active BU; null = All Businesses. Do not re-resolve at sync. */
+  business_unit_id?: string | null;
   /** Set when sync parks the item as a server conflict. */
   conflictId?: string | null;
   suspenseInvoiceNo?: string | null;

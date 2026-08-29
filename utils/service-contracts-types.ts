@@ -53,7 +53,7 @@ export const SERVICE_CONTRACT_LIST_SELECT =
   "id, tenant_id, client_id, contract_number, contract_sequence, start_date, end_date, auto_renew, billing_frequency, next_billing_date, status, tax_basis, total_amount_due, created_at, client:customers!service_contracts_tenant_client_fkey(client_id, client_name)" as const;
 
 export const SERVICE_CONTRACT_HEADER_SELECT =
-  "id, tenant_id, client_id, contract_number, contract_sequence, start_date, end_date, auto_renew, billing_frequency, next_billing_date, status, tax_basis, vat_nhil_getfund_rate, wht_rate, subtotal, tax_due, wht_amount, total_amount_due, document_url, notes, created_at, updated_at, client:customers!service_contracts_tenant_client_fkey(client_id, client_name, address, phone)" as const;
+  "id, tenant_id, client_id, business_unit_id, contract_number, contract_sequence, start_date, end_date, auto_renew, billing_frequency, next_billing_date, status, tax_basis, vat_nhil_getfund_rate, wht_rate, subtotal, tax_due, wht_amount, total_amount_due, document_url, notes, created_at, updated_at, client:customers!service_contracts_tenant_client_fkey(client_id, client_name, address, phone)" as const;
 
 export const SERVICE_CONTRACT_LINE_ITEM_SELECT =
   "id, contract_id, tenant_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, sort_order" as const;
@@ -119,6 +119,7 @@ export type ServiceContractHeaderRow = {
   id: string;
   tenant_id: string;
   client_id: string;
+  business_unit_id: string | null;
   contract_number: string;
   contract_sequence: number;
   start_date: string;

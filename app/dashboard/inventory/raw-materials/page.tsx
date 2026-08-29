@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import {
@@ -23,6 +27,7 @@ export default async function RawMaterialsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const tenantId = await getCurrentUserTenantId();
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   const [
     { data: materials, error: materialsError },
@@ -76,6 +81,7 @@ export default async function RawMaterialsPage() {
           null
         }
         readOnly={!canEditInventory(role)}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </InventoryShell>
   );

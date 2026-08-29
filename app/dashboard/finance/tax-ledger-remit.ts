@@ -256,6 +256,8 @@ export async function remitTaxForPeriod(
     settings: TaxDueDateSettingsSlice;
     /** Optional preloaded entries; otherwise loads from DB. */
     entries?: RemitCandidateEntry[];
+    /** Create-only stamp for remittance expense; null = All Businesses. */
+    businessUnitId?: string | null;
   },
 ): Promise<RemitTaxForPeriodResult> {
   const { tenantId, kind, settings } = params;
@@ -506,6 +508,7 @@ export async function remitTaxForPeriod(
       receipt_no: receiptNo,
       payment_status: PAYROLL_EXPENSE_PAYMENT_STATUS_PAID,
       notes: `Tax Ledger remit-for-period (${kind})`,
+      business_unit_id: params.businessUnitId ?? null,
     });
 
     if (insertError) {

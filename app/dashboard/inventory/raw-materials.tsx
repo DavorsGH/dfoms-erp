@@ -48,6 +48,8 @@ type RawMaterialsProps = {
   initialProjects: ContractProjectOption[];
   fetchError: string | null;
   readOnly?: boolean;
+  /** Create-only stamp for standalone purchases; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 const emptyMaterialForm = {
@@ -75,6 +77,7 @@ export default function RawMaterials({
   initialProjects,
   fetchError,
   readOnly = false,
+  activeBusinessUnitId = null,
 }: RawMaterialsProps) {
   const supabase = createClient();
   const [materials, setMaterials] = useState(
@@ -456,6 +459,7 @@ export default function RawMaterials({
         payment_method: purchaseForm.payment_method.trim(),
         notes: nullableText(purchaseForm.notes),
         project_id: resolveOptionalProjectId(purchaseForm.project_id),
+        business_unit_id: activeBusinessUnitId,
       });
 
     if (insertError) {

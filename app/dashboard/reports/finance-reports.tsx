@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import { buildBalanceSheetReport, getBalanceCheckForPeriod, getBalanceSheetForMonth, type InventoryBalanceSheetInput } from "../finance/balance-sheet-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
@@ -102,14 +103,21 @@ function ReportFetchError({ fetchError }: FetchErrorProps) {
   );
 }
 
-function useMonthYearSelection(availableYears: number[]) {
+function useMonthYearSelection(
+  availableYears: number[],
+  options?: { initialYear?: number; initialMonth?: number },
+) {
   const defaults = getDefaultReportMonthYear();
+  const preferredYear = options?.initialYear ?? defaults.year;
+  const preferredMonth = options?.initialMonth ?? defaults.month;
   const [year, setYear] = useState(
-    availableYears.includes(defaults.year)
-      ? defaults.year
-      : (availableYears[0] ?? defaults.year),
+    availableYears.includes(preferredYear)
+      ? preferredYear
+      : (availableYears[0] ?? preferredYear),
   );
-  const [month, setMonth] = useState(defaults.month);
+  const [month, setMonth] = useState(
+    preferredMonth >= 1 && preferredMonth <= 12 ? preferredMonth : defaults.month,
+  );
   const monthIndex = monthIndexFromMonthNumber(month);
   const periodLabel = formatReportPeriodLabel(year, month);
 
@@ -1272,8 +1280,19 @@ export function BudgetVsActualReport({
   availableYears: number[];
   fetchError: string | null;
 }) {
-  const { year, month, setYear, setMonth, monthIndex } =
-    useMonthYearSelection(availableYears);
+  const searchParams = useSearchParams();
+  const queryYear = Number(searchParams.get("year"));
+  const queryMonth = Number(searchParams.get("month"));
+  const { year, month, setYear, setMonth, monthIndex } = useMonthYearSelection(
+    availableYears,
+    {
+      initialYear: Number.isFinite(queryYear) ? queryYear : undefined,
+      initialMonth:
+        Number.isFinite(queryMonth) && queryMonth >= 1 && queryMonth <= 12
+          ? queryMonth
+          : undefined,
+    },
+  );
   const [projectFilter, setProjectFilter] = useState(ALL_PROJECTS_FILTER);
   const [viewMode, setViewMode] =
     useState<BudgetVsActualViewMode>("monthly-prorated");

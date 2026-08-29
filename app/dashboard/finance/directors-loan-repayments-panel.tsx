@@ -38,6 +38,8 @@ type DirectorsLoanRepaymentsPanelProps = {
   apPayments: AccountsPayablePaymentRow[];
   initialRepayments: DirectorsLoanRepaymentRecord[];
   fetchError?: string | null;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 const inputClassName =
@@ -49,6 +51,7 @@ export default function DirectorsLoanRepaymentsPanel({
   apPayments,
   initialRepayments,
   fetchError = null,
+  activeBusinessUnitId = null,
 }: DirectorsLoanRepaymentsPanelProps) {
   const supabase = createClient();
   const financialYear = getCurrentFinancialYear();
@@ -225,7 +228,10 @@ export default function DirectorsLoanRepaymentsPanel({
     } else {
       const { error: insertError } = await supabase
         .from("directors_loan_repayments")
-        .insert(payload);
+        .insert({
+          ...payload,
+          business_unit_id: activeBusinessUnitId,
+        });
 
       if (insertError) {
         setError(insertError.message);

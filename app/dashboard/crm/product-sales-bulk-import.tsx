@@ -25,6 +25,8 @@ type ProductSalesBulkImportProps = {
   finishedProducts: FinishedProductRecord[];
   onClose: () => void;
   onImported: () => Promise<void>;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 function ImportRowList({
@@ -112,6 +114,7 @@ export default function ProductSalesBulkImport({
   finishedProducts,
   onClose,
   onImported,
+  activeBusinessUnitId = null,
 }: ProductSalesBulkImportProps) {
   const supabase = createClient();
   const [preview, setPreview] = useState<ProductSaleImportPreview | null>(null);
@@ -172,7 +175,10 @@ export default function ProductSalesBulkImport({
       async (payload) => {
         const { data, error: rpcError } = await supabase.rpc(
           "create_product_sale",
-          payload,
+          {
+            ...payload,
+            p_business_unit_id: activeBusinessUnitId,
+          },
         );
 
         return {

@@ -47,6 +47,8 @@ type ManualFinancialEntriesProps = {
   initialApPayments: AccountsPayablePaymentRow[];
   initialDirectorsLoanRepayments: DirectorsLoanRepaymentRecord[];
   fetchError: string | null;
+  /** Create-only stamp for director loan repayments; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 const MONTH_OPTIONS = [
@@ -74,6 +76,7 @@ export default function ManualFinancialEntries({
   initialApPayments,
   initialDirectorsLoanRepayments,
   fetchError,
+  activeBusinessUnitId = null,
 }: ManualFinancialEntriesProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -529,6 +532,7 @@ export default function ManualFinancialEntries({
         manualEntries={initialManualCashEntries}
         apPayments={initialApPayments}
         initialRepayments={initialDirectorsLoanRepayments}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>
   );

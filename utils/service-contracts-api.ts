@@ -20,6 +20,10 @@ import {
   type CreateClientInvoiceOptions,
 } from "@/utils/client-invoices-api";
 import { formatGeneratedInvoiceNumber } from "@/utils/client-invoices-types";
+import {
+  resolveCreateBusinessUnitId,
+  type CreateBusinessUnitStampOptions,
+} from "@/utils/business-unit-stamp";
 
 type DbClient = SupabaseClient;
 
@@ -236,6 +240,7 @@ export async function createServiceContract(
   supabase: DbClient,
   tenantId: string,
   body: ServiceContractWriteBody,
+  options?: CreateBusinessUnitStampOptions,
 ) {
   const { contractNumber, error: allocateError } = await allocateServiceContractNumber(
     supabase,
@@ -265,9 +270,15 @@ export async function createServiceContract(
     contractNumber,
   );
 
+  const businessUnitId = await resolveCreateBusinessUnitId(options);
+  const insertPayload = {
+    ...headerPayload,
+    business_unit_id: businessUnitId,
+  };
+
   const { data: contract, error: insertError } = await supabase
     .from("service_contracts")
-    .insert(headerPayload)
+    .insert(insertPayload)
     .select(SERVICE_CONTRACT_HEADER_SELECT)
     .single();
 
@@ -525,6 +536,7 @@ export async function createInvoiceFromServiceContract(
     },
     taxBasisOverride: resolveServiceContractTaxBasis(contract.tax_basis),
     contractId: contract.id,
+    businessUnitId: contract.business_unit_id ?? null,
   };
 
   return createClientInvoice(supabase, tenantId, invoiceBody, options);

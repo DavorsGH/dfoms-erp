@@ -44,6 +44,8 @@ type SalesPipelineProps = {
   initialClients: PipelineClient[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
+  /** Create-only stamp; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 const emptyLeadForm = {
@@ -70,6 +72,7 @@ export default function SalesPipeline({
   initialClients,
   initialEmployees,
   fetchError,
+  activeBusinessUnitId = null,
 }: SalesPipelineProps) {
   const supabase = createClient();
   const [opportunities, setOpportunities] = useState(initialOpportunities);
@@ -325,6 +328,7 @@ export default function SalesPipeline({
         p_source: parsed.value.source,
         p_assigned_to: parsed.value.assigned_to,
         p_notes: parsed.value.notes,
+        p_business_unit_id: activeBusinessUnitId,
       },
     );
 

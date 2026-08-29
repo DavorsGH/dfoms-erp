@@ -1,10 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  computeClientInvoiceCashOutstanding,
+  deriveClientInvoiceStatusFromPayments,
+} from "@/utils/client-invoice-payment-utils";
+import {
   CLIENT_INVOICE_HEADER_SELECT,
   roundMoney,
   toNumber,
   type ClientInvoiceHeaderRow,
-  type ClientInvoiceStatus,
 } from "@/utils/client-invoices-types";
 import { sumClientInvoicePayments, syncIncomeRegisterFromClientInvoice } from "@/utils/client-invoices-api";
 import {
@@ -18,22 +21,6 @@ type DbClient = SupabaseClient;
 function nullableText(value: string | null | undefined) {
   const trimmed = (value ?? "").trim();
   return trimmed ? trimmed : null;
-}
-
-function deriveInvoiceStatusFromPayments(
-  totalPaid: number,
-  totalDue: number,
-  currentStatus: ClientInvoiceStatus,
-): ClientInvoiceStatus {
-  if (totalPaid <= 0) {
-    return currentStatus === "draft" ? "draft" : "sent";
-  }
-
-  if (totalPaid >= totalDue) {
-    return "paid";
-  }
-
-  return "partial";
 }
 
 async function allocateReceiptNumber(supabase: DbClient, tenantId: string) {
@@ -121,10 +108,12 @@ export async function recomputeClientInvoiceFromPayments(
   }
 
   const totalDue = toNumber(invoice.total_amount_due);
-  const nextStatus = deriveInvoiceStatusFromPayments(
+  const whtAmount = toNumber(invoice.wht_amount);
+  const nextStatus = deriveClientInvoiceStatusFromPayments(
     total,
     totalDue,
-    invoice.status as ClientInvoiceStatus,
+    whtAmount,
+    invoice.status as ClientInvoiceHeaderRow["status"],
   );
 
   const { data: updated, error: updateError } = await supabase
@@ -159,12 +148,18 @@ export async function recomputeClientInvoiceFromPayments(
   return { invoice: updated as ClientInvoiceHeaderRow, error: null };
 }
 
+export type RecordClientInvoicePaymentOptions = {
+  /** When false, skip receipt_issued customer notification. Default true. */
+  notify?: boolean;
+};
+
 export async function recordClientInvoicePayment(
   supabase: DbClient,
   tenantId: string,
   invoiceId: string,
   body: RecordClientInvoicePaymentBody,
   recordedBy: string | null,
+  options?: RecordClientInvoicePaymentOptions,
 ): Promise<{
   payment: { id: string } | null;
   receipt: ClientReceiptHeaderRow | null;
@@ -207,7 +202,12 @@ export async function recordClientInvoicePayment(
   }
 
   const totalDue = toNumber(invoice.total_amount_due);
-  const remaining = roundMoney(totalDue - alreadyPaid);
+  const whtAmount = toNumber(invoice.wht_amount);
+  const remaining = computeClientInvoiceCashOutstanding(
+    totalDue,
+    whtAmount,
+    alreadyPaid,
+  );
   if (amount > remaining + 0.009) {
     return {
       payment: null,
@@ -334,6 +334,28 @@ export async function recordClientInvoicePayment(
     };
   }
 
+  const shouldNotify = options?.notify !== false;
+  if (shouldNotify) {
+    void import("@/utils/client-document-notifications").then(
+      ({ notifyClientReceiptIssued }) => {
+        void notifyClientReceiptIssued({
+          tenantId,
+          clientId: recompute.invoice!.client_id,
+          receiptId: (receipt as ClientReceiptHeaderRow).id,
+          receiptNumber: (receipt as ClientReceiptHeaderRow).receipt_number,
+          invoiceNumber: recompute.invoice!.invoice_number,
+          customerName:
+            recompute.invoice!.bill_to_name?.trim() || recompute.invoice!.client_id,
+          amount: String((receipt as ClientReceiptHeaderRow).amount ?? ""),
+          paymentDate: (receipt as ClientReceiptHeaderRow).receipt_date ?? "",
+          invoiceTotalDue: recompute.invoice!.total_amount_due,
+          whtRate: recompute.invoice!.wht_rate,
+          whtAmount: recompute.invoice!.wht_amount,
+        });
+      },
+    );
+  }
+
   return {
     payment: { id: payment.id },
     receipt: receipt as ClientReceiptHeaderRow,
@@ -446,7 +468,7 @@ export async function loadClientReceiptDetail(
   const { data: invoice, error: invoiceError } = await supabase
     .from("client_invoices")
     .select(
-      "invoice_number, bill_to_name, bill_to_address, bill_to_phone, total_amount_due, client_id",
+      "invoice_number, bill_to_name, bill_to_address, bill_to_phone, total_amount_due, wht_rate, wht_amount, client_id",
     )
     .eq("id", receipt.invoice_id)
     .eq("tenant_id", tenantId)
@@ -469,6 +491,8 @@ export async function loadClientReceiptDetail(
     invoice: {
       ...invoice,
       total_amount_due: toNumber(invoice.total_amount_due),
+      wht_rate: toNumber(invoice.wht_rate),
+      wht_amount: toNumber(invoice.wht_amount),
     },
     error: null,
   };

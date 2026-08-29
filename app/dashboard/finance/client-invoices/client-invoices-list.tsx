@@ -463,6 +463,8 @@ export default function ClientInvoicesList({
           invoiceId={recordingInvoice.id}
           invoiceNumber={recordingInvoice.invoice_number}
           totalDue={toNumber(recordingInvoice.total_amount_due)}
+          whtRate={toNumber(recordingInvoice.wht_rate)}
+          whtAmount={toNumber(recordingInvoice.wht_amount)}
           amountReceived={toNumber(recordingInvoice.amount_received ?? 0)}
           paymentMethods={paymentMethods}
           onClose={() => setRecordingInvoice(null)}

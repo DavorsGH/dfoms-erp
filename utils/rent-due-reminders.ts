@@ -12,7 +12,7 @@ import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { insertLandlordPortalNotification } from "@/utils/landlord-portal-notifications";
 import { insertLesseePortalNotification } from "@/utils/lessee-portal-notifications";
 import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
-import { sendResendEmail } from "@/utils/resend-email";
+import { sendResendEmail, formatResendFrom } from "@/utils/resend-email";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
@@ -421,6 +421,7 @@ async function notifyLesseeRentDue(options: {
       subject,
       html,
       text,
+      from: formatResendFrom(options.tenantName),
     });
     if (result.ok) {
       sent = true;
@@ -537,6 +538,7 @@ async function notifyLandlordRentDue(options: {
         subject,
         html,
         text,
+        from: formatResendFrom(options.tenantName),
       });
       if (!result.ok) {
         console.error(

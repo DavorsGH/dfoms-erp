@@ -26,6 +26,7 @@ export default async function DashboardLayout({
         userFullName={shell.displayInfo.fullName ?? shell.displayInfo.email}
         tenantId={shell.account?.tenant_id ?? null}
         authUid={shell.authUser?.id ?? null}
+        businessUnitSwitcher={shell.businessUnitSwitcher}
       >
         {children}
       </DashboardShell>

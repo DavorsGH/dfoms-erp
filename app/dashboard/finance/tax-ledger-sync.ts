@@ -48,6 +48,7 @@ export type TaxLedgerEntryInsert = {
   source_id: string;
   counterparty_name: string | null;
   notes: string | null;
+  business_unit_id?: string | null;
 };
 
 export type IncomeTaxLedgerInput = {
@@ -194,6 +195,11 @@ export type PurchaseTaxLedgerInput = {
   notes?: string | null;
   /** Omit to let the enforce_row_tenant_id() trigger stamp the caller's tenant. */
   tenantId?: string;
+  /**
+   * When set (including null), use as the tax ledger stamp.
+   * When omitted, inherit from the source expense/AP/fixed-asset row.
+   */
+  businessUnitId?: string | null;
 };
 
 /**
@@ -225,6 +231,9 @@ export function buildPurchaseTaxLedgerRows(
     counterparty_name: input.counterpartyName ?? null,
     notes: input.notes ?? null,
     ...(input.tenantId ? { tenant_id: input.tenantId } : {}),
+    ...(Object.prototype.hasOwnProperty.call(input, "businessUnitId")
+      ? { business_unit_id: input.businessUnitId ?? null }
+      : {}),
   };
 
   const rows: TaxLedgerEntryInsert[] = [];
@@ -260,7 +269,8 @@ export function buildPurchaseTaxLedgerRows(
 /**
  * Replace tax ledger rows owned by one Expense Register, Accounts Payable,
  * or Fixed Asset purchase entry. Same delete-then-insert contract as
- * syncIncomeRegisterTaxLedger.
+ * syncIncomeRegisterTaxLedger. New legs inherit business_unit_id from the
+ * source row (never the live switcher), unless businessUnitId is passed.
  */
 export async function syncPurchaseTaxLedger(
   supabase: SupabaseClient,
@@ -276,7 +286,17 @@ export async function syncPurchaseTaxLedger(
     return { error: deleteError };
   }
 
-  const rows = buildPurchaseTaxLedgerRows(input);
+  let resolvedInput = input;
+  if (!Object.prototype.hasOwnProperty.call(input, "businessUnitId")) {
+    const businessUnitId = await lookupPurchaseSourceBusinessUnitId(
+      supabase,
+      input.sourceType,
+      input.sourceId,
+    );
+    resolvedInput = { ...input, businessUnitId };
+  }
+
+  const rows = buildPurchaseTaxLedgerRows(resolvedInput);
   if (rows.length === 0) {
     return { error: null };
   }
@@ -286,4 +306,35 @@ export async function syncPurchaseTaxLedger(
     .insert(rows);
 
   return { error: insertError?.message ?? null };
+}
+
+async function lookupPurchaseSourceBusinessUnitId(
+  supabase: SupabaseClient,
+  sourceType: PurchaseTaxLedgerSourceType,
+  sourceId: string,
+): Promise<string | null> {
+  if (sourceType === "fixed_asset") {
+    const { data, error } = await supabase
+      .from("fixed_assets")
+      .select("business_unit_id")
+      .eq("asset_id", sourceId)
+      .maybeSingle();
+    if (error) {
+      return null;
+    }
+    return (data?.business_unit_id as string | null | undefined) ?? null;
+  }
+
+  const table =
+    sourceType === "expense_register" ? "expense_register" : "accounts_payable";
+  const { data, error } = await supabase
+    .from(table)
+    .select("business_unit_id")
+    .eq("id", sourceId)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+  return (data?.business_unit_id as string | null | undefined) ?? null;
 }

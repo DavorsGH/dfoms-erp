@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import {
   HR_EMPLOYEE_SELECT,
   filterActiveEmployees,
@@ -27,6 +28,7 @@ export default async function SalesPipelinePage() {
     { data: activities, error: activitiesError },
     { data: clients, error: clientsError },
     { data: employees, error: employeesError },
+    activeBusinessUnitId,
   ] = await Promise.all([
     supabase
       .from("sales_opportunities")
@@ -41,6 +43,7 @@ export default async function SalesPipelinePage() {
       .select(PIPELINE_CLIENT_SELECT)
       .order("client_name", { ascending: true }),
     supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =
@@ -68,6 +71,7 @@ export default async function SalesPipelinePage() {
           (employees as HrEmployee[] | null) ?? [],
         )}
         fetchError={fetchError}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </CrmShell>
   );

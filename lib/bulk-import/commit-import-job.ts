@@ -164,6 +164,7 @@ async function insertEmployeeRow(
     supervisorCache: SupervisorIdResolverCache;
     siteCache: SiteCodeResolverCache;
   },
+  businessUnitId: string | null = null,
 ) {
   const departmentCode = await resolveDepartmentCodeForCommit({
     client,
@@ -239,12 +240,13 @@ async function insertEmployeeRow(
         basic_salary,
         housing_allowance,
         transport_allowance,
-        other_allowances
+        other_allowances,
+        business_unit_id
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        0, 0, 0, 0
+        0, 0, 0, 0, $21
       )
     `,
     [
@@ -268,6 +270,7 @@ async function insertEmployeeRow(
       payload.shift,
       payload.assigned_site_id,
       payload.data_notes,
+      businessUnitId,
     ],
   );
 
@@ -464,9 +467,10 @@ async function insertPurchaseTaxLedgerRowsForCommit(
           source_type,
           source_id,
           counterparty_name,
-          notes
+          notes,
+          business_unit_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       `,
       [
         row.tenant_id,
@@ -482,6 +486,7 @@ async function insertPurchaseTaxLedgerRowsForCommit(
         row.source_id,
         row.counterparty_name,
         row.notes,
+        row.business_unit_id ?? null,
       ],
     );
   }
@@ -499,6 +504,7 @@ async function syncPurchaseTaxLedgerForCommit(input: {
   inputVatAmount: number;
   counterpartyName: string | null;
   notes: string | null;
+  businessUnitId?: string | null;
 }): Promise<void> {
   await input.client.query(
     `
@@ -523,6 +529,7 @@ async function syncPurchaseTaxLedgerForCommit(input: {
     counterpartyName: input.counterpartyName,
     notes: input.notes,
     tenantId: input.tenantId,
+    businessUnitId: input.businessUnitId ?? null,
   });
 
   if (rows.length === 0) {
@@ -542,6 +549,7 @@ async function insertExpenseRow(
     paymentMethodCache: ExpensePaymentMethodResolverCache;
     approverNameCache: ExpenseApproverNameResolverCache;
   },
+  businessUnitId: string | null = null,
 ) {
   const expenseCategory = await resolveExpenseCategoryForCommit({
     client,
@@ -604,11 +612,12 @@ async function insertExpenseRow(
         wht_amount,
         input_vat_amount,
         net_of_tax_amount,
-        notes
+        notes,
+        business_unit_id
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
       )
       RETURNING id
     `,
@@ -632,6 +641,7 @@ async function insertExpenseRow(
       payload.input_vat_amount,
       payload.net_of_tax_amount,
       payload.notes,
+      businessUnitId,
     ],
   );
 
@@ -653,6 +663,7 @@ async function insertExpenseRow(
       inputVatAmount: payload.purchaseTax.inputVatAmount,
       counterpartyName: payload.vendor.trim() || null,
       notes: payload.receipt_no ? `Receipt ${payload.receipt_no}` : null,
+      businessUnitId,
     });
   }
 }
@@ -666,6 +677,7 @@ async function insertFixedAssetRow(
     depreciationMethodCache: FixedAssetNameResolverCache;
     paymentMethodCache: FixedAssetPaymentMethodResolverCache;
   },
+  businessUnitId: string | null = null,
 ) {
   const assetId = await allocateFixedAssetIdForCommit({ client, tenantId });
   const assetCategory = await resolveAssetCategoryForCommit({
@@ -715,11 +727,12 @@ async function insertFixedAssetRow(
         location,
         notes,
         payment_method,
-        vendor_name
+        vendor_name,
+        business_unit_id
       )
       VALUES (
         $1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17
+        $11, $12, $13, $14, $15, $16, $17, $18
       )
     `,
     [
@@ -740,6 +753,7 @@ async function insertFixedAssetRow(
       payload.notes,
       payload.payment_method,
       payload.vendor_name,
+      businessUnitId,
     ],
   );
 
@@ -772,8 +786,18 @@ export async function commitImportJobInTransaction(input: {
   importType: BulkImportType;
   rows: CommitImportRow[];
   changedBy?: string;
+  /** Create-only stamp for employee/expense/fixed_asset imports; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 }): Promise<number> {
-  const { client, jobId, tenantId, importType, rows, changedBy } = input;
+  const {
+    client,
+    jobId,
+    tenantId,
+    importType,
+    rows,
+    changedBy,
+    activeBusinessUnitId = null,
+  } = input;
 
   await client.query("BEGIN");
 
@@ -812,6 +836,7 @@ export async function commitImportJobInTransaction(input: {
             supervisorCache,
             siteCache,
           },
+          activeBusinessUnitId,
         );
       } else if (importType === "customer") {
         await insertCustomerRow(
@@ -826,13 +851,13 @@ export async function commitImportJobInTransaction(input: {
           expenseSubcategoryCache,
           paymentMethodCache: expensePaymentMethodCache,
           approverNameCache: expenseApproverNameCache,
-        });
+        }, activeBusinessUnitId);
       } else if (importType === "fixed_asset") {
         await insertFixedAssetRow(client, tenantId, row.mapped_data, {
           assetCategoryCache: fixedAssetCategoryCache,
           depreciationMethodCache: fixedAssetDepreciationMethodCache,
           paymentMethodCache: fixedAssetPaymentMethodCache,
-        });
+        }, activeBusinessUnitId);
       } else {
         throw new Error(`Unsupported import type: ${importType}`);
       }

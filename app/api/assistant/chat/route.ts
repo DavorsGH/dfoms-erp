@@ -224,6 +224,7 @@ export async function POST(request: Request) {
           role: account.role,
           employee_id: account.employee_id,
           client_id: account.client_id,
+          active_business_unit_id: account.active_business_unit_id,
         }
       : null,
   });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import { PAYROLL_PERIOD_MANAGE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -206,6 +207,7 @@ async function promotePartialToFullLock(params: {
         markStaffSalariesPaid: true,
         // Loans already applied on Partial Lock — do not double-apply.
         skipLoanRepayments: true,
+        businessUnitId: await getActiveBusinessUnitId(),
       },
     );
 
@@ -414,6 +416,7 @@ export async function POST(request: Request) {
     admin,
     tenantId,
     payrollMonth,
+    { fallbackBusinessUnitId: await getActiveBusinessUnitId() },
   );
   if (allowancePromote.error) {
     return NextResponse.json(
@@ -450,6 +453,7 @@ export async function POST(request: Request) {
       {
         // Permanent Lock → Paid (SAL only). Partial Lock stays Accrued.
         markStaffSalariesPaid: isFullyLocked,
+        businessUnitId: await getActiveBusinessUnitId(),
       },
     );
 

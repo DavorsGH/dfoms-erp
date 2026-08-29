@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
@@ -23,6 +24,7 @@ export default async function ProductSalesPage() {
     { data: clients, error: clientsError },
     { data: finishedProducts, error: finishedProductsError },
     { data: paymentMethods, error: paymentMethodsError },
+    activeBusinessUnitId,
   ] = await Promise.all([
     supabase
       .from("income_register")
@@ -36,6 +38,7 @@ export default async function ProductSalesPage() {
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
+    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =
@@ -65,6 +68,7 @@ export default async function ProductSalesPage() {
           )
         }
         fetchError={fetchError}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </CrmShell>
   );

@@ -37,6 +37,11 @@ export type PayrollStatutoryLedgerResult = {
 export type SyncPayrollPeriodTaxLedgerOptions = {
   /** When true, compute insert/update/delete decisions but do not write. */
   dryRun?: boolean;
+  /**
+   * Stamp new payroll_period legs with the locking user's active BU.
+   * Updates to existing open legs leave business_unit_id unchanged.
+   */
+  businessUnitId?: string | null;
 };
 
 type PayrollStatutorySourceRow = {
@@ -169,6 +174,7 @@ export async function syncPayrollPeriodTaxLedger(
   options?: SyncPayrollPeriodTaxLedgerOptions,
 ): Promise<PayrollStatutoryLedgerResult> {
   const dryRun = options?.dryRun === true;
+  const businessUnitId = options?.businessUnitId ?? null;
   const sourceId = buildPayrollPeriodTaxLedgerSourceId(period.payrollMonth);
   const periodMonth = toPeriodMonth(period.payrollMonth);
   const desired = buildDesiredLegs(rows);
@@ -278,6 +284,7 @@ export async function syncPayrollPeriodTaxLedger(
         source_id: sourceId,
         counterparty_name: leg.counterparty_name,
         notes: `Payroll statutory accrual — ${period.monthLabel}`,
+        business_unit_id: businessUnitId,
       });
 
       if (insertError) {

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
   getCurrentUserRole,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
@@ -30,6 +31,7 @@ export default async function PayrollProcessingPage() {
   const supabase = createClient(cookieStore);
   const admin = createAdminClient();
   const tenantId = await getCurrentUserTenantId();
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   const taxConfigQueries = tenantId
     ? ([
@@ -178,6 +180,7 @@ export default async function PayrollProcessingPage() {
           (await getCurrentUserRole()) as AppRole | null,
         )}
         fetchError={fetchError}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </HrPayrollShell>
   );

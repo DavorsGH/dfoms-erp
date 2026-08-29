@@ -8,6 +8,7 @@ import {
 import { commitImportJobInTransaction } from "@/lib/bulk-import/commit-import-job";
 import type { BulkImportCommitResponse, BulkImportType } from "@/lib/bulk-import/types";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import { resolveDatabaseUrl } from "@/utils/database-url";
 import { createClient } from "@/utils/supabase/server";
 
@@ -158,6 +159,12 @@ export async function POST(
 
   const changedBy =
     importType === "employee" ? await resolveChangedByLabel() : undefined;
+  const activeBusinessUnitId =
+    importType === "employee" ||
+    importType === "expense" ||
+    importType === "fixed_asset"
+      ? await getActiveBusinessUnitId()
+      : null;
 
   const pgClient = new Client({
     connectionString: databaseUrl,
@@ -176,6 +183,7 @@ export async function POST(
       importType,
       rows: validRows,
       changedBy,
+      activeBusinessUnitId,
     });
 
     const response: BulkImportCommitResponse = {

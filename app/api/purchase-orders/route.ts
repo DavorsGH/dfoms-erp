@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import {
   INVENTORY_EDIT_ROLES,
   INVENTORY_SECTION_ROLES,
@@ -113,6 +114,7 @@ export async function POST(request: Request) {
       p_expected_date: trimmed.expected_date,
       p_notes: trimmed.notes,
       p_items: trimmed.items,
+      p_business_unit_id: await getActiveBusinessUnitId(),
     },
   );
 

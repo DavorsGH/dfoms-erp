@@ -67,6 +67,8 @@ type PayrollProcessingProps = {
   compensationPolicyConfig: PayrollCompensationPolicyConfig;
   canManagePayrollPeriod: boolean;
   fetchError: string | null;
+  /** Stamp only new payroll_allowance_lines; null = All Businesses. */
+  activeBusinessUnitId?: string | null;
 };
 
 type WorkspaceRow = PayrollProcessingRow & {
@@ -114,6 +116,7 @@ export default function PayrollProcessing({
   compensationPolicyConfig,
   canManagePayrollPeriod,
   fetchError,
+  activeBusinessUnitId = null,
 }: PayrollProcessingProps) {
   const supabase = createClient();
   const workspaceLoadGenerationRef = useRef(0);
@@ -146,6 +149,10 @@ export default function PayrollProcessing({
   const [expandedEmployeeId, setExpandedEmployeeId] = useState<string | null>(
     null,
   );
+  /** Intermediate string while editing Days to Pay so the box can go fully empty. */
+  const [daysToPayDraftByRowId, setDaysToPayDraftByRowId] = useState<
+    Record<string, string>
+  >({});
   const [loading, setLoading] = useState(false);
   const [locking, setLocking] = useState(false);
   const [reopening, setReopening] = useState(false);
@@ -153,6 +160,10 @@ export default function PayrollProcessing({
   const [repairing, setRepairing] = useState(false);
   const [hasStaleHistory, setHasStaleHistory] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+
+  useEffect(() => {
+    setDaysToPayDraftByRowId({});
+  }, [selectedPeriodKey]);
 
   const employeeMap = useMemo(
     () => new Map(employees.map((employee) => [employee.employee_id, employee])),
@@ -325,7 +336,7 @@ export default function PayrollProcessing({
       period.payrollMonth,
       employee.employee_id,
       policy.allowance_lines,
-      { tenantId },
+      { tenantId, businessUnitId: activeBusinessUnitId },
     );
     if (result.error) {
       setError(result.error);
@@ -728,6 +739,37 @@ export default function PayrollProcessing({
         entry.id === row.id ? updatedRow : entry,
       ),
     );
+  }
+
+  function daysToPayInputValue(row: WorkspaceRow): string {
+    if (Object.prototype.hasOwnProperty.call(daysToPayDraftByRowId, row.id)) {
+      return daysToPayDraftByRowId[row.id] ?? "";
+    }
+    return row.days_to_pay == null ? "" : String(row.days_to_pay);
+  }
+
+  async function commitDaysToPayDraft(row: WorkspaceRow) {
+    if (!Object.prototype.hasOwnProperty.call(daysToPayDraftByRowId, row.id)) {
+      return;
+    }
+
+    const draft = daysToPayDraftByRowId[row.id] ?? "";
+    const trimmed = draft.trim();
+    const nextDays =
+      trimmed === "" || Number.isNaN(Number(trimmed)) ? 0 : Number(trimmed);
+    const currentDays = Number(row.days_to_pay) || 0;
+
+    setDaysToPayDraftByRowId((current) => {
+      const next = { ...current };
+      delete next[row.id];
+      return next;
+    });
+
+    if (nextDays === currentDays) {
+      return;
+    }
+
+    await updateRowField(row, { days_to_pay: nextDays });
   }
 
   async function executeLockPeriod(
@@ -1452,12 +1494,22 @@ export default function PayrollProcessing({
                           type="number"
                           min="0"
                           step="0.01"
-                          value={row.days_to_pay ?? ""}
-                          onChange={(event) =>
-                            void updateRowField(row, {
-                              days_to_pay: Number(event.target.value) || 0,
-                            })
-                          }
+                          value={daysToPayInputValue(row)}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            setDaysToPayDraftByRowId((current) => ({
+                              ...current,
+                              [row.id]: next,
+                            }));
+                          }}
+                          onBlur={() => {
+                            void commitDaysToPayDraft(row);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.currentTarget.blur();
+                            }
+                          }}
                           className={`${inputClassName} max-w-[96px]`}
                         />
                       )}

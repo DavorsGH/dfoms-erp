@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import type { NamedLookup } from "../../lookup-types";
 import AccountsPayable from "../accounts-payable";
 import {
@@ -20,6 +21,7 @@ import {
 export default async function AccountsPayablePage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   const [
     { data, error },
@@ -77,6 +79,7 @@ export default async function AccountsPayablePage() {
           ) ?? []
         }
         fetchError={fetchError}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>
   );

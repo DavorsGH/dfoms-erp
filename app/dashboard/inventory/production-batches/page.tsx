@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+} from "@/utils/dashboard-auth";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import InventoryShell from "../inventory-shell";
@@ -24,6 +27,7 @@ import {
 export default async function ProductionBatchesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   const [
     { data: batches, error: batchesError },
@@ -73,6 +77,7 @@ export default async function ProductionBatchesPage() {
         }
         fetchError={fetchError}
         readOnly={!canEditInventory(role)}
+        activeBusinessUnitId={activeBusinessUnitId}
       />
     </InventoryShell>
   );
