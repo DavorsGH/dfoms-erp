@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import {
+  resolveCreateBusinessUnitId,
+  StampRefusedViewAllError,
+} from "@/utils/business-unit-stamp";
 import {
   INVENTORY_EDIT_ROLES,
   INVENTORY_SECTION_ROLES,
@@ -182,7 +185,14 @@ export async function POST(request: Request) {
     }
     businessUnitId = (poRow.business_unit_id as string | null) ?? null;
   } else {
-    businessUnitId = await getActiveBusinessUnitId();
+    try {
+      businessUnitId = await resolveCreateBusinessUnitId();
+    } catch (error) {
+      if (error instanceof StampRefusedViewAllError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      throw error;
+    }
   }
 
   const { data: purchaseId, error: rpcError } = await supabase.rpc(

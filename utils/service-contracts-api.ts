@@ -22,6 +22,7 @@ import {
 import { formatGeneratedInvoiceNumber } from "@/utils/client-invoices-types";
 import {
   resolveCreateBusinessUnitId,
+  StampRefusedViewAllError,
   type CreateBusinessUnitStampOptions,
 } from "@/utils/business-unit-stamp";
 
@@ -270,7 +271,15 @@ export async function createServiceContract(
     contractNumber,
   );
 
-  const businessUnitId = await resolveCreateBusinessUnitId(options);
+  let businessUnitId: string | null;
+  try {
+    businessUnitId = await resolveCreateBusinessUnitId(options);
+  } catch (error) {
+    if (error instanceof StampRefusedViewAllError) {
+      return { contract: null, error: error.message };
+    }
+    throw error;
+  }
   const insertPayload = {
     ...headerPayload,
     business_unit_id: businessUnitId,

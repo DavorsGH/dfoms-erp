@@ -68,6 +68,7 @@ import {
   buildOfflineProvisionalToken,
 } from "@/lib/offline-write-queue/pos-optimistic-stock";
 import type { PosCashSaleQueuePayload } from "@/lib/offline-write-queue/types";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -144,6 +145,7 @@ export default function PosCheckout({
   activeBusinessUnitId = null,
 }: PosCheckoutProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
   const writeQueue = useWriteQueueOptional();
   const [products, setProducts] = useState(
@@ -589,6 +591,11 @@ export default function PosCheckout({
     trimmedClientId: string | null,
     trimmedCustomerName: string | null,
   ) {
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      return;
+    }
+
     if (isMobileMoney) {
       setError(
         "Mobile Money cannot be queued offline. Use Cash, or reconnect to pay with MoMo.",
@@ -620,7 +627,7 @@ export default function PosCheckout({
       amountReceived,
       notes: notes.trim() || null,
       provisionalToken,
-      business_unit_id: activeBusinessUnitId,
+      business_unit_id: stampBusinessUnit.businessUnitId,
       lines: receiptLines.map((line) => ({
         productId: line.productId,
         productCode: line.productCode,
@@ -676,6 +683,11 @@ export default function PosCheckout({
     trimmedClientId: string | null,
     trimmedCustomerName: string | null,
   ) {
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      return;
+    }
+
     const amountReceived = payableTotal;
     const summary = await runPosCheckout(supabase, {
       saleDate: todayIsoDate(),
@@ -689,7 +701,7 @@ export default function PosCheckout({
       dueDate,
       notes: notes.trim() || null,
       cartLines,
-      businessUnitId: activeBusinessUnitId,
+      businessUnitId: stampBusinessUnit.businessUnitId,
     });
 
     await refreshProducts();
@@ -949,6 +961,12 @@ export default function PosCheckout({
     setError(null);
     setPaymentSettingsRequired(false);
     setReceipt(null);
+
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
 
     const basics = validateCheckoutBasics();
     if (!basics) {

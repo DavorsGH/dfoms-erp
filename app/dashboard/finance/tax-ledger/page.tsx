@@ -3,7 +3,9 @@ import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveStampBusinessUnitId } from "@/utils/business-unit-view";
 import {
   TAX_SETTINGS_ON_CONFLICT,
   scopeTaxSettingsRead,
@@ -41,14 +43,24 @@ export default async function TaxLedgerPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+
+  const stamp = resolveStampBusinessUnitId({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   // Upsert-on-first-load: ensure one tax_settings row for this tenant + BU
-  // context (null BU = default/All Businesses row).
-  const { error: ensureError } = await supabase.from("tax_settings").upsert(
-    { tenant_id: tenantId, business_unit_id: activeBusinessUnitId },
-    { onConflict: TAX_SETTINGS_ON_CONFLICT, ignoreDuplicates: true },
-  );
+  // context. Skipped while All Businesses is selected (not a stamp target).
+  const { error: ensureError } = stamp.ok
+    ? await supabase.from("tax_settings").upsert(
+        { tenant_id: tenantId, business_unit_id: stamp.businessUnitId },
+        { onConflict: TAX_SETTINGS_ON_CONFLICT, ignoreDuplicates: true },
+      )
+    : { error: null };
 
   const [
     { data: settingsData, error: settingsError },

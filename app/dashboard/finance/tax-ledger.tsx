@@ -23,6 +23,7 @@ import {
   TAX_SETTINGS_ON_CONFLICT,
   scopeTaxSettingsRead,
 } from "@/utils/phase5e-key-structure";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 import {
   TAX_LEDGER_SELECT,
   GRA_TAX_COMPONENTS,
@@ -468,6 +469,7 @@ export default function TaxLedger({
 }: TaxLedgerProps) {
   const router = useRouter();
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const currentPeriodMonth = getCurrentPeriodMonth();
 
   const [activeTab, setActiveTab] = useState<LedgerTab>("overview");
@@ -641,6 +643,12 @@ export default function TaxLedger({
     setError(null);
     setInfoMessage(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setSavingSettings(false);
+      return;
+    }
+
     const vatDueDay = parseOptionalDay(form.vat_return_due_day);
     const whtDueDay = parseOptionalDay(form.wht_return_due_day);
     const payeDueDay = parseRequiredDay(form.paye_return_due_day, "PAYE");
@@ -679,7 +687,7 @@ export default function TaxLedger({
 
     const payload = {
       tenant_id: tenantId,
-      business_unit_id: activeBusinessUnitId,
+      business_unit_id: stampBusinessUnit.businessUnitId,
       vat_registered: form.vat_registered,
       gra_tin: form.gra_tin.trim() || null,
       default_vat_bundle_rate: Number(form.default_vat_bundle_rate) || 0,
@@ -761,13 +769,19 @@ export default function TaxLedger({
     setError(null);
     setInfoMessage(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setRemittingKind(null);
+      return;
+    }
+
     const result = await remitTaxForPeriod(supabase, {
       tenantId,
       periodMonth: filters.periodMonth,
       kind,
       settings,
       entries,
-      businessUnitId: activeBusinessUnitId,
+      businessUnitId: stampBusinessUnit.businessUnitId,
     });
 
     if (result.error) {

@@ -54,6 +54,7 @@ import {
 } from "./payroll-processing-utils";
 import { syncProcessingAllowanceLines } from "./payroll-allowance-lines-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type PayrollProcessingProps = {
   tenantId: string | null;
@@ -119,6 +120,7 @@ export default function PayrollProcessing({
   activeBusinessUnitId = null,
 }: PayrollProcessingProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const workspaceLoadGenerationRef = useRef(0);
   const now = new Date();
   const [knownPayrollMonths, setKnownPayrollMonths] =
@@ -336,7 +338,15 @@ export default function PayrollProcessing({
       period.payrollMonth,
       employee.employee_id,
       policy.allowance_lines,
-      { tenantId, businessUnitId: activeBusinessUnitId },
+      {
+        tenantId,
+        businessUnitId: stampBusinessUnit.ok
+          ? stampBusinessUnit.businessUnitId
+          : null,
+        refuseNewInsertsError: stampBusinessUnit.ok
+          ? null
+          : stampBusinessUnit.error,
+      },
     );
     if (result.error) {
       setError(result.error);

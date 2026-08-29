@@ -7,6 +7,7 @@ import {
   MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT,
   scopeToBusinessUnitId,
 } from "@/utils/phase5e-key-structure";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 import RegisterRowActions, {
   getStripedRowClassName,
 } from "./register-row-actions";
@@ -118,6 +119,7 @@ export default function ManualFinancialEntries({
 }: ManualFinancialEntriesProps) {
   const router = useRouter();
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const defaultPeriod = getDefaultPeriodSelection();
 
   const [entries, setEntries] = useState(initialEntries);
@@ -209,11 +211,23 @@ export default function ManualFinancialEntries({
     setError(null);
     setInfoMessage(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const { error: saveError } = await supabase
       .from("manual_financial_entries")
-      .upsert(upsertPayloadFromRow(row), {
-        onConflict: MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT,
-      });
+      .upsert(
+        upsertPayloadFromRow({
+          ...row,
+          business_unit_id: stampBusinessUnit.businessUnitId,
+        }),
+        {
+          onConflict: MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT,
+        },
+      );
 
     if (saveError) {
       setError(saveError.message);
@@ -281,6 +295,11 @@ export default function ManualFinancialEntries({
       return;
     }
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      return;
+    }
+
     const parsedAmount = Number(amount);
     if (!Number.isFinite(parsedAmount)) {
       setError("Enter a valid amount.");
@@ -302,7 +321,7 @@ export default function ManualFinancialEntries({
         existing,
         periodMonth,
         tenantId,
-        businessUnitId: activeBusinessUnitId,
+        businessUnitId: stampBusinessUnit.businessUnitId,
         amount: parsedAmount,
         notes,
       });
@@ -324,7 +343,7 @@ export default function ManualFinancialEntries({
         existing,
         periodMonth,
         tenantId,
-        businessUnitId: activeBusinessUnitId,
+        businessUnitId: stampBusinessUnit.businessUnitId,
         amount: parsedAmount,
         notes,
       });
@@ -350,7 +369,7 @@ export default function ManualFinancialEntries({
         existing,
         periodMonth,
         tenantId,
-        businessUnitId: activeBusinessUnitId,
+        businessUnitId: stampBusinessUnit.businessUnitId,
         stockKey,
         priorStock,
         amount: parsedAmount,
@@ -376,7 +395,7 @@ export default function ManualFinancialEntries({
         existing,
         periodMonth,
         tenantId,
-        businessUnitId: activeBusinessUnitId,
+        businessUnitId: stampBusinessUnit.businessUnitId,
         stockKey,
         priorStock,
         amount: parsedAmount,
@@ -402,7 +421,7 @@ export default function ManualFinancialEntries({
       existing,
       periodMonth,
       tenantId,
-      businessUnitId: activeBusinessUnitId,
+      businessUnitId: stampBusinessUnit.businessUnitId,
       stockKey,
       priorStock,
       amount: parsedAmount,

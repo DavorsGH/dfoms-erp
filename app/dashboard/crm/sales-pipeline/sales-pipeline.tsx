@@ -15,6 +15,7 @@ import {
   DEFAULT_CUSTOMER_TYPE,
 } from "../customers/customers-utils";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 import OpportunityFormFields from "./opportunity-form-fields";
 import {
   ACTIVITY_TYPE_OPTIONS,
@@ -75,6 +76,7 @@ export default function SalesPipeline({
   activeBusinessUnitId = null,
 }: SalesPipelineProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [opportunities, setOpportunities] = useState(initialOpportunities);
   const [activities, setActivities] = useState(initialActivities);
   const [clients, setClients] = useState(initialClients);
@@ -293,6 +295,12 @@ export default function SalesPipeline({
     setLoading(true);
     setError(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     let clientId = opportunityForm.client_id.trim();
 
     if (createNewLead) {
@@ -328,7 +336,7 @@ export default function SalesPipeline({
         p_source: parsed.value.source,
         p_assigned_to: parsed.value.assigned_to,
         p_notes: parsed.value.notes,
-        p_business_unit_id: activeBusinessUnitId,
+        p_business_unit_id: stampBusinessUnit.businessUnitId,
       },
     );
 

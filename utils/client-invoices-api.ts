@@ -27,6 +27,7 @@ import {
 } from "@/utils/client-invoices-types";
 import {
   resolveCreateBusinessUnitId,
+  StampRefusedViewAllError,
   type CreateBusinessUnitStampOptions,
 } from "@/utils/business-unit-stamp";
 
@@ -536,7 +537,15 @@ export async function createClientInvoice(
     return { invoice: null, error: sequenceError };
   }
 
-  const businessUnitId = await resolveCreateBusinessUnitId(options);
+  let businessUnitId: string | null;
+  try {
+    businessUnitId = await resolveCreateBusinessUnitId(options);
+  } catch (error) {
+    if (error instanceof StampRefusedViewAllError) {
+      return { invoice: null, error: error.message };
+    }
+    throw error;
+  }
   const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
     supabase,
     tenantId,

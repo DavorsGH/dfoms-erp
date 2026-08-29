@@ -5,6 +5,7 @@ import {
   MONTH_END_CLOSE_ON_CONFLICT,
   scopeToBusinessUnitId,
 } from "@/utils/phase5e-key-structure";
+import { assertLockBusinessUnitAllowed } from "@/utils/phase5e-lock";
 import { PAYROLL_PERIOD_MANAGE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -52,6 +53,14 @@ export async function POST(request: Request) {
   }
 
   const businessUnitId = await getActiveBusinessUnitId();
+
+  const lockBuGate = await assertLockBusinessUnitAllowed(
+    tenantId,
+    businessUnitId,
+  );
+  if (!lockBuGate.ok) {
+    return NextResponse.json({ error: lockBuGate.error }, { status: 400 });
+  }
 
   const financePeriod = resolvePayrollLockFinancePeriod(
     payrollMonth,

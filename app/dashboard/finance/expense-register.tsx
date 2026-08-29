@@ -76,6 +76,7 @@ import {
   VENDOR_OTHER_VALUE,
 } from "./vendor-select-utils";
 import { useOnlineStatus } from "@/hooks/use-online-status";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 import { useWriteQueueOptional } from "@/components/write-queue-provider";
 import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
@@ -182,6 +183,7 @@ export default function ExpenseRegister({
   activeBusinessUnitId = null,
 }: ExpenseRegisterProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const isOnline = useOnlineStatus();
   const writeQueue = useWriteQueueOptional();
   const [entries, setEntries] = useState(
@@ -700,6 +702,17 @@ export default function ExpenseRegister({
     setLoading(true);
     setError(null);
 
+    const stampId = !editingId
+      ? stampBusinessUnit.ok
+        ? stampBusinessUnit.businessUnitId
+        : null
+      : activeBusinessUnitId;
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const price = Number(form.price);
     const quantity = form.quantity.trim() === "" ? 1 : Number(form.quantity);
     const grossBeforeWht = calculateAmount(price, quantity);
@@ -803,8 +816,7 @@ export default function ExpenseRegister({
         net_of_tax_amount: payload.net_of_tax_amount,
         notes: payload.notes,
         project_id: payload.project_id,
-        business_unit_id: activeBusinessUnitId,
-        wht_rate_pct: whtRate > 0 ? whtRate : null,
+        business_unit_id: stampId,
         input_tax_component: purchaseTax.inputTaxComponent,
         notification_detail: formatGHS(purchaseTax.netPaidToSupplier),
       };
@@ -837,7 +849,7 @@ export default function ExpenseRegister({
         .from("expense_register")
         .insert({
           ...payload,
-          business_unit_id: activeBusinessUnitId,
+          business_unit_id: stampId,
         })
         .select("id")
         .single();

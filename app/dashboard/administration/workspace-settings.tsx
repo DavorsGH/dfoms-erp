@@ -11,6 +11,7 @@ import { uploadTenantSignature } from "@/utils/tenant-signature";
 import {
   TAX_SETTINGS_ON_CONFLICT,
 } from "@/utils/phase5e-key-structure";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type WorkspaceSettingsProps = {
   tenantId: string;
@@ -47,6 +48,7 @@ export default function WorkspaceSettings({
 }: WorkspaceSettingsProps) {
   const router = useRouter();
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
 
   const [workspaceName, setWorkspaceName] = useState(initialName);
   const [workspaceAddress, setWorkspaceAddress] = useState(initialAddress ?? "");
@@ -108,10 +110,16 @@ export default function WorkspaceSettings({
       return;
     }
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setSavingName(false);
+      return;
+    }
+
     const { error: tinUpdateError } = await supabase.from("tax_settings").upsert(
       {
         tenant_id: tenantId,
-        business_unit_id: activeBusinessUnitId,
+        business_unit_id: stampBusinessUnit.businessUnitId,
         gra_tin: trimmedTin || null,
         updated_at: new Date().toISOString(),
       },

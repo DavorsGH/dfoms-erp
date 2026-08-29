@@ -18,6 +18,7 @@ type UserAccountRow = {
   client_id: string | null;
   tenant_id: string | null;
   active_business_unit_id: string | null;
+  view_all_business_units: boolean;
 };
 
 type LayoutPerfCounters = {
@@ -94,6 +95,7 @@ export const getCurrentUserAccount = cache(
         client_id: trusted.clientId,
         tenant_id: trusted.tenantId,
         active_business_unit_id: trusted.activeBusinessUnitId ?? null,
+        view_all_business_units: trusted.viewAllBusinessUnits === true,
       };
     }
 
@@ -108,11 +110,17 @@ export const getCurrentUserAccount = cache(
     layoutPerf.dbCalls += 1;
     const { data: account } = await supabase
       .from("user_accounts")
-      .select("role, employee_id, client_id, tenant_id, active_business_unit_id")
+      .select(
+        "role, employee_id, client_id, tenant_id, active_business_unit_id, view_all_business_units",
+      )
       .eq("auth_uid", user.id)
       .maybeSingle();
 
-    return account ?? null;
+    if (!account) return null;
+    return {
+      ...account,
+      view_all_business_units: account.view_all_business_units === true,
+    };
   },
 );
 
@@ -142,8 +150,10 @@ export async function getCurrentUserTenantId(): Promise<string | null> {
 }
 
 /**
- * Active business-unit context for the current staff user.
- * null = "All Businesses", or when the stored unit is missing/inactive/wrong tenant.
+ * Scoped business-unit id for the current staff user.
+ * null = workspace default/untagged rows (not All Businesses).
+ * When the stored unit is missing/inactive/wrong tenant, returns null.
+ * Pair with getViewAllBusinessUnits() for aggregate view.
  */
 export const getActiveBusinessUnitId = cache(async (): Promise<string | null> => {
   const account = await getCurrentUserAccount();
@@ -175,6 +185,14 @@ export const getActiveBusinessUnitId = cache(async (): Promise<string | null> =>
   }
 
   return unit.id;
+});
+
+/**
+ * True when the staff switcher is on All Businesses (aggregate, not a stamp target).
+ */
+export const getViewAllBusinessUnits = cache(async (): Promise<boolean> => {
+  const account = await getCurrentUserAccount();
+  return account?.view_all_business_units === true;
 });
 
 /** One leave-approver RPC result per request. */

@@ -53,6 +53,7 @@ import {
   resolveVendorNameFromSelect,
   VENDOR_OTHER_VALUE,
 } from "./vendor-select-utils";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type FixedAssetsProps = {
   initialAssets: FixedAssetEntry[];
@@ -139,6 +140,7 @@ export default function FixedAssets({
   activeBusinessUnitId = null,
 }: FixedAssetsProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [assets, setAssets] = useState(initialAssets);
   const [assetCategories, setAssetCategories] = useState(initialAssetCategories);
   const [depreciationMethods, setDepreciationMethods] = useState(
@@ -402,6 +404,12 @@ export default function FixedAssets({
     setLoading(true);
     setError(null);
 
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const originalCost = Number(form.original_cost);
     const quantity = form.quantity.trim() === "" ? 1 : Number(form.quantity);
     const usefulLifeYears = Number(form.useful_life_years);
@@ -543,7 +551,9 @@ export default function FixedAssets({
       const { error: saveError } = await supabase.from("fixed_assets").insert({
         ...payload,
         asset_id: allocated.assetId,
-        business_unit_id: activeBusinessUnitId,
+        business_unit_id: stampBusinessUnit.ok
+          ? stampBusinessUnit.businessUnitId
+          : null,
       });
 
       if (saveError) {

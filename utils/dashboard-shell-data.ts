@@ -6,6 +6,7 @@ import {
   getCurrentAuthUser,
   getCurrentUserAccount,
   getCurrentUserRole,
+  getViewAllBusinessUnits,
   hasLeaveApprovalInbox,
   isDavorsPlatformRealEstateStaff,
   isDavorsPlatformSuperAdmin,
@@ -31,6 +32,8 @@ export type DashboardShellData = {
   businessUnitSwitcher: {
     units: BusinessUnitSwitcherOption[];
     activeBusinessUnitId: string | null;
+    viewAllBusinessUnits: boolean;
+    workspaceName: string;
   } | null;
   perf?: ReturnType<typeof createPerfProbe>;
 };
@@ -75,6 +78,7 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
     authUser,
     account,
     activeBusinessUnitId,
+    viewAllBusinessUnits,
   ] = await Promise.all([
     getUserDisplayInfo(),
     getCurrentUserRole(),
@@ -85,6 +89,7 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
     getCurrentAuthUser(),
     getCurrentUserAccount(),
     getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
   ]);
 
   let businessUnitSwitcher: DashboardShellData["businessUnitSwitcher"] = null;
@@ -99,6 +104,8 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
       businessUnitSwitcher = {
         units,
         activeBusinessUnitId: activeStillListed,
+        viewAllBusinessUnits,
+        workspaceName: tenantBranding.workspaceName,
       };
     }
   }

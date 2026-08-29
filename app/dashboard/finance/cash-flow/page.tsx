@@ -3,7 +3,9 @@ import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { buildAvailableYears } from "../finance-year-utils";
 import { fetchCashFlowInventoryPurchaseInput } from "../balance-sheet-page-data";
 import type {
@@ -29,7 +31,14 @@ export default async function CashFlowPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const tenantId = await getCurrentUserTenantId();
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
@@ -46,15 +55,18 @@ export default async function CashFlowPage() {
     .eq("tenant_id", tenantId)
     .order("month", { ascending: true });
 
-  if (activeBusinessUnitId) {
+  if (buScope.mode === "unit") {
     manualEntriesQuery = manualEntriesQuery.eq(
       "business_unit_id",
-      activeBusinessUnitId,
+      buScope.id,
     );
     monthEndCloseQuery = monthEndCloseQuery.eq(
       "business_unit_id",
-      activeBusinessUnitId,
+      buScope.id,
     );
+  } else if (buScope.mode === "default") {
+    manualEntriesQuery = manualEntriesQuery.is("business_unit_id", null);
+    monthEndCloseQuery = monthEndCloseQuery.is("business_unit_id", null);
   }
 
   const [
@@ -133,11 +145,12 @@ export default async function CashFlowPage() {
 
   const rawManualEntries =
     (manualEntries as ManualFinancialEntryRecord[] | null) ?? [];
-  const resolvedManualEntries: ManualFinancialEntry[] = activeBusinessUnitId
-    ? (rawManualEntries as ManualFinancialEntry[])
-    : (aggregateManualEntriesByPeriodMonth(
-        rawManualEntries,
-      ) as ManualFinancialEntry[]);
+  const resolvedManualEntries: ManualFinancialEntry[] =
+    buScope.mode === "all"
+      ? (aggregateManualEntriesByPeriodMonth(
+          rawManualEntries,
+        ) as ManualFinancialEntry[])
+      : (rawManualEntries as ManualFinancialEntry[]);
 
   const fetchError =
     incomeError?.message ??

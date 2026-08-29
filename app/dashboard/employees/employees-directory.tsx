@@ -64,6 +64,7 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import FilteredListCount from "../filtered-list-count";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 async function resolveChangedByLabel(
   supabase: SupabaseClient,
@@ -407,6 +408,7 @@ export default function EmployeesDirectory({
   activeBusinessUnitId = null,
 }: EmployeesDirectoryProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const formRef = useRef<HTMLElement>(null);
   const [employees, setEmployees] = useState(initialEmployees);
   const [lookups] = useState(initialLookups);
@@ -973,6 +975,11 @@ export default function EmployeesDirectory({
       return;
     }
 
+    if (!editingEmployeeId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      return;
+    }
+
     setLoading(true);
 
     const changedBy = await resolveChangedByLabel(supabase);
@@ -1040,7 +1047,9 @@ export default function EmployeesDirectory({
       const { error: saveError } = await supabase.from("employees").insert({
         employee_id: allocated.employeeId,
         ...payload,
-        business_unit_id: activeBusinessUnitId,
+        business_unit_id: stampBusinessUnit.ok
+          ? stampBusinessUnit.businessUnitId
+          : null,
       });
 
       if (saveError) {

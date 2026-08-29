@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { TAX_SETTINGS_ON_CONFLICT } from "@/utils/phase5e-key-structure";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 export type TaxSettingReviewField =
   | "sales_tax_basis_reviewed_at"
@@ -38,6 +39,7 @@ export default function TaxSettingReviewBanner({
 }: TaxSettingReviewBannerProps) {
   const router = useRouter();
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [hidden, setHidden] = useState(Boolean(reviewedAt));
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,10 +56,16 @@ export default function TaxSettingReviewBanner({
     setConfirming(true);
     setError(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setConfirming(false);
+      return;
+    }
+
     const { error: saveError } = await supabase.from("tax_settings").upsert(
       {
         tenant_id: tenantId,
-        business_unit_id: activeBusinessUnitId,
+        business_unit_id: stampBusinessUnit.businessUnitId,
         [reviewField]: new Date().toISOString(),
       },
       { onConflict: TAX_SETTINGS_ON_CONFLICT },

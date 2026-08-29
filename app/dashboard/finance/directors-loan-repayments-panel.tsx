@@ -26,6 +26,7 @@ import ScrollableTable, {
   scrollableTableWrapTdClassName,
   scrollableTableWrapThClassName,
 } from "../scrollable-table";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 export type DirectorsLoanRepaymentRecord = DirectorsLoanRepaymentRow & {
   id: string;
@@ -54,6 +55,7 @@ export default function DirectorsLoanRepaymentsPanel({
   activeBusinessUnitId = null,
 }: DirectorsLoanRepaymentsPanelProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const financialYear = getCurrentFinancialYear();
   const [repayments, setRepayments] = useState(initialRepayments);
   const [showForm, setShowForm] = useState(false);
@@ -167,6 +169,12 @@ export default function DirectorsLoanRepaymentsPanel({
     setLoading(true);
     setError(null);
 
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const amount = Number(form.amount) || 0;
     if (amount <= 0) {
       setError("Repayment amount must be greater than zero.");
@@ -230,7 +238,9 @@ export default function DirectorsLoanRepaymentsPanel({
         .from("directors_loan_repayments")
         .insert({
           ...payload,
-          business_unit_id: activeBusinessUnitId,
+          business_unit_id: stampBusinessUnit.ok
+            ? stampBusinessUnit.businessUnitId
+            : null,
         });
 
       if (insertError) {

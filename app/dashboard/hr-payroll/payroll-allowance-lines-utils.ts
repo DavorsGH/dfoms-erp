@@ -9,6 +9,11 @@ export type SyncProcessingAllowanceLinesOptions = {
    * business_unit_id on resave (never overwritten).
    */
   businessUnitId?: string | null;
+  /**
+   * When set, refuse inserts of brand-new lines (e.g. All Businesses view)
+   * while still allowing updates of existing lines.
+   */
+  refuseNewInsertsError?: string | null;
 };
 
 type ExistingProcessingAllowanceRow = {
@@ -88,6 +93,10 @@ export async function syncProcessingAllowanceLines(
         return { error: updateError.message };
       }
       continue;
+    }
+
+    if (options.refuseNewInsertsError) {
+      return { error: options.refuseNewInsertsError };
     }
 
     const insertRow: Record<string, unknown> = {

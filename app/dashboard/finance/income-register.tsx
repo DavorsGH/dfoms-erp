@@ -53,6 +53,7 @@ import ScrollableTable, {
 import FilteredListCount, {
   anyRegisterColumnFiltersActive,
 } from "../filtered-list-count";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type IncomeRegisterProps = {
   initialEntries: IncomeRegisterEntry[];
@@ -123,6 +124,7 @@ export default function IncomeRegister({
   activeBusinessUnitId = null,
 }: IncomeRegisterProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeIncomeRegisterEntry),
   );
@@ -360,6 +362,12 @@ export default function IncomeRegister({
     setLoading(true);
     setError(null);
 
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     if (editingId) {
       const editing = entries.find((entry) => entry.id === editingId);
       if (editing && isAutoPostedIncomeRegisterEntry(editing)) {
@@ -436,7 +444,9 @@ export default function IncomeRegister({
         .from("income_register")
         .insert({
           ...payload,
-          business_unit_id: activeBusinessUnitId,
+          business_unit_id: stampBusinessUnit.ok
+            ? stampBusinessUnit.businessUnitId
+            : null,
         })
         .select("id")
         .single();

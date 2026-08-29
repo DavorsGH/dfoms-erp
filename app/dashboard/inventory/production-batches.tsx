@@ -9,6 +9,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
@@ -71,6 +72,7 @@ export default function ProductionBatches({
   activeBusinessUnitId = null,
 }: ProductionBatchesProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [batches, setBatches] = useState(
     initialBatches.map(normalizeProductionBatch),
   );
@@ -218,6 +220,12 @@ export default function ProductionBatches({
     setLoading(true);
     setError(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const quantityProduced = Number.parseFloat(batchForm.quantity_produced);
     if (Number.isNaN(quantityProduced) || quantityProduced <= 0) {
       setError("Quantity produced must be greater than zero.");
@@ -282,7 +290,7 @@ export default function ProductionBatches({
       p_materials: materialPayload,
       p_manufacturing_date: nullableText(batchForm.manufacturing_date),
       p_expiration_date: nullableText(batchForm.expiration_date),
-      p_business_unit_id: activeBusinessUnitId,
+      p_business_unit_id: stampBusinessUnit.businessUnitId,
     });
 
     if (rpcError) {

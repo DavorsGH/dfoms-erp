@@ -45,6 +45,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type AccountsPayableProps = {
   initialEntries: AccountsPayableEntry[];
@@ -115,6 +116,7 @@ export default function AccountsPayable({
   activeBusinessUnitId = null,
 }: AccountsPayableProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeAccountsPayableEntry),
   );
@@ -297,6 +299,12 @@ export default function AccountsPayable({
     setLoading(true);
     setError(null);
 
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const grossBeforeWht = Number(form.amount) || 0;
     const existingEntry = editingId
       ? entries.find((entry) => entry.id === editingId)
@@ -358,7 +366,9 @@ export default function AccountsPayable({
         .from("accounts_payable")
         .insert({
           ...payload,
-          business_unit_id: activeBusinessUnitId,
+          business_unit_id: stampBusinessUnit.ok
+            ? stampBusinessUnit.businessUnitId
+            : null,
         })
         .select("id")
         .single();

@@ -3,14 +3,27 @@ import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { STAFF_BUSINESS_UNIT_SWITCHER_ROLES } from "@/app/dashboard/user-account-role-utils";
 import { getCurrentAuthUid } from "@/utils/dashboard-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
+import {
+  BU_SELECTION_ALL,
+  BU_SELECTION_DEFAULT,
+  BU_SELECTION_UNIT,
+  VIEW_ALL_BUSINESS_UNITS_FIELD,
+  resolveBusinessUnitSelection,
+  type BusinessUnitSelection,
+} from "@/utils/business-unit-view";
 
 type Body = {
+  selection?: BusinessUnitSelection;
   business_unit_id?: string | null;
+  view_all_business_units?: boolean;
 };
 
 /**
- * Persist the current staff user's active business-unit context.
- * Body: { business_unit_id: string | null } — null = All Businesses.
+ * Persist staff business-unit switcher context.
+ * Body: { selection: "all" | "default" | "unit", business_unit_id?: string | null }
+ * - all → view_all_business_units true (keeps prior active_business_unit_id as memory)
+ * - default → view_all false, active_business_unit_id null
+ * - unit → view_all false, active_business_unit_id = uuid
  */
 export async function POST(request: Request) {
   const auth = await requireTenantRoleIn(STAFF_BUSINESS_UNIT_SWITCHER_ROLES);
@@ -42,6 +55,24 @@ export async function POST(request: Request) {
   }
 
   const body = rawBody as Body;
+  let selection = body.selection;
+
+  // Back-compat: older clients sent only business_unit_id (null = All).
+  if (
+    selection !== BU_SELECTION_ALL &&
+    selection !== BU_SELECTION_DEFAULT &&
+    selection !== BU_SELECTION_UNIT
+  ) {
+    if (body.view_all_business_units === true) {
+      selection = BU_SELECTION_ALL;
+    } else if (body.business_unit_id == null || body.business_unit_id === "") {
+      // Ambiguous legacy null — treat as All only if explicitly flagged; else default.
+      selection = BU_SELECTION_DEFAULT;
+    } else {
+      selection = BU_SELECTION_UNIT;
+    }
+  }
+
   const rawId = body.business_unit_id;
   if (rawId !== null && rawId !== undefined && typeof rawId !== "string") {
     return NextResponse.json(
@@ -55,7 +86,14 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
 
-  if (businessUnitId) {
+  if (selection === BU_SELECTION_UNIT) {
+    if (!businessUnitId) {
+      return NextResponse.json(
+        { error: "business_unit_id is required when selection is unit" },
+        { status: 400 },
+      );
+    }
+
     const { data: unit, error: unitError } = await admin
       .from("business_units")
       .select("id, tenant_id, is_active")
@@ -88,12 +126,27 @@ export async function POST(request: Request) {
     }
   }
 
+  const patch: {
+    view_all_business_units: boolean;
+    active_business_unit_id?: string | null;
+  } = {
+    view_all_business_units: selection === BU_SELECTION_ALL,
+  };
+
+  if (selection === BU_SELECTION_ALL) {
+    // Keep active_business_unit_id as last scoped memory; do not clear.
+  } else if (selection === BU_SELECTION_DEFAULT) {
+    patch.active_business_unit_id = null;
+  } else {
+    patch.active_business_unit_id = businessUnitId;
+  }
+
   const { data, error } = await admin
     .from("user_accounts")
-    .update({ active_business_unit_id: businessUnitId })
+    .update(patch)
     .eq("auth_uid", authUid)
     .eq("tenant_id", auth.tenantId)
-    .select("active_business_unit_id")
+    .select("active_business_unit_id, view_all_business_units")
     .maybeSingle();
 
   if (error) {
@@ -104,7 +157,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "User account not found" }, { status: 404 });
   }
 
+  const viewAll = data.view_all_business_units === true;
+  const activeId = data.active_business_unit_id ?? null;
+
   return NextResponse.json({
-    active_business_unit_id: data.active_business_unit_id ?? null,
+    active_business_unit_id: activeId,
+    [VIEW_ALL_BUSINESS_UNITS_FIELD]: viewAll,
+    selection: resolveBusinessUnitSelection({
+      viewAllBusinessUnits: viewAll,
+      activeBusinessUnitId: activeId,
+    }),
   });
 }

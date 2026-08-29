@@ -50,6 +50,7 @@ import {
   aggregateManualEntriesByPeriodMonth,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
@@ -77,10 +78,14 @@ export type FetchBalanceSheetPageDataOptions = {
   /** Optional dev counter — incremented once per Supabase HTTP request in this loader. */
   requestCounter?: { count: number };
   /**
-   * Specific BU → filter manual_financial_entries + month_end_close to that BU.
-   * null / omitted (All Businesses) → load all rows; SUM manual entries by period.
+   * Scoped BU filter for manual_financial_entries + month_end_close.
+   * Pair with viewAllBusinessUnits:
+   * - viewAll true → load all rows; SUM manuals by period
+   * - viewAll false + null → workspace default rows only (.is null)
+   * - viewAll false + uuid → that BU only
    */
   activeBusinessUnitId?: string | null;
+  viewAllBusinessUnits?: boolean;
 };
 
 export function getDefaultBalanceSheetDateRange(
@@ -442,6 +447,11 @@ export async function fetchBalanceSheetPageData(
       : options.dateRange;
   const requestCounter = options.requestCounter;
   const activeBusinessUnitId = options.activeBusinessUnitId ?? null;
+  const viewAllBusinessUnits = options.viewAllBusinessUnits === true;
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   let incomeQuery = supabase
     .from("income_register")
@@ -477,15 +487,18 @@ export async function fetchBalanceSheetPageData(
     .eq("tenant_id", tenantId)
     .order("month", { ascending: false });
 
-  if (activeBusinessUnitId) {
+  if (buScope.mode === "unit") {
     manualEntriesQuery = manualEntriesQuery.eq(
       "business_unit_id",
-      activeBusinessUnitId,
+      buScope.id,
     );
     monthEndCloseQuery = monthEndCloseQuery.eq(
       "business_unit_id",
-      activeBusinessUnitId,
+      buScope.id,
     );
+  } else if (buScope.mode === "default") {
+    manualEntriesQuery = manualEntriesQuery.is("business_unit_id", null);
+    monthEndCloseQuery = monthEndCloseQuery.is("business_unit_id", null);
   }
 
   if (dateRange) {
@@ -634,11 +647,12 @@ export async function fetchBalanceSheetPageData(
 
   const rawManualEntries =
     (manualEntries as ManualFinancialEntryRecord[] | null) ?? [];
-  const resolvedManualEntries: ManualFinancialEntry[] = activeBusinessUnitId
-    ? (rawManualEntries as ManualFinancialEntry[])
-    : (aggregateManualEntriesByPeriodMonth(
-        rawManualEntries,
-      ) as ManualFinancialEntry[]);
+  const resolvedManualEntries: ManualFinancialEntry[] =
+    buScope.mode === "all"
+      ? (aggregateManualEntriesByPeriodMonth(
+          rawManualEntries,
+        ) as ManualFinancialEntry[])
+      : (rawManualEntries as ManualFinancialEntry[]);
 
   return {
     tenantId,

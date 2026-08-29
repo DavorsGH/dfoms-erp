@@ -11,6 +11,8 @@ export type MiddlewareAuthContext = {
   employeeId: string | null;
   clientId: string | null;
   activeBusinessUnitId: string | null;
+  /** Aggregate All Businesses view (not a stamp target). */
+  viewAllBusinessUnits: boolean;
   isActive: boolean;
   portal: PortalKind;
   email: string | null;

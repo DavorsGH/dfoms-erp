@@ -17,6 +17,7 @@ import type { TenantBranding } from "@/utils/tenant-branding-types";
 import type { BusinessUnitSwitcherOption } from "./business-unit-switcher";
 import Sidebar from "./sidebar";
 import TopBar from "./top-bar";
+import { BusinessUnitViewProvider } from "./business-unit-view-context";
 import { TenantBrandingProvider } from "./tenant-branding-context";
 
 type DashboardShellProps = {
@@ -34,6 +35,8 @@ type DashboardShellProps = {
   businessUnitSwitcher?: {
     units: BusinessUnitSwitcherOption[];
     activeBusinessUnitId: string | null;
+    viewAllBusinessUnits: boolean;
+    workspaceName: string;
   } | null;
 };
 
@@ -101,6 +104,17 @@ export default function DashboardShell({
 
   return (
     <TenantBrandingProvider branding={tenantBranding}>
+      <BusinessUnitViewProvider
+        viewAllBusinessUnits={
+          businessUnitSwitcher?.viewAllBusinessUnits ?? false
+        }
+        activeBusinessUnitId={
+          businessUnitSwitcher?.activeBusinessUnitId ?? null
+        }
+        workspaceName={
+          businessUnitSwitcher?.workspaceName ?? tenantBranding.workspaceName
+        }
+      >
       <WriteQueueProvider tenantId={tenantId} authUid={authUid}>
         <div className="flex min-h-screen min-w-0">
           <div className="hidden shrink-0 md:flex">
@@ -156,6 +170,7 @@ export default function DashboardShell({
           </div>
         </div>
       </WriteQueueProvider>
+      </BusinessUnitViewProvider>
     </TenantBrandingProvider>
   );
 }

@@ -8,7 +8,10 @@ import {
 import { commitImportJobInTransaction } from "@/lib/bulk-import/commit-import-job";
 import type { BulkImportCommitResponse, BulkImportType } from "@/lib/bulk-import/types";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import {
+  resolveCreateBusinessUnitId,
+  StampRefusedViewAllError,
+} from "@/utils/business-unit-stamp";
 import { resolveDatabaseUrl } from "@/utils/database-url";
 import { createClient } from "@/utils/supabase/server";
 
@@ -159,12 +162,21 @@ export async function POST(
 
   const changedBy =
     importType === "employee" ? await resolveChangedByLabel() : undefined;
-  const activeBusinessUnitId =
+  let activeBusinessUnitId: string | null = null;
+  if (
     importType === "employee" ||
     importType === "expense" ||
     importType === "fixed_asset"
-      ? await getActiveBusinessUnitId()
-      : null;
+  ) {
+    try {
+      activeBusinessUnitId = await resolveCreateBusinessUnitId();
+    } catch (error) {
+      if (error instanceof StampRefusedViewAllError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      throw error;
+    }
+  }
 
   const pgClient = new Client({
     connectionString: databaseUrl,

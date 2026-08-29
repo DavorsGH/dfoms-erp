@@ -9,6 +9,7 @@ import {
   normalizeProductSalesTaxRate,
   type ProductSalesTaxRate,
 } from "./tax-utils";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type ProductSalesTaxRateSettingsProps = {
   tenantId: string;
@@ -32,6 +33,7 @@ export default function ProductSalesTaxRateSettings({
 }: ProductSalesTaxRateSettingsProps) {
   const router = useRouter();
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [productSalesTaxRate, setProductSalesTaxRate] =
     useState<ProductSalesTaxRate>(initialProductSalesTaxRate);
   const [error, setError] = useState<string | null>(fetchError);
@@ -48,10 +50,16 @@ export default function ProductSalesTaxRateSettings({
     setError(null);
     setInfoMessage(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setSaving(false);
+      return;
+    }
+
     const { error: saveError } = await supabase.from("tax_settings").upsert(
       {
         tenant_id: tenantId,
-        business_unit_id: activeBusinessUnitId,
+        business_unit_id: stampBusinessUnit.businessUnitId,
         product_sales_tax_rate: productSalesTaxRate,
         updated_at: new Date().toISOString(),
       },

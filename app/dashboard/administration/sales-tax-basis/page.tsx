@@ -3,7 +3,9 @@ import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveStampBusinessUnitId } from "@/utils/business-unit-view";
 import {
   TAX_SETTINGS_ON_CONFLICT,
 } from "@/utils/phase5e-key-structure";
@@ -14,10 +16,12 @@ import {
 import SalesTaxBasisSettings from "../sales-tax-basis";
 
 export default async function SalesTaxBasisPage() {
-  const [tenantId, activeBusinessUnitId] = await Promise.all([
-    getCurrentUserTenantId(),
-    getActiveBusinessUnitId(),
-  ]);
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
 
   if (!tenantId) {
     return (
@@ -30,14 +34,23 @@ export default async function SalesTaxBasisPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  await supabase.from("tax_settings").upsert(
-    {
-      tenant_id: tenantId,
-      business_unit_id: activeBusinessUnitId,
-      sales_tax_basis: DEFAULT_SALES_TAX_BASIS,
-    },
-    { onConflict: TAX_SETTINGS_ON_CONFLICT, ignoreDuplicates: true },
-  );
+  const stamp = resolveStampBusinessUnitId({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+
+  // Ensure a tax_settings row only when a concrete BU stamp is allowed
+  // (skip while All Businesses is selected).
+  if (stamp.ok) {
+    await supabase.from("tax_settings").upsert(
+      {
+        tenant_id: tenantId,
+        business_unit_id: stamp.businessUnitId,
+        sales_tax_basis: DEFAULT_SALES_TAX_BASIS,
+      },
+      { onConflict: TAX_SETTINGS_ON_CONFLICT, ignoreDuplicates: true },
+    );
+  }
 
   const { salesTaxBasis, salesTaxBasisReviewedAt, error } =
     await loadTenantSalesTaxBasis(supabase, tenantId, activeBusinessUnitId);

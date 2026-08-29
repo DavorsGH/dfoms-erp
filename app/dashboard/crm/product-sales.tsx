@@ -45,6 +45,7 @@ import {
   PRODUCT_SALES_SELECT,
   type ProductSaleEntry,
 } from "./product-sales-utils";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 import ProductSalesBulkImport from "./product-sales-bulk-import";
 import RecordProductSalePaymentDialog from "./record-product-sale-payment-dialog";
 import {
@@ -91,6 +92,7 @@ export default function ProductSales({
   activeBusinessUnitId = null,
 }: ProductSalesProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeProductSaleEntry),
   );
@@ -370,6 +372,12 @@ export default function ProductSales({
     setLoading(true);
     setError(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const amountReceived = Number(form.amount_received);
     const clientId = form.client_id.trim() || null;
     const otherPayerName = form.customer_name.trim() || null;
@@ -451,7 +459,7 @@ export default function ProductSales({
         p_due_date: outstanding > 0 ? form.due_date : form.due_date || form.date,
         p_description: null,
         p_notes: form.notes || null,
-        p_business_unit_id: activeBusinessUnitId,
+        p_business_unit_id: stampBusinessUnit.businessUnitId,
       },
     );
 

@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getActiveBusinessUnitId,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import {
   fetchBalanceSheetPageData,
@@ -99,9 +101,11 @@ export async function fetchMonthlyBalanceSheetReportData(
   tenantId: string,
 ) {
   const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const viewAllBusinessUnits = await getViewAllBusinessUnits();
   return fetchBalanceSheetPageData(supabase, tenantId, {
     dateRange: null,
     activeBusinessUnitId,
+    viewAllBusinessUnits,
   });
 }
 
@@ -109,7 +113,14 @@ export async function fetchCashFlowReportData(
   supabase: SupabaseClient,
   tenantId: string,
 ) {
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   let manualEntriesQuery = supabase
     .from("manual_financial_entries")
@@ -120,15 +131,18 @@ export async function fetchCashFlowReportData(
     .select("month, total_net_pay")
     .order("month", { ascending: true });
 
-  if (activeBusinessUnitId) {
+  if (buScope.mode === "unit") {
     manualEntriesQuery = manualEntriesQuery.eq(
       "business_unit_id",
-      activeBusinessUnitId,
+      buScope.id,
     );
     monthEndCloseQuery = monthEndCloseQuery.eq(
       "business_unit_id",
-      activeBusinessUnitId,
+      buScope.id,
     );
+  } else if (buScope.mode === "default") {
+    manualEntriesQuery = manualEntriesQuery.is("business_unit_id", null);
+    monthEndCloseQuery = monthEndCloseQuery.is("business_unit_id", null);
   }
 
   const [
@@ -187,11 +201,12 @@ export async function fetchCashFlowReportData(
 
   const rawManualEntries =
     (manualEntries as ManualFinancialEntryRecord[] | null) ?? [];
-  const resolvedManualEntries: ManualFinancialEntry[] = activeBusinessUnitId
-    ? (rawManualEntries as ManualFinancialEntry[])
-    : (aggregateManualEntriesByPeriodMonth(
-        rawManualEntries,
-      ) as ManualFinancialEntry[]);
+  const resolvedManualEntries: ManualFinancialEntry[] =
+    buScope.mode === "all"
+      ? (aggregateManualEntriesByPeriodMonth(
+          rawManualEntries,
+        ) as ManualFinancialEntry[])
+      : (rawManualEntries as ManualFinancialEntry[]);
 
   return {
     initialIncomeEntries: incomeEntries ?? [],

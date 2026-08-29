@@ -11,6 +11,7 @@ import {
   type SalesTaxBasis,
 } from "@/app/dashboard/finance/tax-utils";
 import TaxSettingReviewBanner from "@/app/dashboard/finance/tax-setting-review-banner";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type SalesTaxBasisSettingsProps = {
   tenantId: string;
@@ -36,6 +37,7 @@ export default function SalesTaxBasisSettings({
 }: SalesTaxBasisSettingsProps) {
   const router = useRouter();
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [salesTaxBasis, setSalesTaxBasis] = useState<SalesTaxBasis>(
     initialSalesTaxBasis,
   );
@@ -49,10 +51,16 @@ export default function SalesTaxBasisSettings({
     setError(null);
     setInfoMessage(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setSaving(false);
+      return;
+    }
+
     const { error: saveError } = await supabase.from("tax_settings").upsert(
       {
         tenant_id: tenantId,
-        business_unit_id: activeBusinessUnitId,
+        business_unit_id: stampBusinessUnit.businessUnitId,
         sales_tax_basis: salesTaxBasis,
         updated_at: new Date().toISOString(),
       },

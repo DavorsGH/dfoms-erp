@@ -22,6 +22,7 @@ import {
   SALARY_RATE_SHIFTS,
   type SalaryRateEntry,
 } from "./salary-rates-utils";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type SalaryRatesProps = {
   initialRates: SalaryRateEntry[];
@@ -45,6 +46,7 @@ export default function SalaryRates({
   activeBusinessUnitId = null,
 }: SalaryRatesProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [rates, setRates] = useState(initialRates);
   const [positions, setPositions] = useState(initialPositions);
   const [showForm, setShowForm] = useState(false);
@@ -162,6 +164,12 @@ export default function SalaryRates({
     setLoading(true);
     setError(null);
 
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       position: form.position,
       employment_type: form.employment_type,
@@ -177,7 +185,9 @@ export default function SalaryRates({
           .eq("id", editingId)
       : await supabase.from("salary_rate_config").insert({
           ...payload,
-          business_unit_id: activeBusinessUnitId,
+          business_unit_id: stampBusinessUnit.ok
+            ? stampBusinessUnit.businessUnitId
+            : null,
         });
 
     if (saveError) {

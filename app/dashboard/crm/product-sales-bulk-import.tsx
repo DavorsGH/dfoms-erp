@@ -16,6 +16,7 @@ import {
   type ProductSaleImportPreview,
   type ProductSaleImportRunSummary,
 } from "./product-sales-bulk-import-utils";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 const IMPORT_ACCEPT =
   ".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv";
@@ -117,6 +118,7 @@ export default function ProductSalesBulkImport({
   activeBusinessUnitId = null,
 }: ProductSalesBulkImportProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [preview, setPreview] = useState<ProductSaleImportPreview | null>(null);
   const [importSummary, setImportSummary] =
     useState<ProductSaleImportRunSummary | null>(null);
@@ -166,6 +168,11 @@ export default function ProductSalesBulkImport({
       return;
     }
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      return;
+    }
+
     setImporting(true);
     setError(null);
     setImportSummary(null);
@@ -177,7 +184,7 @@ export default function ProductSalesBulkImport({
           "create_product_sale",
           {
             ...payload,
-            p_business_unit_id: activeBusinessUnitId,
+            p_business_unit_id: stampBusinessUnit.businessUnitId,
           },
         );
 

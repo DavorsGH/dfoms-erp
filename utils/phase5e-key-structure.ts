@@ -2,12 +2,17 @@
  * Phase 5e key-structure helpers for tax_settings, month_end_close,
  * manual_financial_entries (and payroll_link schema).
  *
- * Null business_unit_id = default/legacy row (tenants with no BUs, or writes
- * while "All Businesses" is selected — except Lock Period gate in phase5e-lock).
+ * Null business_unit_id = default/legacy (workspace) row. Aggregate "All
+ * Businesses" is a separate view flag — see `@/utils/business-unit-view`.
  *
  * This module is client-safe (no next/headers). Server-only lock helpers live in
  * `@/utils/phase5e-lock`.
  */
+
+export {
+  LOCK_REQUIRES_SCOPED_BU_MESSAGE,
+  LOCK_REQUIRES_SPECIFIC_BU_MESSAGE,
+} from "@/utils/business-unit-view";
 
 export const TAX_SETTINGS_ON_CONFLICT = "tenant_id,business_unit_id" as const;
 export const MONTH_END_CLOSE_ON_CONFLICT =
@@ -16,9 +21,6 @@ export const MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT =
   "tenant_id,business_unit_id,period_month" as const;
 export const PAYROLL_LINK_ON_CONFLICT =
   "tenant_id,business_unit_id,payroll_month" as const;
-
-export const LOCK_REQUIRES_SPECIFIC_BU_MESSAGE =
-  "Select a specific business before locking payroll. Locking while All Businesses is selected is not allowed when this workspace has business units.";
 
 /**
  * Scope a Supabase query to one BU row, or the null default row.
@@ -37,15 +39,14 @@ export function scopeToBusinessUnitId<T>(
 }
 
 /**
- * When filtering reads for UI "current context":
+ * When filtering reads for UI scoped context:
  * - concrete BU → that BU only
- * - null (All Businesses) → for config tables prefer null default row;
- *   for aggregates callers should omit this and sum all rows instead.
+ * - null (workspace default) → null default row
+ * Aggregate "All Businesses" must not use this — callers sum all rows instead.
  */
 export function scopeTaxSettingsRead<T>(
   query: T,
   activeBusinessUnitId: string | null,
 ): T {
-  // Config: All Businesses edits/reads the null default row (zero-BU path).
   return scopeToBusinessUnitId(query, activeBusinessUnitId);
 }

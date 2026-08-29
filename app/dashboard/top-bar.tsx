@@ -18,6 +18,8 @@ type TopBarProps = {
   businessUnitSwitcher?: {
     units: BusinessUnitSwitcherOption[];
     activeBusinessUnitId: string | null;
+    viewAllBusinessUnits: boolean;
+    workspaceName: string;
   } | null;
 };
 
@@ -66,6 +68,8 @@ export default function TopBar({
           <BusinessUnitSwitcher
             units={businessUnitSwitcher.units}
             activeBusinessUnitId={businessUnitSwitcher.activeBusinessUnitId}
+            viewAllBusinessUnits={businessUnitSwitcher.viewAllBusinessUnits}
+            workspaceName={businessUnitSwitcher.workspaceName}
           />
         ) : null}
         {userRole === "client" ? <ClientNotificationBell /> : <NotificationBell />}

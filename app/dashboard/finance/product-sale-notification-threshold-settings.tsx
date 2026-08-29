@@ -9,6 +9,7 @@ import {
   PRODUCT_SALE_NOTIFICATION_THRESHOLD_OPTIONS,
   normalizeProductSaleNotificationThreshold,
 } from "./tax-utils";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type ProductSaleNotificationThresholdSettingsProps = {
   tenantId: string;
@@ -32,6 +33,7 @@ export default function ProductSaleNotificationThresholdSettings({
 }: ProductSaleNotificationThresholdSettingsProps) {
   const router = useRouter();
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [threshold, setThreshold] = useState(initialThreshold);
   const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -47,12 +49,18 @@ export default function ProductSaleNotificationThresholdSettings({
     setError(null);
     setInfoMessage(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setSaving(false);
+      return;
+    }
+
     const normalized = normalizeProductSaleNotificationThreshold(threshold);
 
     const { error: saveError } = await supabase.from("tax_settings").upsert(
       {
         tenant_id: tenantId,
-        business_unit_id: activeBusinessUnitId,
+        business_unit_id: stampBusinessUnit.businessUnitId,
         product_sale_notification_threshold: normalized,
         updated_at: new Date().toISOString(),
       },

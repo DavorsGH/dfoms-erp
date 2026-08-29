@@ -19,6 +19,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
@@ -80,6 +81,7 @@ export default function RawMaterials({
   activeBusinessUnitId = null,
 }: RawMaterialsProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [materials, setMaterials] = useState(
     initialMaterials.map(normalizeRawMaterial),
   );
@@ -420,6 +422,12 @@ export default function RawMaterials({
     setLoading(true);
     setError(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const quantity = Number.parseFloat(purchaseForm.quantity);
     const costPerUnit = Number.parseFloat(purchaseForm.cost_per_unit);
 
@@ -459,7 +467,7 @@ export default function RawMaterials({
         payment_method: purchaseForm.payment_method.trim(),
         notes: nullableText(purchaseForm.notes),
         project_id: resolveOptionalProjectId(purchaseForm.project_id),
-        business_unit_id: activeBusinessUnitId,
+        business_unit_id: stampBusinessUnit.businessUnitId,
       });
 
     if (insertError) {
