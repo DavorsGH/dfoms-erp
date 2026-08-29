@@ -278,3 +278,239 @@ export function getDefaultPeriodSelection(): { year: number; month: number } {
     month: now.getMonth() + 1,
   };
 }
+
+export type LiabilityStockKey =
+  | "bank_loans"
+  | "other_long_term_liabilities"
+  | "directors_loan";
+
+export const LIABILITY_STOCK_LABELS: Record<LiabilityStockKey, string> = {
+  bank_loans: "Bank Loans",
+  other_long_term_liabilities: "Other Long-Term Liabilities",
+  directors_loan: "Director's Loan",
+};
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/** Month-end liability stock as at a calendar month (FY carry-forward within the year). */
+export function resolveLiabilityStockAsAt(
+  entries: ManualFinancialEntryRecord[],
+  field: LiabilityStockKey,
+  year: number,
+  month: number,
+): number {
+  const explicitByMonth = new Map<number, number>();
+  for (const entry of entries) {
+    const parts = getPeriodMonthParts(entry.period_month);
+    if (!parts || parts.year !== year) {
+      continue;
+    }
+    explicitByMonth.set(parts.month, Number(entry[field]) || 0);
+  }
+
+  let running = 0;
+  for (let m = 1; m <= month; m += 1) {
+    if (explicitByMonth.has(m)) {
+      running = explicitByMonth.get(m) ?? 0;
+    }
+  }
+  return roundCurrency(running);
+}
+
+function baseRowFields(
+  existing: ManualFinancialEntryRecord | null,
+  periodMonth: string,
+  tenantId: string,
+  businessUnitId: string | null,
+): ManualFinancialEntryRecord {
+  const seeded: ManualFinancialEntryRecord = {
+    period_month: normalizePeriodMonth(periodMonth),
+    tenant_id: tenantId,
+    business_unit_id: businessUnitId,
+    notes: existing?.notes ?? null,
+  };
+  for (const key of MANUAL_ENTRY_FORM_FIELD_KEYS) {
+    seeded[key] = Number(existing?.[key]) || 0;
+  }
+  return seeded;
+}
+
+function appendNotes(
+  existing: string | null | undefined,
+  addition: string,
+): string {
+  const prior = (existing ?? "").trim();
+  const next = addition.trim();
+  if (!next) {
+    return prior;
+  }
+  if (!prior) {
+    return next;
+  }
+  return `${prior}\n${next}`;
+}
+
+export function applyLiabilityMoneyReceived(params: {
+  existing: ManualFinancialEntryRecord | null;
+  periodMonth: string;
+  tenantId: string;
+  businessUnitId: string | null;
+  stockKey: LiabilityStockKey;
+  priorStock: number;
+  amount: number;
+  notes?: string;
+}): ManualFinancialEntryRecord {
+  const amount = roundCurrency(params.amount);
+  const row = baseRowFields(
+    params.existing,
+    params.periodMonth,
+    params.tenantId,
+    params.businessUnitId,
+  );
+  row[params.stockKey] = roundCurrency(params.priorStock + amount);
+  row.loan_proceeds = roundCurrency((Number(row.loan_proceeds) || 0) + amount);
+  if (params.notes?.trim()) {
+    row.notes = appendNotes(row.notes, params.notes.trim());
+  }
+  return row;
+}
+
+export function applyLiabilityMoneyRepaid(params: {
+  existing: ManualFinancialEntryRecord | null;
+  periodMonth: string;
+  tenantId: string;
+  businessUnitId: string | null;
+  stockKey: LiabilityStockKey;
+  priorStock: number;
+  amount: number;
+  notes?: string;
+}): ManualFinancialEntryRecord {
+  const amount = roundCurrency(params.amount);
+  const row = baseRowFields(
+    params.existing,
+    params.periodMonth,
+    params.tenantId,
+    params.businessUnitId,
+  );
+  row[params.stockKey] = roundCurrency(Math.max(0, params.priorStock - amount));
+  row.loan_repayments = roundCurrency(
+    (Number(row.loan_repayments) || 0) + amount,
+  );
+  if (params.notes?.trim()) {
+    row.notes = appendNotes(row.notes, params.notes.trim());
+  }
+  return row;
+}
+
+export function applyLiabilityNonCashAdjustment(params: {
+  existing: ManualFinancialEntryRecord | null;
+  periodMonth: string;
+  tenantId: string;
+  businessUnitId: string | null;
+  stockKey: LiabilityStockKey;
+  priorStock: number;
+  amount: number;
+  direction: "increase" | "decrease";
+  reason: string;
+}): ManualFinancialEntryRecord {
+  const amount = roundCurrency(params.amount);
+  const row = baseRowFields(
+    params.existing,
+    params.periodMonth,
+    params.tenantId,
+    params.businessUnitId,
+  );
+  const nextStock =
+    params.direction === "increase"
+      ? params.priorStock + amount
+      : Math.max(0, params.priorStock - amount);
+  row[params.stockKey] = roundCurrency(nextStock);
+  row.notes = appendNotes(
+    row.notes,
+    `[Non-cash] ${params.reason.trim()}`,
+  );
+  return row;
+}
+
+export function applySetOpeningCashBalance(params: {
+  existing: ManualFinancialEntryRecord | null;
+  periodMonth: string;
+  tenantId: string;
+  businessUnitId: string | null;
+  amount: number;
+  notes?: string;
+}): ManualFinancialEntryRecord {
+  const row = baseRowFields(
+    params.existing,
+    params.periodMonth,
+    params.tenantId,
+    params.businessUnitId,
+  );
+  row.opening_cash_balance = roundCurrency(params.amount);
+  if (params.notes?.trim()) {
+    row.notes = appendNotes(row.notes, params.notes.trim());
+  }
+  return row;
+}
+
+export function applyAddOtherCashInflows(params: {
+  existing: ManualFinancialEntryRecord | null;
+  periodMonth: string;
+  tenantId: string;
+  businessUnitId: string | null;
+  amount: number;
+  notes?: string;
+}): ManualFinancialEntryRecord {
+  const amount = roundCurrency(params.amount);
+  const row = baseRowFields(
+    params.existing,
+    params.periodMonth,
+    params.tenantId,
+    params.businessUnitId,
+  );
+  row.other_cash_inflows = roundCurrency(
+    (Number(row.other_cash_inflows) || 0) + amount,
+  );
+  if (params.notes?.trim()) {
+    row.notes = appendNotes(row.notes, params.notes.trim());
+  }
+  return row;
+}
+
+/** Confirm delete with a full field listing for the month row. */
+export function confirmDeleteManualEntry(
+  entry: ManualFinancialEntryRecord,
+): boolean {
+  const lines = MANUAL_ENTRY_LIST_COLUMNS.map(
+    (column) => `${column.label}: ${formatGHS(entry[column.key] ?? 0)}`,
+  ).join("\n");
+  return window.confirm(
+    `Delete manual entry for ${formatPeriodMonthLabel(entry.period_month)}?\n\nThis removes the entire month row:\n${lines}`,
+  );
+}
+
+export function entryToCashMovementManualEntry(
+  entry: ManualFinancialEntryRecord,
+): {
+  period_month: string;
+  loan_proceeds?: number;
+  loan_repayments?: number;
+  other_cash_inflows?: number;
+  opening_cash_balance?: number;
+  bank_loans?: number;
+  other_long_term_liabilities?: number;
+  directors_loan?: number;
+} {
+  return {
+    period_month: entry.period_month,
+    loan_proceeds: entry.loan_proceeds,
+    loan_repayments: entry.loan_repayments,
+    other_cash_inflows: entry.other_cash_inflows,
+    opening_cash_balance: entry.opening_cash_balance,
+    bank_loans: entry.bank_loans,
+    other_long_term_liabilities: entry.other_long_term_liabilities,
+    directors_loan: entry.directors_loan,
+  };
+}

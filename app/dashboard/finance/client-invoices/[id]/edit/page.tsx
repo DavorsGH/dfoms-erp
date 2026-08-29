@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { getActiveBusinessUnitId, getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadClientInvoiceDetail, loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import { loadActiveServiceContractsForTenant } from "@/utils/service-contracts-api";
@@ -40,6 +40,7 @@ export default async function EditClientInvoicePage({
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   const [
     detail,
@@ -63,7 +64,7 @@ export default async function EditClientInvoicePage({
       .eq("is_active", true)
       .order("account_name", { ascending: true }),
     loadAuthorizedSignerOptions(supabase, tenantId),
-    loadTenantSalesTaxBasis(supabase, tenantId),
+    loadTenantSalesTaxBasis(supabase, tenantId, activeBusinessUnitId),
     loadActiveServiceContractsForTenant(supabase, tenantId),
   ]);
 

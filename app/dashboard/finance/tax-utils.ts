@@ -340,21 +340,15 @@ export function resolveDefaultWhtRate(settings: TaxSettings | null): number {
 export async function loadTenantGraTin(
   supabase: SupabaseClient,
   tenantId: string,
-  businessUnitId?: string | null,
+  /** Active BU, or null for the default/All Businesses tax_settings row. */
+  businessUnitId: string | null = null,
 ): Promise<string | null> {
-  const buId =
-    businessUnitId === undefined
-      ? await (
-          await import("@/utils/dashboard-auth")
-        ).getActiveBusinessUnitId()
-      : businessUnitId;
-
   const { data, error } = await scopeTaxSettingsRead(
     supabase
       .from("tax_settings")
       .select("gra_tin")
       .eq("tenant_id", tenantId),
-    buId,
+    businessUnitId,
   ).maybeSingle();
 
   if (error || !data?.gra_tin?.trim()) {
@@ -367,25 +361,19 @@ export async function loadTenantGraTin(
 export async function loadTenantSalesTaxBasis(
   supabase: SupabaseClient,
   tenantId: string,
-  businessUnitId?: string | null,
+  /** Active BU, or null for the default/All Businesses tax_settings row. */
+  businessUnitId: string | null = null,
 ): Promise<{
   salesTaxBasis: SalesTaxBasis;
   salesTaxBasisReviewedAt: string | null;
   error: string | null;
 }> {
-  const buId =
-    businessUnitId === undefined
-      ? await (
-          await import("@/utils/dashboard-auth")
-        ).getActiveBusinessUnitId()
-      : businessUnitId;
-
   const { data, error } = await scopeTaxSettingsRead(
     supabase
       .from("tax_settings")
       .select("sales_tax_basis, sales_tax_basis_reviewed_at")
       .eq("tenant_id", tenantId),
-    buId,
+    businessUnitId,
   ).maybeSingle();
 
   if (error) {

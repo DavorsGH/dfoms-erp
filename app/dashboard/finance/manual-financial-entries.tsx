@@ -8,7 +8,6 @@ import {
   scopeToBusinessUnitId,
 } from "@/utils/phase5e-key-structure";
 import RegisterRowActions, {
-  confirmDeleteEntry,
   getStripedRowClassName,
 } from "./register-row-actions";
 import ScrollableTable, {
@@ -18,22 +17,25 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
 import {
+  LIABILITY_STOCK_LABELS,
   MANUAL_ENTRY_FIELD_DESCRIPTIONS,
-  MANUAL_ENTRY_FIELD_SECTIONS,
   MANUAL_ENTRY_LIST_COLUMNS,
-  MANUAL_ENTRY_PAIRING_NOTE,
-  MANUAL_ENTRY_SECTION_STYLES,
+  applyAddOtherCashInflows,
+  applyLiabilityMoneyReceived,
+  applyLiabilityMoneyRepaid,
+  applyLiabilityNonCashAdjustment,
+  applySetOpeningCashBalance,
   buildPeriodMonth,
-  emptyManualEntryForm,
-  entryToForm,
+  confirmDeleteManualEntry,
+  entryToCashMovementManualEntry,
   findEntryByPeriodMonth,
   formatGHS,
   formatPeriodMonthLabel,
-  formToPayload,
   getDefaultPeriodSelection,
   getPeriodMonthParts,
   normalizePeriodMonth,
-  type ManualEntryFormFieldKey,
+  resolveLiabilityStockAsAt,
+  type LiabilityStockKey,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
@@ -55,6 +57,13 @@ type ManualFinancialEntriesProps = {
   activeBusinessUnitId?: string | null;
 };
 
+type ActiveAction =
+  | { kind: "receive"; liability: LiabilityStockKey }
+  | { kind: "repay"; liability: LiabilityStockKey }
+  | { kind: "noncash"; liability: LiabilityStockKey }
+  | { kind: "set_opening_cash" }
+  | { kind: "add_other_inflows" };
+
 const MONTH_OPTIONS = [
   "January",
   "February",
@@ -73,6 +82,31 @@ const MONTH_OPTIONS = [
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
+const primaryButtonClassName =
+  "rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50";
+
+const secondaryButtonClassName =
+  "rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const advancedButtonClassName =
+  "rounded-md border border-dashed border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+function upsertPayloadFromRow(row: ManualFinancialEntryRecord) {
+  return {
+    tenant_id: row.tenant_id,
+    business_unit_id: row.business_unit_id ?? null,
+    period_month: normalizePeriodMonth(row.period_month),
+    bank_loans: Number(row.bank_loans) || 0,
+    other_long_term_liabilities: Number(row.other_long_term_liabilities) || 0,
+    directors_loan: Number(row.directors_loan) || 0,
+    loan_proceeds: Number(row.loan_proceeds) || 0,
+    loan_repayments: Number(row.loan_repayments) || 0,
+    opening_cash_balance: Number(row.opening_cash_balance) || 0,
+    other_cash_inflows: Number(row.other_cash_inflows) || 0,
+    notes: row.notes ?? null,
+  };
+}
+
 export default function ManualFinancialEntries({
   tenantId,
   initialEntries,
@@ -87,16 +121,20 @@ export default function ManualFinancialEntries({
   const defaultPeriod = getDefaultPeriodSelection();
 
   const [entries, setEntries] = useState(initialEntries);
-  const [showForm, setShowForm] = useState(false);
-  const [editingPeriodMonth, setEditingPeriodMonth] = useState<string | null>(
-    null,
-  );
   const [deletingPeriodMonth, setDeletingPeriodMonth] = useState<string | null>(
     null,
   );
-  const [form, setForm] = useState(emptyManualEntryForm);
   const [selectedYear, setSelectedYear] = useState(String(defaultPeriod.year));
-  const [selectedMonth, setSelectedMonth] = useState(String(defaultPeriod.month));
+  const [selectedMonth, setSelectedMonth] = useState(
+    String(defaultPeriod.month),
+  );
+  const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
+  const [amount, setAmount] = useState("");
+  const [notes, setNotes] = useState("");
+  const [nonCashDirection, setNonCashDirection] = useState<
+    "increase" | "decrease"
+  >("increase");
+  const [nonCashReason, setNonCashReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -104,7 +142,9 @@ export default function ManualFinancialEntries({
   const availableYears = useMemo(() => {
     const years = new Set<number>([
       defaultPeriod.year,
-      ...entries.map((entry) => getPeriodMonthParts(entry.period_month)?.year ?? 0),
+      ...entries.map(
+        (entry) => getPeriodMonthParts(entry.period_month)?.year ?? 0,
+      ),
     ]);
 
     return Array.from(years)
@@ -112,53 +152,38 @@ export default function ManualFinancialEntries({
       .sort((left, right) => right - left);
   }, [defaultPeriod.year, entries]);
 
+  const periodMonth = buildPeriodMonth(
+    Number(selectedYear),
+    Number(selectedMonth),
+  );
+  const periodLabel = formatPeriodMonthLabel(periodMonth);
+
+  const liveManualCashEntries = useMemo(
+    () => entries.map(entryToCashMovementManualEntry),
+    [entries],
+  );
+
   useEffect(() => {
     setEntries(initialEntries);
   }, [initialEntries]);
 
-  useEffect(() => {
-    if (!showForm) {
-      return;
-    }
+  function closeActionForm() {
+    setActiveAction(null);
+    setAmount("");
+    setNotes("");
+    setNonCashDirection("increase");
+    setNonCashReason("");
+  }
 
-    const periodMonth = buildPeriodMonth(
-      Number(selectedYear),
-      Number(selectedMonth),
-    );
-    const existing = findEntryByPeriodMonth(
-      entries,
-      periodMonth,
-      activeBusinessUnitId,
-    );
-
-    if (
-      existing &&
-      normalizePeriodMonth(existing.period_month) !== editingPeriodMonth
-    ) {
-      setEditingPeriodMonth(normalizePeriodMonth(existing.period_month));
-      setForm(entryToForm(existing));
-      setInfoMessage(
-        `An entry already exists for ${formatPeriodMonthLabel(periodMonth)}. Opened in edit mode.`,
-      );
-      return;
-    }
-
-    if (!existing && editingPeriodMonth) {
-      setEditingPeriodMonth(null);
-      setForm(emptyManualEntryForm);
-    }
-
-    if (!existing) {
-      setInfoMessage(null);
-    }
-  }, [
-    showForm,
-    selectedYear,
-    selectedMonth,
-    entries,
-    editingPeriodMonth,
-    activeBusinessUnitId,
-  ]);
+  function openAction(action: ActiveAction) {
+    setError(null);
+    setInfoMessage(null);
+    setAmount("");
+    setNotes("");
+    setNonCashDirection("increase");
+    setNonCashReason("");
+    setActiveAction(action);
+  }
 
   async function refreshEntries() {
     const { data, error: refreshError } = await scopeToBusinessUnitId(
@@ -175,54 +200,51 @@ export default function ManualFinancialEntries({
     setError(null);
   }
 
-  function openAddForm() {
-    const period = getDefaultPeriodSelection();
-    const periodMonth = buildPeriodMonth(period.year, period.month);
-    const existing = findEntryByPeriodMonth(
-      entries,
-      periodMonth,
-      activeBusinessUnitId,
-    );
+  async function saveRow(
+    row: ManualFinancialEntryRecord,
+    successMessage: string,
+    notifyDirectorsLoanReceive?: number,
+  ) {
+    setLoading(true);
+    setError(null);
+    setInfoMessage(null);
 
-    if (existing) {
-      openEditForm(existing);
-      setInfoMessage(
-        `An entry already exists for ${formatPeriodMonthLabel(periodMonth)}. Opened in edit mode.`,
-      );
+    const { error: saveError } = await supabase
+      .from("manual_financial_entries")
+      .upsert(upsertPayloadFromRow(row), {
+        onConflict: MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT,
+      });
+
+    if (saveError) {
+      setError(saveError.message);
+      setLoading(false);
       return;
     }
 
-    setEditingPeriodMonth(null);
-    setForm(emptyManualEntryForm);
-    setSelectedYear(String(period.year));
-    setSelectedMonth(String(period.month));
-    setInfoMessage(null);
-    setShowForm(true);
+    if (
+      notifyDirectorsLoanReceive !== undefined &&
+      notifyDirectorsLoanReceive > 0
+    ) {
+      requestTenantAdminDirectorNotification({
+        title: "Director's loan cash received",
+        detail: formatGHS(notifyDirectorsLoanReceive),
+        actionUrl: "/dashboard/finance/manual-financial-entries",
+      });
+    }
+
+    closeActionForm();
+    await refreshEntries();
+    setInfoMessage(successMessage);
+    setLoading(false);
+    router.refresh();
   }
 
-  function closeForm() {
-    setEditingPeriodMonth(null);
-    setForm(emptyManualEntryForm);
-    setInfoMessage(null);
-    setShowForm(false);
-  }
-
-  function openEditForm(entry: ManualFinancialEntryRecord) {
-    const parts = getPeriodMonthParts(entry.period_month);
-    setEditingPeriodMonth(normalizePeriodMonth(entry.period_month));
-    setForm(entryToForm(entry));
-    setSelectedYear(String(parts?.year ?? defaultPeriod.year));
-    setSelectedMonth(String(parts?.month ?? defaultPeriod.month));
-    setInfoMessage(null);
-    setShowForm(true);
-  }
-
-  async function handleDelete(periodMonth: string, tenantId?: string) {
-    if (!confirmDeleteEntry()) {
+  async function handleDelete(entry: ManualFinancialEntryRecord) {
+    if (!confirmDeleteManualEntry(entry)) {
       return;
     }
 
-    const normalized = normalizePeriodMonth(periodMonth);
+    const normalized = normalizePeriodMonth(entry.period_month);
     setDeletingPeriodMonth(normalized);
     setError(null);
 
@@ -233,7 +255,9 @@ export default function ManualFinancialEntries({
         .eq("period_month", normalized),
       activeBusinessUnitId,
     );
-    if (tenantId) {
+    if (entry.tenant_id) {
+      query = query.eq("tenant_id", entry.tenant_id);
+    } else {
       query = query.eq("tenant_id", tenantId);
     }
 
@@ -245,128 +269,427 @@ export default function ManualFinancialEntries({
       return;
     }
 
-    if (editingPeriodMonth === normalized) {
-      closeForm();
-    }
-
     await refreshEntries();
     setDeletingPeriodMonth(null);
+    setInfoMessage(`Deleted entry for ${formatPeriodMonthLabel(normalized)}.`);
     router.refresh();
   }
 
-  async function handleSubmit(event: React.FormEvent) {
+  async function handleGuidedSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setLoading(true);
-    setError(null);
-    setInfoMessage(null);
+    if (!activeAction) {
+      return;
+    }
 
-    const periodMonth = buildPeriodMonth(
-      Number(selectedYear),
-      Number(selectedMonth),
-    );
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount)) {
+      setError("Enter a valid amount.");
+      return;
+    }
+
     const existing = findEntryByPeriodMonth(
       entries,
       periodMonth,
       activeBusinessUnitId,
     );
-    const wasNew = !existing && !editingPeriodMonth;
-    const payload = {
-      ...formToPayload(form, periodMonth),
-      tenant_id: tenantId,
-      business_unit_id: activeBusinessUnitId,
-    };
 
-    const { error: saveError } = await supabase
-      .from("manual_financial_entries")
-      .upsert(payload, { onConflict: MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT });
-
-    if (
-      !saveError &&
-      editingPeriodMonth &&
-      normalizePeriodMonth(editingPeriodMonth) !==
-        normalizePeriodMonth(periodMonth)
-    ) {
-      let deleteOldQuery = scopeToBusinessUnitId(
-        supabase
-          .from("manual_financial_entries")
-          .delete()
-          .eq("period_month", normalizePeriodMonth(editingPeriodMonth))
-          .eq("tenant_id", tenantId),
-        activeBusinessUnitId,
-      );
-      await deleteOldQuery;
-    }
-
-    if (!saveError && wasNew) {
-      requestTenantAdminDirectorNotification({
-        title: "Director's loan entry recorded",
-        detail: formatGHS(Number(form.directors_loan) || 0),
-        actionUrl: "/dashboard/finance/manual-financial-entries",
-      });
-    }
-
-    if (saveError) {
-      if (
-        saveError.message.includes("duplicate key") ||
-        saveError.message.includes("manual_financial_entries_period_month")
-      ) {
-        const duplicate = findEntryByPeriodMonth(
-          entries,
-          periodMonth,
-          activeBusinessUnitId,
-        );
-        if (duplicate) {
-          openEditForm(duplicate);
-          setError(
-            `An entry already exists for ${formatPeriodMonthLabel(periodMonth)}. Switched to edit mode.`,
-          );
-        } else {
-          setError(saveError.message);
-        }
-      } else {
-        setError(saveError.message);
+    if (activeAction.kind === "set_opening_cash") {
+      if (parsedAmount < 0) {
+        setError("Opening cash balance cannot be negative.");
+        return;
       }
-
-      setLoading(false);
+      const row = applySetOpeningCashBalance({
+        existing,
+        periodMonth,
+        tenantId,
+        businessUnitId: activeBusinessUnitId,
+        amount: parsedAmount,
+        notes,
+      });
+      await saveRow(
+        row,
+        `Opening cash balance set to ${formatGHS(parsedAmount)} for ${periodLabel}.`,
+      );
       return;
     }
 
-    closeForm();
-    await refreshEntries();
-    setLoading(false);
-    router.refresh();
+    if (parsedAmount <= 0) {
+      setError("Enter an amount greater than zero.");
+      return;
+    }
+
+    if (activeAction.kind === "add_other_inflows") {
+      const prior = Number(existing?.other_cash_inflows) || 0;
+      const row = applyAddOtherCashInflows({
+        existing,
+        periodMonth,
+        tenantId,
+        businessUnitId: activeBusinessUnitId,
+        amount: parsedAmount,
+        notes,
+      });
+      await saveRow(
+        row,
+        `Added ${formatGHS(parsedAmount)} to Other Cash Inflows for ${periodLabel} (now ${formatGHS(prior + parsedAmount)}).`,
+      );
+      return;
+    }
+
+    const stockKey = activeAction.liability;
+    const label = LIABILITY_STOCK_LABELS[stockKey];
+    const priorStock = resolveLiabilityStockAsAt(
+      entries,
+      stockKey,
+      Number(selectedYear),
+      Number(selectedMonth),
+    );
+
+    if (activeAction.kind === "receive") {
+      const nextStock = priorStock + parsedAmount;
+      const row = applyLiabilityMoneyReceived({
+        existing,
+        periodMonth,
+        tenantId,
+        businessUnitId: activeBusinessUnitId,
+        stockKey,
+        priorStock,
+        amount: parsedAmount,
+        notes,
+      });
+      await saveRow(
+        row,
+        `${label}: recorded ${formatGHS(parsedAmount)} received (${formatGHS(priorStock)} → ${formatGHS(nextStock)}).`,
+        stockKey === "directors_loan" ? parsedAmount : undefined,
+      );
+      return;
+    }
+
+    if (activeAction.kind === "repay") {
+      if (parsedAmount > priorStock + 0.005) {
+        setError(
+          `Repayment exceeds outstanding ${label} (${formatGHS(priorStock)}).`,
+        );
+        return;
+      }
+      const nextStock = Math.max(0, priorStock - parsedAmount);
+      const row = applyLiabilityMoneyRepaid({
+        existing,
+        periodMonth,
+        tenantId,
+        businessUnitId: activeBusinessUnitId,
+        stockKey,
+        priorStock,
+        amount: parsedAmount,
+        notes,
+      });
+      await saveRow(
+        row,
+        `${label}: recorded ${formatGHS(parsedAmount)} repaid (${formatGHS(priorStock)} → ${formatGHS(nextStock)}).`,
+      );
+      return;
+    }
+
+    // non-cash
+    if (nonCashReason.trim().length < 5) {
+      setError("Non-cash adjustment requires a reason (at least 5 characters).");
+      return;
+    }
+    const nextStock =
+      nonCashDirection === "increase"
+        ? priorStock + parsedAmount
+        : Math.max(0, priorStock - parsedAmount);
+    const row = applyLiabilityNonCashAdjustment({
+      existing,
+      periodMonth,
+      tenantId,
+      businessUnitId: activeBusinessUnitId,
+      stockKey,
+      priorStock,
+      amount: parsedAmount,
+      direction: nonCashDirection,
+      reason: nonCashReason,
+    });
+    await saveRow(
+      row,
+      `${label}: non-cash adjustment (${formatGHS(priorStock)} → ${formatGHS(nextStock)}). Cash flow unchanged.`,
+    );
   }
 
-  function updateField(key: ManualEntryFormFieldKey, value: string) {
-    setForm((current) => ({ ...current, [key]: value }));
+  function renderLiabilityCard(
+    stockKey: LiabilityStockKey,
+    options: { includeRepay: boolean },
+  ) {
+    const label = LIABILITY_STOCK_LABELS[stockKey];
+    const outstanding = resolveLiabilityStockAsAt(
+      entries,
+      stockKey,
+      Number(selectedYear),
+      Number(selectedMonth),
+    );
+    const isActive =
+      activeAction &&
+      (activeAction.kind === "receive" ||
+        activeAction.kind === "repay" ||
+        activeAction.kind === "noncash") &&
+      activeAction.liability === stockKey;
+
+    const previewAmount = Number(amount) || 0;
+    let preview: string | null = null;
+    if (isActive && previewAmount > 0) {
+      if (activeAction.kind === "receive") {
+        preview = `Will set ${label} to ${formatGHS(outstanding)} → ${formatGHS(outstanding + previewAmount)} and add ${formatGHS(previewAmount)} to Loan Proceeds for ${periodLabel}.`;
+      } else if (activeAction.kind === "repay") {
+        preview = `Will set ${label} to ${formatGHS(outstanding)} → ${formatGHS(Math.max(0, outstanding - previewAmount))} and add ${formatGHS(previewAmount)} to Loan Repayments for ${periodLabel}.`;
+      } else {
+        const next =
+          nonCashDirection === "increase"
+            ? outstanding + previewAmount
+            : Math.max(0, outstanding - previewAmount);
+        preview = `Will change ${label} ${formatGHS(outstanding)} → ${formatGHS(next)} only. Cash flow fields will not change.`;
+      }
+    }
+
+    return (
+      <section
+        key={stockKey}
+        className="space-y-4 rounded-lg border border-amber-200 bg-amber-50/40 p-5"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-[#0f2744]">{label}</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Outstanding as of {periodLabel}:{" "}
+              <span className="font-medium text-[#0f2744]">
+                {formatGHS(outstanding)}
+              </span>
+            </p>
+            {stockKey === "directors_loan" ? (
+              <p className="mt-1 text-xs text-slate-500">
+                To repay the director in cash, use Director&apos;s Loan —
+                Repayments below.
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={primaryButtonClassName}
+              onClick={() => openAction({ kind: "receive", liability: stockKey })}
+            >
+              Record money received
+            </button>
+            {options.includeRepay ? (
+              <button
+                type="button"
+                className={primaryButtonClassName}
+                onClick={() => openAction({ kind: "repay", liability: stockKey })}
+              >
+                Record money repaid
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={advancedButtonClassName}
+              onClick={() => openAction({ kind: "noncash", liability: stockKey })}
+            >
+              Non-cash adjustment
+            </button>
+          </div>
+        </div>
+
+        {isActive ? (
+          <form
+            onSubmit={handleGuidedSubmit}
+            className="space-y-4 rounded-md border border-amber-200 bg-white p-4"
+          >
+            <h4 className="text-sm font-semibold text-[#0f2744]">
+              {activeAction.kind === "receive"
+                ? "Record money received"
+                : activeAction.kind === "repay"
+                  ? "Record money repaid"
+                  : "Non-cash adjustment"}
+            </h4>
+
+            {activeAction.kind === "noncash" ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Direction
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={
+                      nonCashDirection === "increase"
+                        ? primaryButtonClassName
+                        : secondaryButtonClassName
+                    }
+                    onClick={() => setNonCashDirection("increase")}
+                  >
+                    Increase liability
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      nonCashDirection === "decrease"
+                        ? primaryButtonClassName
+                        : secondaryButtonClassName
+                    }
+                    onClick={() => setNonCashDirection("decrease")}
+                  >
+                    Decrease liability
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Amount (GHS)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                className={inputClassName}
+              />
+            </div>
+
+            {activeAction.kind === "noncash" ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Reason (required — no cash movement)
+                </label>
+                <textarea
+                  required
+                  minLength={5}
+                  rows={3}
+                  value={nonCashReason}
+                  onChange={(event) => setNonCashReason(event.target.value)}
+                  className={inputClassName}
+                  placeholder="e.g. Opening balance brought forward; loan forgiveness; reclassification"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Notes (optional)
+                </label>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  className={inputClassName}
+                />
+              </div>
+            )}
+
+            {preview ? (
+              <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+                {preview}
+              </p>
+            ) : null}
+
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={loading}
+                className={primaryButtonClassName}
+              >
+                {loading ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={closeActionForm}
+                className={secondaryButtonClassName}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </section>
+    );
   }
+
+  const openingCashActive = activeAction?.kind === "set_opening_cash";
+  const otherInflowsActive = activeAction?.kind === "add_other_inflows";
+  const existingForPeriod = findEntryByPeriodMonth(
+    entries,
+    periodMonth,
+    activeBusinessUnitId,
+  );
+  const currentOpeningCash = Number(existingForPeriod?.opening_cash_balance) || 0;
+  const currentOtherInflows = Number(existingForPeriod?.other_cash_inflows) || 0;
+  const otherInflowsPreviewAmount = Number(amount) || 0;
 
   const listColumnCount = MANUAL_ENTRY_LIST_COLUMNS.length + 2;
 
   return (
     <div className="min-w-0 space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="max-w-3xl space-y-2 text-sm text-slate-600">
-          <p>
-            Enter monthly liability balances and cash-flow adjustments that are
-            not calculated from other registers. One row per calendar month.
-          </p>
-          <p>
-            Share Capital is managed under{" "}
-            <span className="font-medium text-[#0f2744]">
-              Balance Sheet → Capital Contributions
-            </span>{" "}
-            and is excluded here to keep a single source of truth.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => (showForm ? closeForm() : openAddForm())}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          {showForm ? "Cancel" : "Add Entry"}
-        </button>
+      <div className="max-w-3xl space-y-2 text-sm text-slate-600">
+        <p>
+          Pick an action for each liability — enter one amount and the system
+          updates the liability balance and matching cash movement. Opening cash
+          and other inflows are entered directly.
+        </p>
+        <p>
+          Share Capital is managed under{" "}
+          <span className="font-medium text-[#0f2744]">
+            Balance Sheet → Capital Contributions
+          </span>
+          .
+        </p>
       </div>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">
+          Period for actions
+        </h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Month
+            </label>
+            <select
+              value={selectedMonth}
+              onChange={(event) => {
+                setSelectedMonth(event.target.value);
+                closeActionForm();
+              }}
+              className={inputClassName}
+            >
+              {MONTH_OPTIONS.map((label, index) => (
+                <option key={label} value={String(index + 1)}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Year
+            </label>
+            <select
+              value={selectedYear}
+              onChange={(event) => {
+                setSelectedYear(event.target.value);
+                closeActionForm();
+              }}
+              className={inputClassName}
+            >
+              {availableYears.map((year) => (
+                <option key={year} value={String(year)}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
 
       {error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -380,121 +703,170 @@ export default function ManualFinancialEntries({
         </p>
       )}
 
-      {showForm && (
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
-            {editingPeriodMonth ? "Edit Manual Entry" : "New Manual Entry"}
-          </h2>
+      {renderLiabilityCard("bank_loans", { includeRepay: true })}
+      {renderLiabilityCard("other_long_term_liabilities", {
+        includeRepay: true,
+      })}
+      {renderLiabilityCard("directors_loan", { includeRepay: false })}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
+      <section className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50/40 p-5">
+        <h3 className="text-lg font-semibold text-[#0f2744]">Cash-only entries</h3>
+        <p className="text-sm text-slate-600">
+          These do not change liability balances.
+        </p>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-3 rounded-md border border-emerald-200 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Month
-                </label>
-                <select
-                  required
-                  value={selectedMonth}
-                  onChange={(event) => setSelectedMonth(event.target.value)}
-                  className={inputClassName}
-                >
-                  {MONTH_OPTIONS.map((label, index) => (
-                    <option key={label} value={String(index + 1)}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                <h4 className="font-medium text-[#0f2744]">
+                  Opening Cash Balance
+                </h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  {MANUAL_ENTRY_FIELD_DESCRIPTIONS.opening_cash_balance} Current
+                  for {periodLabel}: {formatGHS(currentOpeningCash)}
+                </p>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Year
-                </label>
-                <select
-                  required
-                  value={selectedYear}
-                  onChange={(event) => setSelectedYear(event.target.value)}
-                  className={inputClassName}
-                >
-                  {availableYears.map((year) => (
-                    <option key={year} value={String(year)}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <p className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              <span className="font-medium text-[#0f2744]">Pairing rule:</span>{" "}
-              {MANUAL_ENTRY_PAIRING_NOTE}
-            </p>
-
-            {MANUAL_ENTRY_FIELD_SECTIONS.map((section) => {
-              const styles = MANUAL_ENTRY_SECTION_STYLES[section.variant];
-
-              return (
-                <div
-                  key={section.title}
-                  className={`space-y-4 ${styles.sectionClassName}`}
-                >
-                  <div className="space-y-1">
-                    <h3
-                      className={`text-sm font-semibold uppercase tracking-wide ${styles.headerClassName}`}
-                    >
-                      {section.title}
-                    </h3>
-                    <p className="text-xs text-slate-600">{styles.groupLabel}</p>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {section.fields.map((field) => (
-                      <div key={field.key} className={styles.fieldClassName}>
-                        <label className="mb-1 block text-sm font-medium text-slate-800">
-                          {field.label}
-                        </label>
-                        <p className="mb-2 text-xs text-slate-600">
-                          {MANUAL_ENTRY_FIELD_DESCRIPTIONS[field.key]}
-                        </p>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={form[field.key]}
-                          onChange={(event) =>
-                            updateField(field.key, event.target.value)
-                          }
-                          aria-label={field.label}
-                          className={`${inputClassName} ${styles.inputClassName}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={loading}
-                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {loading
-                  ? "Saving…"
-                  : editingPeriodMonth
-                    ? "Save Changes"
-                    : "Save Entry"}
-              </button>
               <button
                 type="button"
-                onClick={closeForm}
-                disabled={loading}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className={primaryButtonClassName}
+                onClick={() => openAction({ kind: "set_opening_cash" })}
               >
-                Cancel
+                Set Opening Cash Balance
               </button>
             </div>
-          </form>
-        </section>
-      )}
+            {openingCashActive ? (
+              <form onSubmit={handleGuidedSubmit} className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Amount (GHS) — replaces this month&apos;s value
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Notes (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+                {Number(amount) >= 0 && amount !== "" ? (
+                  <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+                    Will set Opening Cash Balance to{" "}
+                    {formatGHS(Number(amount) || 0)} for {periodLabel}{" "}
+                    (replaces {formatGHS(currentOpeningCash)}).
+                  </p>
+                ) : null}
+                <div className="flex gap-3">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className={primaryButtonClassName}
+                  >
+                    {loading ? "Saving…" : "Set"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={closeActionForm}
+                    className={secondaryButtonClassName}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : null}
+          </div>
+
+          <div className="space-y-3 rounded-md border border-emerald-200 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h4 className="font-medium text-[#0f2744]">
+                  Other Cash Inflows
+                </h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  {MANUAL_ENTRY_FIELD_DESCRIPTIONS.other_cash_inflows} Current for{" "}
+                  {periodLabel}: {formatGHS(currentOtherInflows)}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={primaryButtonClassName}
+                onClick={() => openAction({ kind: "add_other_inflows" })}
+              >
+                Record Other Cash Inflow
+              </button>
+            </div>
+            {otherInflowsActive ? (
+              <form onSubmit={handleGuidedSubmit} className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Amount (GHS) — adds to this month&apos;s total
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Notes (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    className={inputClassName}
+                  />
+                </div>
+                {otherInflowsPreviewAmount > 0 ? (
+                  <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+                    Will add {formatGHS(otherInflowsPreviewAmount)} to Other Cash
+                    Inflows for {periodLabel} (
+                    {formatGHS(currentOtherInflows)} →{" "}
+                    {formatGHS(currentOtherInflows + otherInflowsPreviewAmount)}
+                    ).
+                  </p>
+                ) : null}
+                <div className="flex gap-3">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className={primaryButtonClassName}
+                  >
+                    {loading ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={closeActionForm}
+                    className={secondaryButtonClassName}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : null}
+          </div>
+        </div>
+      </section>
 
       <FilteredListCount
         filteredCount={entries.length}
@@ -543,10 +915,7 @@ export default function ManualFinancialEntries({
                       </td>
                     ))}
                     <RegisterRowActions
-                      onEdit={() => openEditForm(entry)}
-                      onDelete={() =>
-                        handleDelete(entry.period_month, entry.tenant_id)
-                      }
+                      onDelete={() => handleDelete(entry)}
                       deleting={deletingPeriodMonth === rowKey}
                     />
                   </tr>
@@ -559,7 +928,11 @@ export default function ManualFinancialEntries({
 
       <DirectorsLoanRepaymentsPanel
         tenantId={tenantId}
-        manualEntries={initialManualCashEntries}
+        manualEntries={
+          liveManualCashEntries.length > 0
+            ? liveManualCashEntries
+            : initialManualCashEntries
+        }
         apPayments={initialApPayments}
         initialRepayments={initialDirectorsLoanRepayments}
         activeBusinessUnitId={activeBusinessUnitId}

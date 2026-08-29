@@ -536,9 +536,11 @@ export async function createClientInvoice(
     return { invoice: null, error: sequenceError };
   }
 
+  const businessUnitId = await resolveCreateBusinessUnitId(options);
   const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
     supabase,
     tenantId,
+    businessUnitId,
   );
   if (taxBasisError) {
     return { invoice: null, error: taxBasisError };
@@ -557,7 +559,6 @@ export async function createClientInvoice(
   headerPayload.status = "draft";
   headerPayload.amount_received = 0;
 
-  const businessUnitId = await resolveCreateBusinessUnitId(options);
   const insertPayload = {
     ...headerPayload,
     business_unit_id: businessUnitId,
@@ -744,9 +745,25 @@ export async function updateClientInvoice(
   existingSequence: number,
   existingInvoiceNumber: string,
 ) {
+  const { data: existingScope, error: scopeError } = await supabase
+    .from("client_invoices")
+    .select("business_unit_id")
+    .eq("id", invoiceId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (scopeError) {
+    return { invoice: null, error: scopeError.message };
+  }
+
+  const invoiceBusinessUnitId =
+    (existingScope?.business_unit_id as string | null | undefined)?.trim() ||
+    null;
+
   const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
     supabase,
     tenantId,
+    invoiceBusinessUnitId,
   );
   if (taxBasisError) {
     return { invoice: null, error: taxBasisError };

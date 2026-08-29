@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { getActiveBusinessUnitId, getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadServiceContractDetail } from "@/utils/service-contracts-api";
 import {
@@ -39,6 +39,7 @@ export default async function EditServiceContractPage({
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const activeBusinessUnitId = await getActiveBusinessUnitId();
 
   const [
     detail,
@@ -47,7 +48,7 @@ export default async function EditServiceContractPage({
   ] = await Promise.all([
     loadServiceContractDetail(supabase, tenantId, id),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
-    loadTenantSalesTaxBasis(supabase, tenantId),
+    loadTenantSalesTaxBasis(supabase, tenantId, activeBusinessUnitId),
   ]);
 
   if (!detail.contract) {
