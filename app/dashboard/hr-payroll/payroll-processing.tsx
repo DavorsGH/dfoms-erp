@@ -491,6 +491,24 @@ export default function PayrollProcessing({
     return (data as MonthEndCloseRecord | null) ?? null;
   }
 
+  /** True if any BU (or workspace default) has this month Locked / Partially Locked. */
+  async function monthHasAnyClosedLock(payrollMonth: string): Promise<boolean> {
+    const { data, error: closeError } = await supabase
+      .from("month_end_close")
+      .select("lock_status")
+      .eq("month", payrollMonth);
+
+    if (closeError) {
+      throw new Error(closeError.message);
+    }
+
+    return ((data as Pick<MonthEndCloseRecord, "lock_status">[] | null) ?? []).some(
+      (row) =>
+        row.lock_status === PAYROLL_STATUS_LOCKED ||
+        row.lock_status === PAYROLL_STATUS_PARTIALLY_LOCKED,
+    );
+  }
+
   async function syncOpenPeriod(
     period: SelectedPayrollPeriod,
     isCancelled: () => boolean = () => false,
@@ -658,18 +676,26 @@ export default function PayrollProcessing({
       }
       setMonthEndClose(closeRecord);
 
+      // Stale = history leftovers while the month is genuinely Open for this
+      // tenant. History that belongs to any Locked / Partially Locked MEC must
+      // never be treated as clearable "stale" data (All Businesses returns a
+      // null closeRecord and would otherwise false-trigger after a restore).
       if (!isMonthClosed(closeRecord)) {
-        const { count, error: staleHistoryError } = await supabase
-          .from("payroll_history")
-          .select("id", { count: "exact", head: true })
-          .eq("payroll_month", period.payrollMonth);
+        const [{ count, error: staleHistoryError }, closedElsewhere] =
+          await Promise.all([
+            supabase
+              .from("payroll_history")
+              .select("id", { count: "exact", head: true })
+              .eq("payroll_month", period.payrollMonth),
+            monthHasAnyClosedLock(period.payrollMonth),
+          ]);
 
         if (staleHistoryError) {
           throw new Error(staleHistoryError.message);
         }
 
         if (!isStaleLoad()) {
-          setHasStaleHistory((count ?? 0) > 0);
+          setHasStaleHistory((count ?? 0) > 0 && !closedElsewhere);
         }
       } else if (!isStaleLoad()) {
         setHasStaleHistory(false);
@@ -978,20 +1004,42 @@ export default function PayrollProcessing({
       return;
     }
 
-    if (isFullyLocked) {
-      setError("This month is permanently locked and cannot be cleared.");
+    if (isFullyLocked || isPartiallyLocked) {
+      setError(
+        "This month is locked or partially locked. History matches the lock record and cannot be cleared. Use Reopen Period if you need to discard it.",
+      );
+      return;
+    }
+
+    if (buReadScope.mode === "all") {
+      setError(
+        "Cannot clear payroll history while All Businesses is selected. Switch to workspace default or a specific business unit first.",
+      );
+      return;
+    }
+
+    try {
+      if (await monthHasAnyClosedLock(currentPeriod.payrollMonth)) {
+        setError(
+          "Cannot clear payroll history while this month is locked or partially locked for any business unit.",
+        );
+        setHasStaleHistory(false);
+        return;
+      }
+    } catch (lockCheckError) {
+      setError(
+        lockCheckError instanceof Error
+          ? lockCheckError.message
+          : "Unable to verify period lock status.",
+      );
       return;
     }
 
     const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
 
-    const confirmed = isPartiallyLocked
-      ? window.confirm(
-          `This month is partially locked. Clear payroll history for ${label}? This removes history records and should only be used to fix inconsistent data.`,
-        )
-      : window.confirm(
-          `Clear stale payroll history for ${label}? This removes leftover locked history rows while keeping the period Open.`,
-        );
+    const confirmed = window.confirm(
+      `Clear stale payroll history for ${label}? This removes leftover history rows while keeping the period Open. Do not use this if the month is locked.`,
+    );
 
     if (!confirmed) {
       return;
