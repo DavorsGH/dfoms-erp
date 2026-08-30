@@ -60,6 +60,10 @@ import {
   type ManualFinancialEntryRecord,
 } from "../finance/manual-financial-entries-utils";
 import type { ManualFinancialEntry } from "../finance/cash-flow-utils";
+import type {
+  AccountsPayablePaymentRow,
+  DirectorsLoanRepaymentRow,
+} from "../finance/directors-loan-utils";
 
 export async function fetchMonthlyPlReportData(supabase: SupabaseClient) {
   const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
@@ -166,6 +170,8 @@ export async function fetchCashFlowReportData(
     { data: fixedAssets, error: fixedAssetsError },
     { data: capitalContributions, error: capitalError },
     { data: payableEntries, error: payableError },
+    { data: apPayments, error: apPaymentsError },
+    { data: directorsLoanRepayments, error: directorsLoanRepaymentsError },
     { data: payrollHistory, error: payrollHistoryError },
     { data: payrollProcessing, error: payrollProcessingError },
     { data: monthEndCloseRecords, error: monthEndCloseError },
@@ -209,6 +215,21 @@ export async function fetchCashFlowReportData(
         ),
       buScope,
     ).order("invoice_date", { ascending: true }),
+    // §4: payment-path parity with Finance CF (cash-flow/page.tsx).
+    applyBusinessUnitScope(
+      supabase
+        .from("accounts_payable_payments")
+        .select("tenant_id, payment_date, amount, payment_source"),
+      buScope,
+    ).order("payment_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("directors_loan_repayments")
+        .select(
+          "tenant_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
+        ),
+      buScope,
+    ).order("repayment_date", { ascending: true }),
     // §5 (b): payroll cost via employees.business_unit_id — no payroll schema change.
     applyEmployeeIdScope(
       supabase.from("payroll_history").select("payroll_month, net_pay"),
@@ -233,6 +254,7 @@ export async function fetchCashFlowReportData(
       : (rawManualEntries as ManualFinancialEntry[]);
 
   return {
+    tenantId,
     initialIncomeEntries: incomeEntries ?? [],
     initialExpenseEntries: expenseEntries ?? [],
     initialManualEntries: resolvedManualEntries,
@@ -240,6 +262,10 @@ export async function fetchCashFlowReportData(
     initialFixedAssets: fixedAssets ?? [],
     initialCapitalContributions: capitalContributions ?? [],
     initialPayableEntries: payableEntries ?? [],
+    initialAccountsPayablePayments:
+      (apPayments as AccountsPayablePaymentRow[] | null) ?? [],
+    initialDirectorsLoanRepayments:
+      (directorsLoanRepayments as DirectorsLoanRepaymentRow[] | null) ?? [],
     initialPayrollHistory: mergePayrollWagesWithLiveOpenMonths(
       (payrollHistory as PayrollHistoryWagesEntry[] | null) ?? [],
       (payrollProcessing as PayrollProcessingRow[] | null) ?? [],
@@ -256,6 +282,11 @@ export async function fetchCashFlowReportData(
         ...(fixedAssets ?? []).map((entry) => entry.purchase_date),
         ...(capitalContributions ?? []).map((entry) => entry.date),
         ...(payableEntries ?? []).map((entry) => entry.invoice_date),
+        ...((apPayments as AccountsPayablePaymentRow[] | null) ?? []).map(
+          (entry) => entry.payment_date,
+        ),
+        ...((directorsLoanRepayments as DirectorsLoanRepaymentRow[] | null) ??
+          []).map((entry) => entry.repayment_date),
       ],
     ),
     fetchError:
@@ -266,6 +297,8 @@ export async function fetchCashFlowReportData(
       fixedAssetsError?.message ??
       capitalError?.message ??
       payableError?.message ??
+      apPaymentsError?.message ??
+      directorsLoanRepaymentsError?.message ??
       payrollHistoryError?.message ??
       payrollProcessingError?.message ??
       monthEndCloseError?.message ??

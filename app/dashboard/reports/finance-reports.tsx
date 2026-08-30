@@ -50,6 +50,10 @@ import type {
   BalanceSheetIncomeEntry,
   BalanceSheetTaxLedgerEntry,
 } from "../finance/balance-sheet-utils";
+import type {
+  AccountsPayablePaymentRow,
+  DirectorsLoanRepaymentRow,
+} from "../finance/directors-loan-utils";
 import type { TaxLedgerEntry } from "../finance/tax-ledger-utils";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -430,6 +434,7 @@ export function MonthlyBalanceSheetReport({
 }
 
 export function CashFlowStatementReport({
+  tenantId,
   initialIncomeEntries,
   initialExpenseEntries,
   initialManualEntries,
@@ -437,11 +442,14 @@ export function CashFlowStatementReport({
   initialFixedAssets,
   initialCapitalContributions = [],
   initialPayableEntries = [],
+  initialAccountsPayablePayments = [],
+  initialDirectorsLoanRepayments = [],
   initialPayrollHistory = [],
   initialMonthEndCloseNetPay = [],
   availableYears,
   fetchError,
 }: {
+  tenantId: string;
   initialIncomeEntries: CashFlowIncomeEntry[];
   initialExpenseEntries: CashFlowExpenseEntry[];
   initialManualEntries: ManualFinancialEntry[];
@@ -449,6 +457,8 @@ export function CashFlowStatementReport({
   initialFixedAssets: ProfitLossAssetEntry[];
   initialCapitalContributions?: CapitalContributionEntry[];
   initialPayableEntries?: BalanceSheetAccountsPayableEntry[];
+  initialAccountsPayablePayments?: AccountsPayablePaymentRow[];
+  initialDirectorsLoanRepayments?: DirectorsLoanRepaymentRow[];
   initialPayrollHistory?: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
   availableYears: number[];
@@ -483,14 +493,22 @@ export function CashFlowStatementReport({
         initialCapitalContributions,
         staffSalaryNetByPayrollMonth,
         initialPayableEntries,
+        {
+          tenantId,
+          accountsPayablePayments: initialAccountsPayablePayments,
+          directorsLoanRepayments: initialDirectorsLoanRepayments,
+        },
       ),
     [
+      tenantId,
       initialIncomeEntries,
       initialExpenseEntries,
       initialCapitalContributions,
       initialFixedAssets,
       initialInventoryPurchases,
       initialPayableEntries,
+      initialAccountsPayablePayments,
+      initialDirectorsLoanRepayments,
       staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       year,
