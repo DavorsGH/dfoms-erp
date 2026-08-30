@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { formatGHS } from "./finance/income-register-utils";
 import type { TenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status-core";
 
@@ -33,6 +33,10 @@ export default function DashboardBalanceSheetIntegrityBanner({
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStatus(initialStatus);
+  }, [initialStatus]);
 
   const handleCheckNow = useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {

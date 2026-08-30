@@ -8,6 +8,7 @@ import {
   getCurrentUserRole,
   getCurrentAuthUid,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { getDashboardVisibility } from "@/utils/rbac-access";
@@ -206,11 +207,13 @@ export default async function DashboardPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [tenantId, authUid, activeBusinessUnitId] = await Promise.all([
-    getCurrentUserTenantId(),
-    getCurrentAuthUid(),
-    getActiveBusinessUnitId(),
-  ]);
+  const [tenantId, authUid, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getCurrentAuthUid(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
 
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
@@ -222,6 +225,7 @@ export default async function DashboardPage() {
 
   const dashboardPageData = await fetchDashboardPageData(supabase, tenantId, {
     activeBusinessUnitId,
+    viewAllBusinessUnits,
   });
   const [dashboardDataBase, balanceSheetIntegrity] = await Promise.all([
     Promise.resolve(buildOwnerDashboardViewModel(dashboardPageData, tenantId)),

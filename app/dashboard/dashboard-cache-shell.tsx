@@ -44,11 +44,14 @@ export default function DashboardCacheShell({
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    setData(initialData);
+    setFetchError(initialFetchError);
+    setCachedAt(initialCachedAt);
     void setCachedDashboardSummary(session, {
       viewModel: initialData,
       fetchError: initialFetchError,
     }).then(setCachedAt);
-  }, [initialData, initialFetchError, session]);
+  }, [initialData, initialFetchError, initialCachedAt, session]);
 
   useEffect(() => {
     if (isOnline) {
