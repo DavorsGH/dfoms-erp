@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import {
+  INVENTORY_BALANCE_CONFIG_ON_CONFLICT,
   INVENTORY_BALANCE_CONFIG_SELECT,
   normalizeInventoryBalanceConfigRow,
   type InventoryBalanceConfigRow,
@@ -31,10 +32,12 @@ export async function GET() {
   }
 
   const supabase = await getTenantSupabase();
+  // Phase 7a: admin go-live UI still manages the workspace-default (null BU) row.
   const { data, error } = await supabase
     .from("inventory_balance_config")
     .select(INVENTORY_BALANCE_CONFIG_SELECT)
     .eq("tenant_id", auth.tenantId)
+    .is("business_unit_id", null)
     .maybeSingle();
 
   if (error) {
@@ -104,10 +107,11 @@ export async function PUT(request: Request) {
     .upsert(
       {
         tenant_id: auth.tenantId,
+        business_unit_id: null,
         go_live_date: goLiveDate,
         opening_inventory_value: openingInventoryValue,
       },
-      { onConflict: "tenant_id" },
+      { onConflict: INVENTORY_BALANCE_CONFIG_ON_CONFLICT },
     )
     .select(INVENTORY_BALANCE_CONFIG_SELECT)
     .single();

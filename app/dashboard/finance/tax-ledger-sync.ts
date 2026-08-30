@@ -64,6 +64,13 @@ export type IncomeTaxLedgerInput = {
   notes?: string | null;
   /** Omit to let the enforce_row_tenant_id() trigger stamp the caller's tenant. */
   tenantId?: string;
+  /**
+   * When set (including null), include on built rows for payload consistency.
+   * When omitted, syncIncomeRegisterTaxLedger looks up income_register.
+   * RPC replace_income_register_tax_ledger_entries remains SoR and stamps from
+   * the source income_register row (never the live switcher).
+   */
+  businessUnitId?: string | null;
 };
 
 /**
@@ -90,6 +97,9 @@ export function buildIncomeTaxLedgerRows(
     counterparty_name: input.counterpartyName ?? null,
     notes: input.notes ?? null,
     ...(input.tenantId ? { tenant_id: input.tenantId } : {}),
+    ...(Object.prototype.hasOwnProperty.call(input, "businessUnitId")
+      ? { business_unit_id: input.businessUnitId ?? null }
+      : {}),
   };
 
   const rows: TaxLedgerEntryInsert[] = [];
@@ -149,7 +159,18 @@ export async function syncIncomeRegisterTaxLedger(
   supabase: SupabaseClient,
   input: IncomeTaxLedgerInput,
 ): Promise<{ error: string | null }> {
-  const rows = buildIncomeTaxLedgerRows(input);
+  let resolvedInput = input;
+  if (!Object.prototype.hasOwnProperty.call(input, "businessUnitId")) {
+    const businessUnitId = await lookupIncomeSourceBusinessUnitId(
+      supabase,
+      input.sourceId,
+    );
+    resolvedInput = { ...input, businessUnitId };
+  }
+
+  const rows = buildIncomeTaxLedgerRows(resolvedInput);
+  // business_unit_id included for payload consistency; RPC SoR still stamps
+  // from income_register.business_unit_id (dfoms-265-tax-ledger-income-bu-stamp).
   const payload = rows.map((row) => ({
     tenant_id: row.tenant_id ?? null,
     entry_date: row.entry_date,
@@ -162,6 +183,7 @@ export async function syncIncomeRegisterTaxLedger(
     status: row.status,
     counterparty_name: row.counterparty_name,
     notes: row.notes,
+    business_unit_id: row.business_unit_id ?? null,
   }));
 
   const { error } = await supabase.rpc(
@@ -173,6 +195,22 @@ export async function syncIncomeRegisterTaxLedger(
   );
 
   return { error: error?.message ?? null };
+}
+
+async function lookupIncomeSourceBusinessUnitId(
+  supabase: SupabaseClient,
+  sourceId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("income_register")
+    .select("business_unit_id")
+    .eq("id", sourceId)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+  return (data?.business_unit_id as string | null | undefined) ?? null;
 }
 
 export type PurchaseTaxLedgerSourceType =
