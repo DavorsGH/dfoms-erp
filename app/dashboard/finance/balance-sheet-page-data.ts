@@ -50,7 +50,11 @@ import {
   aggregateManualEntriesByPeriodMonth,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
-import { resolveBusinessUnitReadScope, applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  resolveBusinessUnitReadScope,
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
@@ -158,9 +162,13 @@ export type BalanceSheetPageData = {
 export async function fetchInventoryBalanceSheetInput(
   supabase: SupabaseClient,
   tenantId: string,
-  options?: { requestCounter?: { count: number } },
+  options?: {
+    requestCounter?: { count: number };
+    buScope?: BusinessUnitReadScope;
+  },
 ): Promise<InventoryBalanceSheetInput> {
   const counter = options?.requestCounter;
+  const buScope = options?.buScope ?? ({ mode: "all" } as BusinessUnitReadScope);
 
   const [
     { data: configRows },
@@ -192,27 +200,39 @@ export async function fetchInventoryBalanceSheetInput(
       .order("product_name", { ascending: true }),
     // Combined production_batches + product_purchases weighted average cost
     // per finished product, computed server-side and scoped to this tenant.
+    // P2: still tenant-wide shared-pool average — not filtered by BU.
     supabase.rpc("get_finished_product_average_costs", {
       p_tenant_id: tenantId,
     }),
-    supabase
-      .from("raw_material_purchases")
-      .select("purchase_date, total_cost, payment_method, created_at")
-      .eq("tenant_id", tenantId),
-    supabase
-      .from("product_purchases")
-      .select("purchase_date, total_cost, payment_method, created_at")
-      .eq("tenant_id", tenantId),
+    applyBusinessUnitScope(
+      supabase
+        .from("raw_material_purchases")
+        .select("purchase_date, total_cost, payment_method, created_at")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
+    applyBusinessUnitScope(
+      supabase
+        .from("product_purchases")
+        .select("purchase_date, total_cost, payment_method, created_at")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
+    // P1 deferred: production_batches remain tenant-wide in this helper.
     supabase
       .from("production_batches")
       .select(
         "id, finished_product_id, production_date, total_batch_cost, created_at",
       )
       .eq("tenant_id", tenantId),
-    supabase
-      .from("product_purchases")
-      .select("product_id, purchase_date, total_cost, created_at")
-      .eq("tenant_id", tenantId),
+    applyBusinessUnitScope(
+      supabase
+        .from("product_purchases")
+        .select("product_id, purchase_date, total_cost, created_at")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
+    // P1 deferred: product_sale COGS slice remains tenant-wide.
     supabase
       .from("income_register")
       .select(
@@ -226,12 +246,15 @@ export async function fetchInventoryBalanceSheetInput(
       .select("product_id, consumption_date, expense_register_id")
       .eq("tenant_id", tenantId)
       .not("expense_register_id", "is", null),
-    supabase
-      .from("raw_material_purchases")
-      .select(
-        "material_id, purchase_date, quantity, cost_per_unit, created_at",
-      )
-      .eq("tenant_id", tenantId),
+    applyBusinessUnitScope(
+      supabase
+        .from("raw_material_purchases")
+        .select(
+          "material_id, purchase_date, quantity, cost_per_unit, created_at",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
   ]);
 
   if (counter) {
@@ -401,6 +424,7 @@ export async function fetchInventoryBalanceSheetInput(
 export async function fetchCashFlowInventoryPurchaseInput(
   supabase: SupabaseClient,
   tenantId: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ): Promise<CashFlowInventoryPurchaseInput> {
   const [
     { data: configRows },
@@ -412,14 +436,20 @@ export async function fetchCashFlowInventoryPurchaseInput(
       .select("go_live_date, opening_inventory_value, created_at")
       .eq("tenant_id", tenantId)
       .maybeSingle(),
-    supabase
-      .from("raw_material_purchases")
-      .select("purchase_date, total_cost, payment_method, created_at")
-      .eq("tenant_id", tenantId),
-    supabase
-      .from("product_purchases")
-      .select("purchase_date, total_cost, payment_method, created_at")
-      .eq("tenant_id", tenantId),
+    applyBusinessUnitScope(
+      supabase
+        .from("raw_material_purchases")
+        .select("purchase_date, total_cost, payment_method, created_at")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
+    applyBusinessUnitScope(
+      supabase
+        .from("product_purchases")
+        .select("purchase_date, total_cost, payment_method, created_at")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
   ]);
 
   return {
@@ -577,17 +607,22 @@ export async function fetchBalanceSheetPageData(
     payableQuery,
     apPaymentsQuery,
     directorsLoanRepaymentsQuery,
-    supabase
-      .from("capital_contributions")
-      .select("id, date, contributed_by, amount, description, notes")
-      .eq("tenant_id", tenantId)
-      .order("date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("capital_contributions")
+        .select("id, date, contributed_by, amount, description, notes")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("date", { ascending: true }),
     manualEntriesQuery,
     payrollHistoryQuery,
     payrollProcessingQuery,
     monthEndCloseQuery,
     taxLedgerQuery,
-    fetchInventoryBalanceSheetInput(supabase, tenantId, { requestCounter }),
+    fetchInventoryBalanceSheetInput(supabase, tenantId, {
+      requestCounter,
+      buScope,
+    }),
   ]);
 
   if (requestCounter) {

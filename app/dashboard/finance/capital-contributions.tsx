@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import type { Employee } from "../lookup-types";
 import {
   calculateShareCapitalAsOf,
@@ -46,6 +48,8 @@ export default function CapitalContributions({
   fetchError,
 }: CapitalContributionsProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(initialEntries);
   const [employees, setEmployees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
@@ -89,10 +93,14 @@ export default function CapitalContributions({
   }, [showForm]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("capital_contributions")
-      .select("*, employees!capital_contributions_contributed_by_fkey(full_name)")
-      .order("date", { ascending: false });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase
+        .from("capital_contributions")
+        .select(
+          "*, employees!capital_contributions_contributed_by_fkey(full_name)",
+        ),
+      buReadScope,
+    ).order("date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);
@@ -159,6 +167,12 @@ export default function CapitalContributions({
     setLoading(true);
     setError(null);
 
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       date: form.date,
       contributed_by: form.contributed_by,
@@ -172,7 +186,12 @@ export default function CapitalContributions({
           .from("capital_contributions")
           .update(payload)
           .eq("id", editingId)
-      : await supabase.from("capital_contributions").insert(payload);
+      : await supabase.from("capital_contributions").insert({
+          ...payload,
+          business_unit_id: stampBusinessUnit.ok
+            ? stampBusinessUnit.businessUnitId
+            : null,
+        });
 
     if (saveError) {
       setError(saveError.message);

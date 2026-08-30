@@ -12,6 +12,7 @@ export type CapitalContributionEntry = {
   amount: number;
   description: string | null;
   notes: string | null;
+  business_unit_id?: string | null;
   employees?: { full_name: string } | { full_name: string }[] | null;
 };
 

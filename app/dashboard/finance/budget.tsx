@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import {
+  useStampBusinessUnitId,
+  useBusinessUnitReadScope,
+} from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import type { ContractProjectOption } from "../administration/projects-utils";
 import type { NamedLookup } from "../lookup-types";
 import FilteredListCount from "../filtered-list-count";
@@ -93,6 +98,8 @@ export default function Budget({
 }: BudgetProps) {
   const router = useRouter();
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const defaultPeriod = getDefaultPeriodSelection();
 
   const [entries, setEntries] = useState(
@@ -169,10 +176,10 @@ export default function Budget({
   }, [initialEntries]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("budgets")
-      .select("*")
-      .eq("tenant_id", tenantId)
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase.from("budgets").select("*").eq("tenant_id", tenantId),
+      buReadScope,
+    )
       .order("period_month", { ascending: false })
       .order("category", { ascending: true });
 
@@ -285,6 +292,12 @@ export default function Budget({
     setError(null);
     setInfoMessage(null);
 
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const periodType = form.period_type;
     const periodMonth = resolveBudgetFormPeriodMonth(form);
     if (!validateBeforeSave(periodMonth, periodType)) {
@@ -314,7 +327,12 @@ export default function Budget({
         .eq("id", editingId)
         .eq("tenant_id", tenantId));
     } else {
-      ({ error: saveError } = await supabase.from("budgets").insert(payload));
+      ({ error: saveError } = await supabase.from("budgets").insert({
+        ...payload,
+        business_unit_id: stampBusinessUnit.ok
+          ? stampBusinessUnit.businessUnitId
+          : null,
+      }));
     }
 
     if (saveError) {

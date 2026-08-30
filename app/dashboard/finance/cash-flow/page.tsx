@@ -113,11 +113,13 @@ export default async function CashFlowPage() {
         .eq("tenant_id", tenantId),
       buScope,
     ).order("asset_id", { ascending: true }),
-    supabase
-      .from("capital_contributions")
-      .select("id, date, contributed_by, amount, description, notes")
-      .eq("tenant_id", tenantId)
-      .order("date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("capital_contributions")
+        .select("id, date, contributed_by, amount, description, notes")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("date", { ascending: true }),
     applyBusinessUnitScope(
       supabase
         .from("accounts_payable")
@@ -154,7 +156,7 @@ export default async function CashFlowPage() {
       .eq("tenant_id", tenantId)
       .order("payroll_month", { ascending: true }),
     monthEndCloseQuery,
-    fetchCashFlowInventoryPurchaseInput(supabase, tenantId),
+    fetchCashFlowInventoryPurchaseInput(supabase, tenantId, buScope),
     fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
   ]);
 

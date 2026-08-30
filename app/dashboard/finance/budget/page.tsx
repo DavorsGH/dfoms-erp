@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   CONTRACT_PROJECT_SELECT,
   type ContractProjectOption,
@@ -14,11 +22,21 @@ import { queryExpenseSubcategoryLookups } from "../expense-register-utils";
 export default async function BudgetPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const tenantId = await getCurrentUserTenantId();
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
 
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
   }
+
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: budgets, error: budgetsError },
@@ -26,10 +44,10 @@ export default async function BudgetPage() {
     { data: expenseSubcategories, error: subcategoriesError },
     { data: projects, error: projectsError },
   ] = await Promise.all([
-    supabase
-      .from("budgets")
-      .select("*")
-      .eq("tenant_id", tenantId)
+    applyBusinessUnitScope(
+      supabase.from("budgets").select("*").eq("tenant_id", tenantId),
+      buScope,
+    )
       .order("period_month", { ascending: false })
       .order("category", { ascending: true }),
     supabase
@@ -60,7 +78,9 @@ export default async function BudgetPage() {
         tenantId={tenantId}
         initialEntries={(budgets as BudgetRecord[] | null) ?? []}
         expenseCategories={(expenseCategories as NamedLookup[] | null) ?? []}
-        expenseSubcategories={(expenseSubcategories as NamedLookup[] | null) ?? []}
+        expenseSubcategories={
+          (expenseSubcategories as NamedLookup[] | null) ?? []
+        }
         projects={(projects as ContractProjectOption[] | null) ?? []}
         fetchError={fetchError}
       />

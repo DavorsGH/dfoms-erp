@@ -2,14 +2,15 @@ import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
 import { formatGeneratedInvoiceNumber, formatInvoiceDate, toNumber } from "@/utils/client-invoices-types";
 
 export const CLIENT_RECEIPT_LIST_SELECT =
-  "id, tenant_id, invoice_id, payment_id, receipt_number, receipt_sequence, receipt_date, amount, payment_method, notes, authorized_by_name, authorized_by_title, created_at, invoice:client_invoices!client_receipts_invoice_id_fkey(invoice_number, bill_to_name, client_id)" as const;
+  "id, tenant_id, business_unit_id, invoice_id, payment_id, receipt_number, receipt_sequence, receipt_date, amount, payment_method, notes, authorized_by_name, authorized_by_title, created_at, invoice:client_invoices!client_receipts_invoice_id_fkey(invoice_number, bill_to_name, client_id)" as const;
 
 export const CLIENT_RECEIPT_HEADER_SELECT =
-  "id, tenant_id, invoice_id, payment_id, receipt_number, receipt_sequence, receipt_date, amount, payment_method, notes, authorized_by_name, authorized_by_title, created_at" as const;
+  "id, tenant_id, business_unit_id, invoice_id, payment_id, receipt_number, receipt_sequence, receipt_date, amount, payment_method, notes, authorized_by_name, authorized_by_title, created_at" as const;
 
 export type ClientReceiptListRow = {
   id: string;
   tenant_id: string;
+  business_unit_id?: string | null;
   invoice_id: string;
   payment_id: string;
   receipt_number: string;
@@ -38,6 +39,7 @@ export type ClientReceiptListRow = {
 export type ClientReceiptHeaderRow = {
   id: string;
   tenant_id: string;
+  business_unit_id?: string | null;
   invoice_id: string;
   payment_id: string;
   receipt_number: string;

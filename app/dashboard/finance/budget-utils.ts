@@ -17,6 +17,7 @@ export type BudgetRecord = {
   period_type: BudgetPeriodType;
   budgeted_amount: number;
   notes: string | null;
+  business_unit_id?: string | null;
   created_at: string;
   updated_at: string;
 };

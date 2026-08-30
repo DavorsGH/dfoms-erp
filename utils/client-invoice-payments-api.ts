@@ -217,6 +217,8 @@ export async function recordClientInvoicePayment(
     };
   }
 
+  const inheritedBusinessUnitId = invoice.business_unit_id ?? null;
+
   const { data: payment, error: paymentError } = await supabase
     .from("client_invoice_payments")
     .insert({
@@ -227,6 +229,7 @@ export async function recordClientInvoicePayment(
       payment_method: nullableText(body.payment_method ?? null),
       notes: nullableText(body.notes ?? null),
       recorded_by: recordedBy,
+      business_unit_id: inheritedBusinessUnitId,
     })
     .select("id")
     .single();
@@ -301,6 +304,7 @@ export async function recordClientInvoicePayment(
       notes: nullableText(body.notes ?? null),
       authorized_by_name: defaults.signature_author_name,
       authorized_by_title: defaults.signature_author_title,
+      business_unit_id: inheritedBusinessUnitId,
     })
     .select(CLIENT_RECEIPT_HEADER_SELECT)
     .single();

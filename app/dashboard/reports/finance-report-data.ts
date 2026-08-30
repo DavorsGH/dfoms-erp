@@ -185,10 +185,12 @@ export async function fetchCashFlowReportData(
         ),
       buScope,
     ).order("asset_id", { ascending: true }),
-    supabase
-      .from("capital_contributions")
-      .select("id, date, contributed_by, amount, description, notes")
-      .order("date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("capital_contributions")
+        .select("id, date, contributed_by, amount, description, notes"),
+      buScope,
+    ).order("date", { ascending: true }),
     applyBusinessUnitScope(
       supabase
         .from("accounts_payable")
@@ -208,7 +210,7 @@ export async function fetchCashFlowReportData(
       .select("*")
       .order("payroll_month", { ascending: true }),
     monthEndCloseQuery,
-    fetchCashFlowInventoryPurchaseInput(supabase, tenantId),
+    fetchCashFlowInventoryPurchaseInput(supabase, tenantId, buScope),
     fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
   ]);
 
@@ -373,10 +375,23 @@ export async function fetchFixedAssetScheduleReportData(
 export async function fetchCapitalContributionsReportData(
   supabase: SupabaseClient,
 ) {
-  const { data, error } = await supabase
-    .from("capital_contributions")
-    .select("id, date, contributed_by, amount, description, notes, employees!capital_contributions_contributed_by_fkey(full_name)")
-    .order("date", { ascending: true });
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("capital_contributions")
+      .select(
+        "id, date, contributed_by, amount, description, notes, employees!capital_contributions_contributed_by_fkey(full_name)",
+      ),
+    buScope,
+  ).order("date", { ascending: true });
 
   return {
     initialContributions: (data as CapitalContributionEntry[] | null) ?? [],
@@ -447,11 +462,10 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
     { data: payrollProcessing, error: payrollProcessingError },
     { data: projects, error: projectsError },
   ] = await Promise.all([
-    supabase
-      .from("budgets")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .order("period_month", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase.from("budgets").select("*").eq("tenant_id", tenantId),
+      buScope,
+    ).order("period_month", { ascending: true }),
     applyBusinessUnitScope(
       supabase
         .from("expense_register")
@@ -459,15 +473,19 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
         .eq("tenant_id", tenantId),
       buScope,
     ).order("date", { ascending: true }),
-    supabase
-      .from("raw_material_purchases")
-      .select("purchase_date, total_cost, project_id")
-      .order("purchase_date", { ascending: true }),
-    supabase
-      .from("product_purchases")
-      .select("purchase_date, total_cost, project_id")
-      .eq("tenant_id", tenantId)
-      .order("purchase_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("raw_material_purchases")
+        .select("purchase_date, total_cost, project_id"),
+      buScope,
+    ).order("purchase_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("product_purchases")
+        .select("purchase_date, total_cost, project_id")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("purchase_date", { ascending: true }),
     // Payroll tables have no business_unit_id — remain tenant-wide.
     supabase
       .from("payroll_history")

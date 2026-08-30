@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import type { Employee } from "../../../lookup-types";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import BalanceSheetShell from "../../balance-sheet-shell";
 import CapitalContributions from "../../capital-contributions";
 import type { CapitalContributionEntry } from "../../capital-contributions-utils";
@@ -8,13 +16,25 @@ import type { CapitalContributionEntry } from "../../capital-contributions-utils
 export default async function CapitalContributionsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data, error }, { data: employees, error: employeesError }] =
     await Promise.all([
-      supabase
-        .from("capital_contributions")
-        .select("*, employees!capital_contributions_contributed_by_fkey(full_name)")
-        .order("date", { ascending: false }),
+      applyBusinessUnitScope(
+        supabase
+          .from("capital_contributions")
+          .select(
+            "*, employees!capital_contributions_contributed_by_fkey(full_name)",
+          ),
+        buScope,
+      ).order("date", { ascending: false }),
       supabase
         .from("employees")
         .select("employee_id, full_name")
@@ -25,10 +45,11 @@ export default async function CapitalContributionsPage() {
   let fetchError = error?.message ?? employeesError?.message ?? null;
 
   if (error?.message) {
-    const { data: fallbackData, error: fallbackError } = await supabase
-      .from("capital_contributions")
-      .select("*")
-      .order("date", { ascending: false });
+    const { data: fallbackData, error: fallbackError } =
+      await applyBusinessUnitScope(
+        supabase.from("capital_contributions").select("*"),
+        buScope,
+      ).order("date", { ascending: false });
 
     entries = (fallbackData as CapitalContributionEntry[] | null) ?? [];
     fetchError = fallbackError?.message ?? employeesError?.message ?? null;
