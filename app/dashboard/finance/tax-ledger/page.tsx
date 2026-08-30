@@ -5,7 +5,11 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveStampBusinessUnitId } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+  resolveStampBusinessUnitId,
+} from "@/utils/business-unit-view";
 import {
   TAX_SETTINGS_ON_CONFLICT,
   scopeTaxSettingsRead,
@@ -47,6 +51,10 @@ export default async function TaxLedgerPage() {
     getActiveBusinessUnitId(),
     getViewAllBusinessUnits(),
   ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const stamp = resolveStampBusinessUnitId({
     viewAllBusinessUnits,
@@ -73,10 +81,13 @@ export default async function TaxLedgerPage() {
         .eq("tenant_id", tenantId),
       activeBusinessUnitId,
     ).maybeSingle(),
-    supabase
-      .from("tax_ledger_entries")
-      .select(TAX_LEDGER_SELECT)
-      .eq("tenant_id", tenantId)
+    applyBusinessUnitScope(
+      supabase
+        .from("tax_ledger_entries")
+        .select(TAX_LEDGER_SELECT)
+        .eq("tenant_id", tenantId),
+      buScope,
+    )
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false }),
   ]);

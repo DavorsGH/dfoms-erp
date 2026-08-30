@@ -9,6 +9,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import {
+  applyBusinessUnitScope,
+  REMIT_REQUIRES_SCOPED_BU_MESSAGE,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   isAccruedPaymentStatus,
   isPaidStatus,
   isSettledNoCashImpactStatus,
@@ -259,6 +264,13 @@ export async function remitTaxForPeriod(
     entries?: RemitCandidateEntry[];
     /** Create-only stamp for remittance expense; null = All Businesses. */
     businessUnitId?: string | null;
+    /**
+     * Read scope for open-leg candidates. All Businesses is refused
+     * (dfoms-bu-view-all-no-remit) — remittance must target one BU context.
+     */
+    readScope?: BusinessUnitReadScope;
+    /** When true, refuse immediately (All Businesses selected). */
+    viewAllBusinessUnits?: boolean;
   },
 ): Promise<RemitTaxForPeriodResult> {
   const { tenantId, kind, settings } = params;
@@ -289,6 +301,19 @@ export async function remitTaxForPeriod(
     return empty("Tenant is required.");
   }
 
+  if (
+    params.viewAllBusinessUnits === true ||
+    params.readScope?.mode === "all"
+  ) {
+    return empty(REMIT_REQUIRES_SCOPED_BU_MESSAGE);
+  }
+
+  const readScope: BusinessUnitReadScope =
+    params.readScope ??
+    (params.businessUnitId
+      ? { mode: "unit", id: params.businessUnitId }
+      : { mode: "default" });
+
   let candidates: RemitCandidateEntry[];
   if (params.entries) {
     candidates = filterOpenEntriesForRemit(
@@ -299,15 +324,18 @@ export async function remitTaxForPeriod(
     );
   } else {
     const components = [...componentsForRemitKind(kind)];
-    let query = supabase
-      .from("tax_ledger_entries")
-      .select(
-        "id, tenant_id, period_month, direction, tax_component, tax_amount, status, notes",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("period_month", periodMonth)
-      .eq("status", "open")
-      .in("tax_component", components);
+    let query = applyBusinessUnitScope(
+      supabase
+        .from("tax_ledger_entries")
+        .select(
+          "id, tenant_id, period_month, direction, tax_component, tax_amount, status, notes",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("period_month", periodMonth)
+        .eq("status", "open")
+        .in("tax_component", components),
+      readScope,
+    );
 
     if (kind === "wht") {
       query = query.eq("direction", "wht_payable");
@@ -779,6 +807,8 @@ export async function undoRemitTaxForPeriod(
     tenantId: string;
     periodMonth: string;
     kind: RemitTaxKind;
+    readScope?: BusinessUnitReadScope;
+    viewAllBusinessUnits?: boolean;
   },
 ): Promise<UndoRemitTaxForPeriodResult> {
   const { tenantId, kind } = params;
@@ -807,6 +837,17 @@ export async function undoRemitTaxForPeriod(
   if (!tenantId.trim()) {
     return empty("Tenant is required.");
   }
+
+  if (
+    params.viewAllBusinessUnits === true ||
+    params.readScope?.mode === "all"
+  ) {
+    return empty(REMIT_REQUIRES_SCOPED_BU_MESSAGE);
+  }
+
+  const readScope: BusinessUnitReadScope = params.readScope ?? {
+    mode: "default",
+  };
 
   let paidExpense: PaidRemitExpense | null;
   try {
@@ -893,13 +934,16 @@ export async function undoRemitTaxForPeriod(
       )
     : [...componentsForRemitKind(kind)];
 
-  let remittedQuery = supabase
-    .from("tax_ledger_entries")
-    .select("id, notes")
-    .eq("tenant_id", tenantId)
-    .eq("period_month", periodMonth)
-    .eq("status", REMITTED_STATUS)
-    .in("tax_component", components);
+  let remittedQuery = applyBusinessUnitScope(
+    supabase
+      .from("tax_ledger_entries")
+      .select("id, notes")
+      .eq("tenant_id", tenantId)
+      .eq("period_month", periodMonth)
+      .eq("status", REMITTED_STATUS)
+      .in("tax_component", components),
+    readScope,
+  );
 
   if (kind === "wht") {
     remittedQuery = remittedQuery.eq("direction", "wht_payable");

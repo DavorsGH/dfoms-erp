@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -49,6 +49,14 @@ export default function ServiceContractsList({
   const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setContracts(initialContracts.map(normalizeServiceContractListRow));
+  }, [initialContracts]);
+
+  useEffect(() => {
+    setError(fetchError);
+  }, [fetchError]);
 
   async function handleDelete(contract: ServiceContractListRow) {
     setConfirmingId(null);

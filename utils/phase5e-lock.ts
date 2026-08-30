@@ -12,7 +12,7 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { LOCK_REQUIRES_SCOPED_BU_MESSAGE } from "@/utils/business-unit-view";
+import { LOCK_REQUIRES_SCOPED_BU_MESSAGE, REMIT_REQUIRES_SCOPED_BU_MESSAGE } from "@/utils/business-unit-view";
 
 /** Active BU for scoped writes/filters — null is valid (workspace default row). */
 export async function resolveWriteBusinessUnitId(): Promise<string | null> {
@@ -56,6 +56,33 @@ export async function assertLockBusinessUnitAllowed(
   }
 
   // Scoped default (null) or a concrete BU — both OK for lock.
+  void activeBusinessUnitId;
+  return { ok: true };
+}
+
+/**
+ * Tax Ledger Remit / Undo Remit: block when tenant has ≥1 active BU and user is
+ * on All Businesses (same gate shape as Lock Period).
+ */
+export async function assertRemitBusinessUnitAllowed(
+  tenantId: string,
+  activeBusinessUnitId: string | null,
+  viewAllBusinessUnits?: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const activeCount = await countActiveBusinessUnitsForTenant(tenantId);
+  if (activeCount < 1) {
+    return { ok: true };
+  }
+
+  const viewAll =
+    viewAllBusinessUnits === undefined
+      ? await getViewAllBusinessUnits()
+      : viewAllBusinessUnits;
+
+  if (viewAll) {
+    return { ok: false, error: REMIT_REQUIRES_SCOPED_BU_MESSAGE };
+  }
+
   void activeBusinessUnitId;
   return { ok: true };
 }

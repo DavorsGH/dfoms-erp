@@ -1,7 +1,14 @@
 import { cookies } from "next/headers";
 
 import { createClient } from "@/utils/supabase/server";
-import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 
 import { CLIENT_SELECT, type ClientEntry } from "../operations/clients-utils";
@@ -31,7 +38,14 @@ export default async function FinancePage() {
   const cookieStore = await cookies();
 
   const supabase = createClient(cookieStore);
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data, error },
@@ -40,11 +54,13 @@ export default async function FinancePage() {
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
   ] = await Promise.all([
-    supabase
-      .from("income_register")
-      .select(SERVICE_INCOME_REGISTER_SELECT)
-      .or("entry_type.eq.service,entry_type.is.null")
-      .order("date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select(SERVICE_INCOME_REGISTER_SELECT)
+        .or("entry_type.eq.service,entry_type.is.null"),
+      buScope,
+    ).order("date", { ascending: false }),
 
     supabase.from("service_types").select("name").order("name", { ascending: true }),
 

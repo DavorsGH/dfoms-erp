@@ -53,7 +53,11 @@ import ScrollableTable, {
 import FilteredListCount, {
   anyRegisterColumnFiltersActive,
 } from "../filtered-list-count";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitReadScope,
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 type IncomeRegisterProps = {
   initialEntries: IncomeRegisterEntry[];
@@ -125,6 +129,7 @@ export default function IncomeRegister({
 }: IncomeRegisterProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeIncomeRegisterEntry),
   );
@@ -219,6 +224,10 @@ export default function IncomeRegister({
   }, [visibleEntries]);
 
   useEffect(() => {
+    setEntries(initialEntries.map(normalizeIncomeRegisterEntry));
+  }, [initialEntries]);
+
+  useEffect(() => {
     if (!showForm) {
       return;
     }
@@ -243,11 +252,13 @@ export default function IncomeRegister({
   }, [showForm]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("income_register")
-      .select(SERVICE_INCOME_REGISTER_SELECT)
-      .or("entry_type.eq.service,entry_type.is.null")
-      .order("date", { ascending: false });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select(SERVICE_INCOME_REGISTER_SELECT)
+        .or("entry_type.eq.service,entry_type.is.null"),
+      buReadScope,
+    ).order("date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);

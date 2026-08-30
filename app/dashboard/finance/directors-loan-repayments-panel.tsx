@@ -26,7 +26,8 @@ import ScrollableTable, {
   scrollableTableWrapTdClassName,
   scrollableTableWrapThClassName,
 } from "../scrollable-table";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 export type DirectorsLoanRepaymentRecord = DirectorsLoanRepaymentRow & {
   id: string;
@@ -59,6 +60,7 @@ export default function DirectorsLoanRepaymentsPanel({
 }: DirectorsLoanRepaymentsPanelProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const financialYear = getCurrentFinancialYear();
   const [repayments, setRepayments] = useState(initialRepayments);
   const [showForm, setShowForm] = useState(false);
@@ -107,11 +109,13 @@ export default function DirectorsLoanRepaymentsPanel({
   ]);
 
   async function refreshRepayments() {
-    const { data, error: refreshError } = await supabase
-      .from("directors_loan_repayments")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .order("repayment_date", { ascending: false });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase
+        .from("directors_loan_repayments")
+        .select("*")
+        .eq("tenant_id", tenantId),
+      buReadScope,
+    ).order("repayment_date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);

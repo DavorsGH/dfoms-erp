@@ -23,7 +23,8 @@ import {
   TAX_SETTINGS_ON_CONFLICT,
   scopeTaxSettingsRead,
 } from "@/utils/phase5e-key-structure";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useStampBusinessUnitId, useBusinessUnitReadScope, useBusinessUnitView } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope, REMIT_REQUIRES_SCOPED_BU_MESSAGE } from "@/utils/business-unit-view";
 import {
   TAX_LEDGER_SELECT,
   GRA_TAX_COMPONENTS,
@@ -58,8 +59,6 @@ import {
   computeRemitCashAmount,
   filterOpenEntriesForRemit,
   remitKindFromReceiptNo,
-  remitTaxForPeriod,
-  undoRemitTaxForPeriod,
   type RemitTaxKind,
 } from "./tax-ledger-remit";
 import { isPaidStatus } from "./accrued-wages-utils";
@@ -470,6 +469,8 @@ export default function TaxLedger({
   const router = useRouter();
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
+  const { viewAllBusinessUnits } = useBusinessUnitView();
   const currentPeriodMonth = getCurrentPeriodMonth();
 
   const [activeTab, setActiveTab] = useState<LedgerTab>("overview");
@@ -569,10 +570,13 @@ export default function TaxLedger({
   }
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("tax_ledger_entries")
-      .select(TAX_LEDGER_SELECT)
-      .eq("tenant_id", tenantId)
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase
+        .from("tax_ledger_entries")
+        .select(TAX_LEDGER_SELECT)
+        .eq("tenant_id", tenantId),
+      buReadScope,
+    )
       .order("entry_date", { ascending: false })
       .order("created_at", { ascending: false });
 
@@ -735,6 +739,11 @@ export default function TaxLedger({
       return;
     }
 
+    if (viewAllBusinessUnits || buReadScope.mode === "all") {
+      setError(REMIT_REQUIRES_SCOPED_BU_MESSAGE);
+      return;
+    }
+
     const candidates = openRemitCandidates(kind);
     const label = REMIT_TAX_KIND_LABEL[kind];
     const periodLabel = formatPeriodMonthLabel(filters.periodMonth);
@@ -775,22 +784,28 @@ export default function TaxLedger({
       return;
     }
 
-    const result = await remitTaxForPeriod(supabase, {
-      tenantId,
-      periodMonth: filters.periodMonth,
-      kind,
-      settings,
-      entries,
-      businessUnitId: stampBusinessUnit.businessUnitId,
+    const response = await fetch("/api/finance/tax-ledger/remit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        periodMonth: filters.periodMonth,
+        kind,
+      }),
     });
+    const result = (await response.json()) as {
+      error?: string;
+      message?: string | null;
+      dueDateAdvanced?: boolean;
+      legsCleared?: number;
+    };
 
-    if (result.error) {
-      setError(result.error);
+    if (!response.ok || result.error) {
+      setError(result.error ?? "Failed to remit tax for period.");
     } else if (result.message) {
       setInfoMessage(result.message);
     }
 
-    if (result.dueDateAdvanced || result.legsCleared > 0) {
+    if (result.dueDateAdvanced || (result.legsCleared ?? 0) > 0) {
       const { data: settingsRow } = await scopeTaxSettingsRead(
         supabase
           .from("tax_settings")
@@ -815,6 +830,11 @@ export default function TaxLedger({
   async function handleUndoRemitForPeriod(kind: RemitTaxKind) {
     if (!filters.periodMonth) {
       setError("Select a period month before undoing a remittance.");
+      return;
+    }
+
+    if (viewAllBusinessUnits || buReadScope.mode === "all") {
+      setError(REMIT_REQUIRES_SCOPED_BU_MESSAGE);
       return;
     }
 
@@ -846,14 +866,21 @@ export default function TaxLedger({
     setError(null);
     setInfoMessage(null);
 
-    const result = await undoRemitTaxForPeriod(supabase, {
-      tenantId,
-      periodMonth: filters.periodMonth,
-      kind,
+    const response = await fetch("/api/finance/tax-ledger/undo-remit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        periodMonth: filters.periodMonth,
+        kind,
+      }),
     });
+    const result = (await response.json()) as {
+      error?: string;
+      message?: string | null;
+    };
 
-    if (result.error) {
-      setError(result.error);
+    if (!response.ok || result.error) {
+      setError(result.error ?? "Failed to undo remittance.");
     } else if (result.message) {
       setInfoMessage(result.message);
     }
@@ -866,6 +893,8 @@ export default function TaxLedger({
 
   function RemitPeriodButtons({ kinds }: { kinds: RemitTaxKind[] }) {
     const busy = remittingKind !== null || undoingKind !== null;
+    const remitBlockedForViewAll =
+      viewAllBusinessUnits || buReadScope.mode === "all";
 
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -877,10 +906,15 @@ export default function TaxLedger({
           const paid = paidRemits[kind];
           const remitDisabled =
             busy ||
+            remitBlockedForViewAll ||
             !filters.periodMonth ||
             candidates.length === 0 ||
             (kind === "vat" && cashPreview <= 0);
-          const undoDisabled = busy || !filters.periodMonth || !paid;
+          const undoDisabled =
+            busy ||
+            remitBlockedForViewAll ||
+            !filters.periodMonth ||
+            !paid;
           const label = REMIT_TAX_KIND_LABEL[kind];
 
           return (

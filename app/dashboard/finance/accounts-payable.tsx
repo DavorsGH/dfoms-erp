@@ -45,7 +45,8 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 type AccountsPayableProps = {
   initialEntries: AccountsPayableEntry[];
@@ -117,6 +118,7 @@ export default function AccountsPayable({
 }: AccountsPayableProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeAccountsPayableEntry),
   );
@@ -165,6 +167,10 @@ export default function AccountsPayable({
   }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
 
   useEffect(() => {
+    setEntries(initialEntries.map(normalizeAccountsPayableEntry));
+  }, [initialEntries]);
+
+  useEffect(() => {
     if (!showForm) {
       return;
     }
@@ -199,10 +205,10 @@ export default function AccountsPayable({
   }, [showForm]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("accounts_payable")
-      .select("*")
-      .order("due_date", { ascending: true });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase.from("accounts_payable").select("*"),
+      buReadScope,
+    ).order("due_date", { ascending: true });
 
     if (refreshError) {
       setError(refreshError.message);

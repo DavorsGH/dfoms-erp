@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   SERVICE_CONTRACT_LIST_SELECT,
   normalizeServiceContractListRow,
@@ -26,11 +34,22 @@ export default async function ServiceContractsPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
-  const { data, error } = await supabase
-    .from("service_contracts")
-    .select(SERVICE_CONTRACT_LIST_SELECT)
-    .eq("tenant_id", tenantId)
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("service_contracts")
+      .select(SERVICE_CONTRACT_LIST_SELECT)
+      .eq("tenant_id", tenantId),
+    buScope,
+  )
     .order("start_date", { ascending: false })
     .order("contract_sequence", { ascending: false });
 

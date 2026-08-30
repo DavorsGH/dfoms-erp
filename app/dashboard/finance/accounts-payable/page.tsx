@@ -1,6 +1,13 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import type { NamedLookup } from "../../lookup-types";
 import AccountsPayable from "../accounts-payable";
@@ -22,7 +29,14 @@ import {
 export default async function AccountsPayablePage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data, error },
@@ -31,10 +45,10 @@ export default async function AccountsPayablePage() {
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
   ] = await Promise.all([
-    supabase
-      .from("accounts_payable")
-      .select("*")
-      .order("due_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase.from("accounts_payable").select("*"),
+      buScope,
+    ).order("due_date", { ascending: true }),
     supabase
       .from("expense_categories")
       .select("name")

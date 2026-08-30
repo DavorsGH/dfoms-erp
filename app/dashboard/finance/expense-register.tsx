@@ -76,7 +76,8 @@ import {
   VENDOR_OTHER_VALUE,
 } from "./vendor-select-utils";
 import { useOnlineStatus } from "@/hooks/use-online-status";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import { useWriteQueueOptional } from "@/components/write-queue-provider";
 import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
@@ -184,6 +185,7 @@ export default function ExpenseRegister({
 }: ExpenseRegisterProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const isOnline = useOnlineStatus();
   const writeQueue = useWriteQueueOptional();
   const [entries, setEntries] = useState(
@@ -429,6 +431,10 @@ export default function ExpenseRegister({
   }, [showForm]);
 
   useEffect(() => {
+    setEntries(initialEntries.map(normalizeExpenseRegisterEntry));
+  }, [initialEntries]);
+
+  useEffect(() => {
     void (async () => {
       try {
         const linked = await fetchLinkedProductSaleCogsByExpenseId(supabase);
@@ -451,10 +457,10 @@ export default function ExpenseRegister({
   }
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("expense_register")
-      .select("*")
-      .order("date", { ascending: false });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase.from("expense_register").select("*"),
+      buReadScope,
+    ).order("date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);

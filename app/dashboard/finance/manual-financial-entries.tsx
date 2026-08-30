@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT } from "@/utils/phase5e-key-structure";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
-  MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT,
-  scopeToBusinessUnitId,
-} from "@/utils/phase5e-key-structure";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+  useBusinessUnitReadScope,
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
 import RegisterRowActions, {
   getStripedRowClassName,
 } from "./register-row-actions";
@@ -124,6 +125,7 @@ export default function ManualFinancialEntries({
   const router = useRouter();
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const defaultPeriod = getDefaultPeriodSelection();
 
   const [entries, setEntries] = useState(initialEntries);
@@ -228,9 +230,9 @@ export default function ManualFinancialEntries({
   }
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await scopeToBusinessUnitId(
+    const { data, error: refreshError } = await applyBusinessUnitScope(
       supabase.from("manual_financial_entries").select("*"),
-      activeBusinessUnitId,
+      buReadScope,
     ).order("period_month", { ascending: false });
 
     if (refreshError) {
@@ -298,16 +300,26 @@ export default function ManualFinancialEntries({
       return;
     }
 
+    // Refuse period-wide delete under All Businesses — ambiguous which BU row.
+    if (buReadScope.mode === "all") {
+      setError(
+        "Select your workspace default or a specific business before deleting a manual financial entry. All Businesses is view-only for this action.",
+      );
+      return;
+    }
+
     const normalized = normalizePeriodMonth(entry.period_month);
     setDeletingPeriodMonth(normalized);
     setError(null);
 
-    let query = scopeToBusinessUnitId(
+    // Delete only the row for this period within the current read scope
+    // (never unscoped, never another BU's period row).
+    let query = applyBusinessUnitScope(
       supabase
         .from("manual_financial_entries")
         .delete()
         .eq("period_month", normalized),
-      activeBusinessUnitId,
+      buReadScope,
     );
     if (entry.tenant_id) {
       query = query.eq("tenant_id", entry.tenant_id);

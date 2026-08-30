@@ -2,7 +2,12 @@ import { cookies } from "next/headers";
 import {
   getActiveBusinessUnitId,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import { mapApproverRows } from "../../approver-utils";
@@ -32,7 +37,14 @@ export default async function ExpensesPage() {
   const tenantId = await getCurrentUserTenantId();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data, error },
@@ -45,10 +57,10 @@ export default async function ExpensesPage() {
     { data: taxRateCatalog, error: taxRateCatalogError },
     { data: projects, error: projectsError },
   ] = await Promise.all([
-    supabase
-      .from("expense_register")
-      .select("*")
-      .order("date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase.from("expense_register").select("*"),
+      buScope,
+    ).order("date", { ascending: false }),
     supabase
       .from("expense_categories")
       .select("name")

@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   CLIENT_INVOICE_LIST_SELECT,
   normalizeClientInvoiceListRow,
@@ -26,11 +34,22 @@ export default async function ClientInvoicesPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
-  const { data, error } = await supabase
-    .from("client_invoices")
-    .select(CLIENT_INVOICE_LIST_SELECT)
-    .eq("tenant_id", tenantId)
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("client_invoices")
+      .select(CLIENT_INVOICE_LIST_SELECT)
+      .eq("tenant_id", tenantId),
+    buScope,
+  )
     .order("invoice_date", { ascending: false })
     .order("invoice_sequence", { ascending: false });
 

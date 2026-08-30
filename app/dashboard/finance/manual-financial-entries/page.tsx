@@ -3,8 +3,12 @@ import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { scopeToBusinessUnitId } from "@/utils/phase5e-key-structure";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import FinanceNav from "../finance-nav";
 import ManualFinancialEntries from "../manual-financial-entries";
 import type { ManualFinancialEntryRecord } from "../manual-financial-entries-utils";
@@ -14,35 +18,48 @@ import type { AccountsPayablePaymentRow } from "../directors-loan-utils";
 export default async function ManualFinancialEntriesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const tenantId = await getCurrentUserTenantId();
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
 
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
   }
+
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data, error },
     { data: apPayments, error: apPaymentsError },
     { data: repayments, error: repaymentsError },
   ] = await Promise.all([
-    scopeToBusinessUnitId(
+    applyBusinessUnitScope(
       supabase
         .from("manual_financial_entries")
         .select("*")
         .eq("tenant_id", tenantId),
-      activeBusinessUnitId,
+      buScope,
     ).order("period_month", { ascending: false }),
-    supabase
-      .from("accounts_payable_payments")
-      .select("tenant_id, payment_date, amount, payment_source")
-      .eq("tenant_id", tenantId)
-      .order("payment_date", { ascending: true }),
-    supabase
-      .from("directors_loan_repayments")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .order("repayment_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("accounts_payable_payments")
+        .select("tenant_id, payment_date, amount, payment_source, business_unit_id")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("payment_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("directors_loan_repayments")
+        .select("*")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("repayment_date", { ascending: false }),
   ]);
 
   const manualCashEntries = (data ?? []).map((entry) => ({

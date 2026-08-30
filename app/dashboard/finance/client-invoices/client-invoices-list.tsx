@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -111,6 +111,14 @@ export default function ClientInvoicesList({
   const [recordingInvoice, setRecordingInvoice] = useState<ClientInvoiceListRow | null>(
     null,
   );
+
+  useEffect(() => {
+    setInvoices(initialInvoices.map(normalizeClientInvoiceListRow));
+  }, [initialInvoices]);
+
+  useEffect(() => {
+    setError(fetchError);
+  }, [fetchError]);
 
   function updateInvoiceInList(next: ClientInvoiceListRow) {
     setInvoices((current) =>

@@ -5,7 +5,10 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { buildAvailableYears } from "../finance-year-utils";
 import { fetchCashFlowInventoryPurchaseInput } from "../balance-sheet-page-data";
 import type {
@@ -84,50 +87,62 @@ export default async function CashFlowPage() {
     inventoryPurchases,
     livePayrollBundle,
   ] = await Promise.all([
-    supabase
-      .from("income_register")
-      .select("date, amount_received, entry_type, sale_status")
-      .eq("tenant_id", tenantId)
-      .order("date", { ascending: true }),
-    supabase
-      .from("expense_register")
-      .select(
-        "date, sub_category, amount, payment_status, expense_category, description, receipt_no, notes",
-      )
-      .eq("tenant_id", tenantId)
-      .order("date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select("date, amount_received, entry_type, sale_status")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("expense_register")
+        .select(
+          "date, sub_category, amount, payment_status, expense_category, description, receipt_no, notes",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("date", { ascending: true }),
     manualEntriesQuery,
-    supabase
-      .from("fixed_assets")
-      .select(
-        "tenant_id, original_cost, quantity, useful_life_years, purchase_date, depreciation_method, payment_method",
-      )
-      .eq("tenant_id", tenantId)
-      .order("asset_id", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("fixed_assets")
+        .select(
+          "tenant_id, original_cost, quantity, useful_life_years, purchase_date, depreciation_method, payment_method",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("asset_id", { ascending: true }),
     supabase
       .from("capital_contributions")
       .select("id, date, contributed_by, amount, description, notes")
       .eq("tenant_id", tenantId)
       .order("date", { ascending: true }),
-    supabase
-      .from("accounts_payable")
-      .select(
-        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
-      )
-      .eq("tenant_id", tenantId)
-      .order("invoice_date", { ascending: true }),
-    supabase
-      .from("accounts_payable_payments")
-      .select("tenant_id, payment_date, amount, payment_source")
-      .eq("tenant_id", tenantId)
-      .order("payment_date", { ascending: true }),
-    supabase
-      .from("directors_loan_repayments")
-      .select(
-        "tenant_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
-      )
-      .eq("tenant_id", tenantId)
-      .order("repayment_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("accounts_payable")
+        .select(
+          "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("invoice_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("accounts_payable_payments")
+        .select("tenant_id, payment_date, amount, payment_source")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("payment_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("directors_loan_repayments")
+        .select(
+          "tenant_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("repayment_date", { ascending: true }),
     supabase
       .from("payroll_history")
       .select("payroll_month, net_pay")

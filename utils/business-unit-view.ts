@@ -37,6 +37,13 @@ export const STAMP_REFUSED_VIEW_ALL_MESSAGE =
 export const LOCK_REQUIRES_SCOPED_BU_MESSAGE =
   "Select your workspace default or a specific business before locking payroll. Locking while All Businesses is selected (dfoms-bu-view-all-no-lock) is not allowed when this workspace has business units." as const;
 
+/**
+ * Remit / Undo Remit when All Businesses is selected.
+ * Distinctive guard-262 marker (must stay unique in the repo).
+ */
+export const REMIT_REQUIRES_SCOPED_BU_MESSAGE =
+  "Select your workspace default or a specific business before remitting tax. Remitting while All Businesses is selected (dfoms-bu-view-all-no-remit) is not allowed when this workspace has business units." as const;
+
 /** @deprecated Use LOCK_REQUIRES_SCOPED_BU_MESSAGE — kept as alias during Phase 5e→6 prep. */
 export const LOCK_REQUIRES_SPECIFIC_BU_MESSAGE =
   LOCK_REQUIRES_SCOPED_BU_MESSAGE;

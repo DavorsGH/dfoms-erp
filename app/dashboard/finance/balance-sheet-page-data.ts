@@ -50,7 +50,7 @@ import {
   aggregateManualEntriesByPeriodMonth,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { resolveBusinessUnitReadScope, applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
@@ -453,18 +453,23 @@ export async function fetchBalanceSheetPageData(
     activeBusinessUnitId,
   });
 
-  let incomeQuery = supabase
-    .from("income_register")
-    .select(BALANCE_SHEET_INCOME_SELECT)
-    .eq("tenant_id", tenantId)
-    .order("date", { ascending: true });
-  let expenseQuery = supabase
-    .from("expense_register")
-    .select(
-      "date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
-    )
-    .eq("tenant_id", tenantId)
-    .order("date", { ascending: true });
+  let incomeQuery = applyBusinessUnitScope(
+    supabase
+      .from("income_register")
+      .select(BALANCE_SHEET_INCOME_SELECT)
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("date", { ascending: true });
+  let expenseQuery = applyBusinessUnitScope(
+    supabase
+      .from("expense_register")
+      .select(
+        "date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
+      )
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("date", { ascending: true });
+  // Payroll tables have no business_unit_id on prod — remain tenant-wide until a later phase.
   let payrollHistoryQuery = supabase
     .from("payroll_history")
     .select("payroll_month, net_pay, net_only_adjustment, gross_pay")
@@ -476,30 +481,65 @@ export async function fetchBalanceSheetPageData(
     .eq("tenant_id", tenantId)
     .order("payroll_month", { ascending: true });
 
-  let manualEntriesQuery = supabase
-    .from("manual_financial_entries")
-    .select(MANUAL_FINANCIAL_ENTRY_SELECT)
-    .eq("tenant_id", tenantId)
-    .order("period_month", { ascending: true });
-  let monthEndCloseQuery = supabase
-    .from("month_end_close")
-    .select(MONTH_END_CLOSE_SELECT)
-    .eq("tenant_id", tenantId)
-    .order("month", { ascending: false });
+  let manualEntriesQuery = applyBusinessUnitScope(
+    supabase
+      .from("manual_financial_entries")
+      .select(MANUAL_FINANCIAL_ENTRY_SELECT)
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("period_month", { ascending: true });
+  let monthEndCloseQuery = applyBusinessUnitScope(
+    supabase
+      .from("month_end_close")
+      .select(MONTH_END_CLOSE_SELECT)
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("month", { ascending: false });
 
-  if (buScope.mode === "unit") {
-    manualEntriesQuery = manualEntriesQuery.eq(
-      "business_unit_id",
-      buScope.id,
-    );
-    monthEndCloseQuery = monthEndCloseQuery.eq(
-      "business_unit_id",
-      buScope.id,
-    );
-  } else if (buScope.mode === "default") {
-    manualEntriesQuery = manualEntriesQuery.is("business_unit_id", null);
-    monthEndCloseQuery = monthEndCloseQuery.is("business_unit_id", null);
-  }
+  let fixedAssetsQuery = applyBusinessUnitScope(
+    supabase
+      .from("fixed_assets")
+      .select(
+        "tenant_id, original_cost, quantity, useful_life_years, purchase_date, depreciation_method, payment_method, wht_amount, net_of_tax_amount",
+      )
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("asset_id", { ascending: true });
+  let payableQuery = applyBusinessUnitScope(
+    supabase
+      .from("accounts_payable")
+      .select(
+        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
+      )
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("invoice_date", { ascending: true });
+  let apPaymentsQuery = applyBusinessUnitScope(
+    supabase
+      .from("accounts_payable_payments")
+      .select("tenant_id, payment_date, amount, payment_source")
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("payment_date", { ascending: true });
+  let directorsLoanRepaymentsQuery = applyBusinessUnitScope(
+    supabase
+      .from("directors_loan_repayments")
+      .select(
+        "tenant_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
+      )
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("repayment_date", { ascending: true });
+  let taxLedgerQuery = applyBusinessUnitScope(
+    supabase
+      .from("tax_ledger_entries")
+      .select(
+        "entry_date, period_month, direction, tax_component, tax_amount, status",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("status", "open"),
+    buScope,
+  ).order("entry_date", { ascending: true });
 
   if (dateRange) {
     incomeQuery = applyDateRangeFilter(incomeQuery, "date", dateRange);
@@ -533,32 +573,10 @@ export async function fetchBalanceSheetPageData(
   ] = await Promise.all([
     incomeQuery,
     expenseQuery,
-    supabase
-      .from("fixed_assets")
-      .select(
-        "tenant_id, original_cost, quantity, useful_life_years, purchase_date, depreciation_method, payment_method, wht_amount, net_of_tax_amount",
-      )
-      .eq("tenant_id", tenantId)
-      .order("asset_id", { ascending: true }),
-    supabase
-      .from("accounts_payable")
-      .select(
-        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
-      )
-      .eq("tenant_id", tenantId)
-      .order("invoice_date", { ascending: true }),
-    supabase
-      .from("accounts_payable_payments")
-      .select("tenant_id, payment_date, amount, payment_source")
-      .eq("tenant_id", tenantId)
-      .order("payment_date", { ascending: true }),
-    supabase
-      .from("directors_loan_repayments")
-      .select(
-        "tenant_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
-      )
-      .eq("tenant_id", tenantId)
-      .order("repayment_date", { ascending: true }),
+    fixedAssetsQuery,
+    payableQuery,
+    apPaymentsQuery,
+    directorsLoanRepaymentsQuery,
     supabase
       .from("capital_contributions")
       .select("id, date, contributed_by, amount, description, notes")
@@ -568,14 +586,7 @@ export async function fetchBalanceSheetPageData(
     payrollHistoryQuery,
     payrollProcessingQuery,
     monthEndCloseQuery,
-    supabase
-      .from("tax_ledger_entries")
-      .select(
-        "entry_date, period_month, direction, tax_component, tax_amount, status",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("status", "open")
-      .order("entry_date", { ascending: true }),
+    taxLedgerQuery,
     fetchInventoryBalanceSheetInput(supabase, tenantId, { requestCounter }),
   ]);
 

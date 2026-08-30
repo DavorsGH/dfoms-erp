@@ -53,7 +53,8 @@ import {
   resolveVendorNameFromSelect,
   VENDOR_OTHER_VALUE,
 } from "./vendor-select-utils";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 type FixedAssetsProps = {
   initialAssets: FixedAssetEntry[];
@@ -141,6 +142,7 @@ export default function FixedAssets({
 }: FixedAssetsProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [assets, setAssets] = useState(initialAssets);
   const [assetCategories, setAssetCategories] = useState(initialAssetCategories);
   const [depreciationMethods, setDepreciationMethods] = useState(
@@ -175,6 +177,10 @@ export default function FixedAssets({
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => Number(left.value) - Number(right.value));
   }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
+
+  useEffect(() => {
+    setAssets(initialAssets);
+  }, [initialAssets]);
 
   useEffect(() => {
     if (!showForm) {
@@ -244,10 +250,10 @@ export default function FixedAssets({
   }, [showForm]);
 
   async function refreshAssets() {
-    const { data, error: refreshError } = await supabase
-      .from("fixed_assets")
-      .select("*")
-      .order("asset_id", { ascending: true });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase.from("fixed_assets").select("*"),
+      buReadScope,
+    ).order("asset_id", { ascending: true });
 
     if (refreshError) {
       setError(refreshError.message);
