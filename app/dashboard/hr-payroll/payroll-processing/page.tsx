@@ -5,7 +5,12 @@ import {
   getActiveBusinessUnitId,
   getCurrentUserRole,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canManagePayrollPeriod } from "@/utils/rbac-access";
 import HrPayrollShell from "../hr-payroll-shell";
@@ -30,8 +35,16 @@ export default async function PayrollProcessingPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const admin = createAdminClient();
-  const tenantId = await getCurrentUserTenantId();
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const taxConfigQueries = tenantId
     ? ([
@@ -54,6 +67,9 @@ export default async function PayrollProcessingPage() {
       ] as const)
     : null;
 
+  const employeeSelect =
+    "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
+
   const [
     { data: processingMonths, error: processingMonthsError },
     { data: historyMonths, error: historyMonthsError },
@@ -73,13 +89,13 @@ export default async function PayrollProcessingPage() {
     supabase.from("payroll_history").select("payroll_month"),
     supabase.from("month_end_close").select("*"),
     tenantId
-      ? supabase
-          .from("employees")
-          .select(
-            "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name",
-          )
-          .eq("tenant_id", tenantId)
-          .order("staff_id", { ascending: true })
+      ? applyBusinessUnitScope(
+          supabase
+            .from("employees")
+            .select(employeeSelect)
+            .eq("tenant_id", tenantId),
+          buScope,
+        ).order("staff_id", { ascending: true })
       : Promise.resolve({
           data: null,
           error: { message: "Unable to resolve tenant for payroll employees." },

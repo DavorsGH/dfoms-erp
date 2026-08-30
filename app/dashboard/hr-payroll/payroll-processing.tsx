@@ -54,7 +54,11 @@ import {
 } from "./payroll-processing-utils";
 import { syncProcessingAllowanceLines } from "./payroll-allowance-lines-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitReadScope,
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 type PayrollProcessingProps = {
   tenantId: string | null;
@@ -121,6 +125,7 @@ export default function PayrollProcessing({
 }: PayrollProcessingProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const workspaceLoadGenerationRef = useRef(0);
   const now = new Date();
   const [knownPayrollMonths, setKnownPayrollMonths] =
@@ -128,10 +133,10 @@ export default function PayrollProcessing({
   const [monthEndCloseRows, setMonthEndCloseRows] = useState(
     initialMonthEndClose,
   );
-  const [employees] = useState(initialEmployees);
-  const [attendance] = useState(initialAttendance);
-  const [overtime] = useState(initialOvertime);
-  const [loans] = useState(initialLoans);
+  const [employees, setEmployees] = useState(initialEmployees);
+  const [attendance, setAttendance] = useState(initialAttendance);
+  const [overtime, setOvertime] = useState(initialOvertime);
+  const [loans, setLoans] = useState(initialLoans);
   const [selectedPeriodKey, setSelectedPeriodKey] = useState(
     buildPeriodKey(now.getFullYear(), now.getMonth() + 1),
   );
@@ -162,6 +167,34 @@ export default function PayrollProcessing({
   const [repairing, setRepairing] = useState(false);
   const [hasStaleHistory, setHasStaleHistory] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+
+  useEffect(() => {
+    setKnownPayrollMonths(initialPayrollMonths);
+  }, [initialPayrollMonths]);
+
+  useEffect(() => {
+    setMonthEndCloseRows(initialMonthEndClose);
+  }, [initialMonthEndClose]);
+
+  useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
+
+  useEffect(() => {
+    setAttendance(initialAttendance);
+  }, [initialAttendance]);
+
+  useEffect(() => {
+    setOvertime(initialOvertime);
+  }, [initialOvertime]);
+
+  useEffect(() => {
+    setLoans(initialLoans);
+  }, [initialLoans]);
+
+  useEffect(() => {
+    setError(fetchError);
+  }, [fetchError]);
 
   useEffect(() => {
     setDaysToPayDraftByRowId({});
@@ -383,7 +416,11 @@ export default function PayrollProcessing({
         const closeRecord = findMonthEndCloseForKey(
           monthEndCloseRows,
           key,
-          activeBusinessUnitId,
+          buReadScope.mode === "all"
+            ? undefined
+            : buReadScope.mode === "unit"
+              ? buReadScope.id
+              : null,
         );
 
         return {
@@ -400,7 +437,7 @@ export default function PayrollProcessing({
     knownPayrollMonths,
     monthEndCloseRows,
     selectedPeriodKey,
-    activeBusinessUnitId,
+    buReadScope,
   ]);
 
   const totals = useMemo(() => {
@@ -426,21 +463,26 @@ export default function PayrollProcessing({
 
   useEffect(() => {
     void loadWorkspace(selectedPeriodKey);
-  }, [selectedPeriodKey]);
+    // employees: re-run after prop sync so rows match the new BU universe.
+    // buReadScope: re-fetch MEC / filter when switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadWorkspace closes over latest helpers
+  }, [selectedPeriodKey, buReadScope, employees]);
 
   async function fetchMonthEndClose(
     payrollMonth: string,
   ): Promise<MonthEndCloseRecord | null> {
-    let query = supabase
-      .from("month_end_close")
-      .select("*")
-      .eq("month", payrollMonth);
-    if (activeBusinessUnitId) {
-      query = query.eq("business_unit_id", activeBusinessUnitId);
-    } else {
-      query = query.is("business_unit_id", null);
+    // All Businesses: multiple MEC rows possible; do not pick one BU's lock status.
+    if (buReadScope.mode === "all") {
+      return null;
     }
-    const { data, error: closeError } = await query.maybeSingle();
+
+    const { data, error: closeError } = await applyBusinessUnitScope(
+      supabase
+        .from("month_end_close")
+        .select("*")
+        .eq("month", payrollMonth),
+      buReadScope,
+    ).maybeSingle();
 
     if (closeError) {
       throw new Error(closeError.message);
@@ -474,6 +516,11 @@ export default function PayrollProcessing({
       period.year,
       period.month,
     );
+    // Only delete stale rows for employees in the current BU scope.
+    // Rows for other BUs / untagged staff must remain when the switcher is scoped.
+    const scopedEmployeeIds = new Set(
+      employees.map((employee) => employee.employee_id),
+    );
     const periodEmployeeIds = new Set(
       employeesForPeriod.map((employee) => employee.employee_id),
     );
@@ -481,7 +528,11 @@ export default function PayrollProcessing({
       (existingRows as Pick<PayrollProcessingRow, "id" | "employee_id">[] | null) ??
       []
     )
-      .filter((row) => !periodEmployeeIds.has(row.employee_id))
+      .filter(
+        (row) =>
+          scopedEmployeeIds.has(row.employee_id) &&
+          !periodEmployeeIds.has(row.employee_id),
+      )
       .map((row) => row.id);
 
     if (staleRowIds.length > 0) {
@@ -590,6 +641,10 @@ export default function PayrollProcessing({
     setLoading(true);
     setError(null);
     setExpandedEmployeeId(null);
+    // Clear immediately so a BU switch never leaves the previous unit's lock banner visible.
+    if (!isStaleLoad()) {
+      setMonthEndClose(null);
+    }
 
     try {
       const period = resolveSelectedPeriod(parsed.year, parsed.month);
@@ -635,7 +690,9 @@ export default function PayrollProcessing({
           return;
         }
 
-        const historyRows = (data as PayrollHistoryRow[] | null) ?? [];
+        const historyRows = ((data as PayrollHistoryRow[] | null) ?? []).filter(
+          (row) => employeeMap.has(row.employee_id),
+        );
         setPeriodHasProcessingRows(historyRows.length > 0);
         setRows(
           sortWorkspaceRows(
@@ -676,18 +733,16 @@ export default function PayrollProcessing({
         return;
       }
 
-      const processingRows = (data as PayrollProcessingRow[] | null) ?? [];
+      const processingRows = (
+        (data as PayrollProcessingRow[] | null) ?? []
+      ).filter((row) => employeeMap.has(row.employee_id));
       setPeriodHasProcessingRows(
         (processingCount ?? 0) > 0 || processingRows.length > 0,
       );
       setRows(
         sortWorkspaceRows(
           processingRows.map((row) => {
-            const employee = employeeMap.get(row.employee_id);
-            if (!employee) {
-              return toWorkspaceRow(row, employee);
-            }
-
+            const employee = employeeMap.get(row.employee_id)!;
             return recalculateWorkspaceRow(row, employee, period);
           }),
         ),

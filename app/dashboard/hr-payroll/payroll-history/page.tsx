@@ -1,5 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import HrPayrollShell from "../hr-payroll-shell";
 import PayrollHistory from "../payroll-history";
 import {
@@ -11,6 +20,25 @@ import {
 export default async function PayrollHistoryPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+
+  let employeesQuery = supabase
+    .from("employees")
+    .select("employee_id, staff_id, full_name")
+    .order("staff_id", { ascending: true });
+  if (tenantId) {
+    employeesQuery = employeesQuery.eq("tenant_id", tenantId);
+  }
+  employeesQuery = applyBusinessUnitScope(employeesQuery, buScope);
 
   const [
     { data: historyMonths, error: historyMonthsError },
@@ -19,10 +47,7 @@ export default async function PayrollHistoryPage() {
   ] = await Promise.all([
     supabase.from("payroll_history").select("payroll_month"),
     supabase.from("month_end_close").select("*"),
-    supabase
-      .from("employees")
-      .select("employee_id, staff_id, full_name")
-      .order("staff_id", { ascending: true }),
+    employeesQuery,
   ]);
 
   const fetchError =

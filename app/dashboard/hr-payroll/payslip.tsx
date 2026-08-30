@@ -23,6 +23,8 @@ import {
 import type { PayrollHistoryRow } from "./payroll-processing-utils";
 import { useTenantBranding } from "../tenant-branding-context";
 import WorkspaceLogo from "../workspace-logo";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 type PayslipEmployeeOption = {
   employee_id: string;
@@ -201,6 +203,7 @@ export default function Payslip({
 }: PayslipProps) {
   const supabase = useMemo(() => createClient(), []);
   const { companyLegalName } = useTenantBranding();
+  const buReadScope = useBusinessUnitReadScope();
 
   const [selectedMonth, setSelectedMonth] = useState(
     initialPayrollMonths[0] ?? "",
@@ -261,10 +264,14 @@ export default function Payslip({
         return;
       }
 
-      const { data: employees, error: employeesError } = await supabase
-        .from("employees")
-        .select("employee_id, staff_id, full_name")
-        .in("employee_id", employeeIds);
+      const { data: employees, error: employeesError } =
+        await applyBusinessUnitScope(
+          supabase
+            .from("employees")
+            .select("employee_id, staff_id, full_name")
+            .in("employee_id", employeeIds),
+          buReadScope,
+        );
 
       if (employeesError) {
         setLoadError(employeesError.message);
@@ -280,7 +287,7 @@ export default function Payslip({
       );
       setLoadingEmployees(false);
     },
-    [supabase, scopedEmployeeId],
+    [supabase, scopedEmployeeId, buReadScope],
   );
 
   const loadPayslip = useCallback(
@@ -306,11 +313,13 @@ export default function Payslip({
           .eq("payroll_month", payrollMonth)
           .eq("employee_id", employeeId)
           .maybeSingle(),
-        supabase
-          .from("employees")
-          .select(EMPLOYEE_DETAILS_SELECT)
-          .eq("employee_id", employeeId)
-          .maybeSingle(),
+        applyBusinessUnitScope(
+          supabase
+            .from("employees")
+            .select(EMPLOYEE_DETAILS_SELECT)
+            .eq("employee_id", employeeId),
+          buReadScope,
+        ).maybeSingle(),
         supabase
           .from("payroll_allowance_lines")
           .select("allowance_name, allowance_code, amount")
@@ -346,7 +355,7 @@ export default function Payslip({
       );
       setLoadingPayslip(false);
     },
-    [supabase],
+    [supabase, buReadScope],
   );
 
   useEffect(() => {

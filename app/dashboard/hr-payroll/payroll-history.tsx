@@ -24,6 +24,8 @@ import {
   type MonthEndCloseRecord,
 } from "./payroll-period-utils";
 import type { PayrollHistoryRow } from "./payroll-processing-utils";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 type PayrollHistoryEmployee = {
   employee_id: string;
@@ -125,18 +127,43 @@ export default function PayrollHistory({
   fetchError,
 }: PayrollHistoryProps) {
   const supabase = createClient();
-  const [monthEndCloseRows] = useState(initialMonthEndClose);
+  const buReadScope = useBusinessUnitReadScope();
+  const [monthEndCloseRows, setMonthEndCloseRows] = useState(
+    initialMonthEndClose,
+  );
   const [monthEndClose, setMonthEndClose] = useState<MonthEndCloseRecord | null>(
     null,
   );
-  const [employees] = useState(initialEmployees);
-  const [payrollMonths] = useState(initialPayrollMonths);
+  const [employees, setEmployees] = useState(initialEmployees);
+  const [payrollMonths, setPayrollMonths] = useState(initialPayrollMonths);
   const [selectedPayrollMonth, setSelectedPayrollMonth] = useState(
     initialPayrollMonths[0] ?? "",
   );
   const [rows, setRows] = useState<HistoryWorkspaceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+
+  useEffect(() => {
+    setMonthEndCloseRows(initialMonthEndClose);
+  }, [initialMonthEndClose]);
+
+  useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
+
+  useEffect(() => {
+    setPayrollMonths(initialPayrollMonths);
+    if (
+      initialPayrollMonths.length > 0 &&
+      !initialPayrollMonths.includes(selectedPayrollMonth)
+    ) {
+      setSelectedPayrollMonth(initialPayrollMonths[0] ?? "");
+    }
+  }, [initialPayrollMonths, selectedPayrollMonth]);
+
+  useEffect(() => {
+    setError(fetchError);
+  }, [fetchError]);
 
   const employeeMap = useMemo(
     () => new Map(employees.map((employee) => [employee.employee_id, employee])),
@@ -164,7 +191,15 @@ export default function PayrollHistory({
           return null;
         }
 
-        const closeRecord = findMonthEndCloseForKey(monthEndCloseRows, key);
+        const closeRecord = findMonthEndCloseForKey(
+          monthEndCloseRows,
+          key,
+          buReadScope.mode === "all"
+            ? undefined
+            : buReadScope.mode === "unit"
+              ? buReadScope.id
+              : null,
+        );
 
         return {
           value: normalizePayrollMonthValue(payrollMonth),
@@ -178,7 +213,7 @@ export default function PayrollHistory({
       .filter(
         (option): option is { value: string; label: string } => option !== null,
       );
-  }, [payrollMonths, monthEndCloseRows]);
+  }, [payrollMonths, monthEndCloseRows, buReadScope]);
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -214,28 +249,42 @@ export default function PayrollHistory({
   useEffect(() => {
     if (!selectedPayrollMonth) {
       setRows([]);
+      setMonthEndClose(null);
       return;
     }
 
     void loadHistory(selectedPayrollMonth);
-  }, [selectedPayrollMonth]);
+    // employees / buReadScope: re-fetch MEC + filter when switcher + prop sync update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadHistory closes over latest helpers
+  }, [selectedPayrollMonth, buReadScope, employees]);
 
   async function loadHistory(payrollMonth: string) {
     setLoading(true);
     setError(null);
+    // Clear immediately so a BU switch never leaves the previous unit's lock banner visible.
+    setMonthEndClose(null);
 
     try {
-      const { data: closeRecord, error: closeError } = await supabase
-        .from("month_end_close")
-        .select("*")
-        .eq("month", payrollMonth)
-        .maybeSingle();
+      // All Businesses: multiple MEC rows possible; do not pick one BU's lock status.
+      let nextClose: MonthEndCloseRecord | null = null;
+      if (buReadScope.mode !== "all") {
+        const { data: closeRecord, error: closeError } =
+          await applyBusinessUnitScope(
+            supabase
+              .from("month_end_close")
+              .select("*")
+              .eq("month", payrollMonth),
+            buReadScope,
+          ).maybeSingle();
 
-      if (closeError) {
-        throw new Error(closeError.message);
+        if (closeError) {
+          throw new Error(closeError.message);
+        }
+
+        nextClose = (closeRecord as MonthEndCloseRecord | null) ?? null;
       }
 
-      setMonthEndClose((closeRecord as MonthEndCloseRecord | null) ?? null);
+      setMonthEndClose(nextClose);
 
       const { data, error: historyError } = await supabase
         .from("payroll_history")
@@ -247,14 +296,20 @@ export default function PayrollHistory({
         throw new Error(historyError.message);
       }
 
+      const scopedRows = (
+        (data as PayrollHistoryRow[] | null) ?? []
+      ).filter((row) => employeeMap.has(row.employee_id));
+
       setRows(
         sortHistoryRows(
-          ((data as PayrollHistoryRow[] | null) ?? []).map((row) =>
+          scopedRows.map((row) =>
             toHistoryWorkspaceRow(row, employeeMap.get(row.employee_id)),
           ),
         ),
       );
     } catch (loadError) {
+      setRows([]);
+      setMonthEndClose(null);
       setError(
         loadError instanceof Error
           ? loadError.message

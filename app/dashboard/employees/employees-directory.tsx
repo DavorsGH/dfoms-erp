@@ -64,7 +64,11 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import FilteredListCount from "../filtered-list-count";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitReadScope,
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 async function resolveChangedByLabel(
   supabase: SupabaseClient,
@@ -409,6 +413,7 @@ export default function EmployeesDirectory({
 }: EmployeesDirectoryProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const formRef = useRef<HTMLElement>(null);
   const [employees, setEmployees] = useState(initialEmployees);
   const [lookups] = useState(initialLookups);
@@ -803,10 +808,10 @@ export default function EmployeesDirectory({
   );
 
   async function refreshEmployees() {
-    const { data, error: refreshError } = await supabase
-      .from("employees")
-      .select(EMPLOYEE_SELECT)
-      .order("staff_id", { ascending: true });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase.from("employees").select(EMPLOYEE_SELECT),
+      buReadScope,
+    ).order("staff_id", { ascending: true });
 
     if (refreshError) {
       setError(refreshError.message);

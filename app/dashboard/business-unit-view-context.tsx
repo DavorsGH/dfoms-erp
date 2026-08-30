@@ -3,7 +3,9 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import {
   STAMP_REFUSED_VIEW_ALL_MESSAGE,
+  resolveBusinessUnitReadScope,
   resolveStampBusinessUnitId,
+  type BusinessUnitReadScope,
 } from "@/utils/business-unit-view";
 
 type BusinessUnitViewValue = {
@@ -54,4 +56,20 @@ export function useStampBusinessUnitId():
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
+}
+
+/**
+ * Resolve list/read scope for the current switcher selection.
+ * Pair with applyBusinessUnitScope on queries that have business_unit_id.
+ */
+export function useBusinessUnitReadScope(): BusinessUnitReadScope {
+  const { viewAllBusinessUnits, activeBusinessUnitId } = useBusinessUnitView();
+  return useMemo(
+    () =>
+      resolveBusinessUnitReadScope({
+        viewAllBusinessUnits,
+        activeBusinessUnitId,
+      }),
+    [viewAllBusinessUnits, activeBusinessUnitId],
+  );
 }

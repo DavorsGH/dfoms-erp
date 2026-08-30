@@ -4,7 +4,12 @@ import {
   getActiveBusinessUnitId,
   getCurrentUserRole,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
   canEditEmployees,
@@ -25,23 +30,32 @@ import { loadDirectoryNetPayContext } from "./directory-net-pay-utils";
 export default async function EmployeesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const tenantId = await getCurrentUserTenantId();
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
 
-  const employeeQuery = supabase
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+
+  let employeeQuery = supabase
     .from("employees")
     .select(EMPLOYEE_SELECT)
     .order("staff_id", { ascending: true });
   if (tenantId) {
-    employeeQuery.eq("tenant_id", tenantId);
+    employeeQuery = employeeQuery.eq("tenant_id", tenantId);
   }
+  employeeQuery = applyBusinessUnitScope(employeeQuery, buScope);
 
-  const [{ data, error }, lookups, payConfig, activeBusinessUnitId] =
-    await Promise.all([
-      employeeQuery,
-      loadEmployeeLookups(supabase, tenantId),
-      loadEmployeePayConfig(supabase, tenantId),
-      getActiveBusinessUnitId(),
-    ]);
+  const [{ data, error }, lookups, payConfig] = await Promise.all([
+    employeeQuery,
+    loadEmployeeLookups(supabase, tenantId),
+    loadEmployeePayConfig(supabase, tenantId),
+  ]);
 
   const employees = (data as EmployeeRecord[] | null) ?? [];
   const netPayContext = await loadDirectoryNetPayContext(

@@ -67,6 +67,29 @@ export function resolveBusinessUnitReadScope(args: {
 }
 
 /**
+ * Apply list/read scope to a Supabase query on a business_unit_id column.
+ * - all → no filter (show every row)
+ * - unit → .eq(business_unit_id, id)
+ * - default → .is(business_unit_id, null) (workspace / untagged)
+ *
+ * Input type is preserved; internals use a loose cast to avoid Postgrest TS2589.
+ */
+export function applyBusinessUnitScope<T>(
+  query: T,
+  scope: BusinessUnitReadScope,
+): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q = query as any;
+  if (scope.mode === "all") {
+    return query;
+  }
+  if (scope.mode === "unit") {
+    return q.eq("business_unit_id", scope.id) as T;
+  }
+  return q.is("business_unit_id", null) as T;
+}
+
+/**
  * Stamp target for creates, or refuse when viewing All Businesses.
  */
 export function resolveStampBusinessUnitId(args: {
