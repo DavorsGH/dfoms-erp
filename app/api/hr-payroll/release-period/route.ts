@@ -25,6 +25,11 @@ import {
   historyRowToProcessingPayload,
   type PayrollHistoryRow,
 } from "@/app/dashboard/hr-payroll/payroll-processing-utils";
+import {
+  applyEmployeeIdScope,
+  filterPayrollRowsToEmployeeScope,
+  resolvePayrollPeriodScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type ReleasePeriodBody = {
   payrollMonth?: string;
@@ -52,6 +57,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "payrollMonth is required" }, { status: 400 });
   }
 
+  // Same switcher-gated BU as lock-period stamp / employee scope.
   const businessUnitId = await getActiveBusinessUnitId();
 
   const lockBuGate = await assertLockBusinessUnitAllowed(
@@ -77,6 +83,16 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
 
+  const scopedEmployees = await resolvePayrollPeriodScopedEmployeeIds(
+    admin,
+    tenantId,
+    businessUnitId,
+  );
+  if (!scopedEmployees.ok) {
+    return NextResponse.json({ error: scopedEmployees.error }, { status: 400 });
+  }
+  const { employeeIds } = scopedEmployees;
+
   let closeQuery = admin
     .from("month_end_close")
     .select("*")
@@ -100,24 +116,29 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: historyRows, error: historyFetchError } = await admin
-    .from("payroll_history")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .eq("payroll_month", payrollMonth);
+  const { data: historyRows, error: historyFetchError } =
+    await applyEmployeeIdScope(
+      admin
+        .from("payroll_history")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("payroll_month", payrollMonth),
+      employeeIds,
+    );
 
   if (historyFetchError) {
     return NextResponse.json({ error: historyFetchError.message }, { status: 400 });
   }
 
-  const rows = (historyRows as PayrollHistoryRow[] | null) ?? [];
-
-  if (rows.length === 0) {
-    return NextResponse.json(
-      { error: "No payroll history rows found for this period" },
-      { status: 400 },
-    );
+  const scopedHistoryResult = filterPayrollRowsToEmployeeScope(
+    (historyRows as PayrollHistoryRow[] | null) ?? [],
+    employeeIds,
+    "No payroll history rows found for this period in the active business unit scope",
+  );
+  if (!scopedHistoryResult.ok) {
+    return NextResponse.json({ error: scopedHistoryResult.error }, { status: 400 });
   }
+  const rows = scopedHistoryResult.rows;
 
   let financeResult;
   try {
@@ -146,11 +167,14 @@ export async function POST(request: Request) {
     tenant_id: tenantId,
   }));
 
-  const { error: processingCleanupError } = await admin
-    .from("payroll_processing")
-    .delete()
-    .eq("tenant_id", tenantId)
-    .eq("payroll_month", payrollMonth);
+  const { error: processingCleanupError } = await applyEmployeeIdScope(
+    admin
+      .from("payroll_processing")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("payroll_month", payrollMonth),
+    employeeIds,
+  );
 
   if (processingCleanupError) {
     return NextResponse.json(
@@ -171,7 +195,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    await deletePayrollHistoryForMonth(admin, payrollMonth, tenantId);
+    await deletePayrollHistoryForMonth(admin, payrollMonth, tenantId, {
+      employeeIds,
+    });
   } catch (cleanupError) {
     const message =
       cleanupError instanceof PayrollHistoryCleanupError

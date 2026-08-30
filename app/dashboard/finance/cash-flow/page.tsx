@@ -19,6 +19,10 @@ import {
   fetchPayrollLiveRecalcBundle,
   mergePayrollWagesWithLiveOpenMonths,
 } from "../../hr-payroll/payroll-live-recalc-utils";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "../../hr-payroll/payroll-bu-scope-utils";
 import type { PayrollProcessingRow } from "../../hr-payroll/payroll-processing-utils";
 import type { AccountsPayablePaymentRow } from "../directors-loan-utils";
 import type { DirectorsLoanRepaymentRow } from "../directors-loan-utils";
@@ -46,6 +50,12 @@ export default async function CashFlowPage() {
   if (!tenantId) {
     throw new Error("Unable to resolve the current workspace.");
   }
+
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
 
   let manualEntriesQuery = supabase
     .from("manual_financial_entries")
@@ -145,19 +155,23 @@ export default async function CashFlowPage() {
         .eq("tenant_id", tenantId),
       buScope,
     ).order("repayment_date", { ascending: true }),
-    supabase
-      .from("payroll_history")
-      .select("payroll_month, net_pay")
-      .eq("tenant_id", tenantId)
-      .order("payroll_month", { ascending: true }),
-    supabase
-      .from("payroll_processing")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .order("payroll_month", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase
+        .from("payroll_history")
+        .select("payroll_month, net_pay")
+        .eq("tenant_id", tenantId),
+      scopedEmployees.employeeIds,
+    ).order("payroll_month", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase
+        .from("payroll_processing")
+        .select("*")
+        .eq("tenant_id", tenantId),
+      scopedEmployees.employeeIds,
+    ).order("payroll_month", { ascending: true }),
     monthEndCloseQuery,
     fetchCashFlowInventoryPurchaseInput(supabase, tenantId, buScope),
-    fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
+    fetchPayrollLiveRecalcBundle(supabase, { tenantId, buScope }),
   ]);
 
   const rawManualEntries =
@@ -170,6 +184,7 @@ export default async function CashFlowPage() {
       : (rawManualEntries as ManualFinancialEntry[]);
 
   const fetchError =
+    scopedEmployees.error ??
     incomeError?.message ??
     expenseError?.message ??
     manualError?.message ??

@@ -1148,19 +1148,30 @@ export default function PayrollProcessing({
       return [];
     }
 
+    // Defense in depth: only lock processing rows for employees in the active
+    // BU scope (employeeMap). Server lock-period re-validates the same rule.
+    const scopedEmployeeIds = [...employeeMap.keys()];
+    if (scopedEmployeeIds.length === 0) {
+      throw new Error(
+        "No employees in this business unit scope to lock.",
+      );
+    }
+
     const { data: processingRows, error: fetchErrorMessage } = await supabase
       .from("payroll_processing")
       .select("*")
-      .eq("payroll_month", currentPeriod.payrollMonth);
+      .eq("payroll_month", currentPeriod.payrollMonth)
+      .in("employee_id", scopedEmployeeIds);
 
     if (fetchErrorMessage) {
       throw new Error(fetchErrorMessage.message);
     }
 
-    return ((processingRows as PayrollProcessingRow[] | null) ?? []).map((row) => {
+    const scopedRows: PayrollProcessingRow[] = [];
+    for (const row of (processingRows as PayrollProcessingRow[] | null) ?? []) {
       const employee = employeeMap.get(row.employee_id);
       if (!employee) {
-        return row;
+        continue;
       }
 
       const calculated = calculatePayrollRow(
@@ -1172,15 +1183,17 @@ export default function PayrollProcessing({
         policyForEmployee(employee, currentPeriod),
       );
 
-      return {
+      scopedRows.push({
         ...row,
         ...buildProcessingPayload(
           currentPeriod.payrollMonth,
           employee,
           calculated,
         ),
-      };
-    });
+      });
+    }
+
+    return scopedRows;
   }
 
   async function handleLockPeriod() {

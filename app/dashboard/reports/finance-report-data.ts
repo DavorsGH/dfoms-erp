@@ -23,6 +23,10 @@ import {
   fetchPayrollLiveRecalcBundle,
   mergePayrollWagesWithLiveOpenMonths,
 } from "../hr-payroll/payroll-live-recalc-utils";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "../hr-payroll/payroll-bu-scope-utils";
 import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
 import {
   TAX_LEDGER_SELECT,
@@ -140,6 +144,12 @@ export async function fetchCashFlowReportData(
     activeBusinessUnitId,
   });
 
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+
   const manualEntriesQuery = applyBusinessUnitScope(
     supabase.from("manual_financial_entries").select("*"),
     buScope,
@@ -199,19 +209,18 @@ export async function fetchCashFlowReportData(
         ),
       buScope,
     ).order("invoice_date", { ascending: true }),
-    // Display-only — never written back from this report path.
-    // Payroll tables have no business_unit_id — remain tenant-wide.
-    supabase
-      .from("payroll_history")
-      .select("payroll_month, net_pay")
-      .order("payroll_month", { ascending: true }),
-    supabase
-      .from("payroll_processing")
-      .select("*")
-      .order("payroll_month", { ascending: true }),
+    // §5 (b): payroll cost via employees.business_unit_id — no payroll schema change.
+    applyEmployeeIdScope(
+      supabase.from("payroll_history").select("payroll_month, net_pay"),
+      scopedEmployees.employeeIds,
+    ).order("payroll_month", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase.from("payroll_processing").select("*"),
+      scopedEmployees.employeeIds,
+    ).order("payroll_month", { ascending: true }),
     monthEndCloseQuery,
     fetchCashFlowInventoryPurchaseInput(supabase, tenantId, buScope),
-    fetchPayrollLiveRecalcBundle(supabase, { tenantId }),
+    fetchPayrollLiveRecalcBundle(supabase, { tenantId, buScope }),
   ]);
 
   const rawManualEntries =
@@ -250,6 +259,7 @@ export async function fetchCashFlowReportData(
       ],
     ),
     fetchError:
+      scopedEmployees.error ??
       incomeError?.message ??
       expenseError?.message ??
       manualError?.message ??
@@ -453,6 +463,12 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
     activeBusinessUnitId,
   });
 
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+
   const [
     { data: budgets, error: budgetsError },
     { data: expenses, error: expensesError },
@@ -486,17 +502,21 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
         .eq("tenant_id", tenantId),
       buScope,
     ).order("purchase_date", { ascending: true }),
-    // Payroll tables have no business_unit_id — remain tenant-wide.
-    supabase
-      .from("payroll_history")
-      .select("payroll_month, gross_pay, project_contract")
-      .eq("tenant_id", tenantId)
-      .order("payroll_month", { ascending: true }),
-    supabase
-      .from("payroll_processing")
-      .select("payroll_month, gross_pay, project_contract")
-      .eq("tenant_id", tenantId)
-      .order("payroll_month", { ascending: true }),
+    // §5 (b): filter payroll gross via employees.business_unit_id.
+    applyEmployeeIdScope(
+      supabase
+        .from("payroll_history")
+        .select("payroll_month, gross_pay, project_contract")
+        .eq("tenant_id", tenantId),
+      scopedEmployees.employeeIds,
+    ).order("payroll_month", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase
+        .from("payroll_processing")
+        .select("payroll_month, gross_pay, project_contract")
+        .eq("tenant_id", tenantId),
+      scopedEmployees.employeeIds,
+    ).order("payroll_month", { ascending: true }),
     supabase
       .from("projects")
       .select(CONTRACT_PROJECT_SELECT)
@@ -537,6 +557,7 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
       ],
     ),
     fetchError:
+      scopedEmployees.error ??
       budgetsError?.message ??
       expensesError?.message ??
       rawMaterialPurchasesError?.message ??

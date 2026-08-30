@@ -4,6 +4,10 @@
  * Never writes to payroll_processing.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 import {
   buildManualInputsFromRow,
@@ -100,13 +104,24 @@ function withOptionalTenant(query: any, tenantId: string | undefined) {
  */
 export async function fetchPayrollLiveRecalcBundle(
   supabase: SupabaseClient,
-  options?: { tenantId?: string },
+  options?: {
+    tenantId?: string;
+    /** When set, employees (and thus live open-month wages) follow BU scope. */
+    buScope?: BusinessUnitReadScope;
+  },
 ): Promise<{
   employees: PayrollLiveRecalcEmployee[];
   liveContext: PayrollLiveRecalcContext;
   error: string | null;
 }> {
   const tenantId = options?.tenantId;
+  const buScope = options?.buScope ?? ({ mode: "all" } as BusinessUnitReadScope);
+
+  let employeesQuery = withOptionalTenant(
+    supabase.from("employees").select(PAYROLL_LIVE_RECALC_EMPLOYEE_SELECT),
+    tenantId,
+  );
+  employeesQuery = applyBusinessUnitScope(employeesQuery, buScope);
 
   const [
     { data: employees, error: employeesError },
@@ -120,10 +135,7 @@ export async function fetchPayrollLiveRecalcBundle(
     { data: casualRows, error: casualError },
     { data: payeRows, error: payeError },
   ] = await Promise.all([
-    withOptionalTenant(
-      supabase.from("employees").select(PAYROLL_LIVE_RECALC_EMPLOYEE_SELECT),
-      tenantId,
-    ).order("staff_id", { ascending: true }),
+    employeesQuery.order("staff_id", { ascending: true }),
     withOptionalTenant(
       supabase
         .from("attendance_register")

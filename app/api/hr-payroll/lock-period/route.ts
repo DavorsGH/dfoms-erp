@@ -32,6 +32,11 @@ import {
   type PayrollProcessingRow,
 } from "@/app/dashboard/hr-payroll/payroll-processing-utils";
 import { promoteAllowanceLinesToHistory } from "@/app/dashboard/hr-payroll/payroll-allowance-lines-utils";
+import {
+  applyEmployeeIdScope,
+  filterPayrollRowsToEmployeeScope,
+  resolvePayrollPeriodScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type LockPeriodBody = {
   payrollMonth?: string;
@@ -72,6 +77,7 @@ async function promotePartialToFullLock(params: {
   periodYear?: number;
   periodMonth?: number;
   businessUnitId: string | null;
+  employeeIds: string[];
   existingCloseRecord: {
     employees_recorded: number | null;
     total_net_pay: number | null;
@@ -85,6 +91,7 @@ async function promotePartialToFullLock(params: {
     periodYear,
     periodMonth,
     businessUnitId,
+    employeeIds,
     existingCloseRecord,
   } = params;
 
@@ -132,11 +139,14 @@ async function promotePartialToFullLock(params: {
     );
   }
 
-  const { data: historyData, error: historyFetchError } = await admin
-    .from("payroll_history")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .eq("payroll_month", payrollMonth);
+  const { data: historyData, error: historyFetchError } = await applyEmployeeIdScope(
+    admin
+      .from("payroll_history")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("payroll_month", payrollMonth),
+    employeeIds,
+  );
 
   if (historyFetchError) {
     return NextResponse.json({ error: historyFetchError.message }, { status: 400 });
@@ -167,11 +177,14 @@ async function promotePartialToFullLock(params: {
     0,
   );
 
-  const { error: historyLockError } = await admin
-    .from("payroll_history")
-    .update({ locked: true, locked_at: lockedAt })
-    .eq("tenant_id", tenantId)
-    .eq("payroll_month", payrollMonth);
+  const { error: historyLockError } = await applyEmployeeIdScope(
+    admin
+      .from("payroll_history")
+      .update({ locked: true, locked_at: lockedAt })
+      .eq("tenant_id", tenantId)
+      .eq("payroll_month", payrollMonth),
+    employeeIds,
+  );
 
   if (historyLockError) {
     return NextResponse.json({ error: historyLockError.message }, { status: 400 });
@@ -195,12 +208,15 @@ async function promotePartialToFullLock(params: {
     .single();
 
   if (closeError) {
-    // Best-effort rollback of history locked flags
-    await admin
-      .from("payroll_history")
-      .update({ locked: false, locked_at: null })
-      .eq("tenant_id", tenantId)
-      .eq("payroll_month", payrollMonth);
+    // Best-effort rollback of history locked flags (this scope only)
+    await applyEmployeeIdScope(
+      admin
+        .from("payroll_history")
+        .update({ locked: false, locked_at: null })
+        .eq("tenant_id", tenantId)
+        .eq("payroll_month", payrollMonth),
+      employeeIds,
+    );
 
     return NextResponse.json({ error: closeError.message }, { status: 400 });
   }
@@ -261,6 +277,7 @@ export async function POST(request: Request) {
   const payrollMonth = body.payrollMonth?.slice(0, 10);
   const lockStatus = body.lockStatus;
   const rows = body.rows ?? [];
+  // Same switcher context that scoped the processing employee list (not All).
   const businessUnitId = await getActiveBusinessUnitId();
 
   if (!payrollMonth) {
@@ -283,6 +300,16 @@ export async function POST(request: Request) {
   }
 
   const admin = createAdminClient();
+
+  const scopedEmployees = await resolvePayrollPeriodScopedEmployeeIds(
+    admin,
+    tenantId,
+    businessUnitId,
+  );
+  if (!scopedEmployees.ok) {
+    return NextResponse.json({ error: scopedEmployees.error }, { status: 400 });
+  }
+  const { employeeIds } = scopedEmployees;
 
   let closeQuery = admin
     .from("month_end_close")
@@ -309,6 +336,7 @@ export async function POST(request: Request) {
       periodYear: body.periodYear,
       periodMonth: body.periodMonth,
       businessUnitId,
+      employeeIds,
       existingCloseRecord,
     });
   }
@@ -327,12 +355,15 @@ export async function POST(request: Request) {
     );
   }
 
-  if (rows.length === 0) {
-    return NextResponse.json(
-      { error: "No payroll rows to lock for this period" },
-      { status: 400 },
-    );
+  const scopedRowsResult = filterPayrollRowsToEmployeeScope(
+    rows,
+    employeeIds,
+    "No payroll rows to lock for this period",
+  );
+  if (!scopedRowsResult.ok) {
+    return NextResponse.json({ error: scopedRowsResult.error }, { status: 400 });
   }
+  const scopedRows = scopedRowsResult.rows;
 
   if (
     lockStatus === PAYROLL_STATUS_LOCKED &&
@@ -362,16 +393,20 @@ export async function POST(request: Request) {
   }
 
   const lockedAt = new Date().toISOString();
-  const totalNetPay = rows.reduce(
+  const totalNetPay = scopedRows.reduce(
     (sum, row) => sum + (Number(row.net_pay) || 0),
     0,
   );
 
-  const { data: existingHistory, error: existingHistoryError } = await admin
-    .from("payroll_history")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("payroll_month", payrollMonth);
+  const { data: existingHistory, error: existingHistoryError } =
+    await applyEmployeeIdScope(
+      admin
+        .from("payroll_history")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("payroll_month", payrollMonth),
+      employeeIds,
+    );
 
   if (existingHistoryError) {
     return NextResponse.json({ error: existingHistoryError.message }, { status: 400 });
@@ -391,7 +426,9 @@ export async function POST(request: Request) {
     }
 
     try {
-      await deletePayrollHistoryForMonth(admin, payrollMonth, tenantId);
+      await deletePayrollHistoryForMonth(admin, payrollMonth, tenantId, {
+        employeeIds,
+      });
     } catch (cleanupError) {
       const message =
         cleanupError instanceof PayrollHistoryCleanupError
@@ -404,7 +441,7 @@ export async function POST(request: Request) {
 
   const isFullyLocked = lockStatus === PAYROLL_STATUS_LOCKED;
 
-  const historyRows = rows.map((row) => ({
+  const historyRows = scopedRows.map((row) => ({
     ...processingRowToHistoryPayload(
       row,
       payrollMonth,
@@ -422,11 +459,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: historyError.message }, { status: 400 });
   }
 
-  const { error: deleteError } = await admin
-    .from("payroll_processing")
-    .delete()
-    .eq("tenant_id", tenantId)
-    .eq("payroll_month", payrollMonth);
+  const { error: deleteError } = await applyEmployeeIdScope(
+    admin
+      .from("payroll_processing")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("payroll_month", payrollMonth),
+    employeeIds,
+  );
 
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message }, { status: 400 });
@@ -469,7 +509,7 @@ export async function POST(request: Request) {
     const financeResult = await postPayrollLockFinanceEntries(
       admin,
       financePeriod,
-      rows,
+      scopedRows,
       tenantId,
       {
         // Permanent Lock → Paid (SAL only). Partial Lock stays Accrued.

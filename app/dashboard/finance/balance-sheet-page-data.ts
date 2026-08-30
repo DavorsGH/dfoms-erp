@@ -38,6 +38,10 @@ import {
   fetchPayrollLiveRecalcBundle,
   mergePayrollWagesWithLiveOpenMonths,
 } from "../hr-payroll/payroll-live-recalc-utils";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "../hr-payroll/payroll-bu-scope-utils";
 import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
 import type { MonthEndCloseRecord } from "../hr-payroll/payroll-period-utils";
 import { normalizePayrollMonthKey } from "./accrued-wages-utils";
@@ -218,13 +222,16 @@ export async function fetchInventoryBalanceSheetInput(
         .eq("tenant_id", tenantId),
       buScope,
     ),
-    // P1 deferred: production_batches remain tenant-wide in this helper.
-    supabase
-      .from("production_batches")
-      .select(
-        "id, finished_product_id, production_date, total_batch_cost, created_at",
-      )
-      .eq("tenant_id", tenantId),
+    // 6c.5: scope production batches the same way purchases already are.
+    applyBusinessUnitScope(
+      supabase
+        .from("production_batches")
+        .select(
+          "id, finished_product_id, production_date, total_batch_cost, created_at",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
     applyBusinessUnitScope(
       supabase
         .from("product_purchases")
@@ -232,20 +239,27 @@ export async function fetchInventoryBalanceSheetInput(
         .eq("tenant_id", tenantId),
       buScope,
     ),
-    // P1 deferred: product_sale COGS slice remains tenant-wide.
-    supabase
-      .from("income_register")
-      .select(
-        "product_id, date, cogs_expense_id, cogs_reversal_expense_id, entry_type",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("entry_type", "product_sale")
-      .not("product_id", "is", null),
-    supabase
-      .from("internal_consumption")
-      .select("product_id, consumption_date, expense_register_id")
-      .eq("tenant_id", tenantId)
-      .not("expense_register_id", "is", null),
+    // 6c.5: product-sale COGS history follows the sale's business_unit_id.
+    applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select(
+          "product_id, date, cogs_expense_id, cogs_reversal_expense_id, entry_type",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("entry_type", "product_sale")
+        .not("product_id", "is", null),
+      buScope,
+    ),
+    // 6c.5: internal consumption expense legs follow stamped BU (264+).
+    applyBusinessUnitScope(
+      supabase
+        .from("internal_consumption")
+        .select("product_id, consumption_date, expense_register_id")
+        .eq("tenant_id", tenantId)
+        .not("expense_register_id", "is", null),
+      buScope,
+    ),
     applyBusinessUnitScope(
       supabase
         .from("raw_material_purchases")
@@ -483,6 +497,13 @@ export async function fetchBalanceSheetPageData(
     activeBusinessUnitId,
   });
 
+  // §5 option (b): scope payroll cost via employees.business_unit_id (read-path only).
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+
   let incomeQuery = applyBusinessUnitScope(
     supabase
       .from("income_register")
@@ -499,17 +520,20 @@ export async function fetchBalanceSheetPageData(
       .eq("tenant_id", tenantId),
     buScope,
   ).order("date", { ascending: true });
-  // Payroll tables have no business_unit_id on prod — remain tenant-wide until a later phase.
-  let payrollHistoryQuery = supabase
-    .from("payroll_history")
-    .select("payroll_month, net_pay, net_only_adjustment, gross_pay")
-    .eq("tenant_id", tenantId)
-    .order("payroll_month", { ascending: true });
-  let payrollProcessingQuery = supabase
-    .from("payroll_processing")
-    .select(PAYROLL_PROCESSING_SELECT)
-    .eq("tenant_id", tenantId)
-    .order("payroll_month", { ascending: true });
+  let payrollHistoryQuery = applyEmployeeIdScope(
+    supabase
+      .from("payroll_history")
+      .select("payroll_month, net_pay, net_only_adjustment, gross_pay")
+      .eq("tenant_id", tenantId),
+    scopedEmployees.employeeIds,
+  ).order("payroll_month", { ascending: true });
+  let payrollProcessingQuery = applyEmployeeIdScope(
+    supabase
+      .from("payroll_processing")
+      .select(PAYROLL_PROCESSING_SELECT)
+      .eq("tenant_id", tenantId),
+    scopedEmployees.employeeIds,
+  ).order("payroll_month", { ascending: true });
 
   let manualEntriesQuery = applyBusinessUnitScope(
     supabase
@@ -667,6 +691,7 @@ export async function fetchBalanceSheetPageData(
   if (includeLiveRecalc) {
     livePayrollBundle = await fetchPayrollLiveRecalcBundle(supabase, {
       tenantId,
+      buScope,
     });
     tickRequestCounter(requestCounter, 10);
   }
@@ -746,6 +771,7 @@ export async function fetchBalanceSheetPageData(
       ],
     ),
     fetchError:
+      scopedEmployees.error ??
       incomeError?.message ??
       expenseError?.message ??
       fixedAssetsError?.message ??
