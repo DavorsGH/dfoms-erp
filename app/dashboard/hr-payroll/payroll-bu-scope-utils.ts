@@ -74,6 +74,70 @@ export function applyEmployeeIdScope<T>(
   return q.in("employee_id", employeeIds) as T;
 }
 
+export type ScopedStaffIdsResult = {
+  /** null = All Businesses — do not filter by staff. */
+  staffIds: string[] | null;
+  error: string | null;
+};
+
+/**
+ * Resolve staff_id values for the active business-unit read scope.
+ * - all → null (caller skips .in filter)
+ * - default → employees with business_unit_id IS NULL
+ * - unit → employees with that business_unit_id
+ */
+export async function fetchScopedStaffIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  buScope: BusinessUnitReadScope,
+): Promise<ScopedStaffIdsResult> {
+  if (buScope.mode === "all") {
+    return { staffIds: null, error: null };
+  }
+
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("employees")
+      .select("staff_id")
+      .eq("tenant_id", tenantId),
+    buScope,
+  );
+
+  if (error) {
+    return { staffIds: [], error: error.message };
+  }
+
+  const ids = [
+    ...new Set(
+      ((data as Array<{ staff_id: string | null }> | null) ?? [])
+        .map((row) => String(row.staff_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  return { staffIds: ids, error: null };
+}
+
+/**
+ * Apply staff_id IN filter when scoped. Empty id list → force no rows
+ * (PostgREST treats `.in(_, [])` inconsistently).
+ */
+export function applyStaffIdScope<T>(
+  query: T,
+  staffIds: string[] | null,
+): T {
+  if (staffIds === null) {
+    return query;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q = query as any;
+  if (staffIds.length === 0) {
+    // Match nothing without relying on empty `.in()` behaviour.
+    return q.eq("staff_id", "__no_scoped_staff__") as T;
+  }
+  return q.in("staff_id", staffIds) as T;
+}
+
 /**
  * Employee ids for lock / release / reopen under the gated switcher BU.
  * Call only after assertLockBusinessUnitAllowed (All Businesses refused).

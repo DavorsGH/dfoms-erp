@@ -23,11 +23,18 @@ import {
   type AssetRegisterEntry,
 } from "./asset-register-utils";
 import { formatDate, inputClassName } from "./hr-register-utils";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type AssetRegisterProps = {
   initialEntries: AssetRegisterEntry[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
+  /** Workspace id for employee-linked BU scoping on refresh. */
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -48,8 +55,10 @@ export default function AssetRegister({
   initialEntries,
   initialEmployees,
   fetchError,
+  tenantId = null,
 }: AssetRegisterProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(initialEntries);
   const [employees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
@@ -77,10 +86,27 @@ export default function AssetRegister({
   }, [initialEntries]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("asset_register")
-      .select(ASSET_REGISTER_SELECT)
-      .order("asset_id", { ascending: true });
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
+    const scoped = await fetchScopedEmployeeIds(
+      supabase,
+      tenantId,
+      buReadScope,
+    );
+    if (scoped.error) {
+      setError(scoped.error);
+      return;
+    }
+
+    const { data, error: refreshError } = await applyEmployeeIdScope(
+      supabase
+        .from("asset_register")
+        .select(ASSET_REGISTER_SELECT),
+      scoped.employeeIds,
+    ).order("asset_id", { ascending: true });
 
     if (refreshError) {
       setError(refreshError.message);

@@ -39,6 +39,11 @@ import { useWriteQueueOptional } from "@/components/write-queue-provider";
 import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
 import type { AttendanceQueuePayload } from "@/lib/offline-write-queue/types";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  applyStaffIdScope,
+  fetchScopedStaffIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type AttendanceRegisterProps = {
   initialEntries: AttendanceRegisterEntry[];
@@ -46,6 +51,8 @@ type AttendanceRegisterProps = {
   initialYear: number;
   initialMonth: number;
   fetchError: string | null;
+  /** Workspace id for staff-linked BU scoping on refresh. */
+  tenantId?: string | null;
 };
 
 type DisplayAttendanceEntry = AttendanceRegisterEntry & {
@@ -72,8 +79,10 @@ export default function AttendanceRegister({
   initialYear,
   initialMonth,
   fetchError,
+  tenantId = null,
 }: AttendanceRegisterProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const isOnline = useOnlineStatus();
   const writeQueue = useWriteQueueOptional();
   const [selectedYear, setSelectedYear] = useState(initialYear);
@@ -144,15 +153,30 @@ export default function AttendanceRegister({
       setLoadingEntries(false);
       return;
     }
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      setLoadingEntries(false);
+      return;
+    }
+
     const { start, end } = getAttendanceMonthBounds(year, month);
     setLoadingEntries(true);
 
-    const { data, error: refreshError } = await supabase
-      .from("attendance_register")
-      .select("*")
-      .gte("date", start)
-      .lte("date", end)
-      .order("date", { ascending: false });
+    const scoped = await fetchScopedStaffIds(supabase, tenantId, buReadScope);
+    if (scoped.error) {
+      setError(scoped.error);
+      setLoadingEntries(false);
+      return;
+    }
+
+    const { data, error: refreshError } = await applyStaffIdScope(
+      supabase
+        .from("attendance_register")
+        .select("*")
+        .gte("date", start)
+        .lte("date", end),
+      scoped.staffIds,
+    ).order("date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);
@@ -202,14 +226,25 @@ export default function AttendanceRegister({
       setError("Bulk import requires a connection.");
       return;
     }
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
     setShowForm(false);
     setEditingId(null);
     setForm(emptyForm);
     setError(null);
 
-    const { data, error: existingError } = await supabase
-      .from("attendance_register")
-      .select("date, staff_id");
+    const scoped = await fetchScopedStaffIds(supabase, tenantId, buReadScope);
+    if (scoped.error) {
+      setError(scoped.error);
+      return;
+    }
+
+    const { data, error: existingError } = await applyStaffIdScope(
+      supabase.from("attendance_register").select("date, staff_id"),
+      scoped.staffIds,
+    );
 
     if (existingError) {
       setError(existingError.message);

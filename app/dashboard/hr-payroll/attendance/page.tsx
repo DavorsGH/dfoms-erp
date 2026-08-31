@@ -1,5 +1,15 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyStaffIdScope,
+  fetchScopedStaffIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import AttendanceRegister from "../attendance-register";
 import {
   getAttendanceMonthBounds,
@@ -21,18 +31,41 @@ export default async function AttendancePage() {
   const initialMonth = now.getMonth() + 1;
   const { start, end } = getAttendanceMonthBounds(initialYear, initialMonth);
 
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { staffIds, error: staffScopeError } = tenantId
+    ? await fetchScopedStaffIds(supabase, tenantId, buScope)
+    : {
+        staffIds: buScope.mode === "all" ? null : [],
+        error:
+          buScope.mode === "all"
+            ? null
+            : "Unable to resolve your workspace.",
+      };
+
   const [{ data, error }, { data: employees, error: employeesError }] =
     await Promise.all([
-      supabase
-        .from("attendance_register")
-        .select("*")
-        .gte("date", start)
-        .lte("date", end)
-        .order("date", { ascending: false }),
+      applyStaffIdScope(
+        supabase
+          .from("attendance_register")
+          .select("*")
+          .gte("date", start)
+          .lte("date", end),
+        staffIds,
+      ).order("date", { ascending: false }),
       supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
     ]);
 
-  const fetchError = error?.message ?? employeesError?.message ?? null;
+  const fetchError =
+    staffScopeError ?? error?.message ?? employeesError?.message ?? null;
 
   return (
     <HrPayrollShell sectionTitle="Attendance Register">
@@ -44,6 +77,7 @@ export default async function AttendancePage() {
         initialYear={initialYear}
         initialMonth={initialMonth}
         fetchError={fetchError}
+        tenantId={tenantId}
       />
     </HrPayrollShell>
   );
