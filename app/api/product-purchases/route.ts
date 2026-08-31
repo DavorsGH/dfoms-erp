@@ -6,6 +6,14 @@ import {
   StampRefusedViewAllError,
 } from "@/utils/business-unit-stamp";
 import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   INVENTORY_EDIT_ROLES,
   INVENTORY_SECTION_ROLES,
 } from "@/utils/rbac-access";
@@ -41,10 +49,21 @@ export async function GET() {
   }
 
   const supabase = await getTenantSupabase();
-  const { data, error } = await supabase
-    .from("product_purchases")
-    .select(PRODUCT_PURCHASE_LIST_SELECT)
-    .eq("tenant_id", auth.tenantId)
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("product_purchases")
+      .select(PRODUCT_PURCHASE_LIST_SELECT)
+      .eq("tenant_id", auth.tenantId),
+    buScope,
+  )
     .order("purchase_date", { ascending: false })
     .order("created_at", { ascending: false });
 

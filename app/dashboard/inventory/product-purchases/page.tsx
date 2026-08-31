@@ -1,5 +1,14 @@
 import { cookies } from "next/headers";
-import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
@@ -35,6 +44,14 @@ export default async function ProductPurchasesPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: purchases, error: purchasesError },
@@ -43,10 +60,13 @@ export default async function ProductPurchasesPage() {
     { data: paymentMethods, error: paymentMethodsError },
     { data: projects, error: projectsError },
   ] = await Promise.all([
-    supabase
-      .from("product_purchases")
-      .select(PRODUCT_PURCHASE_LIST_SELECT)
-      .eq("tenant_id", tenantId)
+    applyBusinessUnitScope(
+      supabase
+        .from("product_purchases")
+        .select(PRODUCT_PURCHASE_LIST_SELECT)
+        .eq("tenant_id", tenantId),
+      buScope,
+    )
       .order("purchase_date", { ascending: false })
       .order("created_at", { ascending: false }),
     supabase
