@@ -9,7 +9,8 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
@@ -73,6 +74,7 @@ export default function ProductionBatches({
 }: ProductionBatchesProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [batches, setBatches] = useState(
     initialBatches.map(normalizeProductionBatch),
   );
@@ -136,10 +138,12 @@ export default function ProductionBatches({
       { data: productRows, error: productError },
       { data: materialRows, error: materialError },
     ] = await Promise.all([
-      supabase
-        .from("production_batches")
-        .select(PRODUCTION_BATCH_DETAIL_SELECT)
-        .order("production_date", { ascending: false }),
+      applyBusinessUnitScope(
+        supabase
+          .from("production_batches")
+          .select(PRODUCTION_BATCH_DETAIL_SELECT),
+        buReadScope,
+      ).order("production_date", { ascending: false }),
       supabase
         .from("finished_products")
         .select(FINISHED_PRODUCT_SELECT)

@@ -3,7 +3,12 @@ import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
   getCurrentUserRole,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import InventoryShell from "../inventory-shell";
@@ -27,17 +32,26 @@ import {
 export default async function ProductionBatchesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: batches, error: batchesError },
     { data: products, error: productsError },
     { data: materials, error: materialsError },
   ] = await Promise.all([
-    supabase
-      .from("production_batches")
-      .select(PRODUCTION_BATCH_DETAIL_SELECT)
-      .order("production_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("production_batches")
+        .select(PRODUCTION_BATCH_DETAIL_SELECT),
+      buScope,
+    ).order("production_date", { ascending: false }),
     supabase
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
