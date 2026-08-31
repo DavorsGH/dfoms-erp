@@ -1,10 +1,13 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
-  HR_EMPLOYEE_SELECT,
-  filterActiveEmployees,
-  type HrEmployee,
-} from "../../hr-payroll/employee-utils";
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
+import type { HrEmployee } from "../../hr-payroll/employee-utils";
 import OperationsShell from "../operations-shell";
 import FailedInspections from "../failed-inspections";
 import type { ClientEntry } from "../clients-utils";
@@ -18,13 +21,23 @@ import type { SiteEntry } from "../sites-utils";
 export default async function FailedInspectionsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: entries, error: entriesError },
     { data: clients, error: clientsError },
     { data: sites, error: sitesError },
     { data: checklists, error: checklistsError },
-    { data: employees, error: employeesError },
+    scopedEmployees,
   ] = await Promise.all([
     supabase
       .from("failed_inspections")
@@ -42,15 +55,20 @@ export default async function FailedInspectionsPage() {
       .from("inspection_summary")
       .select("checklist_id, inspection_date, client_id, site_id")
       .order("inspection_date", { ascending: false }),
-    supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+    tenantId
+      ? fetchScopedActiveEmployees(supabase, tenantId, buScope)
+      : Promise.resolve({
+          employees: [] as HrEmployee[],
+          error: "Unable to resolve your workspace.",
+        }),
   ]);
 
   const fetchError =
+    scopedEmployees.error ??
     entriesError?.message ??
     clientsError?.message ??
     sitesError?.message ??
     checklistsError?.message ??
-    employeesError?.message ??
     null;
 
   return (
@@ -60,10 +78,9 @@ export default async function FailedInspectionsPage() {
         initialClients={(clients as ClientEntry[] | null) ?? []}
         initialSites={(sites as SiteEntry[] | null) ?? []}
         initialChecklists={(checklists as InspectionChecklistLookup[] | null) ?? []}
-        initialEmployees={filterActiveEmployees(
-          (employees as HrEmployee[] | null) ?? [],
-        )}
+        initialEmployees={scopedEmployees.employees}
         fetchError={fetchError}
+        tenantId={tenantId}
       />
     </OperationsShell>
   );

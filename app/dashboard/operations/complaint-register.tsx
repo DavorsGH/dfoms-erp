@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -44,6 +46,7 @@ type ComplaintRegisterProps = {
   initialSites: SiteEntry[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -69,11 +72,14 @@ export default function ComplaintRegister({
   initialSites,
   initialEmployees,
   fetchError,
+  tenantId = null,
 }: ComplaintRegisterProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeComplaintRegisterEntry),
   );
+  const [employees, setEmployees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -83,10 +89,40 @@ export default function ComplaintRegister({
   const [filterClient, setFilterClient] = useState("");
   const [filterPriority, setFilterPriority] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const skipFirstEmployeeScopeRefresh = useRef(true);
 
   useEffect(() => {
     setEntries(initialEntries.map(normalizeComplaintRegisterEntry));
   }, [initialEntries]);
+
+  useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
+
+  useEffect(() => {
+    if (skipFirstEmployeeScopeRefresh.current) {
+      skipFirstEmployeeScopeRefresh.current = false;
+      return;
+    }
+    void (async () => {
+      if (!tenantId) {
+        setError("Unable to resolve your workspace.");
+        return;
+      }
+      const scoped = await fetchScopedActiveEmployees(
+        supabase,
+        tenantId,
+        buReadScope,
+      );
+      if (scoped.error) {
+        setError(scoped.error);
+        return;
+      }
+      setEmployees(scoped.employees);
+      setError(null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   const formSiteOptions = useMemo(() => {
     if (!form.client_id) {
@@ -488,7 +524,7 @@ export default function ComplaintRegister({
                   className={inputClassName}
                 >
                   <option value="">Select supervisor</option>
-                  {initialEmployees.map((employee) => (
+                  {employees.map((employee) => (
                     <option key={employee.employee_id} value={employee.employee_id}>
                       {employee.staff_id} — {employee.full_name}
                     </option>

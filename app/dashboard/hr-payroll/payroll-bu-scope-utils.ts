@@ -9,6 +9,11 @@ import {
   resolveBusinessUnitReadScope,
   type BusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import {
+  filterActiveEmployees,
+  HR_EMPLOYEE_SELECT,
+  type HrEmployee,
+} from "./employee-utils";
 
 export type ScopedEmployeeIdsResult = {
   /** null = All Businesses — do not filter payroll by employee. */
@@ -209,4 +214,38 @@ export function filterPayrollRowsToEmployeeScope<
     return { ok: false, error: emptyMessage };
   }
   return { ok: true, rows };
+}
+
+export type ScopedActiveEmployeesResult = {
+  employees: HrEmployee[];
+  error: string | null;
+};
+
+/**
+ * Active employee options for BU-scoped pickers (SSR / client refresh).
+ * Combines fetchScopedEmployeeIds + applyEmployeeIdScope + filterActiveEmployees.
+ */
+export async function fetchScopedActiveEmployees(
+  supabase: SupabaseClient,
+  tenantId: string,
+  buScope: BusinessUnitReadScope,
+): Promise<ScopedActiveEmployeesResult> {
+  const scoped = await fetchScopedEmployeeIds(supabase, tenantId, buScope);
+  if (scoped.error) {
+    return { employees: [], error: scoped.error };
+  }
+
+  const { data, error } = await applyEmployeeIdScope(
+    supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+    scoped.employeeIds,
+  ).order("full_name");
+
+  if (error) {
+    return { employees: [], error: error.message };
+  }
+
+  return {
+    employees: filterActiveEmployees((data as HrEmployee[] | null) ?? []),
+    error: null,
+  };
 }

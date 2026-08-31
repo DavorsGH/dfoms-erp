@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -44,6 +46,7 @@ type InspectionSummaryProps = {
   initialEmployees: HrEmployee[];
   inspectionPassingThreshold: number;
   fetchError: string | null;
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -69,11 +72,14 @@ export default function InspectionSummary({
   initialEmployees,
   inspectionPassingThreshold,
   fetchError,
+  tenantId = null,
 }: InspectionSummaryProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeInspectionSummaryEntry),
   );
+  const [employees, setEmployees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -85,10 +91,40 @@ export default function InspectionSummary({
   const [filterPassFail, setFilterPassFail] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  const skipFirstEmployeeScopeRefresh = useRef(true);
 
   useEffect(() => {
     setEntries(initialEntries.map(normalizeInspectionSummaryEntry));
   }, [initialEntries]);
+
+  useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
+
+  useEffect(() => {
+    if (skipFirstEmployeeScopeRefresh.current) {
+      skipFirstEmployeeScopeRefresh.current = false;
+      return;
+    }
+    void (async () => {
+      if (!tenantId) {
+        setError("Unable to resolve your workspace.");
+        return;
+      }
+      const scoped = await fetchScopedActiveEmployees(
+        supabase,
+        tenantId,
+        buReadScope,
+      );
+      if (scoped.error) {
+        setError(scoped.error);
+        return;
+      }
+      setEmployees(scoped.employees);
+      setError(null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   const filterSiteOptions = useMemo(() => {
     if (!filterClient) {
@@ -514,7 +550,7 @@ export default function InspectionSummary({
                   className={inputClassName}
                 >
                   <option value="">Select supervisor</option>
-                  {initialEmployees.map((employee) => (
+                  {employees.map((employee) => (
                     <option key={employee.employee_id} value={employee.employee_id}>
                       {employee.staff_id} — {employee.full_name}
                     </option>
@@ -671,7 +707,7 @@ export default function InspectionSummary({
                   <td className="px-4 py-3">{getInspectionSiteName(entry)}</td>
                   <td className="px-4 py-3">
                     {entry.supervisor
-                      ? getEmployeeDisplayName(initialEmployees, entry.supervisor)
+                      ? getEmployeeDisplayName(employees, entry.supervisor)
                       : "—"}
                   </td>
                   <td className="px-4 py-3">

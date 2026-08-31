@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -37,6 +39,7 @@ type SitesProps = {
   initialClients: ClientEntry[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -59,9 +62,12 @@ export default function Sites({
   initialClients,
   initialEmployees,
   fetchError,
+  tenantId = null,
 }: SitesProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [sites, setSites] = useState(initialSites.map(normalizeSiteEntry));
+  const [employees, setEmployees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
@@ -70,10 +76,40 @@ export default function Sites({
   const [error, setError] = useState<string | null>(fetchError);
   const [filterClient, setFilterClient] = useState("");
   const [filterRiskLevel, setFilterRiskLevel] = useState("");
+  const skipFirstEmployeeScopeRefresh = useRef(true);
 
   useEffect(() => {
     setSites(initialSites.map(normalizeSiteEntry));
   }, [initialSites]);
+
+  useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
+
+  useEffect(() => {
+    if (skipFirstEmployeeScopeRefresh.current) {
+      skipFirstEmployeeScopeRefresh.current = false;
+      return;
+    }
+    void (async () => {
+      if (!tenantId) {
+        setError("Unable to resolve your workspace.");
+        return;
+      }
+      const scoped = await fetchScopedActiveEmployees(
+        supabase,
+        tenantId,
+        buReadScope,
+      );
+      if (scoped.error) {
+        setError(scoped.error);
+        return;
+      }
+      setEmployees(scoped.employees);
+      setError(null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   const filteredSites = useMemo(() => {
     return sites.filter((site) => {
@@ -430,7 +466,7 @@ export default function Sites({
                   className={inputClassName}
                 >
                   <option value="">Select supervisor</option>
-                  {initialEmployees.map((employee) => (
+                  {employees.map((employee) => (
                     <option key={employee.employee_id} value={employee.employee_id}>
                       {employee.staff_id} — {employee.full_name}
                     </option>
@@ -526,7 +562,7 @@ export default function Sites({
                   <td className="px-4 py-3">
                     {site.assigned_supervisor
                       ? getEmployeeDisplayName(
-                          initialEmployees,
+                          employees,
                           site.assigned_supervisor,
                         )
                       : "—"}

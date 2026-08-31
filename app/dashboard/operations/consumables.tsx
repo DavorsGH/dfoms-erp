@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -31,6 +33,7 @@ type ConsumablesRegisterProps = {
   initialSites: ConsumablesSiteOption[];
   defaultRecordedBy: string;
   fetchError: string | null;
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -87,10 +90,12 @@ export default function ConsumablesRegister({
   initialSites,
   defaultRecordedBy,
   fetchError,
+  tenantId = null,
 }: ConsumablesRegisterProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(initialEntries);
-  const [employees] = useState(initialEmployees);
+  const [employees, setEmployees] = useState(initialEmployees);
   const [sites] = useState(initialSites);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -101,6 +106,7 @@ export default function ConsumablesRegister({
   }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const skipFirstEmployeeScopeRefresh = useRef(true);
 
   const selectedEmployeeMissing = Boolean(
     form.recorded_by &&
@@ -131,6 +137,35 @@ export default function ConsumablesRegister({
   useEffect(() => {
     setEntries(initialEntries);
   }, [initialEntries]);
+
+  useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
+
+  useEffect(() => {
+    if (skipFirstEmployeeScopeRefresh.current) {
+      skipFirstEmployeeScopeRefresh.current = false;
+      return;
+    }
+    void (async () => {
+      if (!tenantId) {
+        setError("Unable to resolve your workspace.");
+        return;
+      }
+      const scoped = await fetchScopedActiveEmployees(
+        supabase,
+        tenantId,
+        buReadScope,
+      );
+      if (scoped.error) {
+        setError(scoped.error);
+        return;
+      }
+      setEmployees(scoped.employees);
+      setError(null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   async function refreshEntries() {
     const { data, error: refreshError } = await supabase

@@ -1,10 +1,13 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
-  HR_EMPLOYEE_SELECT,
-  filterActiveEmployees,
-  type HrEmployee,
-} from "../../hr-payroll/employee-utils";
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
+import type { HrEmployee } from "../../hr-payroll/employee-utils";
 import ConsumablesRegister from "../consumables";
 import {
   CONSUMABLES_SELECT,
@@ -17,6 +20,16 @@ import OperationsShell from "../operations-shell";
 export default async function ConsumablesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const {
     data: { user },
@@ -24,7 +37,7 @@ export default async function ConsumablesPage() {
 
   const [
     { data, error },
-    { data: employees, error: employeesError },
+    scopedEmployees,
     { data: sites, error: sitesError },
     { data: account },
   ] = await Promise.all([
@@ -32,7 +45,12 @@ export default async function ConsumablesPage() {
       .from("consumables")
       .select(CONSUMABLES_SELECT)
       .order("date", { ascending: false }),
-    supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+    tenantId
+      ? fetchScopedActiveEmployees(supabase, tenantId, buScope)
+      : Promise.resolve({
+          employees: [] as HrEmployee[],
+          error: "Unable to resolve your workspace.",
+        }),
     supabase
       .from("sites")
       .select(CONSUMABLES_SITE_SELECT)
@@ -47,7 +65,10 @@ export default async function ConsumablesPage() {
   ]);
 
   const fetchError =
-    error?.message ?? employeesError?.message ?? sitesError?.message ?? null;
+    scopedEmployees.error ??
+    error?.message ??
+    sitesError?.message ??
+    null;
 
   const defaultRecordedBy =
     (account as { employee_id?: string | null } | null)?.employee_id ?? "";
@@ -56,12 +77,11 @@ export default async function ConsumablesPage() {
     <OperationsShell sectionTitle="Consumables">
       <ConsumablesRegister
         initialEntries={(data as ConsumablesEntry[] | null) ?? []}
-        initialEmployees={filterActiveEmployees(
-          (employees as HrEmployee[] | null) ?? [],
-        )}
+        initialEmployees={scopedEmployees.employees}
         initialSites={(sites as ConsumablesSiteOption[] | null) ?? []}
         defaultRecordedBy={defaultRecordedBy}
         fetchError={fetchError}
+        tenantId={tenantId}
       />
     </OperationsShell>
   );

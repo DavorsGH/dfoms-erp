@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -49,6 +51,7 @@ type WorkOrdersProps = {
   initialEmployees: HrEmployee[];
   inspectionPassingThreshold: number;
   fetchError: string | null;
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -78,11 +81,14 @@ export default function WorkOrders({
   initialEmployees,
   inspectionPassingThreshold,
   fetchError,
+  tenantId = null,
 }: WorkOrdersProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [workOrders, setWorkOrders] = useState(
     initialWorkOrders.map(normalizeWorkOrderEntry),
   );
+  const [employees, setEmployees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
   const [editingNo, setEditingNo] = useState<string | null>(null);
   const [deletingNo, setDeletingNo] = useState<string | null>(null);
@@ -94,10 +100,40 @@ export default function WorkOrders({
   const [filterPassFail, setFilterPassFail] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  const skipFirstEmployeeScopeRefresh = useRef(true);
 
   useEffect(() => {
     setWorkOrders(initialWorkOrders.map(normalizeWorkOrderEntry));
   }, [initialWorkOrders]);
+
+  useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
+
+  useEffect(() => {
+    if (skipFirstEmployeeScopeRefresh.current) {
+      skipFirstEmployeeScopeRefresh.current = false;
+      return;
+    }
+    void (async () => {
+      if (!tenantId) {
+        setError("Unable to resolve your workspace.");
+        return;
+      }
+      const scoped = await fetchScopedActiveEmployees(
+        supabase,
+        tenantId,
+        buReadScope,
+      );
+      if (scoped.error) {
+        setError(scoped.error);
+        return;
+      }
+      setEmployees(scoped.employees);
+      setError(null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   const filteredWorkOrders = useMemo(() => {
     return workOrders.filter((entry) => {
@@ -577,7 +613,7 @@ export default function WorkOrders({
                   className={inputClassName}
                 >
                   <option value="">Select cleaner</option>
-                  {initialEmployees.map((employee) => (
+                  {employees.map((employee) => (
                     <option key={employee.employee_id} value={employee.employee_id}>
                       {employee.staff_id} — {employee.full_name}
                     </option>
@@ -594,7 +630,7 @@ export default function WorkOrders({
                   className={inputClassName}
                 >
                   <option value="">Select supervisor</option>
-                  {initialEmployees.map((employee) => (
+                  {employees.map((employee) => (
                     <option key={employee.employee_id} value={employee.employee_id}>
                       {employee.staff_id} — {employee.full_name}
                     </option>
@@ -780,7 +816,7 @@ export default function WorkOrders({
                   <td className="px-4 py-3">
                     {entry.assigned_cleaner
                       ? getEmployeeDisplayName(
-                          initialEmployees,
+                          employees,
                           entry.assigned_cleaner,
                         )
                       : "—"}
