@@ -50,3 +50,6 @@ backups/
 scripts.zip
 
 .next-bak-*/
+
+# one-off local diagnostic / probe scripts (keep on disk, never commit)
+scripts/_*
