@@ -24,6 +24,11 @@ import {
   type EquipmentSiteOption,
 } from "./equipment-register-utils";
 import { formatDate, inputClassName } from "./hr-register-utils";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  applyEmployeeIdScopeToColumn,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type EquipmentRegisterProps = {
   initialEntries: EquipmentRegisterEntry[];
@@ -31,6 +36,8 @@ type EquipmentRegisterProps = {
   initialSites: EquipmentSiteOption[];
   statusOptions: string[];
   fetchError: string | null;
+  /** Workspace id for employee-linked BU scoping on refresh. */
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -71,8 +78,10 @@ export default function EquipmentRegister({
   initialSites,
   statusOptions,
   fetchError,
+  tenantId = null,
 }: EquipmentRegisterProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(initialEntries);
   const [employees] = useState(initialEmployees);
   const [sites] = useState(initialSites);
@@ -106,10 +115,28 @@ export default function EquipmentRegister({
   }, [initialEntries]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("equipment_register")
-      .select(EQUIPMENT_REGISTER_SELECT)
-      .order("equipment_id", { ascending: true });
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
+    const scoped = await fetchScopedEmployeeIds(
+      supabase,
+      tenantId,
+      buReadScope,
+    );
+    if (scoped.error) {
+      setError(scoped.error);
+      return;
+    }
+
+    const { data, error: refreshError } = await applyEmployeeIdScopeToColumn(
+      supabase
+        .from("equipment_register")
+        .select(EQUIPMENT_REGISTER_SELECT),
+      scoped.employeeIds,
+      "assigned_to",
+    ).order("equipment_id", { ascending: true });
 
     if (refreshError) {
       setError(refreshError.message);

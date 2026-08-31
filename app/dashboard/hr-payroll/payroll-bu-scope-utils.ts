@@ -74,6 +74,27 @@ export function applyEmployeeIdScope<T>(
   return q.in("employee_id", employeeIds) as T;
 }
 
+/**
+ * Same as applyEmployeeIdScope, but for FK columns that store employees.employee_id
+ * under a different name (e.g. equipment_register.assigned_to).
+ */
+export function applyEmployeeIdScopeToColumn<T>(
+  query: T,
+  employeeIds: string[] | null,
+  columnName: string,
+): T {
+  if (employeeIds === null) {
+    return query;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const q = query as any;
+  if (employeeIds.length === 0) {
+    // Match nothing without relying on empty `.in()` behaviour.
+    return q.eq(columnName, "__no_scoped_employees__") as T;
+  }
+  return q.in(columnName, employeeIds) as T;
+}
+
 export type ScopedStaffIdsResult = {
   /** null = All Businesses — do not filter by staff. */
   staffIds: string[] | null;
