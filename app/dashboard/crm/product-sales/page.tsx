@@ -1,6 +1,13 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
@@ -18,19 +25,28 @@ import {
 export default async function ProductSalesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data, error },
     { data: clients, error: clientsError },
     { data: finishedProducts, error: finishedProductsError },
     { data: paymentMethods, error: paymentMethodsError },
-    activeBusinessUnitId,
   ] = await Promise.all([
-    supabase
-      .from("income_register")
-      .select(PRODUCT_SALES_SELECT)
-      .eq("entry_type", "product_sale")
-      .order("date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select(PRODUCT_SALES_SELECT)
+        .eq("entry_type", "product_sale"),
+      buScope,
+    ).order("date", { ascending: false }),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
       .from("finished_products")
@@ -38,7 +54,6 @@ export default async function ProductSalesPage() {
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
-    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =

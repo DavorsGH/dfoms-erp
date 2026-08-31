@@ -45,7 +45,8 @@ import {
   PRODUCT_SALES_SELECT,
   type ProductSaleEntry,
 } from "./product-sales-utils";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import ProductSalesBulkImport from "./product-sales-bulk-import";
 import RecordProductSalePaymentDialog from "./record-product-sale-payment-dialog";
 import {
@@ -93,6 +94,7 @@ export default function ProductSales({
 }: ProductSalesProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeProductSaleEntry),
   );
@@ -327,11 +329,13 @@ export default function ProductSales({
   }, [showForm]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("income_register")
-      .select(PRODUCT_SALES_SELECT)
-      .eq("entry_type", "product_sale")
-      .order("date", { ascending: false });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select(PRODUCT_SALES_SELECT)
+        .eq("entry_type", "product_sale"),
+      buReadScope,
+    ).order("date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);
