@@ -12,6 +12,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableStickyFirstTdClassName,
+  scrollableTableStickyFirstThClassName,
 } from "../scrollable-table";
 import {
   findMonthEndCloseForKey,
@@ -421,7 +423,7 @@ export default function PayrollHistory({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Staff ID</th>
-              <th className={scrollableTableThClassName}>Full Name</th>
+              <th className={scrollableTableStickyFirstThClassName}>Full Name</th>
               <th className={scrollableTableThClassName}>Days to Pay</th>
               <th className={scrollableTableThClassName}>Basic Salary</th>
               <th className={scrollableTableThClassName}>Absence Deduction</th>
@@ -447,7 +449,9 @@ export default function PayrollHistory({
               rows.map((row) => (
                 <tr key={row.id} className="text-slate-700">
                   <td className="px-4 py-3">{row.staff_id}</td>
-                  <td className="px-4 py-3">{row.full_name}</td>
+                  <td className={scrollableTableStickyFirstTdClassName()}>
+                    {row.full_name}
+                  </td>
                   <td className="px-4 py-3">{row.days_to_pay ?? "—"}</td>
                   <td className="px-4 py-3">{formatGHS(row.basic_salary)}</td>
                   <td className="px-4 py-3">

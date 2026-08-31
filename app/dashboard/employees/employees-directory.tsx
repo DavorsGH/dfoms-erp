@@ -15,6 +15,8 @@ import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableStickyFirstTdClassName,
+  scrollableTableStickyFirstThClassName,
 } from "../scrollable-table";
 import EmployeeRowActions from "./employee-row-actions";
 import {
@@ -371,6 +373,7 @@ function SortableHeader({
   sortDirection,
   onSort,
   title,
+  className,
 }: {
   label: string;
   column: SortColumn;
@@ -378,11 +381,12 @@ function SortableHeader({
   sortDirection: SortDirection;
   onSort: (column: SortColumn) => void;
   title?: string;
+  className?: string;
 }) {
   const active = sortColumn === column;
 
   return (
-    <th className={scrollableTableThClassName} title={title}>
+    <th className={className ?? scrollableTableThClassName} title={title}>
       <button
         type="button"
         onClick={() => onSort(column)}
@@ -1984,6 +1988,7 @@ export default function EmployeesDirectory({
                 sortColumn={sortColumn}
                 sortDirection={sortDirection}
                 onSort={handleSort}
+                className={scrollableTableStickyFirstThClassName}
               />
               <SortableHeader
                 label="Department"
@@ -2096,7 +2101,18 @@ export default function EmployeesDirectory({
                       />
                     </td>
                     <td className="px-4 py-3">{employee.staff_id}</td>
-                    <td className="px-4 py-3">{employee.full_name}</td>
+                    <td
+                      className={[
+                        scrollableTableStickyFirstTdClassName({
+                          striped: !isSelected && index % 2 === 1,
+                        }),
+                        isSelected ? "!bg-slate-100" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      {employee.full_name}
+                    </td>
                     <td className="px-4 py-3">
                       {getDepartmentName(
                         departmentNameMap,
