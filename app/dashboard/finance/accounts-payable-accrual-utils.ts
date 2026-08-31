@@ -161,6 +161,14 @@ function buildAccrualPayload(
   };
 }
 
+/** Exact expense_register insert payload used by postAccountsPayableAccrualExpense. */
+export function buildAccountsPayableAccrualExpensePayload(
+  entry: AccountsPayableAccrualSource,
+  options?: { tenantId?: string },
+) {
+  return buildAccrualPayload(entry, options?.tenantId);
+}
+
 /**
  * Upsert the Accrued expense_register row for an operating AP entry.
  * Skips Fixed Asset credit and statutory remittance payables.
