@@ -29,6 +29,7 @@ import {
   normalizeInternalConsumption,
   type InternalConsumptionRecord,
 } from "./internal-consumption-utils";
+import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type InternalConsumptionProps = {
   initialEntries: InternalConsumptionRecord[];
@@ -60,6 +61,7 @@ export default function InternalConsumption({
   readOnly = false,
 }: InternalConsumptionProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeInternalConsumption),
   );
@@ -125,6 +127,12 @@ export default function InternalConsumption({
     setLoading(true);
     setError(null);
 
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const quantity = Number.parseFloat(form.quantity);
     if (Number.isNaN(quantity) || quantity <= 0) {
       setError("Quantity must be greater than zero.");
@@ -157,6 +165,7 @@ export default function InternalConsumption({
         notes: nullableText(form.notes),
         recorded_by: recordedByLabel,
         site_id: nullableText(form.site_id),
+        business_unit_id: stampBusinessUnit.businessUnitId,
       });
 
     if (insertError) {
