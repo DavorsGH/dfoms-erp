@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { CLIENT_SELECT, type ClientEntry } from "../../operations/clients-utils";
 import {
   SITE_ASSIGNMENT_SELECT,
@@ -16,12 +24,21 @@ import {
 export default async function ProjectsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const tenantId = await getCurrentUserTenantId();
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
-  const projectsQuery = supabase
-    .from("projects")
-    .select(PROJECT_SELECT)
-    .order("project_name", { ascending: true });
+  const projectsQuery = applyBusinessUnitScope(
+    supabase.from("projects").select(PROJECT_SELECT),
+    buScope,
+  ).order("project_name", { ascending: true });
   const sitesQuery = supabase
     .from("sites")
     .select(SITE_ASSIGNMENT_SELECT)

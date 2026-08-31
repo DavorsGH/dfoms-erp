@@ -30,6 +30,11 @@ import {
   SITE_ASSIGNMENT_SELECT,
   type SiteEntry,
 } from "../operations/sites-utils";
+import {
+  useStampBusinessUnitId,
+  useBusinessUnitReadScope,
+} from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 type ProjectsProps = {
   initialProjects: ProjectEntry[];
@@ -53,6 +58,8 @@ export default function Projects({
   fetchError,
 }: ProjectsProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [projects, setProjects] = useState(
     initialProjects.map(normalizeProjectEntry),
   );
@@ -135,10 +142,10 @@ export default function Projects({
   async function refreshData() {
     const [{ data: projectRows, error: projectError }, { data: siteRows, error: siteError }] =
       await Promise.all([
-        supabase
-          .from("projects")
-          .select(PROJECT_SELECT)
-          .order("project_name", { ascending: true }),
+        applyBusinessUnitScope(
+          supabase.from("projects").select(PROJECT_SELECT),
+          buReadScope,
+        ).order("project_name", { ascending: true }),
         supabase
           .from("sites")
           .select(SITE_ASSIGNMENT_SELECT)
@@ -271,6 +278,12 @@ export default function Projects({
     setLoading(true);
     setError(null);
 
+    if (!editingCode && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       project_code: contractForm.project_code.trim(),
       project_name: contractForm.project_name.trim(),
@@ -281,7 +294,12 @@ export default function Projects({
           .from("projects")
           .update({ project_name: payload.project_name })
           .eq("project_code", editingCode)
-      : await supabase.from("projects").insert(payload);
+      : await supabase.from("projects").insert({
+          ...payload,
+          business_unit_id: stampBusinessUnit.ok
+            ? stampBusinessUnit.businessUnitId
+            : null,
+        });
 
     if (saveError) {
       setError(saveError.message);
