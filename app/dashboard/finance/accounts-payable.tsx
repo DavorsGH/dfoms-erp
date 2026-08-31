@@ -16,6 +16,10 @@ import {
   type AccountsPayableEntry,
   type AccountsPayablePaymentSource,
 } from "./accounts-payable-utils";
+import {
+  deleteAccountsPayableAccrualExpense,
+  postAccountsPayableAccrualExpense,
+} from "./accounts-payable-accrual-utils";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import {
@@ -269,6 +273,18 @@ export default function AccountsPayable({
     setDeletingId(id);
     setError(null);
 
+    try {
+      await deleteAccountsPayableAccrualExpense(supabase, id);
+    } catch (accrualError) {
+      setError(
+        accrualError instanceof Error
+          ? accrualError.message
+          : "Unable to reverse the matching AP accrual expense.",
+      );
+      setDeletingId(null);
+      return;
+    }
+
     const { error: deleteError } = await supabase
       .from("accounts_payable")
       .delete()
@@ -355,6 +371,11 @@ export default function AccountsPayable({
     };
 
     let savedId = editingId;
+    const stampedBusinessUnitId = editingId
+      ? (existingEntry?.business_unit_id ?? null)
+      : stampBusinessUnit.ok
+        ? stampBusinessUnit.businessUnitId
+        : null;
 
     if (editingId) {
       const { error: updateError } = await supabase
@@ -372,9 +393,7 @@ export default function AccountsPayable({
         .from("accounts_payable")
         .insert({
           ...payload,
-          business_unit_id: stampBusinessUnit.ok
-            ? stampBusinessUnit.businessUnitId
-            : null,
+          business_unit_id: stampedBusinessUnitId,
         })
         .select("id")
         .single();
@@ -392,6 +411,37 @@ export default function AccountsPayable({
         detail: formatGHS(amount),
         actionUrl: "/dashboard/finance/accounts-payable",
       });
+    }
+
+    const accrualSource = {
+      id: savedId as string,
+      vendor_name: form.vendor_name,
+      invoice_number: form.invoice_number,
+      expense_category: form.expense_category,
+      sub_category: form.sub_category,
+      invoice_date: form.invoice_date,
+      due_date: form.due_date,
+      amount,
+      net_of_tax_amount: purchaseTax.netOfTaxAmount,
+      gross_before_wht: purchaseTax.grossBeforeWht,
+      wht_rate: whtRate > 0 ? whtRate : null,
+      wht_amount: purchaseTax.whtAmount,
+      input_vat_amount: purchaseTax.inputVatAmount,
+      business_unit_id: stampedBusinessUnitId,
+      source_type: existingEntry?.source_type ?? null,
+    };
+
+    try {
+      await postAccountsPayableAccrualExpense(supabase, accrualSource);
+    } catch (accrualError) {
+      setError(
+        accrualError instanceof Error
+          ? `Payable saved, but the matching accrual expense could not be posted: ${accrualError.message}`
+          : "Payable saved, but the matching accrual expense could not be posted.",
+      );
+      await refreshEntries();
+      setLoading(false);
+      return;
     }
 
     const { error: ledgerError } = await syncPurchaseTaxLedger(supabase, {

@@ -18,6 +18,9 @@ export type AccountsPayableEntry = {
   wht_amount?: number | null;
   gross_before_wht?: number | null;
   business_unit_id?: string | null;
+  /** Present when linked to fixed_assets credit purchase (exclude from AP accrual). */
+  source_type?: string | null;
+  source_id?: string | null;
 };
 
 export type PayableStatus = "Paid" | "Overdue" | "Outstanding";
