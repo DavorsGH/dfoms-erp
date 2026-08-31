@@ -1,7 +1,13 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserFullName } from "@/utils/current-user";
-import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canStartRotation } from "@/utils/rbac-access";
@@ -25,7 +31,7 @@ import {
 import { SITE_ASSIGNMENT_SELECT } from "../sites-utils";
 import {
   attachDutyRosterProjectRefs,
-  fetchDutyRosterEmployeeDisplay,
+  fetchDutyRosterEmployeeDisplayScoped,
 } from "@/utils/duty-roster-employees";
 import {
   ROSTER_ROTATION_METADATA_SELECT,
@@ -36,7 +42,16 @@ import {
 export default async function DutyRosterPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const tenantId = await getCurrentUserTenantId();
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: clients, error: clientsError },
@@ -53,7 +68,7 @@ export default async function DutyRosterPage() {
       ascending: true,
     }),
     supabase.from("roster_config").select(ROSTER_CONFIG_SELECT),
-    fetchDutyRosterEmployeeDisplay(supabase),
+    fetchDutyRosterEmployeeDisplayScoped(supabase, buScope),
     supabase
       .from("projects")
       .select(PROJECT_SELECT)
