@@ -116,7 +116,10 @@ export default async function PayrollProcessingPage() {
       .select("employee_id, date, overtime_amount")
       .gte("date", attendanceStart)
       .lte("date", attendanceEnd),
-    supabase.from("loan_register").select("*"),
+    supabase
+      .from("loan_register")
+      .select("*")
+      .or("outstanding_balance.gt.0.01,outstanding_balance.is.null"),
     supabase
       .from("salary_rate_config")
       .select("*")
