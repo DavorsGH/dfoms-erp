@@ -26,11 +26,18 @@ import {
   inputClassName,
 } from "./hr-register-utils";
 import { allocateLeaveId } from "./hr-ids-api";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type LeaveManagementProps = {
   initialEntries: LeaveManagementEntry[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
+  /** Workspace id for employee-linked BU scoping on refresh. */
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -48,8 +55,10 @@ export default function LeaveManagement({
   initialEntries,
   initialEmployees,
   fetchError,
+  tenantId = null,
 }: LeaveManagementProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(initialEntries);
   const [employees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
@@ -80,10 +89,25 @@ export default function LeaveManagement({
   }, [entries, filterEmployee, filterStatus]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("leave_management")
-      .select("*")
-      .order("start_date", { ascending: false });
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
+    const scoped = await fetchScopedEmployeeIds(
+      supabase,
+      tenantId,
+      buReadScope,
+    );
+    if (scoped.error) {
+      setError(scoped.error);
+      return;
+    }
+
+    const { data, error: refreshError } = await applyEmployeeIdScope(
+      supabase.from("leave_management").select("*"),
+      scoped.employeeIds,
+    ).order("start_date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);

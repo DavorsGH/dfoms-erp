@@ -20,11 +20,18 @@ import {
   type ExitManagementEntry,
 } from "./exit-management-utils";
 import { formatDate, formatGHS, inputClassName } from "./hr-register-utils";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type ExitManagementRegisterProps = {
   initialEntries: ExitManagementEntry[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
+  /** Workspace id for employee-linked BU scoping on refresh. */
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -62,8 +69,10 @@ export default function ExitManagementRegister({
   initialEntries,
   initialEmployees,
   fetchError,
+  tenantId = null,
 }: ExitManagementRegisterProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(initialEntries);
   const [employees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
@@ -91,10 +100,27 @@ export default function ExitManagementRegister({
   }, [initialEntries]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("exit_management")
-      .select(EXIT_MANAGEMENT_SELECT)
-      .order("exit_date", { ascending: false });
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
+    const scoped = await fetchScopedEmployeeIds(
+      supabase,
+      tenantId,
+      buReadScope,
+    );
+    if (scoped.error) {
+      setError(scoped.error);
+      return;
+    }
+
+    const { data, error: refreshError } = await applyEmployeeIdScope(
+      supabase
+        .from("exit_management")
+        .select(EXIT_MANAGEMENT_SELECT),
+      scoped.employeeIds,
+    ).order("exit_date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);

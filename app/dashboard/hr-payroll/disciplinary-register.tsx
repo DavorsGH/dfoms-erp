@@ -22,11 +22,18 @@ import {
   type DisciplinaryRecordEntry,
 } from "./disciplinary-register-utils";
 import { formatDate, inputClassName } from "./hr-register-utils";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type DisciplinaryRegisterProps = {
   initialEntries: DisciplinaryRecordEntry[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
+  /** Workspace id for employee-linked BU scoping on refresh. */
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -46,8 +53,10 @@ export default function DisciplinaryRegister({
   initialEntries,
   initialEmployees,
   fetchError,
+  tenantId = null,
 }: DisciplinaryRegisterProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(initialEntries);
   const [employees] = useState(initialEmployees);
   const [showForm, setShowForm] = useState(false);
@@ -75,10 +84,27 @@ export default function DisciplinaryRegister({
   }, [initialEntries]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("disciplinary_records")
-      .select(DISCIPLINARY_SELECT)
-      .order("incident_date", { ascending: false });
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
+    const scoped = await fetchScopedEmployeeIds(
+      supabase,
+      tenantId,
+      buReadScope,
+    );
+    if (scoped.error) {
+      setError(scoped.error);
+      return;
+    }
+
+    const { data, error: refreshError } = await applyEmployeeIdScope(
+      supabase
+        .from("disciplinary_records")
+        .select(DISCIPLINARY_SELECT),
+      scoped.employeeIds,
+    ).order("incident_date", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);
