@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
 import PromoCodeField from "@/components/promo-code-field";
@@ -16,7 +16,11 @@ import {
   type LoyaltyAccountRow,
 } from "@/utils/loyalty-types";
 import { inputClassName } from "../employees/employee-record-utils";
-import type { HrEmployee } from "../hr-payroll/employee-utils";
+import {
+  filterActiveEmployees,
+  HR_EMPLOYEE_SELECT,
+  type HrEmployee,
+} from "../hr-payroll/employee-utils";
 import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
@@ -68,7 +72,14 @@ import {
   buildOfflineProvisionalToken,
 } from "@/lib/offline-write-queue/pos-optimistic-stock";
 import type { PosCashSaleQueuePayload } from "@/lib/offline-write-queue/types";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import {
+  useStampBusinessUnitId,
+  useBusinessUnitReadScope,
+} from "@/app/dashboard/business-unit-view-context";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -97,6 +108,8 @@ type PosCheckoutProps = {
   onStockCacheChanged?: () => void | Promise<void>;
   /** Create-only stamp for product sales; null = All Businesses. */
   activeBusinessUnitId?: string | null;
+  /** Workspace id for employee-linked BU scoping of sales-rep options. */
+  tenantId?: string | null;
 };
 
 type MomoInitializeResponse = {
@@ -143,14 +156,17 @@ export default function PosCheckout({
   onStockLevelsChanged,
   onStockCacheChanged,
   activeBusinessUnitId = null,
+  tenantId = null,
 }: PosCheckoutProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
   const writeQueue = useWriteQueueOptional();
   const [products, setProducts] = useState(
     initialProducts.map(normalizeFinishedProduct),
   );
+  const [employees, setEmployees] = useState(initialEmployees);
   const [cartLines, setCartLines] = useState<PosCartLine[]>(initialCartLines);
   const [productSearch, setProductSearch] = useState("");
   const [clientId, setClientId] = useState(initialClientId);
@@ -195,6 +211,7 @@ export default function PosCheckout({
   const [loyaltyRedeemError, setLoyaltyRedeemError] = useState<string | null>(null);
   const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
   const [openArBalance, setOpenArBalance] = useState<number | null>(null);
+  const skipFirstEmployeeScopeRefresh = useRef(true);
 
   void initialPaymentMethods;
 
@@ -203,8 +220,61 @@ export default function PosCheckout({
   }, [initialProducts]);
 
   useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
+
+  useEffect(() => {
     setError(fetchError);
   }, [fetchError]);
+
+  async function refreshEmployees() {
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
+    const scoped = await fetchScopedEmployeeIds(
+      supabase,
+      tenantId,
+      buReadScope,
+    );
+    if (scoped.error) {
+      setError(scoped.error);
+      return;
+    }
+
+    const { data, error: refreshError } = await applyEmployeeIdScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      scoped.employeeIds,
+    ).order("full_name");
+
+    if (refreshError) {
+      setError(refreshError.message);
+      return;
+    }
+
+    const nextEmployees = filterActiveEmployees(
+      (data as HrEmployee[] | null) ?? [],
+    );
+    setEmployees(nextEmployees);
+    setSalesRepId((current) =>
+      current &&
+      !nextEmployees.some((employee) => employee.employee_id === current)
+        ? ""
+        : current,
+    );
+    setError(null);
+  }
+
+  useEffect(() => {
+    if (skipFirstEmployeeScopeRefresh.current) {
+      skipFirstEmployeeScopeRefresh.current = false;
+      return;
+    }
+    void refreshEmployees();
+    // Re-scope sales-rep options when the BU switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   async function recordQuoteConversionsForIncomeIds(incomeIds: string[]) {
     if (!quoteConversionId || incomeIds.length === 0) {
@@ -1491,7 +1561,7 @@ export default function PosCheckout({
             </div>
           ) : null}
           <SalesRepSelect
-            employees={initialEmployees}
+            employees={employees}
             value={salesRepId}
             onChange={setSalesRepId}
             className={inputClassName}

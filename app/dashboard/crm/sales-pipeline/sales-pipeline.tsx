@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { formatDate, formatGHS } from "../../finance/income-register-utils";
 import { inputClassName } from "../../hr-payroll/hr-register-utils";
-import type { HrEmployee } from "../../hr-payroll/employee-utils";
+import {
+  filterActiveEmployees,
+  HR_EMPLOYEE_SELECT,
+  type HrEmployee,
+} from "../../hr-payroll/employee-utils";
 import { nullableText } from "../../operations/operations-register-utils";
 import type { PipelineClient } from "./sales-pipeline-utils";
 import {
@@ -17,6 +21,10 @@ import {
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import OpportunityFormFields from "./opportunity-form-fields";
 import {
   ACTIVITY_TYPE_OPTIONS,
@@ -48,6 +56,8 @@ type SalesPipelineProps = {
   fetchError: string | null;
   /** Create-only stamp; null = All Businesses. */
   activeBusinessUnitId?: string | null;
+  /** Workspace id for employee-linked BU scoping of assignee options. */
+  tenantId?: string | null;
 };
 
 const emptyLeadForm = {
@@ -75,6 +85,7 @@ export default function SalesPipeline({
   initialEmployees,
   fetchError,
   activeBusinessUnitId = null,
+  tenantId = null,
 }: SalesPipelineProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
@@ -82,6 +93,7 @@ export default function SalesPipeline({
   const [opportunities, setOpportunities] = useState(initialOpportunities);
   const [activities, setActivities] = useState(initialActivities);
   const [clients, setClients] = useState(initialClients);
+  const [employees, setEmployees] = useState(initialEmployees);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(
     null,
@@ -107,6 +119,7 @@ export default function SalesPipeline({
     string | null
   >(null);
   const [error, setError] = useState<string | null>(fetchError);
+  const skipFirstEmployeeScopeRefresh = useRef(true);
 
   useEffect(() => {
     setOpportunities(initialOpportunities);
@@ -119,6 +132,10 @@ export default function SalesPipeline({
   useEffect(() => {
     setClients(initialClients);
   }, [initialClients]);
+
+  useEffect(() => {
+    setEmployees(initialEmployees);
+  }, [initialEmployees]);
 
   const groupedOpportunities = useMemo(
     () => groupOpportunitiesByStage(opportunities),
@@ -135,6 +152,51 @@ export default function SalesPipeline({
     }
     return map;
   }, [activities]);
+
+  async function refreshEmployees() {
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
+    const scoped = await fetchScopedEmployeeIds(
+      supabase,
+      tenantId,
+      buReadScope,
+    );
+    if (scoped.error) {
+      setError(scoped.error);
+      return;
+    }
+
+    const { data, error: refreshError } = await applyEmployeeIdScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      scoped.employeeIds,
+    ).order("full_name");
+
+    if (refreshError) {
+      setError(refreshError.message);
+      return;
+    }
+
+    setEmployees(
+      filterActiveEmployees((data as HrEmployee[] | null) ?? []),
+    );
+    setError(null);
+  }
+
+  useEffect(() => {
+    if (skipFirstEmployeeScopeRefresh.current) {
+      skipFirstEmployeeScopeRefresh.current = false;
+      return;
+    }
+    void refreshEmployees();
+    // Re-scope assignee options when the BU switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [
+    buReadScope.mode,
+    buReadScope.mode === "unit" ? buReadScope.id : null,
+  ]);
 
   async function refreshOpportunities() {
     const { data, error: refreshError } = await applyBusinessUnitScope(
@@ -664,7 +726,7 @@ export default function SalesPipeline({
             <OpportunityFormFields
               form={opportunityForm}
               clients={clients}
-              employees={initialEmployees}
+              employees={employees}
               onFieldChange={updateOpportunityField}
               showCustomerField={false}
             />
@@ -698,7 +760,7 @@ export default function SalesPipeline({
             <OpportunityFormFields
               form={opportunityForm}
               clients={clients}
-              employees={initialEmployees}
+              employees={employees}
               onFieldChange={updateOpportunityField}
             />
 
@@ -878,7 +940,7 @@ export default function SalesPipeline({
                             <p className="text-xs text-slate-500">
                               Rep:{" "}
                               {getAssignedRepLabel(
-                                initialEmployees,
+                                employees,
                                 opportunity.assigned_to,
                               )}
                             </p>
@@ -1075,7 +1137,7 @@ export default function SalesPipeline({
                                     className={inputClassName}
                                   >
                                     <option value="">Unassigned</option>
-                                    {initialEmployees.map((employee) => (
+                                    {employees.map((employee) => (
                                       <option
                                         key={employee.employee_id}
                                         value={employee.employee_id}

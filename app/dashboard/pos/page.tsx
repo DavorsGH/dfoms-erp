@@ -6,7 +6,13 @@ import {
   getCurrentUserEmployeeId,
   getCurrentUserRole,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import { canAccessCrmSection } from "@/utils/rbac-access";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { CLIENT_SELECT, type ClientEntry } from "../operations/clients-utils";
@@ -48,19 +54,33 @@ export default async function PosPage({ searchParams }: PosPageProps) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [role, defaultSalesRepId, tenantId, authUid, activeBusinessUnitId] =
-    await Promise.all([
-      getCurrentUserRole(),
-      getCurrentUserEmployeeId(),
-      getCurrentUserTenantId(),
-      getCurrentAuthUid(),
-      getActiveBusinessUnitId(),
-    ]);
+  const [
+    role,
+    defaultSalesRepId,
+    tenantId,
+    authUid,
+    activeBusinessUnitId,
+    viewAllBusinessUnits,
+  ] = await Promise.all([
+    getCurrentUserRole(),
+    getCurrentUserEmployeeId(),
+    getCurrentUserTenantId(),
+    getCurrentAuthUid(),
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
   const showCrmNav = canAccessCrmSection(role as AppRole | null);
 
   if (!tenantId || !authUid) {
     throw new Error("Unable to resolve workspace session for POS cache.");
   }
+
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { employeeIds, error: employeeScopeError } =
+    await fetchScopedEmployeeIds(supabase, tenantId, buScope);
 
   const quoteFetchPromise = quoteId
     ? Promise.all([
@@ -97,7 +117,10 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     supabase.from("payment_methods").select("name").order("name", {
       ascending: true,
     }),
-    supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+    applyEmployeeIdScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      employeeIds,
+    ).order("full_name"),
     supabase
       .from("loyalty_accounts")
       .select(LOYALTY_ACCOUNT_SELECT),
@@ -174,6 +197,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     : [];
 
   let fetchError =
+    employeeScopeError ??
     clientsError?.message ??
     productsError?.message ??
     paymentMethodsError?.message ??
@@ -216,6 +240,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       fetchError={fetchError}
       initialCachedAt={new Date().toISOString()}
       activeBusinessUnitId={activeBusinessUnitId}
+      tenantId={tenantId}
     />
   );
 

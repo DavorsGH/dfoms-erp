@@ -2,12 +2,17 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
+  getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import {
+  applyEmployeeIdScope,
+  fetchScopedEmployeeIds,
+} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import {
   HR_EMPLOYEE_SELECT,
   filterActiveEmployees,
@@ -29,14 +34,25 @@ import {
 export default async function SalesPipelinePage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
-    getActiveBusinessUnitId(),
-    getViewAllBusinessUnits(),
-  ]);
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
   const buScope = resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
+  const { employeeIds, error: employeeScopeError } = tenantId
+    ? await fetchScopedEmployeeIds(supabase, tenantId, buScope)
+    : {
+        employeeIds: buScope.mode === "all" ? null : [],
+        error:
+          buScope.mode === "all"
+            ? null
+            : "Unable to resolve your workspace.",
+      };
 
   const [
     { data: opportunities, error: opportunitiesError },
@@ -58,10 +74,14 @@ export default async function SalesPipelinePage() {
       .from("customers")
       .select(PIPELINE_CLIENT_SELECT)
       .order("client_name", { ascending: true }),
-    supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+    applyEmployeeIdScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      employeeIds,
+    ).order("full_name"),
   ]);
 
   const fetchError =
+    employeeScopeError ??
     opportunitiesError?.message ??
     activitiesError?.message ??
     clientsError?.message ??
@@ -87,6 +107,7 @@ export default async function SalesPipelinePage() {
         )}
         fetchError={fetchError}
         activeBusinessUnitId={activeBusinessUnitId}
+        tenantId={tenantId}
       />
     </CrmShell>
   );

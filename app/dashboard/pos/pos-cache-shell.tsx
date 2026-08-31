@@ -44,6 +44,8 @@ type PosCacheShellProps = {
   initialCachedAt: string;
   /** Create-only stamp for product sales; null = All Businesses. */
   activeBusinessUnitId?: string | null;
+  /** Workspace id for employee-linked BU scoping of sales-rep options. */
+  tenantId?: string | null;
 };
 
 export default function PosCacheShell({
@@ -63,6 +65,7 @@ export default function PosCacheShell({
   fetchError,
   initialCachedAt,
   activeBusinessUnitId = null,
+  tenantId = null,
 }: PosCacheShellProps) {
   const router = useRouter();
   const isOnline = useOnlineStatus();
@@ -205,6 +208,7 @@ export default function PosCacheShell({
         quoteNumber={quoteNumber}
         fetchError={error}
         activeBusinessUnitId={activeBusinessUnitId}
+        tenantId={tenantId}
         onStockLevelsChanged={async (nextProducts) => {
           setProducts(nextProducts);
           if (!isOnline) {
