@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   CLIENT_QUOTATION_LIST_SELECT,
   normalizeClientQuotationListRow,
@@ -25,12 +33,23 @@ export default async function ClientQuotationsPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data, error }, activeContractByClientId] = await Promise.all([
-    supabase
-      .from("client_quotations")
-      .select(CLIENT_QUOTATION_LIST_SELECT)
-      .eq("tenant_id", tenantId)
+    applyBusinessUnitScope(
+      supabase
+        .from("client_quotations")
+        .select(CLIENT_QUOTATION_LIST_SELECT)
+        .eq("tenant_id", tenantId),
+      buScope,
+    )
       .order("issue_date", { ascending: false })
       .order("quotation_sequence", { ascending: false }),
     loadActiveServiceContractsByClientId(supabase, tenantId),
