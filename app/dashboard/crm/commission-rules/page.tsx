@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   COMMISSION_RULE_LIST_SELECT,
   normalizeCommissionRuleRow,
   type CommissionRuleListRow,
@@ -16,13 +24,23 @@ import CommissionRulesList from "./commission-rules-list";
 export default async function CommissionRulesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data, error }, { data: employees, error: employeesError }] =
     await Promise.all([
-      supabase
-        .from("commission_rules")
-        .select(COMMISSION_RULE_LIST_SELECT)
-        .order("effective_start", { ascending: false }),
+      applyBusinessUnitScope(
+        supabase
+          .from("commission_rules")
+          .select(COMMISSION_RULE_LIST_SELECT),
+        buScope,
+      ).order("effective_start", { ascending: false }),
       supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
     ]);
 
