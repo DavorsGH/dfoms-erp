@@ -32,6 +32,7 @@ import {
   type MonthEndCloseRecord,
   type SelectedPayrollPeriod,
 } from "./payroll-period-utils";
+import { getAttendanceMonthBounds } from "./attendance-register-utils";
 import {
   buildManualInputsFromRow,
   buildProcessingPayload,
@@ -297,16 +298,18 @@ export default function PayrollProcessing({
   function getRowSources(
     employee: PayrollEmployeeSource,
     period: SelectedPayrollPeriod,
+    attendanceRows: PayrollAttendanceSource[] = attendance,
+    overtimeRows: PayrollOvertimeSource[] = overtime,
   ) {
     return {
       absenceCount: countAbsencesForStaff(
-        attendance,
+        attendanceRows,
         employee.staff_id,
         period.year,
         period.month,
       ),
       overtimeAmount: sumOvertimeForEmployee(
-        overtime,
+        overtimeRows,
         employee.employee_id,
         period.year,
         period.month,
@@ -334,13 +337,15 @@ export default function PayrollProcessing({
     employee: PayrollEmployeeSource,
     period: SelectedPayrollPeriod,
     manualOverrides: Partial<PayrollManualInputs> = {},
+    attendanceRows: PayrollAttendanceSource[] = attendance,
+    overtimeRows: PayrollOvertimeSource[] = overtime,
   ): WorkspaceRow {
     const policy = policyForEmployee(employee, period);
     const calculated = calculatePayrollRow(
       employee,
       period,
       taxConfigs,
-      getRowSources(employee, period),
+      getRowSources(employee, period, attendanceRows, overtimeRows),
       {
         ...buildManualInputsFromRow(row, period.totalWorkingDays),
         ...manualOverrides,
@@ -512,6 +517,8 @@ export default function PayrollProcessing({
   async function syncOpenPeriod(
     period: SelectedPayrollPeriod,
     isCancelled: () => boolean = () => false,
+    attendanceRows: PayrollAttendanceSource[] = attendance,
+    overtimeRows: PayrollOvertimeSource[] = overtime,
   ) {
     const { data: existingRows, error: existingError } = await supabase
       .from("payroll_processing")
@@ -568,13 +575,13 @@ export default function PayrollProcessing({
       .filter((employee) => !existingEmployeeIds.has(employee.employee_id))
       .map((employee) => {
         const absenceCount = countAbsencesForStaff(
-          attendance,
+          attendanceRows,
           employee.staff_id,
           period.year,
           period.month,
         );
         const overtimeAmount = sumOvertimeForEmployee(
-          overtime,
+          overtimeRows,
           employee.employee_id,
           period.year,
           period.month,
@@ -670,6 +677,40 @@ export default function PayrollProcessing({
         setCurrentPeriod(period);
       }
 
+      const { start: attendanceStart, end: attendanceEnd } =
+        getAttendanceMonthBounds(period.year, period.month);
+      const [
+        { data: attendanceData, error: attendanceError },
+        { data: overtimeData, error: overtimeFetchError },
+      ] = await Promise.all([
+        supabase
+          .from("attendance_register")
+          .select("staff_id, date, attendance_status")
+          .gte("date", attendanceStart)
+          .lte("date", attendanceEnd),
+        supabase
+          .from("overtime_register")
+          .select("employee_id, date, overtime_amount")
+          .gte("date", attendanceStart)
+          .lte("date", attendanceEnd),
+      ]);
+
+      if (attendanceError) {
+        throw new Error(attendanceError.message);
+      }
+      if (overtimeFetchError) {
+        throw new Error(overtimeFetchError.message);
+      }
+
+      const periodAttendance =
+        (attendanceData as PayrollAttendanceSource[] | null) ?? [];
+      const periodOvertime =
+        (overtimeData as PayrollOvertimeSource[] | null) ?? [];
+      if (!isStaleLoad()) {
+        setAttendance(periodAttendance);
+        setOvertime(periodOvertime);
+      }
+
       const closeRecord = await fetchMonthEndClose(period.payrollMonth);
       if (isStaleLoad()) {
         return;
@@ -740,7 +781,12 @@ export default function PayrollProcessing({
         throw new Error(processingCountError.message);
       }
 
-      await syncOpenPeriod(period, isStaleLoad);
+      await syncOpenPeriod(
+        period,
+        isStaleLoad,
+        periodAttendance,
+        periodOvertime,
+      );
       if (isStaleLoad()) {
         return;
       }
@@ -769,7 +815,14 @@ export default function PayrollProcessing({
         sortWorkspaceRows(
           processingRows.map((row) => {
             const employee = employeeMap.get(row.employee_id)!;
-            return recalculateWorkspaceRow(row, employee, period);
+            return recalculateWorkspaceRow(
+              row,
+              employee,
+              period,
+              {},
+              periodAttendance,
+              periodOvertime,
+            );
           }),
         ),
       );

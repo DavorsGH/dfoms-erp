@@ -30,11 +30,17 @@ import type {
   CompensationPolicyRow,
 } from "../../administration/compensation-policy-utils";
 import type { SalaryRateConfig } from "../../employees/pay-estimate-utils";
+import { getAttendanceMonthBounds } from "../attendance-register-utils";
 
 export default async function PayrollProcessingPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const admin = createAdminClient();
+  const now = new Date();
+  const { start: attendanceStart, end: attendanceEnd } = getAttendanceMonthBounds(
+    now.getFullYear(),
+    now.getMonth() + 1,
+  );
   const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
     await Promise.all([
       getCurrentUserTenantId(),
@@ -102,10 +108,14 @@ export default async function PayrollProcessingPage() {
         }),
     supabase
       .from("attendance_register")
-      .select("staff_id, date, attendance_status"),
+      .select("staff_id, date, attendance_status")
+      .gte("date", attendanceStart)
+      .lte("date", attendanceEnd),
     supabase
       .from("overtime_register")
-      .select("employee_id, date, overtime_amount"),
+      .select("employee_id, date, overtime_amount")
+      .gte("date", attendanceStart)
+      .lte("date", attendanceEnd),
     supabase.from("loan_register").select("*"),
     supabase
       .from("salary_rate_config")
