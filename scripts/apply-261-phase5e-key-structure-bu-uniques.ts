@@ -2,9 +2,13 @@
  * Apply scripts/261_phase5e_key_structure_bu_uniques.sql after deployed-app guard.
  *
  * Usage:
- *   npx tsx scripts/apply-261-phase5e-key-structure-bu-uniques.ts --env staging
- *   npx tsx scripts/apply-261-phase5e-key-structure-bu-uniques.ts --env production
+ *   npx tsx scripts/apply-261-phase5e-key-structure-bu-uniques.ts --env staging --confirm-month-end-close-server
+ *   npx tsx scripts/apply-261-phase5e-key-structure-bu-uniques.ts --env production --confirm-month-end-close-server
  *   npx tsx scripts/apply-261-phase5e-key-structure-bu-uniques.ts --env staging --skip-guard
+ *
+ * --confirm-month-end-close-server is required for a real guard PASS (not a
+ * rubber stamp). See scripts/README-guard-261.md and the header of
+ * scripts/guard-261-deployed-onconflict.ts for the human checklist.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,11 +44,16 @@ function parseArgs(argv: string[]) {
   return {
     environment: environment as "staging" | "production",
     skipGuard: argv.includes("--skip-guard"),
+    confirmMonthEndCloseServer: argv.includes(
+      "--confirm-month-end-close-server",
+    ),
   };
 }
 
 async function main() {
-  const { environment, skipGuard } = parseArgs(process.argv.slice(2));
+  const { environment, skipGuard, confirmMonthEndCloseServer } = parseArgs(
+    process.argv.slice(2),
+  );
   const envFile =
     environment === "production" ? ".env.local.backup" : ".env.staging.local";
   loadEnvForce(resolve(envFile));
@@ -57,7 +66,11 @@ async function main() {
     );
   }
 
-  const guard = await guard261DeployedOnConflict({ environment, skipGuard });
+  const guard = await guard261DeployedOnConflict({
+    environment,
+    skipGuard,
+    confirmMonthEndCloseServer,
+  });
   if (!guard.ok) {
     console.error("Apply 261 aborted — deployed app guard failed:\n" + guard.reason);
     process.exit(1);
