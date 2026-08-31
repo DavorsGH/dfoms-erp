@@ -15,7 +15,8 @@ import {
   DEFAULT_CUSTOMER_TYPE,
 } from "../customers/customers-utils";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import OpportunityFormFields from "./opportunity-form-fields";
 import {
   ACTIVITY_TYPE_OPTIONS,
@@ -77,6 +78,7 @@ export default function SalesPipeline({
 }: SalesPipelineProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [opportunities, setOpportunities] = useState(initialOpportunities);
   const [activities, setActivities] = useState(initialActivities);
   const [clients, setClients] = useState(initialClients);
@@ -135,10 +137,12 @@ export default function SalesPipeline({
   }, [activities]);
 
   async function refreshOpportunities() {
-    const { data, error: refreshError } = await supabase
-      .from("sales_opportunities")
-      .select(SALES_OPPORTUNITY_SELECT)
-      .order("updated_at", { ascending: false });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase
+        .from("sales_opportunities")
+        .select(SALES_OPPORTUNITY_SELECT),
+      buReadScope,
+    ).order("updated_at", { ascending: false });
 
     if (refreshError) {
       setError(refreshError.message);

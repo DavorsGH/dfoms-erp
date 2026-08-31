@@ -1,6 +1,13 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   HR_EMPLOYEE_SELECT,
   filterActiveEmployees,
@@ -22,18 +29,27 @@ import {
 export default async function SalesPipelinePage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: opportunities, error: opportunitiesError },
     { data: activities, error: activitiesError },
     { data: clients, error: clientsError },
     { data: employees, error: employeesError },
-    activeBusinessUnitId,
   ] = await Promise.all([
-    supabase
-      .from("sales_opportunities")
-      .select(SALES_OPPORTUNITY_SELECT)
-      .order("updated_at", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("sales_opportunities")
+        .select(SALES_OPPORTUNITY_SELECT),
+      buScope,
+    ).order("updated_at", { ascending: false }),
     supabase
       .from("sales_activities")
       .select(SALES_ACTIVITY_SELECT)
@@ -43,7 +59,6 @@ export default async function SalesPipelinePage() {
       .select(PIPELINE_CLIENT_SELECT)
       .order("client_name", { ascending: true }),
     supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
-    getActiveBusinessUnitId(),
   ]);
 
   const fetchError =
