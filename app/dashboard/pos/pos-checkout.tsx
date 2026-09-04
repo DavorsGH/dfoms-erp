@@ -27,6 +27,10 @@ import {
   type FinishedProductRecord,
 } from "../inventory/finished-products-utils";
 import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "../inventory/finished-product-bu-stock-utils";
+import {
   formatInventoryMoney,
   formatInventoryQuantity,
 } from "../inventory/inventory-utils";
@@ -272,7 +276,8 @@ export default function PosCheckout({
       return;
     }
     void refreshEmployees();
-    // Re-scope sales-rep options when the BU switcher changes.
+    void refreshProducts();
+    // Re-scope sales-rep options and BU stock when the BU switcher changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
@@ -394,6 +399,11 @@ export default function PosCheckout({
   }
 
   async function refreshProducts() {
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
     const { data, error: productError } = await supabase
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
@@ -405,8 +415,18 @@ export default function PosCheckout({
       return;
     }
 
-    const next = ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
-      normalizeFinishedProduct(row),
+    const { stockMap, error: stockScopeError } =
+      await fetchScopedFinishedProductStock(supabase, tenantId, buReadScope);
+    if (stockScopeError) {
+      setError(stockScopeError);
+      return;
+    }
+
+    const next = mergeScopedStockOntoProducts(
+      ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
+        normalizeFinishedProduct(row),
+      ),
+      stockMap,
     );
     setProducts(next);
     await onStockLevelsChanged?.(next);

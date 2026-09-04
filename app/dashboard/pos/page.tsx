@@ -22,6 +22,10 @@ import {
   type FinishedProductRecord,
 } from "../inventory/finished-products-utils";
 import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "../inventory/finished-product-bu-stock-utils";
+import {
   SALES_QUOTE_HEADER_SELECT,
   SALES_QUOTE_LINE_ITEM_SELECT,
   type SalesQuoteHeaderRow,
@@ -135,9 +139,15 @@ export default async function PosPage({ searchParams }: PosPageProps) {
   const [{ data: quoteRow, error: quoteError }, { data: quoteLines, error: quoteLinesError }] =
     quoteResults;
 
-  const normalizedProducts = (
-    (products as FinishedProductRecord[] | null) ?? []
-  ).map((row) => normalizeFinishedProduct(row));
+  const { stockMap, error: stockScopeError } =
+    await fetchScopedFinishedProductStock(supabase, tenantId, buScope);
+
+  const normalizedProducts = mergeScopedStockOntoProducts(
+    ((products as FinishedProductRecord[] | null) ?? []).map((row) =>
+      normalizeFinishedProduct(row),
+    ),
+    stockMap,
+  );
 
   const clientRows = (clients as ClientEntry[] | null) ?? [];
   const loyaltyByClientId = new Map<string, number>();
@@ -198,6 +208,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
 
   let fetchError =
     employeeScopeError ??
+    stockScopeError ??
     clientsError?.message ??
     productsError?.message ??
     paymentMethodsError?.message ??
