@@ -71,6 +71,7 @@ async function insertFinishedProduct(
   tenantId: string,
   mappedData: Record<string, unknown>,
   supplierCache: SupplierIdResolverCache,
+  businessUnitId: string | null = null,
 ) {
   const sourcingRaw = String(mappedData.sourcing_type ?? "").trim().toLowerCase();
   const isPurchased = sourcingRaw === FINISHED_PRODUCT_PURCHASED_SOURCING_TYPE;
@@ -91,7 +92,9 @@ async function insertFinishedProduct(
     resolvedSupplierId,
   );
 
-  await client.query(
+  // finished_products is tenant catalog (no business_unit_id column). BU scope for
+  // opening stock is seeded on finished_product_balances below.
+  const insertResult = await client.query(
     `
       INSERT INTO public.finished_products (
         tenant_id,
@@ -106,6 +109,7 @@ async function insertFinishedProduct(
         expiration_date
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id
     `,
     [
       payload.tenant_id,
@@ -120,6 +124,32 @@ async function insertFinishedProduct(
       payload.expiration_date,
     ],
   );
+
+  const productId = String(insertResult.rows[0]?.id ?? "").trim();
+  if (!productId) {
+    throw new Error(
+      `Finished product insert did not return an id for ${payload.product_code}.`,
+    );
+  }
+
+  if (payload.current_stock > 0) {
+    await client.query(
+      `SELECT public.ensure_finished_product_balance($1::uuid, $2::uuid, $3::uuid)`,
+      [tenantId, productId, businessUnitId],
+    );
+    await client.query(
+      `
+        UPDATE public.finished_product_balances
+        SET current_stock = $1,
+            average_cost_per_unit = 0,
+            updated_at = now()
+        WHERE tenant_id = $2::uuid
+          AND product_id = $3::uuid
+          AND business_unit_id IS NOT DISTINCT FROM $4::uuid
+      `,
+      [payload.current_stock, tenantId, productId, businessUnitId],
+    );
+  }
 }
 
 async function insertServiceCatalogRow(
@@ -786,7 +816,7 @@ export async function commitImportJobInTransaction(input: {
   importType: BulkImportType;
   rows: CommitImportRow[];
   changedBy?: string;
-  /** Create-only stamp for employee/expense/fixed_asset imports; null = All Businesses. */
+  /** Create stamp for product/employee/expense/fixed_asset; null = workspace default BU. */
   activeBusinessUnitId?: string | null;
 }): Promise<number> {
   const {
@@ -820,7 +850,13 @@ export async function commitImportJobInTransaction(input: {
 
     for (const row of rows) {
       if (importType === "product") {
-        await insertFinishedProduct(client, tenantId, row.mapped_data, supplierCache);
+        await insertFinishedProduct(
+          client,
+          tenantId,
+          row.mapped_data,
+          supplierCache,
+          activeBusinessUnitId,
+        );
       } else if (importType === "service") {
         await insertServiceCatalogRow(client, tenantId, row.mapped_data);
       } else if (importType === "employee") {

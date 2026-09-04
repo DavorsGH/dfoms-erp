@@ -164,6 +164,7 @@ export async function POST(
     importType === "employee" ? await resolveChangedByLabel() : undefined;
   let activeBusinessUnitId: string | null = null;
   if (
+    importType === "product" ||
     importType === "employee" ||
     importType === "expense" ||
     importType === "fixed_asset"
