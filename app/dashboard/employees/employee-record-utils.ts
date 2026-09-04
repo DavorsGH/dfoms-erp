@@ -31,6 +31,8 @@ export type EmployeeRecord = {
   housing_allowance: number | null;
   transport_allowance: number | null;
   other_allowances: number | null;
+  /** Percent of period gross (e.g. 2.5 = 2.5%). Auto-applied in payroll. */
+  welfare_deduction_rate: number | null;
   emergency_contact_name: string | null;
   emergency_contact_address: string | null;
   emergency_contact_phone: string | null;

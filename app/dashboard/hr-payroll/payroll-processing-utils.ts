@@ -73,6 +73,11 @@ export type PayrollEmployeeSource = {
   other_allowances: number | null;
   department: string | null;
   contract_project: string | null;
+  /**
+   * Percent of period gross pay (e.g. 2.5 = 2.5%). Auto-applied each calc
+   * into payroll_processing.welfare_deduction — not a manual Adjust field.
+   */
+  welfare_deduction_rate?: number | null;
   /** Optional — loaded on Payroll Processing for display-only Payment Method. */
   payment_method?: "cash" | "momo" | "bank" | null;
   bank_name?: string | null;
@@ -231,7 +236,6 @@ export type PayrollManualInputs = {
   /** Prior-period net top-up; added after tax, excluded from PAYE/SSNIT. */
   net_only_adjustment: number;
   salary_advance: number;
-  welfare_deduction: number;
   other_deductions: number;
 };
 
@@ -244,6 +248,8 @@ export type PayrollCalculatedRow = PayrollManualInputs & {
   absence_deduction: number;
   overtime_amount: number;
   loan_repayment: number;
+  /** Auto from employee.welfare_deduction_rate × gross_pay (not manual). */
+  welfare_deduction: number;
   gross_pay: number;
   employee_ssnit: number;
   employer_ssnit: number;
@@ -447,7 +453,6 @@ export function buildManualInputsFromRow(
     | "arrears"
     | "net_only_adjustment"
     | "salary_advance"
-    | "welfare_deduction"
     | "other_deductions"
   >,
   defaultDaysToPay: number,
@@ -461,7 +466,6 @@ export function buildManualInputsFromRow(
     arrears: Number(row.arrears) || 0,
     net_only_adjustment: Number(row.net_only_adjustment) || 0,
     salary_advance: Number(row.salary_advance) || 0,
-    welfare_deduction: Number(row.welfare_deduction) || 0,
     other_deductions: Number(row.other_deductions) || 0,
   };
 }
@@ -535,6 +539,19 @@ export function calculateLoanRepaymentForEmployee(
     }, 0);
 }
 
+/**
+ * Auto welfare amount from standing employee rate × period gross.
+ * Rate is percent points (2.5 → 2.5% of gross). Same ROUND(..., 2) as other money.
+ */
+export function calculateWelfareDeductionForEmployee(
+  employee: Pick<PayrollEmployeeSource, "welfare_deduction_rate">,
+  grossPay: number,
+): number {
+  const rate = Math.max(0, Number(employee.welfare_deduction_rate) || 0);
+  const gross = Math.max(0, Number(grossPay) || 0);
+  return roundMoney((gross * rate) / 100);
+}
+
 export function calculatePayrollRow(
   employee: PayrollEmployeeSource,
   period: SelectedPayrollPeriod,
@@ -573,7 +590,6 @@ export function calculatePayrollRow(
   const arrears = Number(manual.arrears) || 0;
   const netOnlyAdjustment = Math.max(0, Number(manual.net_only_adjustment) || 0);
   const salaryAdvance = Number(manual.salary_advance) || 0;
-  const welfareDeduction = Number(manual.welfare_deduction) || 0;
   const otherDeductions = Number(manual.other_deductions) || 0;
 
   // Prefer sum of live allowance lines when policy-driven (includes Night Diff etc.)
@@ -584,12 +600,18 @@ export function calculatePayrollRow(
       )
     : housingAllowance + transportAllowance + otherAllowances;
 
+  // Gross is finalized before percentage deductions (welfare, PAYE base).
   const grossPay = roundMoney(
     periodPayBasic +
       allowanceTotal +
       overtimeAmount +
       bonuses +
       arrears,
+  );
+
+  const welfareDeduction = calculateWelfareDeductionForEmployee(
+    employee,
+    grossPay,
   );
 
   const asOf = getPeriodEndDate(period.year, period.month);

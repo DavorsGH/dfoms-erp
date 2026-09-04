@@ -60,6 +60,7 @@ function toPayrollEmployeeSource(
     housing_allowance: employee.housing_allowance,
     transport_allowance: employee.transport_allowance,
     other_allowances: employee.other_allowances,
+    welfare_deduction_rate: employee.welfare_deduction_rate,
     department: employee.department,
     contract_project: employee.contract_project,
   };
@@ -153,7 +154,6 @@ export function buildDirectoryNetPayByEmployee(
         arrears: 0,
         net_only_adjustment: 0,
         salary_advance: 0,
-        welfare_deduction: 0,
         other_deductions: 0,
       },
       policy,

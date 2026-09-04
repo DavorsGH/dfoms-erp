@@ -604,7 +604,6 @@ export default function PayrollProcessing({
             arrears: 0,
             net_only_adjustment: 0,
             salary_advance: 0,
-            welfare_deduction: 0,
             other_deductions: 0,
           },
           policyForEmployee(employee, period),
@@ -848,7 +847,6 @@ export default function PayrollProcessing({
       bonuses: number;
       arrears: number;
       salary_advance: number;
-      welfare_deduction: number;
       other_deductions: number;
     }>,
   ) {
@@ -1780,7 +1778,6 @@ export default function PayrollProcessing({
                               "Net-only adjustment (prior period)",
                             ],
                             ["salary_advance", "Salary Advance"],
-                            ["welfare_deduction", "Welfare Deduction"],
                             ["other_deductions", "Other Deductions"],
                           ] as const
                         ).map(([field, label]) => (

@@ -74,7 +74,7 @@ export default async function PayrollProcessingPage() {
     : null;
 
   const employeeSelect =
-    "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
+    "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
 
   const [
     { data: processingMonths, error: processingMonthsError },

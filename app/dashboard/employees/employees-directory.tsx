@@ -151,6 +151,7 @@ const emptyForm = {
   housing_allowance: "",
   transport_allowance: "",
   other_allowances: "",
+  welfare_deduction_rate: "",
   emergency_contact_name: "",
   emergency_contact_address: "",
   emergency_contact_phone: "",
@@ -232,6 +233,11 @@ function employeeToForm(employee: EmployeeRecord) {
       employee.other_allowances === null
         ? ""
         : String(employee.other_allowances),
+    welfare_deduction_rate:
+      employee.welfare_deduction_rate === null ||
+      employee.welfare_deduction_rate === undefined
+        ? ""
+        : String(employee.welfare_deduction_rate),
     emergency_contact_name: employee.emergency_contact_name ?? "",
     emergency_contact_address: employee.emergency_contact_address ?? "",
     emergency_contact_phone: employee.emergency_contact_phone ?? "",
@@ -299,6 +305,9 @@ function buildPayload(
     housing_allowance: legacy.housing_allowance,
     transport_allowance: legacy.transport_allowance,
     other_allowances: legacy.other_allowances,
+    welfare_deduction_rate: form.welfare_deduction_rate
+      ? Number(form.welfare_deduction_rate)
+      : 0,
     emergency_contact_name: form.emergency_contact_name || null,
     emergency_contact_address: form.emergency_contact_address || null,
     emergency_contact_phone: form.emergency_contact_phone || null,
@@ -1735,6 +1744,25 @@ export default function EmployeesDirectory({
                   Processing.
                 </p>
               </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="Welfare Deduction Rate (%)">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.welfare_deduction_rate}
+                    onChange={(e) =>
+                      updateField("welfare_deduction_rate", e.target.value)
+                    }
+                    placeholder="e.g. 2.50"
+                    className={inputClassName}
+                  />
+                </Field>
+              </div>
+              <p className="text-xs text-slate-500">
+                Applied automatically each payroll period as a percentage of
+                that period&apos;s gross pay (e.g. 2.50 = 2.5%).
+              </p>
             </div>
             ) : null}
 

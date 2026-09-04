@@ -52,6 +52,7 @@ export type PayrollLiveRecalcEmployee = {
   housing_allowance?: number | null;
   transport_allowance?: number | null;
   other_allowances?: number | null;
+  welfare_deduction_rate?: number | null;
 };
 
 export type PayrollLiveRecalcContext = {
@@ -63,7 +64,7 @@ export type PayrollLiveRecalcContext = {
 };
 
 export const PAYROLL_LIVE_RECALC_EMPLOYEE_SELECT =
-  "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, department, contract_project, basic_salary, housing_allowance, transport_allowance, other_allowances";
+  "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, department, contract_project, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate";
 
 function toPayrollEmployeeSource(
   employee: PayrollLiveRecalcEmployee,
@@ -82,6 +83,7 @@ function toPayrollEmployeeSource(
     housing_allowance: employee.housing_allowance ?? null,
     transport_allowance: employee.transport_allowance ?? null,
     other_allowances: employee.other_allowances ?? null,
+    welfare_deduction_rate: employee.welfare_deduction_rate ?? null,
     department: employee.department ?? null,
     contract_project: employee.contract_project,
   };
