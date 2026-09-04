@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { BusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { InternalConsumptionRecord } from "../inventory/internal-consumption-utils";
 import {
   INTERNAL_CONSUMPTION_SELECT,
@@ -113,13 +116,16 @@ export async function fetchStockOnHandReportData(
 
 export async function fetchProductionHistoryReportData(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
   const [{ data: batches, error: batchesError }, { data: products, error: productsError }] =
     await Promise.all([
-      supabase
-        .from("production_batches")
-        .select(PRODUCTION_BATCH_DETAIL_SELECT)
-        .order("production_date", { ascending: false }),
+      applyBusinessUnitScope(
+        supabase
+          .from("production_batches")
+          .select(PRODUCTION_BATCH_DETAIL_SELECT),
+        buScope,
+      ).order("production_date", { ascending: false }),
       supabase
         .from("finished_products")
         .select("id, product_name")
@@ -136,17 +142,22 @@ export async function fetchProductionHistoryReportData(
   };
 }
 
-export async function fetchProductSalesReportData(supabase: SupabaseClient) {
+export async function fetchProductSalesReportData(
+  supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
+) {
   const [
     { data: sales, error: salesError },
     { data: clients, error: clientsError },
     { data: products, error: productsError },
   ] = await Promise.all([
-    supabase
-      .from("income_register")
-      .select(PRODUCT_SALES_REPORT_SELECT)
-      .eq("entry_type", "product_sale")
-      .order("date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select(PRODUCT_SALES_REPORT_SELECT)
+        .eq("entry_type", "product_sale"),
+      buScope,
+    ).order("date", { ascending: false }),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
       .from("finished_products")
@@ -165,6 +176,7 @@ export async function fetchProductSalesReportData(supabase: SupabaseClient) {
 
 export async function fetchInternalConsumptionReportData(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
   const [
     { data: entries, error: entriesError },
@@ -172,10 +184,12 @@ export async function fetchInternalConsumptionReportData(
     { data: clients, error: clientsError },
     { data: sites, error: sitesError },
   ] = await Promise.all([
-    supabase
-      .from("internal_consumption")
-      .select(INTERNAL_CONSUMPTION_SELECT)
-      .order("consumption_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("internal_consumption")
+        .select(INTERNAL_CONSUMPTION_SELECT),
+      buScope,
+    ).order("consumption_date", { ascending: false }),
     supabase
       .from("finished_products")
       .select("id, product_name")

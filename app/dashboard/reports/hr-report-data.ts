@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { LeaveManagementEntry } from "../hr-payroll/leave-management-utils";
 import type { LoanRegisterEntry } from "../hr-payroll/loan-register-utils";
 import { fetchPayrollLiveRecalcBundle } from "../hr-payroll/payroll-live-recalc-utils";
@@ -24,11 +28,14 @@ const PAYROLL_HISTORY_ROW_SELECT =
  */
 const PAYROLL_PROCESSING_ROW_SELECT = "*";
 
-async function fetchHrEmployees(supabase: SupabaseClient) {
-  return supabase
-    .from("employees")
-    .select(HR_EMPLOYEE_REPORT_SELECT)
-    .order("staff_id", { ascending: true });
+async function fetchHrEmployees(
+  supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
+) {
+  return applyBusinessUnitScope(
+    supabase.from("employees").select(HR_EMPLOYEE_REPORT_SELECT),
+    buScope,
+  ).order("staff_id", { ascending: true });
 }
 
 export async function fetchMonthlyPayrollSummaryReportData(
@@ -165,9 +172,11 @@ export async function fetchOvertimeSummaryReportData(
 
 export async function fetchHeadcountContractExpiryReportData(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
   const { data: employees, error: employeesError } = await fetchHrEmployees(
     supabase,
+    buScope,
   );
 
   return {
