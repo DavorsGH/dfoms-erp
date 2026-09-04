@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitReadScope,
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
 import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
@@ -75,6 +78,7 @@ export default function CorrectiveActions({
 }: CorrectiveActionsProps) {
   const supabase = createClient();
   const buReadScope = useBusinessUnitReadScope();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeCorrectiveActionEntry),
   );
@@ -230,6 +234,12 @@ export default function CorrectiveActions({
     setLoading(true);
     setError(null);
 
+    if (!editingId && !stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
     const payload = {
       action_no: form.action_no.trim(),
       related_work_order: nullableText(form.related_work_order),
@@ -283,6 +293,9 @@ export default function CorrectiveActions({
         .insert({
           ...payload,
           action_no: allocated.actionNo,
+          business_unit_id: stampBusinessUnit.ok
+            ? stampBusinessUnit.businessUnitId
+            : null,
         });
 
       if (saveError) {

@@ -1,10 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
   CORRECTIVE_ACTION_SELECT,
   normalizeCorrectiveActionEntry,
   type CorrectiveActionEntry,
 } from "../operations/corrective-actions-utils";
+import {
+  applySiteCodeScope,
+  applySiteIdScope,
+  fetchScopedSiteCodes,
+} from "../operations/site-bu-scope-utils";
 import {
   COMPLAINT_REGISTER_SELECT,
   normalizeComplaintRegisterEntry,
@@ -278,14 +287,28 @@ function buildYearsFromInspectionDates(dates: string[]) {
 
 export async function fetchQualityKpiSummaryReportData(
   supabase: SupabaseClient,
+  tenantId?: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
+  const scopedSites = tenantId
+    ? await fetchScopedSiteCodes(supabase, tenantId, buScope)
+    : { siteCodes: null as string[] | null, error: null as string | null };
+
   const [
     { data, error },
     { data: sites, error: sitesError },
     { data: clients, error: clientsError },
   ] = await Promise.all([
-    fetchInspectionSummaries(supabase),
-    fetchSites(supabase),
+    applySiteIdScope(
+      supabase
+        .from("inspection_summary")
+        .select(INSPECTION_SUMMARY_SELECT),
+      scopedSites.siteCodes,
+    ).order("inspection_date", { ascending: false }),
+    applySiteCodeScope(
+      supabase.from("sites").select(SITE_SELECT),
+      scopedSites.siteCodes,
+    ).order("site_name", { ascending: true }),
     fetchClients(supabase),
   ]);
   const inspections = normalizeInspections(data as InspectionSummaryEntry[] | null);
@@ -297,11 +320,24 @@ export async function fetchQualityKpiSummaryReportData(
     availableYears: buildYearsFromInspectionDates(
       inspections.map((row) => row.inspection_date),
     ),
-    fetchError: error?.message ?? sitesError?.message ?? clientsError?.message ?? null,
+    fetchError:
+      scopedSites.error ??
+      error?.message ??
+      sitesError?.message ??
+      clientsError?.message ??
+      null,
   };
 }
 
-export async function fetchSitePerformanceReportData(supabase: SupabaseClient) {
+export async function fetchSitePerformanceReportData(
+  supabase: SupabaseClient,
+  tenantId?: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
+) {
+  const scopedSites = tenantId
+    ? await fetchScopedSiteCodes(supabase, tenantId, buScope)
+    : { siteCodes: null as string[] | null, error: null as string | null };
+
   const [
     { data: inspections, error: inspectionsError },
     { data: failedInspections, error: failedError },
@@ -310,11 +346,34 @@ export async function fetchSitePerformanceReportData(supabase: SupabaseClient) {
     { data: sites, error: sitesError },
     { data: clients, error: clientsError },
   ] = await Promise.all([
-    fetchInspectionSummaries(supabase),
-    fetchFailedInspections(supabase),
-    fetchComplaints(supabase),
-    fetchIncidents(supabase),
-    fetchSites(supabase),
+    applySiteIdScope(
+      supabase
+        .from("inspection_summary")
+        .select(INSPECTION_SUMMARY_SELECT),
+      scopedSites.siteCodes,
+    ).order("inspection_date", { ascending: false }),
+    applySiteIdScope(
+      supabase
+        .from("failed_inspections")
+        .select(FAILED_INSPECTION_SELECT),
+      scopedSites.siteCodes,
+    ).order("date_identified", { ascending: false }),
+    applySiteIdScope(
+      supabase
+        .from("complaint_register")
+        .select(COMPLAINT_REGISTER_SELECT),
+      scopedSites.siteCodes,
+    ).order("date_received", { ascending: false }),
+    applySiteIdScope(
+      supabase
+        .from("incident_register")
+        .select(INCIDENT_REGISTER_SELECT),
+      scopedSites.siteCodes,
+    ).order("date", { ascending: false }),
+    applySiteCodeScope(
+      supabase.from("sites").select(SITE_SELECT),
+      scopedSites.siteCodes,
+    ).order("site_name", { ascending: true }),
     fetchClients(supabase),
   ]);
 
@@ -342,6 +401,7 @@ export async function fetchSitePerformanceReportData(supabase: SupabaseClient) {
       normalizedInspections.map((row) => row.inspection_date),
     ),
     fetchError:
+      scopedSites.error ??
       inspectionsError?.message ??
       failedError?.message ??
       complaintsError?.message ??
@@ -354,8 +414,12 @@ export async function fetchSitePerformanceReportData(supabase: SupabaseClient) {
 
 export async function fetchCorrectiveActionStatusReportData(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
-  const { data, error } = await fetchCorrectiveActions(supabase);
+  const { data, error } = await applyBusinessUnitScope(
+    supabase.from("corrective_actions").select(CORRECTIVE_ACTION_SELECT),
+    buScope,
+  ).order("date_raised", { ascending: false });
 
   return {
     initialCorrectiveActions:
