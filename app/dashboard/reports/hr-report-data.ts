@@ -5,6 +5,12 @@ import {
 } from "@/utils/business-unit-view";
 import type { LeaveManagementEntry } from "../hr-payroll/leave-management-utils";
 import type { LoanRegisterEntry } from "../hr-payroll/loan-register-utils";
+import {
+  applyEmployeeIdScope,
+  applyStaffIdScope,
+  fetchScopedEmployeeIds,
+  fetchScopedStaffIds,
+} from "../hr-payroll/payroll-bu-scope-utils";
 import { fetchPayrollLiveRecalcBundle } from "../hr-payroll/payroll-live-recalc-utils";
 import type { PayrollProcessingRow } from "../hr-payroll/payroll-processing-utils";
 import type { MonthEndCloseRecord } from "../hr-payroll/payroll-period-utils";
@@ -40,17 +46,34 @@ async function fetchHrEmployees(
 
 export async function fetchMonthlyPayrollSummaryReportData(
   supabase: SupabaseClient,
+  tenantId: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+
   const [
     { data: payrollHistory, error: payrollHistoryError },
     { data: payrollProcessing, error: payrollProcessingError },
     { data: monthEndCloseRecords, error: monthEndCloseError },
     liveBundle,
   ] = await Promise.all([
-    supabase.from("payroll_history").select(PAYROLL_HISTORY_ROW_SELECT),
-    supabase.from("payroll_processing").select(PAYROLL_PROCESSING_ROW_SELECT),
-    supabase.from("month_end_close").select("*"),
-    fetchPayrollLiveRecalcBundle(supabase),
+    applyEmployeeIdScope(
+      supabase.from("payroll_history").select(PAYROLL_HISTORY_ROW_SELECT),
+      scopedEmployees.employeeIds,
+    ),
+    applyEmployeeIdScope(
+      supabase.from("payroll_processing").select(PAYROLL_PROCESSING_ROW_SELECT),
+      scopedEmployees.employeeIds,
+    ),
+    applyBusinessUnitScope(
+      supabase.from("month_end_close").select("*"),
+      buScope,
+    ),
+    fetchPayrollLiveRecalcBundle(supabase, { tenantId, buScope }),
   ]);
 
   const historyMonths =
@@ -75,6 +98,7 @@ export async function fetchMonthlyPayrollSummaryReportData(
       closeMonths,
     ),
     fetchError:
+      scopedEmployees.error ??
       payrollHistoryError?.message ??
       payrollProcessingError?.message ??
       monthEndCloseError?.message ??
@@ -84,16 +108,22 @@ export async function fetchMonthlyPayrollSummaryReportData(
 
 export async function fetchAttendanceSummaryReportData(
   supabase: SupabaseClient,
+  tenantId: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
+  const scopedStaff = await fetchScopedStaffIds(supabase, tenantId, buScope);
+
   const [
     { data: employees, error: employeesError },
     { data: attendanceEntries, error: attendanceError },
   ] = await Promise.all([
-    fetchHrEmployees(supabase),
-    supabase
-      .from("attendance_register")
-      .select("staff_id, date, attendance_status")
-      .order("date", { ascending: true }),
+    fetchHrEmployees(supabase, buScope),
+    applyStaffIdScope(
+      supabase
+        .from("attendance_register")
+        .select("staff_id, date, attendance_status"),
+      scopedStaff.staffIds,
+    ).order("date", { ascending: true }),
   ]);
 
   return {
@@ -103,38 +133,67 @@ export async function fetchAttendanceSummaryReportData(
       attendanceEntries?.map((entry) => entry.date) ?? [],
       employees?.map((entry) => entry.date_hired ?? "") ?? [],
     ),
-    fetchError: employeesError?.message ?? attendanceError?.message ?? null,
+    fetchError:
+      scopedStaff.error ??
+      employeesError?.message ??
+      attendanceError?.message ??
+      null,
   };
 }
 
-export async function fetchLeaveBalanceReportData(supabase: SupabaseClient) {
+export async function fetchLeaveBalanceReportData(
+  supabase: SupabaseClient,
+  tenantId: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
+) {
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+
   const [
     { data: employees, error: employeesError },
     { data: leaveEntries, error: leaveError },
   ] = await Promise.all([
-    fetchHrEmployees(supabase),
-    supabase
-      .from("leave_management")
-      .select("*")
-      .order("start_date", { ascending: false }),
+    fetchHrEmployees(supabase, buScope),
+    applyEmployeeIdScope(
+      supabase.from("leave_management").select("*"),
+      scopedEmployees.employeeIds,
+    ).order("start_date", { ascending: false }),
   ]);
 
   return {
     initialEmployees: (employees as HrReportEmployee[] | null) ?? [],
     initialLeaveEntries: (leaveEntries as LeaveManagementEntry[] | null) ?? [],
-    fetchError: employeesError?.message ?? leaveError?.message ?? null,
+    fetchError:
+      scopedEmployees.error ??
+      employeesError?.message ??
+      leaveError?.message ??
+      null,
   };
 }
 
 export async function fetchLoanRegisterSummaryReportData(
   supabase: SupabaseClient,
+  tenantId: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+
   const [
     { data: employees, error: employeesError },
     { data: loans, error: loansError },
   ] = await Promise.all([
-    fetchHrEmployees(supabase),
-    supabase.from("loan_register").select("*").order("date_issued", {
+    fetchHrEmployees(supabase, buScope),
+    applyEmployeeIdScope(
+      supabase.from("loan_register").select("*"),
+      scopedEmployees.employeeIds,
+    ).order("date_issued", {
       ascending: false,
     }),
   ]);
@@ -142,22 +201,36 @@ export async function fetchLoanRegisterSummaryReportData(
   return {
     initialEmployees: (employees as HrReportEmployee[] | null) ?? [],
     initialLoans: (loans as LoanRegisterEntry[] | null) ?? [],
-    fetchError: employeesError?.message ?? loansError?.message ?? null,
+    fetchError:
+      scopedEmployees.error ??
+      employeesError?.message ??
+      loansError?.message ??
+      null,
   };
 }
 
 export async function fetchOvertimeSummaryReportData(
   supabase: SupabaseClient,
+  tenantId: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+
   const [
     { data: employees, error: employeesError },
     { data: overtimeEntries, error: overtimeError },
   ] = await Promise.all([
-    fetchHrEmployees(supabase),
-    supabase
-      .from("overtime_register")
-      .select("employee_id, date, overtime_hours, overtime_amount")
-      .order("date", { ascending: true }),
+    fetchHrEmployees(supabase, buScope),
+    applyEmployeeIdScope(
+      supabase
+        .from("overtime_register")
+        .select("employee_id, date, overtime_hours, overtime_amount"),
+      scopedEmployees.employeeIds,
+    ).order("date", { ascending: true }),
   ]);
 
   return {
@@ -166,7 +239,11 @@ export async function fetchOvertimeSummaryReportData(
     availableYears: buildAvailableHrReportYears(
       overtimeEntries?.map((entry) => entry.date) ?? [],
     ),
-    fetchError: employeesError?.message ?? overtimeError?.message ?? null,
+    fetchError:
+      scopedEmployees.error ??
+      employeesError?.message ??
+      overtimeError?.message ??
+      null,
   };
 }
 
