@@ -12,7 +12,6 @@ import {
   applyBusinessUnitScope,
   type BusinessUnitReadScope,
 } from "@/utils/business-unit-view";
-import type { RawMaterialRecord } from "./raw-materials-utils";
 
 export type ScopedRawMaterialStockEntry = {
   current_stock: number;
@@ -77,10 +76,12 @@ export async function fetchScopedRawMaterialStock(
  * (missing balance row → 0 for that BU). When null (All Businesses), return
  * materials unchanged.
  */
-export function mergeScopedStockOntoMaterials(
-  materials: RawMaterialRecord[],
+export function mergeScopedStockOntoMaterials<
+  T extends { id: string; current_stock: number },
+>(
+  materials: T[],
   stockMap: Map<string, ScopedRawMaterialStockEntry> | null,
-): RawMaterialRecord[] {
+): T[] {
   if (stockMap == null) {
     return materials;
   }

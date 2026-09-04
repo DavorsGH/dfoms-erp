@@ -10,10 +10,13 @@ import {
 } from "@/app/dashboard/dashboard-utils";
 import { buildOwnerDashboardViewModel } from "@/app/dashboard/owner-dashboard-view-model";
 import {
+  getActiveBusinessUnitId,
   getCurrentAuthUid,
   getCurrentUserAccount,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 
 export const STAFF_FINANCIAL_PERIODS = [
@@ -196,8 +199,22 @@ export const loadStaffDashboardViewModel = cache(
 
     try {
       const supabase = await getStaffSupabase();
-      const pageData = await fetchDashboardPageData(supabase, tenantId);
-      const viewModel = buildOwnerDashboardViewModel(pageData, tenantId);
+      const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+        getActiveBusinessUnitId(),
+        getViewAllBusinessUnits(),
+      ]);
+      const buScope = resolveBusinessUnitReadScope({
+        viewAllBusinessUnits,
+        activeBusinessUnitId,
+      });
+      const pageData = await fetchDashboardPageData(supabase, tenantId, {
+        activeBusinessUnitId,
+        viewAllBusinessUnits,
+      });
+      const viewModel = await buildOwnerDashboardViewModel(pageData, tenantId, {
+        supabase,
+        buScope,
+      });
 
       return {
         viewModel,

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { BusinessUnitReadScope } from "@/utils/business-unit-view";
 import type { InternalConsumptionRecord } from "../inventory/internal-consumption-utils";
 import {
   INTERNAL_CONSUMPTION_SELECT,
@@ -8,6 +9,10 @@ import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
 } from "../inventory/finished-products-utils";
+import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "../inventory/finished-product-bu-stock-utils";
 import type { FinishedProductAverageCostRow } from "../inventory/inventory-balance-sheet-utils";
 import type { ProductionBatchRecord } from "../inventory/production-batches-utils";
 import {
@@ -18,6 +23,10 @@ import {
   RAW_MATERIAL_SELECT,
   normalizeRawMaterial,
 } from "../inventory/raw-materials-utils";
+import {
+  fetchScopedRawMaterialStock,
+  mergeScopedStockOntoMaterials,
+} from "../inventory/raw-material-bu-stock-utils";
 import { CLIENT_SELECT } from "../operations/clients-utils";
 import { SITE_ASSIGNMENT_SELECT } from "../operations/sites-utils";
 import {
@@ -46,11 +55,14 @@ export async function fetchLowStockRawMaterialCount(supabase: SupabaseClient) {
 export async function fetchStockOnHandReportData(
   supabase: SupabaseClient,
   tenantId: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
   const [
     { data: rawMaterials, error: rawMaterialsError },
     { data: finishedProducts, error: finishedProductsError },
     { data: averageCostRows, error: averageCostsError },
+    { stockMap: rawMaterialStockMap, error: rawMaterialStockError },
+    { stockMap: finishedProductStockMap, error: finishedProductStockError },
   ] = await Promise.all([
     supabase
       .from("raw_materials")
@@ -64,17 +76,25 @@ export async function fetchStockOnHandReportData(
     supabase.rpc("get_finished_product_average_costs", {
       p_tenant_id: tenantId,
     }),
+    fetchScopedRawMaterialStock(supabase, tenantId, buScope),
+    fetchScopedFinishedProductStock(supabase, tenantId, buScope),
   ]);
 
-  const normalizedRawMaterials =
-    (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)) ?? [];
-  const normalizedFinishedProducts =
-    (finishedProducts ?? []).map((row) => normalizeFinishedProduct(row)) ?? [];
+  const normalizedRawMaterials = mergeScopedStockOntoMaterials(
+    (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)),
+    rawMaterialStockMap,
+  );
+  const normalizedFinishedProducts = mergeScopedStockOntoProducts(
+    (finishedProducts ?? []).map((row) => normalizeFinishedProduct(row)),
+    finishedProductStockMap,
+  );
 
   const fetchError =
     rawMaterialsError?.message ??
     finishedProductsError?.message ??
     averageCostsError?.message ??
+    rawMaterialStockError ??
+    finishedProductStockError ??
     null;
 
   return {

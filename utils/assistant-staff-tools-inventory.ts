@@ -8,9 +8,17 @@ import {
   normalizeFinishedProduct,
 } from "@/app/dashboard/inventory/finished-products-utils";
 import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "@/app/dashboard/inventory/finished-product-bu-stock-utils";
+import {
   normalizeRawMaterial,
   RAW_MATERIAL_SELECT,
 } from "@/app/dashboard/inventory/raw-materials-utils";
+import {
+  fetchScopedRawMaterialStock,
+  mergeScopedStockOntoMaterials,
+} from "@/app/dashboard/inventory/raw-material-bu-stock-utils";
 import {
   fetchProductionHistoryReportData,
 } from "@/app/dashboard/reports/inventory-report-data";
@@ -19,6 +27,11 @@ import {
   normalizePurchaseOrderListRow,
 } from "@/utils/purchase-orders-types";
 import { canAccessInventorySection } from "@/utils/rbac-access";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import {
   LIST_LIMIT,
   STAFF_DATA_UNAVAILABLE_MESSAGE,
@@ -37,7 +50,16 @@ export async function getFinishedProductsSummary(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
-    const [{ data: products, error: productsError }, lotSources] =
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+
+    const [{ data: products, error: productsError }, lotSources, scopedStock] =
       await Promise.all([
         supabase
           .from("finished_products")
@@ -45,6 +67,11 @@ export async function getFinishedProductsSummary(): Promise<unknown> {
           .eq("is_archived", false)
           .order("product_name", { ascending: true }),
         fetchFinishedProductLotDateSources(supabase),
+        fetchScopedFinishedProductStock(
+          supabase,
+          sessionResult.session.tenantId,
+          buScope,
+        ),
       ]);
 
     if (productsError) {
@@ -55,9 +82,20 @@ export async function getFinishedProductsSummary(): Promise<unknown> {
       return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
     }
 
-    const merged = mergeFinishedProductsWithLotDates(
-      (products ?? []).map(normalizeFinishedProduct),
-      lotSources.lots,
+    if (scopedStock.error) {
+      console.error(
+        "[assistant] get_finished_products_summary scoped stock failed:",
+        scopedStock.error,
+      );
+      return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+    }
+
+    const merged = mergeScopedStockOntoProducts(
+      mergeFinishedProductsWithLotDates(
+        (products ?? []).map(normalizeFinishedProduct),
+        lotSources.lots,
+      ),
+      scopedStock.stockMap,
     );
 
     let lowStockCount = 0;
@@ -114,10 +152,27 @@ export async function getRawMaterialsStock(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
-    const { data: materials, error: materialsError } = await supabase
-      .from("raw_materials")
-      .select(RAW_MATERIAL_SELECT)
-      .order("material_name", { ascending: true });
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+
+    const [{ data: materials, error: materialsError }, scopedStock] =
+      await Promise.all([
+        supabase
+          .from("raw_materials")
+          .select(RAW_MATERIAL_SELECT)
+          .order("material_name", { ascending: true }),
+        fetchScopedRawMaterialStock(
+          supabase,
+          sessionResult.session.tenantId,
+          buScope,
+        ),
+      ]);
 
     if (materialsError) {
       console.error(
@@ -127,7 +182,18 @@ export async function getRawMaterialsStock(): Promise<unknown> {
       return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
     }
 
-    const normalized = (materials ?? []).map(normalizeRawMaterial);
+    if (scopedStock.error) {
+      console.error(
+        "[assistant] get_raw_materials_stock scoped stock failed:",
+        scopedStock.error,
+      );
+      return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+    }
+
+    const normalized = mergeScopedStockOntoMaterials(
+      (materials ?? []).map(normalizeRawMaterial),
+      scopedStock.stockMap,
+    );
 
     let lowStockCount = 0;
     let outOfStockCount = 0;

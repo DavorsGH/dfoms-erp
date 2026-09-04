@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DashboardPageData } from "@/app/dashboard/dashboard-page-data";
 import {
   toSpendingAnalysisExpenseRows,
@@ -5,16 +6,28 @@ import {
 } from "@/app/dashboard/dashboard-spending-analysis-utils";
 import { buildDashboardViewModel, type DashboardViewModel } from "@/app/dashboard/dashboard-utils";
 import { buildDashboardBudgetStatusByMonthKey } from "@/app/dashboard/dashboard-budget-status-utils";
+import {
+  fetchScopedRawMaterialStock,
+  mergeScopedStockOntoMaterials,
+} from "@/app/dashboard/inventory/raw-material-bu-stock-utils";
 import { countLowStockRawMaterials } from "@/app/dashboard/reports/inventory-reports-utils";
+import type { BusinessUnitReadScope } from "@/utils/business-unit-view";
+
+export type BuildOwnerDashboardViewModelOptions = {
+  /** Required to overlay BU-scoped RM stock onto the low-stock alert count. */
+  supabase: SupabaseClient;
+  buScope: BusinessUnitReadScope;
+};
 
 /**
  * Builds display-only dashboard widget aggregates from the same loader pipeline
  * as the owner dashboard page. Does NOT expose raw ledger register rows.
  */
-export function buildOwnerDashboardViewModel(
+export async function buildOwnerDashboardViewModel(
   dashboardPageData: DashboardPageData,
   tenantId: string,
-): DashboardViewModel {
+  options: BuildOwnerDashboardViewModelOptions,
+): Promise<DashboardViewModel> {
   const {
     initialIncomeEntries: incomeEntries,
     initialExpenseEntries: expenseEntries,
@@ -36,8 +49,16 @@ export function buildOwnerDashboardViewModel(
     budgetVsActualReportData,
   } = dashboardPageData;
 
+  const { stockMap: rawMaterialStockMap } = await fetchScopedRawMaterialStock(
+    options.supabase,
+    tenantId,
+    options.buScope,
+  );
   const lowStockRawMaterialCount = countLowStockRawMaterials(
-    inventoryBalanceSheetInput.rawMaterials,
+    mergeScopedStockOntoMaterials(
+      inventoryBalanceSheetInput.rawMaterials,
+      rawMaterialStockMap,
+    ),
   );
 
   const balanceSheetReportOptions = {

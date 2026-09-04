@@ -8,6 +8,7 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import { fetchTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
 
@@ -33,12 +34,19 @@ export async function GET() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
   const dashboardPageData = await fetchDashboardPageData(supabase, tenantId, {
     activeBusinessUnitId,
     viewAllBusinessUnits,
   });
   const [viewModelBase, balanceSheetIntegrity] = await Promise.all([
-    Promise.resolve(buildOwnerDashboardViewModel(dashboardPageData, tenantId)),
+    buildOwnerDashboardViewModel(dashboardPageData, tenantId, {
+      supabase,
+      buScope,
+    }),
     fetchTenantBalanceSheetIntegrityStatus(tenantId),
   ]);
   const viewModel = {

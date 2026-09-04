@@ -128,7 +128,7 @@ export type InventoryBalanceSheetInput = {
   rawMaterials: Array<
     Pick<
       RawMaterialRecord,
-      "current_stock" | "average_cost_per_unit" | "reorder_level"
+      "id" | "current_stock" | "average_cost_per_unit" | "reorder_level"
     >
   >;
   finishedProducts: Array<Pick<FinishedProductRecord, "id" | "current_stock">>;

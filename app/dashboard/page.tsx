@@ -10,6 +10,7 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { getDashboardVisibility } from "@/utils/rbac-access";
 import { buildClientDashboardSummary } from "./client-dashboard-utils";
@@ -223,12 +224,19 @@ export default async function DashboardPage() {
     throw new Error("Unable to resolve the current user.");
   }
 
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
   const dashboardPageData = await fetchDashboardPageData(supabase, tenantId, {
     activeBusinessUnitId,
     viewAllBusinessUnits,
   });
   const [dashboardDataBase, balanceSheetIntegrity] = await Promise.all([
-    Promise.resolve(buildOwnerDashboardViewModel(dashboardPageData, tenantId)),
+    buildOwnerDashboardViewModel(dashboardPageData, tenantId, {
+      supabase,
+      buScope,
+    }),
     fetchTenantBalanceSheetIntegrityStatus(tenantId),
   ]);
   const dashboardData = {
