@@ -401,6 +401,10 @@ export function calculateInventoryValueAsOf(
  * purchase / production / COGS / consumption history up to that date — not from
  * painting live current_stock across the FY.
  *
+ * Go-live month only: add config.opening_inventory_value to the asset so it
+ * matches Inventory Opening Balance equity (pre–go-live stock not in history).
+ * Applied after carry-forward so future months never inherit the opening bump.
+ *
  * Months after the reference month carry forward the current-month value (same
  * FY projection behaviour as commit 2aa961e — do not zero future months while
  * equity/AR lines remain populated).
@@ -450,6 +454,16 @@ export function calculateInventoryByMonth(
         totals[monthIndex] = carry;
       }
     }
+  }
+
+  // Match calculateInventoryOpeningEquityByMonth: same go-live month index.
+  // Add after carry-forward so opening never leaks into later months.
+  const openingInventoryValue =
+    Number(config.opening_inventory_value) || 0;
+  if (openingInventoryValue !== 0) {
+    totals[goLiveMonthIndex] = roundInventoryCurrency(
+      (totals[goLiveMonthIndex] ?? 0) + openingInventoryValue,
+    );
   }
 
   totals[FULL_YEAR_INDEX] = totals[11];
