@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
 import ScrollableTable, {
@@ -29,10 +29,18 @@ import {
   type RawMaterialRecord,
 } from "./raw-materials-utils";
 import {
+  fetchScopedRawMaterialStock,
+  mergeScopedStockOntoMaterials,
+} from "./raw-material-bu-stock-utils";
+import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
   type FinishedProductRecord,
 } from "./finished-products-utils";
+import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "./finished-product-bu-stock-utils";
 
 type ProductionBatchesProps = {
   initialBatches: ProductionBatchRecord[];
@@ -42,6 +50,8 @@ type ProductionBatchesProps = {
   readOnly?: boolean;
   /** Create-only stamp; null = All Businesses. */
   activeBusinessUnitId?: string | null;
+  /** Workspace id for BU-scoped stock overlays. */
+  tenantId?: string | null;
 };
 
 type MaterialLine = {
@@ -71,10 +81,12 @@ export default function ProductionBatches({
   fetchError,
   readOnly = false,
   activeBusinessUnitId = null,
+  tenantId = null,
 }: ProductionBatchesProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
+  const skipFirstStockScopeRefresh = useRef(true);
   const [batches, setBatches] = useState(
     initialBatches.map(normalizeProductionBatch),
   );
@@ -133,6 +145,11 @@ export default function ProductionBatches({
   }, [batchForm.quantity_produced, materialLines, materials]);
 
   async function refreshData() {
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
     const [
       { data: batchRows, error: batchError },
       { data: productRows, error: productError },
@@ -165,23 +182,51 @@ export default function ProductionBatches({
       return;
     }
 
+    const [
+      { stockMap: productStockMap, error: productStockScopeError },
+      { stockMap: materialStockMap, error: materialStockScopeError },
+    ] = await Promise.all([
+      fetchScopedFinishedProductStock(supabase, tenantId, buReadScope),
+      fetchScopedRawMaterialStock(supabase, tenantId, buReadScope),
+    ]);
+    if (productStockScopeError || materialStockScopeError) {
+      setError(productStockScopeError ?? materialStockScopeError);
+      return;
+    }
+
     setBatches(
       (((batchRows as unknown) as ProductionBatchRecord[] | null) ?? []).map(
         (row) => normalizeProductionBatch(row),
       ),
     );
     setProducts(
-      ((productRows as FinishedProductRecord[] | null) ?? []).map((row) =>
-        normalizeFinishedProduct(row),
+      mergeScopedStockOntoProducts(
+        ((productRows as FinishedProductRecord[] | null) ?? []).map((row) =>
+          normalizeFinishedProduct(row),
+        ),
+        productStockMap,
       ),
     );
     setMaterials(
-      ((materialRows as RawMaterialRecord[] | null) ?? []).map((row) =>
-        normalizeRawMaterial(row),
+      mergeScopedStockOntoMaterials(
+        ((materialRows as RawMaterialRecord[] | null) ?? []).map((row) =>
+          normalizeRawMaterial(row),
+        ),
+        materialStockMap,
       ),
     );
     setError(null);
   }
+
+  useEffect(() => {
+    if (skipFirstStockScopeRefresh.current) {
+      skipFirstStockScopeRefresh.current = false;
+      return;
+    }
+    void refreshData();
+    // Re-scope stock overlays when the BU switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   function openAddForm() {
     setBatchForm({ ...emptyBatchForm });

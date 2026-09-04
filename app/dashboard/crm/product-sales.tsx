@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
@@ -11,6 +11,10 @@ import {
   normalizeFinishedProduct,
   type FinishedProductRecord,
 } from "../inventory/finished-products-utils";
+import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "../inventory/finished-product-bu-stock-utils";
 import { formatInventoryQuantity } from "../inventory/inventory-utils";
 import type { ClientEntry } from "../operations/clients-utils";
 import RegisterRowActions, {
@@ -67,6 +71,8 @@ type ProductSalesProps = {
   fetchError: string | null;
   /** Create-only stamp; null = All Businesses. */
   activeBusinessUnitId?: string | null;
+  /** Workspace id for BU-scoped finished-product stock overlay. */
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -91,10 +97,12 @@ export default function ProductSales({
   initialPaymentMethods,
   fetchError,
   activeBusinessUnitId = null,
+  tenantId = null,
 }: ProductSalesProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
+  const skipFirstStockScopeRefresh = useRef(true);
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeProductSaleEntry),
   );
@@ -299,34 +307,58 @@ export default function ProductSales({
     return Math.round(total * 100) / 100;
   }, [visibleEntries]);
 
+  async function refreshFinishedProducts() {
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
+    const { data, error: productError } = await supabase
+      .from("finished_products")
+      .select(FINISHED_PRODUCT_SELECT)
+      .eq("is_archived", false)
+      .order("product_name", { ascending: true });
+
+    if (productError) {
+      setError(productError.message);
+      return;
+    }
+
+    const { stockMap, error: stockScopeError } =
+      await fetchScopedFinishedProductStock(supabase, tenantId, buReadScope);
+    if (stockScopeError) {
+      setError(stockScopeError);
+      return;
+    }
+
+    setFinishedProducts(
+      mergeScopedStockOntoProducts(
+        ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
+          normalizeFinishedProduct(row),
+        ),
+        stockMap,
+      ),
+    );
+  }
+
   useEffect(() => {
     if (!showForm) {
       return;
     }
-
-    const client = createClient();
-
-    async function loadProducts() {
-      const { data, error: productError } = await client
-        .from("finished_products")
-        .select(FINISHED_PRODUCT_SELECT)
-        .eq("is_archived", false)
-        .order("product_name", { ascending: true });
-
-      if (productError) {
-        setError(productError.message);
-        return;
-      }
-
-      setFinishedProducts(
-        ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
-          normalizeFinishedProduct(row),
-        ),
-      );
-    }
-
-    loadProducts();
+    void refreshFinishedProducts();
+    // Fresh stock when opening the sale form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional showForm trigger
   }, [showForm]);
+
+  useEffect(() => {
+    if (skipFirstStockScopeRefresh.current) {
+      skipFirstStockScopeRefresh.current = false;
+      return;
+    }
+    void refreshFinishedProducts();
+    // Re-scope dropdown stock when the BU switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   async function refreshEntries() {
     const { data, error: refreshError } = await applyBusinessUnitScope(

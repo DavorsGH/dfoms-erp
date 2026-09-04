@@ -1,6 +1,12 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import { getRoleLabel } from "../../role-labels";
@@ -14,6 +20,10 @@ import {
   normalizeFinishedProduct,
   type FinishedProductRecord,
 } from "../finished-products-utils";
+import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "../finished-product-bu-stock-utils";
 import {
   INTERNAL_CONSUMPTION_SELECT,
   normalizeInternalConsumption,
@@ -61,6 +71,22 @@ async function getRecordedByLabel(
 export default async function InternalConsumptionPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits, tenantId] =
+    await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+      getCurrentUserTenantId(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+
+  if (!tenantId) {
+    throw new Error(
+      "Unable to resolve workspace session for Internal Consumption.",
+    );
+  }
 
   const [
     { data: entries, error: entriesError },
@@ -91,11 +117,22 @@ export default async function InternalConsumptionPage() {
     getRecordedByLabel(supabase),
   ]);
 
+  const { stockMap, error: stockScopeError } =
+    await fetchScopedFinishedProductStock(supabase, tenantId, buScope);
+
+  const initialProducts = mergeScopedStockOntoProducts(
+    ((products as FinishedProductRecord[] | null) ?? []).map((row) =>
+      normalizeFinishedProduct(row),
+    ),
+    stockMap,
+  );
+
   const fetchError =
     entriesError?.message ??
     productsError?.message ??
     projectsError?.message ??
     sitesError?.message ??
+    stockScopeError ??
     null;
 
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -108,11 +145,7 @@ export default async function InternalConsumptionPage() {
             normalizeInternalConsumption(row),
           )
         }
-        initialProducts={
-          ((products as FinishedProductRecord[] | null) ?? []).map((row) =>
-            normalizeFinishedProduct(row),
-          )
-        }
+        initialProducts={initialProducts}
         initialProjects={projects ?? []}
         initialSites={(sites ?? []).map((row) =>
           normalizeSiteEntry(row as unknown as SiteEntry),
@@ -120,6 +153,7 @@ export default async function InternalConsumptionPage() {
         recordedByLabel={recordedByLabel}
         fetchError={fetchError}
         readOnly={!canEditInventory(role)}
+        tenantId={tenantId}
       />
     </InventoryShell>
   );

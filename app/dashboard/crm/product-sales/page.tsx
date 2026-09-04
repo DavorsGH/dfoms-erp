@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
+  getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import {
@@ -13,6 +14,10 @@ import {
   normalizeFinishedProduct,
   type FinishedProductRecord,
 } from "../../inventory/finished-products-utils";
+import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "../../inventory/finished-product-bu-stock-utils";
 import { CLIENT_SELECT, type ClientEntry } from "../../operations/clients-utils";
 import CrmShell from "../crm-shell";
 import ProductSales from "../product-sales";
@@ -25,14 +30,20 @@ import {
 export default async function ProductSalesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
-    getActiveBusinessUnitId(),
-    getViewAllBusinessUnits(),
-  ]);
+  const [activeBusinessUnitId, viewAllBusinessUnits, tenantId] =
+    await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+      getCurrentUserTenantId(),
+    ]);
   const buScope = resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
+
+  if (!tenantId) {
+    throw new Error("Unable to resolve workspace session for Product Sales.");
+  }
 
   const [
     { data, error },
@@ -56,11 +67,22 @@ export default async function ProductSalesPage() {
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
   ]);
 
+  const { stockMap, error: stockScopeError } =
+    await fetchScopedFinishedProductStock(supabase, tenantId, buScope);
+
+  const initialFinishedProducts = mergeScopedStockOntoProducts(
+    ((finishedProducts as FinishedProductRecord[] | null) ?? []).map(
+      (product) => normalizeFinishedProduct(product),
+    ),
+    stockMap,
+  );
+
   const fetchError =
     error?.message ??
     clientsError?.message ??
     finishedProductsError?.message ??
     paymentMethodsError?.message ??
+    stockScopeError ??
     null;
 
   return (
@@ -72,11 +94,7 @@ export default async function ProductSalesPage() {
           )
         }
         initialClients={(clients as ClientEntry[] | null) ?? []}
-        initialFinishedProducts={
-          ((finishedProducts as FinishedProductRecord[] | null) ?? []).map(
-            (product) => normalizeFinishedProduct(product),
-          )
-        }
+        initialFinishedProducts={initialFinishedProducts}
         initialPaymentMethods={
           ((paymentMethods as { name: string }[] | null) ?? []).map(
             (row) => row.name,
@@ -84,6 +102,7 @@ export default async function ProductSalesPage() {
         }
         fetchError={fetchError}
         activeBusinessUnitId={activeBusinessUnitId}
+        tenantId={tenantId}
       />
     </CrmShell>
   );

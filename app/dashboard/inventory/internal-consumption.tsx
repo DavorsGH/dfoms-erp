@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
 import { getStripedRowClassName } from "../finance/register-row-actions";
@@ -22,6 +22,10 @@ import {
   type FinishedProductRecord,
 } from "./finished-products-utils";
 import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "./finished-product-bu-stock-utils";
+import {
   filterInternalConsumptionSites,
   getInternalConsumptionClientName,
   getInternalConsumptionSiteName,
@@ -29,7 +33,10 @@ import {
   normalizeInternalConsumption,
   type InternalConsumptionRecord,
 } from "./internal-consumption-utils";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import {
+  useStampBusinessUnitId,
+  useBusinessUnitReadScope,
+} from "@/app/dashboard/business-unit-view-context";
 
 type InternalConsumptionProps = {
   initialEntries: InternalConsumptionRecord[];
@@ -39,6 +46,8 @@ type InternalConsumptionProps = {
   recordedByLabel: string;
   fetchError: string | null;
   readOnly?: boolean;
+  /** Workspace id for BU-scoped finished-product stock overlay. */
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -59,9 +68,12 @@ export default function InternalConsumption({
   recordedByLabel,
   fetchError,
   readOnly = false,
+  tenantId = null,
 }: InternalConsumptionProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
+  const skipFirstStockScopeRefresh = useRef(true);
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeInternalConsumption),
   );
@@ -88,6 +100,11 @@ export default function InternalConsumption({
   }, [initialEntries, initialProducts]);
 
   async function refreshData() {
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
     const [
       { data: entryRows, error: entryError },
       { data: productRows, error: productError },
@@ -109,18 +126,38 @@ export default function InternalConsumption({
       return;
     }
 
+    const { stockMap, error: stockScopeError } =
+      await fetchScopedFinishedProductStock(supabase, tenantId, buReadScope);
+    if (stockScopeError) {
+      setError(stockScopeError);
+      return;
+    }
+
     setEntries(
       (((entryRows as unknown) as InternalConsumptionRecord[] | null) ?? []).map(
         (row) => normalizeInternalConsumption(row),
       ),
     );
     setProducts(
-      ((productRows as FinishedProductRecord[] | null) ?? []).map((row) =>
-        normalizeFinishedProduct(row),
+      mergeScopedStockOntoProducts(
+        ((productRows as FinishedProductRecord[] | null) ?? []).map((row) =>
+          normalizeFinishedProduct(row),
+        ),
+        stockMap,
       ),
     );
     setError(null);
   }
+
+  useEffect(() => {
+    if (skipFirstStockScopeRefresh.current) {
+      skipFirstStockScopeRefresh.current = false;
+      return;
+    }
+    void refreshData();
+    // Re-scope product stock when the BU switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
