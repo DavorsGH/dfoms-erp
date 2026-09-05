@@ -293,3 +293,68 @@ export function buildFinishedProductSavePayload(form: {
     supplier_id: supplierId,
   };
 }
+
+export const FINISHED_PRODUCT_ADJUSTMENT_TYPES = [
+  "opening_balance",
+  "correction",
+  "found_stock",
+  "write_off",
+] as const;
+
+export type FinishedProductAdjustmentType =
+  (typeof FINISHED_PRODUCT_ADJUSTMENT_TYPES)[number];
+
+export type FinishedProductStockAdjustmentRecord = {
+  id: string;
+  product_id: string;
+  business_unit_id: string | null;
+  adjustment_type: FinishedProductAdjustmentType | string;
+  quantity_delta: number;
+  cost_per_unit: number | null;
+  reason: string;
+  notes: string | null;
+  created_at: string;
+  product?: {
+    product_code: string;
+    product_name: string;
+    unit_of_measure: string;
+  } | null;
+};
+
+export const FINISHED_PRODUCT_STOCK_ADJUSTMENT_SELECT =
+  "id, product_id, business_unit_id, adjustment_type, quantity_delta, cost_per_unit, reason, notes, created_at, product:finished_products!product_id(product_code, product_name, unit_of_measure)";
+
+export const FINISHED_PRODUCT_ADJUSTMENT_TYPE_LABELS: Record<
+  FinishedProductAdjustmentType,
+  string
+> = {
+  opening_balance: "Opening Balance",
+  correction: "Correction",
+  found_stock: "Found Stock",
+  write_off: "Write-off",
+};
+
+export function formatFinishedProductAdjustmentType(type: string): string {
+  if (type in FINISHED_PRODUCT_ADJUSTMENT_TYPE_LABELS) {
+    return FINISHED_PRODUCT_ADJUSTMENT_TYPE_LABELS[
+      type as FinishedProductAdjustmentType
+    ];
+  }
+  return type;
+}
+
+export function normalizeFinishedProductStockAdjustment(
+  raw: FinishedProductStockAdjustmentRecord,
+): FinishedProductStockAdjustmentRecord {
+  const product = Array.isArray(raw.product)
+    ? raw.product[0] ?? null
+    : raw.product ?? null;
+
+  return {
+    ...raw,
+    quantity_delta: Number(raw.quantity_delta) || 0,
+    cost_per_unit:
+      raw.cost_per_unit == null ? null : Number(raw.cost_per_unit) || 0,
+    product,
+  };
+}

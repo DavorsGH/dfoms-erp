@@ -6,7 +6,10 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
@@ -14,9 +17,12 @@ import FinishedProducts from "../finished-products";
 import {
   fetchFinishedProductLotDateSources,
   FINISHED_PRODUCT_SELECT,
+  FINISHED_PRODUCT_STOCK_ADJUSTMENT_SELECT,
   mergeFinishedProductsWithLotDates,
   normalizeFinishedProduct,
+  normalizeFinishedProductStockAdjustment,
   type FinishedProductRecord,
+  type FinishedProductStockAdjustmentRecord,
 } from "../finished-products-utils";
 import {
   fetchScopedFinishedProductStock,
@@ -40,6 +46,7 @@ export default async function FinishedProductsPage() {
   const [
     { data, error },
     { data: suppliers, error: suppliersError },
+    { data: adjustments, error: adjustmentsError },
     lotDatesResult,
     scopedStock,
   ] = await Promise.all([
@@ -54,6 +61,15 @@ export default async function FinishedProductsPage() {
           .eq("tenant_id", tenantId)
           .eq("is_active", true)
           .order("name", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    tenantId
+      ? applyBusinessUnitScope(
+          supabase
+            .from("finished_product_stock_adjustments")
+            .select(FINISHED_PRODUCT_STOCK_ADJUSTMENT_SELECT)
+            .eq("tenant_id", tenantId),
+          buScope,
+        ).order("created_at", { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     fetchFinishedProductLotDateSources(supabase, buScope),
     tenantId
@@ -70,7 +86,7 @@ export default async function FinishedProductsPage() {
     lotDatesResult.lots,
   );
   // Named BUs only see products with a balance row (stock list).
-  // Production Batch / purchase pickers keep the full catalog elsewhere.
+  // Adjustment picker keeps the full catalog via initialCatalogProducts.
   const displayProducts = mergeScopedStockOntoProducts(
     catalogProducts,
     scopedStock.stockMap,
@@ -82,10 +98,17 @@ export default async function FinishedProductsPage() {
       <FinishedProducts
         tenantId={tenantId}
         initialProducts={displayProducts}
+        initialCatalogProducts={catalogProducts}
+        initialAdjustments={
+          (adjustments as FinishedProductStockAdjustmentRecord[] | null)?.map(
+            (row) => normalizeFinishedProductStockAdjustment(row),
+          ) ?? []
+        }
         initialSuppliers={(suppliers as SupplierRow[] | null) ?? []}
         fetchError={
           error?.message ??
           suppliersError?.message ??
+          adjustmentsError?.message ??
           lotDatesResult.error ??
           scopedStock.error ??
           null
