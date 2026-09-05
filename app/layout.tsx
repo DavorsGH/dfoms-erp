@@ -50,6 +50,11 @@ export const metadata: Metadata = {
     title: "Davors ERP",
     statusBarStyle: "default",
   },
+  // Next emits mobile-web-app-capable from appleWebApp.capable; older Safari
+  // still looks for the apple-prefixed tag.
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
