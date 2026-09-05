@@ -147,7 +147,11 @@ export default function BusinessUnitSwitcher({
         onChange={(event) => {
           void handleChange(event.target.value);
         }}
-        className="max-w-[11rem] truncate rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-[#0f2744] shadow-sm outline-none transition-colors hover:border-slate-300 focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744] disabled:opacity-60 sm:max-w-[14rem]"
+        className="max-w-[11rem] cursor-pointer appearance-none truncate rounded-md border border-transparent bg-[#0f2744] bg-[length:1rem] bg-[right_0.5rem_center] bg-no-repeat px-2.5 py-1.5 pr-8 text-sm font-medium text-white shadow-sm outline-none transition-colors hover:bg-[#1a3a5c] focus:ring-2 focus:ring-[#0f2744]/40 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-[14rem]"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23ffffff'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E\")",
+        }}
         aria-busy={pending}
       >
         <option value={BU_SWITCHER_ALL_VALUE}>All Businesses</option>
