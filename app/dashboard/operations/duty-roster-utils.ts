@@ -9,6 +9,7 @@ import {
   type SiteEntry,
 } from "./sites-utils";
 import type { RosterConfigRecord } from "./roster-config-utils";
+import { resolveUniformBusinessUnitId } from "@/utils/business-unit-document-contact-types";
 
 export type { RosterConfigRecord } from "./roster-config-utils";
 
@@ -494,6 +495,44 @@ export function filterSitesForClient(
 
 export function filterRosterStaffingSites(sites: DutyRosterSite[]): DutyRosterSite[] {
   return sites.filter((site) => isRosterStaffingSite(site));
+}
+
+/**
+ * Business unit for roster letterhead: only when every staffing site's project
+ * shares the same non-null business_unit_id. Mixed / default / unresolved → null.
+ */
+export function resolveDutyRosterBusinessUnitId(
+  sites: DutyRosterSite[],
+  projects: DutyRosterProject[],
+  clientId: string,
+): string | null {
+  const staffingSites = filterRosterStaffingSites(
+    filterSitesForClient(sites, clientId),
+  );
+  if (staffingSites.length === 0) {
+    return null;
+  }
+
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const businessUnitIds: Array<string | null> = [];
+
+  for (const site of staffingSites) {
+    const projectId = site.project_id?.trim() || null;
+    if (!projectId) {
+      businessUnitIds.push(null);
+      continue;
+    }
+
+    const project = projectById.get(projectId);
+    if (!project) {
+      businessUnitIds.push(null);
+      continue;
+    }
+
+    businessUnitIds.push(project.business_unit_id?.trim() || null);
+  }
+
+  return resolveUniformBusinessUnitId(businessUnitIds);
 }
 
 export function getUnassignedRosterSites(

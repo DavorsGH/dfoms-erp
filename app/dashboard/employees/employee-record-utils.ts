@@ -39,6 +39,7 @@ export type EmployeeRecord = {
   emergency_contact_relationship: string | null;
   data_notes: string | null;
   photo_url: string | null;
+  business_unit_id?: string | null;
   department_ref?: {
     dept_code: string;
     department_name: string;

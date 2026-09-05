@@ -23,8 +23,16 @@ import {
 import type { PayrollHistoryRow } from "./payroll-processing-utils";
 import { useTenantBranding } from "../tenant-branding-context";
 import WorkspaceLogo from "../workspace-logo";
-import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitReadScope,
+  useBusinessUnitView,
+} from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import { resolveBusinessUnitDocumentContactFromUnits } from "@/utils/business-unit-document-contact-types";
+import {
+  resolveDocumentLogoUrl,
+  resolveInvoiceCompanyName,
+} from "../finance/client-invoices/client-invoice-display-utils";
 
 type PayslipEmployeeOption = {
   employee_id: string;
@@ -43,6 +51,7 @@ type PayslipEmployeeDetails = Pick<
   | "account_number"
   | "momo_number"
   | "department"
+  | "business_unit_id"
 > & {
   department_ref?: EmployeeRecord["department_ref"];
 };
@@ -61,7 +70,7 @@ type PayslipLineItem = {
 };
 
 const EMPLOYEE_DETAILS_SELECT =
-  "employee_id, staff_id, full_name, position, employment_type, bank_name, account_number, momo_number, department, department_ref:departments!employees_department_fkey(dept_code, department_name)";
+  "employee_id, staff_id, full_name, position, employment_type, bank_name, account_number, momo_number, department, business_unit_id, department_ref:departments!employees_department_fkey(dept_code, department_name)";
 
 function sortEmployeeOptions(
   employees: PayslipEmployeeOption[],
@@ -202,7 +211,8 @@ export default function Payslip({
   scopedEmployeeId = null,
 }: PayslipProps) {
   const supabase = useMemo(() => createClient(), []);
-  const { companyLegalName } = useTenantBranding();
+  const branding = useTenantBranding();
+  const { units } = useBusinessUnitView();
   const buReadScope = useBusinessUnitReadScope();
 
   const [selectedMonth, setSelectedMonth] = useState(
@@ -509,6 +519,22 @@ export default function Payslip({
     ? getPositionName(positions, employeeDetails.position)
     : "—";
 
+  const documentContact = useMemo(
+    () =>
+      resolveBusinessUnitDocumentContactFromUnits(
+        units,
+        employeeDetails?.business_unit_id,
+      ),
+    [units, employeeDetails?.business_unit_id],
+  );
+
+  const companyLegalName = resolveInvoiceCompanyName(
+    branding,
+    null,
+    documentContact,
+  );
+  const companyLogoUrl = resolveDocumentLogoUrl(branding, documentContact);
+
   const handlePrint = () => {
     window.print();
   };
@@ -664,7 +690,11 @@ export default function Payslip({
           <header className="mb-8 border-b-4 border-[#0f2744] pb-6">
             <div className="flex items-start justify-between gap-6">
               <div className="flex items-center gap-4">
-                <WorkspaceLogo name={companyLegalName} size="md" />
+                <WorkspaceLogo
+                  workspaceLogoUrl={companyLogoUrl}
+                  name={companyLegalName}
+                  size="md"
+                />
                 <div>
                   <h2 className="text-lg font-bold text-[#0f2744]">
                     {companyLegalName}

@@ -31,6 +31,13 @@ const styles = StyleSheet.create({
     color: C.navy,
     marginBottom: 6,
   },
+  logo: {
+    width: 56,
+    height: 56,
+    objectFit: "contain",
+    alignSelf: "center",
+    marginBottom: 8,
+  },
   title: {
     fontSize: 16,
     fontWeight: "bold",
@@ -138,6 +145,7 @@ const styles = StyleSheet.create({
 
 export default function DutyRosterPdfDocument({
   companyLegalName,
+  companyLogoUrl = "",
   clientName,
   effectiveLabel,
   rotationLabel,
@@ -157,6 +165,10 @@ export default function DutyRosterPdfDocument({
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
+          {companyLogoUrl ? (
+            // eslint-disable-next-line jsx-a11y/alt-text -- PDF Image has no alt prop
+            <Image src={companyLogoUrl} style={styles.logo} />
+          ) : null}
           <Text style={styles.companyName}>{companyLegalName}</Text>
           <Text style={styles.title}>Duty Roster</Text>
           <Text style={styles.meta}>{clientName}</Text>

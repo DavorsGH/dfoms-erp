@@ -17,12 +17,13 @@ export type ProjectEntry = {
   project_code: string;
   project_name: string;
   required_staff?: number | null;
+  business_unit_id?: string | null;
   is_archived: boolean;
   sites?: ProjectSite[] | null;
 };
 
 export const PROJECT_SELECT =
-  "id, project_code, project_name, required_staff, is_archived, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
+  "id, project_code, project_name, required_staff, business_unit_id, is_archived, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
 
 export const CONTRACT_PROJECT_SELECT =
   "id, project_code, project_name, is_archived";

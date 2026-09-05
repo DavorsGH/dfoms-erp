@@ -19,6 +19,12 @@ import { compareStaffIds } from "../employees/employee-record-utils";
 import type { StaffIdCardEmployee } from "./staff-id-cards-utils";
 import { useTenantBranding } from "../tenant-branding-context";
 import WorkspaceLogo from "../workspace-logo";
+import { useBusinessUnitView } from "@/app/dashboard/business-unit-view-context";
+import { resolveBusinessUnitDocumentContactFromUnits } from "@/utils/business-unit-document-contact-types";
+import {
+  resolveDocumentLogoUrl,
+  resolveInvoiceCompanyName,
+} from "../finance/client-invoices/client-invoice-display-utils";
 
 function isActiveStaffIdCardEmployee(employee: StaffIdCardEmployee): boolean {
   const status = employee.employment_status?.trim().toLowerCase();
@@ -46,13 +52,25 @@ function StaffIdCard({
   departmentName: string;
   positionName: string;
 }) {
-  const { companyLegalName } = useTenantBranding();
+  const branding = useTenantBranding();
+  const { units } = useBusinessUnitView();
+  const documentContact = resolveBusinessUnitDocumentContactFromUnits(
+    units,
+    employee.business_unit_id,
+  );
+  const companyLegalName = resolveInvoiceCompanyName(
+    branding,
+    null,
+    documentContact,
+  );
+  const companyLogoUrl = resolveDocumentLogoUrl(branding, documentContact);
 
   return (
     <article className="id-card-sheet overflow-hidden rounded-md border-2 border-slate-300 bg-white shadow-sm">
       <div className="flex h-full flex-col p-2.5">
         <div className="mb-1.5 flex items-center gap-2 border-b border-[#0f2744]/20 pb-1.5">
           <WorkspaceLogo
+            workspaceLogoUrl={companyLogoUrl}
             name={companyLegalName}
             size="xs"
             rounded="sm"

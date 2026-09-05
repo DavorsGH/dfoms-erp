@@ -6,7 +6,11 @@ import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact-types";
 
 export type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact-types";
-export { businessUnitDocumentContactFromSwitcher } from "@/utils/business-unit-document-contact-types";
+export {
+  businessUnitDocumentContactFromSwitcher,
+  resolveBusinessUnitDocumentContactFromUnits,
+  resolveUniformBusinessUnitId,
+} from "@/utils/business-unit-document-contact-types";
 
 /**
  * Load document branding contact fields for a stamped business unit.

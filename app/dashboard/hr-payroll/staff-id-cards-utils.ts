@@ -10,7 +10,8 @@ export type StaffIdCardEmployee = Pick<
   | "position"
   | "employment_status"
   | "department_ref"
+  | "business_unit_id"
 >;
 
 export const STAFF_ID_CARD_EMPLOYEE_SELECT =
-  "employee_id, staff_id, full_name, photo_url, department, position, employment_status, department_ref:departments!employees_department_fkey(dept_code, department_name)";
+  "employee_id, staff_id, full_name, photo_url, department, position, employment_status, business_unit_id, department_ref:departments!employees_department_fkey(dept_code, department_name)";

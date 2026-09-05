@@ -2,6 +2,8 @@ import type { DutyRosterViewModel } from "./duty-roster-utils";
 
 export type DutyRosterPdfPayload = {
   companyLegalName: string;
+  /** Absolute/signed logo URL for PDF header; empty when unavailable. */
+  companyLogoUrl?: string;
   clientName: string;
   effectiveLabel: string;
   rotationLabel: string;

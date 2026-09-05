@@ -6,19 +6,28 @@ import { useRouter } from "next/navigation";
 import { pdf } from "@react-pdf/renderer";
 import type { ClientEntry } from "./clients-utils";
 import { inputClassName } from "../employees/employee-record-utils";
-import { resolveSignatureImageUrl } from "@/app/dashboard/finance/client-invoices/client-invoice-display-utils";
+import {
+  resolveBrandingLogoUrl,
+  resolveDocumentLogoUrl,
+  resolveInvoiceCompanyName,
+  resolveSignatureImageUrl,
+} from "@/app/dashboard/finance/client-invoices/client-invoice-display-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
 import { useTenantBranding } from "../tenant-branding-context";
+import WorkspaceLogo from "../workspace-logo";
+import { useBusinessUnitView } from "@/app/dashboard/business-unit-view-context";
+import { resolveBusinessUnitDocumentContactFromUnits } from "@/utils/business-unit-document-contact-types";
 import {
   buildClientAssignmentProjectCodes,
   buildDutyRosterViewModel,
   filterHistoryForClient,
   formatDutyRosterEffectiveLabel,
   getUnassignedRosterSites,
+  resolveDutyRosterBusinessUnitId,
   type DutyRosterEmployee,
   type DutyRosterProject,
   type DutyRosterSite,
@@ -197,7 +206,9 @@ export default function DutyRoster({
   canStartRotation,
 }: DutyRosterProps) {
   const router = useRouter();
-  const { companyLegalName, signatureImageUrl } = useTenantBranding();
+  const branding = useTenantBranding();
+  const { units } = useBusinessUnitView();
+  const { signatureImageUrl } = branding;
   const [selectedClientId, setSelectedClientId] = useState("");
   const [selectedRotationNumber, setSelectedRotationNumber] = useState<
     number | null
@@ -450,6 +461,29 @@ export default function DutyRoster({
     );
   }, [data]);
 
+  const rosterDocumentContact = useMemo(() => {
+    if (!selectedClientId) {
+      return null;
+    }
+
+    const businessUnitId = resolveDutyRosterBusinessUnitId(
+      initialSites,
+      initialProjects,
+      selectedClientId,
+    );
+    return resolveBusinessUnitDocumentContactFromUnits(units, businessUnitId);
+  }, [selectedClientId, initialSites, initialProjects, units]);
+
+  const companyLegalName = resolveInvoiceCompanyName(
+    branding,
+    null,
+    rosterDocumentContact,
+  );
+  const companyLogoUrl = resolveDocumentLogoUrl(
+    branding,
+    rosterDocumentContact,
+  );
+
   const pdfPayload = useMemo((): DutyRosterPdfPayload | null => {
     if (!data) {
       return null;
@@ -457,6 +491,7 @@ export default function DutyRoster({
 
     return {
       companyLegalName,
+      companyLogoUrl: resolveBrandingLogoUrl(companyLogoUrl),
       clientName: data.clientName,
       effectiveLabel,
       rotationLabel: data.summary.currentRotationLabel,
@@ -475,6 +510,7 @@ export default function DutyRoster({
   }, [
     data,
     companyLegalName,
+    companyLogoUrl,
     effectiveLabel,
     preparedBy,
     approvedDisplay,
@@ -1013,6 +1049,13 @@ export default function DutyRoster({
       {data ? (
         <div id="duty-roster-print-area">
           <header className="mb-6 border-b border-slate-300 pb-4 text-center">
+            <div className="mb-3 flex justify-center">
+              <WorkspaceLogo
+                workspaceLogoUrl={companyLogoUrl}
+                name={companyLegalName}
+                size="md"
+              />
+            </div>
             <p className="text-lg font-semibold text-[#0f2744]">
               {companyLegalName}
             </p>
