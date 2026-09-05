@@ -1,11 +1,12 @@
 /**
  * BU-scoped raw-material stock overlay (Phase 7c.3).
  *
- * Mirrors finished-product-bu-stock-utils: master raw_materials.current_stock is
- * the tenant-wide total; for a specific business / workspace default, overlay
- * raw_material_balances.current_stock onto the material list.
+ * Master raw_materials.current_stock is the tenant-wide total; for a specific
+ * business / workspace default, overlay raw_material_balances.current_stock.
  *
  * All Businesses → stockMap null; callers keep master stock.
+ * Default (NULL BU) → overlay; missing balance → 0 (catalog still listed).
+ * Named unit → only materials with a balance row for that BU appear.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -72,18 +73,37 @@ export async function fetchScopedRawMaterialStock(
 }
 
 /**
- * When stockMap is set, overwrite each material's current_stock from the map
- * (missing balance row → 0 for that BU). When null (All Businesses), return
- * materials unchanged.
+ * Apply scoped stock onto a material catalog list.
+ *
+ * - stockMap null (All Businesses): return materials unchanged (master stock).
+ * - mode "default": overlay balance stock; missing balance → current_stock 0
+ *   (still list every catalog material).
+ * - mode "unit": keep only materials that have a balance row for that BU;
+ *   use that row's current_stock. Materials never allocated to the unit are
+ *   omitted (not shown as 0 / false low-stock).
  */
 export function mergeScopedStockOntoMaterials<
   T extends { id: string; current_stock: number },
 >(
   materials: T[],
   stockMap: Map<string, ScopedRawMaterialStockEntry> | null,
+  scopeMode: BusinessUnitReadScope["mode"] = "all",
 ): T[] {
   if (stockMap == null) {
     return materials;
+  }
+
+  if (scopeMode === "unit") {
+    const allocated: T[] = [];
+    for (const material of materials) {
+      const entry = stockMap.get(material.id);
+      if (!entry) continue;
+      allocated.push({
+        ...material,
+        current_stock: entry.current_stock,
+      });
+    }
+    return allocated;
   }
 
   return materials.map((material) => {

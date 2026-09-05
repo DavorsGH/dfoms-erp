@@ -4,7 +4,9 @@ import {
   getActiveBusinessUnitId,
   getCurrentUserRole,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import {
@@ -21,19 +23,32 @@ import {
   type RawMaterialPurchaseRecord,
   type RawMaterialRecord,
 } from "../raw-materials-utils";
+import {
+  fetchScopedRawMaterialStock,
+  mergeScopedStockOntoMaterials,
+} from "../raw-material-bu-stock-utils";
 import type { NamedLookup } from "../../lookup-types";
 
 export default async function RawMaterialsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const tenantId = await getCurrentUserTenantId();
-  const activeBusinessUnitId = await getActiveBusinessUnitId();
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: materials, error: materialsError },
     { data: purchases, error: purchasesError },
     { data: paymentMethods, error: paymentMethodsError },
     { data: projects, error: projectsError },
+    scopedStock,
   ] = await Promise.all([
     supabase
       .from("raw_materials")
@@ -54,18 +69,31 @@ export default async function RawMaterialsPage() {
           .eq("tenant_id", tenantId)
           .order("project_name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
+    tenantId
+      ? fetchScopedRawMaterialStock(supabase, tenantId, buScope)
+      : Promise.resolve({ stockMap: null, error: null }),
   ]);
+
+  const catalogMaterials =
+    (materials as RawMaterialRecord[] | null)?.map((row) =>
+      normalizeRawMaterial(row),
+    ) ?? [];
+  // Stock-on-hand list: named BUs only see materials with a balance row.
+  // Purchase picker keeps the full catalog via initialCatalogMaterials.
+  const displayMaterials = mergeScopedStockOntoMaterials(
+    catalogMaterials,
+    scopedStock.stockMap,
+    buScope.mode,
+  );
 
   const role = (await getCurrentUserRole()) as AppRole | null;
 
   return (
     <InventoryShell sectionTitle="Raw Materials">
       <RawMaterials
-        initialMaterials={
-          (materials as RawMaterialRecord[] | null)?.map((row) =>
-            normalizeRawMaterial(row),
-          ) ?? []
-        }
+        tenantId={tenantId}
+        initialMaterials={displayMaterials}
+        initialCatalogMaterials={catalogMaterials}
         initialPurchases={
           (purchases as RawMaterialPurchaseRecord[] | null)?.map((row) =>
             normalizeRawMaterialPurchase(row),
@@ -78,6 +106,7 @@ export default async function RawMaterialsPage() {
           purchasesError?.message ??
           paymentMethodsError?.message ??
           projectsError?.message ??
+          scopedStock.error ??
           null
         }
         readOnly={!canEditInventory(role)}

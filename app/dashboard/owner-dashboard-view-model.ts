@@ -58,6 +58,7 @@ export async function buildOwnerDashboardViewModel(
     mergeScopedStockOntoMaterials(
       inventoryBalanceSheetInput.rawMaterials,
       rawMaterialStockMap,
+      options.buScope.mode,
     ),
   );
 

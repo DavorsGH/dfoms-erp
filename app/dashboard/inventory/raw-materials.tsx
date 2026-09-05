@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
 import RegisterRowActions, {
@@ -19,7 +19,10 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
-import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitReadScope,
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
@@ -35,6 +38,10 @@ import {
   type RawMaterialPurchaseRecord,
   type RawMaterialRecord,
 } from "./raw-materials-utils";
+import {
+  fetchScopedRawMaterialStock,
+  mergeScopedStockOntoMaterials,
+} from "./raw-material-bu-stock-utils";
 import { isRawMaterialLowStock } from "../reports/inventory-reports-utils";
 import type { NamedLookup } from "../lookup-types";
 import {
@@ -43,7 +50,13 @@ import {
 } from "../administration/projects-utils";
 
 type RawMaterialsProps = {
+  /** BU-scoped stock list (named unit → only materials with a balance row). */
   initialMaterials: RawMaterialRecord[];
+  /**
+   * Full tenant catalog for purchase/create pickers. Must stay unscoped so a
+   * named BU can record a first purchase for a material that has no balance yet.
+   */
+  initialCatalogMaterials: RawMaterialRecord[];
   initialPurchases: RawMaterialPurchaseRecord[];
   initialPaymentMethods: NamedLookup[];
   initialProjects: ContractProjectOption[];
@@ -51,6 +64,7 @@ type RawMaterialsProps = {
   readOnly?: boolean;
   /** Create-only stamp for standalone purchases; null = All Businesses. */
   activeBusinessUnitId?: string | null;
+  tenantId?: string | null;
 };
 
 const emptyMaterialForm = {
@@ -73,17 +87,23 @@ const emptyPurchaseForm = {
 
 export default function RawMaterials({
   initialMaterials,
+  initialCatalogMaterials,
   initialPurchases,
   initialPaymentMethods,
   initialProjects,
   fetchError,
   readOnly = false,
   activeBusinessUnitId = null,
+  tenantId = null,
 }: RawMaterialsProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const buReadScope = useBusinessUnitReadScope();
   const [materials, setMaterials] = useState(
     initialMaterials.map(normalizeRawMaterial),
+  );
+  const [catalogMaterials, setCatalogMaterials] = useState(
+    initialCatalogMaterials.map(normalizeRawMaterial),
   );
   const [purchases, setPurchases] = useState(
     initialPurchases.map(normalizeRawMaterialPurchase),
@@ -106,12 +126,19 @@ export default function RawMaterials({
   const [purchaseForm, setPurchaseForm] = useState(emptyPurchaseForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const skipFirstStockScopeRefresh = useRef(true);
 
   useEffect(() => {
     setMaterials(initialMaterials.map(normalizeRawMaterial));
+    setCatalogMaterials(initialCatalogMaterials.map(normalizeRawMaterial));
     setPurchases(initialPurchases.map(normalizeRawMaterialPurchase));
     setPaymentMethods(initialPaymentMethods);
-  }, [initialMaterials, initialPurchases, initialPaymentMethods]);
+  }, [
+    initialMaterials,
+    initialCatalogMaterials,
+    initialPurchases,
+    initialPaymentMethods,
+  ]);
 
   useEffect(() => {
     if (!showPurchaseForm && !editingPurchaseId) {
@@ -156,27 +183,43 @@ export default function RawMaterials({
   }, [purchaseEditForm.cost_per_unit, purchaseEditForm.quantity]);
 
   async function refreshData() {
-    const [{ data: materialRows, error: materialError }, { data: purchaseRows, error: purchaseError }] =
-      await Promise.all([
-        supabase
-          .from("raw_materials")
-          .select(RAW_MATERIAL_SELECT)
-          .order("material_name", { ascending: true }),
-        supabase
-          .from("raw_material_purchases")
-          .select(RAW_MATERIAL_PURCHASE_SELECT)
-          .order("purchase_date", { ascending: false }),
-      ]);
-
-    if (materialError || purchaseError) {
-      setError(materialError?.message ?? purchaseError?.message ?? "Refresh failed.");
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
       return;
     }
 
+    const [
+      { data: materialRows, error: materialError },
+      { data: purchaseRows, error: purchaseError },
+      { stockMap, error: stockScopeError },
+    ] = await Promise.all([
+      supabase
+        .from("raw_materials")
+        .select(RAW_MATERIAL_SELECT)
+        .order("material_name", { ascending: true }),
+      supabase
+        .from("raw_material_purchases")
+        .select(RAW_MATERIAL_PURCHASE_SELECT)
+        .order("purchase_date", { ascending: false }),
+      fetchScopedRawMaterialStock(supabase, tenantId, buReadScope),
+    ]);
+
+    if (materialError || purchaseError || stockScopeError) {
+      setError(
+        materialError?.message ??
+          purchaseError?.message ??
+          stockScopeError ??
+          "Refresh failed.",
+      );
+      return;
+    }
+
+    const catalog = ((materialRows as RawMaterialRecord[] | null) ?? []).map(
+      (row) => normalizeRawMaterial(row),
+    );
+    setCatalogMaterials(catalog);
     setMaterials(
-      ((materialRows as RawMaterialRecord[] | null) ?? []).map((row) =>
-        normalizeRawMaterial(row),
-      ),
+      mergeScopedStockOntoMaterials(catalog, stockMap, buReadScope.mode),
     );
     setPurchases(
       (((purchaseRows as unknown) as RawMaterialPurchaseRecord[] | null) ?? []).map(
@@ -185,6 +228,16 @@ export default function RawMaterials({
     );
     setError(null);
   }
+
+  useEffect(() => {
+    if (skipFirstStockScopeRefresh.current) {
+      skipFirstStockScopeRefresh.current = false;
+      return;
+    }
+    void refreshData();
+    // Re-scope stock list when the BU switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   function openAddMaterialForm() {
     setEditingMaterialId(null);
@@ -727,7 +780,7 @@ export default function RawMaterials({
                   className={inputClassName}
                 >
                   <option value="">Select material</option>
-                  {materials.map((material) => (
+                  {catalogMaterials.map((material) => (
                     <option key={material.id} value={material.id}>
                       {material.material_code} — {material.material_name}
                     </option>
@@ -905,7 +958,7 @@ export default function RawMaterials({
                   type="text"
                   readOnly
                   value={
-                    materials.find((item) => item.id === purchaseEditForm.material_id)
+                    catalogMaterials.find((item) => item.id === purchaseEditForm.material_id)
                       ?.material_name ?? purchaseEditForm.material_id
                   }
                   className={`${inputClassName} bg-slate-50 text-slate-600`}

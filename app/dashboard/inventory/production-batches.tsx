@@ -213,6 +213,7 @@ export default function ProductionBatches({
           normalizeRawMaterial(row),
         ),
         materialStockMap,
+        buReadScope.mode,
       ),
     );
     setError(null);

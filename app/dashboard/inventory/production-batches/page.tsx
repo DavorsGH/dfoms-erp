@@ -99,6 +99,7 @@ export default async function ProductionBatchesPage() {
       normalizeRawMaterial(row),
     ) ?? [],
     materialStockMap,
+    buScope.mode,
   );
 
   const fetchError =

@@ -193,6 +193,7 @@ export async function getRawMaterialsStock(): Promise<unknown> {
     const normalized = mergeScopedStockOntoMaterials(
       (materials ?? []).map(normalizeRawMaterial),
       scopedStock.stockMap,
+      buScope.mode,
     );
 
     let lowStockCount = 0;
