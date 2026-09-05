@@ -75,6 +75,7 @@ export default async function ProductSalesPage() {
       (product) => normalizeFinishedProduct(product),
     ),
     stockMap,
+    buScope.mode,
   );
 
   const fetchError =

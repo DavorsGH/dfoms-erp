@@ -92,6 +92,7 @@ export async function fetchStockOnHandReportData(
   const normalizedFinishedProducts = mergeScopedStockOntoProducts(
     (finishedProducts ?? []).map((row) => normalizeFinishedProduct(row)),
     finishedProductStockMap,
+    buScope.mode,
   );
 
   const fetchError =

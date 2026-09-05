@@ -153,6 +153,7 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       normalizeFinishedProduct(row),
     ),
     stockMap,
+    buScope.mode,
   );
 
   const clientRows = (clients as ClientEntry[] | null) ?? [];

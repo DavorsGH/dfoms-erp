@@ -18,6 +18,10 @@ import {
   normalizeFinishedProduct,
   type FinishedProductRecord,
 } from "../finished-products-utils";
+import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "../finished-product-bu-stock-utils";
 import InventoryShell from "../inventory-shell";
 
 export default async function FinishedProductsPage() {
@@ -37,6 +41,7 @@ export default async function FinishedProductsPage() {
     { data, error },
     { data: suppliers, error: suppliersError },
     lotDatesResult,
+    scopedStock,
   ] = await Promise.all([
     supabase
       .from("finished_products")
@@ -51,26 +56,38 @@ export default async function FinishedProductsPage() {
           .order("name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
     fetchFinishedProductLotDateSources(supabase, buScope),
+    tenantId
+      ? fetchScopedFinishedProductStock(supabase, tenantId, buScope)
+      : Promise.resolve({ stockMap: null, error: null }),
   ]);
 
   const role = (await getCurrentUserRole()) as AppRole | null;
 
-  const products = mergeFinishedProductsWithLotDates(
+  const catalogProducts = mergeFinishedProductsWithLotDates(
     ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
       normalizeFinishedProduct(row),
     ),
     lotDatesResult.lots,
   );
+  // Named BUs only see products with a balance row (stock list).
+  // Production Batch / purchase pickers keep the full catalog elsewhere.
+  const displayProducts = mergeScopedStockOntoProducts(
+    catalogProducts,
+    scopedStock.stockMap,
+    buScope.mode,
+  );
 
   return (
     <InventoryShell sectionTitle="Finished Products">
       <FinishedProducts
-        initialProducts={products}
+        tenantId={tenantId}
+        initialProducts={displayProducts}
         initialSuppliers={(suppliers as SupplierRow[] | null) ?? []}
         fetchError={
           error?.message ??
           suppliersError?.message ??
           lotDatesResult.error ??
+          scopedStock.error ??
           null
         }
         readOnly={!canEditInventory(role)}

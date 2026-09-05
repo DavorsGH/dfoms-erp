@@ -427,6 +427,7 @@ export default function PosCheckout({
         normalizeFinishedProduct(row),
       ),
       stockMap,
+      buReadScope.mode,
     );
     setProducts(next);
     await onStockLevelsChanged?.(next);

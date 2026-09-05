@@ -126,6 +126,7 @@ export default async function InternalConsumptionPage() {
       normalizeFinishedProduct(row),
     ),
     stockMap,
+    buScope.mode,
   );
 
   const fetchError =

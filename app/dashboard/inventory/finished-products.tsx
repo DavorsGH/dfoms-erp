@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { createClient } from "@/utils/supabase/client";
@@ -43,12 +43,17 @@ import {
 import type { SupplierRow } from "@/utils/suppliers-types";
 import { getFinishedProductDeleteErrorMessage, FINISHED_PRODUCT_DELETE_BLOCKED_MESSAGE } from "@/utils/finished-product-delete-errors";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+} from "./finished-product-bu-stock-utils";
 
 type FinishedProductsProps = {
   initialProducts: FinishedProductRecord[];
   initialSuppliers: SupplierRow[];
   fetchError: string | null;
   readOnly?: boolean;
+  tenantId?: string | null;
 };
 
 const emptyForm = {
@@ -65,6 +70,7 @@ export default function FinishedProducts({
   initialSuppliers,
   fetchError,
   readOnly = false,
+  tenantId = null,
 }: FinishedProductsProps) {
   const supabase = createClient();
   const buReadScope = useBusinessUnitReadScope();
@@ -90,6 +96,7 @@ export default function FinishedProducts({
   const [error, setError] = useState<string | null>(fetchError);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [photoWarning, setPhotoWarning] = useState<string | null>(null);
+  const skipFirstStockScopeRefresh = useRef(true);
 
   useEffect(() => {
     return () => {
@@ -118,10 +125,16 @@ export default function FinishedProducts({
   }, [supabase, buReadScope]);
 
   async function refreshData() {
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
     const [
       { data, error: refreshError },
       lotDatesResult,
       purchaseCountsResult,
+      { stockMap, error: stockScopeError },
     ] = await Promise.all([
       supabase
         .from("finished_products")
@@ -129,6 +142,7 @@ export default function FinishedProducts({
         .order("product_name", { ascending: true }),
       fetchFinishedProductLotDateSources(supabase, buReadScope),
       fetchFinishedProductPurchaseCounts(supabase, buReadScope),
+      fetchScopedFinishedProductStock(supabase, tenantId, buReadScope),
     ]);
 
     if (refreshError) {
@@ -143,20 +157,35 @@ export default function FinishedProducts({
       setError(purchaseCountsResult.error);
       return;
     }
+    if (stockScopeError) {
+      setError(stockScopeError);
+      return;
+    }
 
-    setProducts(
-      mergeFinishedProductsWithLotDates(
-        ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
-          normalizeFinishedProduct(row),
-        ),
-        lotDatesResult.lots,
+    const catalog = mergeFinishedProductsWithLotDates(
+      ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
+        normalizeFinishedProduct(row),
       ),
+      lotDatesResult.lots,
+    );
+    setProducts(
+      mergeScopedStockOntoProducts(catalog, stockMap, buReadScope.mode),
     );
     setPurchaseCountByProductId(
       Object.fromEntries(purchaseCountsResult.countsByProductId.entries()),
     );
     setError(null);
   }
+
+  useEffect(() => {
+    if (skipFirstStockScopeRefresh.current) {
+      skipFirstStockScopeRefresh.current = false;
+      return;
+    }
+    void refreshData();
+    // Re-scope stock list when the BU switcher changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
+  }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   function clearPendingPhoto() {
     if (pendingPhotoPreviewUrl) {

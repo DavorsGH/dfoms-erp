@@ -99,6 +99,7 @@ export async function getFinishedProductsSummary(): Promise<unknown> {
         lotSources.lots,
       ),
       scopedStock.stockMap,
+      buScope.mode,
     );
 
     let lowStockCount = 0;

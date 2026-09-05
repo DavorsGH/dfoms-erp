@@ -218,6 +218,8 @@ export default function ProductionBatches({
           normalizeFinishedProduct(row),
         ),
         productStockMap,
+        // Full catalog for first-time production under a named BU.
+        "default",
       ),
     );
     setMaterials(

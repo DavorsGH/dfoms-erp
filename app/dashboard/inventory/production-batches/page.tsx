@@ -93,6 +93,10 @@ export default async function ProductionBatchesPage() {
       normalizeFinishedProduct(row),
     ) ?? [],
     productStockMap,
+    // Full catalog so a named BU can produce a product for the first time
+    // (balance row created on first production). Stock still overlays from
+    // the active BU's stockMap; missing → 0.
+    "default",
   );
   const initialMaterials = mergeScopedStockOntoMaterials(
     (materials as RawMaterialRecord[] | null)?.map((row) =>

@@ -17,6 +17,11 @@ export type FinishedProductRecord = {
   product_name: string;
   unit_of_measure: string;
   current_stock: number;
+  /**
+   * Optional BU-scoped WAC overlay from finished_product_balances.
+   * Master finished_products has no average_cost_per_unit column.
+   */
+  average_cost_per_unit?: number | null;
   standard_selling_price: number | null;
   sourcing_type: FinishedProductSourcingType | null;
   supplier_id: string | null;

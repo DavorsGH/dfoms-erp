@@ -148,6 +148,7 @@ export default function InternalConsumption({
           normalizeFinishedProduct(row),
         ),
         stockMap,
+        buReadScope.mode,
       ),
     );
     setError(null);

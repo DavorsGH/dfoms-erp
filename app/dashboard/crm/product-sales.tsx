@@ -337,6 +337,7 @@ export default function ProductSales({
           normalizeFinishedProduct(row),
         ),
         stockMap,
+        buReadScope.mode,
       ),
     );
   }
