@@ -12,6 +12,7 @@ import {
   normalizeClientQuotationDetail,
   resolveBrandingLogoUrl,
   resolveConvertedInvoiceLink,
+  resolveDocumentLogoUrl,
   resolveSignatureImageUrl,
   type ClientQuotationDetailPayload,
 } from "./client-quotation-display-utils";
@@ -147,7 +148,9 @@ export default function ClientQuotationView({
     setDownloading(true);
 
     try {
-      const logoUrl = resolveBrandingLogoUrl(display.branding.workspaceLogoUrl);
+      const logoUrl = resolveBrandingLogoUrl(
+        resolveDocumentLogoUrl(display.branding, display.businessUnitContact),
+      );
       const signatureImageUrl = resolveSignatureImageUrl(display.branding.signatureImageUrl);
       const blob = await pdf(
         <ClientQuotationPdfDocument

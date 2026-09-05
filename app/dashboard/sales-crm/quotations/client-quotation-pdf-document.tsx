@@ -370,7 +370,11 @@ export default function ClientQuotationPdfDocument({
 }: ClientQuotationPdfDocumentProps) {
   const groupedLines = buildClientQuotationGroups(lineItems);
   const lineColumnTotals = sumQuotationLineItemColumns(lineItems);
-  const companyName = resolveInvoiceCompanyName(branding, billingSettings);
+  const companyName = resolveInvoiceCompanyName(
+    branding,
+    billingSettings,
+    businessUnitContact,
+  );
   const companyContactLines = tenantHeaderContactLines(
     branding,
     billingSettings,

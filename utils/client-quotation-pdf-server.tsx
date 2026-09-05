@@ -77,6 +77,7 @@ export async function renderClientQuotationPdfBuffer(options: {
     supabase: options.supabase,
     tenantId: options.tenantId,
     branding,
+    businessUnitContact,
   });
 
   try {

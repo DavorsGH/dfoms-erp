@@ -125,6 +125,7 @@ export default async function EditClientQuotationPage({
         mode="edit"
         tenantId={tenantId}
         quotationId={id}
+        initialBusinessUnitId={detail.quotation.business_unit_id}
         existingQuotationNumber={detail.quotation.quotation_number}
         billingSettings={billingSettings}
         graTin={graTin}

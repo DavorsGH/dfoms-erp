@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
 import { resolvePdfAssetUrl } from "@/utils/pdf-asset-url";
 import { resolvePdfImageDataUrl } from "@/utils/pdf-image-source";
@@ -15,6 +16,7 @@ export async function resolvePdfBrandingImages(options: {
   supabase: SupabaseClient;
   tenantId: string;
   branding: TenantBranding;
+  businessUnitContact?: BusinessUnitDocumentContact | null;
   siteBaseUrl?: string | null;
 }): Promise<PdfBrandingImages> {
   const admin = createAdminClient();
@@ -36,8 +38,13 @@ export async function resolvePdfBrandingImages(options: {
     );
   }
 
-  const logoReference =
+  const buLogoReference =
+    options.businessUnitContact?.logo_url?.trim() ||
+    options.businessUnitContact?.logoUrl?.trim() ||
+    "";
+  const tenantLogoReference =
     tenantMediaRow?.logo_url?.trim() || options.branding.workspaceLogoUrl;
+  const logoReference = buLogoReference || tenantLogoReference;
   const signatureReference = tenantMediaRow?.signature_url?.trim() || null;
   const headerBrandingSignature =
     options.branding.signatureImageUrl?.trim() || null;

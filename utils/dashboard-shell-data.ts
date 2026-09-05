@@ -45,7 +45,7 @@ async function loadBusinessUnitSwitcherOptions(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("business_units")
-    .select("id, name, logo_url")
+    .select("id, name, logo_url, invoice_address, business_email")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("name", { ascending: true });
@@ -62,6 +62,8 @@ async function loadBusinessUnitSwitcherOptions(
     id: string;
     name: string;
     logo_url: string | null;
+    invoice_address: string | null;
+    business_email: string | null;
   }>;
 
   const logoRefs = rows
@@ -79,6 +81,8 @@ async function loadBusinessUnitSwitcherOptions(
       name: row.name,
       logo_url,
       logoUrl: logo_url ? (signedByRef.get(logo_url) ?? null) : null,
+      invoice_address: row.invoice_address?.trim() || null,
+      business_email: row.business_email?.trim() || null,
     };
   });
 }

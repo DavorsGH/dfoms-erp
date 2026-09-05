@@ -20,6 +20,7 @@ import {
   resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
+  resolveDocumentLogoUrl,
   resolveSignatureImageUrl,
   resolveInvoiceCompanyName,
   sumLineItemColumns,
@@ -178,7 +179,11 @@ export default function ClientInvoiceView({
     : null;
 
   const companyName = display
-    ? resolveInvoiceCompanyName(display.branding, display.billingSettings)
+    ? resolveInvoiceCompanyName(
+        display.branding,
+        display.billingSettings,
+        display.businessUnitContact,
+      )
     : "";
 
   const companyContactLines = display
@@ -189,6 +194,10 @@ export default function ClientInvoiceView({
         display.businessUnitContact,
       )
     : [];
+
+  const documentLogoUrl = display
+    ? resolveDocumentLogoUrl(display.branding, display.businessUnitContact)
+    : "";
 
   const handlePrint = useCallback(() => {
     window.print();
@@ -202,7 +211,9 @@ export default function ClientInvoiceView({
     setDownloading(true);
 
     try {
-      const logoUrl = resolveBrandingLogoUrl(display.branding.workspaceLogoUrl);
+      const logoUrl = resolveBrandingLogoUrl(
+        resolveDocumentLogoUrl(display.branding, display.businessUnitContact),
+      );
       const signatureImageUrl = resolveSignatureImageUrl(display.branding.signatureImageUrl);
       const blob = await pdf(
         <ClientInvoicePdfDocument
@@ -376,7 +387,7 @@ export default function ClientInvoiceView({
           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-4">
               <WorkspaceLogo
-                workspaceLogoUrl={display.branding.workspaceLogoUrl}
+                workspaceLogoUrl={documentLogoUrl}
                 name={companyName}
                 size="md"
                 className="ring-2 ring-white/25"

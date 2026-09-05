@@ -209,7 +209,11 @@ export default function ClientReceiptPdfDocument({
   logoUrl,
   signatureImageUrl,
 }: ClientReceiptPdfDocumentProps) {
-  const companyName = resolveInvoiceCompanyName(branding, billingSettings);
+  const companyName = resolveInvoiceCompanyName(
+    branding,
+    billingSettings,
+    businessUnitContact,
+  );
   const contactLines = tenantHeaderContactLines(
     branding,
     billingSettings,

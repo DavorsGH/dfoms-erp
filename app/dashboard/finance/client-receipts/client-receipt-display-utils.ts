@@ -1,7 +1,7 @@
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
-import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
+import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact-types";
 import { toNumber } from "@/utils/client-invoices-types";
 import {
   formatInvoiceDate,
@@ -12,6 +12,7 @@ import {
 import {
   CLIENT_INVOICE_COLORS,
   resolveAuthorizedByDisplayTitle,
+  resolveDocumentLogoUrl,
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
   tenantHeaderContactLines,
@@ -114,6 +115,7 @@ export {
   resolveAuthorizedByDisplayTitle,
   shouldShowReceiptSignatureBlock,
   CLIENT_INVOICE_COLORS,
+  resolveDocumentLogoUrl,
   resolveInvoiceCompanyName,
   tenantHeaderContactLines,
   resolveSignatureImageUrl,

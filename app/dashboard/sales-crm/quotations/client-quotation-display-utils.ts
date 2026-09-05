@@ -23,7 +23,7 @@ import {
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
-import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
+import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact-types";
 import {
   CLIENT_INVOICE_COLORS,
   CLIENT_INVOICE_LABOUR_TAX_NOTE,
@@ -33,6 +33,7 @@ import {
   resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
+  resolveDocumentLogoUrl,
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
   tenantHeaderContactLines,
@@ -208,6 +209,7 @@ export function buildClientQuotationPreviewDisplay(input: {
   branding: TenantBranding;
   billingSettings: BillingSettingsHeaderFields | null;
   graTin?: string | null;
+  businessUnitContact?: BusinessUnitDocumentContact | null;
 }): ClientQuotationDisplayProps {
   const quotationType = normalizeQuotationType(input.form.quotation_type);
   const taxBasis = resolveQuotationTaxBasis(input.form.tax_basis, quotationType);
@@ -255,8 +257,8 @@ export function buildClientQuotationPreviewDisplay(input: {
     tenant_id: input.tenantId,
     client_id: input.form.client_id,
     opportunity_id: input.form.opportunity_id ?? null,
-    // Synthetic form preview — BU is stamped on create, not carried in WriteBody.
-    business_unit_id: null,
+    // Synthetic form preview — use stamp-target BU when provided; stamped on create.
+    business_unit_id: input.businessUnitContact?.id ?? null,
     quotation_number: input.quotationNumber,
     quotation_sequence: 0,
     document_type: input.form.document_type ?? "quotation",
@@ -311,6 +313,7 @@ export function buildClientQuotationPreviewDisplay(input: {
     branding: input.branding,
     billingSettings: input.billingSettings,
     graTin: input.graTin?.trim() || null,
+    businessUnitContact: input.businessUnitContact ?? null,
   };
 }
 
@@ -325,6 +328,7 @@ export {
   resolveAuthorizedByDisplayTitle,
   paymentAccountDetailLines,
   resolveBrandingLogoUrl,
+  resolveDocumentLogoUrl,
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
   tenantHeaderContactLines,

@@ -5,6 +5,11 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
+import {
+  useBusinessUnitView,
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
+import { businessUnitDocumentContactFromSwitcher } from "@/utils/business-unit-document-contact-types";
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import type { FinishedProductRecord } from "@/app/dashboard/inventory/finished-products-utils";
@@ -58,6 +63,8 @@ type ClientQuotationFormProps = {
   mode: "create" | "edit";
   tenantId: string;
   quotationId?: string;
+  /** Saved quotation BU for edit-mode preview branding (create uses switcher stamp). */
+  initialBusinessUnitId?: string | null;
   /** Non-allocating preview of the next server-assigned quotation number. */
   nextQuotationNumberPreview?: string | null;
   existingQuotationNumber?: string;
@@ -106,6 +113,7 @@ export default function ClientQuotationForm({
   mode,
   tenantId,
   quotationId,
+  initialBusinessUnitId = null,
   nextQuotationNumberPreview,
   existingQuotationNumber,
   isConverted = false,
@@ -122,6 +130,8 @@ export default function ClientQuotationForm({
 }: ClientQuotationFormProps) {
   const router = useRouter();
   const branding = useTenantBranding();
+  const stampBusinessUnit = useStampBusinessUnitId();
+  const { units } = useBusinessUnitView();
   const [form, setForm] = useState<ClientQuotationFormState>(initialForm);
   const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
@@ -190,6 +200,23 @@ export default function ClientQuotationForm({
     return nextQuotationNumberPreview?.trim() || "Assigned on save";
   }, [mode, existingQuotationNumber, nextQuotationNumberPreview]);
 
+  const previewBusinessUnitContact = useMemo(() => {
+    const stampId =
+      mode === "edit"
+        ? initialBusinessUnitId?.trim() || null
+        : stampBusinessUnit.ok
+          ? stampBusinessUnit.businessUnitId
+          : null;
+    if (!stampId) {
+      return null;
+    }
+    const unit = units.find((entry) => entry.id === stampId);
+    if (!unit) {
+      return null;
+    }
+    return businessUnitDocumentContactFromSwitcher(unit);
+  }, [mode, initialBusinessUnitId, stampBusinessUnit, units]);
+
   const previewDisplay = useMemo(() => {
     if (!previewOpen) {
       return null;
@@ -253,6 +280,7 @@ export default function ClientQuotationForm({
       branding,
       billingSettings,
       graTin,
+      businessUnitContact: previewBusinessUnitContact,
     });
   }, [
     previewOpen,
@@ -267,6 +295,7 @@ export default function ClientQuotationForm({
     branding,
     billingSettings,
     graTin,
+    previewBusinessUnitContact,
   ]);
 
   function handleQuotationTypeChange(nextType: ClientQuotationType) {

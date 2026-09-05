@@ -16,6 +16,7 @@ import {
   hasReceiptAuthorizedBy,
   normalizeClientReceiptDetail,
   resolveAuthorizedByDisplayTitle,
+  resolveDocumentLogoUrl,
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
   tenantHeaderContactLines,
@@ -134,7 +135,9 @@ export default function ClientReceiptView({
   }, [payload, branding, billingSettings, graTin]);
 
   const logoUrl = display
-    ? resolveBrandingLogoUrl(display.branding.workspaceLogoUrl)
+    ? resolveBrandingLogoUrl(
+        resolveDocumentLogoUrl(display.branding, display.businessUnitContact),
+      )
     : "";
   const signatureImageUrl = display
     ? resolveSignatureImageUrl(display.branding.signatureImageUrl)
@@ -172,7 +175,11 @@ export default function ClientReceiptView({
     receipt.authorized_by_title,
     display.branding,
   );
-  const companyName = resolveInvoiceCompanyName(display.branding, display.billingSettings);
+  const companyName = resolveInvoiceCompanyName(
+    display.branding,
+    display.billingSettings,
+    display.businessUnitContact,
+  );
   const companyContactLines = tenantHeaderContactLines(
     display.branding,
     display.billingSettings,
@@ -205,7 +212,10 @@ export default function ClientReceiptView({
           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div className="flex items-start gap-4">
               <WorkspaceLogo
-                workspaceLogoUrl={display.branding.workspaceLogoUrl}
+                workspaceLogoUrl={resolveDocumentLogoUrl(
+                  display.branding,
+                  display.businessUnitContact,
+                )}
                 name={companyName}
                 size="md"
                 className="ring-2 ring-white/25"

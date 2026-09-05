@@ -340,7 +340,11 @@ export default function ClientInvoicePdfDocument({
 }: ClientInvoicePdfDocumentProps) {
   const groupedLines = buildClientInvoiceGroups(lineItems);
   const lineColumnTotals = sumLineItemColumns(lineItems);
-  const companyName = resolveInvoiceCompanyName(branding, billingSettings);
+  const companyName = resolveInvoiceCompanyName(
+    branding,
+    billingSettings,
+    businessUnitContact,
+  );
   const companyContactLines = tenantHeaderContactLines(
     branding,
     billingSettings,

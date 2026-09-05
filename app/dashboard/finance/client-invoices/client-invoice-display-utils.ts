@@ -11,7 +11,7 @@ import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
 import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
-import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
+import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact-types";
 
 export const CLIENT_INVOICE_PRINT_AREA_ID = "client-invoice-print-area";
 
@@ -45,13 +45,34 @@ function splitAddressLines(address: string) {
 export function resolveInvoiceCompanyName(
   branding: TenantBranding,
   billingSettings: BillingSettingsHeaderFields | null | undefined,
+  businessUnitContact?: BusinessUnitDocumentContact | null,
 ) {
+  const buName = businessUnitContact?.name?.trim();
+  if (buName) {
+    return buName;
+  }
+
   const billToName = billingSettings?.bill_to_name?.trim();
   if (billToName) {
     return billToName;
   }
 
   return branding.companyLegalName || branding.workspaceName;
+}
+
+/**
+ * Document header logo: BU signed logo when set, else tenant workspace logo.
+ */
+export function resolveDocumentLogoUrl(
+  branding: TenantBranding,
+  businessUnitContact?: BusinessUnitDocumentContact | null,
+) {
+  const buLogo = businessUnitContact?.logoUrl?.trim();
+  if (buLogo) {
+    return buLogo;
+  }
+
+  return branding.workspaceLogoUrl?.trim() || "";
 }
 
 export function resolveInvoiceCompanyAddressLines(

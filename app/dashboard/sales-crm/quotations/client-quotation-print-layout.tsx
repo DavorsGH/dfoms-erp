@@ -19,6 +19,7 @@ import {
   quotationValidityAndPaymentFooter,
   quotationPortalValidityAndPaymentFooter,
   resolveAuthorizedByDisplayTitle,
+  resolveDocumentLogoUrl,
   resolveInvoiceCompanyName,
   resolveSignatureImageUrl,
   sumQuotationLineItemColumns,
@@ -45,13 +46,18 @@ export default function ClientQuotationPrintLayout({
   const groupedLines = buildClientQuotationGroups(lineItems);
   const lineColumnTotals = sumQuotationLineItemColumns(lineItems);
   const taxBasisNote = quotationTaxBasisNote(quotation);
-  const companyName = resolveInvoiceCompanyName(branding, billingSettings);
+  const companyName = resolveInvoiceCompanyName(
+    branding,
+    billingSettings,
+    businessUnitContact,
+  );
   const companyContactLines = tenantHeaderContactLines(
     branding,
     billingSettings,
     graTin,
     businessUnitContact,
   );
+  const documentLogoUrl = resolveDocumentLogoUrl(branding, businessUnitContact);
   const printTitle = quotationPrintTitle(quotation.document_type);
   const numberMetaLabel = quotationNumberMetaLabel(quotation.document_type);
   const opportunityName = resolveQuotationOpportunityName(quotation);
@@ -74,7 +80,7 @@ export default function ClientQuotationPrintLayout({
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="flex items-start gap-4">
             <WorkspaceLogo
-              workspaceLogoUrl={branding.workspaceLogoUrl}
+              workspaceLogoUrl={documentLogoUrl}
               name={companyName}
               size="md"
               className="ring-2 ring-white/25"

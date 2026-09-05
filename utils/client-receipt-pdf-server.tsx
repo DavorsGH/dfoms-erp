@@ -61,6 +61,7 @@ export async function renderClientReceiptPdfBuffer(options: {
     supabase: options.supabase,
     tenantId: options.tenantId,
     branding,
+    businessUnitContact,
   });
 
   try {

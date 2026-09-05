@@ -86,6 +86,7 @@ export async function renderClientInvoicePdfBuffer(options: {
     supabase: options.supabase,
     tenantId: options.tenantId,
     branding,
+    businessUnitContact,
   });
 
   try {

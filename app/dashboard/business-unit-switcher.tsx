@@ -21,6 +21,8 @@ export type BusinessUnitSwitcherOption = {
   logo_url: string | null;
   /** Signed URL for sidebar display; null when no BU logo. */
   logoUrl: string | null;
+  invoice_address: string | null;
+  business_email: string | null;
 };
 
 type Props = {
