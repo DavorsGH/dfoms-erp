@@ -2,6 +2,14 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   filterActiveEmployees,
   HR_EMPLOYEE_SELECT,
   type HrEmployee,
@@ -12,11 +20,21 @@ import CommissionRuleForm from "../commission-rule-form";
 export default async function NewCommissionRulePage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
-  const { data: employees, error } = await supabase
-    .from("employees")
-    .select(`${HR_EMPLOYEE_SELECT}, position`)
-    .order("full_name");
+  const { data: employees, error } = await applyBusinessUnitScope(
+    supabase
+      .from("employees")
+      .select(`${HR_EMPLOYEE_SELECT}, position`),
+    buScope,
+  ).order("full_name");
 
   const employeeRows = filterActiveEmployees((employees as HrEmployee[] | null) ?? []);
   const positionRows = ((employees as Array<{ position?: string | null }> | null) ?? [])

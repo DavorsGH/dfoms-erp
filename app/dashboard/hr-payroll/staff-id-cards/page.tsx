@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   buildDepartmentNameMap,
   loadEmployeeLookups,
 } from "../../employees/lookup-utils";
@@ -14,12 +22,20 @@ import {
 export default async function StaffIdCardsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data, error }, lookups] = await Promise.all([
-    supabase
-      .from("employees")
-      .select(STAFF_ID_CARD_EMPLOYEE_SELECT)
-      .order("staff_id", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase.from("employees").select(STAFF_ID_CARD_EMPLOYEE_SELECT),
+      buScope,
+    ).order("staff_id", { ascending: true }),
     loadEmployeeLookups(supabase),
   ]);
 

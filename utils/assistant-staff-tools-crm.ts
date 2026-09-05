@@ -14,6 +14,14 @@ import {
   canAccessPosSection,
 } from "@/utils/rbac-access";
 import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   CLIENT_QUOTATION_LIST_SELECT,
   normalizeClientQuotationListRow,
   type ClientQuotationListRow,
@@ -176,9 +184,18 @@ export async function getSalesPipelineSummary(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
-    const { data, error } = await supabase
-      .from("sales_opportunities")
-      .select(SALES_OPPORTUNITY_SELECT);
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+    const { data, error } = await applyBusinessUnitScope(
+      supabase.from("sales_opportunities").select(SALES_OPPORTUNITY_SELECT),
+      buScope,
+    );
 
     if (error) {
       console.error(
@@ -226,16 +243,27 @@ export async function getQuotesAndQuotationsStatus(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
     const openQuoteStatuses = ["draft", "sent"];
     const openQuotationStatuses = ["draft", "sent"];
 
     const queries = [];
     if (canAccessCrmSection(sessionResult.session.role)) {
       queries.push(
-        supabase
-          .from("client_quotations")
-          .select(CLIENT_QUOTATION_LIST_SELECT)
-          .in("status", openQuotationStatuses)
+        applyBusinessUnitScope(
+          supabase
+            .from("client_quotations")
+            .select(CLIENT_QUOTATION_LIST_SELECT)
+            .in("status", openQuotationStatuses),
+          buScope,
+        )
           .order("issue_date", { ascending: false })
           .limit(LIST_LIMIT),
       );

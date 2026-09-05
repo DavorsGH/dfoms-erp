@@ -12,6 +12,14 @@ import {
   type ServiceContractListRow,
   type ServiceContractWriteBody,
 } from "@/utils/service-contracts-types";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 
@@ -38,10 +46,21 @@ export async function GET() {
   }
 
   const supabase = await getTenantSupabase();
-  const { data, error } = await supabase
-    .from("service_contracts")
-    .select(SERVICE_CONTRACT_LIST_SELECT)
-    .eq("tenant_id", auth.tenantId)
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("service_contracts")
+      .select(SERVICE_CONTRACT_LIST_SELECT)
+      .eq("tenant_id", auth.tenantId),
+    buScope,
+  )
     .order("start_date", { ascending: false })
     .order("contract_sequence", { ascending: false });
 

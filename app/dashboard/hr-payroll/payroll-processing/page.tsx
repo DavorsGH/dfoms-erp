@@ -93,7 +93,10 @@ export default async function PayrollProcessingPage() {
   ] = await Promise.all([
     supabase.from("payroll_processing").select("payroll_month"),
     supabase.from("payroll_history").select("payroll_month"),
-    supabase.from("month_end_close").select("*"),
+    applyBusinessUnitScope(
+      supabase.from("month_end_close").select("*"),
+      buScope,
+    ),
     tenantId
       ? applyBusinessUnitScope(
           supabase

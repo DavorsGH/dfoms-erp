@@ -35,6 +35,14 @@ import {
 } from "@/utils/client-invoices-types";
 import { canAccessFinanceSection } from "@/utils/rbac-access";
 import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   SERVICE_CONTRACT_LIST_SELECT,
   normalizeServiceContractListRow,
 } from "@/utils/service-contracts-types";
@@ -76,11 +84,22 @@ export async function getOutstandingInvoices(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
     const referenceDate = new Date();
-    const { data, error } = await supabase
-      .from("client_invoices")
-      .select(CLIENT_INVOICE_LIST_SELECT)
-      .in("status", ["sent", "partial"])
+    const { data, error } = await applyBusinessUnitScope(
+      supabase
+        .from("client_invoices")
+        .select(CLIENT_INVOICE_LIST_SELECT)
+        .in("status", ["sent", "partial"]),
+      buScope,
+    )
       .order("due_date", { ascending: true })
       .limit(100);
 
@@ -142,10 +161,19 @@ export async function getOutstandingPayables(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
     const referenceDate = new Date();
-    const { data, error } = await supabase
-      .from("accounts_payable")
-      .select("*")
+    const { data, error } = await applyBusinessUnitScope(
+      supabase.from("accounts_payable").select("*"),
+      buScope,
+    )
       .order("due_date", { ascending: true })
       .limit(100);
 
@@ -310,15 +338,23 @@ export async function getServiceContractsStatus(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
     const today = new Date().toISOString().slice(0, 10);
     const renewalHorizon = new Date();
     renewalHorizon.setDate(renewalHorizon.getDate() + 60);
     const horizonIso = renewalHorizon.toISOString().slice(0, 10);
 
-    const { data, error } = await supabase
-      .from("service_contracts")
-      .select(SERVICE_CONTRACT_LIST_SELECT)
-      .order("next_billing_date", { ascending: true });
+    const { data, error } = await applyBusinessUnitScope(
+      supabase.from("service_contracts").select(SERVICE_CONTRACT_LIST_SELECT),
+      buScope,
+    ).order("next_billing_date", { ascending: true });
 
     if (error) {
       console.error(

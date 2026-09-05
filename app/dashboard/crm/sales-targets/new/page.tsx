@@ -1,7 +1,15 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserEmployeeId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserEmployeeId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   filterActiveEmployees,
   HR_EMPLOYEE_SELECT,
@@ -14,9 +22,20 @@ import SalesTargetForm from "../sales-target-form";
 export default async function NewSalesTargetPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data: employees, error }, defaultEmployeeId] = await Promise.all([
-    supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+    applyBusinessUnitScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      buScope,
+    ).order("full_name"),
     getCurrentUserEmployeeId(),
   ]);
 

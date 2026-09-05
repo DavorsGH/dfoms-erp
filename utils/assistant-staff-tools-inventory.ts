@@ -69,7 +69,7 @@ export async function getFinishedProductsSummary(): Promise<unknown> {
           .select(FINISHED_PRODUCT_SELECT)
           .eq("is_archived", false)
           .order("product_name", { ascending: true }),
-        fetchFinishedProductLotDateSources(supabase),
+        fetchFinishedProductLotDateSources(supabase, buScope),
         fetchScopedFinishedProductStock(
           supabase,
           sessionResult.session.tenantId,

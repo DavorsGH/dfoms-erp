@@ -46,7 +46,10 @@ export default async function PayrollHistoryPage() {
     { data: employees, error: employeesError },
   ] = await Promise.all([
     supabase.from("payroll_history").select("payroll_month"),
-    supabase.from("month_end_close").select("*"),
+    applyBusinessUnitScope(
+      supabase.from("month_end_close").select("*"),
+      buScope,
+    ),
     employeesQuery,
   ]);
 

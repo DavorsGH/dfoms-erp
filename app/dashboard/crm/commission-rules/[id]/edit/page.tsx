@@ -1,7 +1,15 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   COMMISSION_RULE_LIST_SELECT,
   commissionRuleToFormState,
@@ -26,18 +34,30 @@ export default async function EditCommissionRulePage({
   const { id } = await params;
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data: rule, error: ruleError }, { data: employees, error: employeesError }] =
     await Promise.all([
-      supabase
-        .from("commission_rules")
-        .select(COMMISSION_RULE_LIST_SELECT)
-        .eq("id", id)
-        .maybeSingle(),
-      supabase
-        .from("employees")
-        .select(`${HR_EMPLOYEE_SELECT}, position`)
-        .order("full_name"),
+      applyBusinessUnitScope(
+        supabase
+          .from("commission_rules")
+          .select(COMMISSION_RULE_LIST_SELECT)
+          .eq("id", id),
+        buScope,
+      ).maybeSingle(),
+      applyBusinessUnitScope(
+        supabase
+          .from("employees")
+          .select(`${HR_EMPLOYEE_SELECT}, position`),
+        buScope,
+      ).order("full_name"),
     ]);
 
   if (!rule) {

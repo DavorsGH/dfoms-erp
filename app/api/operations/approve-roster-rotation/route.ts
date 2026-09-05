@@ -30,6 +30,14 @@ import {
   type RosterRotationMetadataRecord,
 } from "@/app/dashboard/operations/roster-rotation-metadata-utils";
 import { attachDutyRosterProjectRefs } from "@/utils/duty-roster-employees";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 
 export async function POST(request: Request) {
   const auth = await requireTenantRoleIn(START_ROTATION_ROLES);
@@ -87,6 +95,14 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: configRows, error: configError },
@@ -108,7 +124,10 @@ export async function POST(request: Request) {
         "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
       )
       .eq("tenant_id", tenantId),
-    supabase.from("projects").select(PROJECT_SELECT).eq("tenant_id", tenantId),
+    applyBusinessUnitScope(
+      supabase.from("projects").select(PROJECT_SELECT).eq("tenant_id", tenantId),
+      buScope,
+    ),
     supabase.from("sites").select(SITE_ASSIGNMENT_SELECT).eq("tenant_id", tenantId),
     supabase.from("roster_history").select("*").eq("tenant_id", tenantId),
     supabase

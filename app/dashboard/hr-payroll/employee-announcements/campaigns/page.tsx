@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { fetchPositions } from "@/app/dashboard/employees/lookup-utils";
 import {
   filterActiveEmployees,
@@ -40,6 +48,15 @@ export default async function EmployeeAnnouncementsCampaignsPage() {
     );
   }
 
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+
   const [announcementsResult, templatesResult, employeesResult, positions] =
     await Promise.all([
       supabase
@@ -53,11 +70,13 @@ export default async function EmployeeAnnouncementsCampaignsPage() {
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
         .order("name", { ascending: true }),
-      supabase
-        .from("employees")
-        .select(AUDIENCE_EMPLOYEE_SELECT)
-        .eq("tenant_id", tenantId)
-        .order("full_name"),
+      applyBusinessUnitScope(
+        supabase
+          .from("employees")
+          .select(AUDIENCE_EMPLOYEE_SELECT)
+          .eq("tenant_id", tenantId),
+        buScope,
+      ).order("full_name"),
       fetchPositions(supabase),
     ]);
 

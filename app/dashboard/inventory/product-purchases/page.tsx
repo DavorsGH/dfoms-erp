@@ -83,11 +83,13 @@ export default async function ProductPurchasesPage() {
       .eq("is_active", true)
       .order("name", { ascending: true }),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
-    supabase
-      .from("projects")
-      .select(CONTRACT_PROJECT_SELECT)
-      .eq("tenant_id", tenantId)
-      .order("project_name", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("projects")
+        .select(CONTRACT_PROJECT_SELECT)
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("project_name", { ascending: true }),
   ]);
 
   const role = (await getCurrentUserRole()) as AppRole | null;

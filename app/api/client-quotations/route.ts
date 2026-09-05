@@ -12,6 +12,14 @@ import {
   type ClientQuotationListRow,
   type ClientQuotationWriteBody,
 } from "@/utils/client-quotations-types";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { CRM_QUOTATIONS_EDIT_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 
@@ -38,10 +46,21 @@ export async function GET() {
   }
 
   const supabase = await getTenantSupabase();
-  const { data, error } = await supabase
-    .from("client_quotations")
-    .select(CLIENT_QUOTATION_LIST_SELECT)
-    .eq("tenant_id", auth.tenantId)
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("client_quotations")
+      .select(CLIENT_QUOTATION_LIST_SELECT)
+      .eq("tenant_id", auth.tenantId),
+    buScope,
+  )
     .order("issue_date", { ascending: false })
     .order("quotation_sequence", { ascending: false });
 

@@ -7,7 +7,10 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canStartRotation } from "@/utils/rbac-access";
@@ -67,13 +70,18 @@ export default async function DutyRosterPage() {
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", {
       ascending: true,
     }),
-    supabase.from("roster_config").select(ROSTER_CONFIG_SELECT),
+    applyBusinessUnitScope(
+      supabase.from("roster_config").select(ROSTER_CONFIG_SELECT),
+      buScope,
+    ),
     fetchDutyRosterEmployeeDisplayScoped(supabase, buScope),
-    supabase
-      .from("projects")
-      .select(PROJECT_SELECT)
-      .eq("is_archived", false)
-      .order("project_name", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("projects")
+        .select(PROJECT_SELECT)
+        .eq("is_archived", false),
+      buScope,
+    ).order("project_name", { ascending: true }),
     supabase
       .from("sites")
       .select(SITE_ASSIGNMENT_SELECT)
@@ -82,7 +90,10 @@ export default async function DutyRosterPage() {
       .from("roster_history")
       .select("*")
       .order("effective_date", { ascending: false }),
-    supabase.from("roster_rotation_metadata").select(ROSTER_ROTATION_METADATA_SELECT),
+    applyBusinessUnitScope(
+      supabase.from("roster_rotation_metadata").select(ROSTER_ROTATION_METADATA_SELECT),
+      buScope,
+    ),
     getCurrentUserFullName(),
     tenantId
       ? loadAuthorizedSignerOptions(supabase, tenantId)

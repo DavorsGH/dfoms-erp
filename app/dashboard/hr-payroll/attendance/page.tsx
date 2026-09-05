@@ -5,7 +5,10 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   applyStaffIdScope,
   fetchScopedStaffIds,
@@ -61,7 +64,10 @@ export default async function AttendancePage() {
           .lte("date", end),
         staffIds,
       ).order("date", { ascending: false }),
-      supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+      applyBusinessUnitScope(
+        supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+        buScope,
+      ).order("full_name"),
     ]);
 
   const fetchError =

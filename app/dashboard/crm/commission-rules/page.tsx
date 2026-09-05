@@ -41,7 +41,10 @@ export default async function CommissionRulesPage() {
           .select(COMMISSION_RULE_LIST_SELECT),
         buScope,
       ).order("effective_start", { ascending: false }),
-      supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+      applyBusinessUnitScope(
+        supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+        buScope,
+      ).order("full_name"),
     ]);
 
   return (

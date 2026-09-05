@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   SALES_TARGET_LIST_SELECT,
   type SalesTargetListRow,
 } from "@/utils/sales-targets-types";
@@ -15,6 +23,14 @@ import SalesTargetsList from "./sales-targets-list";
 export default async function SalesTargetsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data, error }, { data: employees, error: employeesError }] =
     await Promise.all([
@@ -22,7 +38,10 @@ export default async function SalesTargetsPage() {
         .from("sales_targets")
         .select(SALES_TARGET_LIST_SELECT)
         .order("period_start", { ascending: false }),
-      supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+      applyBusinessUnitScope(
+        supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+        buScope,
+      ).order("full_name"),
     ]);
 
   return (

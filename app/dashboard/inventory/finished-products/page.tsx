@@ -1,6 +1,12 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
@@ -18,6 +24,14 @@ export default async function FinishedProductsPage() {
   const tenantId = await getCurrentUserTenantId();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data, error },
@@ -36,7 +50,7 @@ export default async function FinishedProductsPage() {
           .eq("is_active", true)
           .order("name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
-    fetchFinishedProductLotDateSources(supabase),
+    fetchFinishedProductLotDateSources(supabase, buScope),
   ]);
 
   const role = (await getCurrentUserRole()) as AppRole | null;

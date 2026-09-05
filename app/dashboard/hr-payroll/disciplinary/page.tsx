@@ -5,7 +5,10 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   applyEmployeeIdScope,
   fetchScopedEmployeeIds,
@@ -53,7 +56,10 @@ export default async function DisciplinaryPage() {
           .select(DISCIPLINARY_SELECT),
         employeeIds,
       ).order("incident_date", { ascending: false }),
-      supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
+      applyBusinessUnitScope(
+        supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+        buScope,
+      ).order("full_name"),
     ]);
 
   const fetchError =

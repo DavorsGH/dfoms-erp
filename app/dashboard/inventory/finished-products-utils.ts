@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 
 export type FinishedProductSourcingType = "manufactured" | "purchased";
 
@@ -144,14 +148,21 @@ export function mergeFinishedProductsWithLotDates(
 
 export async function fetchFinishedProductLotDateSources(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ): Promise<{ lots: FinishedProductLotDateSource[]; error: string | null }> {
   const [batchesResult, purchasesResult] = await Promise.all([
-    supabase
-      .from("production_batches")
-      .select("finished_product_id, manufacturing_date, expiration_date"),
-    supabase
-      .from("product_purchases")
-      .select("product_id, manufacturing_date, expiration_date"),
+    applyBusinessUnitScope(
+      supabase
+        .from("production_batches")
+        .select("finished_product_id, manufacturing_date, expiration_date"),
+      buScope,
+    ),
+    applyBusinessUnitScope(
+      supabase
+        .from("product_purchases")
+        .select("product_id, manufacturing_date, expiration_date"),
+      buScope,
+    ),
   ]);
 
   if (batchesResult.error) {
@@ -194,10 +205,12 @@ export async function fetchFinishedProductLotDateSources(
 
 export async function fetchFinishedProductPurchaseCounts(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ): Promise<{ countsByProductId: Map<string, number>; error: string | null }> {
-  const { data, error } = await supabase
-    .from("product_purchases")
-    .select("product_id");
+  const { data, error } = await applyBusinessUnitScope(
+    supabase.from("product_purchases").select("product_id"),
+    buScope,
+  );
 
   if (error) {
     return { countsByProductId: new Map(), error: error.message };

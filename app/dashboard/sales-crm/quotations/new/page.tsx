@@ -2,7 +2,15 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import {
   FINISHED_PRODUCT_SELECT,
@@ -34,6 +42,14 @@ export default async function NewClientQuotationPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: customers, error: customersError },
@@ -58,10 +74,12 @@ export default async function NewClientQuotationPage() {
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .order("account_name", { ascending: true }),
-    supabase
-      .from("sales_opportunities")
-      .select("id, opportunity_name, client_id")
-      .order("opportunity_name", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("sales_opportunities")
+        .select("id, opportunity_name, client_id"),
+      buScope,
+    ).order("opportunity_name", { ascending: true }),
     supabase
       .from("finished_products")
       .select(FINISHED_PRODUCT_SELECT)
