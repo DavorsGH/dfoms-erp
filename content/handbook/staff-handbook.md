@@ -6,15 +6,16 @@ ERP System
 
 **For Customer Use**
 
-Version 2.7 | August 2026
+Version 2.8 | September 2026
 
 *Covers: Getting Started · Bulk Import · User Roles (incl. Director) ·
-Finance (incl. Tax Settings, Client Receipts) · Sales & CRM (Pipeline,
-Product Quotes, Client Quotations, Returns & Credit Notes, Discounts &
-Loyalty, Targets & Commissions) · Point of Sale · Email & Promotions ·
-HR Management · Operations (incl. Duty Roster Approvals) · Inventory
-(Production & Purchasing) · Reports · Administration · Your
-Subscription*
+Business Units · Finance (incl. Budget, Tax Settings, Client Receipts) ·
+Sales & CRM (Pipeline, Product Quotes, Client Quotations, Returns &
+Credit Notes, Discounts & Loyalty, Targets & Commissions) · Point of
+Sale · Email & Promotions · HR Management · Operations (incl. Duty
+Roster Approvals) · Inventory (Production & Purchasing, Stock
+Adjustments) · Real Estate (Davors platform) · Reports · Administration
+· Your Subscription*
 
 # **Table of Contents**
 
@@ -37,6 +38,8 @@ Subscription*
 9\. Operations
 
 10\. Inventory (Production & Purchasing)
+
+10A\. Real Estate (Davors platform)
 
 11\. Self-Service
 
@@ -142,8 +145,9 @@ Import lets you upload a spreadsheet and load many records at once,
 instead of typing each one in by hand. Look for a Bulk Import button on
 the list page of any of the following:
 
--   **Products & Services.** Finished Products or Services --- Inventory
-    and Sales & CRM.
+-   **Finished Products.** Finished Products --- Inventory.
+
+-   **Services.** Services --- Sales & CRM.
 
 -   **Employees.** Employee Directory --- HR Management.
 
@@ -244,14 +248,14 @@ by your workspace administrator under Administration → User Accounts.
                                            leave requests)
 
   Client             Your own customer     Their own invoices/statements
-                                           only, via Self-Service
+                                           only, via Customer Portal
 
 +-----------------------------------------------------------------------+
 | **Note**                                                              |
 |                                                                       |
-| Only one Admin-level user per workspace can access Platform Settings  |
-| --- this is reserved for the Davors Facilities team and is not part   |
-| of a customer workspace.                                              |
+| Only Davors Facilities platform administrators can access Platform    |
+| Settings and Monitoring & Support --- these are not part of a         |
+| customer workspace.                                                   |
 +-----------------------------------------------------------------------+
 
 # **Section 4 --- How Everything Fits Together**
@@ -266,8 +270,8 @@ role.
 A quick orientation to each module, with the section that covers it in
 full:
 
--   Finance (Section 6) --- your money: income, expenses, statements,
-    invoices
+-   Finance (Section 6) --- your money: income, expenses, budget,
+    statements, invoices
 
 -   Sales & CRM + POS (Section 7) --- your customers and how you sell to
     them
@@ -276,15 +280,24 @@ full:
 
 -   Operations (Section 9) --- your sites, work orders, and inspections
 
--   Inventory (Section 10) --- your stock, whether made or bought
+-   Inventory (Section 10) --- your stock, whether made or bought, by
+    business unit where you use more than one
 
--   Self-Service (Section 11) --- what every individual user sees for
-    themselves
+-   Real Estate (Section 10A) --- landlords, properties, leases, and
+    rent (Davors platform staff only)
+
+-   Self-Service (Section 11) --- what every individual staff user sees
+    for themselves
 
 -   Reports (Section 12) --- exportable views across every module above
 
 -   Administration (Section 13) --- how the workspace itself is
-    configured
+    configured, including Business Units and billing
+
+Many workspaces also use **Business Units** (Section 10.0 and Section
+13) so one company can keep several businesses --- for example Davors
+Facilities and Davors Logistics --- under the same login, with stock and
+costs kept separate per business.
 
 # **Section 5 --- The Dashboard**
 
@@ -336,6 +349,18 @@ at the top right to view any past month.
 |                                                                       |
 | Figures shown are calculated live from your Finance, Sales, and HR    |
 | registers --- there is nothing separate to update.                    |
++-----------------------------------------------------------------------+
+
++-----------------------------------------------------------------------+
+| **Business Unit switcher**                                            |
+|                                                                       |
+| If your workspace uses more than one business unit, the switcher at   |
+| the top of the app controls which business the Dashboard (and most    |
+| other screens) is summarizing. Pick a specific business to see that   |
+| business's figures only. Choose **All Businesses** to see a combined  |
+| view across every business unit. You cannot create or stamp new       |
+| records while All Businesses is selected --- switch to a specific     |
+| business first. See Section 10.0 for the full explanation.            |
 +-----------------------------------------------------------------------+
 
 # **Section 6 --- Finance**
@@ -401,11 +426,27 @@ using the Bulk Import button on this page --- see Section 2.4.
 For adjustments and entries that do not belong in the Income or Expense
 Registers directly (for example, journal-style corrections).
 
+## **6.5a Budget**
+
+Finance → Budget is where you plan spending by expense category for a
+period (for example Monthly Pro-rated), optionally scoped to a project
+or contract, and compare that plan to what you have actually spent.
+
+Use it to see budgeted, actual, variance, and status per category ---
+the same figures that appear on the Budget vs Actual report. Pick the
+month and year you care about; leave project blank for the company-wide
+view.
+
 ## **6.6 Financial Statements**
 
 Profit & Loss, Cash Flow, and Balance Sheet statements are generated
 automatically from your registers and can be viewed by month or exported
 from Reports.
+
+Under Finance → Balance Sheet you can also open **Capital
+Contributions**, which tracks owner or investor capital injected into
+the business (separate from day-to-day income). The Capital Contributions
+Summary report rolls the same information up for export.
 
 *Fig. 2 --- Your registers feed all three financial statements
 automatically.*
@@ -453,7 +494,8 @@ the ERP, matching your standard invoice format.
 -   Customer Portal --- your customer can view, print, and download any
     invoice you've sent them, at any status (Pending, Overdue, Partial,
     or Paid). Draft invoices, since they haven't been sent yet, are not
-    shown to them.
+    shown to them. Customers use the **Customer Portal** module for this
+    --- not Self-Service (which is for your own staff).
 
 Manage your saved payment profiles under Administration → Payment
 Accounts (see Section 13.3).
@@ -538,8 +580,7 @@ record the payment and a receipt is issued automatically.
     Invoice from then on.
 
 -   **Customer access:** your customer can view and download their own
-    receipts from their Self-Service portal (Section 11), alongside
-    their invoices.
+    receipts from the Customer Portal, alongside their invoices.
 
 *Fig. 7 --- From Client Invoice to a receipt in the customer's hands.*
 
@@ -597,11 +638,26 @@ rung up at the till.
 ## **7.1 Customer List**
 
 Your directory of customers/clients. Each customer can be linked to a
-Client-role user account so they can view their own invoices via
-Self-Service.
+Client-role user account so they can view their own invoices via the
+Customer Portal.
 
 You can bulk import your existing customer list from a spreadsheet using
 the Bulk Import button on this page --- see Section 2.4.
+
+## **7.1a Services**
+
+Sales & CRM → Services holds your catalogue of service offerings (for
+example cleaning packages or facility services) that you sell or quote
+to customers --- separate from Finished Products in Inventory.
+
+You can bulk import Services from a spreadsheet using the Bulk Import
+button on this page --- see Section 2.4.
+
+## **7.1b Product Catalog (Davors platform)**
+
+On the Davors Facilities platform tenant only, Sales & CRM includes a
+**Product Catalog** tab for platform product listings used in billing
+and related flows. Other customer workspaces do not see this tab.
 
 ## **7.2 Product Sales Register**
 
@@ -681,6 +737,14 @@ Like Product Sales, use the filter icon on the Customer, Product,
 Payment Status, Payment Method, Source, or Status column header to
 search and select one or more values; the total below updates to match
 what is visible.
+
+## **7.4a Offline Sale Conflicts**
+
+When POS or related sales were recorded while a device was offline,
+Sales & CRM → Offline sale conflicts is where you review and resolve
+any sync conflicts before they leave your registers inconsistent. Open
+each conflict, confirm the correct outcome, and clear it so online and
+offline records agree.
 
 ## **7.5 Email & Promotions**
 
@@ -1022,8 +1086,9 @@ commissions, and forecasting are built on.
 
 # **Section 8 --- HR Management**
 
-HR Management is organised into three groups: Employees, Payroll, and HR
-Operations.
+HR Management is organised into groups: Employees, Payroll, HR
+Operations, Leave Approvals (when you are an assigned approver), and
+Employee Announcements.
 
 ## **8.1 Employees**
 
@@ -1043,6 +1108,8 @@ the Bulk Import button on the Employee Directory --- see Section 2.4.
 -   Payroll Processing --- runs monthly payroll based on your salary
     rate structures and statutory settings
 
+-   Payroll History --- past periods and what was processed
+
 -   Payslips --- generated per employee per pay period
 
 -   PAYE, SSNIT, and Casual Tax configuration --- set under HR Settings,
@@ -1057,24 +1124,36 @@ the Bulk Import button on the Employee Directory --- see Section 2.4.
 
 ## **8.3 HR Operations**
 
--   Leave Management --- requests, approvals, and balances. Default
+-   Attendance --- record and review attendance
+
+-   Leave --- requests and day-to-day leave handling. Default
     entitlement days for Annual, Sick, and Unpaid Leave can be set once
     per Position and Employment Type under Leave Settings → Leave
     Entitlements, so new hires get the correct balance automatically;
     individual staff can still be adjusted separately if needed.
 
--   Duty Roster --- staff scheduling by site
+-   Leave Balances --- see and adjust remaining leave days per employee
 
--   Recruitment, Disciplinary Records, Exit Management --- coming in a
-    future release
+-   Overtime --- record and review overtime
 
-+-----------------------------------------------------------------------+
-| **Note**                                                              |
-|                                                                       |
-| Payroll periods can be locked, released, reopened, or repaired by an  |
-| Admin --- talk to your administrator if a payroll period needs        |
-| correction after processing.                                          |
-+-----------------------------------------------------------------------+
+-   Loans --- staff loan register
+
+-   Disciplinary --- disciplinary records
+
+-   Exit Management --- resignations, terminations, and exit processing
+
+-   Equipment Register --- equipment issued to or held by staff
+
+-   Staff Kit Register --- kits and related assets issued to staff
+
+-   Staff ID Cards --- generate and manage staff ID cards
+
+## **8.3a Leave Approvals**
+
+If you are set up as a leave approver, HR Management → Leave Approvals
+is your inbox for leave requests waiting on you. Approve or reject from
+there --- this is separate from Self-Service, which only shows your own
+leave as an employee.
 
 ## **8.4 Employee Announcements**
 
@@ -1082,17 +1161,21 @@ Employee Announcements lets you message your own staff directly from the
 platform --- by email, SMS, or an in-app notification --- separate from
 Email & Promotions in Section 7.5, which is for your customers.
 
-**Templates.** Every message starts from a template --- reusable, or
-written fresh for a one-off notice. Templates support placeholders such
-as {{employee_name}}, {{staff_id}}, and {{position}} that are filled in
-automatically for each recipient.
+The module has two tabs:
 
-**Sending an Announcement.** Create a draft, choose a template (or write
-a one-off message), pick your audience, and send. Delivery happens per
-employee, on whichever channels they can actually be reached on: email
-if one is on file, SMS if they have a phone number, and an in-app
-notification if they have a login. An employee who qualifies for more
-than one channel receives all of them, not just one.
+-   **Templates** --- reusable message templates (or write a one-off
+    notice). Templates support placeholders such as {{employee_name}},
+    {{staff_id}}, and {{position}} that are filled in automatically for
+    each recipient.
+
+-   **Campaigns** --- the actual sends. Create a draft, choose a
+    template (or write a one-off message), pick your audience, and send.
+
+**Sending an Announcement.** Delivery happens per employee, on whichever
+channels they can actually be reached on: email if one is on file, SMS
+if they have a phone number, and an in-app notification if they have a
+login. An employee who qualifies for more than one channel receives all
+of them, not just one.
 
 **Choosing an Audience.** A single announcement can combine several ways
 of reaching people at once:
@@ -1133,29 +1216,52 @@ notifications, never anyone else's.
 | duplicates.                                                           |
 +-----------------------------------------------------------------------+
 
-**Status.** Templates, sending across all three channels, the
+**Status.** Templates, Campaigns, sending across all three channels, the
 recipient/message view, mixed-audience targeting, and the notification
 bell are all live.
 
++-----------------------------------------------------------------------+
+| **Note**                                                              |
+|                                                                       |
+| Payroll periods can be locked, released, reopened, or repaired by an  |
+| Admin --- talk to your administrator if a payroll period needs        |
+| correction after processing.                                          |
++-----------------------------------------------------------------------+
+
 # **Section 9 --- Operations**
 
--   Duty Roster --- shared with HR Operations, assigns staff to sites
-    and shifts
+Operations is where you run sites day to day --- rostering, work,
+inspections, and issues. Tabs include:
+
+-   Duty Roster --- assigns staff to sites and shifts (see Section 9.1)
+
+-   Roster History --- review past roster rotations without opening the
+    live Duty Roster editor
 
 -   Sites --- your register of managed locations
 
+-   Consumables --- site consumables tracking
+
 -   Work Orders --- track maintenance and service jobs
 
--   Inspections --- record inspection results by site, including failed
-    inspections
+-   Inspection Summary --- overview of inspection results by site
 
--   Complaint & Incident Register --- log and track resolution of
-    complaints and incidents
+-   Failed Inspections --- inspections that failed and need follow-up
+
+-   Corrective Actions --- actions raised to fix failed inspections or
+    related findings
+
+-   Complaint Register --- customer or site complaints
+
+-   Incident Register --- operational incidents
+
+Supervisors who only have Customer List access also see Customer List as
+a tab here; full Sales & CRM remains separate for roles that have it.
 
 ## **9.1 Duty Roster --- Reviewing Past Rotations & Approvals**
 
-Beyond assigning staff to sites and shifts, Duty Roster now lets you
-review history and formally approve a rotation.
+Beyond assigning staff to sites and shifts, Duty Roster lets you review
+history and formally approve a rotation.
 
 -   **Rotation selector:** switch between the current rotation and any
     past one for the selected customer using the dropdown at the top of
@@ -1189,6 +1295,39 @@ Production and Purchasing.
 
 *Fig. 4 --- Two roads in, one shared stock list.*
 
+## **10.0 Business Units (multiple businesses under one workspace)**
+
+Some workspaces run more than one business under the same company login
+--- for example Davors Facilities, Davors Logistics, and Davors
+Enterprise. Each of those is a **Business Unit**.
+
+-   Admins create and name business units under Administration →
+    Workspace Settings → Business Units (Section 13).
+
+-   Use the **Business Unit switcher** at the top of the app to choose
+    which business you are working in.
+
+-   **A specific business** --- lists, stock quantities, costs, and most
+    new records are scoped to that business only. Inventory stock and
+    weighted average cost are kept **per business unit**, so Logistics
+    stock does not appear as Facilities stock.
+
+-   **All Businesses** --- a combined read-only style view across every
+    business unit. You can review totals, but you **cannot create or
+    stamp** new purchases, production, stock adjustments, or similar
+    records while All Businesses is selected. Switch to a specific
+    business first; the system will refuse All Businesses create
+    attempts with a clear message.
+
+-   The workspace **default** business (often shown without a named
+    unit, or as your primary facilities business) uses the same rules:
+    pick it explicitly when you need to post stock there.
+
+Suppliers are shared directory data for the whole workspace (every
+business unit can use the same supplier list). Purchases, purchase
+orders, production, balances, and stock adjustments are scoped to the
+business unit they were recorded under.
+
 ## **10.1 Finished Products**
 
 Your master list of sellable items. Each product is tagged with a
@@ -1203,16 +1342,24 @@ useful when a name alone is not enough to recognize what is being sold.
 -   Purchased --- bought from a supplier for resale
 
 +-----------------------------------------------------------------------+
-| **Tip**                                                               |
+| **Tip --- cost on Finished Products**                                 |
 |                                                                       |
-| You never enter a cost here. Cost per unit is calculated              |
-| automatically as a weighted average across whichever source(s) apply  |
-| --- production batches, purchases, or both --- so it always reflects  |
-| what you actually paid or spent making it.                            |
+| On the product master itself you do not type a standing unit cost.    |
+| Day-to-day cost per unit is calculated as a weighted average for the  |
+| **active business unit**, from production batches, product purchases, |
+| less sale COGS and internal consumption, plus manual stock            |
+| adjustments (Section 10.6). When you use **Record Stock Adjustment**  |
+| with Opening Balance or Found Stock, you **do** enter Cost per Unit   |
+| for that adjustment --- that is how opening or found stock joins the  |
+| average-cost calculation.                                             |
 +-----------------------------------------------------------------------+
 
 You can bulk import your existing product list from a spreadsheet using
-the Bulk Import button on this page --- see Section 2.4.
+the Bulk Import button on this page --- see Section 2.4. The product
+list for pickers (for example Record Stock Adjustment) shows the full
+catalogue so a business unit can select a product even before it has
+stock there; the on-hand list for a named business only shows products
+that already have a stock balance in that business.
 
 ## **10.2 Production**
 
@@ -1221,29 +1368,32 @@ everything involved in making your own stock.
 
 -   Raw Materials --- materials bought to be used in production; stock
     and weighted average cost update automatically as you record
-    purchases
+    purchases (and stock adjustments), **per business unit**
 
 -   Production Batches --- record what you produced, from which raw
     materials, and the batch cost feeds into the finished product's
-    average cost
+    average cost for that business
 
 -   Internal Consumption --- stock used up internally (e.g. cleaning
     supplies) rather than sold; posted as an expense immediately since
-    it is not becoming resale inventory
+    it is not becoming resale inventory, and it reduces the weighted
+    average cost pool for that product/business
 
 ## **10.3 Purchasing**
 
 Covers Suppliers, Purchase Orders, and Purchases --- everything involved
 in buying stock from outside your business.
 
--   Suppliers --- your directory of who you buy from
+-   Suppliers --- your directory of who you buy from (shared across
+    business units)
 
 -   Purchase Orders --- an optional planning step; a Purchase Order
     records what you intend to buy and from whom, before anything has
-    arrived
+    arrived, stamped to the active business unit
 
 -   Purchases --- the actual event; recording a Purchase increases stock
-    and, if bought on credit, creates an Accounts Payable entry
+    for that business unit and, if bought on credit, creates an Accounts
+    Payable entry
 
 ## **Purchase Order vs. Purchase --- what's the difference?**
 
@@ -1295,8 +1445,6 @@ payment method you select:
 | created, since nothing is owed.                                       |
 +-----------------------------------------------------------------------+
 
-
-
 ## **10.4 Correcting a Mistake**
 
 Purchases and Purchase Orders are not directly editable once recorded,
@@ -1308,6 +1456,12 @@ to protect your financial records from accidental drift. Instead:
 
 -   Delete a Purchase Order --- only allowed if nothing has been
     received against it yet; otherwise, use it as a historical record
+
+For quantity or cost mistakes that are not a simple delete --- missing
+opening stock, found stock, write-offs, or quantity corrections --- use
+**Record Stock Adjustment** on Raw Materials or Finished Products
+(Section 10.6) under the correct business unit. Do not invent a fake
+purchase or production batch just to move the number.
 
 ## **10.5 Fixed Assets vs. Inventory**
 
@@ -1336,35 +1490,151 @@ easy to mix these up, so here is the distinction in one place.
 +-----------------------------------------------------------------------+
 
 +-----------------------------------------------------------------------+
-| **Note**                                                              |
+| **Note --- who can edit Inventory**                                   |
 |                                                                       |
-| Viewing inventory is available to Admin, Operations Manager, Finance, |
-| and Sales Rep roles. Editing is restricted to Admin and Operations    |
-| Manager.                                                              |
+| Viewing inventory is available to Admin, Operations Manager, Director,|
+| Finance, and Sales Rep roles (subject to your plan). **Editing** ---  |
+| adding products, recording purchases, production, and stock           |
+| adjustments --- is restricted to Admin, Operations Manager, and       |
+| Director. Finance can view stock but does not edit inventory records. |
 +-----------------------------------------------------------------------+
+
+## **10.6 Record Stock Adjustment (Raw Materials and Finished Products)**
+
+Both **Raw Materials** and **Finished Products** include a **Record
+Stock Adjustment** section. Use it when stock must move without a normal
+purchase, production batch, sale, or internal consumption --- for
+example opening balances when you go live, stock found in the store, a
+quantity correction, or a write-off.
+
+You must be on a **specific business unit** (not All Businesses). The
+adjustment is stamped to that business, and the Stock Adjustments
+history table below the form shows only adjustments for the business you
+are viewing.
+
+**Adjustment types**
+
+  **Type**           **Quantity**                 **Cost per Unit**
+  ------------------ ---------------------------- ---------------------------
+  Opening Balance    Quantity to add (positive)   Required --- you enter it
+  Found Stock        Quantity to add (positive)   Required --- you enter it
+  Write-off          Quantity to remove (entered  Not entered --- the system
+                     as a positive amount to      captures the current
+                     remove; saved as negative)   business-unit average cost
+  Correction         Direction Increase or        Not entered --- the system
+                     Decrease, then a positive    captures the current
+                     quantity                     business-unit average cost
+
+-   Opening Balance and Found Stock update quantity **and** join the
+    weighted average cost calculation using the cost you enter.
+
+-   Correction and Write-off change quantity only for costing purposes
+    in the sense that they reuse the current average cost automatically
+    --- the system will reject a manually typed cost for those two
+    types.
+
+-   Reason is always required; Notes are optional.
+
+**Weighted average cost (per business unit).** For finished products,
+average cost for a business unit is built from production batch costs +
+product purchases − sale COGS − internal consumption value + manual
+stock adjustments (quantity × cost on each adjustment row), divided by
+current stock for that business. Raw materials follow the same idea
+through their purchase and adjustment helpers. Always switch to the
+business unit whose stock you mean before adjusting.
+
+# **Section 10A --- Real Estate (Davors platform only)**
+
+Real Estate appears in the sidebar only for Davors Facilities platform
+staff with Admin or Director access on the Davors tenant. Ordinary
+customer workspaces do not see this module.
+
+Use it to run the managed property portfolio:
+
+-   Landlords --- landlord directory
+
+-   Properties --- buildings and sites under management
+
+-   Applications --- tenancy applications
+
+-   Tenants --- lessees / tenants
+
+-   Leases --- active and historical leases
+
+-   Rent Ledger --- rent charges and balances
+
+-   Payouts --- landlord payouts
+
+-   Maintenance --- maintenance jobs
+
+-   Complaints --- property complaints
+
+-   Inspections --- property inspections
+
+-   Expenses --- property-related expenses
+
+-   Announcements --- Templates and Campaigns for landlord/tenant
+    messaging (separate from Sales Email & Promotions and HR Employee
+    Announcements)
+
+Related Real Estate reports (Vacancy Rate, Occupancy, Arrears Aging,
+Income by Property) appear under Reports when you have this access.
 
 # **Section 11 --- Self-Service**
 
-Every user, regardless of role, has access to Self-Service. What you can
-see there depends on your role:
+Self-Service is for **your own staff** --- every staff role can open it.
+It is **not** where customers log in; customers use the **Customer
+Portal**.
 
--   Employees: view your own payslips and submit leave requests
+The four tabs are:
 
--   Clients: view your own invoices, receipts, and account statements
+-   My Payslip --- your payslips
 
--   Supervisors: approve leave requests for your team, in addition to
-    your own Self-Service items
+-   My Attendance --- your attendance
+
+-   My Leave --- your leave requests and balances
+
+-   My Roster --- your duty roster assignments
+
+Leave requests that need **your approval as a manager** appear under HR
+Management → Leave Approvals (Section 8.3a), not under Self-Service.
 
 # **Section 12 --- Reports**
 
-Reports are organized into six categories covering Finance, HR,
-Operations, Sales, Inventory, and general business summaries. Every
-report can be exported to CSV or sent to print directly from the
+Reports are organized into up to **eight** categories, depending on your
+role and whether Real Estate is available:
+
+1.  Finance --- Monthly P&L Statement; Cash Flow Statement; Monthly
+    Balance Sheet; Accounts Receivable Aging; Expense Report; Budget vs
+    Actual; Fixed Asset & Depreciation Schedule; Statutory Liabilities
+    Report; Capital Contributions Summary
+
+2.  HR & Payroll --- Monthly Payroll Summary; Attendance Summary; Leave
+    Balance; Loan Register Summary; Overtime Summary; Headcount &
+    Contract Expiry
+
+3.  Operations --- Quality KPI Summary; Site Performance Report;
+    Corrective Action Status
+
+4.  Inventory --- Stock on Hand; Production History; Internal
+    Consumption
+
+5.  Sales --- Product Catalog; Product Sales
+
+6.  Customer-Facing --- Monthly Customer Service Report
+
+7.  Incidents --- Individual Incident Report; Monthly Incident Summary;
+    Escalated Incidents Report; Recurring Issue / Trend Report
+
+8.  Real Estate (Davors platform staff only) --- Vacancy Rate;
+    Occupancy; Arrears Aging; Income by Property
+
+Every report can be exported to CSV or sent to print directly from the
 browser.
 
 -   Stock On Hand --- values every item using the same combined
-    production-and-purchase cost as the Balance Sheet, so the two always
-    agree with each other
+    production-and-purchase (and adjustment) cost basis as the Balance
+    Sheet for the business unit you are viewing, so the two stay aligned
 
 +-----------------------------------------------------------------------+
 | **Note**                                                              |
@@ -1380,9 +1650,11 @@ organized into the following groups:
 
   **Group**          **What it controls**
   ------------------ ----------------------------------------------------
-  Finance Settings   Expense categories, depreciation methods, payment
-                     methods, Inventory Go-Live date, and other finance
-                     reference data
+  Finance Settings   Expense Categories; Expense Sub-Categories; Payment
+                     Methods; Payment Accounts; VAT/WHT Calculation Basis
+                     (Sales Tax Basis --- see also Section 6.9); Asset
+                     Categories; Depreciation Methods; Inventory Go-Live;
+                     Approvers
 
   HR Settings        PAYE/SSNIT/casual tax configuration, Salary Settings
                      (default pay and allowances by Position/Employment
@@ -1390,14 +1662,23 @@ organized into the following groups:
                      entitlements), Manage Positions, roster
                      configuration
 
-  Operations         Site, service type, and operational reference data
-  Settings           
+  Operations         Service Categories, Contract/Project Assignments,
+  Settings           Roster Settings
 
   User Accounts      Create, edit, deactivate, reset passwords for, or
                      delete users in your workspace
 
-  Workspace Settings Rename your workspace and upload your own logo,
-                     shown throughout your sidebar and printed documents
+  Workspace Settings Business Units; Workspace Settings (name, logo,
+                     address, signature); Billing Settings; Report a
+                     Problem
+
+  Platform Settings  Tenant Management; Tier Pricing; Platform Unit
+  (Davors platform   Pricing --- Davors platform super Admin only
+  only)              
+
+  Monitoring &       System Event Log; User Activity Log; Support
+  Support (Davors    Tickets; Platform SMS Usage --- Davors platform
+  platform only)     super Admin only
 
 ## **13.1 Managing User Accounts**
 
@@ -1424,26 +1705,36 @@ From Administration → User Accounts, an Admin can:
 | platform.                                                             |
 +-----------------------------------------------------------------------+
 
-## **13.2 Workspace Settings**
+## **13.2 Workspace Settings and Business Units**
 
-Personalize how your workspace appears --- set your workspace name,
-business address, phone, and email, and upload your own logo. These
-appear in your sidebar and on printed documents such as payslips,
-reports, and client invoices. Your login and signup pages remain
-generically branded as Davors Facilities.
+**Workspace Settings** --- set your workspace name, business address,
+phone, and email, and upload your own logo and signature. These appear
+in your sidebar and on printed documents such as payslips, reports, and
+client invoices. Your login and signup pages remain generically branded
+as Davors Facilities.
+
+**Business Units** --- create and manage the named businesses under your
+workspace (Section 10.0). Each unit can be selected from the Business
+Unit switcher. Removing or renaming a unit does not delete historical
+stock or finance rows already stamped to it.
+
+**Billing Settings** --- also listed under Workspace Settings in the
+sidebar; see Section 14.1 for what you can change there.
+
+**Report a Problem** --- send a support issue to Davors from inside the
+app when something is wrong.
 
 ## **13.3 Payment Accounts**
 
 Save one or more payment profiles --- bank account and/or mobile money
 details --- so they can be selected when generating a Client Invoice.
-Add, edit, or deactivate payment accounts from Administration → Payment
-Accounts.
+Add, edit, or deactivate payment accounts from Administration → Finance
+Settings → Payment Accounts.
 
 **Payment Settlement.** When a customer pays by Mobile Money or card
 through POS, the payment settles directly to your own linked bank or
-mobile money account, not to Davors. Set this up once from
-Administration → Payment Settings by adding your bank or mobile money
-details.
+mobile money account, not to Davors. Keep those profiles up to date
+under Payment Accounts / Billing Settings as applicable.
 
 ## **13.4 Inventory Go-Live**
 
@@ -1451,49 +1742,79 @@ Set the date your Inventory tracking goes live, and your opening
 inventory value, from Administration → Finance Settings → Inventory
 Go-Live. Purchases and stock movements from before this date are not
 posted to your financial statements --- this lets you start using
-Inventory mid-year without distorting your historical books.
+Inventory mid-year without distorting your historical books. For
+quantity opening balances **per business unit** after go-live, use
+Record Stock Adjustment → Opening Balance (Section 10.6).
+
+## **13.5 Platform Settings and Monitoring (Davors only)**
+
+These groups appear only for Davors Facilities platform super Admins:
+
+-   Tenant Management --- customer workspaces on the platform
+
+-   Tier Pricing --- ERP Suite plan prices and Paystack plan linkage
+
+-   Platform Unit Pricing --- unit-based platform billing configuration
+
+-   System Event Log --- platform system events
+
+-   User Activity Log --- high-level activity monitoring
+
+-   Support Tickets --- inbound support
+
+-   Platform SMS Usage --- SMS credit usage across the platform
 
 # **Section 14 --- Your Subscription**
 
-New workspaces receive 90 days of full free access. There are four
-subscription tiers --- Starter, Professional, Business, and Enterprise
---- each unlocking additional modules as you grow. Billing is per
-company account, not per user seat.
+New workspaces receive 90 days of full free access (trial = every
+feature unlocked). After trial, four subscription tiers --- Starter,
+Professional, Business, and Enterprise --- gate modules as below.
+Billing is per company account, not per user seat.
+
+Verified against the live tier entitlement map (`tier_features`):
 
   **Tier**         **Includes**
   ---------------- ------------------------------------------------------
-  Starter\         Finance --- Income Register, Expense Register,
-  \$10/mo ·        Accounts Payable, Fixed Assets, Manual Financial
-  \$120/yr\        Entries, Profit & Loss, Cash Flow, Balance Sheet.\
-  GH₵115/mo ·      HR & Payroll --- Employee Directory, Payroll
-  GH₵1,380/yr      Processing & Payroll History, HR Operations (Leave
-                   Management, Loan Register, Attendance Register).
+  Starter\         Always included (not feature-gated): Finance (Income
+  (base)\          Register, Expense Register, Accounts Payable, Fixed
+                   Assets, Manual Financial Entries, Budget, Profit &
+                   Loss, Cash Flow, Balance Sheet, invoices, receipts,
+                   statutory ledger, and related Finance reports); HR &
+                   Payroll (Employees, Payroll Processing & History,
+                   Attendance, Leave, Loans, Overtime, Disciplinary,
+                   Exit, Equipment, Staff Kit, ID Cards, announcements);
+                   Self-Service; Administration for your workspace.
 
   Professional\    Everything in Starter, plus:\
-  \$15/mo ·        Operations --- Duty Roster, Sites, Work Orders,
-  \$180/yr\        Inspections, Complaint & Incident Register.\
-  GH₵170/mo ·      Sales & CRM --- Customer List, Product Sales Register,
-  GH₵2,070/yr      Sales Log.*\
-                   Capped at 100 users.*
+                   Operations (Duty Roster, Roster History, Sites,
+                   Consumables, Work Orders, inspections, Corrective
+                   Actions, Complaint & Incident registers, Operations
+                   and Incidents and Customer-Facing reports);\
+                   Sales & CRM core (Customer List, Services, Product
+                   Sales, Sales Log, pipeline/quotes/targets as
+                   available, Sales reports).
 
   Business\        Everything in Professional, plus:\
-  \$20/mo ·        Sales & POS --- cart-based point-of-sale checkout,
-  \$200/yr\        printable receipts.\
-  GH₵230/mo ·      Inventory --- Finished Products, Raw Materials,
-  GH₵2,300/yr      Production Batches, Internal Consumption.\
-                   Supplier Management --- Suppliers, Purchase Orders
-                   (incl. receiving), Purchases.
+                   POS;\
+                   Inventory (Finished Products, Raw Materials,
+                   Production, Internal Consumption, Purchasing / POs /
+                   Suppliers, stock adjustments, Inventory reports).
 
-  Enterprise\      Everything in Business, plus: Email & Promotions
-  \$30/mo ·        (marketing campaigns and automatic transactional
-  \$300/yr\        notifications) --- now available. Multi-company
-  GH₵345/mo ·      support and API access remain planned, not yet
-  GH₵3,450/yr      available.
+  Enterprise\      Everything in Business, plus:\
+                   Email & Promotions (Templates, Campaigns,
+                   Notification Rules).\
+                   Multi-business **Business Units** under one workspace
+                   are available as a workspace capability (Section
+                   10.0), not a separate paid add-on. External API
+                   access for third-party integrations remains planned,
+                   not yet generally available.
 
 Your subscription tier is currently set up on your behalf by the Davors
 Facilities team --- contact support if you would like to select or
-change your tier ahead of your trial ending. GHS pricing above is what
-is actually charged; USD pricing is shown for reference.
+change your tier ahead of your trial ending. Current GHS list prices for
+ERP Suite plans are maintained under Administration → Platform Settings
+→ Tier Pricing (Davors platform Admins); customer Billing Settings shows
+the plan on your own account.
 
 ## **14.1 Billing Settings**
 
@@ -1549,7 +1870,9 @@ on the platform:
     activating your subscription.
 
 -   Every user must log in with their own email and password; there is
-    no shared or generic login.
+    no shared or generic login. Users who enable multi-factor
+    authentication (MFA) under My Account confirm a second factor at
+    login when their account requires it.
 
 +-----------------------------------------------------------------------+
 | **Note**                                                              |
@@ -1570,9 +1893,10 @@ handbook:
              questions (password resets, new user setup, role changes) can be
              resolved directly by them.
 
-  2          For anything else, contact the Davors Facilities support team
-             through the WordPress site at davorsfacilities.com or your usual
-             Davors contact.
+  2          For anything else, use Administration → Report a Problem if
+             you are an Admin, or contact the Davors Facilities support
+             team through the WordPress site at davorsfacilities.com or
+             your usual Davors contact.
 
 When reporting an issue, it helps to include: your workspace name, the
 page you were on, what you expected to happen, and what happened
@@ -1592,13 +1916,16 @@ worker costs.
 -   Inventory → Suppliers: add the warehouse(s) you buy from
 
 -   Inventory → Finished Products: create each item, mark Sourcing as
-    Purchased, set your selling price --- cost is never entered here
+    Purchased, set your selling price --- do not enter a standing master
+    cost here; cost comes from purchases and adjustments for the
+    business unit you are working in
 
 ## **Step 2 --- Buying stock at the warehouse**
 
 Inventory → Purchases → Record Purchase: product, supplier, quantity,
-actual cost paid, payment method. This increases stock and, for a cash
-purchase, reduces your cash position with no debt created.
+actual cost paid, payment method (on the correct business unit). This
+increases stock and, for a cash purchase, reduces your cash position
+with no debt created.
 
 ## **Step 3 --- Running costs (fuel, packaging, workers)**
 
@@ -1649,9 +1976,23 @@ you paid at the warehouse.
   COGS               Cost of Goods Sold --- the cost of stock
                      automatically expensed at the moment it is sold
 
-  Weighted Average   The automatically calculated cost per unit of a
-  Cost               product, blended across every batch produced and/or
-                     purchase made
+  Weighted Average   The automatically calculated cost per unit for a
+  Cost               product or material in a business unit, blended from
+                     production and/or purchases, reduced by sale COGS and
+                     internal consumption, and including manual stock
+                     adjustments
+
+  Business Unit      A named business under one workspace (for example
+                     Logistics vs Facilities), selected from the switcher;
+                     stock and many records are kept per unit
+
+  All Businesses     Switcher mode that shows combined data across every
+                     business unit; you cannot create or stamp new records
+                     in this mode
+
+  Stock Adjustment   Manual quantity change (Opening Balance, Found Stock,
+                     Correction, Write-off) on Raw Materials or Finished
+                     Products for the active business unit
 
   Fixed Asset        Equipment, vehicles, or property kept and used
                      long-term, tracked separately from Inventory
@@ -1693,6 +2034,9 @@ you paid at the warehouse.
                      real event (a sale, a payment, an invoice),
                      configured under the Notification Rules tab
 
+  Customer Portal    The login area for your Client-role customers to see
+                     their invoices, receipts, and related documents
+
 # **Section 19 --- AI Assistant**
 
 A built-in chat assistant is available inside the ERP, for questions
@@ -1702,9 +2046,11 @@ Ask it things like "what's my outstanding balance for Central
 University" or "how do I raise a purchase order" --- it can look up your
 own workspace data and explain how a feature works.
 
-It only ever sees data your own account already has access to --- the
-same role-based access that applies to the rest of the ERP applies to
-what it can answer.
+It answers from two sources: this handbook (retrieved by topic) and live
+read-only tools that pull figures from your workspace. It only ever sees
+data your own account already has access to --- the same role-based
+access that applies to the rest of the ERP applies to what it can
+answer.
 
 It answers questions and points you to the right screen --- it does not
 create, edit, or delete records on your behalf. Any change still has to
