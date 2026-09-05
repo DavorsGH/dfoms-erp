@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
   PROJECT_SELECT,
   normalizeProjectEntry,
 } from "./administration/projects-utils";
@@ -54,6 +58,7 @@ function isOpenCorrectiveStatus(status: string | null | undefined) {
 export async function buildOperationsDashboardSummary(
   supabase: SupabaseClient,
   tenantId: string,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ): Promise<{ summary: OperationsDashboardSummary; fetchError: string | null }> {
   const { periodLabel, startIso, endIso } = currentMonthBounds();
 
@@ -70,17 +75,29 @@ export async function buildOperationsDashboardSummary(
     { data: inspections, error: inspectionsError },
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).eq("tenant_id", tenantId),
-    supabase.from("roster_config").select(ROSTER_CONFIG_SELECT).eq("tenant_id", tenantId),
-    supabase
-      .from("employees")
-      .select(
-        "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
-      )
-      .eq("tenant_id", tenantId),
-    supabase.from("projects").select(PROJECT_SELECT).eq("tenant_id", tenantId),
+    applyBusinessUnitScope(
+      supabase.from("roster_config").select(ROSTER_CONFIG_SELECT).eq("tenant_id", tenantId),
+      buScope,
+    ),
+    applyBusinessUnitScope(
+      supabase
+        .from("employees")
+        .select(
+          "employee_id, staff_id, full_name, position, shift, contract_project, employment_status, project_ref:projects!employees_contract_project_fkey(project_code, project_name)",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
+    applyBusinessUnitScope(
+      supabase.from("projects").select(PROJECT_SELECT).eq("tenant_id", tenantId),
+      buScope,
+    ),
     supabase.from("sites").select(SITE_ASSIGNMENT_SELECT).eq("tenant_id", tenantId),
     supabase.from("roster_history").select("*").eq("tenant_id", tenantId),
-    supabase.from("corrective_actions").select("status").eq("tenant_id", tenantId),
+    applyBusinessUnitScope(
+      supabase.from("corrective_actions").select("status").eq("tenant_id", tenantId),
+      buScope,
+    ),
     supabase.from("failed_inspections").select("issue_no").eq("tenant_id", tenantId),
     supabase
       .from("work_orders")

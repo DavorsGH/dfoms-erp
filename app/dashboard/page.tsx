@@ -138,7 +138,12 @@ export default async function DashboardPage() {
   if (role === "supervisor" || role === "operations_manager") {
     const summaryClient =
       role === "supervisor" ? createAdminClient() : createClient(await cookies());
-    const tenantId = await getCurrentUserTenantId();
+    const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+      await Promise.all([
+        getCurrentUserTenantId(),
+        getActiveBusinessUnitId(),
+        getViewAllBusinessUnits(),
+      ]);
 
     if (!tenantId) {
       return (
@@ -161,9 +166,14 @@ export default async function DashboardPage() {
       );
     }
 
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
     const { summary, fetchError } = await buildOperationsDashboardSummary(
       summaryClient,
       tenantId,
+      buScope,
     );
 
     return (
@@ -178,7 +188,18 @@ export default async function DashboardPage() {
   if (role === "sales_rep") {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
-    const { summary, fetchError } = await buildSalesRepDashboardSummary(supabase);
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+    const { summary, fetchError } = await buildSalesRepDashboardSummary(
+      supabase,
+      buScope,
+    );
 
     if (!summary) {
       return (

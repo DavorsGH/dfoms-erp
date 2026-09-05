@@ -1,5 +1,13 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { ProductSaleEntry } from "../product-sales-utils";
 import { CLIENT_SELECT, type ClientEntry } from "../../operations/clients-utils";
 import CrmShell from "../crm-shell";
@@ -18,17 +26,27 @@ type WebhookSaleRow = Parameters<typeof normalizeWebhookSale>[0];
 export default async function SalesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: productSaleRows, error: productSaleError },
     { data: webhookRows, error: webhookError },
     { data: clientRows, error: clientsError },
   ] = await Promise.all([
-    supabase
-      .from("income_register")
-      .select(CRM_PRODUCT_SALE_SELECT)
-      .eq("entry_type", "product_sale")
-      .order("date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select(CRM_PRODUCT_SALE_SELECT)
+        .eq("entry_type", "product_sale"),
+      buScope,
+    ).order("date", { ascending: false }),
     supabase
       .from("crm_sales")
       .select(CRM_WEBHOOK_SALE_SELECT)

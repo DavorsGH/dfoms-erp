@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import SalesRepSelect from "@/components/sales-rep-select";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -10,6 +11,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
 import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import { SALES_OPPORTUNITY_SELECT } from "../sales-pipeline/sales-pipeline-utils";
 import {
   SALES_TARGET_LIST_SELECT,
@@ -43,6 +45,7 @@ export default function SalesForecastView({
   fetchError,
 }: SalesForecastViewProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const defaultRange = defaultForecastRange();
   const [employeeId, setEmployeeId] = useState(defaultEmployeeId);
   const [rangeStart, setRangeStart] = useState(defaultRange.start);
@@ -69,25 +72,34 @@ export default function SalesForecastView({
       { data: invoiceRows, error: invoicesError },
       { data: targetRows, error: targetsError },
     ] = await Promise.all([
-      supabase
-        .from("sales_opportunities")
-        .select(`${SALES_OPPORTUNITY_SELECT}`)
-        .eq("assigned_to", employeeId.trim())
-        .gte("expected_close_date", rangeStart)
-        .lte("expected_close_date", rangeEnd),
-      supabase
-        .from("income_register")
-        .select("date, amount, sale_status")
-        .eq("entry_type", "product_sale")
-        .eq("sales_rep_id", employeeId.trim())
-        .gte("date", rangeStart)
-        .lte("date", rangeEnd),
-      supabase
-        .from("client_invoices")
-        .select("invoice_date, total_amount_due, status")
-        .eq("sales_rep_id", employeeId.trim())
-        .gte("invoice_date", rangeStart)
-        .lte("invoice_date", rangeEnd),
+      applyBusinessUnitScope(
+        supabase
+          .from("sales_opportunities")
+          .select(`${SALES_OPPORTUNITY_SELECT}`)
+          .eq("assigned_to", employeeId.trim())
+          .gte("expected_close_date", rangeStart)
+          .lte("expected_close_date", rangeEnd),
+        buReadScope,
+      ),
+      applyBusinessUnitScope(
+        supabase
+          .from("income_register")
+          .select("date, amount, sale_status")
+          .eq("entry_type", "product_sale")
+          .eq("sales_rep_id", employeeId.trim())
+          .gte("date", rangeStart)
+          .lte("date", rangeEnd),
+        buReadScope,
+      ),
+      applyBusinessUnitScope(
+        supabase
+          .from("client_invoices")
+          .select("invoice_date, total_amount_due, status")
+          .eq("sales_rep_id", employeeId.trim())
+          .gte("invoice_date", rangeStart)
+          .lte("invoice_date", rangeEnd),
+        buReadScope,
+      ),
       supabase
         .from("sales_targets")
         .select(SALES_TARGET_LIST_SELECT)

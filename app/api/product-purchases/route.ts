@@ -186,19 +186,32 @@ export async function POST(request: Request) {
 
   let businessUnitId: string | null = null;
   if (trimmed.po_id) {
-    const { data: poRow, error: poError } = await supabase
-      .from("purchase_orders")
-      .select("id, business_unit_id")
-      .eq("id", trimmed.po_id)
-      .eq("tenant_id", auth.tenantId)
-      .maybeSingle();
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+    const { data: poRow, error: poError } = await applyBusinessUnitScope(
+      supabase
+        .from("purchase_orders")
+        .select("id, business_unit_id")
+        .eq("id", trimmed.po_id)
+        .eq("tenant_id", auth.tenantId),
+      buScope,
+    ).maybeSingle();
 
     if (poError) {
       return NextResponse.json({ error: poError.message }, { status: 400 });
     }
     if (!poRow) {
       return NextResponse.json(
-        { error: "Purchase order not found." },
+        {
+          error:
+            "Purchase order not found in the current business unit. Receive against a PO from the active business only.",
+        },
         { status: 404 },
       );
     }

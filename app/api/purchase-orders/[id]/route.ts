@@ -1,6 +1,14 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { INVENTORY_EDIT_ROLES } from "@/utils/rbac-access";
 import {
   PURCHASE_ORDER_DETAIL_SELECT,
@@ -15,6 +23,17 @@ import { createClient } from "@/utils/supabase/server";
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
+
+async function resolvePoBuScope() {
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  return resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+}
 
 export async function PATCH(request: Request, context: RouteContext) {
   const auth = await requireTenantRoleIn(INVENTORY_EDIT_ROLES);
@@ -45,13 +64,16 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const buScope = await resolvePoBuScope();
 
-  const { data: existing, error: existingError } = await supabase
-    .from("purchase_orders")
-    .select("id, status")
-    .eq("id", id)
-    .eq("tenant_id", auth.tenantId)
-    .maybeSingle();
+  const { data: existing, error: existingError } = await applyBusinessUnitScope(
+    supabase
+      .from("purchase_orders")
+      .select("id, status")
+      .eq("id", id)
+      .eq("tenant_id", auth.tenantId),
+    buScope,
+  ).maybeSingle();
 
   if (existingError) {
     return NextResponse.json({ error: existingError.message }, { status: 400 });
@@ -71,11 +93,14 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  const { data, error } = await supabase
-    .from("purchase_orders")
-    .update({ status: "sent", updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .eq("tenant_id", auth.tenantId)
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("purchase_orders")
+      .update({ status: "sent", updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("tenant_id", auth.tenantId),
+    buScope,
+  )
     .select(PURCHASE_ORDER_DETAIL_SELECT)
     .single();
 
@@ -121,13 +146,16 @@ export async function DELETE(request: Request, context: RouteContext) {
   const confirmed = await readConfirmedFlag(request);
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const buScope = await resolvePoBuScope();
 
-  const { data: existing, error: fetchError } = await supabase
-    .from("purchase_orders")
-    .select("id")
-    .eq("id", id)
-    .eq("tenant_id", auth.tenantId)
-    .maybeSingle();
+  const { data: existing, error: fetchError } = await applyBusinessUnitScope(
+    supabase
+      .from("purchase_orders")
+      .select("id")
+      .eq("id", id)
+      .eq("tenant_id", auth.tenantId),
+    buScope,
+  ).maybeSingle();
 
   if (fetchError) {
     return NextResponse.json({ error: fetchError.message }, { status: 400 });

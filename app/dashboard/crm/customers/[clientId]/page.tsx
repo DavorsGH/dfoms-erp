@@ -2,7 +2,15 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { isCrmCustomerListOnlyRole } from "@/app/dashboard/user-account-role-utils";
 import {
@@ -55,6 +63,14 @@ export default async function CustomerDetailPage({
   const { clientId } = await params;
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: customer, error: customerError },
@@ -70,38 +86,51 @@ export default async function CustomerDetailPage({
     { data: loyaltyTransactions, error: loyaltyTransactionsError },
   ] = await Promise.all([
     supabase.from("customers").select("*").eq("client_id", clientId).maybeSingle(),
-    supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
-    supabase
-      .from("sales_opportunities")
-      .select(CUSTOMER_360_OPPORTUNITY_SELECT)
-      .eq("client_id", clientId)
-      .order("updated_at", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      buScope,
+    ).order("full_name"),
+    applyBusinessUnitScope(
+      supabase
+        .from("sales_opportunities")
+        .select(CUSTOMER_360_OPPORTUNITY_SELECT)
+        .eq("client_id", clientId),
+      buScope,
+    ).order("updated_at", { ascending: false }),
     supabase
       .from("sales_quotes")
       .select(CUSTOMER_360_QUOTE_SELECT)
       .eq("client_id", clientId)
       .order("quote_date", { ascending: false }),
-    supabase
-      .from("client_quotations")
-      .select(CUSTOMER_360_QUOTATION_SELECT)
-      .eq("client_id", clientId)
-      .order("issue_date", { ascending: false }),
-    supabase
-      .from("service_contracts")
-      .select(CUSTOMER_360_SERVICE_CONTRACT_SELECT)
-      .eq("client_id", clientId)
-      .order("start_date", { ascending: false }),
-    supabase
-      .from("client_invoices")
-      .select(CUSTOMER_360_INVOICE_SELECT)
-      .eq("client_id", clientId)
-      .order("invoice_date", { ascending: false }),
-    supabase
-      .from("income_register")
-      .select(CUSTOMER_360_PRODUCT_SALE_SELECT)
-      .eq("client_id", clientId)
-      .eq("entry_type", "product_sale")
-      .order("date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("client_quotations")
+        .select(CUSTOMER_360_QUOTATION_SELECT)
+        .eq("client_id", clientId),
+      buScope,
+    ).order("issue_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("service_contracts")
+        .select(CUSTOMER_360_SERVICE_CONTRACT_SELECT)
+        .eq("client_id", clientId),
+      buScope,
+    ).order("start_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("client_invoices")
+        .select(CUSTOMER_360_INVOICE_SELECT)
+        .eq("client_id", clientId),
+      buScope,
+    ).order("invoice_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select(CUSTOMER_360_PRODUCT_SALE_SELECT)
+        .eq("client_id", clientId)
+        .eq("entry_type", "product_sale"),
+      buScope,
+    ).order("date", { ascending: false }),
     supabase
       .from("sales_activities")
       .select(SALES_ACTIVITY_SELECT)

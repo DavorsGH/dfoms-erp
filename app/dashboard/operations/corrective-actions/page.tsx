@@ -5,7 +5,10 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import type { HrEmployee } from "../../hr-payroll/employee-utils";
 import OperationsShell from "../operations-shell";
@@ -39,10 +42,10 @@ export default async function CorrectiveActionsPage() {
     { data: failedIssues, error: failedIssuesError },
     scopedEmployees,
   ] = await Promise.all([
-    supabase
-      .from("corrective_actions")
-      .select(CORRECTIVE_ACTION_SELECT)
-      .order("date_raised", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase.from("corrective_actions").select(CORRECTIVE_ACTION_SELECT),
+      buScope,
+    ).order("date_raised", { ascending: false }),
     supabase
       .from("customers")
       .select("client_id, client_name")

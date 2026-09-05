@@ -6,6 +6,7 @@ import {
   useBusinessUnitReadScope,
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
@@ -119,15 +120,16 @@ export default function CorrectiveActions({
         return;
       }
       setEmployees(scoped.employees);
-      setError(null);
+      await refreshEntries();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional scope key
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   async function refreshEntries() {
-    const { data, error: refreshError } = await supabase
-      .from("corrective_actions")
-      .select(CORRECTIVE_ACTION_SELECT)
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase.from("corrective_actions").select(CORRECTIVE_ACTION_SELECT),
+      buReadScope,
+    )
       .order("date_raised", { ascending: false })
       .order("action_no", { ascending: true });
 

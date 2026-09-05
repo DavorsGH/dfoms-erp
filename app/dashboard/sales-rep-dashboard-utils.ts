@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 
 export type SalesRepDashboardSummary = {
   periodLabel: string;
@@ -35,15 +39,19 @@ function saleAmount(row: ProductSaleRow): number {
 
 export async function buildSalesRepDashboardSummary(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
 ): Promise<{ summary: SalesRepDashboardSummary | null; fetchError: string | null }> {
   const today = todayIsoDate();
   const monthPrefix = currentMonthPrefix();
   const now = new Date();
 
-  const { data, error } = await supabase
-    .from("income_register")
-    .select("date, amount, sale_status")
-    .eq("entry_type", "product_sale");
+  const { data, error } = await applyBusinessUnitScope(
+    supabase
+      .from("income_register")
+      .select("date, amount, sale_status")
+      .eq("entry_type", "product_sale"),
+    buScope,
+  );
 
   if (error) {
     return { summary: null, fetchError: error.message };

@@ -6,6 +6,11 @@ import { FAILED_INSPECTION_SELECT } from "@/app/dashboard/operations/failed-insp
 import { WORK_ORDER_SELECT } from "@/app/dashboard/operations/work-orders-utils";
 import { canAccessOperationsSection } from "@/utils/rbac-access";
 import {
+  getActiveBusinessUnitId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
   LIST_LIMIT,
   STAFF_DATA_UNAVAILABLE_MESSAGE,
   getStaffSupabase,
@@ -23,9 +28,18 @@ export async function getDutyRosterSummary(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
     const { summary, fetchError } = await buildOperationsDashboardSummary(
       supabase,
       sessionResult.session.tenantId,
+      buScope,
     );
 
     return {

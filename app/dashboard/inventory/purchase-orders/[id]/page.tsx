@@ -1,6 +1,15 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
@@ -35,14 +44,24 @@ export default async function PurchaseOrderPage({
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data, error }, { data: paymentMethods }] = await Promise.all([
-    supabase
-      .from("purchase_orders")
-      .select(PURCHASE_ORDER_DETAIL_SELECT)
-      .eq("id", id)
-      .eq("tenant_id", tenantId)
-      .maybeSingle(),
+    applyBusinessUnitScope(
+      supabase
+        .from("purchase_orders")
+        .select(PURCHASE_ORDER_DETAIL_SELECT)
+        .eq("id", id)
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).maybeSingle(),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
   ]);
 

@@ -31,7 +31,10 @@ import {
   getActiveBusinessUnitId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   LIST_LIMIT,
   STAFF_DATA_UNAVAILABLE_MESSAGE,
@@ -272,21 +275,33 @@ export async function getPurchasingSummary(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
     const startIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
       .toISOString()
       .slice(0, 10);
 
     const [{ data: purchaseOrders, error: poError }, { data: purchases, error: purchasesError }] =
       await Promise.all([
-        supabase
-          .from("purchase_orders")
-          .select(PURCHASE_ORDER_LIST_SELECT)
+        applyBusinessUnitScope(
+          supabase.from("purchase_orders").select(PURCHASE_ORDER_LIST_SELECT),
+          buScope,
+        )
           .order("order_date", { ascending: false })
           .limit(LIST_LIMIT),
-        supabase
-          .from("product_purchases")
-          .select("purchase_date, product_id, quantity, total_cost")
-          .gte("purchase_date", startIso)
+        applyBusinessUnitScope(
+          supabase
+            .from("product_purchases")
+            .select("purchase_date, product_id, quantity, total_cost")
+            .gte("purchase_date", startIso),
+          buScope,
+        )
           .order("purchase_date", { ascending: false })
           .limit(LIST_LIMIT),
       ]);

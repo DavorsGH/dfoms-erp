@@ -73,11 +73,14 @@ async function fetchFailedInspections(supabase: SupabaseClient) {
     .order("date_identified", { ascending: false });
 }
 
-async function fetchCorrectiveActions(supabase: SupabaseClient) {
-  return supabase
-    .from("corrective_actions")
-    .select(CORRECTIVE_ACTION_SELECT)
-    .order("date_raised", { ascending: false });
+async function fetchCorrectiveActions(
+  supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope = { mode: "all" },
+) {
+  return applyBusinessUnitScope(
+    supabase.from("corrective_actions").select(CORRECTIVE_ACTION_SELECT),
+    buScope,
+  ).order("date_raised", { ascending: false });
 }
 
 async function fetchComplaints(supabase: SupabaseClient) {
@@ -439,9 +442,11 @@ export async function fetchClientServiceReportData(
      */
     elevateRosterForClientId?: string;
     tenantId?: string | null;
+    buScope?: BusinessUnitReadScope;
   },
 ) {
   const elevateClientId = options?.elevateRosterForClientId?.trim() || null;
+  const buScope = options?.buScope ?? { mode: "all" };
 
   const [
     { data: clients, error: clientsError },
@@ -459,7 +464,7 @@ export async function fetchClientServiceReportData(
     fetchWorkOrders(supabase),
     fetchIncidents(supabase),
     fetchComplaints(supabase),
-    fetchCorrectiveActions(supabase),
+    fetchCorrectiveActions(supabase, buScope),
     elevateClientId
       ? fetchDutyRosterBundleForClientPortal({
           clientId: elevateClientId,

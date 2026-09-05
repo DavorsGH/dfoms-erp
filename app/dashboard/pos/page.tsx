@@ -8,7 +8,10 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import {
   applyEmployeeIdScope,
   fetchScopedEmployeeIds,
@@ -128,11 +131,14 @@ export default async function PosPage({ searchParams }: PosPageProps) {
     supabase
       .from("loyalty_accounts")
       .select(LOYALTY_ACCOUNT_SELECT),
-    supabase
-      .from("income_register")
-      .select("client_id, outstanding_balance")
-      .gt("outstanding_balance", 0)
-      .not("client_id", "is", null),
+    applyBusinessUnitScope(
+      supabase
+        .from("income_register")
+        .select("client_id, outstanding_balance")
+        .gt("outstanding_balance", 0)
+        .not("client_id", "is", null),
+      buScope,
+    ),
     quoteFetchPromise,
   ]);
 
