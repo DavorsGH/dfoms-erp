@@ -6,7 +6,7 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { resolveBusinessUnitReadScope, applyBusinessUnitScope } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import { getRoleLabel } from "../../role-labels";
@@ -95,9 +95,10 @@ export default async function InternalConsumptionPage() {
     { data: sites, error: sitesError },
     recordedByLabel,
   ] = await Promise.all([
-    supabase
-      .from("internal_consumption")
-      .select(INTERNAL_CONSUMPTION_SELECT)
+    applyBusinessUnitScope(
+      supabase.from("internal_consumption").select(INTERNAL_CONSUMPTION_SELECT),
+      buScope,
+    )
       .order("consumption_date", { ascending: false })
       .order("created_at", { ascending: false }),
     supabase

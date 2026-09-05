@@ -37,6 +37,7 @@ import {
   useStampBusinessUnitId,
   useBusinessUnitReadScope,
 } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 
 type InternalConsumptionProps = {
   initialEntries: InternalConsumptionRecord[];
@@ -109,9 +110,12 @@ export default function InternalConsumption({
       { data: entryRows, error: entryError },
       { data: productRows, error: productError },
     ] = await Promise.all([
-      supabase
-        .from("internal_consumption")
-        .select(INTERNAL_CONSUMPTION_SELECT)
+      applyBusinessUnitScope(
+        supabase
+          .from("internal_consumption")
+          .select(INTERNAL_CONSUMPTION_SELECT),
+        buReadScope,
+      )
         .order("consumption_date", { ascending: false })
         .order("created_at", { ascending: false }),
       supabase
