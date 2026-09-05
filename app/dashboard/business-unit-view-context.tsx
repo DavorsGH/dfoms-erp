@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
+import type { BusinessUnitSwitcherOption } from "./business-unit-switcher";
 import {
   STAMP_REFUSED_VIEW_ALL_MESSAGE,
   resolveBusinessUnitReadScope,
@@ -12,12 +13,14 @@ type BusinessUnitViewValue = {
   viewAllBusinessUnits: boolean;
   activeBusinessUnitId: string | null;
   workspaceName: string | null;
+  units: BusinessUnitSwitcherOption[];
 };
 
 const BusinessUnitViewContext = createContext<BusinessUnitViewValue>({
   viewAllBusinessUnits: false,
   activeBusinessUnitId: null,
   workspaceName: null,
+  units: [],
 });
 
 export function BusinessUnitViewProvider({
@@ -25,14 +28,16 @@ export function BusinessUnitViewProvider({
   viewAllBusinessUnits,
   activeBusinessUnitId,
   workspaceName,
+  units = [],
 }: BusinessUnitViewValue & { children: ReactNode }) {
   const value = useMemo(
     () => ({
       viewAllBusinessUnits,
       activeBusinessUnitId,
       workspaceName,
+      units,
     }),
-    [viewAllBusinessUnits, activeBusinessUnitId, workspaceName],
+    [viewAllBusinessUnits, activeBusinessUnitId, workspaceName, units],
   );
   return (
     <BusinessUnitViewContext.Provider value={value}>

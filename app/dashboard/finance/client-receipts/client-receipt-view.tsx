@@ -106,6 +106,7 @@ export default function ClientReceiptView({
       setPayload({
         receipt: body.receipt as ClientReceiptHeaderRow,
         invoice: body.invoice,
+        business_unit_contact: body.business_unit_contact ?? null,
       });
       setLoading(false);
     }
@@ -128,6 +129,7 @@ export default function ClientReceiptView({
       branding,
       billingSettings,
       graTin,
+      businessUnitContact: payload.business_unit_contact ?? null,
     };
   }, [payload, branding, billingSettings, graTin]);
 
@@ -175,6 +177,7 @@ export default function ClientReceiptView({
     display.branding,
     display.billingSettings,
     display.graTin,
+    display.businessUnitContact,
   );
 
   return (

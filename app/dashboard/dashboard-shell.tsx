@@ -114,6 +114,7 @@ export default function DashboardShell({
         workspaceName={
           businessUnitSwitcher?.workspaceName ?? tenantBranding.workspaceName
         }
+        units={businessUnitSwitcher?.units ?? []}
       >
       <WriteQueueProvider tenantId={tenantId} authUid={authUid}>
         <div className="flex min-h-screen min-w-0">

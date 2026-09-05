@@ -17,6 +17,10 @@ import {
 export type BusinessUnitSwitcherOption = {
   id: string;
   name: string;
+  /** Storage path in tenant-logos (may be null). */
+  logo_url: string | null;
+  /** Signed URL for sidebar display; null when no BU logo. */
+  logoUrl: string | null;
 };
 
 type Props = {

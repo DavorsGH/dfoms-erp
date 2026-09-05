@@ -11,6 +11,7 @@ import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
 import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
+import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 
 export const CLIENT_INVOICE_PRINT_AREA_ID = "client-invoice-print-area";
 
@@ -20,6 +21,7 @@ export type ClientInvoiceDetailPayload = {
   payment_account_ids: string[];
   payment_accounts: PaymentAccountRow[];
   receipts?: ClientReceiptHeaderRow[];
+  business_unit_contact?: BusinessUnitDocumentContact | null;
 };
 
 export type ClientInvoiceDisplayProps = {
@@ -29,6 +31,7 @@ export type ClientInvoiceDisplayProps = {
   branding: TenantBranding;
   billingSettings: BillingSettingsHeaderFields | null;
   graTin: string | null;
+  businessUnitContact?: BusinessUnitDocumentContact | null;
 };
 
 function splitAddressLines(address: string) {
@@ -54,7 +57,13 @@ export function resolveInvoiceCompanyName(
 export function resolveInvoiceCompanyAddressLines(
   branding: TenantBranding,
   billingSettings: BillingSettingsHeaderFields | null | undefined,
+  businessUnitContact?: BusinessUnitDocumentContact | null,
 ) {
+  const buAddress = businessUnitContact?.invoice_address?.trim();
+  if (buAddress) {
+    return splitAddressLines(buAddress);
+  }
+
   const addressLine1 = billingSettings?.address_line1?.trim();
   if (addressLine1) {
     const lines = [addressLine1];
@@ -81,15 +90,22 @@ export function tenantHeaderContactLines(
   branding: TenantBranding,
   billingSettings: BillingSettingsHeaderFields | null | undefined = null,
   graTin: string | null | undefined = null,
+  businessUnitContact?: BusinessUnitDocumentContact | null,
 ) {
-  const lines = resolveInvoiceCompanyAddressLines(branding, billingSettings);
+  const lines = resolveInvoiceCompanyAddressLines(
+    branding,
+    billingSettings,
+    businessUnitContact,
+  );
 
   if (branding.phone?.trim()) {
     lines.push(branding.phone.trim());
   }
 
-  if (branding.email?.trim()) {
-    lines.push(branding.email.trim());
+  const buEmail = businessUnitContact?.business_email?.trim();
+  const email = buEmail || branding.email?.trim() || "";
+  if (email) {
+    lines.push(email);
   }
 
   const tinLine = formatTenantTinLine(graTin);
@@ -143,6 +159,7 @@ export function normalizeClientInvoiceDetail(
     },
     billingSettings: null,
     graTin: null,
+    businessUnitContact: payload.business_unit_contact ?? null,
   };
 }
 

@@ -63,6 +63,8 @@ export async function sendResendEmail(options: {
   html: string;
   text?: string;
   from?: string;
+  /** Optional Reply-To (e.g. business unit business_email). */
+  replyTo?: string | null;
   attachments?: ResendEmailAttachment[];
 }): Promise<SendEmailResult> {
   const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
@@ -71,6 +73,7 @@ export async function sendResendEmail(options: {
   }
 
   const from = options.from?.trim() || RESEND_PLATFORM_FROM;
+  const replyTo = options.replyTo?.trim() || null;
 
   try {
     const response = await fetch("https://api.resend.com/emails", {
@@ -85,6 +88,7 @@ export async function sendResendEmail(options: {
         subject: options.subject,
         html: options.html,
         text: options.text ?? undefined,
+        ...(replyTo ? { reply_to: replyTo } : {}),
         attachments:
           options.attachments && options.attachments.length > 0
             ? options.attachments.map((attachment) => ({

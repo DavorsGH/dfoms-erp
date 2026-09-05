@@ -13,6 +13,7 @@ import { resolvePdfBrandingImages } from "@/utils/pdf-branding-images";
 import { renderPdfBuffer } from "@/utils/render-pdf-buffer";
 import { PAYMENT_ACCOUNT_SELECT, type PaymentAccountRow } from "@/utils/payment-accounts-types";
 import { getTenantBrandingById } from "@/utils/tenant-branding";
+import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 
 export type RenderClientInvoicePdfResult =
   | {
@@ -55,23 +56,31 @@ export async function renderClientInvoicePdfBuffer(options: {
     paymentAccounts = (data as PaymentAccountRow[] | null) ?? [];
   }
 
-  const [branding, billingSettings, graTin] = await Promise.all([
-    getTenantBrandingById(options.tenantId),
-    loadTenantBillingSettingsHeader(options.supabase, options.tenantId),
-    loadTenantGraTin(options.supabase, options.tenantId),
-  ]);
+  const [branding, billingSettings, graTin, businessUnitContact] =
+    await Promise.all([
+      getTenantBrandingById(options.tenantId),
+      loadTenantBillingSettingsHeader(options.supabase, options.tenantId),
+      loadTenantGraTin(options.supabase, options.tenantId),
+      loadBusinessUnitDocumentContact(
+        options.supabase,
+        options.tenantId,
+        detail.invoice.business_unit_id,
+      ),
+    ]);
 
   const payload: ClientInvoiceDetailPayload = {
     client_invoice: detail.invoice,
     line_items: detail.line_items,
     payment_account_ids: detail.payment_account_ids,
     payment_accounts: paymentAccounts,
+    business_unit_contact: businessUnitContact,
   };
 
   const display = normalizeClientInvoiceDetail(payload);
   display.branding = branding;
   display.billingSettings = billingSettings;
   display.graTin = graTin;
+  display.businessUnitContact = businessUnitContact;
 
   const { logoUrl, signatureImageUrl } = await resolvePdfBrandingImages({
     supabase: options.supabase,

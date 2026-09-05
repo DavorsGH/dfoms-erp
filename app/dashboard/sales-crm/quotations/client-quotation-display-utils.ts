@@ -23,6 +23,7 @@ import {
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
+import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 import {
   CLIENT_INVOICE_COLORS,
   CLIENT_INVOICE_LABOUR_TAX_NOTE,
@@ -44,6 +45,7 @@ export type ClientQuotationDetailPayload = {
   line_items: ClientQuotationLineItemRow[];
   payment_account_ids: string[];
   payment_accounts: PaymentAccountRow[];
+  business_unit_contact?: BusinessUnitDocumentContact | null;
 };
 
 export type ClientQuotationDisplayProps = {
@@ -53,6 +55,7 @@ export type ClientQuotationDisplayProps = {
   branding: TenantBranding;
   billingSettings: BillingSettingsHeaderFields | null;
   graTin: string | null;
+  businessUnitContact?: BusinessUnitDocumentContact | null;
 };
 
 export function normalizeClientQuotationDetail(
@@ -120,6 +123,7 @@ export function normalizeClientQuotationDetail(
     },
     billingSettings: null,
     graTin: null,
+    businessUnitContact: payload.business_unit_contact ?? null,
   };
 }
 

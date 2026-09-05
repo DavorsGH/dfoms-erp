@@ -30,6 +30,7 @@ type NotifyClientDocumentOptions = {
   };
   attachmentFilename: string;
   context: string;
+  businessUnitId?: string | null;
 };
 
 async function renderDocumentPdfAttachment(
@@ -99,6 +100,46 @@ async function renderDocumentPdfAttachment(
   };
 }
 
+async function resolveDocumentBusinessUnitId(
+  tenantId: string,
+  eventType: ClientDocumentEventType,
+  documentId: string,
+): Promise<string | null> {
+  const admin = createAdminClient();
+
+  if (eventType === "invoice_created") {
+    const { data } = await admin
+      .from("client_invoices")
+      .select("business_unit_id")
+      .eq("tenant_id", tenantId)
+      .eq("id", documentId)
+      .maybeSingle();
+    return (data?.business_unit_id as string | null | undefined)?.trim() || null;
+  }
+
+  if (eventType === "quotation_sent") {
+    const { data } = await admin
+      .from("client_quotations")
+      .select("business_unit_id")
+      .eq("tenant_id", tenantId)
+      .eq("id", documentId)
+      .maybeSingle();
+    return (data?.business_unit_id as string | null | undefined)?.trim() || null;
+  }
+
+  if (eventType === "receipt_issued") {
+    const { data } = await admin
+      .from("client_receipts")
+      .select("business_unit_id")
+      .eq("tenant_id", tenantId)
+      .eq("id", documentId)
+      .maybeSingle();
+    return (data?.business_unit_id as string | null | undefined)?.trim() || null;
+  }
+
+  return null;
+}
+
 /**
  * Best-effort customer document notification: in-app inbox + optional email/SMS
  * via transactional rules. Email includes the rendered PDF when available.
@@ -123,6 +164,15 @@ export async function notifyClientDocumentEvent(
       options.attachmentFilename,
     );
 
+    const businessUnitId =
+      options.businessUnitId !== undefined
+        ? options.businessUnitId
+        : await resolveDocumentBusinessUnitId(
+            options.tenantId,
+            options.eventType,
+            options.documentId,
+          );
+
     await fireTransactionalNotification(
       options.tenantId,
       options.eventType as TransactionalEventType,
@@ -130,6 +180,7 @@ export async function notifyClientDocumentEvent(
       options.variables,
       {
         emailAttachments: attachment ? [attachment] : undefined,
+        businessUnitId,
       },
     );
   } catch (error) {

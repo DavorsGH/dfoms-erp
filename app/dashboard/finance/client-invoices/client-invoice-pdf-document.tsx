@@ -334,6 +334,7 @@ export default function ClientInvoicePdfDocument({
   branding,
   billingSettings,
   graTin,
+  businessUnitContact = null,
   logoUrl,
   signatureImageUrl,
 }: ClientInvoicePdfDocumentProps) {
@@ -344,6 +345,7 @@ export default function ClientInvoicePdfDocument({
     branding,
     billingSettings,
     graTin,
+    businessUnitContact,
   );
   const billingPeriod = formatBillingPeriodLabel(
     invoice.billing_period_start,

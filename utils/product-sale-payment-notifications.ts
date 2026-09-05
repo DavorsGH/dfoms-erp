@@ -9,6 +9,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { notifyTenantAdminsAndDirectors } from "@/utils/tenant-admin-director-notifications";
 import { fireTransactionalNotification } from "@/utils/transactional-notification-trigger";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
+import { loadBusinessUnitReplyToEmail } from "@/utils/business-unit-document-contact";
 
 type TenantOwnerContacts = {
   name: string | null;
@@ -119,6 +120,7 @@ async function sendFallbackPaymentReceivedToCustomer(options: {
   amountReceivedLabel: string;
   outstandingLabel: string;
   paymentReference: string;
+  replyTo?: string | null;
 }): Promise<boolean> {
   const subject = `Payment received — invoice ${options.invoiceNo}`;
   const lead = `We received ${options.amountReceivedLabel} toward invoice ${options.invoiceNo}. Remaining balance: ${options.outstandingLabel}.`;
@@ -150,6 +152,7 @@ ${options.paymentReference ? `<p>Reference: ${escapeHtml(options.paymentReferenc
       subject,
       html,
       text,
+      replyTo: options.replyTo,
     });
     if (result.ok) {
       sent = true;
@@ -343,14 +346,32 @@ export async function notifyProductSalePaymentReceived(
       options.tenantId,
     );
 
+    const { data: incomeScope } = await admin
+      .from("income_register")
+      .select("business_unit_id")
+      .eq("tenant_id", options.tenantId)
+      .eq("id", options.incomeId)
+      .maybeSingle();
+    const businessUnitId =
+      (incomeScope?.business_unit_id as string | null | undefined)?.trim() ||
+      null;
+
     if (useTransactional) {
       await fireTransactionalNotification(
         options.tenantId,
         "payment_received",
         clientId,
         variables,
+        { businessUnitId },
       );
     } else {
+      const replyTo = businessUnitId
+        ? await loadBusinessUnitReplyToEmail(
+            admin,
+            options.tenantId,
+            businessUnitId,
+          )
+        : null;
       await sendFallbackPaymentReceivedToCustomer({
         tenantId: options.tenantId,
         tenantName,
@@ -361,6 +382,7 @@ export async function notifyProductSalePaymentReceived(
         amountReceivedLabel,
         outstandingLabel,
         paymentReference,
+        replyTo,
       });
     }
   } else {

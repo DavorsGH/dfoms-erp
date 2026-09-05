@@ -12,6 +12,7 @@ import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { buildClientDocumentPortalUrlVars } from "@/utils/client-document-notification-templates";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
+import { loadBusinessUnitReplyToEmail } from "@/utils/business-unit-document-contact";
 import {
   TRANSACTIONAL_EVENT_TYPES,
   type TransactionalEventType,
@@ -62,6 +63,13 @@ export async function fireTransactionalNotification(
     emailAttachments?: ResendEmailAttachment[];
     /** When true, never send SMS even if the rule channel includes sms/both. */
     emailOnly?: boolean;
+    /**
+     * When set, use that business unit's business_email as Reply-To if present.
+     * Omitting / null keeps the existing From-only behavior.
+     */
+    businessUnitId?: string | null;
+    /** Explicit Reply-To override (takes precedence over businessUnitId lookup). */
+    replyTo?: string | null;
   },
 ): Promise<void> {
   try {
@@ -203,12 +211,20 @@ export async function fireTransactionalNotification(
           vars,
         );
         const html = templateBodyToEmailHtml(rawBody);
+        const replyTo =
+          options?.replyTo?.trim() ||
+          (await loadBusinessUnitReplyToEmail(
+            admin,
+            tenantId,
+            options?.businessUnitId,
+          ));
         const result = await sendResendEmail({
           to,
           subject,
           html,
           text: rawBody,
           from: formatResendFrom(tenantName),
+          replyTo,
           attachments: options?.emailAttachments,
         });
         if (!result.ok) {

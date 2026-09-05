@@ -100,6 +100,7 @@ export default function ClientQuotationView({
         line_items: body.line_items ?? [],
         payment_account_ids: body.payment_account_ids ?? [],
         payment_accounts: body.payment_accounts ?? [],
+        business_unit_contact: body.business_unit_contact ?? null,
       });
       setLoading(false);
     }
@@ -122,6 +123,7 @@ export default function ClientQuotationView({
       branding,
       billingSettings,
       graTin,
+      businessUnitContact: payload.business_unit_contact ?? null,
     };
   }, [payload, branding, billingSettings, graTin]);
 

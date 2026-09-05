@@ -402,7 +402,18 @@ export async function fulfillPosCartSnapshotPaymentRequest(
     (customerId ? customerId : "Customer");
 
   void import("@/utils/transactional-notification-trigger").then(
-    ({ fireTransactionalNotification }) => {
+    async ({ fireTransactionalNotification }) => {
+      const { data: incomeScope } = await admin
+        .from("income_register")
+        .select("business_unit_id")
+        .eq("tenant_id", requestRow.tenant_id)
+        .in("id", incomeIds)
+        .limit(1)
+        .maybeSingle();
+      const businessUnitId =
+        (incomeScope?.business_unit_id as string | null | undefined)?.trim() ||
+        null;
+
       void fireTransactionalNotification(
         requestRow.tenant_id,
         "sale_completed",
@@ -413,6 +424,7 @@ export async function fulfillPosCartSnapshotPaymentRequest(
           amount: amountLabel,
           product_summary: productSummary,
         },
+        { businessUnitId },
       );
       void fireTransactionalNotification(
         requestRow.tenant_id,
@@ -424,6 +436,7 @@ export async function fulfillPosCartSnapshotPaymentRequest(
           payment_reference: reference ?? requestRow.paystack_reference ?? "",
           invoice_no: allocatedInvoiceNo,
         },
+        { businessUnitId },
       );
     },
   );

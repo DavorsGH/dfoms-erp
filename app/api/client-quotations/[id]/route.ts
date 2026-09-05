@@ -16,6 +16,7 @@ import {
 import { PAYMENT_ACCOUNT_SELECT, type PaymentAccountRow } from "@/utils/payment-accounts-types";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -107,6 +108,11 @@ export async function GET(_request: Request, context: RouteContext) {
     line_items: detail.line_items,
     payment_account_ids: detail.payment_account_ids,
     payment_accounts: paymentAccounts,
+    business_unit_contact: await loadBusinessUnitDocumentContact(
+      supabase,
+      auth.tenantId,
+      detail.quotation.business_unit_id,
+    ),
   });
 }
 

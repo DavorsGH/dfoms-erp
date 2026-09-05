@@ -861,6 +861,9 @@ export default function PosCheckout({
         body: JSON.stringify({
           event_type: "sale_completed",
           customer_id: trimmedClientId,
+          business_unit_id: stampBusinessUnit.ok
+            ? stampBusinessUnit.businessUnitId
+            : null,
           variables: {
             customer_name: getCustomerDisplayName(
               trimmedClientId,

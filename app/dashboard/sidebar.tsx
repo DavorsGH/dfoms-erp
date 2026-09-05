@@ -10,6 +10,7 @@ import {
   type TenantBranding,
 } from "@/utils/tenant-branding-types";
 import WorkspaceLogo from "./workspace-logo";
+import { useBusinessUnitView } from "./business-unit-view-context";
 import {
   canAccessEmployeesSection,
   canAccessHrPayrollSection,
@@ -212,7 +213,20 @@ export default function Sidebar({
   const administrationLinks = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: showPlatformSettings,
   });
-  const workspaceName = tenantBranding.workspaceName;
+  const {
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+    units: businessUnits,
+  } = useBusinessUnitView();
+
+  const activeUnit =
+    !viewAllBusinessUnits && activeBusinessUnitId
+      ? (businessUnits.find((unit) => unit.id === activeBusinessUnitId) ?? null)
+      : null;
+
+  const workspaceName = activeUnit?.name?.trim() || tenantBranding.workspaceName;
+  const workspaceLogoUrl =
+    activeUnit?.logoUrl?.trim() || tenantBranding.workspaceLogoUrl;
 
   if (showRealEstate) {
     const operationsIndex = navItems.findIndex(
@@ -447,54 +461,40 @@ export default function Sidebar({
           : "min-h-screen w-56 shrink-0"
       }`}
     >
-      {mobile ? (
-        <div className="relative border-b border-white/10 px-4 py-5">
-          {onClose ? (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close navigation menu"
-              className="absolute right-2 top-2 rounded-md p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <CloseIcon />
-            </button>
-          ) : null}
-          <div className="flex flex-col items-center gap-2 text-center">
-            <WorkspaceLogo
-              workspaceLogoUrl={tenantBranding.workspaceLogoUrl}
-              name={workspaceName}
-              size="sm"
-              rounded="sm"
-              className="!h-14 !w-14"
-            />
-            <div className="max-w-[10rem]">
-              <p className="break-words text-base font-semibold leading-tight text-emerald-400">
-                {workspaceName}
-              </p>
-              <p className="mt-0.5 text-xs font-medium leading-tight text-white/90">
-                ERP System
-              </p>
-            </div>
-          </div>
+      <div
+        className={`relative flex items-center gap-2.5 border-b border-white/10 ${
+          mobile ? "px-3 py-4" : "px-3 py-5"
+        }`}
+      >
+        {mobile && onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation menu"
+            className="absolute right-1.5 top-1.5 rounded-md p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <CloseIcon />
+          </button>
+        ) : null}
+        <WorkspaceLogo
+          workspaceLogoUrl={workspaceLogoUrl}
+          name={workspaceName}
+          size="xs"
+          rounded="md"
+          className="!h-10 !w-10 !rounded-[6px] object-cover"
+        />
+        <div className={`min-w-0 flex-1 ${mobile && onClose ? "pr-8" : ""}`}>
+          <p
+            className="truncate text-sm font-semibold leading-tight text-emerald-400"
+            title={workspaceName}
+          >
+            {workspaceName}
+          </p>
+          <p className="mt-0.5 text-xs font-medium leading-tight text-white/90">
+            ERP System
+          </p>
         </div>
-      ) : (
-        <div className="flex items-center gap-4 border-b border-white/10 px-5 py-8">
-          <WorkspaceLogo
-            workspaceLogoUrl={tenantBranding.workspaceLogoUrl}
-            name={workspaceName}
-            size="lg"
-            rounded="sm"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="break-words text-lg font-semibold leading-tight text-emerald-400">
-              {workspaceName}
-            </p>
-            <p className="mt-0.5 text-sm font-medium leading-tight text-white/90">
-              ERP System
-            </p>
-          </div>
-        </div>
-      )}
+      </div>
 
       <nav
         className={`flex flex-1 flex-col gap-1 overflow-y-auto py-4 ${

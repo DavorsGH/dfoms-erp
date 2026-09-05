@@ -1,6 +1,7 @@
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
+import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 import { toNumber } from "@/utils/client-invoices-types";
 import {
   formatInvoiceDate,
@@ -30,6 +31,7 @@ export type ClientReceiptDetailPayload = {
     wht_amount: number;
     client_id: string;
   };
+  business_unit_contact?: BusinessUnitDocumentContact | null;
 };
 
 export type ClientReceiptDisplayProps = {
@@ -38,6 +40,7 @@ export type ClientReceiptDisplayProps = {
   branding: TenantBranding;
   billingSettings: BillingSettingsHeaderFields | null;
   graTin: string | null;
+  businessUnitContact?: BusinessUnitDocumentContact | null;
 };
 
 export function normalizeClientReceiptDetail(

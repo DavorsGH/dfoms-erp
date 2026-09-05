@@ -8,6 +8,7 @@ import {
 } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -60,5 +61,10 @@ export async function GET(_request: Request, context: RouteContext) {
   return NextResponse.json({
     receipt: detail.receipt,
     invoice: detail.invoice,
+    business_unit_contact: await loadBusinessUnitDocumentContact(
+      supabase,
+      auth.tenantId,
+      detail.receipt.business_unit_id,
+    ),
   });
 }

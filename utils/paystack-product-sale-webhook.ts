@@ -230,7 +230,7 @@ export async function processProductSalePaystackEvent(
   // Payment on an already-created sale (not cart_snapshot create) — payment_received only.
   const { data: customerLine } = await admin
     .from("income_register")
-    .select("client_id, customer_name, invoice_no")
+    .select("client_id, customer_name, invoice_no, business_unit_id")
     .eq("tenant_id", requestRow.tenant_id)
     .in("id", incomeIds)
     .limit(1)
@@ -254,6 +254,11 @@ export async function processProductSalePaystackEvent(
             customerLine?.invoice_no ??
             requestRow.invoice_no ??
             "",
+        },
+        {
+          businessUnitId:
+            (customerLine?.business_unit_id as string | null | undefined)?.trim() ||
+            null,
         },
       );
     },

@@ -127,6 +127,7 @@ export default function ClientInvoiceView({
       payment_account_ids: body.payment_account_ids ?? [],
       payment_accounts: body.payment_accounts ?? [],
       receipts: body.receipts ?? [],
+      business_unit_contact: body.business_unit_contact ?? null,
     });
     setReceipts(body.receipts ?? []);
     setLoading(false);
@@ -147,6 +148,7 @@ export default function ClientInvoiceView({
       branding,
       billingSettings,
       graTin,
+      businessUnitContact: payload.business_unit_contact ?? null,
     };
   }, [payload, branding, billingSettings, graTin]);
 
@@ -180,7 +182,12 @@ export default function ClientInvoiceView({
     : "";
 
   const companyContactLines = display
-    ? tenantHeaderContactLines(display.branding, display.billingSettings, display.graTin)
+    ? tenantHeaderContactLines(
+        display.branding,
+        display.billingSettings,
+        display.graTin,
+        display.businessUnitContact,
+      )
     : [];
 
   const handlePrint = useCallback(() => {

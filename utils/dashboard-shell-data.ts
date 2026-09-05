@@ -19,6 +19,7 @@ import { ensureTrialAccess } from "@/utils/trial-enforcement";
 import { ensureSecurityNotifications } from "@/utils/security-notifications";
 import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { createTenantLogosSignedUrlMap } from "@/utils/tenant-logos-storage";
 
 export type DashboardShellData = {
   displayInfo: UserDisplayInfo;
@@ -44,7 +45,7 @@ async function loadBusinessUnitSwitcherOptions(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("business_units")
-    .select("id, name")
+    .select("id, name, logo_url")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("name", { ascending: true });
@@ -57,10 +58,29 @@ async function loadBusinessUnitSwitcherOptions(
     return [];
   }
 
-  return ((data ?? []) as Array<{ id: string; name: string }>).map((row) => ({
-    id: row.id,
-    name: row.name,
-  }));
+  const rows = (data ?? []) as Array<{
+    id: string;
+    name: string;
+    logo_url: string | null;
+  }>;
+
+  const logoRefs = rows
+    .map((row) => row.logo_url?.trim() || "")
+    .filter(Boolean);
+  const signedByRef =
+    logoRefs.length > 0
+      ? await createTenantLogosSignedUrlMap(admin, logoRefs)
+      : new Map<string, string>();
+
+  return rows.map((row) => {
+    const logo_url = row.logo_url?.trim() || null;
+    return {
+      id: row.id,
+      name: row.name,
+      logo_url,
+      logoUrl: logo_url ? (signedByRef.get(logo_url) ?? null) : null,
+    };
+  });
 }
 
 export async function loadDashboardShellData(): Promise<DashboardShellData> {

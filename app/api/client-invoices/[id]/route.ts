@@ -22,6 +22,7 @@ import {
   getCurrentUserClientId,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
+import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -131,12 +132,19 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: receiptsResult.error }, { status: 500 });
   }
 
+  const businessUnitContact = await loadBusinessUnitDocumentContact(
+    supabase,
+    auth.tenantId,
+    detail.invoice.business_unit_id,
+  );
+
   return NextResponse.json({
     client_invoice: detail.invoice,
     line_items: detail.line_items,
     payment_account_ids: detail.payment_account_ids,
     payment_accounts: paymentAccounts,
     receipts: receiptsResult.receipts,
+    business_unit_contact: businessUnitContact,
   });
 }
 

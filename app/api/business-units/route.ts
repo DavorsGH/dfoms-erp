@@ -84,6 +84,7 @@ export async function POST(request: Request) {
       tenant_id: auth.tenantId,
       name: trimmed.name,
       invoice_address: trimmed.invoice_address,
+      business_email: trimmed.business_email,
       is_active: trimmed.is_active,
       ...(trimmed.logo_url !== undefined ? { logo_url: trimmed.logo_url } : {}),
       updated_at: new Date().toISOString(),
@@ -149,6 +150,7 @@ export async function PUT(request: Request) {
     .update({
       name: trimmed.name,
       invoice_address: trimmed.invoice_address,
+      business_email: trimmed.business_email,
       is_active: trimmed.is_active,
       ...(trimmed.logo_url !== undefined ? { logo_url: trimmed.logo_url } : {}),
       updated_at: new Date().toISOString(),

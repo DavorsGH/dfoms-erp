@@ -347,6 +347,12 @@ export default function BusinessUnitsSettings({
                   </p>
                 )}
 
+                {unit.business_email ? (
+                  <p className="text-sm text-slate-700">{unit.business_email}</p>
+                ) : (
+                  <p className="text-sm text-slate-500">No business email set.</p>
+                )}
+
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -474,6 +480,30 @@ export default function BusinessUnitsSettings({
                 rows={4}
                 className={inputClassName}
                 disabled={saving}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="business-unit-business-email"
+                className="mb-1 block text-sm font-medium text-slate-700"
+              >
+                Business email
+              </label>
+              <input
+                id="business-unit-business-email"
+                type="email"
+                value={form.business_email}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    business_email: event.target.value,
+                  }))
+                }
+                className={inputClassName}
+                disabled={saving}
+                placeholder="billing@example.com"
+                autoComplete="email"
               />
             </div>
 

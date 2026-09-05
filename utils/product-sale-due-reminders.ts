@@ -59,6 +59,7 @@ type SaleRow = {
   payment_status: string | null;
   due_date: string;
   last_reminder_sent_at: string | null;
+  business_unit_id: string | null;
 };
 
 function toDateString(value: Date): string {
@@ -463,7 +464,7 @@ export async function runProductSaleDueReminders(
   let query = admin
     .from("income_register")
     .select(
-      "id, tenant_id, client_id, customer_name, invoice_no, amount, amount_received, outstanding_balance, payment_status, due_date, last_reminder_sent_at",
+      "id, tenant_id, client_id, customer_name, invoice_no, amount, amount_received, outstanding_balance, payment_status, due_date, last_reminder_sent_at, business_unit_id",
     )
     .eq("entry_type", "product_sale")
     .eq("sale_status", "active")
@@ -594,6 +595,10 @@ export async function runProductSaleDueReminders(
           "payment_due_reminder",
           clientId,
           variables,
+          {
+            businessUnitId:
+              (row.business_unit_id as string | null | undefined)?.trim() || null,
+          },
         );
         // Rule path is best-effort; stamp when customer has a reachable channel.
         delivered = Boolean(

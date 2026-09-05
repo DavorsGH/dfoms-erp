@@ -363,6 +363,7 @@ export default function ClientQuotationPdfDocument({
   branding,
   billingSettings,
   graTin,
+  businessUnitContact = null,
   logoUrl,
   signatureImageUrl,
   portalQuotationDates = false,
@@ -374,6 +375,7 @@ export default function ClientQuotationPdfDocument({
     branding,
     billingSettings,
     graTin,
+    businessUnitContact,
   );
   const printTitle = quotationPrintTitle(quotation.document_type);
   const numberMetaLabel = quotationNumberMetaLabel(quotation.document_type);

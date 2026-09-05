@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     event_type?: string;
     customer_id?: string | null;
     variables?: Record<string, string>;
+    business_unit_id?: string | null;
   };
   try {
     body = await request.json();
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
     eventType as TransactionalEventType,
     body.customer_id,
     body.variables ?? {},
+    { businessUnitId: body.business_unit_id ?? null },
   );
 
   return NextResponse.json({ ok: true });

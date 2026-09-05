@@ -41,7 +41,7 @@ export default function ClientQuotationPrintLayout({
   className = "overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm",
   portalQuotationDates = false,
 }: ClientQuotationPrintLayoutProps) {
-  const { quotation, lineItems, paymentAccounts, branding, billingSettings, graTin } = display;
+  const { quotation, lineItems, paymentAccounts, branding, billingSettings, graTin, businessUnitContact } = display;
   const groupedLines = buildClientQuotationGroups(lineItems);
   const lineColumnTotals = sumQuotationLineItemColumns(lineItems);
   const taxBasisNote = quotationTaxBasisNote(quotation);
@@ -50,6 +50,7 @@ export default function ClientQuotationPrintLayout({
     branding,
     billingSettings,
     graTin,
+    businessUnitContact,
   );
   const printTitle = quotationPrintTitle(quotation.document_type);
   const numberMetaLabel = quotationNumberMetaLabel(quotation.document_type);

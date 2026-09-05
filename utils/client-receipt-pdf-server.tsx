@@ -9,6 +9,7 @@ import { loadClientReceiptDetail } from "@/utils/client-invoice-payments-api";
 import { resolvePdfBrandingImages } from "@/utils/pdf-branding-images";
 import { renderPdfBuffer } from "@/utils/render-pdf-buffer";
 import { getTenantBrandingById } from "@/utils/tenant-branding";
+import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 
 export type RenderClientReceiptPdfResult =
   | { ok: true; buffer: Buffer; receiptNumber: string }
@@ -32,20 +33,28 @@ export async function renderClientReceiptPdfBuffer(options: {
     };
   }
 
-  const [branding, billingSettings, graTin] = await Promise.all([
-    getTenantBrandingById(options.tenantId),
-    loadTenantBillingSettingsHeader(options.supabase, options.tenantId),
-    loadTenantGraTin(options.supabase, options.tenantId),
-  ]);
+  const [branding, billingSettings, graTin, businessUnitContact] =
+    await Promise.all([
+      getTenantBrandingById(options.tenantId),
+      loadTenantBillingSettingsHeader(options.supabase, options.tenantId),
+      loadTenantGraTin(options.supabase, options.tenantId),
+      loadBusinessUnitDocumentContact(
+        options.supabase,
+        options.tenantId,
+        detail.receipt.business_unit_id,
+      ),
+    ]);
 
   const display = {
     ...normalizeClientReceiptDetail({
       receipt: detail.receipt,
       invoice: detail.invoice,
+      business_unit_contact: businessUnitContact,
     }),
     branding,
     billingSettings,
     graTin,
+    businessUnitContact,
   };
 
   const { logoUrl, signatureImageUrl } = await resolvePdfBrandingImages({
