@@ -87,6 +87,7 @@ export async function fetchStockOnHandReportData(
     (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)),
     rawMaterialStockMap,
     buScope.mode,
+    { overlayAverageCost: true },
   );
   const normalizedFinishedProducts = mergeScopedStockOntoProducts(
     (finishedProducts ?? []).map((row) => normalizeFinishedProduct(row)),

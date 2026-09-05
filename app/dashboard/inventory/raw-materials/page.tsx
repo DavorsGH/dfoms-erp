@@ -6,7 +6,7 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { resolveBusinessUnitReadScope, applyBusinessUnitScope } from "@/utils/business-unit-view";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
 import {
@@ -18,10 +18,13 @@ import RawMaterials from "../raw-materials";
 import {
   normalizeRawMaterial,
   normalizeRawMaterialPurchase,
+  normalizeRawMaterialStockAdjustment,
   RAW_MATERIAL_PURCHASE_SELECT,
   RAW_MATERIAL_SELECT,
+  RAW_MATERIAL_STOCK_ADJUSTMENT_SELECT,
   type RawMaterialPurchaseRecord,
   type RawMaterialRecord,
+  type RawMaterialStockAdjustmentRecord,
 } from "../raw-materials-utils";
 import {
   fetchScopedRawMaterialStock,
@@ -46,6 +49,7 @@ export default async function RawMaterialsPage() {
   const [
     { data: materials, error: materialsError },
     { data: purchases, error: purchasesError },
+    { data: adjustments, error: adjustmentsError },
     { data: paymentMethods, error: paymentMethodsError },
     { data: projects, error: projectsError },
     scopedStock,
@@ -54,10 +58,18 @@ export default async function RawMaterialsPage() {
       .from("raw_materials")
       .select(RAW_MATERIAL_SELECT)
       .order("material_name", { ascending: true }),
-    supabase
-      .from("raw_material_purchases")
-      .select(RAW_MATERIAL_PURCHASE_SELECT)
-      .order("purchase_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("raw_material_purchases")
+        .select(RAW_MATERIAL_PURCHASE_SELECT),
+      buScope,
+    ).order("purchase_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("raw_material_stock_adjustments")
+        .select(RAW_MATERIAL_STOCK_ADJUSTMENT_SELECT),
+      buScope,
+    ).order("created_at", { ascending: false }),
     supabase
       .from("payment_methods")
       .select("name")
@@ -84,6 +96,7 @@ export default async function RawMaterialsPage() {
     catalogMaterials,
     scopedStock.stockMap,
     buScope.mode,
+    { overlayAverageCost: true },
   );
 
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -99,11 +112,17 @@ export default async function RawMaterialsPage() {
             normalizeRawMaterialPurchase(row),
           ) ?? []
         }
+        initialAdjustments={
+          (adjustments as RawMaterialStockAdjustmentRecord[] | null)?.map(
+            (row) => normalizeRawMaterialStockAdjustment(row),
+          ) ?? []
+        }
         initialPaymentMethods={(paymentMethods as NamedLookup[] | null) ?? []}
         initialProjects={(projects as ContractProjectOption[] | null) ?? []}
         fetchError={
           materialsError?.message ??
           purchasesError?.message ??
+          adjustmentsError?.message ??
           paymentMethodsError?.message ??
           projectsError?.message ??
           scopedStock.error ??

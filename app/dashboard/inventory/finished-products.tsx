@@ -42,6 +42,7 @@ import {
 } from "./finished-products-utils";
 import type { SupplierRow } from "@/utils/suppliers-types";
 import { getFinishedProductDeleteErrorMessage, FINISHED_PRODUCT_DELETE_BLOCKED_MESSAGE } from "@/utils/finished-product-delete-errors";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 
 type FinishedProductsProps = {
   initialProducts: FinishedProductRecord[];
@@ -66,6 +67,7 @@ export default function FinishedProducts({
   readOnly = false,
 }: FinishedProductsProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [products, setProducts] = useState(
     initialProducts.map(normalizeFinishedProduct),
   );
@@ -102,16 +104,18 @@ export default function FinishedProducts({
   }, [initialProducts]);
 
   useEffect(() => {
-    void fetchFinishedProductPurchaseCounts(supabase).then((result) => {
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setPurchaseCountByProductId(
-        Object.fromEntries(result.countsByProductId.entries()),
-      );
-    });
-  }, [supabase]);
+    void fetchFinishedProductPurchaseCounts(supabase, buReadScope).then(
+      (result) => {
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        setPurchaseCountByProductId(
+          Object.fromEntries(result.countsByProductId.entries()),
+        );
+      },
+    );
+  }, [supabase, buReadScope]);
 
   async function refreshData() {
     const [
@@ -123,8 +127,8 @@ export default function FinishedProducts({
         .from("finished_products")
         .select(FINISHED_PRODUCT_SELECT)
         .order("product_name", { ascending: true }),
-      fetchFinishedProductLotDateSources(supabase),
-      fetchFinishedProductPurchaseCounts(supabase),
+      fetchFinishedProductLotDateSources(supabase, buReadScope),
+      fetchFinishedProductPurchaseCounts(supabase, buReadScope),
     ]);
 
     if (refreshError) {

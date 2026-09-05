@@ -121,21 +121,34 @@ export default function ProductionBatches({
       return null;
     }
 
-    const lines = materialLines
-      .filter((line) => line.material_id && line.quantity_used)
-      .map((line) => {
-        const material = materials.find((item) => item.id === line.material_id);
-        const quantityUsed = Number.parseFloat(line.quantity_used);
-        return {
-          material_id: line.material_id,
-          quantity_used: quantityUsed,
-          cost_at_time: material?.average_cost_per_unit ?? 0,
-        };
-      })
-      .filter(
-        (line) =>
-          !Number.isNaN(line.quantity_used) && line.quantity_used > 0,
-      );
+    const lines: {
+      material_id: string;
+      quantity_used: number;
+      cost_at_time: number;
+    }[] = [];
+
+    for (const line of materialLines) {
+      if (!line.material_id || !line.quantity_used) {
+        continue;
+      }
+
+      const quantityUsed = Number.parseFloat(line.quantity_used);
+      if (Number.isNaN(quantityUsed) || quantityUsed <= 0) {
+        continue;
+      }
+
+      const material = materials.find((item) => item.id === line.material_id);
+      // Do not coerce null BU-scoped WAC to 0 — that would understate preview cost.
+      if (material?.average_cost_per_unit == null) {
+        return null;
+      }
+
+      lines.push({
+        material_id: line.material_id,
+        quantity_used: quantityUsed,
+        cost_at_time: material.average_cost_per_unit,
+      });
+    }
 
     if (lines.length === 0) {
       return null;
@@ -214,6 +227,7 @@ export default function ProductionBatches({
         ),
         materialStockMap,
         buReadScope.mode,
+        { overlayAverageCost: true },
       ),
     );
     setError(null);
@@ -289,39 +303,60 @@ export default function ProductionBatches({
       return;
     }
 
-    const materialPayload = materialLines
-      .filter((line) => line.material_id && line.quantity_used)
-      .map((line) => {
-        const material = materials.find((item) => item.id === line.material_id);
-        const quantityUsed = Number.parseFloat(line.quantity_used);
-        return {
-          material_id: line.material_id,
-          quantity_used: quantityUsed,
-          cost_at_time: material?.average_cost_per_unit ?? 0,
-        };
-      });
+    const materialPayload: {
+      material_id: string;
+      quantity_used: number;
+      cost_at_time: number;
+    }[] = [];
 
-    if (materialPayload.length === 0) {
-      setError("Add at least one raw material with quantity used.");
-      setLoading(false);
-      return;
-    }
+    for (const line of materialLines) {
+      if (!line.material_id || !line.quantity_used) {
+        continue;
+      }
 
-    for (const line of materialPayload) {
-      if (Number.isNaN(line.quantity_used) || line.quantity_used <= 0) {
+      const quantityUsed = Number.parseFloat(line.quantity_used);
+      if (Number.isNaN(quantityUsed) || quantityUsed <= 0) {
         setError("Each material line must have a quantity greater than zero.");
         setLoading(false);
         return;
       }
 
       const material = materials.find((item) => item.id === line.material_id);
-      if (material && material.current_stock < line.quantity_used) {
+      if (!material) {
+        setError("Select a valid raw material for each line.");
+        setLoading(false);
+        return;
+      }
+
+      if (material.current_stock < quantityUsed) {
         setError(
           `Insufficient stock for ${material.material_name}. Available: ${formatInventoryQuantity(material.current_stock)}.`,
         );
         setLoading(false);
         return;
       }
+
+      // Defense in depth: under default BU, no balance ⇒ stock 0 + null WAC.
+      // Stock check above should already block qty > 0; never coerce null → 0.
+      if (material.average_cost_per_unit == null) {
+        setError(
+          `No unit cost on file for ${material.material_name} in this business. Record stock (opening balance / purchase) before using it in production.`,
+        );
+        setLoading(false);
+        return;
+      }
+
+      materialPayload.push({
+        material_id: line.material_id,
+        quantity_used: quantityUsed,
+        cost_at_time: material.average_cost_per_unit,
+      });
+    }
+
+    if (materialPayload.length === 0) {
+      setError("Add at least one raw material with quantity used.");
+      setLoading(false);
+      return;
     }
 
     const allocated = await allocateBatchNumber(supabase);

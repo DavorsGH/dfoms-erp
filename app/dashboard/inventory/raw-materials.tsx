@@ -21,8 +21,10 @@ import ScrollableTable, {
 import FilteredListCount from "../filtered-list-count";
 import {
   useBusinessUnitReadScope,
+  useBusinessUnitView,
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
   formatInventoryMoney,
   formatInventoryQuantity,
@@ -31,12 +33,19 @@ import {
 } from "./inventory-utils";
 import { allocateMaterialCode } from "./inventory-ids-api";
 import {
+  formatRawMaterialAdjustmentType,
   normalizeRawMaterial,
   normalizeRawMaterialPurchase,
+  normalizeRawMaterialStockAdjustment,
+  RAW_MATERIAL_ADJUSTMENT_TYPES,
+  RAW_MATERIAL_ADJUSTMENT_TYPE_LABELS,
   RAW_MATERIAL_PURCHASE_SELECT,
   RAW_MATERIAL_SELECT,
+  RAW_MATERIAL_STOCK_ADJUSTMENT_SELECT,
+  type RawMaterialAdjustmentType,
   type RawMaterialPurchaseRecord,
   type RawMaterialRecord,
+  type RawMaterialStockAdjustmentRecord,
 } from "./raw-materials-utils";
 import {
   fetchScopedRawMaterialStock,
@@ -58,6 +67,7 @@ type RawMaterialsProps = {
    */
   initialCatalogMaterials: RawMaterialRecord[];
   initialPurchases: RawMaterialPurchaseRecord[];
+  initialAdjustments: RawMaterialStockAdjustmentRecord[];
   initialPaymentMethods: NamedLookup[];
   initialProjects: ContractProjectOption[];
   fetchError: string | null;
@@ -85,10 +95,21 @@ const emptyPurchaseForm = {
   project_id: "",
 };
 
+const emptyAdjustmentForm = {
+  material_id: "",
+  adjustment_type: "" as "" | RawMaterialAdjustmentType,
+  quantity: "",
+  correction_direction: "increase" as "increase" | "decrease",
+  cost_per_unit: "",
+  reason: "",
+  notes: "",
+};
+
 export default function RawMaterials({
   initialMaterials,
   initialCatalogMaterials,
   initialPurchases,
+  initialAdjustments,
   initialPaymentMethods,
   initialProjects,
   fetchError,
@@ -99,6 +120,7 @@ export default function RawMaterials({
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
+  const { viewAllBusinessUnits } = useBusinessUnitView();
   const [materials, setMaterials] = useState(
     initialMaterials.map(normalizeRawMaterial),
   );
@@ -108,9 +130,13 @@ export default function RawMaterials({
   const [purchases, setPurchases] = useState(
     initialPurchases.map(normalizeRawMaterialPurchase),
   );
+  const [adjustments, setAdjustments] = useState(
+    initialAdjustments.map(normalizeRawMaterialStockAdjustment),
+  );
   const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
   const [showMaterialForm, setShowMaterialForm] = useState(false);
   const [showPurchaseForm, setShowPurchaseForm] = useState(false);
+  const [showAdjustmentForm, setShowAdjustmentForm] = useState(false);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(
     null,
@@ -124,6 +150,7 @@ export default function RawMaterials({
   const [purchaseEditForm, setPurchaseEditForm] = useState(emptyPurchaseForm);
   const [materialForm, setMaterialForm] = useState(emptyMaterialForm);
   const [purchaseForm, setPurchaseForm] = useState(emptyPurchaseForm);
+  const [adjustmentForm, setAdjustmentForm] = useState(emptyAdjustmentForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const skipFirstStockScopeRefresh = useRef(true);
@@ -132,13 +159,23 @@ export default function RawMaterials({
     setMaterials(initialMaterials.map(normalizeRawMaterial));
     setCatalogMaterials(initialCatalogMaterials.map(normalizeRawMaterial));
     setPurchases(initialPurchases.map(normalizeRawMaterialPurchase));
+    setAdjustments(
+      initialAdjustments.map(normalizeRawMaterialStockAdjustment),
+    );
     setPaymentMethods(initialPaymentMethods);
   }, [
     initialMaterials,
     initialCatalogMaterials,
     initialPurchases,
+    initialAdjustments,
     initialPaymentMethods,
   ]);
+
+  useEffect(() => {
+    if (viewAllBusinessUnits) {
+      setShowAdjustmentForm(false);
+    }
+  }, [viewAllBusinessUnits]);
 
   useEffect(() => {
     if (!showPurchaseForm && !editingPurchaseId) {
@@ -191,23 +228,33 @@ export default function RawMaterials({
     const [
       { data: materialRows, error: materialError },
       { data: purchaseRows, error: purchaseError },
+      { data: adjustmentRows, error: adjustmentError },
       { stockMap, error: stockScopeError },
     ] = await Promise.all([
       supabase
         .from("raw_materials")
         .select(RAW_MATERIAL_SELECT)
         .order("material_name", { ascending: true }),
-      supabase
-        .from("raw_material_purchases")
-        .select(RAW_MATERIAL_PURCHASE_SELECT)
-        .order("purchase_date", { ascending: false }),
+      applyBusinessUnitScope(
+        supabase
+          .from("raw_material_purchases")
+          .select(RAW_MATERIAL_PURCHASE_SELECT),
+        buReadScope,
+      ).order("purchase_date", { ascending: false }),
+      applyBusinessUnitScope(
+        supabase
+          .from("raw_material_stock_adjustments")
+          .select(RAW_MATERIAL_STOCK_ADJUSTMENT_SELECT),
+        buReadScope,
+      ).order("created_at", { ascending: false }),
       fetchScopedRawMaterialStock(supabase, tenantId, buReadScope),
     ]);
 
-    if (materialError || purchaseError || stockScopeError) {
+    if (materialError || purchaseError || adjustmentError || stockScopeError) {
       setError(
         materialError?.message ??
           purchaseError?.message ??
+          adjustmentError?.message ??
           stockScopeError ??
           "Refresh failed.",
       );
@@ -219,12 +266,20 @@ export default function RawMaterials({
     );
     setCatalogMaterials(catalog);
     setMaterials(
-      mergeScopedStockOntoMaterials(catalog, stockMap, buReadScope.mode),
+      mergeScopedStockOntoMaterials(catalog, stockMap, buReadScope.mode, {
+        overlayAverageCost: true,
+      }),
     );
     setPurchases(
       (((purchaseRows as unknown) as RawMaterialPurchaseRecord[] | null) ?? []).map(
         (row) => normalizeRawMaterialPurchase(row),
       ),
+    );
+    setAdjustments(
+      (
+        ((adjustmentRows as unknown) as RawMaterialStockAdjustmentRecord[] | null) ??
+        []
+      ).map((row) => normalizeRawMaterialStockAdjustment(row)),
     );
     setError(null);
   }
@@ -534,6 +589,112 @@ export default function RawMaterials({
     await refreshData();
     setLoading(false);
   }
+
+  async function handleAdjustmentSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    if (viewAllBusinessUnits) {
+      setError("Switch to a specific business to record a stock adjustment.");
+      setLoading(false);
+      return;
+    }
+
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setLoading(false);
+      return;
+    }
+
+    const adjustmentType = adjustmentForm.adjustment_type;
+    if (!adjustmentType) {
+      setError("Select an adjustment type.");
+      setLoading(false);
+      return;
+    }
+
+    if (!adjustmentForm.material_id) {
+      setError("Select a raw material for this adjustment.");
+      setLoading(false);
+      return;
+    }
+
+    const quantityAbs = Number.parseFloat(adjustmentForm.quantity);
+    if (Number.isNaN(quantityAbs) || quantityAbs <= 0) {
+      setError("Quantity must be greater than zero.");
+      setLoading(false);
+      return;
+    }
+
+    let quantityDelta = quantityAbs;
+    if (adjustmentType === "write_off") {
+      quantityDelta = -quantityAbs;
+    } else if (adjustmentType === "correction") {
+      quantityDelta =
+        adjustmentForm.correction_direction === "decrease"
+          ? -quantityAbs
+          : quantityAbs;
+    }
+
+    const needsCost =
+      adjustmentType === "opening_balance" ||
+      adjustmentType === "found_stock";
+    let costPerUnit: number | null = null;
+    if (needsCost) {
+      costPerUnit = Number.parseFloat(adjustmentForm.cost_per_unit);
+      if (Number.isNaN(costPerUnit) || costPerUnit < 0) {
+        setError("Cost per unit must be zero or greater.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (!adjustmentForm.reason.trim()) {
+      setError("Reason is required.");
+      setLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/inventory/raw-material-adjustments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        material_id: adjustmentForm.material_id,
+        adjustment_type: adjustmentType,
+        quantity_delta: quantityDelta,
+        cost_per_unit: needsCost ? costPerUnit : null,
+        reason: adjustmentForm.reason.trim(),
+        notes: nullableText(adjustmentForm.notes),
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null;
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Unable to record stock adjustment.");
+      setLoading(false);
+      return;
+    }
+
+    setAdjustmentForm(emptyAdjustmentForm);
+    setShowAdjustmentForm(false);
+    await refreshData();
+    setLoading(false);
+  }
+
+  const adjustmentNeedsCost =
+    adjustmentForm.adjustment_type === "opening_balance" ||
+    adjustmentForm.adjustment_type === "found_stock";
+  const adjustmentQuantityLabel =
+    adjustmentForm.adjustment_type === "write_off"
+      ? "Quantity to remove"
+      : adjustmentForm.adjustment_type === "opening_balance" ||
+          adjustmentForm.adjustment_type === "found_stock"
+        ? "Quantity to add"
+        : "Quantity";
 
   return (
     <div className="space-y-8">
@@ -1185,6 +1346,272 @@ export default function RawMaterials({
                       deleting={deletingPurchaseId === purchase.id}
                     />
                     ) : null}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </ScrollableTable>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-[#0f2744]">
+              Record Stock Adjustment
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Opening balance and found stock update quantity and weighted
+              average cost. Corrections and write-offs change quantity only.
+            </p>
+          </div>
+          {!readOnly && !viewAllBusinessUnits ? (
+            <button
+              type="button"
+              onClick={() =>
+                setShowAdjustmentForm((current) => !current)
+              }
+              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+            >
+              {showAdjustmentForm ? "Cancel" : "Record Stock Adjustment"}
+            </button>
+          ) : null}
+        </div>
+
+        {!readOnly && viewAllBusinessUnits ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Switch to a specific business to record a stock adjustment.
+          </p>
+        ) : null}
+
+        {showAdjustmentForm && !readOnly && !viewAllBusinessUnits ? (
+          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <form
+              onSubmit={handleAdjustmentSubmit}
+              className="grid gap-4 md:grid-cols-2"
+            >
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Material
+                </label>
+                <select
+                  required
+                  value={adjustmentForm.material_id}
+                  onChange={(event) =>
+                    setAdjustmentForm((current) => ({
+                      ...current,
+                      material_id: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                >
+                  <option value="">Select material</option>
+                  {catalogMaterials.map((material) => (
+                    <option key={material.id} value={material.id}>
+                      {material.material_code} — {material.material_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Adjustment Type
+                </label>
+                <select
+                  required
+                  value={adjustmentForm.adjustment_type}
+                  onChange={(event) =>
+                    setAdjustmentForm((current) => ({
+                      ...current,
+                      adjustment_type: event.target
+                        .value as "" | RawMaterialAdjustmentType,
+                      cost_per_unit:
+                        event.target.value === "opening_balance" ||
+                        event.target.value === "found_stock"
+                          ? current.cost_per_unit
+                          : "",
+                    }))
+                  }
+                  className={inputClassName}
+                >
+                  <option value="">Select type</option>
+                  {RAW_MATERIAL_ADJUSTMENT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {RAW_MATERIAL_ADJUSTMENT_TYPE_LABELS[type]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {adjustmentForm.adjustment_type === "correction" ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Direction
+                  </label>
+                  <select
+                    required
+                    value={adjustmentForm.correction_direction}
+                    onChange={(event) =>
+                      setAdjustmentForm((current) => ({
+                        ...current,
+                        correction_direction: event.target.value as
+                          | "increase"
+                          | "decrease",
+                      }))
+                    }
+                    className={inputClassName}
+                  >
+                    <option value="increase">Increase</option>
+                    <option value="decrease">Decrease</option>
+                  </select>
+                </div>
+              ) : null}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  {adjustmentQuantityLabel}
+                </label>
+                <input
+                  type="number"
+                  min={0.0001}
+                  step="0.0001"
+                  required
+                  value={adjustmentForm.quantity}
+                  onChange={(event) =>
+                    setAdjustmentForm((current) => ({
+                      ...current,
+                      quantity: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              {adjustmentNeedsCost ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Cost per Unit
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.0001"
+                    required
+                    value={adjustmentForm.cost_per_unit}
+                    onChange={(event) =>
+                      setAdjustmentForm((current) => ({
+                        ...current,
+                        cost_per_unit: event.target.value,
+                      }))
+                    }
+                    className={inputClassName}
+                  />
+                </div>
+              ) : null}
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Reason
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={adjustmentForm.reason}
+                  onChange={(event) =>
+                    setAdjustmentForm((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                  placeholder="Why is this adjustment needed?"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={adjustmentForm.notes}
+                  onChange={(event) =>
+                    setAdjustmentForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  className={inputClassName}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? "Saving…" : "Save Adjustment"}
+                </button>
+              </div>
+            </form>
+          </section>
+        ) : null}
+
+        <FilteredListCount
+          filteredCount={adjustments.length}
+          totalCount={adjustments.length}
+          itemSingular="adjustment"
+        />
+
+        <ScrollableTable>
+          <table className={scrollableTableClassName}>
+            <thead className={scrollableTableHeadClassName}>
+              <tr>
+                <th className={scrollableTableThClassName}>Date</th>
+                <th className={scrollableTableThClassName}>Material</th>
+                <th className={scrollableTableThClassName}>Type</th>
+                <th className={scrollableTableThClassName}>Quantity</th>
+                <th className={scrollableTableThClassName}>Cost / Unit</th>
+                <th className={scrollableTableThClassName}>Reason</th>
+                <th className={scrollableTableThClassName}>Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {adjustments.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-4 py-8 text-center text-sm text-slate-500"
+                  >
+                    No stock adjustments recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                adjustments.map((adjustment, index) => (
+                  <tr
+                    key={adjustment.id}
+                    className={getStripedRowClassName(index)}
+                  >
+                    <td className="px-4 py-3">
+                      {adjustment.created_at.slice(0, 10)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {adjustment.material?.material_name ??
+                        adjustment.material_id}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatRawMaterialAdjustmentType(
+                        adjustment.adjustment_type,
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatInventoryQuantity(adjustment.quantity_delta)}{" "}
+                      {adjustment.material?.unit_of_measure ?? ""}
+                    </td>
+                    <td className="px-4 py-3">
+                      {adjustment.cost_per_unit == null
+                        ? "—"
+                        : formatInventoryMoney(adjustment.cost_per_unit)}
+                    </td>
+                    <td className="px-4 py-3">{adjustment.reason}</td>
+                    <td className="px-4 py-3">
+                      {adjustment.notes ?? "—"}
+                    </td>
                   </tr>
                 ))
               )}

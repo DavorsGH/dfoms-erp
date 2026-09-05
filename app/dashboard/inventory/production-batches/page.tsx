@@ -100,6 +100,7 @@ export default async function ProductionBatchesPage() {
     ) ?? [],
     materialStockMap,
     buScope.mode,
+    { overlayAverageCost: true },
   );
 
   const fetchError =
