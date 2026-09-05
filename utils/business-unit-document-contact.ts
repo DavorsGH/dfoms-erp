@@ -10,6 +10,7 @@ export {
   businessUnitDocumentContactFromSwitcher,
   resolveBusinessUnitDocumentContactFromUnits,
   resolveUniformBusinessUnitId,
+  resolveSwitcherLetterheadBusinessUnitId,
 } from "@/utils/business-unit-document-contact-types";
 
 /**

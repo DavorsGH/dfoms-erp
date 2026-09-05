@@ -75,3 +75,18 @@ export function resolveUniformBusinessUnitId(
 
   return normalized.every((id) => id === first) ? first : null;
 }
+
+/**
+ * Letterhead BU for aggregate/switcher-scoped prints (reports, sidebar pattern):
+ * named unit selected → that id; All Businesses or workspace default → null (tenant).
+ */
+export function resolveSwitcherLetterheadBusinessUnitId(options: {
+  viewAllBusinessUnits: boolean;
+  activeBusinessUnitId: string | null | undefined;
+}): string | null {
+  if (options.viewAllBusinessUnits) {
+    return null;
+  }
+
+  return options.activeBusinessUnitId?.trim() || null;
+}

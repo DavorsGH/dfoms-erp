@@ -7,6 +7,15 @@ import {
 } from "./finance-reports-utils";
 import { useTenantBranding } from "../tenant-branding-context";
 import WorkspaceLogo from "../workspace-logo";
+import { useBusinessUnitView } from "@/app/dashboard/business-unit-view-context";
+import {
+  resolveBusinessUnitDocumentContactFromUnits,
+  resolveSwitcherLetterheadBusinessUnitId,
+} from "@/utils/business-unit-document-contact-types";
+import {
+  resolveDocumentLogoUrl,
+  resolveInvoiceCompanyName,
+} from "../finance/client-invoices/client-invoice-display-utils";
 import { DEFAULT_COMPANY_LEGAL_NAME } from "@/utils/tenant-branding-types";
 
 export const REPORT_COMPANY_NAME = DEFAULT_COMPANY_LEGAL_NAME;
@@ -101,16 +110,53 @@ export function ReportPrintStyles() {
 export function ReportCompanyHeader({
   title,
   periodLabel,
+  stampedBusinessUnitId,
+  brandingSource = "switcher",
 }: {
   title: string;
   periodLabel: string;
+  /**
+   * Used when brandingSource is "stamp": the record's business_unit_id
+   * (null/undefined → tenant branding).
+   */
+  stampedBusinessUnitId?: string | null;
+  /**
+   * switcher (default) — active named BU, else tenant (All / workspace default).
+   * stamp — brand from stampedBusinessUnitId on the record being printed.
+   */
+  brandingSource?: "switcher" | "stamp";
 }) {
-  const { companyLegalName } = useTenantBranding();
+  const branding = useTenantBranding();
+  const { viewAllBusinessUnits, activeBusinessUnitId, units } =
+    useBusinessUnitView();
+
+  const letterheadBusinessUnitId =
+    brandingSource === "stamp"
+      ? stampedBusinessUnitId?.trim() || null
+      : resolveSwitcherLetterheadBusinessUnitId({
+          viewAllBusinessUnits,
+          activeBusinessUnitId,
+        });
+
+  const documentContact = resolveBusinessUnitDocumentContactFromUnits(
+    units,
+    letterheadBusinessUnitId,
+  );
+  const companyLegalName = resolveInvoiceCompanyName(
+    branding,
+    null,
+    documentContact,
+  );
+  const companyLogoUrl = resolveDocumentLogoUrl(branding, documentContact);
 
   return (
     <header className="mb-6 border-b-4 border-[#0f2744] pb-4">
       <div className="flex items-start gap-4">
-        <WorkspaceLogo name={companyLegalName} size="md" />
+        <WorkspaceLogo
+          workspaceLogoUrl={companyLogoUrl}
+          name={companyLegalName}
+          size="md"
+        />
         <div>
           <h3 className="text-lg font-bold text-[#0f2744]">
             {companyLegalName}

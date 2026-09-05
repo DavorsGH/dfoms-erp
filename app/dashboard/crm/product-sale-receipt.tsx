@@ -26,6 +26,8 @@ export type ProductSaleReceiptData = {
   amountReceived: number;
   paymentStatus: string;
   saleStatus: string;
+  /** Stamped income_register.business_unit_id for letterhead (null = tenant). */
+  businessUnitId: string | null;
 };
 
 export function buildProductSaleReceiptData(
@@ -49,6 +51,7 @@ export function buildProductSaleReceiptData(
     amountReceived: Number(entry.amount_received) || 0,
     paymentStatus: entry.payment_status,
     saleStatus: entry.sale_status === "voided" ? "Voided" : "Active",
+    businessUnitId: entry.business_unit_id?.trim() || null,
   };
 }
 
@@ -124,6 +127,8 @@ export function ProductSaleReceiptPanel({
         <ReportCompanyHeader
           title="Product Sale Receipt"
           periodLabel={formatReportDate(receipt.date)}
+          brandingSource="stamp"
+          stampedBusinessUnitId={receipt.businessUnitId}
         />
 
         <div className="mb-6 grid gap-2 text-sm text-slate-700 md:grid-cols-2">

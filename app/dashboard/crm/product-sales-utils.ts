@@ -29,6 +29,7 @@ export type ProductSaleEntry = {
   voided_at: string | null;
   cogs_expense_id: string | null;
   cogs_reversal_expense_id: string | null;
+  business_unit_id?: string | null;
   client?: IncomeRegisterClient | null;
   product?: IncomeRegisterProduct | null;
 };
@@ -50,6 +51,7 @@ export function normalizeProductSaleEntry(raw: ProductSaleEntry): ProductSaleEnt
     voided_at: raw.voided_at ?? null,
     cogs_expense_id: raw.cogs_expense_id ?? null,
     cogs_reversal_expense_id: raw.cogs_reversal_expense_id ?? null,
+    business_unit_id: raw.business_unit_id?.trim() || null,
     client: Array.isArray(raw.client) ? raw.client[0] ?? null : raw.client ?? null,
     product,
   };
