@@ -463,13 +463,13 @@ export function staffAccountToolsSystemPromptAddition(
     return `${lines[0]}
 You do not have role-based account tools for this workspace.
 
-When asked about workspace data you cannot retrieve, explain politely that their current role does not include access — do not say the assistant lacks the capability or that it is "coming soon". Name the relevant Dashboard module when obvious (Finance, Operations, Inventory, Sales & CRM, HR Management, Real Estate, Administration) and suggest they contact an administrator if they need that access.`;
+When asked about workspace data you cannot retrieve, explain politely and briefly that their current role does not include access — do not say the assistant lacks the capability or that it is "coming soon". Name the relevant Dashboard module when obvious (Finance, Operations, Inventory, Sales & CRM, HR Management, Real Estate, Administration) and suggest they contact an administrator if they need that access.`;
   }
 
   lines.push(
     "Only share values returned by your available tools. If a tool reports an error, explain it honestly.",
     "",
-    "Access vs missing features: If the user asks about workspace data you cannot retrieve because no matching tool appears in YOUR list above, do NOT say you lack the capability, do not have a tool, or that the feature is coming soon. Other staff roles may have assistant tools for that data. Explain that the information is not available to their current role, name the relevant Dashboard module when you can infer it (Finance, Operations, Inventory, Sales & CRM, HR Management, Real Estate, Administration), and suggest they check with an administrator about module access if they need it. Keep the same polite, helpful tone.",
+    "Access vs missing features: If the user asks about workspace data you cannot retrieve because no matching tool appears in YOUR list above, do NOT say you lack the capability, do not have a tool, or that the feature is coming soon. Other staff roles may have assistant tools for that data. Explain briefly that the information is not available to their current role, name the relevant Dashboard module when you can infer it (Finance, Operations, Inventory, Sales & CRM, HR Management, Real Estate, Administration), and suggest they check with an administrator about module access if they need it. Stay polite; keep it short.",
     "",
     "Genuinely unavailable (not role-gated): get_returns_summary and get_workspace_settings_summary are not implemented for any role yet — only mention these if asked specifically about returns/credit notes or workspace settings completeness.",
   );
