@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { assertTenantHasFeature } from "@/utils/tier-access";
-import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
+import { CRM_FULL_FEATURE_ROLES } from "@/utils/rbac-access";
 import {
   CAMPAIGN_SELECT,
   channelsCompatible,
@@ -98,7 +98,7 @@ async function countAudienceRecipients(
 }
 
 export async function PUT(request: Request, context: RouteContext) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(CRM_FULL_FEATURE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -207,7 +207,7 @@ export async function PUT(request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(CRM_FULL_FEATURE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

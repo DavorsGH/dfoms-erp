@@ -4,13 +4,20 @@ import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import {
   getActiveBusinessUnitId,
+  getCurrentUserEmployeeId,
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { fetchScopedEmployeeIds, applyEmployeeIdScope } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import {
+  HR_EMPLOYEE_SELECT,
+  filterActiveEmployees,
+  type HrEmployee,
+} from "@/app/dashboard/hr-payroll/employee-utils";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import {
   FINISHED_PRODUCT_SELECT,
@@ -42,14 +49,18 @@ export default async function NewClientQuotationPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
-    getActiveBusinessUnitId(),
-    getViewAllBusinessUnits(),
-  ]);
+  const [activeBusinessUnitId, viewAllBusinessUnits, defaultSalesRepId] =
+    await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+      getCurrentUserEmployeeId(),
+    ]);
   const buScope = resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
+  const { employeeIds, error: employeeScopeError } =
+    await fetchScopedEmployeeIds(supabase, tenantId, buScope);
 
   const [
     { data: customers, error: customersError },
@@ -57,6 +68,7 @@ export default async function NewClientQuotationPage() {
     { data: paymentAccounts, error: paymentAccountsError },
     { data: opportunities, error: opportunitiesError },
     { data: products, error: productsError },
+    { data: employees, error: employeesError },
     nextQuotationNumberResult,
     authorizedSignersResult,
     billingSettings,
@@ -86,6 +98,10 @@ export default async function NewClientQuotationPage() {
       .eq("tenant_id", tenantId)
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      employeeIds,
+    ).order("full_name"),
     peekNextQuotationNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
     getCurrentTenantBillingSettingsHeader(),
@@ -98,6 +114,8 @@ export default async function NewClientQuotationPage() {
     paymentAccountsError?.message ??
     opportunitiesError?.message ??
     productsError?.message ??
+    employeesError?.message ??
+    employeeScopeError ??
     nextQuotationNumberResult.error ??
     authorizedSignersResult.error ??
     null;
@@ -128,11 +146,17 @@ export default async function NewClientQuotationPage() {
         initialSites={(sites as ClientQuotationSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
+        initialEmployees={filterActiveEmployees(
+          (employees as HrEmployee[] | null) ?? [],
+        )}
         initialProducts={
           ((products as Omit<FinishedProductRecord, "manufacturing_date" | "expiration_date">[] | null) ??
             []).map((row) => normalizeFinishedProduct(row))
         }
-        initialForm={emptyQuotationForm()}
+        initialForm={{
+          ...emptyQuotationForm(),
+          assigned_sales_rep_id: defaultSalesRepId ?? "",
+        }}
         fetchError={fetchError}
       />
     </CrmShell>

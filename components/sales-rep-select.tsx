@@ -10,6 +10,7 @@ type SalesRepSelectProps = {
   required?: boolean;
   allowEmpty?: boolean;
   emptyLabel?: string;
+  disabled?: boolean;
   className?: string;
   hint?: string;
 };
@@ -23,6 +24,7 @@ export default function SalesRepSelect({
   required = false,
   allowEmpty = true,
   emptyLabel = "Unassigned",
+  disabled = false,
   className,
   hint,
 }: SalesRepSelectProps) {
@@ -58,6 +60,7 @@ export default function SalesRepSelect({
         value={resolvedValue}
         onChange={(event) => onChange(event.target.value)}
         required={required}
+        disabled={disabled}
         className={
           className ??
           "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]"

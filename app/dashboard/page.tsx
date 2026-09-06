@@ -188,20 +188,24 @@ export default async function DashboardPage() {
   if (role === "sales_rep") {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
-    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
-      getActiveBusinessUnitId(),
-      getViewAllBusinessUnits(),
-    ]);
+    const [employeeId, activeBusinessUnitId, viewAllBusinessUnits] =
+      await Promise.all([
+        getCurrentUserEmployeeId(),
+        getActiveBusinessUnitId(),
+        getViewAllBusinessUnits(),
+      ]);
     const buScope = resolveBusinessUnitReadScope({
       viewAllBusinessUnits,
       activeBusinessUnitId,
     });
-    const { summary, fetchError } = await buildSalesRepDashboardSummary(
-      supabase,
-      buScope,
-    );
 
-    if (!summary) {
+    if (!employeeId) {
+      const emptySaleTotals = {
+        todaysTotal: 0,
+        todaysCount: 0,
+        monthTotal: 0,
+        monthCount: 0,
+      };
       return (
         <SalesRepDashboard
           summary={{
@@ -214,10 +218,45 @@ export default async function DashboardPage() {
               month: "long",
               year: "numeric",
             }),
-            todaysSalesTotal: 0,
-            todaysSaleCount: 0,
-            monthSalesTotal: 0,
-            monthSaleCount: 0,
+            pos: emptySaleTotals,
+            productSales: emptySaleTotals,
+            openQuotationCount: 0,
+            draftQuotationCount: 0,
+          }}
+          fetchError="Your user account is not linked to an employee record."
+        />
+      );
+    }
+
+    const { summary, fetchError } = await buildSalesRepDashboardSummary(
+      supabase,
+      employeeId,
+      buScope,
+    );
+
+    if (!summary) {
+      const emptyTotals = {
+        todaysTotal: 0,
+        todaysCount: 0,
+        monthTotal: 0,
+        monthCount: 0,
+      };
+      return (
+        <SalesRepDashboard
+          summary={{
+            periodLabel: new Date().toLocaleDateString("en-GB", {
+              month: "long",
+              year: "numeric",
+            }),
+            todayLabel: new Date().toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            }),
+            pos: emptyTotals,
+            productSales: emptyTotals,
+            openQuotationCount: 0,
+            draftQuotationCount: 0,
           }}
           fetchError={fetchError}
         />

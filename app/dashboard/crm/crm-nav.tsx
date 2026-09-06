@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { AppRole } from "@/app/dashboard/user-account-types";
+import { isCrmNavItemVisibleForRole } from "@/utils/rbac-access";
 
 const navItems = [
   { label: "Customer List", href: "/dashboard/crm/customers" },
@@ -31,13 +33,18 @@ const navItems = [
 
 type CrmNavProps = {
   showProductCatalog: boolean;
+  userRole: AppRole | null;
 };
 
-export default function CrmNav({ showProductCatalog }: CrmNavProps) {
+export default function CrmNav({ showProductCatalog, userRole }: CrmNavProps) {
   const pathname = usePathname();
-  const visibleItems = navItems.filter(
-    (item) => !("davorsOnly" in item && item.davorsOnly) || showProductCatalog,
-  );
+  const visibleItems = navItems.filter((item) => {
+    if ("davorsOnly" in item && item.davorsOnly && !showProductCatalog) {
+      return false;
+    }
+
+    return isCrmNavItemVisibleForRole(item.href, userRole);
+  });
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
@@ -45,7 +52,9 @@ export default function CrmNav({ showProductCatalog }: CrmNavProps) {
         {visibleItems.map((item) => {
           const active = pathname.startsWith("/dashboard/crm/email-promotions")
             ? item.href.startsWith("/dashboard/crm/email-promotions")
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            : pathname.startsWith("/dashboard/sales-crm/quotations")
+              ? item.href.startsWith("/dashboard/sales-crm/quotations")
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           return (
             <Link

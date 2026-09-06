@@ -6,6 +6,7 @@ import type { AppRole } from "@/app/dashboard/user-account-types";
 import { getCurrentUserRole } from "@/utils/dashboard-auth";
 import {
   CRM_CUSTOMER_LIST_ROLES,
+  CRM_FULL_FEATURE_ROLES,
   CRM_SECTION_ROLES,
   isCrmCustomerListPath,
   roleIn,
@@ -42,4 +43,9 @@ export async function guardCrmSectionAccess(): Promise<AppRole> {
     : CRM_SECTION_ROLES;
 
   return guardSectionAccess(allowedRoles);
+}
+
+/** Full CRM admin tabs — blocks sales_rep scoped subset (defense in depth). */
+export async function guardCrmFullFeatureAccess(): Promise<AppRole> {
+  return guardSectionAccess(CRM_FULL_FEATURE_ROLES);
 }

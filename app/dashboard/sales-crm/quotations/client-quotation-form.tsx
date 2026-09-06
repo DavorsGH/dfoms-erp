@@ -46,6 +46,8 @@ import {
   buildClientQuotationPreviewDisplay,
 } from "./client-quotation-display-utils";
 import ClientQuotationPreviewDialog from "./client-quotation-preview-dialog";
+import SalesRepSelect from "@/components/sales-rep-select";
+import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
 
 type ClientQuotationFormState = Omit<
   ClientQuotationWriteBody,
@@ -76,6 +78,7 @@ type ClientQuotationFormProps = {
   initialSites: ClientQuotationSiteOption[];
   initialPaymentAccounts: PaymentAccountRow[];
   initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
+  initialEmployees: HrEmployee[];
   initialProducts?: FinishedProductRecord[];
   initialForm: ClientQuotationFormState;
   fetchError?: string | null;
@@ -124,6 +127,7 @@ export default function ClientQuotationForm({
   initialSites,
   initialPaymentAccounts,
   initialAuthorizedSigners,
+  initialEmployees,
   initialProducts = [],
   initialForm,
   fetchError = null,
@@ -421,6 +425,7 @@ export default function ClientQuotationForm({
       payment_terms: normalizeClientQuotationPaymentTerms(form.payment_terms),
       authorized_by_name: authorizedBy.authorized_by_name,
       authorized_by_title: authorizedBy.authorized_by_title,
+      assigned_sales_rep_id: form.assigned_sales_rep_id?.trim() || null,
       line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => ({
         ...line,
         product_id: line.product_id?.trim() ? line.product_id.trim() : null,
@@ -532,6 +537,21 @@ export default function ClientQuotationForm({
               ))}
             </select>
           </div>
+          <SalesRepSelect
+            id="quotation-assigned-rep"
+            label="Assigned To"
+            employees={initialEmployees}
+            value={form.assigned_sales_rep_id ?? ""}
+            onChange={(employeeId) =>
+              setForm((current) => ({
+                ...current,
+                assigned_sales_rep_id: employeeId,
+              }))
+            }
+            disabled={isConverted}
+            className={inputClassName}
+            hint="Defaults to your employee record when linked. Change to assign another rep."
+          />
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Bill To Name *

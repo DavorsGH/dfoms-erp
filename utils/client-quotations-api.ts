@@ -101,6 +101,7 @@ function buildHeaderPayload(
     ),
     authorized_by_name: nullableText(body.authorized_by_name ?? null),
     authorized_by_title: nullableText(body.authorized_by_title ?? null),
+    assigned_sales_rep_id: nullableText(body.assigned_sales_rep_id ?? null),
     updated_at: new Date().toISOString(),
   };
 }

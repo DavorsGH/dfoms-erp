@@ -18,6 +18,9 @@ export type PosReceiptData = {
   amountReceived: number;
   cartTotal: number;
   lines: PosCartLine[];
+  /** Cash-only: physical tender and change (display only, not ledger). */
+  cashTendered?: number | null;
+  changeDue?: number | null;
   /** Queued offline cash sale — provisional token, not a tax invoice. */
   pendingSync?: boolean;
 };
@@ -188,6 +191,24 @@ export function PosReceiptPanel({
               {formatGHS(receipt.amountReceived)}
             </span>
           </div>
+          {receipt.paymentMethod === "Cash" &&
+          receipt.cashTendered != null &&
+          receipt.cashTendered > 0 ? (
+            <>
+              <div className="flex justify-between">
+                <span className="font-medium text-slate-700">Cash tendered</span>
+                <span className="font-semibold text-[#0f2744]">
+                  {formatGHS(receipt.cashTendered)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium text-slate-700">Change due</span>
+                <span className="font-semibold text-emerald-800">
+                  {formatGHS(receipt.changeDue ?? 0)}
+                </span>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>

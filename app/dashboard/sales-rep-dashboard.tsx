@@ -34,16 +34,28 @@ function SummaryCard({
   );
 }
 
+function salePeriodSubtitle(
+  totals: SalesRepDashboardSummary["pos"],
+  periodLabel: string,
+): string {
+  return `${totals.todaysCount} today · ${totals.monthCount} in ${periodLabel} · ${formatGHS(totals.monthTotal)} this month`;
+}
+
 export default function SalesRepDashboard({
   summary,
   fetchError,
 }: SalesRepDashboardProps) {
+  const quotationSubtitle =
+    summary.openQuotationCount > 0 || summary.draftQuotationCount > 0
+      ? `${summary.openQuotationCount} sent awaiting response · ${summary.draftQuotationCount} draft`
+      : "Create or manage customer quotations";
+
   return (
     <div className="min-w-0 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-[#0f2744]">Dashboard</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Product sales and POS summary for {summary.periodLabel}.
+          Your POS sales, product sales, and quotations for {summary.periodLabel}.
         </p>
       </div>
 
@@ -53,18 +65,28 @@ export default function SalesRepDashboard({
         </p>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <SummaryCard
-          title="Today's Product Sales / POS"
-          subtitle={`${summary.todaysSaleCount} sale${summary.todaysSaleCount === 1 ? "" : "s"} on ${summary.todayLabel}`}
-          value={formatGHS(summary.todaysSalesTotal)}
+          title="POS"
+          subtitle={salePeriodSubtitle(summary.pos, summary.periodLabel)}
+          value={formatGHS(summary.pos.todaysTotal)}
           href="/dashboard/pos"
         />
         <SummaryCard
-          title="This Month's Product Sales / POS"
-          subtitle={`${summary.monthSaleCount} sale${summary.monthSaleCount === 1 ? "" : "s"} in ${summary.periodLabel}`}
-          value={formatGHS(summary.monthSalesTotal)}
-          href="/dashboard/pos"
+          title="Product Sales"
+          subtitle={salePeriodSubtitle(summary.productSales, summary.periodLabel)}
+          value={formatGHS(summary.productSales.todaysTotal)}
+          href="/dashboard/crm/product-sales"
+        />
+        <SummaryCard
+          title="Quotations"
+          subtitle={quotationSubtitle}
+          value={
+            summary.openQuotationCount > 0
+              ? String(summary.openQuotationCount)
+              : "Create"
+          }
+          href="/dashboard/sales-crm/quotations"
         />
       </div>
     </div>

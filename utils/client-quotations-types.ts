@@ -72,10 +72,10 @@ export const DEFAULT_CLIENT_QUOTATION_PAYMENT_TERMS: ClientQuotationPaymentTerms
   "Net 30";
 
 export const CLIENT_QUOTATION_LIST_SELECT =
-  "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, contract_id, converted_invoice_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
+  "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, contract_id, converted_invoice_id, assigned_sales_rep_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_QUOTATION_HEADER_SELECT =
-  "id, tenant_id, client_id, opportunity_id, business_unit_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, contract_id, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, converted_invoice_id, accepted_at, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
+  "id, tenant_id, client_id, opportunity_id, business_unit_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, contract_id, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, assigned_sales_rep_id, converted_invoice_id, accepted_at, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_QUOTATION_LINE_ITEM_SELECT =
   "id, quotation_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, product_id, quantity, unit_price, sort_order" as const;
@@ -116,6 +116,7 @@ export type ClientQuotationListRow = {
   status: ClientQuotationStatus;
   contract_id: string | null;
   converted_invoice_id: string | null;
+  assigned_sales_rep_id: string | null;
   created_at: string;
   client?: ClientQuotationCustomer | ClientQuotationCustomer[] | null;
   converted_invoice?: ClientQuotationConvertedInvoice | ClientQuotationConvertedInvoice[] | null;
@@ -192,6 +193,7 @@ export type ClientQuotationHeaderRow = {
   payment_terms: string | null;
   authorized_by_name: string | null;
   authorized_by_title: string | null;
+  assigned_sales_rep_id: string | null;
   contract_id: string | null;
   converted_invoice_id: string | null;
   accepted_at: string | null;
@@ -245,6 +247,7 @@ export type ClientQuotationWriteBody = {
   payment_terms?: string | null;
   authorized_by_name?: string | null;
   authorized_by_title?: string | null;
+  assigned_sales_rep_id?: string | null;
   line_items: ClientQuotationLineItemInput[];
   payment_account_ids: string[];
 };
@@ -845,6 +848,7 @@ export function emptyQuotationForm() {
     internal_notes: "",
     payment_terms: DEFAULT_CLIENT_QUOTATION_PAYMENT_TERMS,
     payment_account_ids: [] as string[],
+    assigned_sales_rep_id: "",
     line_items: [emptyQuotationLineItem(0)],
   };
 }
@@ -889,6 +893,7 @@ export function clientQuotationToFormState(
     internal_notes: quotation.internal_notes ?? "",
     payment_terms: normalizeClientQuotationPaymentTerms(quotation.payment_terms),
     payment_account_ids: paymentAccountIds,
+    assigned_sales_rep_id: quotation.assigned_sales_rep_id ?? "",
     line_items: [...lineItems]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((line, index) => ({

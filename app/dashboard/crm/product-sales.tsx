@@ -49,6 +49,8 @@ import {
   PRODUCT_SALES_SELECT,
   type ProductSaleEntry,
 } from "./product-sales-utils";
+import SalesRepSelect from "@/components/sales-rep-select";
+import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import ProductSalesBulkImport from "./product-sales-bulk-import";
@@ -68,6 +70,8 @@ type ProductSalesProps = {
   initialClients: ClientEntry[];
   initialFinishedProducts: FinishedProductRecord[];
   initialPaymentMethods: string[];
+  initialEmployees: HrEmployee[];
+  defaultSalesRepId?: string;
   fetchError: string | null;
   /** Create-only stamp; null = All Businesses. */
   activeBusinessUnitId?: string | null;
@@ -95,6 +99,8 @@ export default function ProductSales({
   initialClients,
   initialFinishedProducts,
   initialPaymentMethods,
+  initialEmployees,
+  defaultSalesRepId = "",
   fetchError,
   activeBusinessUnitId = null,
   tenantId = null,
@@ -120,6 +126,7 @@ export default function ProductSales({
   const [showForm, setShowForm] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
   const [loading, setLoading] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
@@ -496,6 +503,7 @@ export default function ProductSales({
         p_due_date: outstanding > 0 ? form.due_date : form.due_date || form.date,
         p_description: null,
         p_notes: form.notes || null,
+        p_sales_rep_id: salesRepId.trim() || null,
         p_business_unit_id: stampBusinessUnit.businessUnitId,
       },
     );
@@ -834,6 +842,13 @@ export default function ProductSales({
                   </p>
                 ) : null}
               </div>
+              <SalesRepSelect
+                employees={initialEmployees}
+                value={salesRepId}
+                onChange={setSalesRepId}
+                className={inputClassName}
+                hint="Defaults to your employee record when linked. Change to assign another rep."
+              />
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Notes

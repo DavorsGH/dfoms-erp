@@ -2,13 +2,20 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
+  getCurrentUserEmployeeId,
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { fetchScopedEmployeeIds, applyEmployeeIdScope } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import {
+  HR_EMPLOYEE_SELECT,
+  filterActiveEmployees,
+  type HrEmployee,
+} from "@/app/dashboard/hr-payroll/employee-utils";
 import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
@@ -30,11 +37,12 @@ import {
 export default async function ProductSalesPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [activeBusinessUnitId, viewAllBusinessUnits, tenantId] =
+  const [activeBusinessUnitId, viewAllBusinessUnits, tenantId, defaultSalesRepId] =
     await Promise.all([
       getActiveBusinessUnitId(),
       getViewAllBusinessUnits(),
       getCurrentUserTenantId(),
+      getCurrentUserEmployeeId(),
     ]);
   const buScope = resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
@@ -45,11 +53,15 @@ export default async function ProductSalesPage() {
     throw new Error("Unable to resolve workspace session for Product Sales.");
   }
 
+  const { employeeIds, error: employeeScopeError } =
+    await fetchScopedEmployeeIds(supabase, tenantId, buScope);
+
   const [
     { data, error },
     { data: clients, error: clientsError },
     { data: finishedProducts, error: finishedProductsError },
     { data: paymentMethods, error: paymentMethodsError },
+    { data: employees, error: employeesError },
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase
@@ -65,6 +77,10 @@ export default async function ProductSalesPage() {
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      employeeIds,
+    ).order("full_name"),
   ]);
 
   const { stockMap, error: stockScopeError } =
@@ -83,6 +99,8 @@ export default async function ProductSalesPage() {
     clientsError?.message ??
     finishedProductsError?.message ??
     paymentMethodsError?.message ??
+    employeesError?.message ??
+    employeeScopeError ??
     stockScopeError ??
     null;
 
@@ -101,6 +119,10 @@ export default async function ProductSalesPage() {
             (row) => row.name,
           )
         }
+        initialEmployees={filterActiveEmployees(
+          (employees as HrEmployee[] | null) ?? [],
+        )}
+        defaultSalesRepId={defaultSalesRepId ?? ""}
         fetchError={fetchError}
         activeBusinessUnitId={activeBusinessUnitId}
         tenantId={tenantId}

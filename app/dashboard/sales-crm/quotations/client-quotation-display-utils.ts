@@ -291,6 +291,7 @@ export function buildClientQuotationPreviewDisplay(input: {
     payment_terms: input.form.payment_terms ?? null,
     authorized_by_name: input.authorizedBy.authorized_by_name,
     authorized_by_title: input.authorizedBy.authorized_by_title,
+    assigned_sales_rep_id: input.form.assigned_sales_rep_id?.trim() || null,
     contract_id: null,
     converted_invoice_id: null,
     accepted_at: null,

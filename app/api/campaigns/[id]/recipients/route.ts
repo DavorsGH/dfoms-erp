@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { assertTenantHasFeature } from "@/utils/tier-access";
-import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
+import { CRM_FULL_FEATURE_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 
 type RouteContext = {
@@ -10,7 +10,7 @@ type RouteContext = {
 };
 
 export async function GET(_request: Request, context: RouteContext) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(CRM_FULL_FEATURE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

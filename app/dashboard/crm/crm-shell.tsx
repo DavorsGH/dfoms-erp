@@ -1,4 +1,5 @@
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import type { AppRole } from "@/app/dashboard/user-account-types";
 import { isDavorsPlatformTenant } from "@/utils/tenant-signup";
 import CrmNav from "./crm-nav";
 
@@ -13,7 +14,11 @@ export default async function CrmShell({
   sectionTitle,
   customerListOnly = false,
 }: CrmShellProps) {
-  const tenantId = await getCurrentUserTenantId();
+  const [tenantId, role] = await Promise.all([
+    getCurrentUserTenantId(),
+    getCurrentUserRole(),
+  ]);
+  const userRole = (role as AppRole | null) ?? null;
 
   if (customerListOnly) {
     return (
@@ -27,7 +32,10 @@ export default async function CrmShell({
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-[#0f2744]">Sales & CRM</h1>
-      <CrmNav showProductCatalog={isDavorsPlatformTenant(tenantId)} />
+      <CrmNav
+        showProductCatalog={isDavorsPlatformTenant(tenantId)}
+        userRole={userRole}
+      />
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">{sectionTitle}</h2>
       {children}
     </div>

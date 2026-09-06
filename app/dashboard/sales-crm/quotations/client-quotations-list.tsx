@@ -25,9 +25,11 @@ import {
   type ClientQuotationListRow,
 } from "@/utils/client-quotations-types";
 import type { ActiveServiceContractSummary } from "@/utils/service-contracts-api";
+import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
 
 type ClientQuotationsListProps = {
   initialQuotations: ClientQuotationListRow[];
+  initialEmployees: HrEmployee[];
   fetchError: string | null;
   activeContractByClientId?: Record<string, ActiveServiceContractSummary>;
 };
@@ -61,6 +63,18 @@ const contractTraceabilityBadgeClassName =
 
 const dangerButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+function employeeLabel(
+  employeeId: string | null | undefined,
+  employees: HrEmployee[],
+): string {
+  const id = employeeId?.trim();
+  if (!id) {
+    return "—";
+  }
+  const match = employees.find((entry) => entry.employee_id === id);
+  return match ? `${match.staff_id} — ${match.full_name}` : id;
+}
 
 function getQuotationStatusActions(
   quotation: ClientQuotationListRow,
@@ -118,6 +132,7 @@ function getQuotationStatusActions(
 
 export default function ClientQuotationsList({
   initialQuotations,
+  initialEmployees,
   fetchError,
   activeContractByClientId = {},
 }: ClientQuotationsListProps) {
@@ -284,6 +299,7 @@ export default function ClientQuotationsList({
                 <th className={scrollableTableThClassName}>Document Type</th>
                 <th className={scrollableTableThClassName}>Quotation Type</th>
                 <th className={scrollableTableThClassName}>Customer</th>
+                <th className={scrollableTableThClassName}>Assigned To</th>
                 <th className={scrollableTableThClassName}>Issue Date</th>
                 <th className={scrollableTableThClassName}>Valid Until</th>
                 <th className={scrollableTableThClassName}>Total Due</th>
@@ -295,7 +311,7 @@ export default function ClientQuotationsList({
             <tbody className="divide-y divide-slate-200">
               {quotations.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-sm text-slate-500">
                     No quotations yet.
                   </td>
                 </tr>
@@ -325,6 +341,12 @@ export default function ClientQuotationsList({
                         {formatQuotationType(quotation.quotation_type)}
                       </td>
                       <td className="px-4 py-3">{clientName ?? quotation.client_id}</td>
+                      <td className="px-4 py-3">
+                        {employeeLabel(
+                          quotation.assigned_sales_rep_id,
+                          initialEmployees,
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         {formatInvoiceDate(quotation.issue_date)}
                       </td>

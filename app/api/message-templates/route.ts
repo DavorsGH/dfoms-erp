@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { assertTenantHasFeature } from "@/utils/tier-access";
-import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
+import { CRM_FULL_FEATURE_ROLES } from "@/utils/rbac-access";
 import {
   MESSAGE_TEMPLATE_SELECT,
   normalizeMessageTemplateRow,
@@ -29,7 +29,7 @@ function rejectClientTenantId(body: unknown): NextResponse | null {
 }
 
 export async function GET(request: Request) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(CRM_FULL_FEATURE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(CRM_FULL_FEATURE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

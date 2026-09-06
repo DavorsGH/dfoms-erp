@@ -65,12 +65,19 @@ export const INVENTORY_EDIT_ROLES: readonly AppRole[] = [
   "director",
 ];
 
-export const CRM_SECTION_ROLES: readonly AppRole[] = [
+/** Full Sales & CRM tabs (admin/manager). Excludes sales_rep scoped subset. */
+export const CRM_FULL_FEATURE_ROLES: readonly AppRole[] = [
   "super_admin",
   "finance",
   "hr",
   "director",
   "operations_manager",
+];
+
+/** Roles that may enter Sales & CRM (full or sales_rep scoped subset). */
+export const CRM_SECTION_ROLES: readonly AppRole[] = [
+  ...CRM_FULL_FEATURE_ROLES,
+  "sales_rep",
 ];
 
 /** Customer List only — supervisors reach /dashboard/crm/customers, not full CRM. */
@@ -82,7 +89,22 @@ export const CRM_CUSTOMER_LIST_ROLES: readonly AppRole[] = [
 /** Create/edit client quotations (Sales & CRM → Quotations). */
 export const CRM_QUOTATIONS_EDIT_ROLES: readonly AppRole[] = [
   ...CRM_SECTION_ROLES,
-  "sales_rep",
+];
+
+/** CRM nav tabs visible to sales_rep (subset of Sales & CRM). */
+export const CRM_SALES_REP_NAV_HREFS: readonly string[] = [
+  "/dashboard/crm/customers",
+  "/dashboard/sales-crm/quotations",
+  "/dashboard/crm/product-sales",
+  "/dashboard/pos",
+  "/dashboard/crm/sales",
+];
+
+/** /dashboard/crm/* paths sales_rep may open (layout + defense in depth). */
+export const CRM_SALES_REP_ALLOWED_PATH_PREFIXES: readonly string[] = [
+  "/dashboard/crm/customers",
+  "/dashboard/crm/product-sales",
+  "/dashboard/crm/sales",
 ];
 
 export const POS_SECTION_ROLES: readonly AppRole[] = [
@@ -135,7 +157,7 @@ export const REPORT_CATEGORY_ROLES: Record<string, readonly AppRole[]> = {
   "hr-payroll": ["super_admin", "finance", "hr", "director"],
   operations: ["super_admin", "operations_manager", "director", "supervisor"],
   inventory: ["super_admin", "operations_manager", "director", "finance"],
-  sales: CRM_SECTION_ROLES,
+  sales: CRM_FULL_FEATURE_ROLES,
   "client-facing": ["super_admin"],
   incidents: ["super_admin", "operations_manager", "director", "supervisor"],
   /** Gated by `isDavorsPlatformRealEstateStaff()` — not a flat global role list. */
@@ -210,6 +232,37 @@ export function canAccessInventorySection(role: AppRole | null): boolean {
 
 export function canAccessCrmSection(role: AppRole | null): boolean {
   return roleIn(role, CRM_SECTION_ROLES);
+}
+
+export function isCrmSalesRepScopedRole(role: AppRole | null): boolean {
+  return role === "sales_rep";
+}
+
+export function isCrmPathAllowedForSalesRep(pathname: string): boolean {
+  if (pathname === "/dashboard/crm") {
+    return true;
+  }
+
+  return CRM_SALES_REP_ALLOWED_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+export function isCrmNavItemVisibleForRole(
+  href: string,
+  role: AppRole | null,
+): boolean {
+  if (!isCrmSalesRepScopedRole(role)) {
+    return true;
+  }
+
+  if (href.startsWith("/dashboard/crm/email-promotions")) {
+    return false;
+  }
+
+  return CRM_SALES_REP_NAV_HREFS.some(
+    (allowed) => href === allowed || href.startsWith(`${allowed}/`),
+  );
 }
 
 export function isCrmCustomerListPath(pathname: string): boolean {
@@ -301,7 +354,12 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
   }
 
   if (canAccessCrmSection(role)) {
-    items.push({ label: "Sales & CRM", href: "/dashboard/crm" });
+    items.push({
+      label: "Sales & CRM",
+      href: isCrmSalesRepScopedRole(role)
+        ? "/dashboard/crm/customers"
+        : "/dashboard/crm",
+    });
   }
 
   if (canAccessInventorySection(role)) {

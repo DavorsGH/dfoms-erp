@@ -54,12 +54,25 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
-function paymentMethodFromInvoice(invoiceNo: string | null | undefined): string {
+export function productSaleChannelFromInvoice(
+  invoiceNo: string | null | undefined,
+): "pos" | "psi" | "other" {
   const trimmed = invoiceNo?.trim() ?? "";
   if (/^POS/i.test(trimmed)) {
-    return "POS";
+    return "pos";
   }
   if (/^PSI/i.test(trimmed)) {
+    return "psi";
+  }
+  return "other";
+}
+
+function paymentMethodFromInvoice(invoiceNo: string | null | undefined): string {
+  const channel = productSaleChannelFromInvoice(invoiceNo);
+  if (channel === "pos") {
+    return "POS";
+  }
+  if (channel === "psi") {
     return "Product Sale";
   }
   return "—";

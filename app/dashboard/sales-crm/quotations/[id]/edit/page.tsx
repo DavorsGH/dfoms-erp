@@ -3,7 +3,18 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clients-utils";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { fetchScopedEmployeeIds, applyEmployeeIdScope } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  HR_EMPLOYEE_SELECT,
+  filterActiveEmployees,
+  type HrEmployee,
+} from "@/app/dashboard/hr-payroll/employee-utils";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import {
   FINISHED_PRODUCT_SELECT,
@@ -43,6 +54,16 @@ export default async function EditClientQuotationPage({
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const { employeeIds, error: employeeScopeError } =
+    await fetchScopedEmployeeIds(supabase, tenantId, buScope);
 
   const [
     detail,
@@ -51,6 +72,7 @@ export default async function EditClientQuotationPage({
     { data: paymentAccounts, error: paymentAccountsError },
     { data: opportunities, error: opportunitiesError },
     { data: products, error: productsError },
+    { data: employees, error: employeesError },
     authorizedSignersResult,
     billingSettings,
     graTin,
@@ -78,6 +100,10 @@ export default async function EditClientQuotationPage({
       .eq("tenant_id", tenantId)
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      employeeIds,
+    ).order("full_name"),
     loadAuthorizedSignerOptions(supabase, tenantId),
     getCurrentTenantBillingSettingsHeader(),
     getCurrentTenantGraTin(),
@@ -98,6 +124,8 @@ export default async function EditClientQuotationPage({
     paymentAccountsError?.message ??
     opportunitiesError?.message ??
     productsError?.message ??
+    employeesError?.message ??
+    employeeScopeError ??
     authorizedSignersResult.error ??
     null;
 
@@ -138,6 +166,9 @@ export default async function EditClientQuotationPage({
         initialSites={(sites as ClientQuotationSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
+        initialEmployees={filterActiveEmployees(
+          (employees as HrEmployee[] | null) ?? [],
+        )}
         initialProducts={
           ((products as Omit<FinishedProductRecord, "manufacturing_date" | "expiration_date">[] | null) ??
             []).map((row) => normalizeFinishedProduct(row))

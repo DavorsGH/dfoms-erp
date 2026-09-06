@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { assertTenantHasFeature } from "@/utils/tier-access";
 import { defaultChannelFromTemplate } from "@/utils/transactional-notification-types";
-import { CRM_SECTION_ROLES } from "@/utils/rbac-access";
+import { CRM_FULL_FEATURE_ROLES } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 import {
   mergeRulesWithDefaults,
@@ -27,7 +27,7 @@ function rejectClientTenantId(body: unknown): NextResponse | null {
 }
 
 export async function GET() {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(CRM_FULL_FEATURE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }
@@ -57,7 +57,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const auth = await requireTenantRoleIn(CRM_SECTION_ROLES);
+  const auth = await requireTenantRoleIn(CRM_FULL_FEATURE_ROLES);
   if (!auth.ok) {
     return auth.response;
   }

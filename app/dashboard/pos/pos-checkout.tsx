@@ -53,6 +53,7 @@ import {
   lineSubtotal,
   resolvePosCustomerSelection,
   isPosCheckoutLineFailureMessage,
+  roundMoney,
   runPosCheckout,
   type PosCartLine,
   type PosCheckoutRunSummary,
@@ -85,6 +86,12 @@ import {
   applyEmployeeIdScope,
   fetchScopedEmployeeIds,
 } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
+import {
+  createPosCustomerDisplayBroadcaster,
+  getOrCreatePosCustomerDisplaySessionId,
+  openPosCustomerDisplayWindow,
+  posCartLinesToDisplayLines,
+} from "@/lib/pos-customer-display-channel";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -178,6 +185,7 @@ export default function PosCheckout({
   const [customerName, setCustomerName] = useState("");
   const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
   const [paymentMethod, setPaymentMethod] = useState<string>("");
+  const [cashTendered, setCashTendered] = useState("");
   const [dueDate, setDueDate] = useState(todayIsoDate());
   const [notes, setNotes] = useState(initialNotes);
   const [payerEmail, setPayerEmail] = useState("");
@@ -211,6 +219,14 @@ export default function PosCheckout({
   const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
   const [openArBalance, setOpenArBalance] = useState<number | null>(null);
   const skipFirstEmployeeScopeRefresh = useRef(true);
+  const customerDisplaySessionIdRef = useRef("");
+  const customerDisplayBroadcasterRef = useRef<ReturnType<
+    typeof createPosCustomerDisplayBroadcaster
+  > | null>(null);
+
+  if (!customerDisplaySessionIdRef.current) {
+    customerDisplaySessionIdRef.current = getOrCreatePosCustomerDisplaySessionId();
+  }
 
   void initialPaymentMethods;
 
@@ -314,7 +330,94 @@ export default function PosCheckout({
     [cartLines, promoDiscount, loyaltyDiscount],
   );
   const isMobileMoney = paymentMethod === POS_MOMO_PAYMENT_METHOD;
+  const isCash = paymentMethod === "Cash";
+  const parsedCashTendered = useMemo(() => {
+    const trimmed = cashTendered.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const value = Number.parseFloat(trimmed);
+    if (Number.isNaN(value) || value < 0) {
+      return null;
+    }
+    return roundMoney(value);
+  }, [cashTendered]);
+  const changeDue = useMemo(() => {
+    if (!isCash || parsedCashTendered == null) {
+      return null;
+    }
+    return roundMoney(Math.max(0, parsedCashTendered - payableTotal));
+  }, [isCash, parsedCashTendered, payableTotal]);
+  const cashTenderBlocked =
+    isCash &&
+    (parsedCashTendered == null || parsedCashTendered < payableTotal);
   const busy = loading || momoWaiting;
+
+  const customerDisplayLabel = useMemo(() => {
+    if (clientId) {
+      const client = initialClients.find((entry) => entry.client_id === clientId);
+      return client?.client_name?.trim() || null;
+    }
+
+    return customerName.trim() || null;
+  }, [clientId, customerName, initialClients]);
+
+  useEffect(() => {
+    if (!tenantId?.trim()) {
+      return;
+    }
+
+    customerDisplayBroadcasterRef.current?.close();
+    customerDisplayBroadcasterRef.current = createPosCustomerDisplayBroadcaster(
+      tenantId,
+      activeBusinessUnitId,
+      customerDisplaySessionIdRef.current,
+    );
+
+    return () => {
+      customerDisplayBroadcasterRef.current?.close();
+      customerDisplayBroadcasterRef.current = null;
+    };
+  }, [tenantId, activeBusinessUnitId]);
+
+  useEffect(() => {
+    customerDisplayBroadcasterRef.current?.post({
+      cartLines: posCartLinesToDisplayLines(cartLines),
+      subtotal: total,
+      promoDiscount,
+      promoCode: appliedPromoCode,
+      loyaltyDiscount,
+      taxAmount: null,
+      amountDue: payableTotal,
+      customerLabel: customerDisplayLabel,
+      paymentMethod: paymentMethod.trim() || null,
+      cashTendered: isCash ? parsedCashTendered : null,
+      changeDue: isCash ? changeDue : null,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [
+    cartLines,
+    total,
+    promoDiscount,
+    appliedPromoCode,
+    loyaltyDiscount,
+    payableTotal,
+    customerDisplayLabel,
+    paymentMethod,
+    isCash,
+    parsedCashTendered,
+    changeDue,
+  ]);
+
+  useEffect(() => {
+    if (!isCash) {
+      setCashTendered("");
+    }
+  }, [isCash]);
+
+  function handleOpenCustomerDisplay() {
+    openPosCustomerDisplayWindow(customerDisplaySessionIdRef.current);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -574,6 +677,7 @@ export default function PosCheckout({
     setPayerEmail("");
     setPayerPhone("");
     setPaymentMethod("");
+    setCashTendered("");
     setDueDate(todayIsoDate());
     setNotes("");
     setProductSearch("");
@@ -602,6 +706,17 @@ export default function PosCheckout({
 
     if (!paymentMethod.trim()) {
       setError("Select a payment method.");
+      return null;
+    }
+
+    if (isCash && cashTenderBlocked) {
+      if (parsedCashTendered == null) {
+        setError("Enter the cash amount received from the customer.");
+      } else {
+        setError(
+          `Cash tendered (${formatGHS(parsedCashTendered)}) is less than the amount due (${formatGHS(payableTotal)}).`,
+        );
+      }
       return null;
     }
 
@@ -640,6 +755,8 @@ export default function PosCheckout({
     paymentMethod: string;
     lines: PosCartLine[];
     amountReceived: number;
+    cashTendered?: number | null;
+    changeDue?: number | null;
     pendingSync?: boolean;
   }) {
     const receiptTotal = cartTotal(input.lines);
@@ -651,6 +768,8 @@ export default function PosCheckout({
       paymentStatus: input.pendingSync ? "Pending sync" : "Paid",
       amountReceived: input.amountReceived,
       cartTotal: receiptTotal,
+      cashTendered: input.cashTendered ?? null,
+      changeDue: input.changeDue ?? null,
       lines: input.lines,
       pendingSync: input.pendingSync,
     });
@@ -745,6 +864,8 @@ export default function PosCheckout({
       paymentMethod: "Cash",
       lines: receiptLines,
       amountReceived,
+      cashTendered: parsedCashTendered,
+      changeDue,
       pendingSync: true,
     });
 
@@ -801,6 +922,8 @@ export default function PosCheckout({
       paymentMethod: paymentMethod.trim(),
       lines: receiptLines,
       amountReceived,
+      cashTendered: isCash ? parsedCashTendered : null,
+      changeDue: isCash ? changeDue : null,
     });
 
     const loyaltyEarnWarning = await recordLoyaltyEarnAfterSale(
@@ -1141,13 +1264,24 @@ export default function PosCheckout({
   return (
     <div className="min-w-0 space-y-6">
       <div>
-        {showTitle ? (
-          <h1 className="text-2xl font-semibold text-[#0f2744]">POS</h1>
-        ) : null}
-        <p className={`text-sm text-slate-600 ${showTitle ? "mt-2" : ""}`}>
-          Search products, build a cart, and complete a multi-line product sale
-          with one shared invoice number.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            {showTitle ? (
+              <h1 className="text-2xl font-semibold text-[#0f2744]">POS</h1>
+            ) : null}
+            <p className={`text-sm text-slate-600 ${showTitle ? "mt-2" : ""}`}>
+              Search products, build a cart, and complete a multi-line product sale
+              with one shared invoice number.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenCustomerDisplay}
+            className="shrink-0 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+          >
+            Open Customer Display
+          </button>
+        </div>
         {quoteConversionId && quoteNumber ? (
           <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
             Converting accepted product quote {quoteNumber}. Cart and customer
@@ -1555,6 +1689,40 @@ export default function PosCheckout({
               ))}
             </select>
           </div>
+          {isCash ? (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Cash Tendered
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                value={cashTendered}
+                onChange={(event) => setCashTendered(event.target.value)}
+                placeholder={`At least ${formatGHS(payableTotal)}`}
+                className={inputClassName}
+              />
+              {parsedCashTendered != null ? (
+                <p className="mt-1 text-sm font-medium text-emerald-800">
+                  Change due: {formatGHS(changeDue ?? 0)}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">
+                  Enter the cash the customer handed over. Change is calculated live
+                  on the customer display.
+                </p>
+              )}
+              {cashTenderBlocked ? (
+                <p className="mt-1 text-sm text-red-700">
+                  {parsedCashTendered == null
+                    ? "Enter cash tendered to complete this sale."
+                    : `Cash tendered must be at least ${formatGHS(payableTotal)}.`}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Due Date
@@ -1603,7 +1771,12 @@ export default function PosCheckout({
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
-            disabled={busy || cartLines.length === 0 || (isOffline && isMobileMoney)}
+            disabled={
+              busy ||
+              cartLines.length === 0 ||
+              (isOffline && isMobileMoney) ||
+              cashTenderBlocked
+            }
             className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {momoWaiting

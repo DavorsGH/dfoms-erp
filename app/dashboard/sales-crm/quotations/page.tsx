@@ -5,10 +5,16 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { fetchScopedEmployeeIds, applyEmployeeIdScope } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import {
+  HR_EMPLOYEE_SELECT,
+  filterActiveEmployees,
+  type HrEmployee,
+} from "@/app/dashboard/hr-payroll/employee-utils";
 import {
   CLIENT_QUOTATION_LIST_SELECT,
   normalizeClientQuotationListRow,
@@ -41,8 +47,11 @@ export default async function ClientQuotationsPage() {
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
+  const { employeeIds, error: employeeScopeError } =
+    await fetchScopedEmployeeIds(supabase, tenantId, buScope);
 
-  const [{ data, error }, activeContractByClientId] = await Promise.all([
+  const [{ data, error }, { data: employees, error: employeesError }, activeContractByClientId] =
+    await Promise.all([
     applyBusinessUnitScope(
       supabase
         .from("client_quotations")
@@ -52,6 +61,10 @@ export default async function ClientQuotationsPage() {
     )
       .order("issue_date", { ascending: false })
       .order("quotation_sequence", { ascending: false }),
+    applyEmployeeIdScope(
+      supabase.from("employees").select(HR_EMPLOYEE_SELECT),
+      employeeIds,
+    ).order("full_name"),
     loadActiveServiceContractsByClientId(supabase, tenantId),
   ]);
 
@@ -63,7 +76,12 @@ export default async function ClientQuotationsPage() {
             normalizeClientQuotationListRow,
           )
         }
-        fetchError={error?.message ?? null}
+        fetchError={
+          error?.message ?? employeesError?.message ?? employeeScopeError ?? null
+        }
+        initialEmployees={filterActiveEmployees(
+          (employees as HrEmployee[] | null) ?? [],
+        )}
         activeContractByClientId={activeContractByClientId}
       />
     </CrmShell>
