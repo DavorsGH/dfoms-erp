@@ -42,10 +42,7 @@ import {
   type TaxRateCatalogEntry,
   type TaxSettings,
 } from "./tax-utils";
-import {
-  deleteTaxLedgerEntriesForSource,
-  syncPurchaseTaxLedger,
-} from "./tax-ledger-sync";
+import { buildPurchaseTaxLedgerRpcPayload } from "./tax-ledger-sync";
 import type { SupplierRow } from "@/utils/suppliers-types";
 import { SUPPLIER_SELECT } from "@/utils/suppliers-types";
 import {
@@ -320,40 +317,23 @@ export default function FixedAssets({
     setDeletingId(assetId);
     setError(null);
 
-    const existing = assets.find((asset) => asset.asset_id === assetId);
-    if (existing?.accounts_payable_id) {
-      const { error: reverseError } = await supabase.rpc(
-        "reverse_fixed_asset_payable",
-        { p_payable_id: existing.accounts_payable_id },
-      );
-      if (reverseError) {
-        setError(reverseError.message);
-        setDeletingId(null);
-        return;
-      }
+    const { tenantId, error: tenantError } =
+      await resolveSessionTenantId(supabase);
+    if (tenantError || !tenantId) {
+      setError(tenantError ?? "Unable to resolve workspace.");
+      setDeletingId(null);
+      return;
     }
 
-    const { error: deleteError } = await supabase
-      .from("fixed_assets")
-      .delete()
-      .eq("asset_id", assetId);
+    const { error: deleteError } = await supabase.rpc("delete_fixed_asset", {
+      p_tenant_id: tenantId,
+      p_asset_id: assetId,
+    });
 
     if (deleteError) {
       setError(deleteError.message);
       setDeletingId(null);
       return;
-    }
-
-    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
-      supabase,
-      "fixed_asset",
-      assetId,
-    );
-
-    if (ledgerError) {
-      setError(
-        `Asset deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
-      );
     }
 
     if (editingId === assetId) {
@@ -511,104 +491,17 @@ export default function FixedAssets({
       : null;
     let savedAssetId = editingId;
 
-    if (editingId) {
-      const { error: saveError } = await supabase
-        .from("fixed_assets")
-        .update({
-          asset_name: payload.asset_name,
-          asset_category: payload.asset_category,
-          purchase_date: payload.purchase_date,
-          original_cost: payload.original_cost,
-          quantity: payload.quantity,
-          total_cost: payload.total_cost,
-          useful_life_years: payload.useful_life_years,
-          depreciation_method: payload.depreciation_method,
-          annual_depreciation: payload.annual_depreciation,
-          accumulated_depreciation: payload.accumulated_depreciation,
-          net_book_value: payload.net_book_value,
-          location: payload.location,
-          notes: payload.notes,
-          payment_method: payload.payment_method,
-          vendor_name: payload.vendor_name,
-          approved_by: payload.approved_by,
-          gross_before_wht: payload.gross_before_wht,
-          wht_rate: payload.wht_rate,
-          wht_amount: payload.wht_amount,
-          input_vat_amount: payload.input_vat_amount,
-          net_of_tax_amount: payload.net_of_tax_amount,
-        })
-        .eq("asset_id", editingId);
-
-      if (saveError) {
-        setError(saveError.message);
-        setLoading(false);
-        return;
-      }
-    } else {
+    if (!editingId) {
       const allocated = await allocateAssetId(supabase);
       if (allocated.error || !allocated.assetId) {
         setError(allocated.error ?? "Unable to allocate asset ID.");
         setLoading(false);
         return;
       }
-
       savedAssetId = allocated.assetId;
-
-      const { error: saveError } = await supabase.from("fixed_assets").insert({
-        ...payload,
-        asset_id: allocated.assetId,
-        business_unit_id: stampBusinessUnit.ok
-          ? stampBusinessUnit.businessUnitId
-          : null,
-      });
-
-      if (saveError) {
-        setError(saveError.message);
-        setLoading(false);
-        return;
-      }
-
-      requestTenantAdminDirectorNotification({
-        title: "New fixed asset recorded",
-        detail: payload.asset_name.trim() || allocated.assetId,
-        actionUrl: "/dashboard/finance/fixed-assets",
-      });
     }
 
-    const { data: payableId, error: syncError } = await supabase.rpc(
-      "sync_fixed_asset_payable",
-      {
-        p_tenant_id: tenantId,
-        p_asset_id: savedAssetId,
-        p_vendor_name: payload.vendor_name,
-        p_purchase_date: payload.purchase_date,
-        p_payment_method: payload.payment_method,
-        p_total_cost: payload.total_cost,
-        p_asset_name: payload.asset_name,
-        p_existing_payable_id: existingAsset?.accounts_payable_id ?? null,
-      },
-    );
-
-    if (syncError) {
-      setError(`Asset saved but linked payable sync failed: ${syncError.message}`);
-      setLoading(false);
-      return;
-    }
-
-    if (savedAssetId) {
-      const { error: linkError } = await supabase
-        .from("fixed_assets")
-        .update({ accounts_payable_id: payableId ?? null })
-        .eq("asset_id", savedAssetId);
-
-      if (linkError) {
-        setError(`Asset saved but payable link update failed: ${linkError.message}`);
-        setLoading(false);
-        return;
-      }
-    }
-
-    const { error: ledgerError } = await syncPurchaseTaxLedger(supabase, {
+    const taxRows = buildPurchaseTaxLedgerRpcPayload({
       sourceType: "fixed_asset",
       sourceId: savedAssetId as string,
       entryDate: form.purchase_date,
@@ -620,17 +513,63 @@ export default function FixedAssets({
       inputVatAmount: purchaseTax.inputVatAmount,
       counterpartyName: vendorName || null,
       notes: payload.asset_name.trim() || null,
+      businessUnitId: editingId
+        ? (existingAsset?.business_unit_id ?? null)
+        : stampBusinessUnit.ok
+          ? stampBusinessUnit.businessUnitId
+          : null,
     });
+
+    const { error: saveError } = await supabase.rpc("save_fixed_asset", {
+      p_tenant_id: tenantId,
+      p_asset_id: savedAssetId,
+      p_is_update: Boolean(editingId),
+      p_business_unit_id: editingId
+        ? (existingAsset?.business_unit_id ?? null)
+        : stampBusinessUnit.ok
+          ? stampBusinessUnit.businessUnitId
+          : null,
+      p_asset_name: payload.asset_name,
+      p_asset_category: payload.asset_category,
+      p_purchase_date: payload.purchase_date,
+      p_original_cost: payload.original_cost,
+      p_quantity: payload.quantity,
+      p_total_cost: payload.total_cost,
+      p_useful_life_years: payload.useful_life_years,
+      p_depreciation_method: payload.depreciation_method,
+      p_annual_depreciation: payload.annual_depreciation,
+      p_accumulated_depreciation: payload.accumulated_depreciation,
+      p_net_book_value: payload.net_book_value,
+      p_location: payload.location,
+      p_notes: payload.notes,
+      p_payment_method: payload.payment_method,
+      p_vendor_name: payload.vendor_name,
+      p_approved_by: payload.approved_by,
+      p_gross_before_wht: payload.gross_before_wht,
+      p_wht_rate: payload.wht_rate,
+      p_wht_amount: payload.wht_amount,
+      p_input_vat_amount: payload.input_vat_amount,
+      p_net_of_tax_amount: payload.net_of_tax_amount,
+      p_existing_payable_id: existingAsset?.accounts_payable_id ?? null,
+      p_tax_rows: taxRows,
+    });
+
+    if (saveError) {
+      setError(saveError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!editingId) {
+      requestTenantAdminDirectorNotification({
+        title: "New fixed asset recorded",
+        detail: payload.asset_name.trim() || savedAssetId || "",
+        actionUrl: "/dashboard/finance/fixed-assets",
+      });
+    }
 
     closeForm();
     await refreshAssets();
-
-    if (ledgerError) {
-      setError(
-        `Asset saved, but the tax ledger could not be updated: ${ledgerError}`,
-      );
-    }
-
     setLoading(false);
   }
 

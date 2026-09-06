@@ -16,10 +16,6 @@ import {
   type AccountsPayableEntry,
   type AccountsPayablePaymentSource,
 } from "./accounts-payable-utils";
-import {
-  deleteAccountsPayableAccrualExpense,
-  postAccountsPayableAccrualExpense,
-} from "./accounts-payable-accrual-utils";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import {
@@ -32,10 +28,7 @@ import {
   type TaxRateCatalogEntry,
   type TaxSettings,
 } from "./tax-utils";
-import {
-  deleteTaxLedgerEntriesForSource,
-  syncPurchaseTaxLedger,
-} from "./tax-ledger-sync";
+import { buildPurchaseTaxLedgerRpcPayload } from "./tax-ledger-sync";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -273,39 +266,23 @@ export default function AccountsPayable({
     setDeletingId(id);
     setError(null);
 
-    try {
-      await deleteAccountsPayableAccrualExpense(supabase, id);
-    } catch (accrualError) {
-      setError(
-        accrualError instanceof Error
-          ? accrualError.message
-          : "Unable to reverse the matching AP accrual expense.",
-      );
+    const { tenantId, error: tenantError } =
+      await resolveSessionTenantId(supabase);
+    if (tenantError || !tenantId) {
+      setError(tenantError ?? "Unable to resolve workspace.");
       setDeletingId(null);
       return;
     }
 
-    const { error: deleteError } = await supabase
-      .from("accounts_payable")
-      .delete()
-      .eq("id", id);
+    const { error: deleteError } = await supabase.rpc("delete_accounts_payable", {
+      p_tenant_id: tenantId,
+      p_ap_id: id,
+    });
 
     if (deleteError) {
       setError(deleteError.message);
       setDeletingId(null);
       return;
-    }
-
-    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
-      supabase,
-      "accounts_payable",
-      id,
-    );
-
-    if (ledgerError) {
-      setError(
-        `Entry deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
-      );
     }
 
     if (editingId === id) {
@@ -350,103 +327,23 @@ export default function AccountsPayable({
     const daysOutstanding = calculateDaysOutstanding(form.due_date);
     const status = calculateStatus(balanceDue, daysOutstanding);
 
-    const payload = {
-      vendor_name: form.vendor_name,
-      invoice_number: form.invoice_number,
-      expense_category: form.expense_category,
-      sub_category: form.sub_category,
-      description: form.description || null,
-      invoice_date: form.invoice_date,
-      due_date: form.due_date,
-      amount,
-      amount_paid: amountPaid,
-      balance_due: balanceDue,
-      status,
-      gross_before_wht: purchaseTax.grossBeforeWht,
-      wht_rate: whtRate > 0 ? whtRate : null,
-      wht_amount: purchaseTax.whtAmount,
-      input_vat_amount: purchaseTax.inputVatAmount,
-      net_of_tax_amount: purchaseTax.netOfTaxAmount,
-      notes: form.notes || null,
-    };
-
-    let savedId = editingId;
     const stampedBusinessUnitId = editingId
       ? (existingEntry?.business_unit_id ?? null)
       : stampBusinessUnit.ok
         ? stampBusinessUnit.businessUnitId
         : null;
 
-    if (editingId) {
-      const { error: updateError } = await supabase
-        .from("accounts_payable")
-        .update(payload)
-        .eq("id", editingId);
-
-      if (updateError) {
-        setError(updateError.message);
-        setLoading(false);
-        return;
-      }
-    } else {
-      const { data: inserted, error: insertError } = await supabase
-        .from("accounts_payable")
-        .insert({
-          ...payload,
-          business_unit_id: stampedBusinessUnitId,
-        })
-        .select("id")
-        .single();
-
-      if (insertError || !inserted) {
-        setError(insertError?.message ?? "Unable to save the payable entry.");
-        setLoading(false);
-        return;
-      }
-
-      savedId = (inserted as { id: string }).id;
-
-      requestTenantAdminDirectorNotification({
-        title: "Accounts payable recorded",
-        detail: formatGHS(amount),
-        actionUrl: "/dashboard/finance/accounts-payable",
-      });
-    }
-
-    const accrualSource = {
-      id: savedId as string,
-      vendor_name: form.vendor_name,
-      invoice_number: form.invoice_number,
-      expense_category: form.expense_category,
-      sub_category: form.sub_category,
-      invoice_date: form.invoice_date,
-      due_date: form.due_date,
-      amount,
-      net_of_tax_amount: purchaseTax.netOfTaxAmount,
-      gross_before_wht: purchaseTax.grossBeforeWht,
-      wht_rate: whtRate > 0 ? whtRate : null,
-      wht_amount: purchaseTax.whtAmount,
-      input_vat_amount: purchaseTax.inputVatAmount,
-      business_unit_id: stampedBusinessUnitId,
-      source_type: existingEntry?.source_type ?? null,
-    };
-
-    try {
-      await postAccountsPayableAccrualExpense(supabase, accrualSource);
-    } catch (accrualError) {
-      setError(
-        accrualError instanceof Error
-          ? `Payable saved, but the matching accrual expense could not be posted: ${accrualError.message}`
-          : "Payable saved, but the matching accrual expense could not be posted.",
-      );
-      await refreshEntries();
+    const { tenantId, error: tenantError } =
+      await resolveSessionTenantId(supabase);
+    if (tenantError || !tenantId) {
+      setError(tenantError ?? "Unable to resolve workspace.");
       setLoading(false);
       return;
     }
 
-    const { error: ledgerError } = await syncPurchaseTaxLedger(supabase, {
+    const taxRows = buildPurchaseTaxLedgerRpcPayload({
       sourceType: "accounts_payable",
-      sourceId: savedId as string,
+      sourceId: editingId ?? "00000000-0000-4000-8000-000000000001",
       entryDate: form.invoice_date,
       grossBeforeWht: purchaseTax.grossBeforeWht,
       whtRatePct: whtRate > 0 ? whtRate : null,
@@ -455,20 +352,51 @@ export default function AccountsPayable({
       inputTaxRatePct: null,
       inputVatAmount: purchaseTax.inputVatAmount,
       counterpartyName: form.vendor_name.trim() || null,
-      notes: form.invoice_number
-        ? `Invoice ${form.invoice_number}`
-        : null,
+      notes: form.invoice_number ? `Invoice ${form.invoice_number}` : null,
+      businessUnitId: stampedBusinessUnitId,
     });
+
+    const { error: saveError } = await supabase.rpc("save_accounts_payable", {
+      p_tenant_id: tenantId,
+      p_ap_id: editingId,
+      p_business_unit_id: stampedBusinessUnitId,
+      p_vendor_name: form.vendor_name,
+      p_invoice_number: form.invoice_number,
+      p_expense_category: form.expense_category,
+      p_sub_category: form.sub_category,
+      p_description: form.description || null,
+      p_invoice_date: form.invoice_date,
+      p_due_date: form.due_date,
+      p_amount: amount,
+      p_amount_paid: amountPaid,
+      p_balance_due: balanceDue,
+      p_status: status,
+      p_gross_before_wht: purchaseTax.grossBeforeWht,
+      p_wht_rate: whtRate > 0 ? whtRate : null,
+      p_wht_amount: purchaseTax.whtAmount,
+      p_input_vat_amount: purchaseTax.inputVatAmount,
+      p_net_of_tax_amount: purchaseTax.netOfTaxAmount,
+      p_notes: form.notes || null,
+      p_source_type: existingEntry?.source_type ?? null,
+      p_tax_rows: taxRows,
+    });
+
+    if (saveError) {
+      setError(saveError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!editingId) {
+      requestTenantAdminDirectorNotification({
+        title: "Accounts payable recorded",
+        detail: formatGHS(amount),
+        actionUrl: "/dashboard/finance/accounts-payable",
+      });
+    }
 
     closeForm();
     await refreshEntries();
-
-    if (ledgerError) {
-      setError(
-        `Entry saved, but the tax ledger could not be updated: ${ledgerError}`,
-      );
-    }
-
     setLoading(false);
   }
 

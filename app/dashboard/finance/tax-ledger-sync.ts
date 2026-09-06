@@ -304,26 +304,36 @@ export function buildPurchaseTaxLedgerRows(
   return rows;
 }
 
+export function buildPurchaseTaxLedgerRpcPayload(
+  input: PurchaseTaxLedgerInput,
+): Array<Record<string, unknown>> {
+  const rows = buildPurchaseTaxLedgerRows(input);
+  return rows.map((row) => ({
+    tenant_id: row.tenant_id ?? null,
+    entry_date: row.entry_date,
+    period_month: row.period_month,
+    direction: row.direction,
+    tax_component: row.tax_component,
+    rate_pct: row.rate_pct,
+    taxable_base: row.taxable_base,
+    tax_amount: row.tax_amount,
+    status: row.status,
+    counterparty_name: row.counterparty_name,
+    notes: row.notes,
+    business_unit_id: row.business_unit_id ?? null,
+  }));
+}
+
 /**
  * Replace tax ledger rows owned by one Expense Register, Accounts Payable,
- * or Fixed Asset purchase entry. Same delete-then-insert contract as
- * syncIncomeRegisterTaxLedger. New legs inherit business_unit_id from the
- * source row (never the live switcher), unless businessUnitId is passed.
+ * or Fixed Asset purchase entry. Uses replace_purchase_tax_ledger_entries
+ * (script 282) so DELETE + INSERT run in one transaction.
+ * business_unit_id is stamped from the source row inside the RPC.
  */
 export async function syncPurchaseTaxLedger(
   supabase: SupabaseClient,
   input: PurchaseTaxLedgerInput,
 ): Promise<{ error: string | null }> {
-  const { error: deleteError } = await deleteTaxLedgerEntriesForSource(
-    supabase,
-    input.sourceType,
-    input.sourceId,
-  );
-
-  if (deleteError) {
-    return { error: deleteError };
-  }
-
   let resolvedInput = input;
   if (!Object.prototype.hasOwnProperty.call(input, "businessUnitId")) {
     const businessUnitId = await lookupPurchaseSourceBusinessUnitId(
@@ -334,16 +344,15 @@ export async function syncPurchaseTaxLedger(
     resolvedInput = { ...input, businessUnitId };
   }
 
-  const rows = buildPurchaseTaxLedgerRows(resolvedInput);
-  if (rows.length === 0) {
-    return { error: null };
-  }
+  const payload = buildPurchaseTaxLedgerRpcPayload(resolvedInput);
 
-  const { error: insertError } = await supabase
-    .from(TAX_LEDGER_TABLE)
-    .insert(rows);
+  const { error } = await supabase.rpc("replace_purchase_tax_ledger_entries", {
+    p_source_type: input.sourceType,
+    p_source_id: input.sourceId,
+    p_rows: payload,
+  });
 
-  return { error: insertError?.message ?? null };
+  return { error: error?.message ?? null };
 }
 
 async function lookupPurchaseSourceBusinessUnitId(

@@ -25,6 +25,7 @@ export type FixedAssetEntry = {
   input_vat_amount?: number | null;
   net_of_tax_amount?: number | null;
   tenant_id?: string | null;
+  business_unit_id?: string | null;
 };
 
 export function formatGHS(value: number): string {
