@@ -28,9 +28,9 @@ async function sendResend(to: string, inviteUrl: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "Davors Facilities ERP <noreply@davorsfacilities.com>",
+      from: "Davors Technologies ERP <noreply@davorsfacilities.com>",
       to,
-      subject: "You're invited to Davors Facilities ERP",
+      subject: "You're invited to Davors Technologies ERP",
       html: `<p><a href="${inviteUrl}">Accept invite</a></p>`,
     }),
   });

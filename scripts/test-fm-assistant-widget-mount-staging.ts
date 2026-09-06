@@ -71,7 +71,7 @@ async function main() {
     }
 
     const launcher = page.getByRole("button", {
-      name: /Open Ask DAVORS-ERP/i,
+      name: /Open Ask Davors Technologies ERP/i,
     });
     await launcher.waitFor({ state: "visible", timeout: 30000 });
     console.log("PASS: FM portal assistant launcher visible at", page.url());

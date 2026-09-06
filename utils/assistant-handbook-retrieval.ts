@@ -272,7 +272,7 @@ export function buildSystemPromptWithRetrieval(
 
   return `${basePrompt}
 
-Use the following DAVORS-ERP handbook excerpts to answer the user's question if relevant. If the excerpts don't cover what's being asked, say so honestly rather than guessing:
+Use the following Davors Technologies ERP handbook excerpts to answer the user's question if relevant. If the excerpts don't cover what's being asked, say so honestly rather than guessing:
 
 ${excerpts}`;
 }

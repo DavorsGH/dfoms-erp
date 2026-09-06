@@ -6,7 +6,7 @@ ERP System
 
 **For Customer Use**
 
-Version 2.8 | September 2026
+Version 2.9 | September 2026
 
 *Covers: Getting Started · Bulk Import · User Roles (incl. Director) ·
 Business Units · Finance (incl. Budget, Tax Settings, Client Receipts) ·
@@ -61,7 +61,7 @@ Adjustments) · Real Estate (Davors platform) · Reports · Administration
 
 # **Section 1 --- Welcome**
 
-Welcome to the Davors Facilities ERP --- a single system for managing
+Welcome to Davors Technologies ERP --- a single system for managing
 your finances, people, operations, sales, and inventory. This handbook
 walks you through every part of your workspace, from your first login to
 running reports at month end, and explains the business logic behind the
@@ -83,7 +83,7 @@ your own team, never to any other company using the platform.
 
 ## **2.1 Signing Up**
 
-New organizations sign up at the Davors Facilities ERP landing page by
+New organizations sign up at the Davors Technologies ERP landing page by
 selecting \"Sign up for free.\" You will be asked for your company name
 and an administrator email and password. Once submitted, your workspace
 is created immediately with a 90-day free trial giving full access to
@@ -241,8 +241,11 @@ by your workspace administrator under Administration → User Accounts.
   Supervisor         Site supervisor       Operations at assigned sites,
                                            limited HR
 
-  Sales Rep          Sales / till staff    Point of Sale, own sales
-                                           records
+  Sales Rep          Sales / till staff    Sales & CRM (Customer List,
+                                           Point of Sale, Product Sales,
+                                           Quotations, Sales Log); own
+                                           sales and assigned quotations
+                                           only on the Dashboard
 
   Employee           General staff         Self-Service only (payslips,
                                            leave requests)
@@ -362,6 +365,21 @@ at the top right to view any past month.
 | records while All Businesses is selected --- switch to a specific     |
 | business first. See Section 10.0 for the full explanation.            |
 +-----------------------------------------------------------------------+
+
+## **Sales Rep dashboard**
+
+If you have the Sales Rep role, the Dashboard shows three performance
+cards instead of tenant-wide totals:
+
+-   **POS** --- your own point-of-sale revenue for the selected period.
+
+-   **Product Sales** --- product sales credited to you.
+
+-   **Quotations** --- client quotations assigned to you.
+
+Each card reflects only activity attributed or assigned to you, not the
+whole business. Managers and other roles still see the full Dashboard
+summaries described above.
 
 # **Section 6 --- Finance**
 
@@ -635,6 +653,12 @@ Sales & CRM is where you manage your customers and record every sale ---
 whether it is a credit sale to a contract client or a walk-in cash sale
 rung up at the till.
 
+The tabs are ordered with the most-used screens first: Customer List,
+Point of Sale, Product Sales, Quotations, Sales Pipeline, and Sales Log
+appear before catalog, settings, and administration tabs. Sales Reps see
+a shorter subset of those tabs (Customer List, POS, Product Sales,
+Quotations, and Sales Log).
+
 ## **7.1 Customer List**
 
 Your directory of customers/clients. Each customer can be linked to a
@@ -697,6 +721,21 @@ their own device, Request Payment sends them a secure payment link by
 email or SMS instead, with the same protection --- stock and the sale
 record are only created once they actually pay. Card payment is not yet
 available until in-person card-tap terminal hardware is set up.
+
+**Amount Tendered and Change Due (Cash).** When Payment Method is Cash,
+enter **Amount Tendered** --- the cash the customer handed over. **Change
+Due** is calculated live (tendered minus amount due). Complete Sale is
+blocked until tendered is at least the full amount due. Amount Received
+on the receipt and in the ledger still records the sale total, not the
+tendered amount.
+
+**Customer-facing display.** Click **Open Customer Display** on POS
+checkout to open a second-screen view for dual-monitor setups (or a
+separate browser window). It shows your business branding, the customer
+name (defaults to **Walk-in Customer** when none is selected), cart
+lines, totals, and --- for cash sales --- Amount Tendered and Change Due
+updating live as you type. **Served by** shows the sales rep selected on
+the checkout.
 
 ## **Product Sales vs. Point of Sale --- which do I use?**
 
@@ -961,6 +1000,11 @@ your company logo, address, and payment details already on the document.
     up (Workspace Settings), it prints automatically alongside the name
     and title; otherwise a blank signature line is shown.
 
+-   **Assigned to:** choose which sales rep owns this quotation (defaults
+    to whoever created it when they are linked to an employee record);
+    reassignable when editing. Sales reps see only quotations assigned
+    to them on their Dashboard.
+
 -   **Status:** every new quotation starts as Draft (there is no status
     field to set when creating one). From the Quotations list, one-click
     buttons move it forward --- Send, then Accept or Decline --- without
@@ -1060,9 +1104,10 @@ their Customer 360 profile, under the Loyalty tab.
 Every sale can be credited to a Sales Rep, which is what targets,
 commissions, and forecasting are built on.
 
--   **Sales Rep:** shown at checkout on Point of Sale and on Client
-    Invoices, defaulting to whoever is logged in, but changeable to any
-    employee.
+-   **Sales Rep:** shown at checkout on Point of Sale, on Product Sales,
+    and on Client Invoices, defaulting to whoever is logged in, but
+    changeable to any employee. Client Quotations have an **Assigned to**
+    field (Section 7.8) for the same purpose.
 
 -   **Sales Targets:** set a revenue target, a unit or deal-count
     target, or both, for an employee over a monthly, quarterly, or

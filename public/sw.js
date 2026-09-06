@@ -265,7 +265,7 @@ self.addEventListener("fetch", (event) => {
 
 self.addEventListener("push", (event) => {
   let payload = {
-    title: "Davors ERP",
+    title: "Davors Technologies ERP",
     body: "You have a new notification.",
     url: "/",
     tag: "dfoms-notification",

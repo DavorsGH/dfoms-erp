@@ -22,7 +22,7 @@ type ChatMessage = {
 };
 
 const WELCOME_MESSAGE =
-  "Hi! Ask me anything about your account or how to use DAVORS-ERP.";
+  "Hi! Ask me anything about your account or how to use Davors Technologies ERP.";
 
 const ERROR_MESSAGE = "Sorry, something went wrong. Please try again.";
 
@@ -201,7 +201,7 @@ export default function AssistantChatWidget() {
           <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-[#0f2744] px-4 py-3 text-white">
             <div className="min-w-0">
               <h2 id={titleId} className="truncate text-sm font-semibold">
-                Ask DAVORS-ERP
+                Ask Davors Technologies ERP
               </h2>
               <p className="truncate text-xs text-slate-200">
                 Your workspace assistant
@@ -305,7 +305,7 @@ export default function AssistantChatWidget() {
           onClick={handleToggleOpen}
           aria-expanded={isOpen}
           aria-controls={titleId}
-          aria-label={isOpen ? "Close Ask DAVORS-ERP" : "Open Ask DAVORS-ERP"}
+          aria-label={isOpen ? "Close Ask Davors Technologies ERP" : "Open Ask Davors Technologies ERP"}
           className="relative z-10 inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#0f2744] text-white shadow-lg transition-transform duration-300 hover:bg-[#1a3a5c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f2744] motion-reduce:transition-none"
         >
           {isOpen ? (

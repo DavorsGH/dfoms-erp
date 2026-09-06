@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Davors ERP",
+    title: "Davors Technologies ERP",
     statusBarStyle: "default",
   },
   // Next emits mobile-web-app-capable from appleWebApp.capable; older Safari

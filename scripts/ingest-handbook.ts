@@ -1,5 +1,5 @@
 /**
- * One-time handbook RAG ingestion for the DAVORS-ERP assistant.
+ * One-time handbook RAG ingestion for the Davors Technologies ERP assistant.
  *
  * Reads content/handbook/*.md, chunks by ## / ### headers, embeds with Voyage AI
  * (voyage-3, 1024 dims), and upserts into public.handbook_chunks.
