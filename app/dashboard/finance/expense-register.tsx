@@ -21,6 +21,7 @@ import {
   canMarkAutoPostedExpenseAsPaid,
   getRegisterRowClassName,
   isAutoPostedExpenseRegisterEntry,
+  isInventoryGoLiveTrueUpExpense,
   isPayrollEssnitExpense,
   markAutoPostedExpensePaid,
 } from "./register-auto-posted-utils";
@@ -522,7 +523,9 @@ export default function ExpenseRegister({
 
     if (isAutoPostedExpenseRegisterEntry(entry)) {
       setError(
-        "Payroll auto-posted expenses cannot be edited here. Use Mark as Paid when remitting Accrued Employer SSNIT / Accrued Staff Salaries, or Release payroll to reverse the post.",
+        isInventoryGoLiveTrueUpExpense(entry)
+          ? "Inventory go-live true-up (ADJ-PPIR-*). Do not edit or delete — contact support if a correction is required."
+          : "Payroll auto-posted expenses cannot be edited here. Use Mark as Paid when remitting Accrued Employer SSNIT / Accrued Staff Salaries, or Release payroll to reverse the post.",
       );
       return;
     }
@@ -589,6 +592,7 @@ export default function ExpenseRegister({
   }
 
   async function handleDelete(id: string) {
+    const target = entries.find((entry) => entry.id === id);
     const pending = (writeQueue?.items ?? []).find(
       (item) => item.id === id && item.type === "expense",
     );
@@ -602,6 +606,15 @@ export default function ExpenseRegister({
 
     if (!isOnline) {
       setError("Deleting saved expenses requires a connection.");
+      return;
+    }
+
+    if (target && isAutoPostedExpenseRegisterEntry(target)) {
+      setError(
+        isInventoryGoLiveTrueUpExpense(target)
+          ? "Inventory go-live true-up (ADJ-PPIR-*). Do not edit or delete — contact support if a correction is required."
+          : "Payroll auto-posted expenses cannot be deleted here. Release payroll to reverse the post.",
+      );
       return;
     }
 
@@ -1535,7 +1548,7 @@ export default function ExpenseRegister({
                         }
                         deleting={deletingId === entry.id}
                         disableEdit={systemLinked}
-                        disableDelete={linkedProductSaleCogs != null}
+                        disableDelete={linkedProductSaleCogs != null || autoPosted}
                         deleteDisabledTitle={deleteBlockedMessage}
                         onMarkPaid={
                           showMarkPaid

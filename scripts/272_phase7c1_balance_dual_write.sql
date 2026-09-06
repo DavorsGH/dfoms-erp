@@ -231,7 +231,7 @@ BEGIN
     )
     VALUES (
       v_sale.tenant_id,
-      CURRENT_DATE, 'Cost of Goods Sold', 'Product Sales',
+      COALESCE(v_sale.date, CURRENT_DATE), 'Cost of Goods Sold', 'Product Sales',
       'COGS reversal for voided product sale ' || v_sale.invoice_no || ' (' || v_product_name || ')',
       'Internal', -ABS(v_cogs_unit_cost), v_sale.sale_quantity, -ABS(v_cogs_amount),
       'Internal', 'System', v_reversal_receipt_no, 'Non-Cash',

@@ -70,14 +70,24 @@ export function getRegisterRowClassName(
   return [stripe, "text-slate-900"].filter(Boolean).join(" ");
 }
 
+export function isInventoryGoLiveTrueUpExpense(entry: {
+  receipt_no?: string | null;
+}): boolean {
+  return /^ADJ-PPIR-/i.test((entry.receipt_no ?? "").trim());
+}
+
 /**
  * Expense Register auto-post detection:
- * description prefix "Auto-posted from Payroll…" OR receipt_no PAYROLL-SAL-* / PAYROLL-ESSNIT-*.
+ * description prefix "Auto-posted from Payroll…" OR receipt_no PAYROLL-SAL-* / PAYROLL-ESSNIT-*
+ * OR inventory go-live true-up reversals (ADJ-PPIR-*).
  */
 export function isAutoPostedExpenseRegisterEntry(entry: {
   description?: string | null;
   receipt_no?: string | null;
 }): boolean {
+  if (isInventoryGoLiveTrueUpExpense(entry)) {
+    return true;
+  }
   return isPayrollAutoPostedExpense(entry);
 }
 
