@@ -7,11 +7,10 @@ import {
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { assertRemitBusinessUnitAllowed } from "@/utils/phase5e-lock";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
-import { createClient } from "@/utils/supabase/server";
-import { cookies } from "next/headers";
-import {
-  undoRemitTaxForPeriod,
-  type RemitTaxKind,
+import { createAdminClient } from "@/utils/supabase/admin";
+import type {
+  RemitTaxKind,
+  UndoRemitTaxForPeriodResult,
 } from "@/app/dashboard/finance/tax-ledger-remit";
 
 type UndoRemitBody = {
@@ -59,21 +58,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: remitGate.error }, { status: 400 });
   }
 
-  const readScope = resolveBusinessUnitReadScope({
+  resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
 
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const result = await undoRemitTaxForPeriod(supabase, {
-    tenantId,
-    periodMonth,
-    kind,
-    readScope,
-    viewAllBusinessUnits,
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("undo_remit_tax_for_period", {
+    p_tenant_id: tenantId,
+    p_business_unit_id: activeBusinessUnitId,
+    p_period_month: periodMonth,
+    p_kind: kind,
   });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  const result = (data ?? {}) as UndoRemitTaxForPeriodResult;
 
   if (result.error) {
     return NextResponse.json(result, { status: 400 });

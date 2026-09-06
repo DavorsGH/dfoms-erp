@@ -7,19 +7,8 @@ import {
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { assertRemitBusinessUnitAllowed } from "@/utils/phase5e-lock";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
-import { createClient } from "@/utils/supabase/server";
-import { cookies } from "next/headers";
-import {
-  remitTaxForPeriod,
-  type RemitTaxKind,
-} from "@/app/dashboard/finance/tax-ledger-remit";
-import {
-  TAX_SETTINGS_FULL_SELECT,
-  emptyTaxSettings,
-  normalizeTaxSettings,
-  type TaxSettings,
-} from "@/app/dashboard/finance/tax-utils";
-import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
+import { createAdminClient } from "@/utils/supabase/admin";
+import type { RemitTaxForPeriodResult, RemitTaxKind } from "@/app/dashboard/finance/tax-ledger-remit";
 
 type RemitBody = {
   periodMonth?: string;
@@ -66,40 +55,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: remitGate.error }, { status: 400 });
   }
 
-  const readScope = resolveBusinessUnitReadScope({
+  resolveBusinessUnitReadScope({
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
 
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("remit_tax_for_period", {
+    p_tenant_id: tenantId,
+    p_business_unit_id: activeBusinessUnitId,
+    p_period_month: periodMonth,
+    p_kind: kind,
+    p_view_all_business_units: viewAllBusinessUnits,
+  });
 
-  const { data: settingsData, error: settingsError } = await scopeTaxSettingsRead(
-    supabase
-      .from("tax_settings")
-      .select(TAX_SETTINGS_FULL_SELECT)
-      .eq("tenant_id", tenantId),
-    activeBusinessUnitId,
-  ).maybeSingle();
-
-  if (settingsError) {
-    return NextResponse.json({ error: settingsError.message }, { status: 400 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  const settings =
-    normalizeTaxSettings(settingsData as TaxSettings | null) ??
-    emptyTaxSettings(tenantId);
-
-  const result = await remitTaxForPeriod(supabase, {
-    tenantId,
-    periodMonth,
-    kind,
-    settings,
-    businessUnitId: activeBusinessUnitId,
-    readScope,
-    viewAllBusinessUnits,
-    // Do not trust client-supplied legs — reload scoped from DB.
-  });
+  const result = (data ?? {}) as RemitTaxForPeriodResult;
 
   if (result.error) {
     return NextResponse.json(result, { status: 400 });
