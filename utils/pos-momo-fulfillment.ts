@@ -11,7 +11,6 @@ import {
 import { verifyPaystackTransaction } from "@/utils/paystack";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { postProductSalePaystackFee } from "@/utils/paystack-finance-posting";
-import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 
 export type PosCartSnapshot = {
   saleDate: string;
@@ -125,20 +124,12 @@ export function cartSnapshotTotal(snapshot: PosCartSnapshot): number {
   );
 }
 
-async function fetchIncomeInvoiceNumber(
-  admin: SupabaseClient,
-  incomeId: string,
-): Promise<string | null> {
-  const { data, error } = await admin
-    .from("income_register")
-    .select("invoice_no")
-    .eq("id", incomeId)
-    .maybeSingle();
-  if (error) {
-    throw new Error(error.message);
-  }
-  const invoiceNo = (data as { invoice_no?: string | null } | null)?.invoice_no;
-  return invoiceNo?.trim() ? invoiceNo.trim() : null;
+function snapshotLinesToCheckoutPayload(snapshot: PosCartSnapshot) {
+  return snapshot.lines.map((line) => ({
+    product_id: line.productId,
+    quantity: line.quantity,
+    unit_price: line.unitPrice,
+  }));
 }
 
 /**
@@ -290,90 +281,50 @@ export async function fulfillPosCartSnapshotPaymentRequest(
     requestRow.payment_method || POS_MOMO_PAYMENT_METHOD,
   );
   const notes = buildPosNotes(paymentMethod, snapshot.notes);
-  const incomeIds: string[] = [];
-  let allocatedInvoiceNo: string | null =
-    isProvisionalPosInvoiceNo(requestRow.invoice_no)
-      ? null
-      : requestRow.invoice_no || null;
-
-  for (const line of snapshot.lines) {
-    const lineTotal = lineSubtotal(line);
-    const { data, error } = await admin.rpc("create_product_sale", {
-      p_date: snapshot.saleDate,
-      p_invoice_no: allocatedInvoiceNo,
-      p_client_id: snapshot.clientId,
-      p_customer_name: snapshot.clientId ? null : snapshot.customerName,
-      p_product_id: line.productId,
-      p_quantity: line.quantity,
-      p_unit_price: line.unitPrice,
-      p_amount_received: lineTotal,
-      p_payment_status: "Paid",
-      p_due_date: snapshot.dueDate,
-      p_description: null,
-      p_notes: notes,
-      p_invoice_entity_type: "POS",
-    });
-
-    if (error) {
-      throw new Error(
-        `create_product_sale failed for ${line.productCode}: ${error.message}`,
-      );
-    }
-
-    const incomeId = typeof data === "string" ? data : null;
-    if (!incomeId) {
-      throw new Error(
-        `create_product_sale returned no id for ${line.productCode}.`,
-      );
-    }
-    incomeIds.push(incomeId);
-
-    if (!allocatedInvoiceNo) {
-      allocatedInvoiceNo = await fetchIncomeInvoiceNumber(admin, incomeId);
-    }
-  }
-
-  if (!allocatedInvoiceNo) {
-    throw new Error(
-      "Could not resolve POS invoice number after cart-snapshot sale.",
-    );
-  }
-
-  // VFRS output tax + tax ledger for the sales just created. Non-fatal: the
-  // customer has already paid and the sales are posted, so a tax sync failure
-  // must not fail the fulfillment (it would retrigger webhook retries).
-  const { error: taxSyncError } = await syncProductSaleVfrsTax(
-    admin,
-    incomeIds,
-  );
-  if (taxSyncError) {
-    console.error(
-      `POS fulfillment ${requestRow.id}: VFRS tax sync failed: ${taxSyncError}`,
-    );
-  }
 
   const paidAmount =
     options.paidAmountGhs != null && options.paidAmountGhs > 0
       ? roundGhs(options.paidAmountGhs)
       : cartSnapshotTotal(snapshot);
 
-  const { error: updateError } = await admin
-    .from("product_sale_payment_requests")
-    .update({
-      status: "paid",
-      invoice_no: allocatedInvoiceNo,
-      income_ids: incomeIds,
-      paid_amount: paidAmount,
-      paid_at: options.paidAt ?? new Date().toISOString(),
-      paystack_reference: reference ?? requestRow.paystack_reference,
-      payment_method: paymentMethod,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", requestRow.id)
-    .eq("tenant_id", requestRow.tenant_id);
+  const { data, error } = await admin.rpc("checkout_pos_cart", {
+    p_tenant_id: requestRow.tenant_id,
+    p_business_unit_id: null,
+    p_sale_date: snapshot.saleDate,
+    p_invoice_no:
+      isProvisionalPosInvoiceNo(requestRow.invoice_no) ? null : requestRow.invoice_no,
+    p_client_id: snapshot.clientId,
+    p_customer_name: snapshot.clientId ? null : snapshot.customerName,
+    p_payment_status: "Paid",
+    p_due_date: snapshot.dueDate,
+    p_notes: notes,
+    p_payment_method: paymentMethod,
+    p_sales_rep_id: null,
+    p_amount_received: paidAmount,
+    p_lines: snapshotLinesToCheckoutPayload(snapshot),
+    p_payment_request_id: requestRow.id,
+    p_paid_amount: paidAmount,
+    p_paystack_reference: reference ?? requestRow.paystack_reference,
+    p_paid_at: options.paidAt ?? new Date().toISOString(),
+  });
 
-  if (updateError) {
-    throw new Error(updateError.message);
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const checkout = data as {
+    invoice_no?: string;
+    income_ids?: string[];
+    already_fulfilled?: boolean;
+  } | null;
+
+  const allocatedInvoiceNo = checkout?.invoice_no?.trim() || null;
+  const incomeIds = (checkout?.income_ids ?? []).filter(Boolean);
+
+  if (!allocatedInvoiceNo || incomeIds.length === 0) {
+    throw new Error(
+      "Could not resolve POS invoice number after cart-snapshot sale.",
+    );
   }
 
   if (!reference) {

@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { ClientEntry } from "../operations/clients-utils";
 import { formatInventoryQuantity } from "../inventory/inventory-utils";
@@ -16,9 +15,8 @@ export type PosCartLine = {
 };
 
 export type PosCheckoutInput = {
+  tenantId: string;
   saleDate: string;
-  /** Reuse a partially posted POS receipt number; omit/null to allocate server-side. */
-  invoiceNo?: string | null;
   clientId: string | null;
   customerName: string | null;
   salesRepId?: string | null;
@@ -28,28 +26,12 @@ export type PosCheckoutInput = {
   dueDate: string;
   notes: string | null;
   cartLines: PosCartLine[];
-  /** Create-only stamp; null = All Businesses. */
   businessUnitId?: string | null;
-};
-
-export type PosCheckoutLineResult = {
-  lineId: string;
-  productLabel: string;
-  quantity: number;
-  unitPrice: number;
-  lineTotal: number;
-  success: boolean;
-  incomeId?: string;
-  errorMessage?: string;
 };
 
 export type PosCheckoutRunSummary = {
   invoiceNo: string | null;
-  succeeded: PosCheckoutLineResult[];
-  failed: PosCheckoutLineResult[];
-  stoppedEarly: boolean;
-  /** Sale lines posted, but VFRS output tax / tax ledger sync failed. */
-  taxSyncWarning?: string | null;
+  incomeIds: string[];
 };
 
 export const POS_PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"] as const;
@@ -60,8 +42,6 @@ export const POS_CHECKOUT_PAYMENT_METHODS = ["Cash", "Mobile Money"] as const;
 export const POS_MOMO_PAYMENT_METHOD = "Mobile Money";
 
 export const POS_PRINT_AREA_ID = "pos-receipt-print-area";
-
-const POS_INVOICE_ENTITY_TYPE = "POS";
 
 export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -201,133 +181,56 @@ export function buildPosNotes(
   return `${methodLine}\n${trimmedNotes}`;
 }
 
-export function allocateLinePayments(
-  lines: PosCartLine[],
-  totalAmountReceived: number,
-): number[] {
-  let remaining = roundMoney(totalAmountReceived);
-
-  return lines.map((line) => {
-    const lineTotal = lineSubtotal(line);
-    const lineReceived = roundMoney(Math.min(lineTotal, Math.max(remaining, 0)));
-    remaining = roundMoney(remaining - lineReceived);
-    return lineReceived;
-  });
+export function buildCheckoutPosCartLinesPayload(cartLines: PosCartLine[]) {
+  return cartLines.map((line) => ({
+    product_id: line.productId,
+    quantity: line.quantity,
+    unit_price: line.unitPrice,
+    product_code: line.productCode,
+    product_name: line.productName,
+  }));
 }
 
-async function fetchIncomeInvoiceNumber(
-  supabase: SupabaseClient,
-  incomeId: string,
-): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("income_register")
-    .select("invoice_no")
-    .eq("id", incomeId)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  const invoiceNo = (data as { invoice_no?: string | null } | null)?.invoice_no;
-  return invoiceNo?.trim() ? invoiceNo.trim() : null;
+/** True when checkout_pos_cart failed on a specific cart line (atomic rollback). */
+export function isPosCheckoutLineFailureMessage(message: string): boolean {
+  return /^Checkout failed on line \d+ of \d+ /i.test(message.trim());
 }
 
 export async function runPosCheckout(
   supabase: SupabaseClient,
   input: PosCheckoutInput,
 ): Promise<PosCheckoutRunSummary> {
-  const succeeded: PosCheckoutLineResult[] = [];
-  const failed: PosCheckoutLineResult[] = [];
-  const linePayments = allocateLinePayments(input.cartLines, input.amountReceived);
-  const notes = buildPosNotes(input.paymentMethod, input.notes);
-  let allocatedInvoiceNo = input.invoiceNo?.trim() || null;
+  const { data, error } = await supabase.rpc("checkout_pos_cart", {
+    p_tenant_id: input.tenantId,
+    p_business_unit_id: input.businessUnitId ?? null,
+    p_sale_date: input.saleDate,
+    p_invoice_no: null,
+    p_client_id: input.clientId,
+    p_customer_name: input.clientId ? null : input.customerName,
+    p_payment_status: input.paymentStatus,
+    p_due_date: input.dueDate,
+    p_notes: input.notes,
+    p_payment_method: input.paymentMethod,
+    p_sales_rep_id: input.salesRepId?.trim() || null,
+    p_amount_received: input.amountReceived,
+    p_lines: buildCheckoutPosCartLinesPayload(input.cartLines),
+    p_payment_request_id: null,
+    p_paid_amount: null,
+    p_paystack_reference: null,
+    p_paid_at: null,
+  });
 
-  for (const [index, line] of input.cartLines.entries()) {
-    const lineTotal = lineSubtotal(line);
-    const productLabel = `${line.productCode} — ${line.productName}`;
-
-    const { data, error } = await supabase.rpc("create_product_sale", {
-      p_date: input.saleDate,
-      // First line allocates via generate_next_code(..., 'POS', 4); later lines reuse.
-      p_invoice_no: allocatedInvoiceNo,
-      p_client_id: input.clientId,
-      p_customer_name: input.clientId ? null : input.customerName,
-      p_product_id: line.productId,
-      p_quantity: line.quantity,
-      p_unit_price: line.unitPrice,
-      p_amount_received: linePayments[index] ?? 0,
-      p_payment_status: input.paymentStatus,
-      p_due_date: input.dueDate,
-      p_description: null,
-      p_notes: notes,
-      p_invoice_entity_type: POS_INVOICE_ENTITY_TYPE,
-      p_sales_rep_id: input.salesRepId?.trim() || null,
-      p_business_unit_id: input.businessUnitId ?? null,
-    });
-
-    if (error) {
-      failed.push({
-        lineId: line.id,
-        productLabel,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        lineTotal,
-        success: false,
-        errorMessage: error.message,
-      });
-
-      return {
-        invoiceNo: allocatedInvoiceNo,
-        succeeded,
-        failed,
-        stoppedEarly: true,
-        taxSyncWarning: await applyVfrsToSucceededLines(supabase, succeeded),
-      };
-    }
-
-    const incomeId = (data as string | null) ?? undefined;
-    if (!allocatedInvoiceNo && incomeId) {
-      allocatedInvoiceNo = await fetchIncomeInvoiceNumber(supabase, incomeId);
-    }
-
-    succeeded.push({
-      lineId: line.id,
-      productLabel,
-      quantity: line.quantity,
-      unitPrice: line.unitPrice,
-      lineTotal,
-      success: true,
-      incomeId,
-    });
+  if (error) {
+    throw new Error(error.message);
   }
+
+  const result = data as {
+    invoice_no?: string | null;
+    income_ids?: string[] | null;
+  } | null;
 
   return {
-    invoiceNo: allocatedInvoiceNo,
-    succeeded,
-    failed,
-    stoppedEarly: false,
-    taxSyncWarning: await applyVfrsToSucceededLines(supabase, succeeded),
+    invoiceNo: result?.invoice_no?.trim() || null,
+    incomeIds: (result?.income_ids ?? []).filter(Boolean),
   };
-}
-
-/**
- * VFRS output tax + tax ledger for the lines that did post. Non-fatal: the
- * sale, stock, and COGS are already committed by create_product_sale, so a
- * tax sync problem is reported as a warning instead of failing the checkout.
- */
-async function applyVfrsToSucceededLines(
-  supabase: SupabaseClient,
-  succeeded: PosCheckoutLineResult[],
-): Promise<string | null> {
-  const incomeIds = succeeded
-    .map((line) => line.incomeId)
-    .filter((id): id is string => Boolean(id));
-
-  if (incomeIds.length === 0) {
-    return null;
-  }
-
-  const { error } = await syncProductSaleVfrsTax(supabase, incomeIds);
-  return error;
 }

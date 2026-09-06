@@ -52,6 +52,7 @@ import {
   getCustomerDisplayName,
   lineSubtotal,
   resolvePosCustomerSelection,
+  isPosCheckoutLineFailureMessage,
   runPosCheckout,
   type PosCartLine,
   type PosCheckoutRunSummary,
@@ -187,12 +188,6 @@ export default function PosCheckout({
   /** True when the backend blocked payment because the tenant has no active
    * settlement account — shows a link to Payment Settings. */
   const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
-  const [checkoutResult, setCheckoutResult] =
-    useState<PosCheckoutRunSummary | null>(null);
-  const [pendingInvoiceNo, setPendingInvoiceNo] = useState<string | null>(null);
-  const [accumulatedReceiptLines, setAccumulatedReceiptLines] = useState<
-    PosCartLine[]
-  >([]);
   const [receipt, setReceipt] = useState<PosReceiptData | null>(null);
   const [showRequestPayment, setShowRequestPayment] = useState(false);
   /** Snapshot of cart + customer when opening Request Payment (charge-first). */
@@ -296,13 +291,8 @@ export default function PosCheckout({
     }
   }
 
-  async function recordQuoteConversionsFromSummary(
-    summary: PosCheckoutRunSummary,
-  ) {
-    const incomeIds = summary.succeeded
-      .map((line) => line.incomeId)
-      .filter((id): id is string => Boolean(id));
-    return recordQuoteConversionsForIncomeIds(incomeIds);
+  async function recordQuoteConversionsFromSummary(summary: PosCheckoutRunSummary) {
+    return recordQuoteConversionsForIncomeIds(summary.incomeIds);
   }
 
   const filteredProducts = useMemo(() => {
@@ -443,7 +433,6 @@ export default function PosCheckout({
     }
 
     setError(null);
-    setCheckoutResult(null);
     clearCheckoutAdjustments();
 
     setCartLines((current) => [
@@ -466,7 +455,6 @@ export default function PosCheckout({
     field: "quantity" | "unitPrice",
     value: string,
   ) {
-    setCheckoutResult(null);
     clearCheckoutAdjustments();
 
     setCartLines((current) =>
@@ -510,7 +498,6 @@ export default function PosCheckout({
   }
 
   function removeCartLine(lineId: string) {
-    setCheckoutResult(null);
     clearCheckoutAdjustments();
     setCartLines((current) => current.filter((line) => line.id !== lineId));
   }
@@ -590,9 +577,6 @@ export default function PosCheckout({
     setDueDate(todayIsoDate());
     setNotes("");
     setProductSearch("");
-    setCheckoutResult(null);
-    setPendingInvoiceNo(null);
-    setAccumulatedReceiptLines([]);
     setReceipt(null);
     setShowRequestPayment(false);
     setRequestPaymentDraft(null);
@@ -670,9 +654,6 @@ export default function PosCheckout({
       lines: input.lines,
       pendingSync: input.pendingSync,
     });
-    setCheckoutResult(null);
-    setPendingInvoiceNo(null);
-    setAccumulatedReceiptLines([]);
     setCartLines([]);
     setShowRequestPayment(false);
     setRequestPaymentDraft(null);
@@ -779,10 +760,15 @@ export default function PosCheckout({
       return;
     }
 
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+
     const amountReceived = payableTotal;
     const summary = await runPosCheckout(supabase, {
+      tenantId,
       saleDate: todayIsoDate(),
-      invoiceNo: pendingInvoiceNo,
       clientId: trimmedClientId,
       customerName: trimmedClientId ? null : trimmedCustomerName,
       salesRepId: salesRepId.trim() || null,
@@ -799,32 +785,12 @@ export default function PosCheckout({
 
     const conversionWarning = await recordQuoteConversionsFromSummary(summary);
 
-    if (summary.stoppedEarly) {
-      const succeededLineIds = new Set(
-        summary.succeeded.map((line) => line.lineId),
-      );
-      const postedSnapshots = cartLines.filter((line) =>
-        succeededLineIds.has(line.id),
-      );
-      setAccumulatedReceiptLines((current) => [...current, ...postedSnapshots]);
-      setCartLines((current) =>
-        current.filter((line) => !succeededLineIds.has(line.id)),
-      );
-      setPendingInvoiceNo(summary.invoiceNo);
-      setCheckoutResult(summary);
-      setError(
-        conversionWarning ??
-          "Checkout stopped because a line item failed. Review the succeeded and failed lines below before retrying the remaining items or handling them manually in Product Sales.",
-      );
-      return;
-    }
-
     if (!summary.invoiceNo) {
       setError("Checkout completed but no invoice number was returned from the server.");
       return;
     }
 
-    const receiptLines = [...accumulatedReceiptLines, ...cartLines];
+    const receiptLines = [...cartLines];
     showPaidReceipt({
       invoiceNo: summary.invoiceNo,
       customerLabel: getCustomerDisplayName(
@@ -883,10 +849,6 @@ export default function PosCheckout({
     if (loyaltyEarnWarning) {
       setError(
         `Sale recorded, but loyalty points could not be earned: ${loyaltyEarnWarning}`,
-      );
-    } else if (summary.taxSyncWarning) {
-      setError(
-        `Sale recorded, but the VFRS tax ledger could not be updated: ${summary.taxSyncWarning}`,
       );
     } else if (conversionWarning) {
       setError(
@@ -1164,9 +1126,6 @@ export default function PosCheckout({
 
   function handleRequestPaymentLinkSent() {
     setCartLines([]);
-    setCheckoutResult(null);
-    setPendingInvoiceNo(null);
-    setAccumulatedReceiptLines([]);
   }
 
   if (receipt) {
@@ -1199,6 +1158,13 @@ export default function PosCheckout({
 
       {error ? (
         <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {isPosCheckoutLineFailureMessage(error) ||
+          /only .* in stock, cannot sell/i.test(error) ? (
+            <p className="font-medium">
+              No sale was recorded. Fix the failed line below and retry the
+              whole cart.
+            </p>
+          ) : null}
           <p>{error}</p>
           {paymentSettingsRequired ? (
             <p>
@@ -1220,50 +1186,6 @@ export default function PosCheckout({
         <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
           Waiting for Mobile Money confirmation in the Paystack window…
         </p>
-      ) : null}
-
-      {checkoutResult ? (
-        <section className="space-y-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-          <p className="font-medium">
-            Partial checkout on invoice {checkoutResult.invoiceNo ?? "—"}.{" "}
-            {checkoutResult.succeeded.length} line
-            {checkoutResult.succeeded.length === 1 ? "" : "s"} posted; checkout
-            stopped before the failed line.
-          </p>
-
-          {checkoutResult.succeeded.length > 0 ? (
-            <div>
-              <p className="font-medium text-emerald-900">Already posted</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-emerald-900">
-                {checkoutResult.succeeded.map((line) => (
-                  <li key={line.lineId}>
-                    {line.productLabel} — qty {formatInventoryQuantity(line.quantity)}{" "}
-                    @ {formatGHS(line.unitPrice)} ({formatGHS(line.lineTotal)})
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {checkoutResult.failed.length > 0 ? (
-            <div>
-              <p className="font-medium text-red-900">Failed line</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-red-900">
-                {checkoutResult.failed.map((line) => (
-                  <li key={line.lineId}>
-                    {line.productLabel} — {line.errorMessage}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <p>
-            Remove the posted lines from your cart (or start a new sale), then
-            retry only the remaining items. Posted lines already reduced stock
-            and cannot be undone from POS.
-          </p>
-        </section>
       ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

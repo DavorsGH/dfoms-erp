@@ -1,19 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { calculateIncomeOutstanding } from "@/app/dashboard/finance/income-register-utils";
-import {
-  loadTenantSalesTaxBasis,
-  type SalesTaxBasis,
-} from "@/app/dashboard/finance/tax-utils";
-import {
-  deleteTaxLedgerEntriesForSource,
-  syncIncomeRegisterTaxLedger,
-} from "@/app/dashboard/finance/tax-ledger-sync";
 import { deriveClientInvoiceStatusFromPayments } from "@/utils/client-invoice-payment-utils";
 import {
   AUTHORIZED_SIGNER_USER_ACCOUNT_SELECT,
   CLIENT_INVOICE_HEADER_SELECT,
   CLIENT_INVOICE_LINE_ITEM_SELECT,
-  computeInvoiceTotals,
   formatGeneratedInvoiceNumber,
   mapAuthorizedSignerOptions,
   normalizeStatus,
@@ -21,7 +11,6 @@ import {
   toNumber,
   type ClientInvoiceAuthorizedSignerOption,
   type ClientInvoiceHeaderRow,
-  type ClientInvoiceLineItemInput,
   type ClientInvoiceStatus,
   type ClientInvoiceWriteBody,
 } from "@/utils/client-invoices-types";
@@ -30,10 +19,9 @@ import {
   StampRefusedViewAllError,
   type CreateBusinessUnitStampOptions,
 } from "@/utils/business-unit-stamp";
+import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 
 type DbClient = SupabaseClient;
-
-const CLIENT_INVOICE_INCOME_SERVICE_CATEGORY = "Client Invoice";
 
 export type CreateClientInvoiceOptions = {
   fixedHeaderTotals?: {
@@ -46,60 +34,46 @@ export type CreateClientInvoiceOptions = {
   contractId?: string | null;
 } & CreateBusinessUnitStampOptions;
 
-function nullableText(value: string | null | undefined) {
-  const trimmed = (value ?? "").trim();
-  return trimmed ? trimmed : null;
-}
+const CLIENT_INVOICE_INCOME_SERVICE_CATEGORY = "Client Invoice";
 
-function buildHeaderPayload(
-  tenantId: string,
-  body: ClientInvoiceWriteBody,
-  invoiceSequence: number,
-  invoiceNumber: string,
-  taxBasis: SalesTaxBasis,
-  fixedHeaderTotals?: CreateClientInvoiceOptions["fixedHeaderTotals"],
-  contractId?: string | null,
-) {
-  const totals = fixedHeaderTotals
-    ? {
-        subtotal: roundMoney(toNumber(fixedHeaderTotals.subtotal)),
-        tax_due: roundMoney(toNumber(fixedHeaderTotals.tax_due)),
-        wht_amount: roundMoney(toNumber(fixedHeaderTotals.wht_amount)),
-        total_amount_due: roundMoney(toNumber(fixedHeaderTotals.total_amount_due)),
-      }
-    : computeInvoiceTotals(
-        body.line_items,
-        body.vat_nhil_getfund_rate ?? 0,
-        body.wht_rate ?? 0,
-        taxBasis,
-      );
-
+function buildSaveClientInvoicePayload(body: ClientInvoiceWriteBody) {
   return {
-    tenant_id: tenantId,
     client_id: body.client_id.trim(),
-    invoice_number: invoiceNumber,
-    invoice_sequence: invoiceSequence,
+    contract_id: body.contract_id ?? null,
     invoice_date: body.invoice_date,
-    due_date: nullableText(body.due_date ?? null),
-    billing_period_start: nullableText(body.billing_period_start ?? null),
-    billing_period_end: nullableText(body.billing_period_end ?? null),
+    due_date: body.due_date ?? null,
+    billing_period_start: body.billing_period_start ?? null,
+    billing_period_end: body.billing_period_end ?? null,
     bill_to_name: body.bill_to_name.trim(),
-    bill_to_address: nullableText(body.bill_to_address ?? null),
-    bill_to_phone: nullableText(body.bill_to_phone ?? null),
-    subtotal: totals.subtotal,
+    bill_to_address: body.bill_to_address ?? null,
+    bill_to_phone: body.bill_to_phone ?? null,
     vat_nhil_getfund_rate: roundMoney(toNumber(body.vat_nhil_getfund_rate ?? 0)),
-    tax_due: totals.tax_due,
     wht_rate: roundMoney(toNumber(body.wht_rate ?? 0)),
-    wht_amount: totals.wht_amount,
-    total_amount_due: totals.total_amount_due,
     status: normalizeStatus(body.status),
     amount_received: roundMoney(toNumber(body.amount_received ?? 0)),
-    notes: nullableText(body.notes ?? null),
-    authorized_by_name: nullableText(body.authorized_by_name ?? null),
-    authorized_by_title: nullableText(body.authorized_by_title ?? null),
-    contract_id: nullableText(contractId ?? body.contract_id ?? null),
-    updated_at: new Date().toISOString(),
+    notes: body.notes ?? null,
+    authorized_by_name: body.authorized_by_name ?? null,
+    authorized_by_title: body.authorized_by_title ?? null,
+    line_items: body.line_items.map((line) => ({
+      site_id: line.site_id ?? null,
+      category_label: line.category_label ?? null,
+      description: line.description.trim(),
+      labour_amount: roundMoney(toNumber(line.labour_amount)),
+      material_amount: roundMoney(toNumber(line.material_amount)),
+      discount_amount: roundMoney(toNumber(line.discount_amount)),
+      taxed: line.taxed ?? true,
+      sort_order: line.sort_order,
+    })),
+    payment_account_ids: body.payment_account_ids.filter(Boolean),
   };
+}
+
+function parseSaveClientInvoiceResult(data: unknown): ClientInvoiceHeaderRow | null {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+  const invoice = (data as { invoice?: ClientInvoiceHeaderRow }).invoice;
+  return invoice ?? null;
 }
 
 export async function loadAuthorizedSignerOptions(
@@ -122,85 +96,6 @@ export async function loadAuthorizedSignerOptions(
     signers: mapAuthorizedSignerOptions(data ?? []),
     error: null,
   };
-}
-
-function buildLineItemRows(
-  tenantId: string,
-  invoiceId: string,
-  lineItems: ClientInvoiceLineItemInput[],
-) {
-  const totals = computeInvoiceTotals(lineItems, 20, 7.5);
-
-  return totals.line_items.map((line, index) => ({
-    invoice_id: invoiceId,
-    tenant_id: tenantId,
-    site_id: nullableText(line.site_id ?? null),
-    category_label: nullableText(line.category_label ?? null),
-    description: line.description.trim(),
-    labour_amount: roundMoney(toNumber(line.labour_amount)),
-    material_amount: roundMoney(toNumber(line.material_amount)),
-    discount_amount: roundMoney(toNumber(line.discount_amount)),
-    taxed: line.taxed ?? true,
-    total_cost: line.total_cost,
-    sort_order: line.sort_order ?? index,
-  }));
-}
-
-async function replaceLineItemsAndPaymentAccounts(
-  supabase: DbClient,
-  tenantId: string,
-  invoiceId: string,
-  body: ClientInvoiceWriteBody,
-) {
-  const { error: deleteLinesError } = await supabase
-    .from("client_invoice_line_items")
-    .delete()
-    .eq("invoice_id", invoiceId)
-    .eq("tenant_id", tenantId);
-
-  if (deleteLinesError) {
-    return { error: deleteLinesError.message };
-  }
-
-  const { error: deleteLinksError } = await supabase
-    .from("client_invoice_payment_accounts")
-    .delete()
-    .eq("invoice_id", invoiceId)
-    .eq("tenant_id", tenantId);
-
-  if (deleteLinksError) {
-    return { error: deleteLinksError.message };
-  }
-
-  const lineRows = buildLineItemRows(tenantId, invoiceId, body.line_items);
-  if (lineRows.length > 0) {
-    const { error: insertLinesError } = await supabase
-      .from("client_invoice_line_items")
-      .insert(lineRows);
-
-    if (insertLinesError) {
-      return { error: insertLinesError.message };
-    }
-  }
-
-  const uniquePaymentAccountIds = [...new Set(body.payment_account_ids.filter(Boolean))];
-  if (uniquePaymentAccountIds.length > 0) {
-    const { error: insertLinksError } = await supabase
-      .from("client_invoice_payment_accounts")
-      .insert(
-        uniquePaymentAccountIds.map((paymentAccountId) => ({
-          invoice_id: invoiceId,
-          payment_account_id: paymentAccountId,
-          tenant_id: tenantId,
-        })),
-      );
-
-    if (insertLinksError) {
-      return { error: insertLinksError.message };
-    }
-  }
-
-  return { error: null };
 }
 
 export async function getNextInvoiceSequence(
@@ -265,28 +160,6 @@ export async function peekNextInvoiceNumber(
     invoiceNumber: formatGeneratedInvoiceNumber(tenantCode, "INV", lastIssued + 1),
     error: null,
   };
-}
-
-async function allocateInvoiceNumber(supabase: DbClient, tenantId: string) {
-  const { data, error } = await supabase.rpc("generate_next_code", {
-    p_tenant_id: tenantId,
-    p_entity_type: "INV",
-    p_padding: 4,
-  });
-
-  if (error) {
-    return { invoiceNumber: null, error: error.message };
-  }
-
-  const invoiceNumber = typeof data === "string" ? data.trim() : "";
-  if (!invoiceNumber) {
-    return {
-      invoiceNumber: null,
-      error: "generate_next_code returned an empty invoice number.",
-    };
-  }
-
-  return { invoiceNumber, error: null };
 }
 
 /**
@@ -354,189 +227,12 @@ export async function sumClientInvoicePayments(
   return { total, error: null };
 }
 
-export async function syncIncomeRegisterFromClientInvoice(
-  supabase: DbClient,
-  tenantId: string,
-  invoice: ClientInvoiceHeaderRow,
-) {
-  // Draft invoices should have no Income Register entry (nor tax ledger legs).
-  if (invoice.status === "draft") {
-    const { incomeId, error: lookupError } =
-      await findClientInvoiceIncomeRegisterId(
-        supabase,
-        tenantId,
-        invoice.invoice_number,
-        invoice.id,
-      );
-
-    if (lookupError) {
-      return { error: lookupError };
-    }
-
-    if (!incomeId) {
-      return { error: null };
-    }
-
-    const { error } = await supabase
-      .from("income_register")
-      .delete()
-      .eq("id", incomeId)
-      .eq("tenant_id", tenantId);
-
-    if (error) {
-      return { error: error.message };
-    }
-
-    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
-      supabase,
-      "income_register",
-      incomeId,
-    );
-    if (ledgerError) {
-      return { error: ledgerError };
-    }
-
-    return { error: null };
-  }
-
-  const amount = toNumber(invoice.total_amount_due);
-  const isVoided = invoice.status === "voided";
-  const amountReceived = isVoided
-    ? toNumber(invoice.amount_received)
-    : invoice.status === "paid" || invoice.status === "partial"
-      ? toNumber(invoice.amount_received)
-      : 0;
-  const outputVatAmount = roundMoney(toNumber(invoice.tax_due));
-  const whtAmount = roundMoney(toNumber(invoice.wht_amount));
-  const outstandingBalance = isVoided
-    ? 0
-    : calculateIncomeOutstanding(amount, amountReceived, whtAmount);
-
-  let paymentStatus: string;
-  if (isVoided) {
-    paymentStatus = "Voided";
-  } else if (invoice.status === "paid") {
-    paymentStatus = "Paid";
-  } else if (invoice.status === "partial") {
-    paymentStatus = "Partial";
-  } else {
-    const today = new Date().toISOString().slice(0, 10);
-    const dueDate = invoice.due_date ?? invoice.invoice_date;
-    paymentStatus = dueDate && dueDate < today ? "Overdue" : "Pending";
-  }
-
-  const payload = {
-    tenant_id: tenantId,
-    date: invoice.invoice_date,
-    invoice_no: invoice.invoice_number,
-    client_invoice_id: invoice.id,
-    client_id: invoice.client_id,
-    customer_name: invoice.bill_to_name,
-    entry_type: "service" as const,
-    service_category: CLIENT_INVOICE_INCOME_SERVICE_CATEGORY,
-    description: invoice.notes ?? null,
-    amount,
-    amount_received: amountReceived,
-    outstanding_balance: outstandingBalance,
-    tax_inclusive: true,
-    net_of_tax_amount: roundMoney(amount - outputVatAmount),
-    output_tax_component: outputVatAmount > 0 ? ("vat_bundle" as const) : null,
-    output_vat_amount: outputVatAmount,
-    wht_rate: roundMoney(toNumber(invoice.wht_rate)) || null,
-    wht_amount: whtAmount,
-    payment_status: paymentStatus,
-    due_date: invoice.due_date ?? invoice.invoice_date,
-    // Inherit invoice BU (create stamp / convert / contract). Do not use live switcher.
-    business_unit_id: invoice.business_unit_id ?? null,
-  };
-
-  const { incomeId: existingIncomeId, error: lookupError } =
-    await findClientInvoiceIncomeRegisterId(
-      supabase,
-      tenantId,
-      invoice.invoice_number,
-      invoice.id,
-    );
-
-  if (lookupError) {
-    return { error: lookupError };
-  }
-
-  const writeResult = existingIncomeId
-    ? await supabase
-        .from("income_register")
-        .update(payload)
-        .eq("id", existingIncomeId)
-        .eq("tenant_id", tenantId)
-        .select("id")
-        .single()
-    : await supabase.from("income_register").insert(payload).select("id").single();
-
-  const incomeRow = writeResult.data;
-  const error = writeResult.error;
-
-  if (error || !incomeRow) {
-    return { error: error?.message ?? "Unable to sync the Income Register row." };
-  }
-
-  const incomeId = (incomeRow as { id: string }).id;
-
-  if (isVoided) {
-    const { error: ledgerError } = await deleteTaxLedgerEntriesForSource(
-      supabase,
-      "income_register",
-      incomeId,
-    );
-    return { error: ledgerError };
-  }
-
-  const { error: ledgerError } = await syncIncomeRegisterTaxLedger(supabase, {
-    sourceId: incomeId,
-    entryDate: invoice.invoice_date,
-    amount,
-    whtRatePct: whtAmount > 0 ? roundMoney(toNumber(invoice.wht_rate)) || null : null,
-    whtAmount,
-    outputTaxComponent: outputVatAmount > 0 ? "vat_bundle" : null,
-    outputTaxRatePct:
-      outputVatAmount > 0 ? roundMoney(toNumber(invoice.vat_nhil_getfund_rate)) : null,
-    outputVatAmount,
-    counterpartyName: invoice.bill_to_name,
-    notes: `Invoice ${invoice.invoice_number}`,
-    tenantId,
-  });
-
-  return { error: ledgerError };
-}
-
 export async function createClientInvoice(
   supabase: DbClient,
   tenantId: string,
   body: ClientInvoiceWriteBody,
   options?: CreateClientInvoiceOptions,
 ) {
-  // Display/stored invoice_number comes from the shared atomic allocator.
-  // invoice_sequence stays a separate tenant-unique integer (ordering / legacy UNIQUE).
-  const { invoiceNumber, error: allocateError } = await allocateInvoiceNumber(
-    supabase,
-    tenantId,
-  );
-
-  if (allocateError || !invoiceNumber) {
-    return {
-      invoice: null,
-      error: allocateError ?? "Unable to allocate invoice number.",
-    };
-  }
-
-  const { sequence, error: sequenceError } = await getNextInvoiceSequence(
-    supabase,
-    tenantId,
-  );
-
-  if (sequenceError) {
-    return { invoice: null, error: sequenceError };
-  }
-
   let businessUnitId: string | null;
   try {
     businessUnitId = await resolveCreateBusinessUnitId(options);
@@ -546,69 +242,27 @@ export async function createClientInvoice(
     }
     throw error;
   }
-  const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
-    supabase,
-    tenantId,
-    businessUnitId,
-  );
-  if (taxBasisError) {
-    return { invoice: null, error: taxBasisError };
+
+  const { data, error } = await supabase.rpc("save_client_invoice", {
+    p_tenant_id: tenantId,
+    p_invoice_id: null,
+    p_business_unit_id: businessUnitId,
+    p_payload: buildSaveClientInvoicePayload(body),
+    p_fixed_header_totals: options?.fixedHeaderTotals ?? null,
+    p_tax_basis_override: options?.taxBasisOverride ?? null,
+    p_contract_id: options?.contractId ?? null,
+  });
+
+  if (error) {
+    return { invoice: null, error: error.message };
   }
 
-  const taxBasis = options?.taxBasisOverride ?? salesTaxBasis;
-  const headerPayload = buildHeaderPayload(
-    tenantId,
-    body,
-    sequence,
-    invoiceNumber,
-    taxBasis,
-    options?.fixedHeaderTotals,
-    options?.contractId,
-  );
-  headerPayload.status = "draft";
-  headerPayload.amount_received = 0;
-
-  const insertPayload = {
-    ...headerPayload,
-    business_unit_id: businessUnitId,
-  };
-
-  const { data: invoice, error: insertError } = await supabase
-    .from("client_invoices")
-    .insert(insertPayload)
-    .select(CLIENT_INVOICE_HEADER_SELECT)
-    .single();
-
-  if (insertError || !invoice) {
-    return { invoice: null, error: insertError?.message ?? "Unable to create invoice." };
+  const invoice = parseSaveClientInvoiceResult(data);
+  if (!invoice) {
+    return { invoice: null, error: "Unable to create invoice." };
   }
 
-  const childResult = await replaceLineItemsAndPaymentAccounts(
-    supabase,
-    tenantId,
-    invoice.id,
-    body,
-  );
-
-  if (childResult.error) {
-    await supabase
-      .from("client_invoices")
-      .delete()
-      .eq("id", invoice.id)
-      .eq("tenant_id", tenantId);
-    return { invoice: null, error: childResult.error };
-  }
-
-  const syncResult = await syncIncomeRegisterFromClientInvoice(
-    supabase,
-    tenantId,
-    invoice as ClientInvoiceHeaderRow,
-  );
-  if (syncResult.error) {
-    return { invoice: invoice as ClientInvoiceHeaderRow, error: null, syncWarning: syncResult.error };
-  }
-
-  return { invoice: invoice as ClientInvoiceHeaderRow, error: null };
+  return { invoice, error: null };
 }
 
 const INVOICE_STATUS_TRANSITIONS: Record<
@@ -642,49 +296,22 @@ export async function updateClientInvoiceStatus(
     };
   }
 
-  const totalDue = roundMoney(toNumber(detail.invoice.total_amount_due));
-  const updatePayload =
-    nextStatus === "paid"
-      ? {
-          status: "paid" as const,
-          amount_received: totalDue,
-          updated_at: new Date().toISOString(),
-        }
-      : {
-          status: "sent" as const,
-          updated_at: new Date().toISOString(),
-        };
+  const { data, error } = await supabase.rpc("change_client_invoice_status", {
+    p_tenant_id: tenantId,
+    p_invoice_id: invoiceId,
+    p_next_status: nextStatus,
+  });
 
-  const { data: invoice, error } = await supabase
-    .from("client_invoices")
-    .update(updatePayload)
-    .eq("id", invoiceId)
-    .eq("tenant_id", tenantId)
-    .eq("status", currentStatus)
-    .select(CLIENT_INVOICE_HEADER_SELECT)
-    .single();
-
-  if (error || !invoice) {
-    return {
-      invoice: null,
-      error: error?.message ?? "Unable to update invoice status.",
-    };
+  if (error) {
+    return { invoice: null, error: error.message };
   }
 
-  const syncResult = await syncIncomeRegisterFromClientInvoice(
-    supabase,
-    tenantId,
-    invoice as ClientInvoiceHeaderRow,
-  );
-
-  if (syncResult.error) {
-    return {
-      invoice: invoice as ClientInvoiceHeaderRow,
-      error: syncResult.error,
-    };
+  const invoice = parseSaveClientInvoiceResult(data);
+  if (!invoice) {
+    return { invoice: null, error: "Unable to update invoice status." };
   }
 
-  return { invoice: invoice as ClientInvoiceHeaderRow, error: null };
+  return { invoice, error: null };
 }
 
 export async function voidClientInvoice(
@@ -711,39 +338,21 @@ export async function voidClientInvoice(
     };
   }
 
-  const { data: invoice, error } = await supabase
-    .from("client_invoices")
-    .update({
-      status: "voided",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", invoiceId)
-    .eq("tenant_id", tenantId)
-    .eq("status", currentStatus)
-    .select(CLIENT_INVOICE_HEADER_SELECT)
-    .single();
+  const { data, error } = await supabase.rpc("void_client_invoice", {
+    p_tenant_id: tenantId,
+    p_invoice_id: invoiceId,
+  });
 
-  if (error || !invoice) {
-    return {
-      invoice: null,
-      error: error?.message ?? "Unable to void invoice.",
-    };
+  if (error) {
+    return { invoice: null, error: error.message };
   }
 
-  const syncResult = await syncIncomeRegisterFromClientInvoice(
-    supabase,
-    tenantId,
-    invoice as ClientInvoiceHeaderRow,
-  );
-
-  if (syncResult.error) {
-    return {
-      invoice: invoice as ClientInvoiceHeaderRow,
-      error: syncResult.error,
-    };
+  const invoice = parseSaveClientInvoiceResult(data);
+  if (!invoice) {
+    return { invoice: null, error: "Unable to void invoice." };
   }
 
-  return { invoice: invoice as ClientInvoiceHeaderRow, error: null };
+  return { invoice, error: null };
 }
 
 export async function updateClientInvoice(
@@ -751,8 +360,8 @@ export async function updateClientInvoice(
   tenantId: string,
   invoiceId: string,
   body: ClientInvoiceWriteBody,
-  existingSequence: number,
-  existingInvoiceNumber: string,
+  _existingSequence: number,
+  _existingInvoiceNumber: string,
 ) {
   const { data: existingScope, error: scopeError } = await supabase
     .from("client_invoices")
@@ -768,15 +377,6 @@ export async function updateClientInvoice(
   const invoiceBusinessUnitId =
     (existingScope?.business_unit_id as string | null | undefined)?.trim() ||
     null;
-
-  const { salesTaxBasis, error: taxBasisError } = await loadTenantSalesTaxBasis(
-    supabase,
-    tenantId,
-    invoiceBusinessUnitId,
-  );
-  if (taxBasisError) {
-    return { invoice: null, error: taxBasisError };
-  }
 
   let writeBody = body;
   const { total: paymentsTotal, error: paymentsSumError } =
@@ -812,46 +412,26 @@ export async function updateClientInvoice(
     };
   }
 
-  const headerPayload = buildHeaderPayload(
-    tenantId,
-    writeBody,
-    existingSequence,
-    existingInvoiceNumber,
-    salesTaxBasis,
-  );
-  const { data: invoice, error: updateError } = await supabase
-    .from("client_invoices")
-    .update(headerPayload)
-    .eq("id", invoiceId)
-    .eq("tenant_id", tenantId)
-    .select(CLIENT_INVOICE_HEADER_SELECT)
-    .single();
+  const { data, error } = await supabase.rpc("save_client_invoice", {
+    p_tenant_id: tenantId,
+    p_invoice_id: invoiceId,
+    p_business_unit_id: invoiceBusinessUnitId,
+    p_payload: buildSaveClientInvoicePayload(writeBody),
+    p_fixed_header_totals: null,
+    p_tax_basis_override: null,
+    p_contract_id: writeBody.contract_id ?? null,
+  });
 
-  if (updateError || !invoice) {
-    return { invoice: null, error: updateError?.message ?? "Invoice not found." };
+  if (error) {
+    return { invoice: null, error: error.message };
   }
 
-  const childResult = await replaceLineItemsAndPaymentAccounts(
-    supabase,
-    tenantId,
-    invoiceId,
-    body,
-  );
-
-  if (childResult.error) {
-    return { invoice: null, error: childResult.error };
+  const invoice = parseSaveClientInvoiceResult(data);
+  if (!invoice) {
+    return { invoice: null, error: "Invoice not found." };
   }
 
-  const syncResult = await syncIncomeRegisterFromClientInvoice(
-    supabase,
-    tenantId,
-    invoice as ClientInvoiceHeaderRow,
-  );
-  if (syncResult.error) {
-    return { invoice: invoice as ClientInvoiceHeaderRow, error: null, syncWarning: syncResult.error };
-  }
-
-  return { invoice: invoice as ClientInvoiceHeaderRow, error: null };
+  return { invoice, error: null };
 }
 
 export async function loadClientInvoiceDetail(
