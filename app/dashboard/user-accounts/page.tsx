@@ -28,6 +28,7 @@ export default async function UserAccountsPage() {
     { data: employees, error: employeesError },
     { data: clients, error: clientsError },
     { data: sites, error: sitesError },
+    { data: businessUnits, error: businessUnitsError },
   ] = await Promise.all([
     supabase
       .from("user_accounts")
@@ -46,6 +47,12 @@ export default async function UserAccountsPage() {
       .from("sites")
       .select("site_code, site_name")
       .order("site_name", { ascending: true }),
+    supabase
+      .from("business_units")
+      .select("id, name, is_active")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .order("name", { ascending: true }),
   ]);
 
   return (
@@ -58,11 +65,13 @@ export default async function UserAccountsPage() {
         initialEmployees={(employees as Employee[] | null) ?? []}
         initialClients={clients ?? []}
         initialSites={sites ?? []}
+        initialBusinessUnits={businessUnits ?? []}
         fetchError={
           accountsError?.message ??
           employeesError?.message ??
           clientsError?.message ??
           sitesError?.message ??
+          businessUnitsError?.message ??
           null
         }
       />

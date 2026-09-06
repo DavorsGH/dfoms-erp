@@ -22,6 +22,12 @@ import RoleAssignmentFields, {
   roleAssignmentFromAccount,
   type RoleAssignmentFormState,
 } from "./role-assignment-fields";
+import BusinessUnitAccessFields, {
+  businessUnitAccessFromApi,
+  emptyBusinessUnitAccessForm,
+  type BusinessUnitAccessFormState,
+  type BusinessUnitOption,
+} from "./business-unit-access-fields";
 import PasswordInput from "@/components/password-input";
 
 type UserAccountsProps = {
@@ -29,6 +35,7 @@ type UserAccountsProps = {
   initialEmployees: Employee[];
   initialClients: ClientOption[];
   initialSites: SiteOption[];
+  initialBusinessUnits: BusinessUnitOption[];
   fetchError: string | null;
 };
 
@@ -118,6 +125,7 @@ export default function UserAccounts({
   initialEmployees,
   initialClients,
   initialSites,
+  initialBusinessUnits,
   fetchError,
 }: UserAccountsProps) {
   const router = useRouter();
@@ -137,10 +145,61 @@ export default function UserAccounts({
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
+  const [businessUnitAccessForm, setBusinessUnitAccessForm] =
+    useState<BusinessUnitAccessFormState>(emptyBusinessUnitAccessForm());
+  const [businessUnitAccessLoading, setBusinessUnitAccessLoading] =
+    useState(false);
+
+  const showBusinessUnitAccess = initialBusinessUnits.length >= 2;
 
   useEffect(() => {
     setAccounts(initialAccounts);
   }, [initialAccounts]);
+
+  async function loadBusinessUnitAccess(authUid: string) {
+    if (!showBusinessUnitAccess) {
+      setBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
+      return;
+    }
+
+    setBusinessUnitAccessLoading(true);
+    setBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
+
+    try {
+      const response = await fetch(
+        `/api/admin/users/business-unit-access?auth_uid=${encodeURIComponent(authUid)}`,
+      );
+
+      if (!response.ok) {
+        setError(
+          await parseApiErrorResponse(
+            response,
+            "Failed to load business unit access",
+          ),
+        );
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        unrestricted?: boolean;
+        business_unit_ids?: string[];
+        default_business_unit_id?: string | null;
+      };
+
+      setBusinessUnitAccessForm(businessUnitAccessFromApi(payload));
+    } finally {
+      setBusinessUnitAccessLoading(false);
+    }
+  }
+
+  function openEditUser(account: UserAccount) {
+    setEditingUid(account.auth_uid);
+    setEditForm(editUserFromAccount(account));
+    setResettingUid(null);
+    setError(null);
+    setSuccess(null);
+    void loadBusinessUnitAccess(account.auth_uid);
+  }
 
   const assignedEmployeeIds = useMemo(
     () =>
@@ -251,6 +310,33 @@ export default function UserAccounts({
       );
       setActionId(null);
       return;
+    }
+
+    if (showBusinessUnitAccess) {
+      const accessResponse = await fetch(
+        "/api/admin/users/business-unit-access",
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            auth_uid: authUid,
+            business_unit_ids: businessUnitAccessForm.business_unit_ids,
+            default_business_unit_id:
+              businessUnitAccessForm.default_business_unit_id,
+          }),
+        },
+      );
+
+      if (!accessResponse.ok) {
+        setError(
+          await parseApiErrorResponse(
+            accessResponse,
+            "User saved, but business unit access failed to update",
+          ),
+        );
+        setActionId(null);
+        return;
+      }
     }
 
     setEditingUid(null);
@@ -588,13 +674,7 @@ export default function UserAccounts({
                       <div className="inline-flex flex-nowrap items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingUid(account.auth_uid);
-                            setEditForm(editUserFromAccount(account));
-                            setResettingUid(null);
-                            setError(null);
-                            setSuccess(null);
-                          }}
+                          onClick={() => openEditUser(account)}
                           disabled={actionId === account.auth_uid}
                           className={actionButtonClassName}
                         >
@@ -714,6 +794,15 @@ export default function UserAccounts({
                             }
                             idPrefix={`edit-${account.auth_uid}`}
                           />
+                          {showBusinessUnitAccess ? (
+                            <BusinessUnitAccessFields
+                              form={businessUnitAccessForm}
+                              businessUnits={initialBusinessUnits}
+                              onChange={setBusinessUnitAccessForm}
+                              loading={businessUnitAccessLoading}
+                              idPrefix={`edit-bu-${account.auth_uid}`}
+                            />
+                          ) : null}
                           <div className="flex gap-2">
                             <button
                               type="submit"
