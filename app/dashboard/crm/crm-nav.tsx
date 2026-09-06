@@ -7,6 +7,11 @@ import { isCrmNavItemVisibleForRole } from "@/utils/rbac-access";
 
 const navItems = [
   { label: "Customer List", href: "/dashboard/crm/customers" },
+  { label: "POS", href: "/dashboard/pos" },
+  { label: "Product Sales", href: "/dashboard/crm/product-sales" },
+  { label: "Quotations", href: "/dashboard/sales-crm/quotations" },
+  { label: "Sales Pipeline", href: "/dashboard/crm/sales-pipeline" },
+  { label: "Sales Log", href: "/dashboard/crm/sales" },
   {
     label: "Product Catalog",
     href: "/dashboard/crm/products",
@@ -14,21 +19,16 @@ const navItems = [
   },
   { label: "Services", href: "/dashboard/crm/services" },
   { label: "Discounts", href: "/dashboard/crm/discounts" },
-  { label: "Sales Pipeline", href: "/dashboard/crm/sales-pipeline" },
-  { label: "Quotations", href: "/dashboard/sales-crm/quotations" },
-  { label: "Product Sales", href: "/dashboard/crm/product-sales" },
-  { label: "POS", href: "/dashboard/pos" },
-  { label: "Offline sale conflicts", href: "/dashboard/crm/offline-sale-conflicts" },
-  { label: "Sales Log", href: "/dashboard/crm/sales" },
+  { label: "Loyalty Settings", href: "/dashboard/crm/loyalty-settings" },
   { label: "Sales Targets", href: "/dashboard/crm/sales-targets" },
   { label: "Sales Forecast", href: "/dashboard/crm/sales-forecast" },
   { label: "Commission Rules", href: "/dashboard/crm/commission-rules" },
   { label: "Commissions", href: "/dashboard/crm/commissions" },
-  { label: "Loyalty Settings", href: "/dashboard/crm/loyalty-settings" },
   {
     label: "Email & Promotions",
     href: "/dashboard/crm/email-promotions/templates",
   },
+  { label: "Offline sale conflicts", href: "/dashboard/crm/offline-sale-conflicts" },
 ] as const;
 
 type CrmNavProps = {

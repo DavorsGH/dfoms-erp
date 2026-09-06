@@ -20,9 +20,10 @@ export type PosCustomerDisplayPayload = {
   loyaltyDiscount: number;
   taxAmount: number | null;
   amountDue: number;
-  customerLabel: string | null;
+  customerLabel: string;
+  servedByLabel?: string | null;
   paymentMethod?: string | null;
-  cashTendered?: number | null;
+  amountTendered?: number | null;
   changeDue?: number | null;
   updatedAt: string;
 };
@@ -71,7 +72,7 @@ export function openPosCustomerDisplayWindow(sessionId: string): Window | null {
     return null;
   }
 
-  const url = `/dashboard/pos/customer-display?session=${encodeURIComponent(sessionId)}`;
+  const url = `/pos-customer-display?session=${encodeURIComponent(sessionId)}`;
   return window.open(
     url,
     "dfoms-pos-customer-display",

@@ -260,7 +260,8 @@ export async function middleware(request: NextRequest) {
       (isPortalPath && !isPortalPublicPath) ||
       (isLandlordPortalPath && !isLandlordPortalPublicPath) ||
       (isFacilityPortalPath && !isFacilityPortalPublicPath) ||
-      pathname.startsWith("/dashboard"));
+      pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/pos-customer-display"));
 
   let accountRow: MiddlewareAccountRow | null = null;
 
@@ -533,6 +534,7 @@ export async function middleware(request: NextRequest) {
     accountRow &&
     accountRow.is_active !== false &&
     (pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/pos-customer-display") ||
       (isPerfProbeEnabled() &&
         pathname === "/api/perf-probe/trusted-context"))
   ) {

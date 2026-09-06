@@ -135,6 +135,9 @@ export function formatProductOptionLabel(product: FinishedProductRecord): string
 
 export const POS_CUSTOMER_OTHER_VALUE = "__other__";
 
+/** Default customer-facing label when no customer is selected on POS. */
+export const POS_WALK_IN_CUSTOMER_LABEL = "Walk-in Customer";
+
 export function resolvePosCustomerSelection(
   clientSelect: string,
   walkInName: string,
@@ -165,6 +168,24 @@ export function getCustomerDisplayName(
   }
 
   return customerName?.trim() || "—";
+}
+
+/** Customer name for the live POS customer display (always a non-empty string). */
+export function resolvePosCustomerDisplayLabel(
+  clientSelect: string,
+  walkInName: string,
+  clients: ClientEntry[],
+): string {
+  const { clientId, customerName } = resolvePosCustomerSelection(
+    clientSelect,
+    walkInName,
+  );
+
+  if (clientId) {
+    return getCustomerDisplayName(clientId, null, clients);
+  }
+
+  return customerName?.trim() || POS_WALK_IN_CUSTOMER_LABEL;
 }
 
 export function buildPosNotes(

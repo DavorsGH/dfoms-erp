@@ -51,6 +51,7 @@ import {
   getAvailableStockForProduct,
   getCustomerDisplayName,
   lineSubtotal,
+  resolvePosCustomerDisplayLabel,
   resolvePosCustomerSelection,
   isPosCheckoutLineFailureMessage,
   roundMoney,
@@ -185,7 +186,7 @@ export default function PosCheckout({
   const [customerName, setCustomerName] = useState("");
   const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
   const [paymentMethod, setPaymentMethod] = useState<string>("");
-  const [cashTendered, setCashTendered] = useState("");
+  const [amountTendered, setAmountTendered] = useState("");
   const [dueDate, setDueDate] = useState(todayIsoDate());
   const [notes, setNotes] = useState(initialNotes);
   const [payerEmail, setPayerEmail] = useState("");
@@ -331,8 +332,8 @@ export default function PosCheckout({
   );
   const isMobileMoney = paymentMethod === POS_MOMO_PAYMENT_METHOD;
   const isCash = paymentMethod === "Cash";
-  const parsedCashTendered = useMemo(() => {
-    const trimmed = cashTendered.trim();
+  const parsedAmountTendered = useMemo(() => {
+    const trimmed = amountTendered.trim();
     if (!trimmed) {
       return null;
     }
@@ -341,26 +342,33 @@ export default function PosCheckout({
       return null;
     }
     return roundMoney(value);
-  }, [cashTendered]);
+  }, [amountTendered]);
   const changeDue = useMemo(() => {
-    if (!isCash || parsedCashTendered == null) {
+    if (!isCash || parsedAmountTendered == null) {
       return null;
     }
-    return roundMoney(Math.max(0, parsedCashTendered - payableTotal));
-  }, [isCash, parsedCashTendered, payableTotal]);
-  const cashTenderBlocked =
+    return roundMoney(Math.max(0, parsedAmountTendered - payableTotal));
+  }, [isCash, parsedAmountTendered, payableTotal]);
+  const amountTenderBlocked =
     isCash &&
-    (parsedCashTendered == null || parsedCashTendered < payableTotal);
+    (parsedAmountTendered == null || parsedAmountTendered < payableTotal);
   const busy = loading || momoWaiting;
 
-  const customerDisplayLabel = useMemo(() => {
-    if (clientId) {
-      const client = initialClients.find((entry) => entry.client_id === clientId);
-      return client?.client_name?.trim() || null;
+  const customerDisplayLabel = useMemo(
+    () => resolvePosCustomerDisplayLabel(clientId, customerName, initialClients),
+    [clientId, customerName, initialClients],
+  );
+  const servedByLabel = useMemo(() => {
+    const repId = salesRepId.trim();
+    if (!repId) {
+      return null;
     }
 
-    return customerName.trim() || null;
-  }, [clientId, customerName, initialClients]);
+    return (
+      employees.find((employee) => employee.employee_id === repId)?.full_name?.trim() ||
+      null
+    );
+  }, [salesRepId, employees]);
 
   useEffect(() => {
     if (!tenantId?.trim()) {
@@ -390,8 +398,9 @@ export default function PosCheckout({
       taxAmount: null,
       amountDue: payableTotal,
       customerLabel: customerDisplayLabel,
+      servedByLabel,
       paymentMethod: paymentMethod.trim() || null,
-      cashTendered: isCash ? parsedCashTendered : null,
+      amountTendered: isCash ? parsedAmountTendered : null,
       changeDue: isCash ? changeDue : null,
       updatedAt: new Date().toISOString(),
     });
@@ -403,17 +412,24 @@ export default function PosCheckout({
     loyaltyDiscount,
     payableTotal,
     customerDisplayLabel,
+    servedByLabel,
     paymentMethod,
     isCash,
-    parsedCashTendered,
+    parsedAmountTendered,
     changeDue,
   ]);
 
   useEffect(() => {
     if (!isCash) {
-      setCashTendered("");
+      setAmountTendered("");
     }
   }, [isCash]);
+
+  useEffect(() => {
+    if (cartLines.length === 0) {
+      setAmountTendered("");
+    }
+  }, [cartLines.length]);
 
   function handleOpenCustomerDisplay() {
     openPosCustomerDisplayWindow(customerDisplaySessionIdRef.current);
@@ -677,7 +693,7 @@ export default function PosCheckout({
     setPayerEmail("");
     setPayerPhone("");
     setPaymentMethod("");
-    setCashTendered("");
+    setAmountTendered("");
     setDueDate(todayIsoDate());
     setNotes("");
     setProductSearch("");
@@ -709,12 +725,12 @@ export default function PosCheckout({
       return null;
     }
 
-    if (isCash && cashTenderBlocked) {
-      if (parsedCashTendered == null) {
-        setError("Enter the cash amount received from the customer.");
+    if (isCash && amountTenderBlocked) {
+      if (parsedAmountTendered == null) {
+        setError("Enter the amount tendered by the customer.");
       } else {
         setError(
-          `Cash tendered (${formatGHS(parsedCashTendered)}) is less than the amount due (${formatGHS(payableTotal)}).`,
+          `Amount tendered (${formatGHS(parsedAmountTendered)}) is less than the amount due (${formatGHS(payableTotal)}).`,
         );
       }
       return null;
@@ -755,7 +771,7 @@ export default function PosCheckout({
     paymentMethod: string;
     lines: PosCartLine[];
     amountReceived: number;
-    cashTendered?: number | null;
+    amountTendered?: number | null;
     changeDue?: number | null;
     pendingSync?: boolean;
   }) {
@@ -768,7 +784,7 @@ export default function PosCheckout({
       paymentStatus: input.pendingSync ? "Pending sync" : "Paid",
       amountReceived: input.amountReceived,
       cartTotal: receiptTotal,
-      cashTendered: input.cashTendered ?? null,
+      amountTendered: input.amountTendered ?? null,
       changeDue: input.changeDue ?? null,
       lines: input.lines,
       pendingSync: input.pendingSync,
@@ -864,7 +880,7 @@ export default function PosCheckout({
       paymentMethod: "Cash",
       lines: receiptLines,
       amountReceived,
-      cashTendered: parsedCashTendered,
+      amountTendered: parsedAmountTendered,
       changeDue,
       pendingSync: true,
     });
@@ -922,7 +938,7 @@ export default function PosCheckout({
       paymentMethod: paymentMethod.trim(),
       lines: receiptLines,
       amountReceived,
-      cashTendered: isCash ? parsedCashTendered : null,
+      amountTendered: isCash ? parsedAmountTendered : null,
       changeDue: isCash ? changeDue : null,
     });
 
@@ -1494,24 +1510,40 @@ export default function PosCheckout({
       >
         <h2 className="text-lg font-semibold text-[#0f2744]">Checkout</h2>
 
-        <PromoCodeField
-          supabase={supabase}
-          clientId={clientId || null}
-          orderAmount={total}
-          sourceType="product_sale"
-          appliedCode={appliedPromoCode}
-          appliedDiscount={promoDiscount}
-          onApplied={(code, discountAmount) => {
-            setAppliedPromoCode(code);
-            setPromoDiscount(discountAmount);
-            clearLoyaltyRedemption();
-          }}
-          onClear={() => {
-            setAppliedPromoCode(null);
-            setPromoDiscount(0);
-          }}
-          disabled={busy || cartLines.length === 0 || isOffline}
-        />
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="min-w-0 flex-1">
+            <PromoCodeField
+              supabase={supabase}
+              clientId={clientId || null}
+              orderAmount={total}
+              sourceType="product_sale"
+              appliedCode={appliedPromoCode}
+              appliedDiscount={promoDiscount}
+              onApplied={(code, discountAmount) => {
+                setAppliedPromoCode(code);
+                setPromoDiscount(discountAmount);
+                clearLoyaltyRedemption();
+              }}
+              onClear={() => {
+                setAppliedPromoCode(null);
+                setPromoDiscount(0);
+              }}
+              disabled={busy || cartLines.length === 0 || isOffline}
+            />
+          </div>
+          <div className="w-full shrink-0 sm:w-44 lg:w-48">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Due Date
+            </label>
+            <input
+              type="date"
+              required
+              value={dueDate}
+              onChange={(event) => setDueDate(event.target.value)}
+              className={inputClassName}
+            />
+          </div>
+        </div>
 
         {clientId ? (
           <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4">
@@ -1690,51 +1722,49 @@ export default function PosCheckout({
             </select>
           </div>
           {isCash ? (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Cash Tendered
-              </label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                inputMode="decimal"
-                value={cashTendered}
-                onChange={(event) => setCashTendered(event.target.value)}
-                placeholder={`At least ${formatGHS(payableTotal)}`}
-                className={inputClassName}
-              />
-              {parsedCashTendered != null ? (
-                <p className="mt-1 text-sm font-medium text-emerald-800">
-                  Change due: {formatGHS(changeDue ?? 0)}
-                </p>
-              ) : (
+            <div className="md:col-span-2 xl:col-span-2">
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="min-w-[180px] flex-1">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Amount Tendered
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={amountTendered}
+                    onChange={(event) => setAmountTendered(event.target.value)}
+                    placeholder={`At least ${formatGHS(payableTotal)}`}
+                    className={inputClassName}
+                  />
+                </div>
+                {parsedAmountTendered != null ? (
+                  <div className="min-w-[140px] pb-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Change Due
+                    </p>
+                    <p className="text-lg font-semibold text-emerald-800">
+                      {formatGHS(changeDue ?? 0)}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+              {parsedAmountTendered == null ? (
                 <p className="mt-1 text-xs text-slate-500">
                   Enter the cash the customer handed over. Change is calculated live
                   on the customer display.
                 </p>
-              )}
-              {cashTenderBlocked ? (
+              ) : null}
+              {amountTenderBlocked ? (
                 <p className="mt-1 text-sm text-red-700">
-                  {parsedCashTendered == null
-                    ? "Enter cash tendered to complete this sale."
-                    : `Cash tendered must be at least ${formatGHS(payableTotal)}.`}
+                  {parsedAmountTendered == null
+                    ? "Enter amount tendered to complete this sale."
+                    : `Amount tendered must be at least ${formatGHS(payableTotal)}.`}
                 </p>
               ) : null}
             </div>
           ) : null}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Due Date
-            </label>
-            <input
-              type="date"
-              required
-              value={dueDate}
-              onChange={(event) => setDueDate(event.target.value)}
-              className={inputClassName}
-            />
-          </div>
           <div className="md:col-span-2 xl:col-span-3">
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Notes
@@ -1775,7 +1805,7 @@ export default function PosCheckout({
               busy ||
               cartLines.length === 0 ||
               (isOffline && isMobileMoney) ||
-              cashTenderBlocked
+              amountTenderBlocked
             }
             className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
           >
