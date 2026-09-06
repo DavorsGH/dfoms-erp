@@ -1,13 +1,19 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireAuthenticated, requireTenantRoleIn } from "@/utils/admin-auth";
-import { recordClientInvoicePayment } from "@/utils/client-invoice-payments-api";
 import { validateRecordPaymentBody, type RecordClientInvoicePaymentBody } from "@/utils/client-receipts-types";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient } from "@/utils/supabase/admin";
+import type { ClientInvoiceHeaderRow } from "@/utils/client-invoices-types";
+import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
+};
+
+type RecordClientInvoicePaymentRpcResult = {
+  payment?: { id: string };
+  receipt?: ClientReceiptHeaderRow;
+  invoice?: ClientInvoiceHeaderRow;
 };
 
 export async function POST(request: Request, context: RouteContext) {
@@ -43,25 +49,47 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("record_client_invoice_payment", {
+    p_tenant_id: auth.tenantId,
+    p_invoice_id: invoiceId,
+    p_payment_date: body.payment_date,
+    p_amount: body.amount,
+    p_payment_method: body.payment_method ?? null,
+    p_notes: body.notes ?? null,
+    p_recorded_by: session.userId,
+  });
 
-  const result = await recordClientInvoicePayment(
-    supabase,
-    auth.tenantId,
-    invoiceId,
-    body,
-    session.userId,
-  );
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
 
-  if (result.error && !result.payment) {
-    return NextResponse.json({ error: result.error }, { status: 400 });
+  const result = (data ?? {}) as RecordClientInvoicePaymentRpcResult;
+
+  if (result.receipt?.id) {
+    void import("@/utils/client-document-notifications").then(
+      ({ notifyClientReceiptIssued }) => {
+        void notifyClientReceiptIssued({
+          tenantId: auth.tenantId,
+          clientId: result.invoice!.client_id,
+          receiptId: result.receipt!.id,
+          receiptNumber: result.receipt!.receipt_number,
+          invoiceNumber: result.invoice!.invoice_number,
+          customerName:
+            result.invoice!.bill_to_name?.trim() || result.invoice!.client_id,
+          amount: String(result.receipt!.amount ?? ""),
+          paymentDate: result.receipt!.receipt_date ?? "",
+          invoiceTotalDue: result.invoice!.total_amount_due,
+          whtRate: result.invoice!.wht_rate,
+          whtAmount: result.invoice!.wht_amount,
+        });
+      },
+    );
   }
 
   return NextResponse.json({
-    payment: result.payment,
-    receipt: result.receipt,
-    client_invoice: result.invoice,
-    warning: result.error && result.payment ? result.error : undefined,
+    payment: result.payment ?? null,
+    receipt: result.receipt ?? null,
+    client_invoice: result.invoice ?? null,
   });
 }

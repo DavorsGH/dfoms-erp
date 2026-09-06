@@ -1,15 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  computeClientInvoiceCashOutstanding,
-  deriveClientInvoiceStatusFromPayments,
-} from "@/utils/client-invoice-payment-utils";
-import {
-  CLIENT_INVOICE_HEADER_SELECT,
-  roundMoney,
   toNumber,
   type ClientInvoiceHeaderRow,
 } from "@/utils/client-invoices-types";
-import { sumClientInvoicePayments, syncIncomeRegisterFromClientInvoice } from "@/utils/client-invoices-api";
 import {
   CLIENT_RECEIPT_HEADER_SELECT,
   type ClientReceiptHeaderRow,
@@ -18,140 +11,43 @@ import {
 
 type DbClient = SupabaseClient;
 
-function nullableText(value: string | null | undefined) {
-  const trimmed = (value ?? "").trim();
-  return trimmed ? trimmed : null;
-}
-
-async function allocateReceiptNumber(supabase: DbClient, tenantId: string) {
-  const { data, error } = await supabase.rpc("generate_next_code", {
-    p_tenant_id: tenantId,
-    p_entity_type: "RCPT",
-    p_padding: 4,
-  });
-
-  if (error) {
-    return { receiptNumber: null, error: error.message };
-  }
-
-  const receiptNumber = typeof data === "string" ? data.trim() : "";
-  if (!receiptNumber) {
-    return {
-      receiptNumber: null,
-      error: "generate_next_code returned an empty receipt number.",
-    };
-  }
-
-  return { receiptNumber, error: null };
-}
-
-async function getNextReceiptSequence(supabase: DbClient, tenantId: string) {
-  const { data, error } = await supabase
-    .from("client_receipts")
-    .select("receipt_sequence")
-    .eq("tenant_id", tenantId)
-    .order("receipt_sequence", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    return { sequence: 1, error: error.message };
-  }
-
-  return {
-    sequence: (data?.receipt_sequence ?? 0) + 1,
-    error: null,
-  };
-}
-
-type TenantSignatureDefaults = {
-  signature_author_name: string | null;
-  signature_author_title: string | null;
-};
-
-async function loadTenantSignatureDefaults(
-  supabase: DbClient,
-  tenantId: string,
-): Promise<{ defaults: TenantSignatureDefaults; error: string | null }> {
-  const { data, error } = await supabase
-    .from("tenants")
-    .select("signature_author_name, signature_author_title")
-    .eq("id", tenantId)
-    .maybeSingle();
-
-  if (error) {
-    return { defaults: { signature_author_name: null, signature_author_title: null }, error: error.message };
-  }
-
-  return {
-    defaults: {
-      signature_author_name: nullableText(data?.signature_author_name ?? null),
-      signature_author_title: nullableText(data?.signature_author_title ?? null),
-    },
-    error: null,
-  };
-}
-
-export async function recomputeClientInvoiceFromPayments(
-  supabase: DbClient,
-  tenantId: string,
-  invoice: ClientInvoiceHeaderRow,
-): Promise<{ invoice: ClientInvoiceHeaderRow | null; error: string | null }> {
-  const { total, error: sumError } = await sumClientInvoicePayments(
-    supabase,
-    tenantId,
-    invoice.id,
-  );
-
-  if (sumError) {
-    return { invoice: null, error: sumError };
-  }
-
-  const totalDue = toNumber(invoice.total_amount_due);
-  const whtAmount = toNumber(invoice.wht_amount);
-  const nextStatus = deriveClientInvoiceStatusFromPayments(
-    total,
-    totalDue,
-    whtAmount,
-    invoice.status as ClientInvoiceHeaderRow["status"],
-  );
-
-  const { data: updated, error: updateError } = await supabase
-    .from("client_invoices")
-    .update({
-      amount_received: total,
-      status: nextStatus,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", invoice.id)
-    .eq("tenant_id", tenantId)
-    .select(CLIENT_INVOICE_HEADER_SELECT)
-    .single();
-
-  if (updateError || !updated) {
-    return { invoice: null, error: updateError?.message ?? "Unable to update invoice." };
-  }
-
-  const syncResult = await syncIncomeRegisterFromClientInvoice(
-    supabase,
-    tenantId,
-    updated as ClientInvoiceHeaderRow,
-  );
-
-  if (syncResult.error) {
-    return {
-      invoice: updated as ClientInvoiceHeaderRow,
-      error: syncResult.error,
-    };
-  }
-
-  return { invoice: updated as ClientInvoiceHeaderRow, error: null };
-}
-
 export type RecordClientInvoicePaymentOptions = {
   /** When false, skip receipt_issued customer notification. Default true. */
   notify?: boolean;
 };
+
+type RecordClientInvoicePaymentRpcResult = {
+  payment?: { id: string };
+  receipt?: ClientReceiptHeaderRow;
+  invoice?: ClientInvoiceHeaderRow;
+};
+
+type VoidClientInvoicePaymentRpcResult = {
+  invoice?: ClientInvoiceHeaderRow;
+  voided_receipt_number?: string | null;
+};
+
+function mapReceiptRow(row: ClientReceiptHeaderRow): ClientReceiptHeaderRow {
+  return {
+    ...row,
+    amount: toNumber(row.amount),
+    receipt_sequence: toNumber(row.receipt_sequence),
+  };
+}
+
+function mapInvoiceRow(row: ClientInvoiceHeaderRow): ClientInvoiceHeaderRow {
+  return {
+    ...row,
+    subtotal: toNumber(row.subtotal),
+    vat_nhil_getfund_rate: toNumber(row.vat_nhil_getfund_rate),
+    tax_due: toNumber(row.tax_due),
+    wht_rate: toNumber(row.wht_rate),
+    wht_amount: toNumber(row.wht_amount),
+    total_amount_due: toNumber(row.total_amount_due),
+    amount_received: toNumber(row.amount_received),
+    invoice_sequence: toNumber(row.invoice_sequence),
+  };
+}
 
 export async function recordClientInvoicePayment(
   supabase: DbClient,
@@ -166,204 +62,54 @@ export async function recordClientInvoicePayment(
   invoice: ClientInvoiceHeaderRow | null;
   error: string | null;
 }> {
-  const { data: invoice, error: invoiceError } = await supabase
-    .from("client_invoices")
-    .select(CLIENT_INVOICE_HEADER_SELECT)
-    .eq("id", invoiceId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("record_client_invoice_payment", {
+    p_tenant_id: tenantId,
+    p_invoice_id: invoiceId,
+    p_payment_date: body.payment_date,
+    p_amount: body.amount,
+    p_payment_method: body.payment_method ?? null,
+    p_notes: body.notes ?? null,
+    p_recorded_by: recordedBy,
+  });
 
-  if (invoiceError) {
-    return { payment: null, receipt: null, invoice: null, error: invoiceError.message };
-  }
-
-  if (!invoice) {
-    return { payment: null, receipt: null, invoice: null, error: "Invoice not found." };
-  }
-
-  if (invoice.status === "draft") {
+  if (error) {
     return {
       payment: null,
       receipt: null,
       invoice: null,
-      error: "Cannot record payment against a draft invoice. Mark it as sent first.",
+      error: error.message,
     };
   }
 
-  const amount = roundMoney(toNumber(body.amount));
-  const { total: alreadyPaid, error: sumError } = await sumClientInvoicePayments(
-    supabase,
-    tenantId,
-    invoiceId,
-  );
-
-  if (sumError) {
-    return { payment: null, receipt: null, invoice: null, error: sumError };
-  }
-
-  const totalDue = toNumber(invoice.total_amount_due);
-  const whtAmount = toNumber(invoice.wht_amount);
-  const remaining = computeClientInvoiceCashOutstanding(
-    totalDue,
-    whtAmount,
-    alreadyPaid,
-  );
-  if (amount > remaining + 0.009) {
-    return {
-      payment: null,
-      receipt: null,
-      invoice: null,
-      error: `Payment amount exceeds outstanding balance (${remaining.toFixed(2)}).`,
-    };
-  }
-
-  const inheritedBusinessUnitId = invoice.business_unit_id ?? null;
-
-  const { data: payment, error: paymentError } = await supabase
-    .from("client_invoice_payments")
-    .insert({
-      tenant_id: tenantId,
-      invoice_id: invoiceId,
-      payment_date: body.payment_date,
-      amount,
-      payment_method: nullableText(body.payment_method ?? null),
-      notes: nullableText(body.notes ?? null),
-      recorded_by: recordedBy,
-      business_unit_id: inheritedBusinessUnitId,
-    })
-    .select("id")
-    .single();
-
-  if (paymentError || !payment) {
-    return {
-      payment: null,
-      receipt: null,
-      invoice: null,
-      error: paymentError?.message ?? "Unable to record payment.",
-    };
-  }
-
-  const { receiptNumber, error: receiptNumberError } = await allocateReceiptNumber(
-    supabase,
-    tenantId,
-  );
-
-  if (receiptNumberError || !receiptNumber) {
-    await supabase
-      .from("client_invoice_payments")
-      .delete()
-      .eq("id", payment.id)
-      .eq("tenant_id", tenantId);
-    return {
-      payment: null,
-      receipt: null,
-      invoice: null,
-      error: receiptNumberError ?? "Unable to allocate receipt number.",
-    };
-  }
-
-  const { sequence, error: sequenceError } = await getNextReceiptSequence(
-    supabase,
-    tenantId,
-  );
-
-  if (sequenceError) {
-    await supabase
-      .from("client_invoice_payments")
-      .delete()
-      .eq("id", payment.id)
-      .eq("tenant_id", tenantId);
-    return { payment: null, receipt: null, invoice: null, error: sequenceError };
-  }
-
-  const { defaults, error: defaultsError } = await loadTenantSignatureDefaults(
-    supabase,
-    tenantId,
-  );
-
-  if (defaultsError) {
-    await supabase
-      .from("client_invoice_payments")
-      .delete()
-      .eq("id", payment.id)
-      .eq("tenant_id", tenantId);
-    return { payment: null, receipt: null, invoice: null, error: defaultsError };
-  }
-
-  const { data: receipt, error: receiptError } = await supabase
-    .from("client_receipts")
-    .insert({
-      tenant_id: tenantId,
-      invoice_id: invoiceId,
-      payment_id: payment.id,
-      receipt_number: receiptNumber,
-      receipt_sequence: sequence,
-      receipt_date: body.payment_date,
-      amount,
-      payment_method: nullableText(body.payment_method ?? null),
-      notes: nullableText(body.notes ?? null),
-      authorized_by_name: defaults.signature_author_name,
-      authorized_by_title: defaults.signature_author_title,
-      business_unit_id: inheritedBusinessUnitId,
-    })
-    .select(CLIENT_RECEIPT_HEADER_SELECT)
-    .single();
-
-  if (receiptError || !receipt) {
-    await supabase
-      .from("client_invoice_payments")
-      .delete()
-      .eq("id", payment.id)
-      .eq("tenant_id", tenantId);
-    return {
-      payment: null,
-      receipt: null,
-      invoice: null,
-      error: receiptError?.message ?? "Unable to create receipt.",
-    };
-  }
-
-  const recompute = await recomputeClientInvoiceFromPayments(
-    supabase,
-    tenantId,
-    invoice as ClientInvoiceHeaderRow,
-  );
-
-  if (recompute.error || !recompute.invoice) {
-    return {
-      payment: { id: payment.id },
-      receipt: receipt as ClientReceiptHeaderRow,
-      invoice: null,
-      error: recompute.error ?? "Payment recorded but invoice totals could not be updated.",
-    };
-  }
+  const result = (data ?? {}) as RecordClientInvoicePaymentRpcResult;
+  const receipt = result.receipt ? mapReceiptRow(result.receipt) : null;
+  const invoice = result.invoice ? mapInvoiceRow(result.invoice) : null;
 
   const shouldNotify = options?.notify !== false;
-  if (shouldNotify) {
+  if (shouldNotify && receipt && invoice) {
     void import("@/utils/client-document-notifications").then(
       ({ notifyClientReceiptIssued }) => {
         void notifyClientReceiptIssued({
           tenantId,
-          clientId: recompute.invoice!.client_id,
-          receiptId: (receipt as ClientReceiptHeaderRow).id,
-          receiptNumber: (receipt as ClientReceiptHeaderRow).receipt_number,
-          invoiceNumber: recompute.invoice!.invoice_number,
-          customerName:
-            recompute.invoice!.bill_to_name?.trim() || recompute.invoice!.client_id,
-          amount: String((receipt as ClientReceiptHeaderRow).amount ?? ""),
-          paymentDate: (receipt as ClientReceiptHeaderRow).receipt_date ?? "",
-          invoiceTotalDue: recompute.invoice!.total_amount_due,
-          whtRate: recompute.invoice!.wht_rate,
-          whtAmount: recompute.invoice!.wht_amount,
+          clientId: invoice.client_id,
+          receiptId: receipt.id,
+          receiptNumber: receipt.receipt_number,
+          invoiceNumber: invoice.invoice_number,
+          customerName: invoice.bill_to_name?.trim() || invoice.client_id,
+          amount: String(receipt.amount ?? ""),
+          paymentDate: receipt.receipt_date ?? "",
+          invoiceTotalDue: invoice.total_amount_due,
+          whtRate: invoice.wht_rate,
+          whtAmount: invoice.wht_amount,
         });
       },
     );
   }
 
   return {
-    payment: { id: payment.id },
-    receipt: receipt as ClientReceiptHeaderRow,
-    invoice: recompute.invoice,
+    payment: result.payment ?? null,
+    receipt,
+    invoice,
     error: null,
   };
 }
@@ -377,74 +123,20 @@ export async function voidClientInvoicePayment(
   voidedReceiptNumber: string | null;
   error: string | null;
 }> {
-  const { data: payment, error: paymentError } = await supabase
-    .from("client_invoice_payments")
-    .select("id, invoice_id")
-    .eq("id", paymentId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("void_client_invoice_payment", {
+    p_tenant_id: tenantId,
+    p_payment_id: paymentId,
+  });
 
-  if (paymentError) {
-    return { invoice: null, voidedReceiptNumber: null, error: paymentError.message };
+  if (error) {
+    return { invoice: null, voidedReceiptNumber: null, error: error.message };
   }
 
-  if (!payment) {
-    return { invoice: null, voidedReceiptNumber: null, error: "Payment not found." };
-  }
-
-  const { data: receipt, error: receiptError } = await supabase
-    .from("client_receipts")
-    .select("receipt_number")
-    .eq("payment_id", payment.id)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-
-  if (receiptError) {
-    return { invoice: null, voidedReceiptNumber: null, error: receiptError.message };
-  }
-
-  const { data: invoice, error: invoiceError } = await supabase
-    .from("client_invoices")
-    .select(CLIENT_INVOICE_HEADER_SELECT)
-    .eq("id", payment.invoice_id)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-
-  if (invoiceError || !invoice) {
-    return {
-      invoice: null,
-      voidedReceiptNumber: null,
-      error: invoiceError?.message ?? "Linked invoice not found.",
-    };
-  }
-
-  const { error: deleteError } = await supabase
-    .from("client_invoice_payments")
-    .delete()
-    .eq("id", payment.id)
-    .eq("tenant_id", tenantId);
-
-  if (deleteError) {
-    return { invoice: null, voidedReceiptNumber: null, error: deleteError.message };
-  }
-
-  const recompute = await recomputeClientInvoiceFromPayments(
-    supabase,
-    tenantId,
-    invoice as ClientInvoiceHeaderRow,
-  );
-
-  if (recompute.error || !recompute.invoice) {
-    return {
-      invoice: recompute.invoice,
-      voidedReceiptNumber: receipt?.receipt_number ?? null,
-      error: recompute.error ?? "Payment voided but invoice totals could not be updated.",
-    };
-  }
+  const result = (data ?? {}) as VoidClientInvoicePaymentRpcResult;
 
   return {
-    invoice: recompute.invoice,
-    voidedReceiptNumber: receipt?.receipt_number ?? null,
+    invoice: result.invoice ? mapInvoiceRow(result.invoice) : null,
+    voidedReceiptNumber: result.voided_receipt_number ?? null,
     error: null,
   };
 }
