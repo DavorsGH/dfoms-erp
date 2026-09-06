@@ -4,9 +4,9 @@ import type { Metadata } from "next";
 import PortalPropertyManagementMobile from "./portal-property-management-section";
 
 export const metadata: Metadata = {
-  title: "Davors Facilities — Portals",
+  title: "Davors Technologies — Portals",
   description:
-    "Sign in to the Davors Facilities ERP, landlord, tenant, or facility manager portal.",
+    "Sign in to the Davors Technologies ERP, landlord, tenant, or facility manager portal.",
 };
 
 const cardClassName =
@@ -26,18 +26,18 @@ export default function PortalChooserPage() {
     <div className="flex min-h-screen flex-col items-center bg-[#0F2744] px-4 py-10 sm:py-14">
       <div className="w-full max-w-5xl">
         <header className="text-center">
-          <div className="mb-4 flex justify-center">
+          <div className="mb-2 flex justify-center">
             <Image
               src="/icons/apple-touch-icon-180x180.png"
-              alt="Davors Facilities"
-              width={80}
-              height={80}
-              className="h-20 w-20"
+              alt="Davors Technologies"
+              width={160}
+              height={160}
+              className="h-40 w-40"
               priority
             />
           </div>
           <h1 className="text-2xl font-semibold text-white sm:text-3xl">
-            Davors Facilities
+            Davors Technologies
           </h1>
           <p className="mt-2 text-sm text-slate-300 sm:text-base">
             Choose your portal to continue
@@ -47,7 +47,7 @@ export default function PortalChooserPage() {
         <main className="mt-8 space-y-8 sm:mt-10 sm:space-y-10">
           <section>
             <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-300 sm:text-sm">
-              Davors Facilities Enterprise Management System
+              Davors Technologies Enterprise Management System
             </h2>
             <div
               className={`${cardClassName} border-[#0f2744]/20 p-7 shadow-md sm:p-8`}
@@ -55,7 +55,7 @@ export default function PortalChooserPage() {
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="sm:max-w-xl">
                   <h3 className="text-xl font-semibold text-[#0f2744] sm:text-2xl">
-                    Davors Facilities ERP Suite
+                    Davors Technologies ERP Suite
                   </h3>
                   <p className="mt-2 text-sm text-slate-600 sm:text-base">
                     For businesses on the main platform — finance, HR, CRM,

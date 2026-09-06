@@ -148,7 +148,7 @@ export async function POST(request: Request) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Davors Facilities ERP <noreply@davorsfacilities.com>",
+            from: "Davors Technologies ERP <noreply@davorsfacilities.com>",
             to: adminEmail,
             subject: "Confirm your email address",
             html: `<h2>Confirm your email address</h2><p>Follow the link below to confirm this email address.</p><p><a href="${verifyUrl}">Confirm email address</a></p>`,

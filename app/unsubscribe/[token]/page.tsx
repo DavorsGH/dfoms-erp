@@ -59,7 +59,7 @@ export default async function UnsubscribePage({ params }: PageProps) {
     <main className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 px-4 py-16 text-slate-900">
       <div className="mx-auto max-w-lg rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-[#0f2744]">
-          Davors Facilities
+          Davors Technologies
         </p>
         <h1 className="mt-3 text-2xl font-semibold text-[#0f2744]">{headline}</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-600">{detail}</p>

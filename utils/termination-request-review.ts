@@ -51,7 +51,7 @@ export async function notifyTenantTerminationDecision(options: {
       "",
       ...bodyLines,
       "",
-      "Davors Facilities",
+      "Davors Technologies Ltd",
     ].join("\n");
     const to = options.email?.trim();
     if (to) {
@@ -63,7 +63,7 @@ export async function notifyTenantTerminationDecision(options: {
 <p>Your request to end your lease early has been <strong>approved</strong>.</p>
 ${options.reason ? `<p>Reason on file: ${escapeHtml(options.reason)}</p>` : ""}
 <p>Your lease is now terminated. Contact your property manager about your security deposit.</p>
-<p>Davors Facilities</p>`,
+<p>Davors Technologies Ltd</p>`,
       });
       if (!result.ok) {
         console.error(
@@ -84,7 +84,7 @@ ${options.reason ? `<p>Reason on file: ${escapeHtml(options.reason)}</p>` : ""}
     "",
     body,
     "",
-    "Davors Facilities",
+    "Davors Technologies Ltd",
   ].join("\n");
   const to = options.email?.trim();
   if (to) {
@@ -94,7 +94,7 @@ ${options.reason ? `<p>Reason on file: ${escapeHtml(options.reason)}</p>` : ""}
       text,
       html: `<p>Hi ${escapeHtml(name)},</p>
 <p>Your request to end your lease early was <strong>not approved</strong>. Your lease continues as normal.</p>
-<p>Davors Facilities</p>`,
+<p>Davors Technologies Ltd</p>`,
     });
     if (!result.ok) {
       console.error("[termination-request] reject email failed:", result.error);

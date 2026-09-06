@@ -510,7 +510,7 @@ export default function Sidebar({
         }`}
       >
         <p className="text-[10px] leading-snug text-white/45">
-          © 2026 Davors Facilities Management Services Ltd. All rights reserved.
+          © 2026 Davors Technologies Ltd. All rights reserved.
         </p>
         <div className="mt-2 flex items-center gap-1.5">
           <Image
@@ -520,7 +520,7 @@ export default function Sidebar({
             height={36}
             className="h-9 w-9 shrink-0 rounded-sm object-cover"
           />
-          <p className="text-[10px] leading-snug text-white/45">Powered by Davors Facilities</p>
+          <p className="text-[10px] leading-snug text-white/45">Powered by Davors Technologies</p>
         </div>
       </footer>
     </aside>

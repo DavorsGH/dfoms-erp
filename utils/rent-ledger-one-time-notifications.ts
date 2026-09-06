@@ -113,13 +113,13 @@ export async function notifyLesseeOneTimeChargeAdded(options: {
     "",
     "Sign in to your tenant portal to review and pay this charge.",
     "Thank you.",
-    "Davors Facilities",
+    "Davors Technologies Ltd",
   ].join("\n");
 
   const html = `<p>Hi ${escapeHtml(lesseeName)},</p>
 <p>${escapeHtml(lead)}</p>
 <p>Property: ${escapeHtml(place)}</p>
-<p>Sign in to your tenant portal to review and pay this charge.<br/>Thank you.<br/>Davors Facilities</p>`;
+<p>Sign in to your tenant portal to review and pay this charge.<br/>Thank you.<br/>Davors Technologies Ltd</p>`;
 
   const email = typeof lessee?.email === "string" ? lessee.email.trim() : "";
   if (email) {

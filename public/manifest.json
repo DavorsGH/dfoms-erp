@@ -1,7 +1,7 @@
 {
-  "name": "Davors Facilities ERP",
+  "name": "Davors Technologies ERP",
   "short_name": "Davors ERP",
-  "description": "Davors Facilities Management Services Ltd ERP System",
+  "description": "Davors Technologies Ltd ERP System",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

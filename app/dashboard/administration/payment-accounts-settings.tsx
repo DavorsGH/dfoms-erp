@@ -330,7 +330,7 @@ export default function PaymentAccountsSettings({
                     account_name: event.target.value,
                   }))
                 }
-                placeholder="Davors Facilities Management Services Ltd"
+                placeholder="Davors Technologies Ltd"
                 className={inputClassName}
               />
             </div>

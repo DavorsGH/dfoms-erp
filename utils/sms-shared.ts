@@ -17,7 +17,7 @@ export function isNonOtpSmsSendingEnabled(): boolean {
   return (process.env["NON_OTP_SMS_ENABLED"] ?? "").trim().toLowerCase() === "true";
 }
 
-const DEFAULT_SMS_TENANT_LABEL = "Davors Facilities";
+const DEFAULT_SMS_TENANT_LABEL = "Davors Technologies";
 const DEFAULT_SMS_RECIPIENT_LABEL = "Customer";
 
 /**

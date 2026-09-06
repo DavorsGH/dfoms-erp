@@ -80,7 +80,7 @@ export default function LandlordPortalSignupPage() {
         <div className="mb-4 flex justify-center">
           <Image
             src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Facilities"
+            alt="Davors Technologies"
             width={80}
             height={80}
             className="h-20 w-20"

@@ -75,7 +75,7 @@ export async function notifyMaintenanceLandlordDecision(options: {
       "",
       ...bodyLines,
       "",
-      "Davors Facilities",
+      "Davors Technologies Ltd",
     ].join("\n");
     const to = options.email?.trim();
     if (to) {
@@ -87,7 +87,7 @@ export async function notifyMaintenanceLandlordDecision(options: {
 <p>Your maintenance / repair request has been <strong>approved</strong>.</p>
 <p>Request: ${escapeHtml(options.description)}</p>
 ${creditLine ? `<p>${escapeHtml(creditLine)}</p>` : ""}
-<p>Davors Facilities</p>`,
+<p>Davors Technologies Ltd</p>`,
       });
       if (!result.ok) {
         console.error("[maintenance] approve email failed:", result.error);
@@ -107,7 +107,7 @@ ${creditLine ? `<p>${escapeHtml(creditLine)}</p>` : ""}
     "",
     ...bodyLines,
     "",
-    "Davors Facilities",
+    "Davors Technologies Ltd",
   ].join("\n");
   const to = options.email?.trim();
   if (to) {
@@ -118,7 +118,7 @@ ${creditLine ? `<p>${escapeHtml(creditLine)}</p>` : ""}
       html: `<p>Hi ${escapeHtml(name)},</p>
 <p>Your maintenance / repair request was <strong>not approved</strong>.</p>
 <p>Request: ${escapeHtml(options.description)}</p>
-<p>Davors Facilities</p>`,
+<p>Davors Technologies Ltd</p>`,
     });
     if (!result.ok) {
       console.error("[maintenance] reject email failed:", result.error);

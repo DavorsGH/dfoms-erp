@@ -102,7 +102,7 @@ function ResetPasswordFormInner({
         <div className="mb-4 flex justify-center">
           <Image
             src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Facilities"
+            alt="Davors Technologies"
             width={64}
             height={64}
             className="h-16 w-16"

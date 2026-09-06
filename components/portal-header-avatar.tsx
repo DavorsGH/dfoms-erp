@@ -53,7 +53,7 @@ export default function PortalHeaderAvatar({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={placeholderLogoUrl}
-        alt="Davors Facilities"
+        alt="Davors Technologies"
         className={`${sizeClass} ${shapeClass} shrink-0 object-cover bg-white ${className}`}
       />
     );

@@ -122,7 +122,7 @@ export default function StaffAcceptInviteClient() {
         <div className="mb-4 flex justify-center">
           <Image
             src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Facilities"
+            alt="Davors Technologies"
             width={80}
             height={80}
             className="h-20 w-20"
@@ -135,7 +135,7 @@ export default function StaffAcceptInviteClient() {
         <p className="mb-6 text-center text-sm text-zinc-600">
           {existingAccount
             ? "Join this workspace with your existing account."
-            : "Set a password to access Davors Facilities ERP."}
+            : "Set a password to access Davors Technologies ERP."}
         </p>
 
         {success ? (

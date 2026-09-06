@@ -10,7 +10,7 @@ import {
 
 export const DAVORS_TENANT_ID = "00000001-0000-4000-8000-000000000001";
 
-/** True when the workspace is Davors Facilities (platform operator tenant). */
+/** True when the workspace is Davors Technologies (platform operator tenant). */
 export function isDavorsPlatformTenant(
   tenantId: string | null | undefined,
 ): boolean {

@@ -130,7 +130,7 @@ export default function RentPaymentReceiptPdfDocument({
         />
 
         <Text style={styles.footer}>
-          Generated from Davors Facilities. Keep this receipt for your records.
+          Generated from Davors Technologies Ltd. Keep this receipt for your records.
         </Text>
       </Page>
     </Document>

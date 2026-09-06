@@ -147,7 +147,7 @@ export default function FacilityPortalSidebar({
             className="h-9 w-9 shrink-0 rounded-sm object-cover"
           />
           <p className="text-[10px] leading-snug text-white/45">
-            Powered by Davors Facilities
+            Powered by Davors Technologies
           </p>
         </div>
       </footer>

@@ -11,7 +11,7 @@ export default function TrialExpiredPage() {
         <div className="mb-4 flex justify-center">
           <Image
             src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Facilities"
+            alt="Davors Technologies"
             width={80}
             height={80}
             className="h-20 w-20"
@@ -23,7 +23,7 @@ export default function TrialExpiredPage() {
         </h1>
         <p className="mb-6 text-center text-sm leading-relaxed text-zinc-600">
           Your free trial has ended. Contact us to continue using Davors
-          Facilities ERP on your account.
+          Technologies ERP on your account.
         </p>
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <a

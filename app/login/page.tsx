@@ -123,7 +123,7 @@ export default function LoginPage() {
         <div className="mb-4 flex justify-center">
           <Image
             src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Facilities"
+            alt="Davors Technologies"
             width={80}
             height={80}
             className="h-20 w-20"
@@ -131,7 +131,7 @@ export default function LoginPage() {
           />
         </div>
         <h1 className="mb-6 text-center text-2xl font-semibold text-zinc-900">
-          Davors Facilities ERP
+          Davors Technologies ERP
         </h1>
 
         <Suspense

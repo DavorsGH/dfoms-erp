@@ -29,7 +29,7 @@ export default function LandlordPortalPendingApprovalView({
         confirmation email.
       </p>
       <p className="mt-3 text-sm text-slate-600">
-        Contact Davors Facilities staff if you need help accessing your
+        Contact Davors Technologies Ltd staff if you need help accessing your
         properties and rent tools.
       </p>
     </>
@@ -40,15 +40,15 @@ export default function LandlordPortalPendingApprovalView({
     body = (
       <p className="mt-4 text-sm text-slate-700">
         Your landlord portal access has been suspended. Contact Davors
-        Facilities staff if you believe this is a mistake or need help.
+        Technologies Ltd staff if you believe this is a mistake or need help.
       </p>
     );
   } else if (isRejected) {
     title = "Account not approved";
     body = (
       <p className="mt-4 text-sm text-slate-700">
-        Your landlord account was not approved. Contact Davors Facilities
-        staff if you believe this is a mistake or need help.
+        Your landlord account was not approved. Contact Davors Technologies
+        Ltd staff if you believe this is a mistake or need help.
       </p>
     );
   }

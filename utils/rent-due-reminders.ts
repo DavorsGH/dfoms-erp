@@ -404,13 +404,13 @@ async function notifyLesseeRentDue(options: {
     "",
     "Please arrange payment at your earliest convenience.",
     "Thank you.",
-    "Davors Facilities",
+    "Davors Technologies Ltd",
   ].join("\n");
 
   const html = `<p>Hi ${escapeHtml(options.lesseeName)},</p>
 <p>${escapeHtml(lead)}</p>
 <p>Property: ${escapeHtml(place)}</p>
-<p>Please arrange payment at your earliest convenience.<br/>Thank you.<br/>Davors Facilities</p>`;
+<p>Please arrange payment at your earliest convenience.<br/>Thank you.<br/>Davors Technologies Ltd</p>`;
 
   let sent = false;
 
@@ -523,13 +523,13 @@ async function notifyLandlordRentDue(options: {
     `Property: ${place}`,
     "",
     "A payment reminder was also sent to the tenant.",
-    "Davors Facilities",
+    "Davors Technologies Ltd",
   ].join("\n");
 
   const html = `<p>Hi ${escapeHtml(name)},</p>
 <p>${escapeHtml(lead)}</p>
 <p>Property: ${escapeHtml(place)}</p>
-<p>A payment reminder was also sent to the tenant.<br/>Davors Facilities</p>`;
+<p>A payment reminder was also sent to the tenant.<br/>Davors Technologies Ltd</p>`;
 
   if (email) {
     try {

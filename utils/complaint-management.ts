@@ -368,11 +368,11 @@ export async function updateLesseeComplaint(
       void sendResendEmail({
         to: email,
         subject: title,
-        text: [`Hi ${name},`, "", inAppBody, "", "Davors Facilities"].join("\n"),
+        text: [`Hi ${name},`, "", inAppBody, "", "Davors Technologies Ltd"].join("\n"),
         html: `<p>Hi ${escapeHtml(name)},</p>
 <p>${escapeHtml(inAppBody.replace(/\n/g, " "))}</p>
 <p><strong>Response:</strong> ${escapeHtml(staffResponse)}</p>
-<p>Davors Facilities</p>`,
+<p>Davors Technologies Ltd</p>`,
       }).then((result) => {
         if (!result.ok) {
           console.error("[complaints] response notify failed:", result.error);
@@ -456,14 +456,14 @@ export async function updateLesseeComplaint(
           "",
           inAppBody,
           "",
-          "Davors Facilities",
+          "Davors Technologies Ltd",
         ]
           .filter(Boolean)
           .join("\n"),
         html: `<p>Hi ${escapeHtml(name)},</p>
 <p>${escapeHtml(inAppBody.replace(/\n/g, " "))}</p>
 ${staffResponse ? `<p>${escapeHtml(responseLabel)}: ${escapeHtml(staffResponse)}</p>` : ""}
-<p>Davors Facilities</p>`,
+<p>Davors Technologies Ltd</p>`,
       }).then((result) => {
         if (!result.ok) {
           console.error("[complaints] notify failed:", result.error);

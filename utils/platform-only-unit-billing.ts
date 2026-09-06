@@ -374,7 +374,7 @@ async function notifyUnitActivationChargeResult(options: {
     await sendResendEmail({
       to: email,
       subject: title,
-      html: `<p>${body.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p><p>Davors Facilities</p>`,
+      html: `<p>${body.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p><p>Davors Technologies</p>`,
     });
   } catch (error) {
     console.error(

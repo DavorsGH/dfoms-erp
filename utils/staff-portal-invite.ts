@@ -232,7 +232,7 @@ export async function createAndSendStaffPortalInvite(
     inviterLine: `${inviterName} has invited you to join the Staff ERP Portal.`,
     inviteUrl,
     expiryDays: STAFF_INVITE_EXPIRY_DAYS,
-    subject: "You're invited to Davors Facilities ERP",
+    subject: "You're invited to Davors Technologies ERP",
   });
 
   const emailResult = await sendResendEmail({

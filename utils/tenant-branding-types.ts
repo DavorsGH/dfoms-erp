@@ -1,7 +1,7 @@
-export const DEFAULT_WORKSPACE_NAME = "Davors Facilities";
+export const DEFAULT_WORKSPACE_NAME = "Davors Technologies";
 export const DEFAULT_WORKSPACE_LOGO = "/logo.jpg";
 export const DEFAULT_COMPANY_LEGAL_NAME =
-  "Davors Facilities Management Services Ltd";
+  "Davors Technologies Ltd";
 export const DAVORS_PLATFORM_LOGO = "/icons/apple-touch-icon-180x180.png";
 
 export type TenantBranding = {

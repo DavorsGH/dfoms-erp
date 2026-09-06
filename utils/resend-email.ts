@@ -33,7 +33,7 @@ export function resendNotConfiguredMessage(): string {
 export const RESEND_NOREPLY_ADDRESS = "noreply@davorsfacilities.com";
 
 /** Platform default From when no tenant display name applies (invites, signup, etc.). */
-export const RESEND_PLATFORM_FROM = `Davors Facilities ERP <${RESEND_NOREPLY_ADDRESS}>`;
+export const RESEND_PLATFORM_FROM = `Davors Technologies ERP <${RESEND_NOREPLY_ADDRESS}>`;
 
 /**
  * Build a Resend `from` value: `"Display Name <noreply@…>"`.
@@ -54,7 +54,7 @@ export function formatResendFrom(displayName: string): string {
 
 /**
  * Minimal Resend sender. Env: RESEND_API_KEY
- * Default From: Davors Facilities ERP <noreply@davorsfacilities.com>
+ * Default From: Davors Technologies ERP <noreply@davorsfacilities.com>
  * Pass `from` via formatResendFrom(tenantCompanyName) for tenant-branded mail.
  */
 export async function sendResendEmail(options: {

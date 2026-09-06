@@ -150,7 +150,7 @@ async function notifyTrialEndingReminder(options: {
       await sendResendEmail({
         to: email,
         subject: title,
-        html: `<p>Hi ${options.tenantName.replace(/</g, "&lt;").replace(/>/g, "&gt;")},</p><p>${body.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p><p>Davors Facilities</p>`,
+        html: `<p>Hi ${options.tenantName.replace(/</g, "&lt;").replace(/>/g, "&gt;")},</p><p>${body.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p><p>Davors Technologies</p>`,
       });
     } catch (error) {
       console.error(

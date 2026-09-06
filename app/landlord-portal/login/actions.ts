@@ -139,7 +139,7 @@ export async function landlordPortalLoginWithPassword(
     return {
       ok: false,
       error:
-        "Your landlord portal access has been suspended. Contact Davors Facilities staff.",
+        "Your landlord portal access has been suspended. Contact Davors Technologies Ltd staff.",
     };
   }
 
@@ -176,7 +176,7 @@ export async function landlordPortalLoginWithPassword(
     return {
       ok: false,
       error:
-        "Your landlord portal access has been suspended. Contact Davors Facilities staff.",
+        "Your landlord portal access has been suspended. Contact Davors Technologies Ltd staff.",
     };
   }
 

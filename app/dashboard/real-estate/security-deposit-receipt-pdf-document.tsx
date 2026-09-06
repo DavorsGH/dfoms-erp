@@ -158,7 +158,7 @@ export default function SecurityDepositReceiptPdfDocument({
         />
 
         <Text style={styles.footer}>
-          Generated from Davors Facilities. Keep this document for your records.
+          Generated from Davors Technologies Ltd. Keep this document for your records.
         </Text>
       </Page>
     </Document>

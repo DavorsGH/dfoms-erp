@@ -7,7 +7,7 @@ import { isDavorsPlatformTenant } from "@/utils/tenant-signup";
  * (wallet had balance). Uses the service-role client so send paths that run
  * as the authenticated user can still gate on the shared wallet RPC.
  *
- * Davors Facilities (platform tenant) bypasses the wallet entirely — Davors
+ * Davors Technologies (platform tenant) bypasses the wallet entirely — Davors
  * is the Hubtel account holder, not a prepaid SMS credit customer.
  *
  * Same contract as fireTransactionalNotification: success → caller may send

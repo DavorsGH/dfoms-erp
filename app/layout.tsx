@@ -20,29 +20,29 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Davors Facilities ERP",
-  description: "Davors Facilities Management Services Ltd ERP System",
+  title: "Davors Technologies ERP",
+  description: "Davors Technologies Ltd ERP System",
   manifest: "/manifest.json",
   metadataBase: new URL("https://portal.davorsfacilities.com"),
   openGraph: {
-    title: "Davors Facilities ERP",
-    description: "Davors Facilities Management Services Ltd ERP System",
+    title: "Davors Technologies ERP",
+    description: "Davors Technologies Ltd ERP System",
     url: "https://portal.davorsfacilities.com",
-    siteName: "Davors Facilities ERP",
+    siteName: "Davors Technologies ERP",
     images: [
       {
         url: "https://portal.davorsfacilities.com/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Davors Facilities ERP",
+        alt: "Davors Technologies ERP",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Davors Facilities ERP",
-    description: "Davors Facilities Management Services Ltd ERP System",
+    title: "Davors Technologies ERP",
+    description: "Davors Technologies Ltd ERP System",
     images: ["https://portal.davorsfacilities.com/og-image.png"],
   },
   appleWebApp: {
