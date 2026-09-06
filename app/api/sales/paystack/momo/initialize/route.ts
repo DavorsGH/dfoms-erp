@@ -24,6 +24,7 @@ import {
   POS_MOMO_PAYMENT_METHOD,
   type PosCartLine,
 } from "@/app/dashboard/pos/pos-utils";
+import { resolveServerWriteBusinessUnitId } from "@/utils/business-unit-access.server";
 
 export const runtime = "nodejs";
 
@@ -35,6 +36,7 @@ type MomoInitializeBody = {
   due_date?: string;
   delivery_email?: string | null;
   cart_lines?: PosCartLine[];
+  business_unit_id?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -105,12 +107,40 @@ export async function POST(request: Request) {
     );
   }
 
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  const requestedBusinessUnitId =
+    typeof body.business_unit_id === "string" && body.business_unit_id.trim()
+      ? body.business_unit_id.trim()
+      : body.business_unit_id === null
+        ? null
+        : undefined;
+
+  const writeBu = await resolveServerWriteBusinessUnitId({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: user.id,
+    requestedBusinessUnitId,
+  });
+  if (!writeBu.ok) {
+    return NextResponse.json({ error: writeBu.error }, { status: writeBu.status });
+  }
+
   const snapshot = buildCartSnapshot({
     saleDate,
     clientId,
     customerName,
     notes,
     dueDate,
+    businessUnitId: writeBu.businessUnitId,
     cartLines,
   });
   const amountGhs = cartSnapshotTotal(snapshot);
@@ -131,12 +161,6 @@ export async function POST(request: Request) {
       { status: settlement.status },
     );
   }
-
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const provisionalInvoice = `MOMO-PENDING-${crypto.randomUUID().slice(0, 8)}`;
   const admin = createAdminClient();

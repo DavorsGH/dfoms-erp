@@ -184,8 +184,9 @@ export async function resolveProjectCodeForCommit(input: {
   tenantId: string;
   projectName: string | null;
   cache: ProjectCodeResolverCache;
+  businessUnitId?: string | null;
 }): Promise<string | null> {
-  const { client, tenantId, projectName, cache } = input;
+  const { client, tenantId, projectName, cache, businessUnitId = null } = input;
   const trimmed = projectName?.trim();
   if (!trimmed) {
     return null;
@@ -228,10 +229,10 @@ export async function resolveProjectCodeForCommit(input: {
 
   await client.query(
     `
-      INSERT INTO public.projects (tenant_id, project_code, project_name)
-      VALUES ($1, $2, $3)
+      INSERT INTO public.projects (tenant_id, project_code, project_name, business_unit_id)
+      VALUES ($1, $2, $3, $4)
     `,
-    [tenantId, projectCode, trimmed],
+    [tenantId, projectCode, trimmed, businessUnitId],
   );
 
   cache.set(key, projectCode);

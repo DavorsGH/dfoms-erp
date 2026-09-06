@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toNumber } from "@/utils/client-invoices-types";
+import {
+  assertCanModifyBusinessUnitRow,
+  getUserAllowedBusinessUnits,
+} from "@/utils/business-unit-access";
 import { notifyProductSalePaymentReceived } from "@/utils/product-sale-payment-notifications";
 import {
   allocatePaymentAcrossLines,
@@ -16,7 +20,7 @@ import {
 type DbClient = SupabaseClient;
 
 const INCOME_ROW_SELECT =
-  "id, tenant_id, entry_type, invoice_no, client_id, customer_name, amount, amount_received, outstanding_balance, payment_status, sale_status, wht_amount" as const;
+  "id, tenant_id, entry_type, invoice_no, client_id, customer_name, amount, amount_received, outstanding_balance, payment_status, sale_status, wht_amount, business_unit_id" as const;
 
 type ProductSaleIncomeRow = ProductSaleIncomeLine & {
   tenant_id: string;
@@ -25,6 +29,7 @@ type ProductSaleIncomeRow = ProductSaleIncomeLine & {
   client_id: string | null;
   customer_name: string | null;
   wht_amount: number | null;
+  business_unit_id?: string | null;
 };
 
 function nullableText(value: string | null | undefined) {
@@ -59,6 +64,26 @@ export async function recordProductSalePayment(
   }
 
   const row = income as ProductSaleIncomeRow;
+
+  if (recordedBy) {
+    try {
+      const allowedUnits = await getUserAllowedBusinessUnits(
+        supabase,
+        tenantId,
+        recordedBy,
+      );
+      assertCanModifyBusinessUnitRow(allowedUnits, row.business_unit_id);
+    } catch (accessError) {
+      return {
+        payment: null,
+        income: null,
+        error:
+          accessError instanceof Error
+            ? accessError.message
+            : "Business unit access denied.",
+      };
+    }
+  }
 
   if (row.entry_type !== "product_sale") {
     return {

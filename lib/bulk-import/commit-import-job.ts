@@ -92,8 +92,8 @@ async function insertFinishedProduct(
     resolvedSupplierId,
   );
 
-  // finished_products is tenant catalog (no business_unit_id column). BU scope for
-  // opening stock is seeded on finished_product_balances below.
+  // finished_products may carry business_unit_id for user-restricted RLS; opening
+  // stock is also seeded on finished_product_balances below.
   const insertResult = await client.query(
     `
       INSERT INTO public.finished_products (
@@ -106,9 +106,10 @@ async function insertFinishedProduct(
         sourcing_type,
         supplier_id,
         manufacturing_date,
-        expiration_date
+        expiration_date,
+        business_unit_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id
     `,
     [
@@ -122,6 +123,7 @@ async function insertFinishedProduct(
       payload.supplier_id,
       payload.manufacturing_date,
       payload.expiration_date,
+      businessUnitId,
     ],
   );
 
@@ -213,6 +215,7 @@ async function insertEmployeeRow(
     tenantId,
     projectName: String(mappedData.contract_project_name ?? ""),
     cache: caches.projectCache,
+    businessUnitId,
   });
   const supervisorId = await resolveSupervisorIdForCommit({
     client,

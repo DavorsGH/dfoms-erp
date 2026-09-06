@@ -26,6 +26,7 @@ import {
   cartSnapshotTotal,
 } from "@/utils/pos-momo-fulfillment";
 import type { PosCartLine } from "@/app/dashboard/pos/pos-utils";
+import { resolveServerWriteBusinessUnitId } from "@/utils/business-unit-access.server";
 import { sendResendEmail } from "@/utils/resend-email";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
@@ -49,6 +50,7 @@ type InitializeBody = {
   customer_name?: string | null;
   notes?: string | null;
   due_date?: string;
+  business_unit_id?: string | null;
 };
 
 type IncomeRow = ProductSaleIncomeLine & {
@@ -253,12 +255,37 @@ export async function POST(request: Request) {
         ? body.notes.trim()
         : null;
 
+    if (!user) {
+      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+    }
+
+    const requestedBusinessUnitId =
+      typeof body.business_unit_id === "string" && body.business_unit_id.trim()
+        ? body.business_unit_id.trim()
+        : body.business_unit_id === null
+          ? null
+          : undefined;
+
+    const writeBu = await resolveServerWriteBusinessUnitId({
+      supabase,
+      tenantId: auth.tenantId,
+      authUid: user.id,
+      requestedBusinessUnitId,
+    });
+    if (!writeBu.ok) {
+      return NextResponse.json(
+        { error: writeBu.error },
+        { status: writeBu.status },
+      );
+    }
+
     const snapshot = buildCartSnapshot({
       saleDate,
       clientId,
       customerName,
       notes,
       dueDate,
+      businessUnitId: writeBu.businessUnitId,
       cartLines,
     });
     const amountGhs = cartSnapshotTotal(snapshot);

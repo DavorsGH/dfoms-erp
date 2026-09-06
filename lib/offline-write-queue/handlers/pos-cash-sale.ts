@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
+import {
+  assertBusinessUnitAccess,
+  formatBusinessUnitAccessError,
+  getUserAllowedBusinessUnits,
+} from "@/utils/business-unit-access";
 import type { PosCashSaleQueuePayload } from "@/lib/offline-write-queue/types";
 
 export type SyncPosCashSaleResult =
@@ -33,6 +38,27 @@ export async function syncPosCashSaleQueueItem(
     notificationSent: boolean;
   },
 ): Promise<SyncPosCashSaleResult & { notificationSent?: boolean }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  try {
+    const allowedUnits = await getUserAllowedBusinessUnits(
+      supabase,
+      input.tenantId,
+      user.id,
+    );
+    assertBusinessUnitAccess(
+      allowedUnits,
+      input.payload.business_unit_id ?? null,
+    );
+  } catch (accessError) {
+    return { ok: false, error: formatBusinessUnitAccessError(accessError) };
+  }
+
   const { data, error } = await supabase.rpc("sync_offline_pos_cash_sale", {
     p_client_op_id: input.clientOpId,
     p_payload: {

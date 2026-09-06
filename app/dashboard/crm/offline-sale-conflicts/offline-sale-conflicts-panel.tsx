@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+} from "@/utils/business-unit-access";
 import { inputClassName } from "../../employees/employee-record-utils";
 import { formatGHS } from "../../finance/income-register-utils";
 
@@ -199,6 +204,28 @@ export default function OfflineSaleConflictsPanel({
     setError(null);
 
     try {
+      const buContext = await loadWriteBusinessUnitContext(supabase);
+      if (!buContext.ok) {
+        setError(buContext.error);
+        setSubmitting(false);
+        return;
+      }
+
+      const claimBusinessUnitId =
+        typeof conflict.claim?.business_unit_id === "string"
+          ? conflict.claim.business_unit_id.trim() || null
+          : null;
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          claimBusinessUnitId,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setSubmitting(false);
+        return;
+      }
+
       let p_params: Record<string, unknown> = {};
 
       if (selectedAction === "A") {

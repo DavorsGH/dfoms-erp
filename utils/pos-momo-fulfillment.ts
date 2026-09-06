@@ -18,6 +18,7 @@ export type PosCartSnapshot = {
   customerName: string | null;
   notes: string | null;
   dueDate: string;
+  businessUnitId?: string | null;
   lines: Array<{
     id: string;
     productId: string;
@@ -95,6 +96,7 @@ export function buildCartSnapshot(input: {
   customerName: string | null;
   notes: string | null;
   dueDate: string;
+  businessUnitId?: string | null;
   cartLines: PosCartLine[];
 }): PosCartSnapshot {
   return {
@@ -103,6 +105,7 @@ export function buildCartSnapshot(input: {
     customerName: input.customerName,
     notes: input.notes,
     dueDate: input.dueDate,
+    businessUnitId: input.businessUnitId ?? null,
     lines: input.cartLines.map((line) => ({
       id: line.id,
       productId: line.productId,
@@ -289,7 +292,7 @@ export async function fulfillPosCartSnapshotPaymentRequest(
 
   const { data, error } = await admin.rpc("checkout_pos_cart", {
     p_tenant_id: requestRow.tenant_id,
-    p_business_unit_id: null,
+    p_business_unit_id: snapshot.businessUnitId ?? null,
     p_sale_date: snapshot.saleDate,
     p_invoice_no:
       isProvisionalPosInvoiceNo(requestRow.invoice_no) ? null : requestRow.invoice_no,

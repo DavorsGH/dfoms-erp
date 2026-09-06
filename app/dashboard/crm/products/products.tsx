@@ -14,6 +14,12 @@ import ScrollableTable, {
 import FilteredListCount from "@/app/dashboard/filtered-list-count";
 import { inputClassName } from "@/app/dashboard/hr-payroll/hr-register-utils";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitId,
+} from "@/utils/business-unit-access";
 import ProductsBulkImport from "./products-bulk-import";
 import {
   BILLING_CYCLE_OPTIONS,
@@ -155,7 +161,26 @@ export default function Products({
       return;
     }
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
     if (editingId) {
+      const existing = products.find((product) => product.id === editingId);
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          existing?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+
       const { error: saveError } = await supabase
         .from("crm_products")
         .update(payload)
@@ -176,9 +201,21 @@ export default function Products({
         return;
       }
 
+      let businessUnitId: string | null;
+      try {
+        businessUnitId = resolveWriteBusinessUnitId({
+          allowedUnits: buContext.allowedUnits,
+        });
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+
       const { error: saveError } = await supabase.from("crm_products").insert({
         ...payload,
         tenant_id: tenantId,
+        business_unit_id: businessUnitId,
       });
 
       if (saveError) {
@@ -204,6 +241,24 @@ export default function Products({
 
     setDeletingId(product.id);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingId(null);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        product.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingId(null);
+      return;
+    }
 
     const { error: deleteError } = await supabase
       .from("crm_products")

@@ -8,10 +8,7 @@ import {
 import { commitImportJobInTransaction } from "@/lib/bulk-import/commit-import-job";
 import type { BulkImportCommitResponse, BulkImportType } from "@/lib/bulk-import/types";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import {
-  resolveCreateBusinessUnitId,
-  StampRefusedViewAllError,
-} from "@/utils/business-unit-stamp";
+import { resolveServerWriteBusinessUnitId } from "@/utils/business-unit-access.server";
 import { resolveDatabaseUrl } from "@/utils/database-url";
 import { createClient } from "@/utils/supabase/server";
 
@@ -169,14 +166,25 @@ export async function POST(
     importType === "expense" ||
     importType === "fixed_asset"
   ) {
-    try {
-      activeBusinessUnitId = await resolveCreateBusinessUnitId();
-    } catch (error) {
-      if (error instanceof StampRefusedViewAllError) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-      throw error;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
     }
+
+    const writeBu = await resolveServerWriteBusinessUnitId({
+      supabase,
+      tenantId: sectionAuth.tenantId,
+      authUid: user.id,
+    });
+    if (!writeBu.ok) {
+      return NextResponse.json(
+        { error: writeBu.error },
+        { status: writeBu.status },
+      );
+    }
+    activeBusinessUnitId = writeBu.businessUnitId;
   }
 
   const pgClient = new Client({

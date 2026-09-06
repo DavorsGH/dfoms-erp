@@ -31,6 +31,7 @@ export type SalesOpportunity = {
   assigned_to: string | null;
   lost_reason: string | null;
   notes: string | null;
+  business_unit_id?: string | null;
   created_at: string;
   updated_at: string;
   closed_at: string | null;
@@ -50,7 +51,7 @@ export type SalesActivity = {
 };
 
 export const SALES_OPPORTUNITY_SELECT =
-  "id, tenant_id, client_id, opportunity_name, stage, estimated_value, probability, expected_close_date, source, assigned_to, lost_reason, notes, created_at, updated_at, closed_at";
+  "id, tenant_id, client_id, opportunity_name, stage, estimated_value, probability, expected_close_date, source, assigned_to, lost_reason, notes, business_unit_id, created_at, updated_at, closed_at";
 
 export const SALES_ACTIVITY_SELECT =
   "id, tenant_id, opportunity_id, client_id, activity_type, due_date, completed_at, assigned_to, notes, created_at";

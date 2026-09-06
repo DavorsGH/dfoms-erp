@@ -57,6 +57,12 @@ import {
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
+import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
 } from "./finished-product-bu-stock-utils";
@@ -363,7 +369,26 @@ export default function FinishedProducts({
     setSuccessMessage(null);
     setPhotoWarning(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
     if (editingProductId) {
+      const existing = products.find((product) => product.id === editingProductId);
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          existing?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+
       const payload = buildFinishedProductSavePayload(form);
       const { error: saveError } = await supabase
         .from("finished_products")
@@ -383,6 +408,16 @@ export default function FinishedProducts({
         return;
       }
     } else {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+
       const allocated = await allocateProductCode(supabase);
       if (allocated.error || !allocated.productCode) {
         setError(allocated.error ?? "Unable to allocate product code.");
@@ -397,7 +432,10 @@ export default function FinishedProducts({
 
       const { data: inserted, error: saveError } = await supabase
         .from("finished_products")
-        .insert(payload)
+        .insert({
+          ...payload,
+          business_unit_id: stampResult.businessUnitId,
+        })
         .select("id")
         .single();
 
@@ -450,6 +488,25 @@ export default function FinishedProducts({
     setArchivingProductId(productId);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setArchivingProductId(null);
+      return;
+    }
+
+    const existing = products.find((product) => product.id === productId);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setArchivingProductId(null);
+      return;
+    }
+
     const { error: archiveError } = await supabase
       .from("finished_products")
       .update({
@@ -479,6 +536,25 @@ export default function FinishedProducts({
 
     setReactivatingProductId(productId);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setReactivatingProductId(null);
+      return;
+    }
+
+    const existing = products.find((product) => product.id === productId);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setReactivatingProductId(null);
+      return;
+    }
 
     const { error: reactivateError } = await supabase
       .from("finished_products")
@@ -553,14 +629,25 @@ export default function FinishedProducts({
     setError(null);
     setSuccessMessage(null);
 
-    if (viewAllBusinessUnits) {
-      setError("Switch to a specific business to record a stock adjustment.");
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
     }
 
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
+      setLoading(false);
+      return;
+    }
+
+    if (viewAllBusinessUnits && buContext.allowedUnits === null) {
+      setError("Switch to a specific business to record a stock adjustment.");
       setLoading(false);
       return;
     }

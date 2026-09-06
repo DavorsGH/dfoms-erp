@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import {
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitId,
+  formatBusinessUnitAccessError,
+} from "@/utils/business-unit-access";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import type { CrmProductEntry } from "./products-utils";
 import {
@@ -110,9 +115,31 @@ export default function ProductsBulkImport({
     setImporting(true);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setImporting(false);
+      return;
+    }
+
+    let businessUnitId: string | null;
+    try {
+      businessUnitId = resolveWriteBusinessUnitId({
+        allowedUnits: buContext.allowedUnits,
+      });
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setImporting(false);
+      return;
+    }
+
     const payloads = preview.ready
       .map((row) => row.payload)
-      .filter((payload): payload is NonNullable<typeof payload> => payload !== null);
+      .filter((payload): payload is NonNullable<typeof payload> => payload !== null)
+      .map((payload) => ({
+        ...payload,
+        business_unit_id: businessUnitId,
+      }));
 
     const { error: insertError } = await supabase
       .from("crm_products")

@@ -1,10 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import {
-  resolveCreateBusinessUnitId,
-  StampRefusedViewAllError,
-} from "@/utils/business-unit-stamp";
+import { resolveServerWriteBusinessUnitId } from "@/utils/business-unit-access.server";
 import {
   getActiveBusinessUnitId,
   getViewAllBusinessUnits,
@@ -165,20 +162,24 @@ export async function POST(request: Request) {
   // RPC: opening/found require cost; correction/write_off check IS NOT NULL — pass null.
   const costPerUnit = needsCost ? Number(body.cost_per_unit) : null;
 
-  let businessUnitId: string | null;
-  try {
-    businessUnitId = await resolveCreateBusinessUnitId();
-  } catch (error) {
-    if (error instanceof StampRefusedViewAllError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-    throw error;
-  }
-
   const supabase = await getTenantSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  const writeBu = await resolveServerWriteBusinessUnitId({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: user.id,
+  });
+  if (!writeBu.ok) {
+    return NextResponse.json({ error: writeBu.error }, { status: writeBu.status });
+  }
+  const businessUnitId = writeBu.businessUnitId;
 
   const { data: adjustmentId, error: rpcError } = await supabase.rpc(
     "record_finished_product_manual_adjustment",

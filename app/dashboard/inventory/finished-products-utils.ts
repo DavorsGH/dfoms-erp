@@ -31,6 +31,7 @@ export type FinishedProductRecord = {
   expiration_date: string | null;
   photo_url: string | null;
   is_archived: boolean;
+  business_unit_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -55,7 +56,7 @@ export const FINISHED_PRODUCT_SOURCING_OPTIONS = [
 
 /** Master columns only — lot dates live on production_batches / product_purchases. */
 export const FINISHED_PRODUCT_SELECT =
-  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, photo_url, is_archived, created_at, updated_at";
+  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, photo_url, is_archived, business_unit_id, created_at, updated_at";
 
 function normalizeDateOnly(value: string | null | undefined): string | null {
   if (value == null) return null;

@@ -22,6 +22,12 @@ import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-a
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
+import {
   applyEmployeeIdScope,
   fetchScopedEmployeeIds,
 } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
@@ -361,8 +367,19 @@ export default function SalesPipeline({
     setLoading(true);
     setError(null);
 
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
       setLoading(false);
       return;
     }
@@ -402,7 +419,7 @@ export default function SalesPipeline({
         p_source: parsed.value.source,
         p_assigned_to: parsed.value.assigned_to,
         p_notes: parsed.value.notes,
-        p_business_unit_id: stampBusinessUnit.businessUnitId,
+        p_business_unit_id: stampResult.businessUnitId,
       },
     );
 
@@ -431,6 +448,27 @@ export default function SalesPipeline({
 
     setLoading(true);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    const existing = opportunities.find(
+      (item) => item.id === editingOpportunityId,
+    );
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setLoading(false);
+      return;
+    }
 
     const parsed = parseOpportunityForm(opportunityForm);
     if (!parsed.ok) {
@@ -469,6 +507,24 @@ export default function SalesPipeline({
 
     setLoading(true);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        deleteTarget.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setLoading(false);
+      return;
+    }
 
     const { error: rpcError } = await supabase.rpc("delete_sales_opportunity", {
       p_opportunity_id: deleteTarget.id,
@@ -510,6 +566,24 @@ export default function SalesPipeline({
 
     setStageUpdatingId(opportunity.id);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setStageUpdatingId(null);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        opportunity.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setStageUpdatingId(null);
+      return;
+    }
 
     const { error: rpcError } = await supabase.rpc("set_opportunity_stage", {
       p_opportunity_id: opportunity.id,

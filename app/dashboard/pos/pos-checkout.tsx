@@ -84,6 +84,10 @@ import {
   useBusinessUnitReadScope,
 } from "@/app/dashboard/business-unit-view-context";
 import {
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
+import {
   applyEmployeeIdScope,
   fetchScopedEmployeeIds,
 } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
@@ -174,6 +178,20 @@ export default function PosCheckout({
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
+
+  async function resolveCheckoutBusinessUnitId(): Promise<
+    { ok: true; businessUnitId: string | null } | { ok: false; error: string }
+  > {
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      return { ok: false, error: buContext.error };
+    }
+    return resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+  }
+
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
   const writeQueue = useWriteQueueOptional();
   const [products, setProducts] = useState(
@@ -798,8 +816,9 @@ export default function PosCheckout({
     trimmedClientId: string | null,
     trimmedCustomerName: string | null,
   ) {
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const stampResult = await resolveCheckoutBusinessUnitId();
+    if (!stampResult.ok) {
+      setError(stampResult.error);
       return;
     }
 
@@ -834,7 +853,7 @@ export default function PosCheckout({
       amountReceived,
       notes: notes.trim() || null,
       provisionalToken,
-      business_unit_id: stampBusinessUnit.businessUnitId,
+      business_unit_id: stampResult.businessUnitId,
       lines: receiptLines.map((line) => ({
         productId: line.productId,
         productCode: line.productCode,
@@ -892,8 +911,9 @@ export default function PosCheckout({
     trimmedClientId: string | null,
     trimmedCustomerName: string | null,
   ) {
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const stampResult = await resolveCheckoutBusinessUnitId();
+    if (!stampResult.ok) {
+      setError(stampResult.error);
       return;
     }
 
@@ -915,7 +935,7 @@ export default function PosCheckout({
       dueDate,
       notes: notes.trim() || null,
       cartLines,
-      businessUnitId: stampBusinessUnit.businessUnitId,
+      businessUnitId: stampResult.businessUnitId,
     });
 
     await refreshProducts();
@@ -966,9 +986,7 @@ export default function PosCheckout({
         body: JSON.stringify({
           event_type: "sale_completed",
           customer_id: trimmedClientId,
-          business_unit_id: stampBusinessUnit.ok
-            ? stampBusinessUnit.businessUnitId
-            : null,
+          business_unit_id: stampResult.businessUnitId,
           variables: {
             customer_name: getCustomerDisplayName(
               trimmedClientId,
@@ -1003,6 +1021,14 @@ export default function PosCheckout({
     setMomoWaiting(true);
 
     try {
+      const stampResult = await resolveCheckoutBusinessUnitId();
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setMomoWaiting(false);
+        setLoading(false);
+        return;
+      }
+
       const initResponse = await fetch("/api/sales/paystack/momo/initialize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1016,6 +1042,7 @@ export default function PosCheckout({
           delivery_email: payerEmail.trim() || null,
           cart_lines: cartLines,
           checkout_amount_ghs: payableTotal,
+          business_unit_id: stampResult.businessUnitId,
         }),
       });
 
@@ -1156,12 +1183,6 @@ export default function PosCheckout({
     setError(null);
     setPaymentSettingsRequired(false);
     setReceipt(null);
-
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
-      setLoading(false);
-      return;
-    }
 
     const basics = validateCheckoutBasics();
     if (!basics) {

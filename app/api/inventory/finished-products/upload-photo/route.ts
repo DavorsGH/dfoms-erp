@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  assertCanModifyBusinessUnitRow,
+  getUserAllowedBusinessUnits,
+} from "@/utils/business-unit-access";
 import { uploadFinishedProductPhoto } from "@/utils/finished-product-photo";
 import { INVENTORY_EDIT_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -35,9 +39,17 @@ export async function POST(request: Request) {
   }
 
   const supabase = await getTenantSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
   const { data: product, error: productError } = await supabase
     .from("finished_products")
-    .select("id")
+    .select("id, business_unit_id")
     .eq("id", productId)
     .eq("tenant_id", auth.tenantId)
     .maybeSingle();
@@ -47,6 +59,28 @@ export async function POST(request: Request) {
   }
   if (!product) {
     return NextResponse.json({ error: "Finished product not found." }, { status: 404 });
+  }
+
+  try {
+    const allowedUnits = await getUserAllowedBusinessUnits(
+      supabase,
+      auth.tenantId,
+      user.id,
+    );
+    assertCanModifyBusinessUnitRow(
+      allowedUnits,
+      (product as { business_unit_id?: string | null }).business_unit_id,
+    );
+  } catch (accessError) {
+    return NextResponse.json(
+      {
+        error:
+          accessError instanceof Error
+            ? accessError.message
+            : "Business unit access denied.",
+      },
+      { status: 403 },
+    );
   }
 
   const admin = createAdminClient();

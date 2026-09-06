@@ -53,6 +53,12 @@ import SalesRepSelect from "@/components/sales-rep-select";
 import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 import ProductSalesBulkImport from "./product-sales-bulk-import";
 import RecordProductSalePaymentDialog from "./record-product-sale-payment-dialog";
 import {
@@ -416,8 +422,19 @@ export default function ProductSales({
     setLoading(true);
     setError(null);
 
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
       setLoading(false);
       return;
     }
@@ -504,7 +521,7 @@ export default function ProductSales({
         p_description: null,
         p_notes: form.notes || null,
         p_sales_rep_id: salesRepId.trim() || null,
-        p_business_unit_id: stampBusinessUnit.businessUnitId,
+        p_business_unit_id: stampResult.businessUnitId,
       },
     );
 
@@ -572,6 +589,24 @@ export default function ProductSales({
 
     setVoidingId(entry.id);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setVoidingId(null);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        entry.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setVoidingId(null);
+      return;
+    }
 
     const { error: voidError } = await supabase.rpc("void_product_sale", {
       p_income_id: entry.id,

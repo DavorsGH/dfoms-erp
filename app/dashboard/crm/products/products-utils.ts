@@ -8,6 +8,7 @@ export type CrmProductEntry = {
   billing_cycle: string | null;
   is_active: boolean | null;
   category: string | null;
+  business_unit_id?: string | null;
 };
 
 export const ERP_SUITE_CATEGORY = "ERP Suite";
@@ -53,7 +54,7 @@ export function buildPlatformUnitActivationCatalogEntry(
 }
 
 export const CRM_PRODUCT_SELECT =
-  "id, name, product_type, unit_price, price_ghs, billing_cycle, is_active, category";
+  "id, name, product_type, unit_price, price_ghs, billing_cycle, is_active, category, business_unit_id";
 
 export const DEFAULT_PRODUCT_TYPE = "service";
 

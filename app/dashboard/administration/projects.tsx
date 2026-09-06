@@ -35,6 +35,12 @@ import {
   useBusinessUnitReadScope,
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 type ProjectsProps = {
   initialProjects: ProjectEntry[];
@@ -200,6 +206,25 @@ export default function Projects({
     setArchivingCode(projectCode);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setArchivingCode(null);
+      return;
+    }
+
+    const existing = projects.find((project) => project.project_code === projectCode);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setArchivingCode(null);
+      return;
+    }
+
     const { error: archiveError } = await supabase
       .from("projects")
       .update({ is_archived: true })
@@ -226,6 +251,25 @@ export default function Projects({
 
     setReactivatingCode(projectCode);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setReactivatingCode(null);
+      return;
+    }
+
+    const existing = projects.find((project) => project.project_code === projectCode);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setReactivatingCode(null);
+      return;
+    }
 
     const { error: reactivateError } = await supabase
       .from("projects")
@@ -278,8 +322,19 @@ export default function Projects({
     setLoading(true);
     setError(null);
 
-    if (!editingCode && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
       setLoading(false);
       return;
     }
@@ -289,6 +344,22 @@ export default function Projects({
       project_name: contractForm.project_name.trim(),
     };
 
+    if (editingCode) {
+      const existing = projects.find(
+        (project) => project.project_code === editingCode,
+      );
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          existing?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+    }
+
     const { error: saveError } = editingCode
       ? await supabase
           .from("projects")
@@ -296,9 +367,7 @@ export default function Projects({
           .eq("project_code", editingCode)
       : await supabase.from("projects").insert({
           ...payload,
-          business_unit_id: stampBusinessUnit.ok
-            ? stampBusinessUnit.businessUnitId
-            : null,
+          business_unit_id: stampResult.businessUnitId,
         });
 
     if (saveError) {
