@@ -147,6 +147,8 @@ export default function UserAccounts({
   const [success, setSuccess] = useState<string | null>(null);
   const [businessUnitAccessForm, setBusinessUnitAccessForm] =
     useState<BusinessUnitAccessFormState>(emptyBusinessUnitAccessForm());
+  const [createBusinessUnitAccessForm, setCreateBusinessUnitAccessForm] =
+    useState<BusinessUnitAccessFormState>(emptyBusinessUnitAccessForm());
   const [businessUnitAccessLoading, setBusinessUnitAccessLoading] =
     useState(false);
 
@@ -223,6 +225,33 @@ export default function UserAccounts({
 
   const editingAccount = accounts.find((account) => account.auth_uid === editingUid);
 
+  async function syncBusinessUnitAccess(
+    authUid: string,
+    form: BusinessUnitAccessFormState,
+    failureMessage: string,
+  ): Promise<boolean> {
+    if (!showBusinessUnitAccess) {
+      return true;
+    }
+
+    const accessResponse = await fetch("/api/admin/users/business-unit-access", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auth_uid: authUid,
+        business_unit_ids: form.business_unit_ids,
+        default_business_unit_id: form.default_business_unit_id,
+      }),
+    });
+
+    if (!accessResponse.ok) {
+      setError(await parseApiErrorResponse(accessResponse, failureMessage));
+      return false;
+    }
+
+    return true;
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -262,10 +291,25 @@ export default function UserAccounts({
     }
 
     const result = (await response.json().catch(() => null)) as {
+      auth_uid?: string;
       message?: string;
     } | null;
 
+    if (
+      createMode === "password" &&
+      result?.auth_uid &&
+      !(await syncBusinessUnitAccess(
+        result.auth_uid,
+        createBusinessUnitAccessForm,
+        "User created, but business unit access failed to save",
+      ))
+    ) {
+      setLoading(false);
+      return;
+    }
+
     setCreateForm(emptyCreateForm());
+    setCreateBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
     setCreateMode("password");
     setShowCreateForm(false);
     setSuccess(
@@ -313,27 +357,12 @@ export default function UserAccounts({
     }
 
     if (showBusinessUnitAccess) {
-      const accessResponse = await fetch(
-        "/api/admin/users/business-unit-access",
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            auth_uid: authUid,
-            business_unit_ids: businessUnitAccessForm.business_unit_ids,
-            default_business_unit_id:
-              businessUnitAccessForm.default_business_unit_id,
-          }),
-        },
+      const accessSaved = await syncBusinessUnitAccess(
+        authUid,
+        businessUnitAccessForm,
+        "User saved, but business unit access failed to update",
       );
-
-      if (!accessResponse.ok) {
-        setError(
-          await parseApiErrorResponse(
-            accessResponse,
-            "User saved, but business unit access failed to update",
-          ),
-        );
+      if (!accessSaved) {
         setActionId(null);
         return;
       }
@@ -492,6 +521,7 @@ export default function UserAccounts({
           onClick={() => {
             setShowCreateForm((current) => !current);
             setCreateMode("password");
+            setCreateBusinessUnitAccessForm(emptyBusinessUnitAccessForm());
             setEditingUid(null);
             setError(null);
             setSuccess(null);
@@ -601,6 +631,15 @@ export default function UserAccounts({
               </div>
             )}
           </div>
+
+          {showBusinessUnitAccess ? (
+            <BusinessUnitAccessFields
+              form={createBusinessUnitAccessForm}
+              businessUnits={initialBusinessUnits}
+              onChange={setCreateBusinessUnitAccessForm}
+              idPrefix="create-bu"
+            />
+          ) : null}
 
           <button
             type="submit"
