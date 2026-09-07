@@ -26,19 +26,16 @@ export default function PortalChooserPage() {
     <div className="flex min-h-screen flex-col items-center bg-[#0F2744] px-4 py-10 sm:py-14">
       <div className="w-full max-w-5xl">
         <header className="text-center">
-          <div className="mb-2 flex justify-center">
+          <div className="mb-4 flex justify-center">
             <Image
-              src="/icons/apple-touch-icon-180x180.png"
+              src="/branding/davors-technologies-logo-dark.png"
               alt="Davors Technologies"
-              width={160}
-              height={160}
-              className="h-40 w-40"
+              width={1500}
+              height={271}
+              className="h-auto w-full max-w-[20.16rem] sm:max-w-[22.5rem]"
               priority
             />
           </div>
-          <h1 className="text-2xl font-semibold text-white sm:text-3xl">
-            Davors Technologies
-          </h1>
           <p className="mt-2 text-sm text-slate-300 sm:text-base">
             Choose your portal to continue
           </p>
