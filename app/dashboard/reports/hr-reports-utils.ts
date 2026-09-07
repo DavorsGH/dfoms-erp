@@ -61,6 +61,7 @@ export type PayrollSummaryRow = {
   employeeSsnit: number;
   payeTax: number;
   loanRepayment: number;
+  welfareDeduction: number;
   totalDeductions: number;
   netPay: number;
   employerSsnitCost: number;
@@ -239,6 +240,7 @@ function summaryRowFromStoredPayroll(
     employeeSsnit: roundMoney(Number(row.employee_ssnit) || 0),
     payeTax: roundMoney(Number(row.paye_tax) || 0),
     loanRepayment: roundMoney(Number(row.loan_repayment) || 0),
+    welfareDeduction: roundMoney(Number(row.welfare_deduction) || 0),
     totalDeductions: roundMoney(Number(row.total_deductions) || 0),
     netPay: roundMoney(Number(row.net_pay) || 0),
     employerSsnitCost,
@@ -291,6 +293,7 @@ function summaryRowFromLivePayroll(
     employeeSsnit: roundMoney(calculated.employee_ssnit),
     payeTax: roundMoney(calculated.paye_tax),
     loanRepayment: roundMoney(calculated.loan_repayment),
+    welfareDeduction: roundMoney(calculated.welfare_deduction),
     totalDeductions: roundMoney(calculated.total_deductions),
     netPay: roundMoney(calculated.net_pay),
     employerSsnitCost: roundMoney(

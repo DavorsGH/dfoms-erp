@@ -9,7 +9,8 @@ ERP System
 Version 2.9 | September 2026
 
 *Covers: Getting Started · Bulk Import · User Roles (incl. Director) ·
-Business Units · Finance (incl. Budget, Tax Settings, Client Receipts) ·
+Business Units · Finance (incl. Budget, Tax Settings, Client Receipts, Staff
+Welfare Fund) ·
 Sales & CRM (Pipeline, Product Quotes, Client Quotations, Returns &
 Credit Notes, Discounts & Loyalty, Targets & Commissions) · Point of
 Sale · Email & Promotions · HR Management · Operations (incl. Duty
@@ -468,6 +469,36 @@ Summary report rolls the same information up for export.
 
 *Fig. 2 --- Your registers feed all three financial statements
 automatically.*
+
+## **6.6a Staff Welfare Fund**
+
+The Staff Welfare Fund tracks employee welfare deductions separately from
+other payroll items. It replaces the old practice of posting welfare
+deductions to DEDSAV Other Income.
+
+-   **Where to find it:** Finance → Staff Welfare Fund (also reflected on
+    the Balance Sheet as **Staff Welfare Payable**).
+
+-   **How deductions work:** Each employee can have a **Welfare Deduction
+    Rate** (a percentage of that period's gross pay). Set a workspace
+    default under HR → Salary Settings, and override per employee on the
+    Employee Directory when needed. During Payroll Processing the
+    **Welfare Deduction** column shows the calculated amount for each
+    staff member.
+
+-   **Accrual on payroll lock:** When you lock a payroll period, the total
+    welfare deductions for that period are accrued to the Staff Welfare
+    Fund ledger (they are **not** posted as DEDSAV income).
+
+-   **Fund balance:** The current balance is open accruals and adjustments
+    minus disbursements. Use Finance → Staff Welfare Fund to review the
+    ledger and record disbursements to staff (for example welfare claims
+    or payouts). Disbursements reduce the payable balance; they are
+    excluded from the Profit & Loss statement.
+
+-   **Statutory payroll liabilities:** Open PAYE and SSNIT on the
+    Statutory Ledger are separate from Staff Welfare Payable — check both
+    when reviewing total amounts owed from payroll.
 
 ## **6.7 Client Invoices**
 
@@ -1166,6 +1197,12 @@ the Bulk Import button on the Employee Directory --- see Section 2.4.
     read automatically from these settings --- no need to re-enter
     figures per person, and no risk of two staff in the same role ending
     up with different, inconsistent pay.
+
+-   **Welfare Deduction Rate** --- set a default percentage under Salary
+    Settings (applied to gross pay each period). Override per employee on
+    the Employee Directory if needed. Locked payroll accrues the total to
+    the Staff Welfare Fund (see Section 6.6a) --- welfare no longer feeds
+    DEDSAV Other Income.
 
 ## **8.3 HR Operations**
 

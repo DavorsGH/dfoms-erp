@@ -1,6 +1,7 @@
 import {
   buildBalanceSheetReport,
   getBalanceCheckForPeriod,
+  getBalanceSheetAmountForMonth,
   type BalanceSheetAccountsPayableEntry,
   type BalanceSheetIncomeEntry,
   type BalanceSheetReport,
@@ -110,7 +111,43 @@ export type DashboardSummaryCards = {
     isBalanced: boolean;
     difference: number;
   };
+  /** Key Balance Sheet liability line amounts for the selected month. */
+  balanceSheetLiabilityLines: BalanceSheetLiabilityLine[];
 };
+
+export type BalanceSheetLiabilityLine = {
+  key: string;
+  label: string;
+  amountGhs: number;
+};
+
+const BALANCE_SHEET_LIABILITY_LINE_KEYS = [
+  "accounts-payable",
+  "accrued-wages-payable",
+  "wht-payable",
+  "net-vat-payable",
+  "paye-payable",
+  "ssnit-payable",
+  "staff-welfare-payable",
+  "bank-loans",
+  "other-long-term-liabilities",
+  "directors-loan",
+  "total-liabilities",
+] as const;
+
+function buildBalanceSheetLiabilityLines(
+  report: BalanceSheetReport,
+  monthIndex: number,
+): BalanceSheetLiabilityLine[] {
+  return BALANCE_SHEET_LIABILITY_LINE_KEYS.map((key) => {
+    const row = report.rows.find((candidate) => candidate.key === key);
+    return {
+      key,
+      label: row?.label ?? key,
+      amountGhs: row ? getBalanceSheetAmountForMonth(row, monthIndex) : 0,
+    };
+  });
+}
 
 export type DashboardMonthOption = {
   key: string;
@@ -523,6 +560,10 @@ function buildMonthSnapshot(input: {
         isBalanced: balanceCheck.isBalanced,
         difference: balanceCheck.difference,
       },
+      balanceSheetLiabilityLines: buildBalanceSheetLiabilityLines(
+        balanceSheetReport,
+        monthIndex,
+      ),
     },
     payroll: {
       periodLabel,

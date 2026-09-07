@@ -472,6 +472,11 @@ export async function getBalanceSheetStatus(): Promise<unknown> {
     statusLabel: isBalanced
       ? "Balanced"
       : `Out of balance by ${formatGHS(Math.abs(difference))}`,
+    liabilityLinesGhs: summary.balanceSheetLiabilityLines.map((line) => ({
+      key: line.key,
+      label: line.label,
+      amountGhs: line.amountGhs,
+    })),
     fetchWarning: dashboardResult.fetchError,
   };
 }

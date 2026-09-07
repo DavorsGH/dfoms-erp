@@ -1,5 +1,13 @@
 import "server-only";
 
+import {
+  STAFF_WELFARE_LEDGER_SELECT,
+  calculateStaffWelfareFundBalance,
+  getEntryTypeLabel,
+  getWelfareFundStatusLabel,
+  normalizeStaffWelfareFundEntry,
+  type StaffWelfareFundLedgerEntry,
+} from "@/app/dashboard/finance/staff-welfare-fund-utils";
 import { fetchPayrollLiveRecalcBundle } from "@/app/dashboard/hr-payroll/payroll-live-recalc-utils";
 import { resolvePayrollPolicyCompensation } from "@/app/dashboard/hr-payroll/payroll-processing-utils";
 import {
@@ -12,6 +20,14 @@ import {
   buildMonthlyPayrollSummaryReport,
   buildOvertimeSummaryReport,
 } from "@/app/dashboard/reports/hr-reports-utils";
+import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
+import {
+  HR_PAYROLL_SETTINGS_SELECT,
+  normalizeHrPayrollSettingsRow,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
+import { scopeToBusinessUnitId } from "@/utils/phase5e-key-structure";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import { canAccessHrPayrollSection } from "@/utils/rbac-access";
 import {
   STAFF_DATA_UNAVAILABLE_MESSAGE,
@@ -26,6 +42,64 @@ import {
   resolveEmployeeInScope,
   resolveHrAssistantPeriodSelection,
 } from "@/utils/assistant-staff-tools-hr-common";
+
+const STAFF_WELFARE_FUND_HISTORY_LIMIT = 15;
+
+export async function getStaffWelfareFundStatus(): Promise<unknown> {
+  const sessionResult = await requireStaffSession();
+  if ("error" in sessionResult) {
+    return sessionResult;
+  }
+  if (!canAccessHrPayrollSection(sessionResult.session.role)) {
+    return { error: "You do not have access to Staff Welfare Fund data." };
+  }
+
+  try {
+    const supabase = await getStaffSupabase();
+    const buScope = await loadStaffBusinessUnitScope();
+    const { data, error } = await applyBusinessUnitScope(
+      supabase
+        .from("staff_welfare_fund_ledger")
+        .select(STAFF_WELFARE_LEDGER_SELECT)
+        .eq("tenant_id", sessionResult.session.tenantId)
+        .neq("status", "reversed")
+        .order("entry_date", { ascending: false })
+        .order("created_at", { ascending: false }),
+      buScope,
+    );
+
+    if (error) {
+      return { error: STAFF_DATA_UNAVAILABLE_MESSAGE, fetchWarning: error.message };
+    }
+
+    const entries = (
+      (data as StaffWelfareFundLedgerEntry[] | null) ?? []
+    ).map(normalizeStaffWelfareFundEntry);
+    const currentBalanceGhs = calculateStaffWelfareFundBalance(entries);
+    const recentHistory = entries.slice(0, STAFF_WELFARE_FUND_HISTORY_LIMIT).map(
+      (entry) => ({
+        entryDate: entry.entry_date,
+        periodMonth: entry.period_month,
+        entryType: getEntryTypeLabel(entry.entry_type),
+        amountGhs: entry.amount,
+        status: getWelfareFundStatusLabel(entry.status),
+        sourceType: entry.source_type,
+        counterpartyName: entry.counterparty_name,
+        notes: entry.notes,
+      }),
+    );
+
+    return {
+      currency: "GHS" as const,
+      currentBalanceGhs,
+      recentHistory,
+      note: "Balance is open accruals and adjustments minus disbursements — same as Finance → Staff Welfare Fund.",
+    };
+  } catch (error) {
+    console.error("[assistant] get_staff_welfare_fund_status threw:", error);
+    return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+  }
+}
 
 export async function getEmployeeCompensation(
   toolInput?: unknown,
@@ -92,9 +166,25 @@ export async function getEmployeeCompensation(
         employeeId: employee.employee_id,
         staffId: employee.staff_id,
         fullName: employee.full_name,
+        welfareDeductionRatePercent:
+          payrollEmployee.welfare_deduction_rate ?? null,
         note: "No compensation policy match was found for this employee's position, employment type, and shift.",
       };
     }
+
+    const activeBusinessUnitId = await getActiveBusinessUnitId();
+    const { data: settingsData, error: settingsError } = await scopeToBusinessUnitId(
+      supabase
+        .from("hr_payroll_settings")
+        .select(HR_PAYROLL_SETTINGS_SELECT)
+        .eq("tenant_id", sessionResult.session.tenantId),
+      activeBusinessUnitId,
+    ).maybeSingle();
+
+    const defaultWelfareDeductionRatePercent =
+      normalizeHrPayrollSettingsRow(
+        settingsData as HrPayrollSettingsRow | null,
+      )?.default_welfare_deduction_rate ?? null;
 
     return {
       employeeId: employee.employee_id,
@@ -107,12 +197,16 @@ export async function getEmployeeCompensation(
       housingAllowanceGhs: policy.housing_allowance,
       transportAllowanceGhs: policy.transport_allowance,
       otherAllowancesGhs: policy.other_allowances,
+      welfareDeductionRatePercent:
+        payrollEmployee.welfare_deduction_rate ?? null,
+      defaultWelfareDeductionRatePercent,
       allowanceLines: policy.allowance_lines.map((line) => ({
         code: line.allowance_code,
         name: line.allowance_name,
         amountGhs: line.amount,
       })),
-      note: "Resolved from Salary Settings / compensation policy (same as Payroll Processing).",
+      note: "Resolved from Salary Settings / compensation policy (same as Payroll Processing). Welfare rate is a percentage of gross pay applied each period.",
+      fetchWarning: settingsError?.message ?? null,
     };
   } catch (error) {
     console.error("[assistant] get_employee_compensation threw:", error);
@@ -206,6 +300,7 @@ export async function getEmployeePayDetail(
       employeeSsnitGhs: payRow.employeeSsnit,
       payeTaxGhs: payRow.payeTax,
       loanRepaymentGhs: payRow.loanRepayment,
+      welfareDeductionGhs: payRow.welfareDeduction,
       totalDeductionsGhs: payRow.totalDeductions,
       netPayGhs: payRow.netPay,
       employerSsnitCostGhs: payRow.employerSsnitCost,

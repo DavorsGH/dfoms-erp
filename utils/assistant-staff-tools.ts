@@ -38,6 +38,7 @@ import {
   getEmployeeLoans,
   getEmployeeOvertimeSummary,
   getEmployeePayDetail,
+  getStaffWelfareFundStatus,
 } from "@/utils/assistant-staff-tools-hr-payroll";
 import { getDisciplinaryRecords } from "@/utils/assistant-staff-tools-hr-disciplinary";
 import { canAccessDisciplinaryRecords } from "@/utils/assistant-staff-tools-hr-common";
@@ -103,6 +104,8 @@ export const GET_QUOTES_AND_QUOTATIONS_STATUS_TOOL_NAME =
 export const GET_COMMISSION_SUMMARY_TOOL_NAME = "get_commission_summary";
 export const GET_EMPLOYEE_HEADCOUNT_TOOL_NAME = "get_employee_headcount";
 export const GET_PAYROLL_STATUS_TOOL_NAME = "get_payroll_status";
+export const GET_STAFF_WELFARE_FUND_STATUS_TOOL_NAME =
+  "get_staff_welfare_fund_status";
 export const SEARCH_EMPLOYEES_TOOL_NAME = "search_employees";
 export const GET_EMPLOYEE_PROFILE_TOOL_NAME = "get_employee_profile";
 export const GET_EMPLOYEE_LEAVE_BALANCE_TOOL_NAME = "get_employee_leave_balance";
@@ -177,7 +180,7 @@ export function getStaffAssistantTools(
       ),
       tool(
         GET_BALANCE_SHEET_STATUS_TOOL_NAME,
-        "Current Balance Sheet Check (balanced vs out-of-balance) — same as the Dashboard card.",
+        "Current Balance Sheet Check (balanced vs out-of-balance) with key liability line amounts for the dashboard month — same as Finance → Balance Sheet.",
       ),
       tool(
         GET_BUDGET_STATUS_TOOL_NAME,
@@ -376,17 +379,21 @@ export function getStaffAssistantTools(
     tools.push(
       tool(
         GET_PAYROLL_STATUS_TOOL_NAME,
-        "Current payroll period status — same as Dashboard Payroll Status card.",
+        "Current payroll period status — same as Dashboard Payroll Status card. pendingPayrollLiabilitiesGhs is statutory tax liabilities only (open PAYE and SSNIT), not total payroll liabilities and excluding Staff Welfare Payable; use get_staff_welfare_fund_status for welfare fund balance and history.",
+      ),
+      tool(
+        GET_STAFF_WELFARE_FUND_STATUS_TOOL_NAME,
+        "Staff Welfare Fund balance (open accruals minus disbursements) and recent ledger history — same as Finance → Staff Welfare Fund.",
       ),
       tool(
         GET_EMPLOYEE_COMPENSATION_TOOL_NAME,
-        "Salary and allowance structure for one employee from compensation policy (no payslip deductions).",
+        "Salary and allowance structure for one employee from compensation policy, plus welfare deduction rate (no payslip deductions).",
         EMPLOYEE_ID_SCHEMA,
         ["employeeId"],
       ),
       tool(
         GET_EMPLOYEE_PAY_DETAIL_TOOL_NAME,
-        "Payslip figures for one employee for this_month (default) or last_month.",
+        "Payslip figures for one employee for this_month (default) or last_month, including welfareDeductionGhs.",
         {
           ...EMPLOYEE_ID_SCHEMA,
           ...PERIOD_SCHEMA,
@@ -504,6 +511,8 @@ export async function executeStaffAssistantTool(
       return getEmployeeHeadcount();
     case GET_PAYROLL_STATUS_TOOL_NAME:
       return getPayrollStatus();
+    case GET_STAFF_WELFARE_FUND_STATUS_TOOL_NAME:
+      return getStaffWelfareFundStatus();
     case SEARCH_EMPLOYEES_TOOL_NAME:
       return searchEmployees(toolInput);
     case GET_EMPLOYEE_PROFILE_TOOL_NAME:
@@ -551,7 +560,7 @@ export function staffAccountToolsSystemPromptAddition(
 
   if (canAccessFinanceSection(role)) {
     lines.push(
-      "- get_financial_summary / get_balance_sheet_status: Dashboard financial summary and balance sheet check",
+      "- get_financial_summary / get_balance_sheet_status: Dashboard financial summary and balance sheet check (includes key liability line amounts)",
       "- get_budget_status: Budget vs Actual (Monthly Pro-rated) — budgeted/actual/variance/status per category (optional month, year, project_id); use for budget status, budget vs actual, over/under budget, and category spend vs budget questions instead of handbook RAG",
       "- get_outstanding_invoices / get_outstanding_payables: unpaid client invoices and supplier payables with aging",
       "- get_tax_ledger_status: open WHT/VAT/PAYE/SSNIT statutory balances",
@@ -601,7 +610,8 @@ export function staffAccountToolsSystemPromptAddition(
 
   if (canAccessHrPayrollSection(role)) {
     lines.push(
-      "- get_payroll_status: Dashboard Payroll Status card data",
+      "- get_payroll_status: Dashboard Payroll Status card data — pendingPayrollLiabilitiesGhs is statutory tax only (PAYE/SSNIT), not Staff Welfare Payable",
+      "- get_staff_welfare_fund_status: Staff Welfare Fund balance and recent accrual/disbursement history",
       "- get_employee_compensation / get_employee_pay_detail / get_employee_overtime_summary / get_employee_loans: sensitive payroll and loan data",
     );
   }
@@ -639,6 +649,10 @@ When asked about workspace data you cannot retrieve, explain politely and briefl
 
   lines.push(
     "Only share values returned by your available tools. If a tool reports an error, explain it honestly.",
+    "",
+    "Business unit scope: All account tool results are scoped to the active business unit in the header switcher (or all units when View All is selected).",
+    "",
+    "Payroll liabilities: pendingPayrollLiabilitiesGhs from get_payroll_status covers open statutory tax liabilities (PAYE/SSNIT) only — not Staff Welfare Payable. Use get_staff_welfare_fund_status for welfare fund balance and history.",
     "",
     "Access vs missing features: If the user asks about workspace data you cannot retrieve because no matching tool appears in YOUR list above, do NOT say you lack the capability, do not have a tool, or that the feature is coming soon. Other staff roles may have assistant tools for that data. Explain briefly that the information is not available to their current role, name the relevant Dashboard module when you can infer it (Finance, Operations, Inventory, Sales & CRM, HR Management, Real Estate, Administration), and suggest they check with an administrator about module access if they need it. Stay polite; keep it short.",
     "",

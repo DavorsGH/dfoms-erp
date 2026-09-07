@@ -199,6 +199,7 @@ export async function getEmployeeProfile(toolInput?: unknown): Promise<unknown> 
       dateHired: employee.date_hired,
       appointmentEndDate: employee.appointment_end_date,
       shift: employee.shift,
+      welfareDeductionRatePercent: employee.welfare_deduction_rate ?? null,
     };
   } catch (error) {
     console.error("[assistant] get_employee_profile threw:", error);

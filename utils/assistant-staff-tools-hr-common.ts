@@ -24,7 +24,7 @@ export const EMPLOYEE_SEARCH_LIMIT = 10;
 export const HR_ASSISTANT_LIST_LIMIT = 20;
 
 export const ASSISTANT_EMPLOYEE_DIRECTORY_SELECT =
-  "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, department, phone, email, supervisor, shift, department_ref:departments!employees_department_fkey(dept_code, department_name)";
+  "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, department, phone, email, supervisor, shift, welfare_deduction_rate, department_ref:departments!employees_department_fkey(dept_code, department_name)";
 
 export type AssistantEmployeeDirectoryRow = Pick<
   EmployeeRecord,
@@ -41,6 +41,7 @@ export type AssistantEmployeeDirectoryRow = Pick<
   | "email"
   | "supervisor"
   | "shift"
+  | "welfare_deduction_rate"
   | "department_ref"
 >;
 
