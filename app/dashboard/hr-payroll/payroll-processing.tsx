@@ -62,6 +62,10 @@ import {
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 type PayrollProcessingProps = {
   tenantId: string | null;
@@ -373,6 +377,22 @@ export default function PayrollProcessing({
     if (!policy) {
       return;
     }
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      return;
+    }
+
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
+      return;
+    }
+
     const result = await syncProcessingAllowanceLines(
       supabase,
       period.payrollMonth,
@@ -380,12 +400,8 @@ export default function PayrollProcessing({
       policy.allowance_lines,
       {
         tenantId,
-        businessUnitId: stampBusinessUnit.ok
-          ? stampBusinessUnit.businessUnitId
-          : null,
-        refuseNewInsertsError: stampBusinessUnit.ok
-          ? null
-          : stampBusinessUnit.error,
+        allowedUnits: buContext.allowedUnits,
+        businessUnitId: stampResult.businessUnitId,
       },
     );
     if (result.error) {

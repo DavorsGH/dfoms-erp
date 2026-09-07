@@ -71,6 +71,12 @@ import {
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 async function resolveChangedByLabel(
   supabase: SupabaseClient,
@@ -940,6 +946,27 @@ export default function EmployeesDirectory({
     setForm((current) => ({ ...current, photo_url: photoUrl }));
 
     if (editingEmployeeId) {
+      const buContext = await loadWriteBusinessUnitContext(supabase);
+      if (!buContext.ok) {
+        setError(buContext.error);
+        setPhotoUploading(false);
+        return;
+      }
+
+      const target = employees.find(
+        (employee) => employee.employee_id === editingEmployeeId,
+      );
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          target?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setPhotoUploading(false);
+        return;
+      }
+
       const { error: updateError } = await supabase
         .from("employees")
         .update({ photo_url: photoUrl })
@@ -964,6 +991,27 @@ export default function EmployeesDirectory({
 
     setDeletingEmployeeId(employeeId);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingEmployeeId(null);
+      return;
+    }
+
+    const target = employees.find(
+      (employee) => employee.employee_id === employeeId,
+    );
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        target?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingEmployeeId(null);
+      return;
+    }
 
     const { error: deleteError } = await supabase
       .from("employees")
@@ -993,12 +1041,29 @@ export default function EmployeesDirectory({
       return;
     }
 
-    if (!editingEmployeeId && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    setLoading(true);
+    setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
+    let createBusinessUnitId: string | null = null;
+    if (!editingEmployeeId) {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+      createBusinessUnitId = stampResult.businessUnitId;
+    }
 
     const changedBy = await resolveChangedByLabel(supabase);
     const reasonText = normalizeHistoryText(changeReason);
@@ -1007,6 +1072,17 @@ export default function EmployeesDirectory({
       const prior =
         employees.find((employee) => employee.employee_id === editingEmployeeId) ??
         null;
+
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          prior?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
       const payload = buildPayload(form, resolvedCompensation);
       const afterSnapshot = snapshotFromPayload(payload);
       const shouldWriteHistory =
@@ -1065,9 +1141,7 @@ export default function EmployeesDirectory({
       const { error: saveError } = await supabase.from("employees").insert({
         employee_id: allocated.employeeId,
         ...payload,
-        business_unit_id: stampBusinessUnit.ok
-          ? stampBusinessUnit.businessUnitId
-          : null,
+        business_unit_id: createBusinessUnitId,
       });
 
       if (saveError) {

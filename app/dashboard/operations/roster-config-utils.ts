@@ -8,10 +8,11 @@ export type RosterConfigRecord = {
   morning_time: string | null;
   afternoon_time: string | null;
   supervisor_time: string | null;
+  business_unit_id?: string | null;
 };
 
 export const ROSTER_CONFIG_SELECT =
-  "id, client_id, cycle_start_date, cycle_length_days, morning_time, afternoon_time, supervisor_time";
+  "id, client_id, cycle_start_date, cycle_length_days, morning_time, afternoon_time, supervisor_time, business_unit_id";
 
 export function getRosterConfigForClient(
   configs: RosterConfigRecord[],

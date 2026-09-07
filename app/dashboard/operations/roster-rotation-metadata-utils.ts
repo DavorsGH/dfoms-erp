@@ -1,7 +1,7 @@
 import type { RosterHistoryRecord } from "./duty-roster-utils";
 
 export const ROSTER_ROTATION_METADATA_SELECT =
-  "id, tenant_id, client_id, rotation_number, started_by_name, started_by_auth_uid, started_at, approved_by_name, approved_by_title, approved_by_auth_uid, approved_at" as const;
+  "id, tenant_id, client_id, rotation_number, started_by_name, started_by_auth_uid, started_at, approved_by_name, approved_by_title, approved_by_auth_uid, approved_at, business_unit_id" as const;
 
 export type RosterRotationMetadataRecord = {
   id: string;
@@ -15,6 +15,7 @@ export type RosterRotationMetadataRecord = {
   approved_by_title: string | null;
   approved_by_auth_uid: string | null;
   approved_at: string | null;
+  business_unit_id?: string | null;
 };
 
 export type RosterRotationStartAudit = {
@@ -46,6 +47,7 @@ export function normalizeRosterRotationMetadataRecord(
     approved_by_title: row.approved_by_title?.trim() || null,
     approved_by_auth_uid: row.approved_by_auth_uid ?? null,
     approved_at: row.approved_at ?? null,
+    business_unit_id: row.business_unit_id ?? null,
   };
 }
 

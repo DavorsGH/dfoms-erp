@@ -19,6 +19,15 @@ import {
   SITE_SELECT,
   type SiteEntry,
 } from "../operations/sites-utils";
+import {
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 type RosterSettingsProps = {
   initialClients: ClientEntry[];
@@ -42,6 +51,7 @@ export default function RosterSettings({
   fetchError,
 }: RosterSettingsProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [selectedClientId, setSelectedClientId] = useState("");
   const selectedConfig = getRosterConfigForClient(initialConfigs, selectedClientId);
   const [configForm, setConfigForm] = useState(emptyConfigForm);
@@ -131,6 +141,38 @@ export default function RosterSettings({
     setLoadingConfig(true);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoadingConfig(false);
+      return;
+    }
+
+    let createBusinessUnitId: string | null = null;
+    if (selectedConfig) {
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          selectedConfig.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoadingConfig(false);
+        return;
+      }
+    } else {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoadingConfig(false);
+        return;
+      }
+      createBusinessUnitId = stampResult.businessUnitId;
+    }
+
     const payload = {
       client_id: selectedClientId,
       cycle_start_date: configForm.cycle_start_date,
@@ -151,7 +193,10 @@ export default function RosterSettings({
             supervisor_time: payload.supervisor_time,
           })
           .eq("id", selectedConfig.id)
-      : await supabase.from("roster_config").insert(payload);
+      : await supabase.from("roster_config").insert({
+          ...payload,
+          business_unit_id: createBusinessUnitId,
+        });
 
     if (saveError) {
       setError(saveError.message);

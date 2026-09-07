@@ -7,6 +7,12 @@ import {
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 import { fetchScopedActiveEmployees } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import RegisterRowActions, {
   confirmDeleteEntry,
@@ -212,6 +218,25 @@ export default function CorrectiveActions({
     setDeletingId(actionNo);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingId(null);
+      return;
+    }
+
+    const target = entries.find((entry) => entry.action_no === actionNo);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        target?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingId(null);
+      return;
+    }
+
     const { error: deleteError } = await supabase
       .from("corrective_actions")
       .delete()
@@ -236,10 +261,25 @@ export default function CorrectiveActions({
     setLoading(true);
     setError(null);
 
-    if (!editingId && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
+    }
+
+    let createBusinessUnitId: string | null = null;
+    if (!editingId) {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+      createBusinessUnitId = stampResult.businessUnitId;
     }
 
     const payload = {
@@ -259,6 +299,18 @@ export default function CorrectiveActions({
     };
 
     if (editingId) {
+      const target = entries.find((entry) => entry.action_no === editingId);
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          target?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+
       const { error: saveError } = await supabase
         .from("corrective_actions")
         .update({
@@ -295,9 +347,7 @@ export default function CorrectiveActions({
         .insert({
           ...payload,
           action_no: allocated.actionNo,
-          business_unit_id: stampBusinessUnit.ok
-            ? stampBusinessUnit.businessUnitId
-            : null,
+          business_unit_id: createBusinessUnitId,
         });
 
       if (saveError) {

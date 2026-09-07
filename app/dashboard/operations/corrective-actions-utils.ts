@@ -12,6 +12,7 @@ export type CorrectiveActionEntry = {
   evidence_submitted: boolean | null;
   management_approval: boolean | null;
   notes: string | null;
+  business_unit_id?: string | null;
   client?: {
     client_id: string;
     client_name: string;

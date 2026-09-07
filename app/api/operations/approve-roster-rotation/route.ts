@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  assertServerRowWriteAccess,
+  resolveServerWriteBusinessUnitId,
+} from "@/utils/business-unit-access.server";
 import { START_ROTATION_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
@@ -164,6 +168,20 @@ export async function POST(request: Request) {
     );
   }
 
+  const configAccess = await assertServerRowWriteAccess({
+    supabase,
+    tenantId,
+    authUid: user.id,
+    table: "roster_config",
+    rowId: config.id,
+  });
+  if (!configAccess.ok) {
+    return NextResponse.json(
+      { error: configAccess.error },
+      { status: configAccess.status },
+    );
+  }
+
   const normalizedProjects =
     ((projects as unknown as DutyRosterProject[] | null) ?? []).map((project) =>
       normalizeProjectEntry(project),
@@ -226,6 +244,41 @@ export async function POST(request: Request) {
     approved_at: approvedAt,
   };
 
+  if (existing) {
+    const metadataAccess = await assertServerRowWriteAccess({
+      supabase,
+      tenantId,
+      authUid: user.id,
+      table: "roster_rotation_metadata",
+      rowId: existing.id,
+    });
+    if (!metadataAccess.ok) {
+      return NextResponse.json(
+        { error: metadataAccess.error },
+        { status: metadataAccess.status },
+      );
+    }
+  }
+
+  let insertBusinessUnitId: string | null = null;
+  if (!existing) {
+    insertBusinessUnitId = configAccess.businessUnitId;
+    if (!insertBusinessUnitId) {
+      const writeBu = await resolveServerWriteBusinessUnitId({
+        supabase: sessionClient,
+        tenantId,
+        authUid: user.id,
+      });
+      if (!writeBu.ok) {
+        return NextResponse.json(
+          { error: writeBu.error },
+          { status: writeBu.status },
+        );
+      }
+      insertBusinessUnitId = writeBu.businessUnitId;
+    }
+  }
+
   const { data: savedRow, error: saveError } = existing
     ? await supabase
         .from("roster_rotation_metadata")
@@ -240,7 +293,10 @@ export async function POST(request: Request) {
         .single()
     : await supabase
         .from("roster_rotation_metadata")
-        .insert(payload)
+        .insert({
+          ...payload,
+          business_unit_id: insertBusinessUnitId,
+        })
         .select(ROSTER_ROTATION_METADATA_SELECT)
         .single();
 

@@ -39,6 +39,11 @@ import {
   useBusinessUnitReadScope,
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 type InternalConsumptionProps = {
   initialEntries: InternalConsumptionRecord[];
@@ -168,8 +173,19 @@ export default function InternalConsumption({
     setLoading(true);
     setError(null);
 
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
       setLoading(false);
       return;
     }
@@ -206,7 +222,7 @@ export default function InternalConsumption({
         notes: nullableText(form.notes),
         recorded_by: recordedByLabel,
         site_id: nullableText(form.site_id),
-        business_unit_id: stampBusinessUnit.businessUnitId,
+        business_unit_id: stampResult.businessUnitId,
       });
 
     if (insertError) {

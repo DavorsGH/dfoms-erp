@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  assertServerRowWriteAccess,
+  resolveServerWriteBusinessUnitId,
+} from "@/utils/business-unit-access.server";
 import { START_ROTATION_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
@@ -58,6 +62,10 @@ export async function POST(request: Request) {
   const {
     data: { user },
   } = await sessionClient.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const supabase = createAdminClient();
 
   const [
@@ -109,6 +117,36 @@ export async function POST(request: Request) {
       },
       { status: 400 },
     );
+  }
+
+  const configAccess = await assertServerRowWriteAccess({
+    supabase,
+    tenantId,
+    authUid: user.id,
+    table: "roster_config",
+    rowId: config.id,
+  });
+  if (!configAccess.ok) {
+    return NextResponse.json(
+      { error: configAccess.error },
+      { status: configAccess.status },
+    );
+  }
+
+  let metadataBusinessUnitId = configAccess.businessUnitId;
+  if (!metadataBusinessUnitId) {
+    const writeBu = await resolveServerWriteBusinessUnitId({
+      supabase: sessionClient,
+      tenantId,
+      authUid: user.id,
+    });
+    if (!writeBu.ok) {
+      return NextResponse.json(
+        { error: writeBu.error },
+        { status: writeBu.status },
+      );
+    }
+    metadataBusinessUnitId = writeBu.businessUnitId;
   }
 
   const normalizedProjects =
@@ -171,8 +209,9 @@ export async function POST(request: Request) {
         client_id: clientId,
         rotation_number: nextRotationNumber,
         started_by_name: generatedBy,
-        started_by_auth_uid: user?.id ?? null,
+        started_by_auth_uid: user.id,
         started_at: startedAt,
+        business_unit_id: metadataBusinessUnitId,
       },
       { onConflict: "tenant_id,client_id,rotation_number" },
     );

@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ResolvedAllowanceLine } from "../administration/compensation-policy-utils";
+import {
+  assertBusinessUnitAccess,
+  assertCanModifyBusinessUnitRow,
+  type AllowedBusinessUnits,
+} from "@/utils/business-unit-access";
 
 export type SyncProcessingAllowanceLinesOptions = {
   /** Include on insert rows when available (matches payroll_processing upsert pattern). */
@@ -14,12 +19,25 @@ export type SyncProcessingAllowanceLinesOptions = {
    * while still allowing updates of existing lines.
    */
   refuseNewInsertsError?: string | null;
+  /** When set, validate row access before update/delete and stamp on insert. */
+  allowedUnits?: AllowedBusinessUnits;
 };
 
 type ExistingProcessingAllowanceRow = {
   id: string;
   allowance_code: string;
+  business_unit_id: string | null;
 };
+
+function assertAllowanceLineWriteAccess(
+  allowedUnits: AllowedBusinessUnits | undefined,
+  businessUnitId: string | null | undefined,
+): void {
+  if (allowedUnits === undefined) {
+    return;
+  }
+  assertCanModifyBusinessUnitRow(allowedUnits, businessUnitId);
+}
 
 /**
  * Sync processing-stage allowance lines for one employee/month.
@@ -38,6 +56,34 @@ export async function syncProcessingAllowanceLines(
   const month = payrollMonth.slice(0, 10);
 
   if (allowances.length === 0) {
+    const { data: rowsToDelete, error: fetchDeleteError } = await supabase
+      .from("payroll_allowance_lines")
+      .select("id, business_unit_id")
+      .eq("stage", "processing")
+      .eq("payroll_month", month)
+      .eq("employee_id", employeeId);
+
+    if (fetchDeleteError) {
+      return { error: fetchDeleteError.message };
+    }
+
+    for (const row of (rowsToDelete as ExistingProcessingAllowanceRow[] | null) ??
+      []) {
+      try {
+        assertAllowanceLineWriteAccess(
+          options.allowedUnits,
+          row.business_unit_id,
+        );
+      } catch (error) {
+        return {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Business unit access denied.",
+        };
+      }
+    }
+
     const { error: deleteError } = await supabase
       .from("payroll_allowance_lines")
       .delete()
@@ -57,7 +103,7 @@ export async function syncProcessingAllowanceLines(
 
   const { data: existingRows, error: fetchError } = await supabase
     .from("payroll_allowance_lines")
-    .select("id, allowance_code")
+    .select("id, allowance_code, business_unit_id")
     .eq("stage", "processing")
     .eq("payroll_month", month)
     .eq("employee_id", employeeId);
@@ -80,6 +126,20 @@ export async function syncProcessingAllowanceLines(
     const existing = existingByCode.get(line.allowance_code);
 
     if (existing) {
+      try {
+        assertAllowanceLineWriteAccess(
+          options.allowedUnits,
+          existing.business_unit_id,
+        );
+      } catch (error) {
+        return {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Business unit access denied.",
+        };
+      }
+
       const { error: updateError } = await supabase
         .from("payroll_allowance_lines")
         .update({
@@ -97,6 +157,15 @@ export async function syncProcessingAllowanceLines(
 
     if (options.refuseNewInsertsError) {
       return { error: options.refuseNewInsertsError };
+    }
+
+    try {
+      assertBusinessUnitAccess(options.allowedUnits ?? null, options.businessUnitId);
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Business unit access denied.",
+      };
     }
 
     const insertRow: Record<string, unknown> = {
@@ -153,6 +222,22 @@ export async function syncProcessingAllowanceLines(
   const staleIds = ((existingRows as ExistingProcessingAllowanceRow[] | null) ?? [])
     .filter((row) => !currentCodes.has(row.allowance_code))
     .map((row) => row.id);
+
+  for (const staleId of staleIds) {
+    const staleRow = ((existingRows as ExistingProcessingAllowanceRow[] | null) ??
+      []).find((row) => row.id === staleId);
+    try {
+      assertAllowanceLineWriteAccess(
+        options.allowedUnits,
+        staleRow?.business_unit_id,
+      );
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error.message : "Business unit access denied.",
+      };
+    }
+  }
 
   if (staleIds.length === 0) {
     return { error: null };
