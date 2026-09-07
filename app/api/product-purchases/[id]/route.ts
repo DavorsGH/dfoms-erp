@@ -1,6 +1,11 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  assertCanModifyBusinessUnitRow,
+  BusinessUnitAccessDeniedError,
+  getUserAllowedBusinessUnits,
+} from "@/utils/business-unit-access";
 import { INVENTORY_EDIT_ROLES } from "@/utils/rbac-access";
 import {
   PRODUCT_PURCHASE_LIST_SELECT,
@@ -32,10 +37,17 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   const supabase = await getTenantSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
 
   const { data: existing, error: fetchError } = await supabase
     .from("product_purchases")
-    .select("id")
+    .select("id, business_unit_id")
     .eq("id", id)
     .eq("tenant_id", auth.tenantId)
     .maybeSingle();
@@ -46,6 +58,30 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
   if (!existing) {
     return NextResponse.json({ error: "Purchase not found." }, { status: 404 });
+  }
+
+  try {
+    const allowedUnits = await getUserAllowedBusinessUnits(
+      supabase,
+      auth.tenantId,
+      user.id,
+    );
+    assertCanModifyBusinessUnitRow(
+      allowedUnits,
+      (existing as { business_unit_id?: string | null }).business_unit_id,
+    );
+  } catch (accessError) {
+    const status =
+      accessError instanceof BusinessUnitAccessDeniedError ? 403 : 400;
+    return NextResponse.json(
+      {
+        error:
+          accessError instanceof Error
+            ? accessError.message
+            : "Business unit access denied.",
+      },
+      { status },
+    );
   }
 
   const { error: deleteError } = await supabase.rpc("delete_product_purchase", {
@@ -101,10 +137,17 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const trimmed = trimProductPurchaseInput(body);
   const supabase = await getTenantSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
 
   const { data: existing, error: fetchError } = await supabase
     .from("product_purchases")
-    .select("id, product_id")
+    .select("id, product_id, business_unit_id")
     .eq("id", id)
     .eq("tenant_id", auth.tenantId)
     .maybeSingle();
@@ -115,6 +158,30 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (!existing) {
     return NextResponse.json({ error: "Purchase not found." }, { status: 404 });
+  }
+
+  try {
+    const allowedUnits = await getUserAllowedBusinessUnits(
+      supabase,
+      auth.tenantId,
+      user.id,
+    );
+    assertCanModifyBusinessUnitRow(
+      allowedUnits,
+      (existing as { business_unit_id?: string | null }).business_unit_id,
+    );
+  } catch (accessError) {
+    const status =
+      accessError instanceof BusinessUnitAccessDeniedError ? 403 : 400;
+    return NextResponse.json(
+      {
+        error:
+          accessError instanceof Error
+            ? accessError.message
+            : "Business unit access denied.",
+      },
+      { status },
+    );
   }
 
   if (existing.product_id !== trimmed.product_id) {

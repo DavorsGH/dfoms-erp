@@ -1,10 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import {
-  resolveCreateBusinessUnitId,
-  StampRefusedViewAllError,
-} from "@/utils/business-unit-stamp";
+import { resolveServerWriteBusinessUnitId } from "@/utils/business-unit-access.server";
 import {
   getActiveBusinessUnitId,
   getViewAllBusinessUnits,
@@ -184,47 +181,60 @@ export async function POST(request: Request) {
     }
   }
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
   let businessUnitId: string | null = null;
   if (trimmed.po_id) {
-    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
-      getActiveBusinessUnitId(),
-      getViewAllBusinessUnits(),
-    ]);
-    const buScope = resolveBusinessUnitReadScope({
-      viewAllBusinessUnits,
-      activeBusinessUnitId,
-    });
-    const { data: poRow, error: poError } = await applyBusinessUnitScope(
-      supabase
-        .from("purchase_orders")
-        .select("id, business_unit_id")
-        .eq("id", trimmed.po_id)
-        .eq("tenant_id", auth.tenantId),
-      buScope,
-    ).maybeSingle();
+    const { data: poRow, error: poError } = await supabase
+      .from("purchase_orders")
+      .select("id, business_unit_id")
+      .eq("id", trimmed.po_id)
+      .eq("tenant_id", auth.tenantId)
+      .maybeSingle();
 
     if (poError) {
       return NextResponse.json({ error: poError.message }, { status: 400 });
     }
     if (!poRow) {
       return NextResponse.json(
-        {
-          error:
-            "Purchase order not found in the current business unit. Receive against a PO from the active business only.",
-        },
+        { error: "Purchase order not found." },
         { status: 404 },
       );
     }
-    businessUnitId = (poRow.business_unit_id as string | null) ?? null;
-  } else {
-    try {
-      businessUnitId = await resolveCreateBusinessUnitId();
-    } catch (error) {
-      if (error instanceof StampRefusedViewAllError) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-      throw error;
+
+    const writeBu = await resolveServerWriteBusinessUnitId({
+      supabase,
+      tenantId: auth.tenantId,
+      authUid: user.id,
+      requestedBusinessUnitId:
+        (poRow.business_unit_id as string | null | undefined) ?? null,
+    });
+    if (!writeBu.ok) {
+      return NextResponse.json(
+        { error: writeBu.error },
+        { status: writeBu.status },
+      );
     }
+    businessUnitId = writeBu.businessUnitId;
+  } else {
+    const writeBu = await resolveServerWriteBusinessUnitId({
+      supabase,
+      tenantId: auth.tenantId,
+      authUid: user.id,
+    });
+    if (!writeBu.ok) {
+      return NextResponse.json(
+        { error: writeBu.error },
+        { status: writeBu.status },
+      );
+    }
+    businessUnitId = writeBu.businessUnitId;
   }
 
   const { data: purchaseId, error: rpcError } = await supabase.rpc(

@@ -26,6 +26,12 @@ import {
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
+import {
   formatInventoryMoney,
   formatInventoryQuantity,
   nullableNumber,
@@ -440,6 +446,25 @@ export default function RawMaterials({
     setLoading(true);
     setError(null);
 
+    const purchase = purchases.find((row) => row.id === editingPurchaseId);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        purchase?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setLoading(false);
+      return;
+    }
+
     const quantity = Number.parseFloat(purchaseEditForm.quantity);
     const costPerUnit = Number.parseFloat(purchaseEditForm.cost_per_unit);
 
@@ -506,6 +531,25 @@ export default function RawMaterials({
     setDeletingPurchaseId(purchaseId);
     setError(null);
 
+    const purchase = purchases.find((row) => row.id === purchaseId);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingPurchaseId(null);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        purchase?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingPurchaseId(null);
+      return;
+    }
+
     const { error: deleteError } = await supabase.rpc(
       "delete_raw_material_purchase",
       { p_purchase_id: purchaseId },
@@ -530,8 +574,19 @@ export default function RawMaterials({
     setLoading(true);
     setError(null);
 
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
       setLoading(false);
       return;
     }
@@ -575,7 +630,7 @@ export default function RawMaterials({
         payment_method: purchaseForm.payment_method.trim(),
         notes: nullableText(purchaseForm.notes),
         project_id: resolveOptionalProjectId(purchaseForm.project_id),
-        business_unit_id: stampBusinessUnit.businessUnitId,
+        business_unit_id: stampResult.businessUnitId,
       });
 
     if (insertError) {

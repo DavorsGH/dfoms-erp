@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import {
+  assertBusinessUnitAccess,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+} from "@/utils/business-unit-access";
 import { inputClassName } from "../../../employees/employee-record-utils";
 import { formatInventoryMoney, nullableText } from "../../inventory-utils";
 import type { NamedLookup } from "../../../lookup-types";
@@ -86,6 +91,24 @@ export default function ReceiveRawMaterialModal({
     event.preventDefault();
     setSaving(true);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setSaving(false);
+      return;
+    }
+
+    try {
+      assertBusinessUnitAccess(
+        buContext.allowedUnits,
+        target.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setSaving(false);
+      return;
+    }
 
     const parsedQuantity = Number.parseFloat(quantity);
     const parsedCost = Number.parseFloat(costPerUnit);

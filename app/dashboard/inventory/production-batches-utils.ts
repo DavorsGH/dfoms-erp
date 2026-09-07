@@ -14,6 +14,7 @@ export type ProductionBatchMaterialRecord = {
 export type ProductionBatchRecord = {
   id: string;
   batch_number: string;
+  business_unit_id: string | null;
   production_date: string;
   finished_product_id: string;
   quantity_produced: number;
@@ -35,10 +36,10 @@ export type ProductionMaterialInput = {
 };
 
 export const PRODUCTION_BATCH_SELECT =
-  "id, batch_number, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, created_at, product:finished_products!finished_product_id(product_code, product_name, unit_of_measure)";
+  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, created_at, product:finished_products!finished_product_id(product_code, product_name, unit_of_measure)";
 
 export const PRODUCTION_BATCH_DETAIL_SELECT =
-  "id, batch_number, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, created_at, product:finished_products!finished_product_id(product_code, product_name, unit_of_measure), materials:production_batch_materials(id, batch_id, material_id, quantity_used, cost_at_time, material:raw_materials!material_id(material_code, material_name, unit_of_measure))";
+  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, created_at, product:finished_products!finished_product_id(product_code, product_name, unit_of_measure), materials:production_batch_materials(id, batch_id, material_id, quantity_used, cost_at_time, material:raw_materials!material_id(material_code, material_name, unit_of_measure))";
 
 export function normalizeProductionBatch(
   raw: ProductionBatchRecord,

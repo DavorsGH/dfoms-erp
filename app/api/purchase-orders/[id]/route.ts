@@ -2,13 +2,10 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import {
-  getActiveBusinessUnitId,
-  getViewAllBusinessUnits,
-} from "@/utils/dashboard-auth";
-import {
-  applyBusinessUnitScope,
-  resolveBusinessUnitReadScope,
-} from "@/utils/business-unit-view";
+  assertCanModifyBusinessUnitRow,
+  BusinessUnitAccessDeniedError,
+  getUserAllowedBusinessUnits,
+} from "@/utils/business-unit-access";
 import { INVENTORY_EDIT_ROLES } from "@/utils/rbac-access";
 import {
   PURCHASE_ORDER_DETAIL_SELECT,
@@ -19,20 +16,88 @@ import {
   type PurchaseOrderDetailRow,
 } from "@/utils/purchase-orders-types";
 import { createClient } from "@/utils/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-async function resolvePoBuScope() {
-  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
-    getActiveBusinessUnitId(),
-    getViewAllBusinessUnits(),
-  ]);
-  return resolveBusinessUnitReadScope({
-    viewAllBusinessUnits,
-    activeBusinessUnitId,
-  });
+async function assertPurchaseOrderWriteAccess(
+  supabase: SupabaseClient,
+  tenantId: string,
+  purchaseOrderId: string,
+): Promise<
+  | { ok: true; businessUnitId: string | null }
+  | { ok: false; response: NextResponse }
+> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Not authenticated." }, { status: 401 }),
+    };
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("purchase_orders")
+    .select("id, business_unit_id")
+    .eq("id", purchaseOrderId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (existingError) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: existingError.message }, { status: 400 }),
+    };
+  }
+
+  if (!existing) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Purchase order not found." },
+        { status: 404 },
+      ),
+    };
+  }
+
+  try {
+    const allowedUnits = await getUserAllowedBusinessUnits(
+      supabase,
+      tenantId,
+      user.id,
+    );
+    assertCanModifyBusinessUnitRow(
+      allowedUnits,
+      (existing as { business_unit_id?: string | null }).business_unit_id,
+    );
+  } catch (accessError) {
+    const status =
+      accessError instanceof BusinessUnitAccessDeniedError ? 403 : 400;
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            accessError instanceof Error
+              ? accessError.message
+              : "Business unit access denied.",
+        },
+        { status },
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    businessUnitId:
+      (existing as { business_unit_id?: string | null }).business_unit_id ??
+      null,
+  };
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -64,16 +129,21 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const buScope = await resolvePoBuScope();
+  const access = await assertPurchaseOrderWriteAccess(
+    supabase,
+    auth.tenantId,
+    id,
+  );
+  if (!access.ok) {
+    return access.response;
+  }
 
-  const { data: existing, error: existingError } = await applyBusinessUnitScope(
-    supabase
-      .from("purchase_orders")
-      .select("id, status")
-      .eq("id", id)
-      .eq("tenant_id", auth.tenantId),
-    buScope,
-  ).maybeSingle();
+  const { data: existing, error: existingError } = await supabase
+    .from("purchase_orders")
+    .select("id, status")
+    .eq("id", id)
+    .eq("tenant_id", auth.tenantId)
+    .maybeSingle();
 
   if (existingError) {
     return NextResponse.json({ error: existingError.message }, { status: 400 });
@@ -93,14 +163,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  const { data, error } = await applyBusinessUnitScope(
-    supabase
-      .from("purchase_orders")
-      .update({ status: "sent", updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("tenant_id", auth.tenantId),
-    buScope,
-  )
+  const { data, error } = await supabase
+    .from("purchase_orders")
+    .update({ status: "sent", updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("tenant_id", auth.tenantId)
     .select(PURCHASE_ORDER_DETAIL_SELECT)
     .single();
 
@@ -146,16 +213,21 @@ export async function DELETE(request: Request, context: RouteContext) {
   const confirmed = await readConfirmedFlag(request);
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const buScope = await resolvePoBuScope();
+  const access = await assertPurchaseOrderWriteAccess(
+    supabase,
+    auth.tenantId,
+    id,
+  );
+  if (!access.ok) {
+    return access.response;
+  }
 
-  const { data: existing, error: fetchError } = await applyBusinessUnitScope(
-    supabase
-      .from("purchase_orders")
-      .select("id")
-      .eq("id", id)
-      .eq("tenant_id", auth.tenantId),
-    buScope,
-  ).maybeSingle();
+  const { data: existing, error: fetchError } = await supabase
+    .from("purchase_orders")
+    .select("id")
+    .eq("id", id)
+    .eq("tenant_id", auth.tenantId)
+    .maybeSingle();
 
   if (fetchError) {
     return NextResponse.json({ error: fetchError.message }, { status: 400 });

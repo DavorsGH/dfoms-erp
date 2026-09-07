@@ -2,6 +2,15 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import {
+  assertCanModifyBusinessUnitRow,
+  BusinessUnitAccessDeniedError,
+  getUserAllowedBusinessUnits,
+} from "@/utils/business-unit-access";
+import {
+  fetchInventoryBalanceConfigRow,
+  resolveInventoryBalanceConfigBusinessUnitId,
+} from "@/utils/inventory-balance-config.server";
+import {
   INVENTORY_BALANCE_CONFIG_ON_CONFLICT,
   INVENTORY_BALANCE_CONFIG_SELECT,
   normalizeInventoryBalanceConfigRow,
@@ -32,13 +41,40 @@ export async function GET() {
   }
 
   const supabase = await getTenantSupabase();
-  // Phase 7a: admin go-live UI still manages the workspace-default (null BU) row.
-  const { data, error } = await supabase
-    .from("inventory_balance_config")
-    .select(INVENTORY_BALANCE_CONFIG_SELECT)
-    .eq("tenant_id", auth.tenantId)
-    .is("business_unit_id", null)
-    .maybeSingle();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  let businessUnitId: string | null;
+  try {
+    businessUnitId = await resolveInventoryBalanceConfigBusinessUnitId(
+      supabase,
+      auth.tenantId,
+      user.id,
+    );
+  } catch (accessError) {
+    const status =
+      accessError instanceof BusinessUnitAccessDeniedError ? 403 : 400;
+    return NextResponse.json(
+      {
+        error:
+          accessError instanceof Error
+            ? accessError.message
+            : "Business unit access denied.",
+      },
+      { status },
+    );
+  }
+
+  const { data, error } = await fetchInventoryBalanceConfigRow(
+    supabase,
+    auth.tenantId,
+    businessUnitId,
+  );
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -102,12 +138,65 @@ export async function PUT(request: Request) {
   }
 
   const supabase = await getTenantSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  let businessUnitId: string | null;
+  try {
+    const allowedUnits = await getUserAllowedBusinessUnits(
+      supabase,
+      auth.tenantId,
+      user.id,
+    );
+
+    businessUnitId = await resolveInventoryBalanceConfigBusinessUnitId(
+      supabase,
+      auth.tenantId,
+      user.id,
+    );
+
+    const { data: existing, error: existingError } =
+      await fetchInventoryBalanceConfigRow(
+        supabase,
+        auth.tenantId,
+        businessUnitId,
+      );
+
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 400 });
+    }
+
+    if (existing) {
+      assertCanModifyBusinessUnitRow(
+        allowedUnits,
+        (existing as InventoryBalanceConfigRow).business_unit_id,
+      );
+    }
+  } catch (accessError) {
+    const status =
+      accessError instanceof BusinessUnitAccessDeniedError ? 403 : 400;
+    return NextResponse.json(
+      {
+        error:
+          accessError instanceof Error
+            ? accessError.message
+            : "Business unit access denied.",
+      },
+      { status },
+    );
+  }
+
   const { data, error } = await supabase
     .from("inventory_balance_config")
     .upsert(
       {
         tenant_id: auth.tenantId,
-        business_unit_id: null,
+        business_unit_id: businessUnitId,
         go_live_date: goLiveDate,
         opening_inventory_value: openingInventoryValue,
       },

@@ -14,6 +14,7 @@ export type RawMaterialRecord = {
 export type RawMaterialPurchaseRecord = {
   id: string;
   material_id: string;
+  business_unit_id: string | null;
   purchase_date: string;
   quantity: number;
   cost_per_unit: number;
@@ -61,7 +62,7 @@ export const RAW_MATERIAL_SELECT =
   "id, material_code, material_name, unit_of_measure, current_stock, average_cost_per_unit, reorder_level, created_at, updated_at";
 
 export const RAW_MATERIAL_PURCHASE_SELECT =
-  "id, material_id, purchase_date, quantity, cost_per_unit, total_cost, supplier, payment_method, notes, project_id, created_at, material:raw_materials!material_id(material_code, material_name, unit_of_measure)";
+  "id, material_id, business_unit_id, purchase_date, quantity, cost_per_unit, total_cost, supplier, payment_method, notes, project_id, created_at, material:raw_materials!material_id(material_code, material_name, unit_of_measure)";
 
 export const RAW_MATERIAL_STOCK_ADJUSTMENT_SELECT =
   "id, material_id, business_unit_id, adjustment_type, quantity_delta, cost_per_unit, reason, notes, created_at, material:raw_materials!material_id(material_code, material_name, unit_of_measure)";

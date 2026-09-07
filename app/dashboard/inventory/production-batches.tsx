@@ -12,6 +12,12 @@ import FilteredListCount from "../filtered-list-count";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
+import {
   formatInventoryMoney,
   formatInventoryQuantity,
   nullableText,
@@ -284,8 +290,19 @@ export default function ProductionBatches({
     setLoading(true);
     setError(null);
 
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setLoading(false);
+      return;
+    }
+
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
       setLoading(false);
       return;
     }
@@ -375,7 +392,7 @@ export default function ProductionBatches({
       p_materials: materialPayload,
       p_manufacturing_date: nullableText(batchForm.manufacturing_date),
       p_expiration_date: nullableText(batchForm.expiration_date),
-      p_business_unit_id: stampBusinessUnit.businessUnitId,
+      p_business_unit_id: stampResult.businessUnitId,
     });
 
     if (rpcError) {
@@ -394,6 +411,24 @@ export default function ProductionBatches({
     setConfirmingBatchId(null);
     setError(null);
     setSuccess(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingBatchId(null);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        batch.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingBatchId(null);
+      return;
+    }
 
     const { error: rpcError } = await supabase.rpc("delete_production_batch", {
       p_batch_id: batch.id,
