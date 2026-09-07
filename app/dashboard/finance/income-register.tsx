@@ -476,6 +476,12 @@ export default function IncomeRegister({
           ?.client_name ?? null)
       : otherPayerName;
 
+    const incomeBusinessUnitId = editingId
+      ? undefined
+      : stampBusinessUnit.ok
+        ? stampBusinessUnit.businessUnitId
+        : null;
+
     const { error: ledgerError } = await syncIncomeRegisterTaxLedger(supabase, {
       sourceId: savedId as string,
       entryDate: form.date,
@@ -487,6 +493,9 @@ export default function IncomeRegister({
       outputVatAmount: outputTax.outputVatAmount,
       counterpartyName,
       notes: form.invoice_no ? `Invoice ${form.invoice_no}` : null,
+      ...(incomeBusinessUnitId !== undefined
+        ? { businessUnitId: incomeBusinessUnitId }
+        : {}),
     });
 
     closeForm();

@@ -901,6 +901,7 @@ export default function ExpenseRegister({
       inputVatAmount: purchaseTax.inputVatAmount,
       counterpartyName: vendorName || null,
       notes: receiptNo ? `Receipt ${receiptNo}` : null,
+      businessUnitId: stampId,
     });
 
     closeForm();

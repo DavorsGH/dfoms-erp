@@ -385,6 +385,7 @@ function buildDeductionSavingsIncomePayload(
   period: PayrollLockFinancePeriod,
   amount: number,
   tenantId: string,
+  businessUnitId: string | null = null,
 ) {
   const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
 
@@ -413,6 +414,7 @@ function buildDeductionSavingsIncomePayload(
     wht_amount: 0,
     // Explicit flag: Income Register UI + DB trigger must not apply VAT/WHT/AR.
     is_system_adjustment: true,
+    business_unit_id: businessUnitId,
   };
 }
 
@@ -461,6 +463,7 @@ async function upsertPayrollDeductionSavingsIncomeEntry(
         wht_amount: payload.wht_amount,
         tax_inclusive: payload.tax_inclusive,
         is_system_adjustment: payload.is_system_adjustment,
+        business_unit_id: payload.business_unit_id,
       })
       .eq("id", existing.id);
 
@@ -870,7 +873,12 @@ export async function postPayrollLockFinanceEntries(
   const staffSalariesPaymentStatus = options?.markStaffSalariesPaid
     ? PAYROLL_EXPENSE_PAYMENT_STATUS_PAID
     : PAYROLL_EXPENSE_PAYMENT_STATUS_ACCRUED;
-  const businessUnitId = options?.businessUnitId ?? null;
+  const businessUnitId = Object.prototype.hasOwnProperty.call(
+    options ?? {},
+    "businessUnitId",
+  )
+    ? (options?.businessUnitId ?? null)
+    : null;
 
   const staffSalariesPayload =
     totals.totalStaffSalariesExpense > 0
@@ -940,6 +948,7 @@ export async function postPayrollLockFinanceEntries(
         period,
         totals.totalDeductionSavings,
         tenantId,
+        businessUnitId,
       ),
     );
     if (incomeResult === "inserted") {
@@ -958,7 +967,9 @@ export async function postPayrollLockFinanceEntries(
     period,
     rows,
     tenantId,
-    { businessUnitId },
+    Object.prototype.hasOwnProperty.call(options ?? {}, "businessUnitId")
+      ? { businessUnitId }
+      : undefined,
   );
 
   return {

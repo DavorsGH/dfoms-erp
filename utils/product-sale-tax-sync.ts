@@ -196,6 +196,7 @@ export async function syncProductSaleVfrsTax(
       counterpartyName: resolveCounterpartyName(row),
       notes: row.invoice_no ? `Product sale ${row.invoice_no}` : null,
       tenantId: row.tenant_id,
+      businessUnitId: row.business_unit_id ?? null,
     });
 
     if (ledgerError) {

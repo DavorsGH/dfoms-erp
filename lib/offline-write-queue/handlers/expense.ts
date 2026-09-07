@@ -144,6 +144,7 @@ export async function syncExpenseQueueItem(
     inputVatAmount: payload.input_vat_amount,
     counterpartyName: payload.vendor || null,
     notes: receiptNote,
+    businessUnitId: payload.business_unit_id ?? null,
   });
 
   if (ledgerError) {
