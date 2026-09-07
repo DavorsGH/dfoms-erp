@@ -603,7 +603,7 @@ export async function fetchBalanceSheetPageData(
   let welfareFundQuery = applyBusinessUnitScope(
     supabase
       .from("staff_welfare_fund_ledger")
-      .select("entry_date, entry_type, amount, status")
+      .select("entry_date, entry_type, amount, status, source_type, counterparty_name")
       .eq("tenant_id", tenantId)
       .neq("status", "reversed"),
     buScope,

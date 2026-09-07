@@ -7,6 +7,7 @@ import {
   type BalanceSheetReport,
   type BalanceSheetReportOptions,
   type BalanceSheetTaxLedgerEntry,
+  type BalanceSheetWelfareFundEntry,
   type InventoryBalanceSheetInput,
 } from "./finance/balance-sheet-utils";
 import type { BalanceSheetCashExpenseEntry } from "./finance/accrued-wages-utils";
@@ -243,6 +244,7 @@ function buildCachedReportsForYear(input: {
   manualEntries: ManualFinancialEntry[];
   inventoryBalanceSheetInput: InventoryBalanceSheetInput;
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[];
+  welfareFundEntries?: BalanceSheetWelfareFundEntry[];
   balanceSheetReportOptions: BalanceSheetReportOptions;
   referenceDate?: Date;
   year: number;
@@ -269,6 +271,7 @@ function buildCachedReportsForYear(input: {
       input.referenceDate,
       input.manualEntries,
       input.taxLedgerEntries,
+      input.welfareFundEntries ?? [],
     ),
   };
 }
@@ -427,6 +430,7 @@ function buildMonthSnapshot(input: {
   taxLedgerEntries?: Array<
     BalanceSheetTaxLedgerEntry & Partial<Pick<TaxLedgerBalanceSource, "period_month">>
   >;
+  welfareFundEntries?: BalanceSheetWelfareFundEntry[];
   balanceSheetReportOptions: BalanceSheetReportOptions;
   year: number;
   month: number;
@@ -450,6 +454,7 @@ function buildMonthSnapshot(input: {
       manualEntries: input.manualEntries,
       inventoryBalanceSheetInput: input.inventoryBalanceSheetInput,
       taxLedgerEntries: input.taxLedgerEntries ?? [],
+      welfareFundEntries: input.welfareFundEntries ?? [],
       balanceSheetReportOptions: input.balanceSheetReportOptions,
       referenceDate: input.referenceDate,
       year: input.year,
@@ -810,6 +815,7 @@ export function buildDashboardViewModel(input: {
   taxLedgerEntries?: Array<
     BalanceSheetTaxLedgerEntry & Partial<Pick<TaxLedgerBalanceSource, "period_month">>
   >;
+  welfareFundEntries?: BalanceSheetWelfareFundEntry[];
   balanceSheetReportOptions: BalanceSheetReportOptions;
   lowStockRawMaterialCount?: number;
   referenceDate?: Date;
@@ -854,6 +860,7 @@ export function buildDashboardViewModel(input: {
       manualEntries: input.manualEntries,
       inventoryBalanceSheetInput: input.inventoryBalanceSheetInput,
       taxLedgerEntries: input.taxLedgerEntries ?? [],
+      welfareFundEntries: input.welfareFundEntries ?? [],
       balanceSheetReportOptions: input.balanceSheetReportOptions,
       referenceDate,
       year,

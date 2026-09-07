@@ -42,7 +42,12 @@ export type StaffWelfareFundLedgerEntry = {
 
 export type BalanceSheetWelfareFundEntry = Pick<
   StaffWelfareFundLedgerEntry,
-  "entry_date" | "entry_type" | "amount" | "status"
+  | "entry_date"
+  | "entry_type"
+  | "amount"
+  | "status"
+  | "source_type"
+  | "counterparty_name"
 >;
 
 function roundCurrency(value: number): number {
@@ -84,6 +89,20 @@ function signedWelfareLiabilityAmount(
   return amount;
 }
 
+/** Manual company top-ups are expensed immediately — not a balance-sheet liability. */
+export function isCompanyContributionLedgerEntry(
+  entry: Pick<
+    StaffWelfareFundLedgerEntry,
+    "entry_type" | "source_type" | "counterparty_name"
+  >,
+): boolean {
+  return (
+    entry.entry_type === "accrual" &&
+    entry.source_type === STAFF_WELFARE_FUND_MANUAL_SOURCE_TYPE &&
+    entry.counterparty_name === STAFF_WELFARE_COMPANY_CONTRIBUTION_COUNTERPARTY
+  );
+}
+
 /** Current fund balance from ledger rows (open accruals/adjustments minus disbursements). */
 export function calculateStaffWelfareFundBalance(
   entries: Pick<StaffWelfareFundLedgerEntry, "entry_type" | "amount" | "status">[],
@@ -113,6 +132,10 @@ export function calculateStaffWelfarePayableByMonth(
     let balance = 0;
 
     for (const entry of entries) {
+      if (isCompanyContributionLedgerEntry(entry)) {
+        continue;
+      }
+
       if (!isActiveWelfareLiabilityEntry(entry)) {
         continue;
       }

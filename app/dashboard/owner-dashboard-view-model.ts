@@ -45,6 +45,7 @@ export async function buildOwnerDashboardViewModel(
     initialManualEntries: manualEntries,
     initialInventoryBalanceSheet: inventoryBalanceSheetInput,
     initialTaxLedgerEntries: taxLedgerEntries,
+    initialWelfareFundEntries: welfareFundEntries,
     salesAnalysisEntries,
     budgetVsActualReportData,
   } = dashboardPageData;
@@ -123,6 +124,7 @@ export async function buildOwnerDashboardViewModel(
     lowStockRawMaterialCount,
     inventoryBalanceSheetInput,
     taxLedgerEntries: taxLedgerEntries ?? [],
+    welfareFundEntries: welfareFundEntries ?? [],
     balanceSheetReportOptions,
   });
 
