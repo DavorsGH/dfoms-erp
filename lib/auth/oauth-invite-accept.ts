@@ -15,6 +15,7 @@ import { hashLesseeInviteToken } from "@/utils/lessee-portal-invite";
 import {
   loadStaffInviteByRawToken,
   loadStaffInviteSupervisorSites,
+  applyStaffInviteBusinessUnitAccess,
 } from "@/utils/staff-portal-invite";
 
 type AcceptResult =
@@ -122,6 +123,20 @@ export async function acceptStaffInviteWithOAuth(
 
   if (!assigned.ok) {
     return { ok: false, error: assigned.error, status: 400 };
+  }
+
+  const businessUnitSyncError = await applyStaffInviteBusinessUnitAccess(
+    admin,
+    invite.invite_id,
+    invite.tenant_id,
+    authUserId,
+  );
+  if (businessUnitSyncError) {
+    return {
+      ok: false,
+      error: `Account linked, but business unit access could not be applied: ${businessUnitSyncError}`,
+      status: 400,
+    };
   }
 
   const { error: markUsedError } = await admin

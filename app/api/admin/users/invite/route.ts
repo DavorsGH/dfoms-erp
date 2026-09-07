@@ -11,6 +11,8 @@ type InviteUserBody = {
   role?: string;
   client_id?: string | null;
   supervisor_site_codes?: string[];
+  business_unit_ids?: unknown;
+  default_business_unit_id?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -27,7 +29,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { email, role, employee_id, client_id, supervisor_site_codes } = body;
+    const { email, role, employee_id, client_id, supervisor_site_codes, business_unit_ids, default_business_unit_id } = body;
 
     if (!email || !role) {
       return NextResponse.json(
@@ -50,6 +52,8 @@ export async function POST(request: Request) {
       employee_id,
       client_id,
       supervisor_site_codes,
+      business_unit_ids,
+      default_business_unit_id,
       invitedBy: user?.id ?? null,
     });
 

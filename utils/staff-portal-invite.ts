@@ -28,6 +28,12 @@ import {
 import { buildPortalInviteEmail } from "@/utils/portal-invite-email";
 import { sendResendEmail } from "@/utils/resend-email";
 import { resolvePublicSiteUrl } from "@/utils/public-site-url";
+import {
+  normalizeBusinessUnitAccessInput,
+  syncUserBusinessUnitAccess,
+  validateBusinessUnitIdsBelongToTenant,
+  type UserBusinessUnitAccessPayload,
+} from "@/utils/admin-user-business-unit-access";
 
 export const STAFF_INVITE_EXPIRY_DAYS = 7;
 
@@ -46,8 +52,54 @@ export type StaffInviteRoleInput = {
   employee_id?: string | null;
   client_id?: string | null;
   supervisor_site_codes?: string[];
+  business_unit_ids?: unknown;
+  default_business_unit_id?: unknown;
   invitedBy?: string | null;
 };
+
+async function resolveStaffInviteBusinessUnitAccessInput(
+  admin: SupabaseClient,
+  tenantId: string,
+  input: Pick<
+    StaffInviteRoleInput,
+    "business_unit_ids" | "default_business_unit_id"
+  >,
+): Promise<
+  | { ok: true; payload: UserBusinessUnitAccessPayload }
+  | { ok: false; error: string; status?: number }
+> {
+  const normalized = normalizeBusinessUnitAccessInput({
+    business_unit_ids: input.business_unit_ids,
+    default_business_unit_id: input.default_business_unit_id,
+  });
+
+  if ("error" in normalized) {
+    return { ok: false, error: normalized.error, status: 400 };
+  }
+
+  const validationError = await validateBusinessUnitIdsBelongToTenant(
+    admin,
+    tenantId,
+    normalized.business_unit_ids,
+  );
+  if (validationError) {
+    return { ok: false, error: validationError, status: 400 };
+  }
+
+  if (
+    normalized.business_unit_ids.length >= 2 &&
+    (!normalized.default_business_unit_id ||
+      !normalized.business_unit_ids.includes(normalized.default_business_unit_id))
+  ) {
+    return {
+      ok: false,
+      error: "Select a default business unit when restricting access to more than one.",
+      status: 400,
+    };
+  }
+
+  return { ok: true, payload: normalized };
+}
 
 export async function validateStaffInviteRoleInput(
   admin: SupabaseClient,
@@ -159,6 +211,19 @@ export async function createAndSendStaffPortalInvite(
   }
 
   const { email, built } = validated;
+  const businessUnitAccess = await resolveStaffInviteBusinessUnitAccessInput(
+    admin,
+    input.tenantId,
+    input,
+  );
+  if (!businessUnitAccess.ok) {
+    return {
+      ok: false,
+      error: businessUnitAccess.error,
+      status: businessUnitAccess.status,
+    };
+  }
+
   const rawToken = generateStaffInviteRawToken();
   const tokenHash = hashStaffInviteToken(rawToken);
   const now = new Date();
@@ -213,6 +278,31 @@ export async function createAndSendStaffPortalInvite(
         .delete()
         .eq("invite_id", inviteRow.invite_id);
       return { ok: false, error: sitesError.message, status: 400 };
+    }
+  }
+
+  if (businessUnitAccess.payload.business_unit_ids.length > 0) {
+    const defaultBusinessUnitId =
+      businessUnitAccess.payload.business_unit_ids.length === 1
+        ? businessUnitAccess.payload.business_unit_ids[0]!
+        : businessUnitAccess.payload.default_business_unit_id;
+
+    const { error: businessUnitError } = await admin
+      .from("staff_portal_invite_business_unit_access")
+      .insert(
+        businessUnitAccess.payload.business_unit_ids.map((business_unit_id) => ({
+          invite_id: inviteRow.invite_id,
+          business_unit_id,
+          is_default: business_unit_id === defaultBusinessUnitId,
+        })),
+      );
+
+    if (businessUnitError) {
+      await admin
+        .from("staff_portal_invites")
+        .delete()
+        .eq("invite_id", inviteRow.invite_id);
+      return { ok: false, error: businessUnitError.message, status: 400 };
     }
   }
 
@@ -320,6 +410,61 @@ export async function loadStaffInviteSupervisorSites(
   }
 
   return (data ?? []).map((row) => row.site_code);
+}
+
+export async function loadStaffInviteBusinessUnitAccess(
+  admin: SupabaseClient,
+  inviteId: string,
+): Promise<UserBusinessUnitAccessPayload> {
+  const { data, error } = await admin
+    .from("staff_portal_invite_business_unit_access")
+    .select("business_unit_id, is_default")
+    .eq("invite_id", inviteId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rows = data ?? [];
+  if (rows.length === 0) {
+    return {
+      business_unit_ids: [],
+      default_business_unit_id: null,
+    };
+  }
+
+  const business_unit_ids = rows
+    .map((row) => String(row.business_unit_id ?? "").trim())
+    .filter(Boolean);
+
+  const defaultRow =
+    rows.find((row) => row.is_default === true) ??
+    (rows.length === 1 ? rows[0] : null);
+
+  return {
+    business_unit_ids,
+    default_business_unit_id: defaultRow
+      ? String(defaultRow.business_unit_id ?? "").trim() || null
+      : null,
+  };
+}
+
+export async function applyStaffInviteBusinessUnitAccess(
+  admin: SupabaseClient,
+  inviteId: string,
+  tenantId: string,
+  authUid: string,
+): Promise<string | null> {
+  let payload: UserBusinessUnitAccessPayload;
+  try {
+    payload = await loadStaffInviteBusinessUnitAccess(admin, inviteId);
+  } catch (error) {
+    return error instanceof Error
+      ? error.message
+      : "Failed to load invite business unit access.";
+  }
+
+  return syncUserBusinessUnitAccess(admin, authUid, tenantId, payload);
 }
 
 export type StaffInviteAcceptResult =
@@ -444,6 +589,20 @@ export async function acceptStaffPortalInviteWithPassword(
       return { ok: false, error: assigned.error, status: 400 };
     }
 
+    const businessUnitSyncError = await applyStaffInviteBusinessUnitAccess(
+      admin,
+      invite.invite_id,
+      invite.tenant_id,
+      existingAuthUserId,
+    );
+    if (businessUnitSyncError) {
+      return {
+        ok: false,
+        error: `Account linked, but business unit access could not be applied: ${businessUnitSyncError}`,
+        status: 400,
+      };
+    }
+
     const { error: markUsedError } = await admin
       .from("staff_portal_invites")
       .update({ used_at: nowIso })
@@ -517,6 +676,22 @@ export async function acceptStaffPortalInviteWithPassword(
   if (!assigned.ok) {
     await admin.auth.admin.deleteUser(authUserId);
     return { ok: false, error: assigned.error, status: 400 };
+  }
+
+  const businessUnitSyncError = await applyStaffInviteBusinessUnitAccess(
+    admin,
+    invite.invite_id,
+    invite.tenant_id,
+    authUserId,
+  );
+  if (businessUnitSyncError) {
+    await admin.from("user_accounts").delete().eq("auth_uid", authUserId);
+    await admin.auth.admin.deleteUser(authUserId);
+    return {
+      ok: false,
+      error: `Account created, but business unit access could not be applied: ${businessUnitSyncError}`,
+      status: 400,
+    };
   }
 
   const { error: markUsedError } = await admin

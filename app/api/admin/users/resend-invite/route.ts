@@ -63,6 +63,18 @@ export async function POST(request: Request) {
     .select("site_code")
     .eq("invite_id", pendingInvite.invite_id);
 
+  const { data: businessUnitRows } = await admin
+    .from("staff_portal_invite_business_unit_access")
+    .select("business_unit_id, is_default")
+    .eq("invite_id", pendingInvite.invite_id);
+
+  const business_unit_ids = (businessUnitRows ?? [])
+    .map((row) => String(row.business_unit_id ?? "").trim())
+    .filter(Boolean);
+  const defaultBusinessUnitRow =
+    (businessUnitRows ?? []).find((row) => row.is_default === true) ??
+    ((businessUnitRows ?? []).length === 1 ? businessUnitRows?.[0] : null);
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const {
@@ -76,6 +88,10 @@ export async function POST(request: Request) {
     employee_id: pendingInvite.employee_id,
     client_id: pendingInvite.client_id,
     supervisor_site_codes: (siteRows ?? []).map((row) => row.site_code),
+    business_unit_ids,
+    default_business_unit_id: defaultBusinessUnitRow
+      ? String(defaultBusinessUnitRow.business_unit_id ?? "").trim() || null
+      : null,
     invitedBy: user?.id ?? null,
   });
 

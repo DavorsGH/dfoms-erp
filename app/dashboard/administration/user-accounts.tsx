@@ -271,6 +271,9 @@ export default function UserAccounts({
             employee_id: createForm.employee_id,
             client_id: createForm.client_id,
             supervisor_site_codes: createForm.supervisor_site_codes,
+            business_unit_ids: createBusinessUnitAccessForm.business_unit_ids,
+            default_business_unit_id:
+              createBusinessUnitAccessForm.default_business_unit_id,
           }
         : createForm;
 
