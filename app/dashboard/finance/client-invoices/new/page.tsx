@@ -6,6 +6,7 @@ import { getActiveBusinessUnitId, getCurrentUserTenantId } from "@/utils/dashboa
 import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadAuthorizedSignerOptions, peekNextInvoiceNumber } from "@/utils/client-invoices-api";
 import { loadActiveServiceContractsForTenant } from "@/utils/service-contracts-api";
+import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
 import {
   defaultDueDate,
   emptyLineItem,
@@ -43,6 +44,8 @@ export default async function NewClientInvoicePage() {
     authorizedSignersResult,
     salesTaxBasisResult,
     serviceContractsResult,
+    billingSettings,
+    graTin,
   ] = await Promise.all([
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
@@ -59,6 +62,8 @@ export default async function NewClientInvoicePage() {
     loadAuthorizedSignerOptions(supabase, tenantId),
     loadTenantSalesTaxBasis(supabase, tenantId, activeBusinessUnitId),
     loadActiveServiceContractsForTenant(supabase, tenantId),
+    getCurrentTenantBillingSettingsHeader(),
+    getCurrentTenantGraTin(),
   ]);
 
   const fetchError =
@@ -86,7 +91,10 @@ export default async function NewClientInvoicePage() {
       </div>
       <ClientInvoiceForm
         mode="create"
+        tenantId={tenantId}
         nextInvoiceNumberPreview={nextInvoiceNumberResult.invoiceNumber}
+        billingSettings={billingSettings}
+        graTin={graTin}
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}

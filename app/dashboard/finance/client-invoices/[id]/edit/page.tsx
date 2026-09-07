@@ -7,6 +7,7 @@ import { getActiveBusinessUnitId, getCurrentUserTenantId } from "@/utils/dashboa
 import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadClientInvoiceDetail, loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
 import { loadActiveServiceContractsForTenant } from "@/utils/service-contracts-api";
+import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
 import {
   clientInvoiceToFormState,
   type ClientInvoiceLineItemRow,
@@ -50,6 +51,8 @@ export default async function EditClientInvoicePage({
     authorizedSignersResult,
     salesTaxBasisResult,
     serviceContractsResult,
+    billingSettings,
+    graTin,
   ] = await Promise.all([
     loadClientInvoiceDetail(supabase, tenantId, id),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
@@ -66,6 +69,8 @@ export default async function EditClientInvoicePage({
     loadAuthorizedSignerOptions(supabase, tenantId),
     loadTenantSalesTaxBasis(supabase, tenantId, activeBusinessUnitId),
     loadActiveServiceContractsForTenant(supabase, tenantId),
+    getCurrentTenantBillingSettingsHeader(),
+    getCurrentTenantGraTin(),
   ]);
 
   if (!detail.invoice) {
@@ -124,8 +129,12 @@ export default async function EditClientInvoicePage({
       </div>
       <ClientInvoiceForm
         mode="edit"
+        tenantId={tenantId}
         invoiceId={id}
         existingInvoiceNumber={detail.invoice.invoice_number}
+        initialBusinessUnitId={detail.invoice.business_unit_id}
+        billingSettings={billingSettings}
+        graTin={graTin}
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
         initialPaymentAccounts={paymentAccounts ?? []}

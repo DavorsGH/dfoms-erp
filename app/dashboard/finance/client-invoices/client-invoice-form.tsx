@@ -6,6 +6,13 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
 import PromoCodeField from "@/components/promo-code-field";
+import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
+import {
+  useBusinessUnitView,
+  useStampBusinessUnitId,
+} from "@/app/dashboard/business-unit-view-context";
+import { businessUnitDocumentContactFromSwitcher } from "@/utils/business-unit-document-contact-types";
+import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import {
@@ -29,6 +36,8 @@ import {
 } from "@/utils/client-invoices-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import type { ServiceContractOption } from "@/utils/service-contracts-types";
+import { buildClientInvoicePreviewDisplay } from "./client-invoice-display-utils";
+import ClientInvoicePreviewDialog from "./client-invoice-preview-dialog";
 
 type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> &
   ClientInvoiceFormAuthorizedByState & {
@@ -37,10 +46,14 @@ type ClientInvoiceFormState = Omit<ClientInvoiceWriteBody, "line_items"> &
 
 type ClientInvoiceFormProps = {
   mode: "create" | "edit";
+  tenantId: string;
   invoiceId?: string;
   /** Non-allocating preview of the next server-assigned invoice number (e.g. DF-INV-0001). */
   nextInvoiceNumberPreview?: string | null;
   existingInvoiceNumber?: string;
+  initialBusinessUnitId?: string | null;
+  billingSettings?: BillingSettingsHeaderFields | null;
+  graTin?: string | null;
   initialCustomers: ClientEntry[];
   initialSites: ClientInvoiceSiteOption[];
   initialPaymentAccounts: PaymentAccountRow[];
@@ -65,9 +78,13 @@ const secondaryButtonClassName =
 
 export default function ClientInvoiceForm({
   mode,
+  tenantId,
   invoiceId,
   nextInvoiceNumberPreview,
   existingInvoiceNumber,
+  initialBusinessUnitId = null,
+  billingSettings = null,
+  graTin = null,
   initialCustomers,
   initialSites,
   initialPaymentAccounts,
@@ -78,10 +95,15 @@ export default function ClientInvoiceForm({
   fetchError = null,
 }: ClientInvoiceFormProps) {
   const router = useRouter();
+  const branding = useTenantBranding();
+  const stampBusinessUnit = useStampBusinessUnitId();
+  const { units } = useBusinessUnitView();
   const supabase = createClient();
   const [form, setForm] = useState<ClientInvoiceFormState>(initialForm);
   const [error, setError] = useState<string | null>(fetchError);
   const [saving, setSaving] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | null>(null);
   const [promoDiscount, setPromoDiscount] = useState(0);
 
@@ -126,6 +148,112 @@ export default function ClientInvoiceForm({
 
     return nextInvoiceNumberPreview?.trim() || "Assigned on save";
   }, [mode, existingInvoiceNumber, nextInvoiceNumberPreview]);
+
+  const previewBusinessUnitContact = useMemo(() => {
+    const stampId =
+      mode === "edit"
+        ? initialBusinessUnitId?.trim() || null
+        : stampBusinessUnit.ok
+          ? stampBusinessUnit.businessUnitId
+          : null;
+    if (!stampId) {
+      return null;
+    }
+    const unit = units.find((entry) => entry.id === stampId);
+    if (!unit) {
+      return null;
+    }
+    return businessUnitDocumentContactFromSwitcher(unit);
+  }, [mode, initialBusinessUnitId, stampBusinessUnit, units]);
+
+  const previewDisplay = useMemo(() => {
+    if (!previewOpen) {
+      return null;
+    }
+
+    const authorizedBy = resolveAuthorizedByFields(
+      form.authorized_by_selection,
+      form.authorized_by_other_name,
+      form.authorized_by_other_title,
+      initialAuthorizedSigners,
+    );
+
+    return buildClientInvoicePreviewDisplay({
+      tenantId,
+      invoiceNumber: displayInvoiceNumber || "Draft",
+      form: {
+        client_id: form.client_id,
+        contract_id: form.contract_id?.trim() ? form.contract_id : null,
+        invoice_date: form.invoice_date,
+        due_date: form.due_date || null,
+        billing_period_start: form.billing_period_start || null,
+        billing_period_end: form.billing_period_end || null,
+        bill_to_name: form.bill_to_name,
+        bill_to_address: form.bill_to_address,
+        bill_to_phone: form.bill_to_phone,
+        vat_nhil_getfund_rate: form.vat_nhil_getfund_rate,
+        wht_rate: form.wht_rate,
+        status: form.status,
+        amount_received: form.amount_received ?? 0,
+        notes: form.notes,
+        authorized_by_name: authorizedBy.authorized_by_name,
+        authorized_by_title: authorizedBy.authorized_by_title,
+        line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => line),
+        payment_account_ids: form.payment_account_ids,
+      },
+      paymentAccounts: initialPaymentAccounts,
+      authorizedBy,
+      branding,
+      billingSettings,
+      graTin,
+      businessUnitContact: previewBusinessUnitContact,
+      salesTaxBasis,
+    });
+  }, [
+    previewOpen,
+    form,
+    tenantId,
+    displayInvoiceNumber,
+    initialAuthorizedSigners,
+    initialPaymentAccounts,
+    branding,
+    billingSettings,
+    graTin,
+    previewBusinessUnitContact,
+    salesTaxBasis,
+  ]);
+
+  function handlePreview() {
+    setPreviewError(null);
+
+    if (!form.client_id.trim()) {
+      setPreviewError("Select a customer before previewing.");
+      return;
+    }
+
+    if (!form.bill_to_name.trim()) {
+      setPreviewError("Bill-to name is required before previewing.");
+      return;
+    }
+
+    if (!form.invoice_date) {
+      setPreviewError("Invoice date is required before previewing.");
+      return;
+    }
+
+    if (form.line_items.length === 0) {
+      setPreviewError("Add at least one line item before previewing.");
+      return;
+    }
+
+    const hasInvalidLine = form.line_items.some((line) => !line.description.trim());
+    if (hasInvalidLine) {
+      setPreviewError("Each line item needs a description before previewing.");
+      return;
+    }
+
+    setPreviewOpen(true);
+  }
 
   function handleClientChange(clientId: string) {
     const customer = initialCustomers.find((entry) => entry.client_id === clientId);
@@ -227,6 +355,12 @@ export default function ClientInvoiceForm({
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </p>
+      ) : null}
+
+      {previewError ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {previewError}
         </p>
       ) : null}
 
@@ -716,10 +850,24 @@ export default function ClientInvoiceForm({
         <button type="submit" disabled={saving} className={primaryButtonClassName}>
           {saving ? "Saving…" : mode === "create" ? "Save Invoice" : "Update Invoice"}
         </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={handlePreview}
+          className={secondaryButtonClassName}
+        >
+          Preview
+        </button>
         <Link href="/dashboard/finance/client-invoices" className={secondaryButtonClassName}>
           Cancel
         </Link>
       </div>
+
+      <ClientInvoicePreviewDialog
+        open={previewOpen}
+        display={previewDisplay}
+        onClose={() => setPreviewOpen(false)}
+      />
     </form>
   );
 }

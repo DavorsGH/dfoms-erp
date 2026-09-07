@@ -1,4 +1,6 @@
+import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import {
+  computeInvoiceTotals,
   formatInvoiceDate,
   formatInvoiceMoney,
   groupLineItemsByCategory,
@@ -6,6 +8,7 @@ import {
   toNumber,
   type ClientInvoiceHeaderRow,
   type ClientInvoiceLineItemRow,
+  type ClientInvoiceWriteBody,
 } from "@/utils/client-invoices-types";
 import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types";
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
@@ -379,5 +382,85 @@ export const CLIENT_INVOICE_COLORS = {
   textOnNavy: "#f1f5f9",
   white: "#ffffff",
 } as const;
+
+export function buildClientInvoicePreviewDisplay(input: {
+  tenantId: string;
+  invoiceNumber: string;
+  form: ClientInvoiceWriteBody;
+  paymentAccounts: PaymentAccountRow[];
+  authorizedBy: {
+    authorized_by_name: string | null;
+    authorized_by_title: string | null;
+  };
+  branding: TenantBranding;
+  billingSettings: BillingSettingsHeaderFields | null;
+  graTin?: string | null;
+  businessUnitContact?: BusinessUnitDocumentContact | null;
+  salesTaxBasis: SalesTaxBasis;
+}): ClientInvoiceDisplayProps {
+  const totals = computeInvoiceTotals(
+    input.form.line_items,
+    input.form.vat_nhil_getfund_rate ?? 0,
+    input.form.wht_rate ?? 0,
+    input.salesTaxBasis,
+  );
+
+  const lineItems: ClientInvoiceLineItemRow[] = totals.line_items.map((line, index) => ({
+    id: `preview-line-${index}`,
+    invoice_id: "preview",
+    tenant_id: input.tenantId,
+    site_id: line.site_id ?? null,
+    category_label: line.category_label ?? null,
+    description: line.description,
+    labour_amount: toNumber(line.labour_amount),
+    material_amount: toNumber(line.material_amount),
+    discount_amount: toNumber(line.discount_amount),
+    taxed: line.taxed ?? true,
+    total_cost: line.total_cost,
+    sort_order: line.sort_order ?? index,
+  }));
+
+  const invoice: ClientInvoiceHeaderRow = {
+    id: "preview",
+    tenant_id: input.tenantId,
+    client_id: input.form.client_id,
+    contract_id: input.form.contract_id ?? null,
+    business_unit_id: input.businessUnitContact?.id ?? null,
+    invoice_number: input.invoiceNumber,
+    invoice_sequence: 0,
+    invoice_date: input.form.invoice_date,
+    due_date: input.form.due_date ?? null,
+    billing_period_start: input.form.billing_period_start ?? null,
+    billing_period_end: input.form.billing_period_end ?? null,
+    bill_to_name: input.form.bill_to_name,
+    bill_to_address: input.form.bill_to_address ?? null,
+    bill_to_phone: input.form.bill_to_phone ?? null,
+    subtotal: totals.subtotal,
+    vat_nhil_getfund_rate: toNumber(input.form.vat_nhil_getfund_rate),
+    tax_due: totals.tax_due,
+    wht_rate: toNumber(input.form.wht_rate),
+    wht_amount: totals.wht_amount,
+    total_amount_due: totals.total_amount_due,
+    amount_received: toNumber(input.form.amount_received ?? 0),
+    status: input.form.status ?? "draft",
+    notes: input.form.notes ?? null,
+    authorized_by_name: input.authorizedBy.authorized_by_name,
+    authorized_by_title: input.authorizedBy.authorized_by_title,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  return {
+    invoice,
+    lineItems,
+    paymentAccounts: input.paymentAccounts.filter((account) =>
+      input.form.payment_account_ids.includes(account.id),
+    ),
+    branding: input.branding,
+    billingSettings: input.billingSettings,
+    graTin: input.graTin?.trim() || null,
+    businessUnitContact: input.businessUnitContact ?? null,
+  };
+}
 
 export { formatInvoiceDate, formatInvoiceMoney };
