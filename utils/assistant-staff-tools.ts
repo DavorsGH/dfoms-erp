@@ -23,9 +23,24 @@ import {
   getTaxLedgerStatus,
 } from "@/utils/assistant-staff-tools-finance";
 import {
+  getContractExpiryList,
+  getEmployeeAttendanceSummary,
   getEmployeeHeadcount,
+  getEmployeeLeaveBalance,
+  getEmployeeLeaveHistory,
+  getEmployeeLeaveHistoryRegister,
+  getEmployeeProfile,
   getPayrollStatus,
+  searchEmployees,
 } from "@/utils/assistant-staff-tools-hr";
+import {
+  getEmployeeCompensation,
+  getEmployeeLoans,
+  getEmployeeOvertimeSummary,
+  getEmployeePayDetail,
+} from "@/utils/assistant-staff-tools-hr-payroll";
+import { getDisciplinaryRecords } from "@/utils/assistant-staff-tools-hr-disciplinary";
+import { canAccessDisciplinaryRecords } from "@/utils/assistant-staff-tools-hr-common";
 import {
   getFinishedProductsSummary,
   getProductionSummary,
@@ -88,6 +103,21 @@ export const GET_QUOTES_AND_QUOTATIONS_STATUS_TOOL_NAME =
 export const GET_COMMISSION_SUMMARY_TOOL_NAME = "get_commission_summary";
 export const GET_EMPLOYEE_HEADCOUNT_TOOL_NAME = "get_employee_headcount";
 export const GET_PAYROLL_STATUS_TOOL_NAME = "get_payroll_status";
+export const SEARCH_EMPLOYEES_TOOL_NAME = "search_employees";
+export const GET_EMPLOYEE_PROFILE_TOOL_NAME = "get_employee_profile";
+export const GET_EMPLOYEE_LEAVE_BALANCE_TOOL_NAME = "get_employee_leave_balance";
+export const GET_EMPLOYEE_LEAVE_HISTORY_REGISTER_TOOL_NAME =
+  "get_employee_leave_history_register";
+export const GET_EMPLOYEE_LEAVE_HISTORY_TOOL_NAME = "get_employee_leave_history";
+export const GET_EMPLOYEE_ATTENDANCE_SUMMARY_TOOL_NAME =
+  "get_employee_attendance_summary";
+export const GET_CONTRACT_EXPIRY_LIST_TOOL_NAME = "get_contract_expiry_list";
+export const GET_EMPLOYEE_COMPENSATION_TOOL_NAME = "get_employee_compensation";
+export const GET_EMPLOYEE_PAY_DETAIL_TOOL_NAME = "get_employee_pay_detail";
+export const GET_EMPLOYEE_OVERTIME_SUMMARY_TOOL_NAME =
+  "get_employee_overtime_summary";
+export const GET_EMPLOYEE_LOANS_TOOL_NAME = "get_employee_loans";
+export const GET_DISCIPLINARY_RECORDS_TOOL_NAME = "get_disciplinary_records";
 export const GET_DUTY_ROSTER_SUMMARY_TOOL_NAME = "get_duty_roster_summary";
 export const GET_OPEN_WORK_ITEMS_TOOL_NAME = "get_open_work_items";
 export const GET_USER_ACCOUNT_SUMMARY_TOOL_NAME = "get_user_account_summary";
@@ -110,6 +140,7 @@ function tool(
   name: string,
   description: string,
   properties: Record<string, unknown> = {},
+  required: string[] = [],
 ): Anthropic.Tool {
   return {
     name,
@@ -117,11 +148,19 @@ function tool(
     input_schema: {
       type: "object",
       properties,
-      required: [],
+      required,
       additionalProperties: false,
     },
   };
 }
+
+const EMPLOYEE_ID_SCHEMA = {
+  employeeId: {
+    type: "string",
+    description:
+      "Employee UUID or staff ID (e.g. DF-STAFF-001). Must be in the active business unit scope.",
+  },
+} as const;
 
 export function getStaffAssistantTools(
   role: AppRole | null,
@@ -273,8 +312,62 @@ export function getStaffAssistantTools(
   if (canAccessHrManagementSection(role)) {
     tools.push(
       tool(
+        SEARCH_EMPLOYEES_TOOL_NAME,
+        "Find employees by name, staff ID, or department. Returns up to 10 matches with no salary data.",
+        {
+          query: {
+            type: "string",
+            description: "Name, staff ID, or department text to search for.",
+          },
+        },
+        ["query"],
+      ),
+      tool(
+        GET_EMPLOYEE_PROFILE_TOOL_NAME,
+        "Employee profile: position, department, employment type, supervisor, contact info, status, hire date. No pay data.",
+        EMPLOYEE_ID_SCHEMA,
+        ["employeeId"],
+      ),
+      tool(
+        GET_EMPLOYEE_LEAVE_BALANCE_TOOL_NAME,
+        "Current-year leave entitlement remaining (entitled/used/remaining per leave type) — same as HR → Leave Balances. Use for 'how many days left' questions.",
+        EMPLOYEE_ID_SCHEMA,
+        ["employeeId"],
+      ),
+      tool(
+        GET_EMPLOYEE_LEAVE_HISTORY_REGISTER_TOOL_NAME,
+        "Manual Leave register entries (leave_management) in report shape — recorded leave episodes with optional per-row balance snapshot. NOT current entitlement; do not use for 'how many days left'.",
+        EMPLOYEE_ID_SCHEMA,
+        ["employeeId"],
+      ),
+      tool(
+        GET_EMPLOYEE_LEAVE_HISTORY_TOOL_NAME,
+        "Chronological leave episodes from the manual Leave register with start/end dates. Optional approval status filter (Pending, Approved, Rejected). Not self-service leave_requests; not entitlement remaining.",
+        {
+          ...EMPLOYEE_ID_SCHEMA,
+          status: {
+            type: "string",
+            description:
+              "Optional approval status filter: Pending, Approved, or Rejected.",
+          },
+        },
+        ["employeeId"],
+      ),
+      tool(
+        GET_EMPLOYEE_ATTENDANCE_SUMMARY_TOOL_NAME,
+        "Attendance summary for this_month (default) or last_month — one employee or all scoped employees.",
+        {
+          ...EMPLOYEE_ID_SCHEMA,
+          ...PERIOD_SCHEMA,
+        },
+      ),
+      tool(
         GET_EMPLOYEE_HEADCOUNT_TOOL_NAME,
         "Active employee headcount by employment type — Headcount report summary.",
+      ),
+      tool(
+        GET_CONTRACT_EXPIRY_LIST_TOOL_NAME,
+        "Contracts expiring within 30 days or past expiry while still active — Headcount & Contract Expiry report.",
       ),
     );
   }
@@ -284,6 +377,44 @@ export function getStaffAssistantTools(
       tool(
         GET_PAYROLL_STATUS_TOOL_NAME,
         "Current payroll period status — same as Dashboard Payroll Status card.",
+      ),
+      tool(
+        GET_EMPLOYEE_COMPENSATION_TOOL_NAME,
+        "Salary and allowance structure for one employee from compensation policy (no payslip deductions).",
+        EMPLOYEE_ID_SCHEMA,
+        ["employeeId"],
+      ),
+      tool(
+        GET_EMPLOYEE_PAY_DETAIL_TOOL_NAME,
+        "Payslip figures for one employee for this_month (default) or last_month.",
+        {
+          ...EMPLOYEE_ID_SCHEMA,
+          ...PERIOD_SCHEMA,
+        },
+        ["employeeId"],
+      ),
+      tool(
+        GET_EMPLOYEE_OVERTIME_SUMMARY_TOOL_NAME,
+        "Overtime hours and amounts for this_month (default) or last_month — optional employee filter.",
+        {
+          ...EMPLOYEE_ID_SCHEMA,
+          ...PERIOD_SCHEMA,
+        },
+      ),
+      tool(
+        GET_EMPLOYEE_LOANS_TOOL_NAME,
+        "Loan/advance balances — optional employee filter; all scoped employees when omitted.",
+        EMPLOYEE_ID_SCHEMA,
+      ),
+    );
+  }
+
+  if (canAccessDisciplinaryRecords(role)) {
+    tools.push(
+      tool(
+        GET_DISCIPLINARY_RECORDS_TOOL_NAME,
+        "Disciplinary records — optional employee filter; capped at 20 most recent.",
+        EMPLOYEE_ID_SCHEMA,
       ),
     );
   }
@@ -373,6 +504,30 @@ export async function executeStaffAssistantTool(
       return getEmployeeHeadcount();
     case GET_PAYROLL_STATUS_TOOL_NAME:
       return getPayrollStatus();
+    case SEARCH_EMPLOYEES_TOOL_NAME:
+      return searchEmployees(toolInput);
+    case GET_EMPLOYEE_PROFILE_TOOL_NAME:
+      return getEmployeeProfile(toolInput);
+    case GET_EMPLOYEE_LEAVE_BALANCE_TOOL_NAME:
+      return getEmployeeLeaveBalance(toolInput);
+    case GET_EMPLOYEE_LEAVE_HISTORY_REGISTER_TOOL_NAME:
+      return getEmployeeLeaveHistoryRegister(toolInput);
+    case GET_EMPLOYEE_LEAVE_HISTORY_TOOL_NAME:
+      return getEmployeeLeaveHistory(toolInput);
+    case GET_EMPLOYEE_ATTENDANCE_SUMMARY_TOOL_NAME:
+      return getEmployeeAttendanceSummary(toolInput);
+    case GET_CONTRACT_EXPIRY_LIST_TOOL_NAME:
+      return getContractExpiryList();
+    case GET_EMPLOYEE_COMPENSATION_TOOL_NAME:
+      return getEmployeeCompensation(toolInput);
+    case GET_EMPLOYEE_PAY_DETAIL_TOOL_NAME:
+      return getEmployeePayDetail(toolInput);
+    case GET_EMPLOYEE_OVERTIME_SUMMARY_TOOL_NAME:
+      return getEmployeeOvertimeSummary(toolInput);
+    case GET_EMPLOYEE_LOANS_TOOL_NAME:
+      return getEmployeeLoans(toolInput);
+    case GET_DISCIPLINARY_RECORDS_TOOL_NAME:
+      return getDisciplinaryRecords(toolInput);
     case GET_DUTY_ROSTER_SUMMARY_TOOL_NAME:
       return getDutyRosterSummary();
     case GET_OPEN_WORK_ITEMS_TOOL_NAME:
@@ -434,11 +589,27 @@ export function staffAccountToolsSystemPromptAddition(
   }
 
   if (canAccessHrManagementSection(role)) {
-    lines.push("- get_employee_headcount: active headcount by employment type");
+    lines.push(
+      "- search_employees: find employees by name, staff ID, or department (no pay data)",
+      "- get_employee_profile / get_employee_attendance_summary / get_contract_expiry_list: HR employee lookup and attendance/contract data",
+      "- get_employee_leave_balance: current-year entitlement remaining (entitled/used/days left) — use for 'how many days left' questions; same as HR → Leave Balances",
+      "- get_employee_leave_history_register: manual Leave register episodes in report shape — NOT days remaining",
+      "- get_employee_leave_history: chronological manual Leave register episodes with dates — NOT days remaining; does not include self-service leave_requests unless mirrored in Leave",
+      "- get_employee_headcount: active headcount by employment type",
+    );
   }
 
   if (canAccessHrPayrollSection(role)) {
-    lines.push("- get_payroll_status: Dashboard Payroll Status card data");
+    lines.push(
+      "- get_payroll_status: Dashboard Payroll Status card data",
+      "- get_employee_compensation / get_employee_pay_detail / get_employee_overtime_summary / get_employee_loans: sensitive payroll and loan data",
+    );
+  }
+
+  if (canAccessDisciplinaryRecords(role)) {
+    lines.push(
+      "- get_disciplinary_records: disciplinary register (super_admin, hr, director only)",
+    );
   }
 
   if (canAccessOperationsSection(role)) {
