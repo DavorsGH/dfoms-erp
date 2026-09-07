@@ -2,6 +2,9 @@ import { getMonthEndDate } from "./capital-contributions-utils";
 import { createEmptyMonthlyTotals, FULL_YEAR_INDEX, type MonthlyTotals } from "./profit-loss-utils";
 
 export const STAFF_WELFARE_DISBURSEMENT_CATEGORY = "Staff Welfare Disbursement";
+export const STAFF_WELFARE_CONTRIBUTION_CATEGORY = "Staff Welfare Contribution";
+export const STAFF_WELFARE_COMPANY_CONTRIBUTION_COUNTERPARTY =
+  "Company Contribution";
 export const STAFF_WELFARE_FUND_PAYROLL_SOURCE_TYPE = "payroll_period" as const;
 export const STAFF_WELFARE_FUND_CLAIM_SOURCE_TYPE = "claim" as const;
 export const STAFF_WELFARE_FUND_MANUAL_SOURCE_TYPE = "manual" as const;
@@ -153,6 +156,15 @@ export function buildStaffWelfareDisbursementReceiptNo(
   const datePart = entryDate.slice(0, 10).replaceAll("-", "");
   const idPart = ledgerId.replaceAll("-", "").slice(0, 8).toUpperCase();
   return `WELFARE-DISB-${datePart}-${idPart}`;
+}
+
+export function buildStaffWelfareContributionReceiptNo(
+  entryDate: string,
+  ledgerId: string,
+): string {
+  const datePart = entryDate.slice(0, 10).replaceAll("-", "");
+  const idPart = ledgerId.replaceAll("-", "").slice(0, 8).toUpperCase();
+  return `WELFARE-CONT-${datePart}-${idPart}`;
 }
 
 export function getEntryTypeLabel(entryType: StaffWelfareFundEntryType): string {

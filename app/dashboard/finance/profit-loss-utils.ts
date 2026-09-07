@@ -222,7 +222,10 @@ export function resolveProfitLossExpenseSectionCategory(
   return "Other";
 }
 
-/** Liability-settlement rows that must never hit P&L (even via Other fallback). */
+/**
+ * Liability-settlement rows that must never hit P&L (even via Other fallback).
+ * Staff Welfare Contribution is intentionally NOT listed here — it is real operating spend.
+ */
 export function shouldIncludeExpenseInProfitLoss(
   expenseCategory: string | null | undefined,
 ): boolean {

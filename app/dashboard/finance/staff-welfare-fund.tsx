@@ -20,10 +20,14 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import { formatGHS, formatDate } from "./income-register-utils";
+import { toPeriodMonth } from "./tax-utils";
 import {
+  STAFF_WELFARE_COMPANY_CONTRIBUTION_COUNTERPARTY,
+  STAFF_WELFARE_CONTRIBUTION_CATEGORY,
   STAFF_WELFARE_DISBURSEMENT_CATEGORY,
   STAFF_WELFARE_FUND_MANUAL_SOURCE_TYPE,
   STAFF_WELFARE_LEDGER_SELECT,
+  buildStaffWelfareContributionReceiptNo,
   calculateStaffWelfareFundBalance,
   buildStaffWelfareDisbursementReceiptNo,
   getEntryTypeLabel,
@@ -46,13 +50,14 @@ const inputClassName =
 const primaryButtonClassName =
   "rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#18365c] disabled:cursor-not-allowed disabled:opacity-50";
 
-async function ensureStaffWelfareDisbursementCategory(
+async function ensureExpenseCategory(
   supabase: ReturnType<typeof createClient>,
+  categoryName: string,
 ): Promise<void> {
   const { data: existing, error: selectError } = await supabase
     .from("expense_categories")
     .select("name")
-    .eq("name", STAFF_WELFARE_DISBURSEMENT_CATEGORY)
+    .eq("name", categoryName)
     .maybeSingle();
 
   if (selectError) {
@@ -65,7 +70,7 @@ async function ensureStaffWelfareDisbursementCategory(
 
   const { error: insertError } = await supabase
     .from("expense_categories")
-    .insert({ name: STAFF_WELFARE_DISBURSEMENT_CATEGORY });
+    .insert({ name: categoryName });
 
   if (insertError) {
     throw new Error(insertError.message);
@@ -85,13 +90,20 @@ export default function StaffWelfareFund({
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeStaffWelfareFundEntry),
   );
-  const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [showDisbursementForm, setShowDisbursementForm] = useState(false);
+  const [showContributionForm, setShowContributionForm] = useState(false);
+  const [loadingDisbursement, setLoadingDisbursement] = useState(false);
+  const [loadingContribution, setLoadingContribution] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
-  const [form, setForm] = useState({
+  const [disbursementForm, setDisbursementForm] = useState({
     entry_date: new Date().toISOString().slice(0, 10),
     amount: "",
     employee_id: "",
+    notes: "",
+  });
+  const [contributionForm, setContributionForm] = useState({
+    entry_date: new Date().toISOString().slice(0, 10),
+    amount: "",
     notes: "",
   });
 
@@ -137,13 +149,13 @@ export default function StaffWelfareFund({
 
   async function handleDisbursementSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setLoading(true);
+    setLoadingDisbursement(true);
     setError(null);
 
-    const amount = Number(form.amount);
+    const amount = Number(disbursementForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError("Enter a valid disbursement amount greater than zero.");
-      setLoading(false);
+      setLoadingDisbursement(false);
       return;
     }
 
@@ -151,7 +163,7 @@ export default function StaffWelfareFund({
       setError(
         `Disbursement (${formatGHS(amount)}) exceeds the current fund balance (${formatGHS(fundBalance)}).`,
       );
-      setLoading(false);
+      setLoadingDisbursement(false);
       return;
     }
 
@@ -172,9 +184,9 @@ export default function StaffWelfareFund({
       const businessUnitId = stampResult.businessUnitId;
       assertCanModifyBusinessUnitRow(buContext.allowedUnits, businessUnitId);
 
-      await ensureStaffWelfareDisbursementCategory(supabase);
+      await ensureExpenseCategory(supabase, STAFF_WELFARE_DISBURSEMENT_CATEGORY);
 
-      const employeeId = form.employee_id.trim() || null;
+      const employeeId = disbursementForm.employee_id.trim() || null;
       const counterpartyName = employeeId
         ? (employeeOptions.find((employee) => employee.employee_id === employeeId)
             ?.full_name ?? employeeId)
@@ -187,7 +199,7 @@ export default function StaffWelfareFund({
         .insert({
           tenant_id: tenantId,
           business_unit_id: businessUnitId,
-          entry_date: form.entry_date,
+          entry_date: disbursementForm.entry_date,
           period_month: null,
           entry_type: "disbursement",
           amount,
@@ -196,7 +208,7 @@ export default function StaffWelfareFund({
           source_id: null,
           employee_id: employeeId,
           counterparty_name: counterpartyName,
-          notes: form.notes.trim() || null,
+          notes: disbursementForm.notes.trim() || null,
           paid_at: paidAt,
         })
         .select("id")
@@ -207,14 +219,14 @@ export default function StaffWelfareFund({
       }
 
       const receiptNo = buildStaffWelfareDisbursementReceiptNo(
-        form.entry_date,
+        disbursementForm.entry_date,
         ledgerRow.id as string,
       );
 
       const { error: expenseError } = await supabase.from("expense_register").insert({
         tenant_id: tenantId,
         business_unit_id: businessUnitId,
-        date: form.entry_date,
+        date: disbursementForm.entry_date,
         expense_category: STAFF_WELFARE_DISBURSEMENT_CATEGORY,
         sub_category: "Staff Welfare",
         description: `Staff welfare disbursement${employeeId ? ` — ${counterpartyName}` : ""}`,
@@ -226,7 +238,7 @@ export default function StaffWelfareFund({
         approved_by: "System",
         receipt_no: receiptNo,
         payment_status: "Paid",
-        notes: form.notes.trim() || "Staff welfare fund disbursement",
+        notes: disbursementForm.notes.trim() || "Staff welfare fund disbursement",
       });
 
       if (expenseError) {
@@ -246,18 +258,127 @@ export default function StaffWelfareFund({
         throw new Error(linkError.message);
       }
 
-      setForm({
+      setDisbursementForm({
         entry_date: new Date().toISOString().slice(0, 10),
         amount: "",
         employee_id: "",
         notes: "",
       });
-      setShowForm(false);
+      setShowDisbursementForm(false);
       await refreshEntries();
     } catch (submitError) {
       setError(formatBusinessUnitAccessError(submitError));
     } finally {
-      setLoading(false);
+      setLoadingDisbursement(false);
+    }
+  }
+
+  async function handleContributionSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setLoadingContribution(true);
+    setError(null);
+
+    const amount = Number(contributionForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("Enter a valid contribution amount greater than zero.");
+      setLoadingContribution(false);
+      return;
+    }
+
+    try {
+      const buContext = await loadWriteBusinessUnitContext(supabase);
+      if (!buContext.ok) {
+        throw new Error(buContext.error);
+      }
+
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        throw new Error(stampResult.error);
+      }
+
+      const businessUnitId = stampResult.businessUnitId;
+      assertCanModifyBusinessUnitRow(buContext.allowedUnits, businessUnitId);
+
+      await ensureExpenseCategory(supabase, STAFF_WELFARE_CONTRIBUTION_CATEGORY);
+
+      const { data: ledgerRow, error: ledgerError } = await supabase
+        .from("staff_welfare_fund_ledger")
+        .insert({
+          tenant_id: tenantId,
+          business_unit_id: businessUnitId,
+          entry_date: contributionForm.entry_date,
+          period_month: toPeriodMonth(contributionForm.entry_date),
+          entry_type: "accrual",
+          amount,
+          status: "open",
+          source_type: STAFF_WELFARE_FUND_MANUAL_SOURCE_TYPE,
+          source_id: null,
+          employee_id: null,
+          counterparty_name: STAFF_WELFARE_COMPANY_CONTRIBUTION_COUNTERPARTY,
+          notes: contributionForm.notes.trim() || null,
+          paid_at: null,
+        })
+        .select("id")
+        .single();
+
+      if (ledgerError) {
+        throw new Error(ledgerError.message);
+      }
+
+      const receiptNo = buildStaffWelfareContributionReceiptNo(
+        contributionForm.entry_date,
+        ledgerRow.id as string,
+      );
+
+      const { error: expenseError } = await supabase.from("expense_register").insert({
+        tenant_id: tenantId,
+        business_unit_id: businessUnitId,
+        date: contributionForm.entry_date,
+        expense_category: STAFF_WELFARE_CONTRIBUTION_CATEGORY,
+        sub_category: "Staff Welfare",
+        description: "Company contribution to staff welfare fund",
+        vendor: STAFF_WELFARE_COMPANY_CONTRIBUTION_COUNTERPARTY,
+        price: amount,
+        quantity: 1,
+        amount,
+        payment_method: "Bank Transfer",
+        approved_by: "System",
+        receipt_no: receiptNo,
+        payment_status: "Paid",
+        notes: contributionForm.notes.trim() || "Staff welfare fund company contribution",
+      });
+
+      if (expenseError) {
+        await supabase
+          .from("staff_welfare_fund_ledger")
+          .delete()
+          .eq("id", ledgerRow.id);
+        throw new Error(expenseError.message);
+      }
+
+      const { error: linkError } = await supabase
+        .from("staff_welfare_fund_ledger")
+        .update({ expense_receipt_no: receiptNo })
+        .eq("id", ledgerRow.id);
+
+      if (linkError) {
+        throw new Error(linkError.message);
+      }
+
+      setContributionForm({
+        entry_date: new Date().toISOString().slice(0, 10),
+        amount: "",
+        notes: "",
+      });
+      setShowContributionForm(false);
+      await refreshEntries();
+    } catch (submitError) {
+      setError(formatBusinessUnitAccessError(submitError));
+    } finally {
+      setLoadingContribution(false);
     }
   }
 
@@ -291,95 +412,203 @@ export default function StaffWelfareFund({
         </p>
       ) : null}
 
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[#0f2744]">Record Disbursement</h2>
-          <button
-            type="button"
-            className={primaryButtonClassName}
-            onClick={() => setShowForm((open) => !open)}
-          >
-            {showForm ? "Cancel" : "New disbursement"}
-          </button>
-        </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-[#0f2744]">
+              Record Disbursement
+            </h2>
+            <button
+              type="button"
+              className={primaryButtonClassName}
+              onClick={() => {
+                setShowDisbursementForm((open) => !open);
+                setShowContributionForm(false);
+              }}
+            >
+              {showDisbursementForm ? "Cancel" : "New disbursement"}
+            </button>
+          </div>
 
-        {showForm ? (
-          <form onSubmit={handleDisbursementSubmit} className="grid gap-4 md:grid-cols-2">
-            <label className="block text-sm text-slate-700">
-              Date
-              <input
-                type="date"
-                required
-                value={form.entry_date}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    entry_date: event.target.value,
-                  }))
-                }
-                className={`${inputClassName} mt-1`}
-              />
-            </label>
-            <label className="block text-sm text-slate-700">
-              Amount (GHS)
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                required
-                value={form.amount}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, amount: event.target.value }))
-                }
-                className={`${inputClassName} mt-1`}
-              />
-            </label>
-            <label className="block text-sm text-slate-700 md:col-span-2">
-              Employee (optional)
-              <select
-                value={form.employee_id}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    employee_id: event.target.value,
-                  }))
-                }
-                className={`${inputClassName} mt-1`}
-              >
-                <option value="">General fund payout</option>
-                {employeeOptions.map((employee) => (
-                  <option key={employee.employee_id} value={employee.employee_id}>
-                    {employee.full_name ?? employee.employee_id}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm text-slate-700 md:col-span-2">
-              Note
-              <textarea
-                value={form.notes}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, notes: event.target.value }))
-                }
-                rows={3}
-                className={`${inputClassName} mt-1`}
-                placeholder="Optional context for this payout"
-              />
-            </label>
-            <div className="md:col-span-2">
-              <button type="submit" disabled={loading} className={primaryButtonClassName}>
-                {loading ? "Posting…" : "Post disbursement"}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <p className="text-sm text-slate-500">
-            Record a payout from the welfare fund. This posts a{" "}
-            <strong>{STAFF_WELFARE_DISBURSEMENT_CATEGORY}</strong> cash expense and
-            reduces the fund balance.
-          </p>
-        )}
-      </section>
+          {showDisbursementForm ? (
+            <form
+              onSubmit={handleDisbursementSubmit}
+              className="grid gap-4 md:grid-cols-2"
+            >
+              <label className="block text-sm text-slate-700">
+                Date
+                <input
+                  type="date"
+                  required
+                  value={disbursementForm.entry_date}
+                  onChange={(event) =>
+                    setDisbursementForm((current) => ({
+                      ...current,
+                      entry_date: event.target.value,
+                    }))
+                  }
+                  className={`${inputClassName} mt-1`}
+                />
+              </label>
+              <label className="block text-sm text-slate-700">
+                Amount (GHS)
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  value={disbursementForm.amount}
+                  onChange={(event) =>
+                    setDisbursementForm((current) => ({
+                      ...current,
+                      amount: event.target.value,
+                    }))
+                  }
+                  className={`${inputClassName} mt-1`}
+                />
+              </label>
+              <label className="block text-sm text-slate-700 md:col-span-2">
+                Employee (optional)
+                <select
+                  value={disbursementForm.employee_id}
+                  onChange={(event) =>
+                    setDisbursementForm((current) => ({
+                      ...current,
+                      employee_id: event.target.value,
+                    }))
+                  }
+                  className={`${inputClassName} mt-1`}
+                >
+                  <option value="">General fund payout</option>
+                  {employeeOptions.map((employee) => (
+                    <option key={employee.employee_id} value={employee.employee_id}>
+                      {employee.full_name ?? employee.employee_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm text-slate-700 md:col-span-2">
+                Note
+                <textarea
+                  value={disbursementForm.notes}
+                  onChange={(event) =>
+                    setDisbursementForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className={`${inputClassName} mt-1`}
+                  placeholder="Optional context for this payout"
+                />
+              </label>
+              <div className="md:col-span-2">
+                <button
+                  type="submit"
+                  disabled={loadingDisbursement}
+                  className={primaryButtonClassName}
+                >
+                  {loadingDisbursement ? "Posting…" : "Post disbursement"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-500">
+              Record a payout from the welfare fund. This posts a{" "}
+              <strong>{STAFF_WELFARE_DISBURSEMENT_CATEGORY}</strong> cash expense
+              (excluded from P&amp;L) and reduces the fund balance.
+            </p>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-[#0f2744]">
+              Record Company Contribution
+            </h2>
+            <button
+              type="button"
+              className={primaryButtonClassName}
+              onClick={() => {
+                setShowContributionForm((open) => !open);
+                setShowDisbursementForm(false);
+              }}
+            >
+              {showContributionForm ? "Cancel" : "New contribution"}
+            </button>
+          </div>
+
+          {showContributionForm ? (
+            <form
+              onSubmit={handleContributionSubmit}
+              className="grid gap-4 md:grid-cols-2"
+            >
+              <label className="block text-sm text-slate-700">
+                Date
+                <input
+                  type="date"
+                  required
+                  value={contributionForm.entry_date}
+                  onChange={(event) =>
+                    setContributionForm((current) => ({
+                      ...current,
+                      entry_date: event.target.value,
+                    }))
+                  }
+                  className={`${inputClassName} mt-1`}
+                />
+              </label>
+              <label className="block text-sm text-slate-700">
+                Amount (GHS)
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  value={contributionForm.amount}
+                  onChange={(event) =>
+                    setContributionForm((current) => ({
+                      ...current,
+                      amount: event.target.value,
+                    }))
+                  }
+                  className={`${inputClassName} mt-1`}
+                />
+              </label>
+              <label className="block text-sm text-slate-700 md:col-span-2">
+                Note
+                <textarea
+                  value={contributionForm.notes}
+                  onChange={(event) =>
+                    setContributionForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className={`${inputClassName} mt-1`}
+                  placeholder="Optional context for this company top-up"
+                />
+              </label>
+              <div className="md:col-span-2">
+                <button
+                  type="submit"
+                  disabled={loadingContribution}
+                  className={primaryButtonClassName}
+                >
+                  {loadingContribution ? "Posting…" : "Post contribution"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-500">
+              Add company money to the welfare fund. This posts a{" "}
+              <strong>{STAFF_WELFARE_CONTRIBUTION_CATEGORY}</strong> operating
+              expense (included in P&amp;L) and increases the fund balance.
+            </p>
+          )}
+        </section>
+      </div>
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-6 py-4">
