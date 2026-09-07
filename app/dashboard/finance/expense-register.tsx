@@ -79,6 +79,12 @@ import {
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 import { useWriteQueueOptional } from "@/components/write-queue-provider";
 import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
@@ -631,6 +637,25 @@ export default function ExpenseRegister({
     setDeletingId(id);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingId(null);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        (target as { business_unit_id?: string | null } | undefined)
+          ?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingId(null);
+      return;
+    }
+
     let linkedProductSaleCogs: LinkedProductSaleCogs | null = null;
     try {
       linkedProductSaleCogs = await lookupLinkedProductSaleCogsForExpense(
@@ -721,15 +746,38 @@ export default function ExpenseRegister({
     setLoading(true);
     setError(null);
 
-    const stampId = !editingId
-      ? stampBusinessUnit.ok
-        ? stampBusinessUnit.businessUnitId
-        : null
-      : activeBusinessUnitId;
-    if (!editingId && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
+    }
+
+    let stampId: string | null = null;
+    if (editingId) {
+      const existingEntry = entries.find((entry) => entry.id === editingId);
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          (existingEntry as { business_unit_id?: string | null } | undefined)
+            ?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+    } else {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+      stampId = stampResult.businessUnitId;
     }
 
     const price = Number(form.price);

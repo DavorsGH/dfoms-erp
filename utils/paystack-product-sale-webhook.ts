@@ -104,6 +104,7 @@ export async function processProductSalePaystackEvent(
         paidAt,
         flowLabel: "Product sale payment",
         invoiceNo: invoiceNo ?? requestRow.invoice_no,
+        incomeIds: requestRow.income_ids,
       });
     }
     return {
@@ -225,6 +226,7 @@ export async function processProductSalePaystackEvent(
     paidAt,
     flowLabel: "Product sale payment",
     invoiceNo: invoiceNo ?? requestRow.invoice_no,
+    incomeIds,
   });
 
   // Payment on an already-created sale (not cart_snapshot create) — payment_received only.

@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireRoleIn, requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  assertServerRowWriteAccess,
+  getServerAuthUid,
+} from "@/utils/business-unit-access.server";
 import { deleteTaxLedgerEntriesForSource } from "@/app/dashboard/finance/tax-ledger-sync";
 import {
   findClientInvoiceIncomeRegisterId,
@@ -175,6 +179,22 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const supabase = await getTenantSupabase();
+  const authUser = await getServerAuthUid(supabase);
+  if (!authUser.ok) {
+    return NextResponse.json({ error: authUser.error }, { status: authUser.status });
+  }
+
+  const rowAccess = await assertServerRowWriteAccess({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: authUser.authUid,
+    table: "client_invoices",
+    rowId: id,
+  });
+  if (!rowAccess.ok) {
+    return NextResponse.json({ error: rowAccess.error }, { status: rowAccess.status });
+  }
+
   const existing = await loadClientInvoiceDetail(supabase, auth.tenantId, id);
 
   if (existing.error || !existing.invoice) {
@@ -218,6 +238,21 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const supabase = await getTenantSupabase();
+  const authUser = await getServerAuthUid(supabase);
+  if (!authUser.ok) {
+    return NextResponse.json({ error: authUser.error }, { status: authUser.status });
+  }
+
+  const rowAccess = await assertServerRowWriteAccess({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: authUser.authUid,
+    table: "client_invoices",
+    rowId: id,
+  });
+  if (!rowAccess.ok) {
+    return NextResponse.json({ error: rowAccess.error }, { status: rowAccess.status });
+  }
 
   const existing = await loadClientInvoiceDetail(supabase, auth.tenantId, id);
   if (existing.error || !existing.invoice) {

@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 import type { Employee } from "../lookup-types";
 import {
   calculateShareCapitalAsOf,
@@ -143,6 +149,25 @@ export default function CapitalContributions({
     setDeletingId(id);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingId(null);
+      return;
+    }
+
+    const existing = entries.find((entry) => entry.id === id);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingId(null);
+      return;
+    }
+
     const { error: deleteError } = await supabase
       .from("capital_contributions")
       .delete()
@@ -167,10 +192,37 @@ export default function CapitalContributions({
     setLoading(true);
     setError(null);
 
-    if (!editingId && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
+    }
+
+    let stampedBusinessUnitId: string | null = null;
+    if (editingId) {
+      const existing = entries.find((entry) => entry.id === editingId);
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          existing?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+    } else {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+      stampedBusinessUnitId = stampResult.businessUnitId;
     }
 
     const payload = {
@@ -188,9 +240,7 @@ export default function CapitalContributions({
           .eq("id", editingId)
       : await supabase.from("capital_contributions").insert({
           ...payload,
-          business_unit_id: stampBusinessUnit.ok
-            ? stampBusinessUnit.businessUnitId
-            : null,
+          business_unit_id: stampedBusinessUnitId,
         });
 
     if (saveError) {

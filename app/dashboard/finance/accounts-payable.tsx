@@ -44,6 +44,12 @@ import ScrollableTable, {
 import FilteredListCount from "../filtered-list-count";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 type AccountsPayableProps = {
   initialEntries: AccountsPayableEntry[];
@@ -266,6 +272,25 @@ export default function AccountsPayable({
     setDeletingId(id);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingId(null);
+      return;
+    }
+
+    const existing = entries.find((entry) => entry.id === id);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingId(null);
+      return;
+    }
+
     const { tenantId, error: tenantError } =
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
@@ -298,16 +323,44 @@ export default function AccountsPayable({
     setLoading(true);
     setError(null);
 
-    if (!editingId && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
     }
 
-    const grossBeforeWht = Number(form.amount) || 0;
     const existingEntry = editingId
       ? entries.find((entry) => entry.id === editingId)
       : null;
+
+    let stampedBusinessUnitId: string | null;
+    if (editingId) {
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          existingEntry?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+      stampedBusinessUnitId = existingEntry?.business_unit_id ?? null;
+    } else {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+      stampedBusinessUnitId = stampResult.businessUnitId;
+    }
+
+    const grossBeforeWht = Number(form.amount) || 0;
     const amountPaid = existingEntry?.amount_paid ?? 0;
     const whtRate = Number(form.wht_rate) || 0;
     const whtAmount = Math.max(0, roundTaxAmount(Number(form.wht_amount) || 0));
@@ -326,12 +379,6 @@ export default function AccountsPayable({
     const balanceDue = calculateBalanceDue(amount, amountPaid);
     const daysOutstanding = calculateDaysOutstanding(form.due_date);
     const status = calculateStatus(balanceDue, daysOutstanding);
-
-    const stampedBusinessUnitId = editingId
-      ? (existingEntry?.business_unit_id ?? null)
-      : stampBusinessUnit.ok
-        ? stampBusinessUnit.businessUnitId
-        : null;
 
     const { tenantId, error: tenantError } =
       await resolveSessionTenantId(supabase);
@@ -441,6 +488,24 @@ export default function AccountsPayable({
       setError(
         `Payment exceeds balance due (${formatGHS(remaining)} remaining).`,
       );
+      setRecordingPayment(false);
+      return;
+    }
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setRecordingPayment(false);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        paymentEntry.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
       setRecordingPayment(false);
       return;
     }

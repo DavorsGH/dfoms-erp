@@ -1,8 +1,14 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireAuthenticated, requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  assertServerRowWriteAccess,
+  getServerAuthUid,
+} from "@/utils/business-unit-access.server";
 import { validateRecordPaymentBody, type RecordClientInvoicePaymentBody } from "@/utils/client-receipts-types";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { createClient } from "@/utils/supabase/server";
 import type { ClientInvoiceHeaderRow } from "@/utils/client-invoices-types";
 import type { ClientReceiptHeaderRow } from "@/utils/client-receipts-types";
 
@@ -47,6 +53,24 @@ export async function POST(request: Request, context: RouteContext) {
   const validationError = validateRecordPaymentBody(body);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const authUser = await getServerAuthUid(supabase);
+  if (!authUser.ok) {
+    return NextResponse.json({ error: authUser.error }, { status: authUser.status });
+  }
+
+  const rowAccess = await assertServerRowWriteAccess({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: authUser.authUid,
+    table: "client_invoices",
+    rowId: invoiceId,
+  });
+  if (!rowAccess.ok) {
+    return NextResponse.json({ error: rowAccess.error }, { status: rowAccess.status });
   }
 
   const admin = createAdminClient();

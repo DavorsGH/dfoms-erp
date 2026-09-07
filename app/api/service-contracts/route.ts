@@ -2,6 +2,10 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import {
+  getServerAuthUid,
+  resolveServerWriteBusinessUnitId,
+} from "@/utils/business-unit-access.server";
+import {
   createServiceContract,
   getNextServiceContractSequence,
   peekNextServiceContractNumber,
@@ -113,10 +117,25 @@ export async function POST(request: Request) {
   }
 
   const supabase = await getTenantSupabase();
+  const authUser = await getServerAuthUid(supabase);
+  if (!authUser.ok) {
+    return NextResponse.json({ error: authUser.error }, { status: authUser.status });
+  }
+
+  const writeBu = await resolveServerWriteBusinessUnitId({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: authUser.authUid,
+  });
+  if (!writeBu.ok) {
+    return NextResponse.json({ error: writeBu.error }, { status: writeBu.status });
+  }
+
   const { contract, error } = await createServiceContract(
     supabase,
     auth.tenantId,
     body,
+    { businessUnitId: writeBu.businessUnitId },
   );
 
   if (error || !contract) {

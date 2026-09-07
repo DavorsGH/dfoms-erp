@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import { resolveFallbackBusinessUnitId } from "@/utils/tenant-default-business-unit";
 
 /** Paystack Ghana transaction fee rate applied platform-wide. */
 export const PAYSTACK_TRANSACTION_FEE_RATE = 0.0195;
@@ -102,7 +103,120 @@ type ExpenseFeePostOptions = {
   paidAt: string | null | undefined;
   description: string;
   notes: string;
+  /** When set, stamps expense_register.business_unit_id directly. */
+  businessUnitId?: string | null;
+  /** Resolve BU from income_register when businessUnitId is omitted. */
+  invoiceNo?: string | null;
+  incomeIds?: string[] | null;
 };
+
+async function lookupIncomeRegisterBusinessUnitId(
+  admin: SupabaseClient,
+  tenantId: string,
+  options: { invoiceNo?: string | null; incomeIds?: string[] | null },
+): Promise<string | null> {
+  const incomeIds = (options.incomeIds ?? []).filter(
+    (id): id is string => typeof id === "string" && id.trim().length > 0,
+  );
+  if (incomeIds.length > 0) {
+    const { data, error } = await admin
+      .from("income_register")
+      .select("business_unit_id")
+      .eq("tenant_id", tenantId)
+      .in("id", incomeIds)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `[paystack-finance] Failed resolving income_register BU from income ids: ${error.message}`,
+      );
+    }
+
+    const fromIds =
+      typeof data?.business_unit_id === "string"
+        ? data.business_unit_id.trim() || null
+        : null;
+    if (fromIds) {
+      return fromIds;
+    }
+  }
+
+  const invoiceNo = options.invoiceNo?.trim();
+  if (invoiceNo) {
+    const { data, error } = await admin
+      .from("income_register")
+      .select("business_unit_id")
+      .eq("tenant_id", tenantId)
+      .eq("invoice_no", invoiceNo)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        `[paystack-finance] Failed resolving income_register BU for invoice ${invoiceNo}: ${error.message}`,
+      );
+    }
+
+    return typeof data?.business_unit_id === "string"
+      ? data.business_unit_id.trim() || null
+      : null;
+  }
+
+  return null;
+}
+
+async function resolveTenantFallbackBusinessUnitId(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<string | null> {
+  const [{ data: units }, { data: tenant }] = await Promise.all([
+    admin
+      .from("business_units")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .order("name", { ascending: true }),
+    admin.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
+  ]);
+
+  if (units === null) {
+    throw new Error(
+      `[paystack-finance] Failed loading business units for tenant ${tenantId}.`,
+    );
+  }
+
+  return resolveFallbackBusinessUnitId(
+    (units as Array<{ id: string; name: string }> | null) ?? [],
+    tenant?.name ?? null,
+  );
+}
+
+/** Inherit BU from the triggering sale/invoice, else tenant fallback. */
+async function resolvePaystackExpenseBusinessUnitId(
+  admin: SupabaseClient,
+  tenantId: string,
+  options: {
+    businessUnitId?: string | null;
+    invoiceNo?: string | null;
+    incomeIds?: string[] | null;
+  },
+): Promise<string | null> {
+  const explicit = options.businessUnitId?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const fromIncome = await lookupIncomeRegisterBusinessUnitId(admin, tenantId, {
+    invoiceNo: options.invoiceNo,
+    incomeIds: options.incomeIds,
+  });
+  if (fromIncome) {
+    return fromIncome;
+  }
+
+  return resolveTenantFallbackBusinessUnitId(admin, tenantId);
+}
 
 type PropertyFeePostOptions = {
   landlordTenantId: string;
@@ -257,6 +371,16 @@ export async function postPaystackFeeToExpenseRegister(
     return "already_posted";
   }
 
+  const businessUnitId = await resolvePaystackExpenseBusinessUnitId(
+    admin,
+    options.tenantId,
+    {
+      businessUnitId: options.businessUnitId,
+      invoiceNo: options.invoiceNo,
+      incomeIds: options.incomeIds,
+    },
+  );
+
   const paymentDate = resolvePaystackPaymentDate(options.paidAt);
   const { error: insertError } = await admin.from("expense_register").insert({
     tenant_id: options.tenantId,
@@ -273,6 +397,7 @@ export async function postPaystackFeeToExpenseRegister(
     receipt_no: receiptNo,
     payment_status: "Paid",
     notes: options.notes,
+    business_unit_id: businessUnitId,
   });
 
   if (insertError) {
@@ -671,6 +796,8 @@ export async function postProductSalePaystackFee(
     paidAt: string | null | undefined;
     flowLabel: string;
     invoiceNo?: string | null;
+    businessUnitId?: string | null;
+    incomeIds?: string[] | null;
   },
 ): Promise<void> {
   const reference = options.reference.trim();
@@ -698,6 +825,9 @@ export async function postProductSalePaystackFee(
     ]
       .filter(Boolean)
       .join(" "),
+    businessUnitId: options.businessUnitId,
+    invoiceNo: options.invoiceNo,
+    incomeIds: options.incomeIds,
   });
 }
 

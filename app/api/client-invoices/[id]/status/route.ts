@@ -2,6 +2,10 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import {
+  assertServerRowWriteAccess,
+  getServerAuthUid,
+} from "@/utils/business-unit-access.server";
+import {
   loadClientInvoiceDetail,
   updateClientInvoiceStatus,
 } from "@/utils/client-invoices-api";
@@ -46,6 +50,22 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+
+  const authUser = await getServerAuthUid(supabase);
+  if (!authUser.ok) {
+    return NextResponse.json({ error: authUser.error }, { status: authUser.status });
+  }
+
+  const rowAccess = await assertServerRowWriteAccess({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: authUser.authUid,
+    table: "client_invoices",
+    rowId: id,
+  });
+  if (!rowAccess.ok) {
+    return NextResponse.json({ error: rowAccess.error }, { status: rowAccess.status });
+  }
 
   const existing = await loadClientInvoiceDetail(supabase, auth.tenantId, id);
   if (existing.error || !existing.invoice) {

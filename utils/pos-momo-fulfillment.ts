@@ -171,6 +171,7 @@ export async function fulfillPosCartSnapshotPaymentRequest(
         paidAt: options.paidAt ?? new Date().toISOString(),
         flowLabel: "POS product sale",
         invoiceNo: requestRow.invoice_no,
+        incomeIds: requestRow.income_ids,
       });
     }
     return {
@@ -213,6 +214,7 @@ export async function fulfillPosCartSnapshotPaymentRequest(
         paidAt: options.paidAt ?? new Date().toISOString(),
         flowLabel: "POS product sale",
         invoiceNo: requestRow.invoice_no,
+        incomeIds: existingIncomeIds,
       });
     }
     return {
@@ -343,6 +345,8 @@ export async function fulfillPosCartSnapshotPaymentRequest(
     paidAt: options.paidAt ?? new Date().toISOString(),
     flowLabel: "POS product sale",
     invoiceNo: allocatedInvoiceNo,
+    businessUnitId: snapshot.businessUnitId ?? null,
+    incomeIds,
   });
 
   // Best-effort transactional customer notices (never block fulfillment).

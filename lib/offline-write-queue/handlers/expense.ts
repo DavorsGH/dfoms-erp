@@ -2,6 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveManualExpenseReceiptNo } from "@/app/dashboard/finance/expense-register-api";
 import { syncPurchaseTaxLedger } from "@/app/dashboard/finance/tax-ledger-sync";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
+import {
+  assertBusinessUnitAccess,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+} from "@/utils/business-unit-access";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
 
 function isUniqueViolation(error: { code?: string; message?: string } | null): boolean {
@@ -32,6 +37,22 @@ export async function syncExpenseQueueItem(
   | { ok: false; error: string }
 > {
   const payload = input.payload;
+
+  const buContext = await loadWriteBusinessUnitContext(supabase);
+  if (!buContext.ok) {
+    return { ok: false, error: buContext.error };
+  }
+
+  if (buContext.allowedUnits !== null) {
+    try {
+      assertBusinessUnitAccess(
+        buContext.allowedUnits,
+        payload.business_unit_id ?? null,
+      );
+    } catch (accessError) {
+      return { ok: false, error: formatBusinessUnitAccessError(accessError) };
+    }
+  }
 
   let expenseId: string | null = null;
 

@@ -28,10 +28,17 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 export type DirectorsLoanRepaymentRecord = DirectorsLoanRepaymentRow & {
   id: string;
   notes?: string | null;
+  business_unit_id?: string | null;
 };
 
 type DirectorsLoanRepaymentsPanelProps = {
@@ -161,6 +168,25 @@ export default function DirectorsLoanRepaymentsPanel({
     setDeletingId(id);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingId(null);
+      return;
+    }
+
+    const existing = repayments.find((row) => row.id === id);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingId(null);
+      return;
+    }
+
     const { error: deleteError } = await supabase
       .from("directors_loan_repayments")
       .delete()
@@ -182,10 +208,37 @@ export default function DirectorsLoanRepaymentsPanel({
     setLoading(true);
     setError(null);
 
-    if (!editingId && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
+    }
+
+    let stampedBusinessUnitId: string | null = null;
+    if (editingId) {
+      const existing = repayments.find((row) => row.id === editingId);
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          existing?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+    } else {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+      stampedBusinessUnitId = stampResult.businessUnitId;
     }
 
     const amount = Number(form.amount) || 0;
@@ -251,9 +304,7 @@ export default function DirectorsLoanRepaymentsPanel({
         .from("directors_loan_repayments")
         .insert({
           ...payload,
-          business_unit_id: stampBusinessUnit.ok
-            ? stampBusinessUnit.businessUnitId
-            : null,
+          business_unit_id: stampedBusinessUnitId,
         });
 
       if (insertError) {

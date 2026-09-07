@@ -1,6 +1,12 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
+import {
+  assertServerRowWriteAccess,
+  getServerAuthUid,
+} from "@/utils/business-unit-access.server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { createClient } from "@/utils/supabase/server";
 import { uploadServiceContractDocument } from "@/utils/service-contract-document-upload";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
 
@@ -26,6 +32,24 @@ export async function POST(request: Request) {
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const authUser = await getServerAuthUid(supabase);
+  if (!authUser.ok) {
+    return NextResponse.json({ error: authUser.error }, { status: authUser.status });
+  }
+
+  const rowAccess = await assertServerRowWriteAccess({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: authUser.authUid,
+    table: "service_contracts",
+    rowId: contractId,
+  });
+  if (!rowAccess.ok) {
+    return NextResponse.json({ error: rowAccess.error }, { status: rowAccess.status });
   }
 
   const admin = createAdminClient();

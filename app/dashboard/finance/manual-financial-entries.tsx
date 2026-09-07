@@ -6,6 +6,12 @@ import { createClient } from "@/utils/supabase/client";
 import { MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT } from "@/utils/phase5e-key-structure";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
+import {
   useBusinessUnitReadScope,
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
@@ -253,10 +259,39 @@ export default function ManualFinancialEntries({
     setError(null);
     setInfoMessage(null);
 
-    if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
+    }
+
+    const stampResult = resolveWriteBusinessUnitIdForCreate({
+      allowedUnits: buContext.allowedUnits,
+      stamp: stampBusinessUnit,
+    });
+    if (!stampResult.ok) {
+      setError(stampResult.error);
+      setLoading(false);
+      return;
+    }
+
+    const existingForPeriod = findEntryByPeriodMonth(
+      entries,
+      normalizePeriodMonth(row.period_month),
+      activeBusinessUnitId,
+    );
+    if (existingForPeriod) {
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          existingForPeriod.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
     }
 
     const { error: saveError } = await supabase
@@ -264,7 +299,7 @@ export default function ManualFinancialEntries({
       .upsert(
         upsertPayloadFromRow({
           ...row,
-          business_unit_id: stampBusinessUnit.businessUnitId,
+          business_unit_id: stampResult.businessUnitId,
         }),
         {
           onConflict: MANUAL_FINANCIAL_ENTRIES_ON_CONFLICT,
@@ -311,6 +346,24 @@ export default function ManualFinancialEntries({
     const normalized = normalizePeriodMonth(entry.period_month);
     setDeletingPeriodMonth(normalized);
     setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingPeriodMonth(null);
+      return;
+    }
+
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        entry.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingPeriodMonth(null);
+      return;
+    }
 
     // Delete only the row for this period within the current read scope
     // (never unscoped, never another BU's period row).

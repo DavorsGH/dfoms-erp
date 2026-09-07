@@ -52,6 +52,12 @@ import {
 } from "./vendor-select-utils";
 import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  assertCanModifyBusinessUnitRow,
+  formatBusinessUnitAccessError,
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 type FixedAssetsProps = {
   initialAssets: FixedAssetEntry[];
@@ -317,6 +323,25 @@ export default function FixedAssets({
     setDeletingId(assetId);
     setError(null);
 
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingId(null);
+      return;
+    }
+
+    const existing = assets.find((asset) => asset.asset_id === assetId);
+    try {
+      assertCanModifyBusinessUnitRow(
+        buContext.allowedUnits,
+        existing?.business_unit_id,
+      );
+    } catch (accessError) {
+      setError(formatBusinessUnitAccessError(accessError));
+      setDeletingId(null);
+      return;
+    }
+
     const { tenantId, error: tenantError } =
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
@@ -390,10 +415,41 @@ export default function FixedAssets({
     setLoading(true);
     setError(null);
 
-    if (!editingId && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
+    }
+
+    const existingAsset = editingId
+      ? assets.find((asset) => asset.asset_id === editingId)
+      : null;
+
+    let stampedBusinessUnitId: string | null;
+    if (editingId) {
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          existingAsset?.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setLoading(false);
+        return;
+      }
+      stampedBusinessUnitId = existingAsset?.business_unit_id ?? null;
+    } else {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+      stampedBusinessUnitId = stampResult.businessUnitId;
     }
 
     const originalCost = Number(form.original_cost);
@@ -486,9 +542,6 @@ export default function FixedAssets({
       return;
     }
 
-    const existingAsset = editingId
-      ? assets.find((asset) => asset.asset_id === editingId)
-      : null;
     let savedAssetId = editingId;
 
     if (!editingId) {
@@ -513,22 +566,14 @@ export default function FixedAssets({
       inputVatAmount: purchaseTax.inputVatAmount,
       counterpartyName: vendorName || null,
       notes: payload.asset_name.trim() || null,
-      businessUnitId: editingId
-        ? (existingAsset?.business_unit_id ?? null)
-        : stampBusinessUnit.ok
-          ? stampBusinessUnit.businessUnitId
-          : null,
+      businessUnitId: stampedBusinessUnitId,
     });
 
     const { error: saveError } = await supabase.rpc("save_fixed_asset", {
       p_tenant_id: tenantId,
       p_asset_id: savedAssetId,
       p_is_update: Boolean(editingId),
-      p_business_unit_id: editingId
-        ? (existingAsset?.business_unit_id ?? null)
-        : stampBusinessUnit.ok
-          ? stampBusinessUnit.businessUnitId
-          : null,
+      p_business_unit_id: stampedBusinessUnitId,
       p_asset_name: payload.asset_name,
       p_asset_category: payload.asset_category,
       p_purchase_date: payload.purchase_date,
