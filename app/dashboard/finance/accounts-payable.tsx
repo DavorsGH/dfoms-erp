@@ -608,7 +608,7 @@ export default function AccountsPayable({
     <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-600">
-          Track vendor invoices, payments, and outstanding balances.
+          Track supplier invoices, payments, and outstanding balances.
         </p>
         <button
           type="button"
@@ -636,7 +636,7 @@ export default function AccountsPayable({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Vendor Name
+                  Supplier Name
                 </label>
                 <input
                   type="text"
@@ -1002,7 +1002,7 @@ export default function AccountsPayable({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableStickyFirstThClassName}>Vendor Name</th>
+                <th className={scrollableTableStickyFirstThClassName}>Supplier Name</th>
                 <th className={scrollableTableThClassName}>Invoice Number</th>
                 <th className={scrollableTableThClassName}>Expense Category</th>
                 <th className={scrollableTableThClassName}>Sub-Category</th>

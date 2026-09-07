@@ -677,13 +677,13 @@ function collectExpenseWarnings(
   if (duplicateKey) {
     if (options.inFileDuplicateExpenseKeys.has(duplicateKey)) {
       warnings.push(
-        "Warning: Possible duplicate: a similar expense (same date/vendor/price/category/payment method) appears elsewhere in this file",
+        "Warning: Possible duplicate: a similar expense (same date/supplier/price/category/payment method) appears elsewhere in this file",
       );
     }
 
     if (options.existingExpenseDuplicateKeys.has(duplicateKey)) {
       warnings.push(
-        "Warning: Possible duplicate: a similar expense (same date/vendor/price/category/payment method) already exists",
+        "Warning: Possible duplicate: a similar expense (same date/supplier/price/category/payment method) already exists",
       );
     }
   }
@@ -1270,7 +1270,7 @@ function collectFieldErrors(
       isBlank(mappedData.vendor_name)
     ) {
       errors.push(
-        "vendor_name is required when payment method is credit / on account",
+        "Supplier name is required when payment method is credit / on account",
       );
     }
   }

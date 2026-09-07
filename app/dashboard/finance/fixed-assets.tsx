@@ -470,17 +470,17 @@ export default function FixedAssets({
       suppliers,
     );
     if (!vendorName) {
-      setError("Vendor is required.");
+      setError("Supplier is required.");
       setLoading(false);
       return;
     }
     if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
-      setError("Enter the one-time vendor name.");
+      setError("Enter the one-time supplier name.");
       setLoading(false);
       return;
     }
     if (isCreditPaymentMethod(paymentMethod) && !vendorName) {
-      setError("Vendor name is required for credit / on-account purchases.");
+      setError("Supplier name is required for credit / on-account purchases.");
       setLoading(false);
       return;
     }
@@ -878,7 +878,7 @@ export default function FixedAssets({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Vendor
+                  Supplier
                 </label>
                 <select
                   required
@@ -886,19 +886,19 @@ export default function FixedAssets({
                   onChange={(e) => updateField("vendor_select", e.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select vendor</option>
+                  <option value="">Select supplier</option>
                   {suppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.name}
                     </option>
                   ))}
-                  <option value={VENDOR_OTHER_VALUE}>Other (one-time vendor)</option>
+                  <option value={VENDOR_OTHER_VALUE}>Other (one-time supplier)</option>
                 </select>
               </div>
               {form.vendor_select === VENDOR_OTHER_VALUE ? (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
-                    One-time vendor name
+                    One-time supplier name
                   </label>
                   <input
                     type="text"

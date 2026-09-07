@@ -64,7 +64,7 @@ export function buildAccountsPayableAccrualDescription(input: {
   vendorName: string;
   invoiceNumber?: string | null;
 }): string {
-  const vendor = input.vendorName.trim() || "Vendor";
+  const vendor = input.vendorName.trim() || "Supplier";
   const invoice = (input.invoiceNumber ?? "").trim() || "—";
   return `${AP_ACCRUAL_DESCRIPTION_PREFIX} — ${vendor} — Inv ${invoice}`;
 }

@@ -371,7 +371,7 @@ export function buildExpenseCommitInsert(input: {
 }): ExpenseCommitInsert {
   const vendor = String(input.mappedData.vendor ?? "").trim();
   if (!vendor) {
-    throw new Error("vendor is required.");
+    throw new Error("Supplier is required.");
   }
 
   const priceRaw = input.mappedData.price;

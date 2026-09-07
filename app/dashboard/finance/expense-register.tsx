@@ -789,12 +789,12 @@ export default function ExpenseRegister({
       suppliers,
     );
     if (!vendorName) {
-      setError("Vendor is required.");
+      setError("Supplier is required.");
       setLoading(false);
       return;
     }
     if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
-      setError("Enter the one-time vendor name.");
+      setError("Enter the one-time supplier name.");
       setLoading(false);
       return;
     }
@@ -1172,7 +1172,7 @@ export default function ExpenseRegister({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Vendor
+                  Supplier
                 </label>
                 <select
                   required
@@ -1180,19 +1180,19 @@ export default function ExpenseRegister({
                   onChange={(e) => updateField("vendor_select", e.target.value)}
                   className={inputClassName}
                 >
-                  <option value="">Select vendor</option>
+                  <option value="">Select supplier</option>
                   {suppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.name}
                     </option>
                   ))}
-                  <option value={VENDOR_OTHER_VALUE}>Other (one-time vendor)</option>
+                  <option value={VENDOR_OTHER_VALUE}>Other (one-time supplier)</option>
                 </select>
               </div>
               {form.vendor_select === VENDOR_OTHER_VALUE ? (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
-                    One-time vendor name
+                    One-time supplier name
                   </label>
                   <input
                     type="text"
@@ -1348,14 +1348,14 @@ export default function ExpenseRegister({
                   placeholder={
                     editingId
                       ? undefined
-                      : "Leave blank to auto-assign, or enter vendor receipt #"
+                      : "Leave blank to auto-assign, or enter supplier receipt #"
                   }
                   className={inputClassName}
                 />
                 {!editingId ? (
                   <p className="mt-1 text-xs text-slate-500">
                     Leave blank for an internal code (e.g. DF-EXP-0001), or type
-                    the number printed on the vendor&apos;s paper receipt.
+                    the number printed on the supplier&apos;s paper receipt.
                   </p>
                 ) : null}
               </div>
@@ -1484,7 +1484,7 @@ export default function ExpenseRegister({
                     onApply={setSubCategoryFilter}
                   />
                 </th>
-                <th className={scrollableTableThClassName}>Vendor</th>
+                <th className={scrollableTableThClassName}>Supplier</th>
                 <th className={scrollableTableThClassName}>Gross</th>
                 <th className={scrollableTableThClassName}>WHT</th>
                 <th className={scrollableTableThClassName}>Net Paid</th>

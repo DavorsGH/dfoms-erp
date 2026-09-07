@@ -393,7 +393,7 @@ export const EXPENSE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
   },
   {
     key: "vendor",
-    label: "Vendor",
+    label: "Supplier",
     required: true,
     example: "ABC Supplies Ltd",
   },
@@ -445,7 +445,7 @@ export const EXPENSE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
     required: false,
     example: "INV-2024-001",
     mappingHint:
-      "Leave blank to auto-assign (e.g. DF-EXP-0001), or enter vendor paper receipt #",
+      "Leave blank to auto-assign (e.g. DF-EXP-0001), or enter supplier paper receipt #",
   },
   {
     key: "wht_rate",
@@ -546,7 +546,7 @@ export const FIXED_ASSET_TARGET_FIELDS: readonly BulkImportTargetField[] = [
   },
   {
     key: "vendor_name",
-    label: "Vendor name",
+    label: "Supplier name",
     required: false,
     example: "ABC Furniture Ltd",
     mappingHint: "Required when payment method is credit / on account",
