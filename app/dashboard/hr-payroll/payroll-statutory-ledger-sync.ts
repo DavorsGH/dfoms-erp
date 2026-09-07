@@ -166,6 +166,26 @@ function buildDesiredLegs(
  *   do not reverse remitted history and do not insert a duplicate (unique index
  *   covers status <> 'reversed').
  */
+async function lookupPayrollPeriodBusinessUnitId(
+  admin: SupabaseClient,
+  tenantId: string,
+  payrollMonth: string,
+): Promise<string | null> {
+  const monthKey = payrollMonth.slice(0, 10);
+  const { data, error } = await admin
+    .from("month_end_close")
+    .select("business_unit_id")
+    .eq("tenant_id", tenantId)
+    .eq("month", monthKey)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data?.business_unit_id as string | null | undefined) ?? null;
+}
+
 export async function syncPayrollPeriodTaxLedger(
   admin: SupabaseClient,
   period: PayrollStatutoryPeriod,
@@ -174,7 +194,16 @@ export async function syncPayrollPeriodTaxLedger(
   options?: SyncPayrollPeriodTaxLedgerOptions,
 ): Promise<PayrollStatutoryLedgerResult> {
   const dryRun = options?.dryRun === true;
-  const businessUnitId = options?.businessUnitId ?? null;
+  const businessUnitId = Object.prototype.hasOwnProperty.call(
+    options ?? {},
+    "businessUnitId",
+  )
+    ? (options?.businessUnitId ?? null)
+    : await lookupPayrollPeriodBusinessUnitId(
+        admin,
+        tenantId,
+        period.payrollMonth,
+      );
   const sourceId = buildPayrollPeriodTaxLedgerSourceId(period.payrollMonth);
   const periodMonth = toPeriodMonth(period.payrollMonth);
   const desired = buildDesiredLegs(rows);
