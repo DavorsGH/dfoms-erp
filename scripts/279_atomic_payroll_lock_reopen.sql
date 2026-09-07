@@ -239,6 +239,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public._payroll_upsert_deduction_savings_income(
   p_tenant_id uuid,
+  p_business_unit_id uuid,
   p_period_end date,
   p_period_key text,
   p_month_label text,
@@ -292,7 +293,8 @@ BEGIN
         output_tax_component = NULL,
         wht_rate = NULL,
         wht_amount = 0,
-        is_system_adjustment = true
+        is_system_adjustment = true,
+        business_unit_id = p_business_unit_id
       WHERE id = v_existing.id;
       RETURN 'updated';
     END IF;
@@ -301,6 +303,7 @@ BEGIN
 
   INSERT INTO income_register (
     tenant_id,
+    business_unit_id,
     date,
     due_date,
     invoice_no,
@@ -323,6 +326,7 @@ BEGIN
     is_system_adjustment
   ) VALUES (
     p_tenant_id,
+    p_business_unit_id,
     p_period_end,
     p_period_end,
     v_invoice_no,
@@ -850,6 +854,7 @@ BEGIN
   IF v_deduction_savings > 0 THEN
     v_income_action := public._payroll_upsert_deduction_savings_income(
       p_tenant_id,
+      p_business_unit_id,
       v_period_end,
       v_period_key,
       v_month_label,
