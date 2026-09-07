@@ -40,6 +40,7 @@ import {
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "./finished-product-bu-stock-utils";
 
 type ProductionBatchesProps = {
@@ -174,9 +175,7 @@ export default function ProductionBatches({
           .select(PRODUCTION_BATCH_DETAIL_SELECT),
         buReadScope,
       ).order("production_date", { ascending: false }),
-      supabase
-        .from("finished_products")
-        .select(FINISHED_PRODUCT_SELECT)
+      scopedFinishedProductsQuery(supabase, buReadScope, FINISHED_PRODUCT_SELECT)
         .eq("is_archived", false)
         .order("product_name", { ascending: true }),
       supabase
@@ -218,8 +217,7 @@ export default function ProductionBatches({
           normalizeFinishedProduct(row),
         ),
         productStockMap,
-        // Full catalog for first-time production under a named BU.
-        "default",
+        buReadScope.mode,
       ),
     );
     setMaterials(

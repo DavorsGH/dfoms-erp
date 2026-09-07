@@ -11,10 +11,12 @@ import {
 import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
+  type FinishedProductRecord,
 } from "../inventory/finished-products-utils";
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "../inventory/finished-product-bu-stock-utils";
 import type { FinishedProductAverageCostRow } from "../inventory/inventory-balance-sheet-utils";
 import type { ProductionBatchRecord } from "../inventory/production-batches-utils";
@@ -71,10 +73,10 @@ export async function fetchStockOnHandReportData(
       .from("raw_materials")
       .select(RAW_MATERIAL_SELECT)
       .order("material_name", { ascending: true }),
-    supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
-      .order("product_name", { ascending: true }),
+    scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT).order(
+      "product_name",
+      { ascending: true },
+    ),
     // Combined production_batches + product_purchases weighted average cost.
     supabase.rpc("get_finished_product_average_costs", {
       p_tenant_id: tenantId,
@@ -90,7 +92,9 @@ export async function fetchStockOnHandReportData(
     { overlayAverageCost: true },
   );
   const normalizedFinishedProducts = mergeScopedStockOntoProducts(
-    (finishedProducts ?? []).map((row) => normalizeFinishedProduct(row)),
+    ((finishedProducts ?? []) as FinishedProductRecord[]).map((row) =>
+      normalizeFinishedProduct(row),
+    ),
     finishedProductStockMap,
     buScope.mode,
   );
@@ -129,10 +133,10 @@ export async function fetchProductionHistoryReportData(
           .select(PRODUCTION_BATCH_DETAIL_SELECT),
         buScope,
       ).order("production_date", { ascending: false }),
-      supabase
-        .from("finished_products")
-        .select("id, product_name")
-        .order("product_name", { ascending: true }),
+      scopedFinishedProductsQuery(supabase, buScope, "id, product_name").order(
+        "product_name",
+        { ascending: true },
+      ),
     ]);
 
   return {
@@ -162,10 +166,10 @@ export async function fetchProductSalesReportData(
       buScope,
     ).order("date", { ascending: false }),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
-    supabase
-      .from("finished_products")
-      .select("id, product_name")
-      .order("product_name", { ascending: true }),
+    scopedFinishedProductsQuery(supabase, buScope, "id, product_name").order(
+      "product_name",
+      { ascending: true },
+    ),
   ]);
 
   return {
@@ -193,10 +197,10 @@ export async function fetchInternalConsumptionReportData(
         .select(INTERNAL_CONSUMPTION_SELECT),
       buScope,
     ).order("consumption_date", { ascending: false }),
-    supabase
-      .from("finished_products")
-      .select("id, product_name")
-      .order("product_name", { ascending: true }),
+    scopedFinishedProductsQuery(supabase, buScope, "id, product_name").order(
+      "product_name",
+      { ascending: true },
+    ),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
       .from("sites")

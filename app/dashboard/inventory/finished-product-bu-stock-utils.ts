@@ -7,10 +7,9 @@
  *
  * All Businesses → stockMap null; callers keep master stock.
  * Default (NULL BU) → overlay; missing balance → current_stock 0 (catalog still listed).
- * Named unit → only products with a balance row for that BU appear (list pages);
- *   pickers that need the full catalog (e.g. Production Batch finished product,
- *   first-time receive) should pass scopeMode "default" so missing balances
- *   zero-fill instead of dropping rows.
+ * Named unit → overlay balance stock when present; missing balance → current_stock 0.
+ *   Catalog queries are BU-scoped on finished_products.business_unit_id, so tagged
+ *   products must remain visible even before a balance row exists for that unit.
  *
  * finished_products has no master average_cost_per_unit column — WAC lives only
  * on finished_product_balances. overlayAverageCost is opt-in and never falls
@@ -46,6 +45,19 @@ export type MergeScopedFinishedProductStockOptions = {
 
 const BALANCE_SELECT =
   "product_id, current_stock, average_cost_per_unit" as const;
+
+export function scopedFinishedProductsQuery(
+  supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope,
+  select: string,
+) {
+  // Dynamic select strings lose Postgrest row inference; callers cast rows as needed.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return applyBusinessUnitScope(
+    supabase.from("finished_products").select(select),
+    buScope,
+  ) as any;
+}
 
 /**
  * Load per-product stock for the active business-unit read scope.
@@ -97,12 +109,8 @@ export async function fetchScopedFinishedProductStock(
  * - stockMap null (All Businesses): return products unchanged (master stock).
  * - mode "default": overlay balance stock; missing balance → current_stock 0
  *   (still list every catalog product).
- * - mode "unit": keep only products that have a balance row for that BU;
- *   use that row's current_stock. Products never allocated to the unit are
- *   omitted (not shown as 0 / false low-stock).
- *
- * Pass `{ overlayAverageCost: true }` to also overlay balance WAC onto
- * average_cost_per_unit (null when missing under default).
+ * - mode "unit": overlay balance stock; missing balance → current_stock 0
+ *   (catalog is already filtered by business_unit_id on finished_products).
  */
 export function mergeScopedStockOntoProducts<
   T extends {
@@ -113,7 +121,7 @@ export function mergeScopedStockOntoProducts<
 >(
   products: T[],
   stockMap: Map<string, ScopedFinishedProductStockEntry> | null,
-  scopeMode: BusinessUnitReadScope["mode"] = "all",
+  _scopeMode: BusinessUnitReadScope["mode"] = "all",
   options?: MergeScopedFinishedProductStockOptions,
 ): T[] {
   if (stockMap == null) {
@@ -121,22 +129,6 @@ export function mergeScopedStockOntoProducts<
   }
 
   const overlayAverageCost = options?.overlayAverageCost === true;
-
-  if (scopeMode === "unit") {
-    const allocated: T[] = [];
-    for (const product of products) {
-      const entry = stockMap.get(product.id);
-      if (!entry) continue;
-      allocated.push({
-        ...product,
-        current_stock: entry.current_stock,
-        ...(overlayAverageCost
-          ? { average_cost_per_unit: entry.average_cost_per_unit }
-          : {}),
-      });
-    }
-    return allocated;
-  }
 
   return products.map((product) => {
     const entry = stockMap.get(product.id);

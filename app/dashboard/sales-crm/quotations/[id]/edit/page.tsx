@@ -9,18 +9,22 @@ import {
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import { fetchScopedEmployeeIds, applyEmployeeIdScope } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
-import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
+import {
+  FINISHED_PRODUCT_SELECT,
+  normalizeFinishedProduct,
+  type FinishedProductRecord,
+} from "@/app/dashboard/inventory/finished-products-utils";
+import { scopedFinishedProductsQuery } from "@/app/dashboard/inventory/finished-product-bu-stock-utils";
 import {
   HR_EMPLOYEE_SELECT,
   filterActiveEmployees,
   type HrEmployee,
 } from "@/app/dashboard/hr-payroll/employee-utils";
 import { loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
-import {
-  FINISHED_PRODUCT_SELECT,
-  normalizeFinishedProduct,
-  type FinishedProductRecord,
-} from "@/app/dashboard/inventory/finished-products-utils";
 import { loadClientQuotationDetail } from "@/utils/client-quotations-api";
 import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
 import {
@@ -90,13 +94,13 @@ export default async function EditClientQuotationPage({
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .order("account_name", { ascending: true }),
-    supabase
-      .from("sales_opportunities")
-      .select("id, opportunity_name, client_id")
-      .order("opportunity_name", { ascending: true }),
-    supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
+    applyBusinessUnitScope(
+      supabase
+        .from("sales_opportunities")
+        .select("id, opportunity_name, client_id"),
+      buScope,
+    ).order("opportunity_name", { ascending: true }),
+    scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT)
       .eq("tenant_id", tenantId)
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),

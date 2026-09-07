@@ -14,6 +14,10 @@ import {
 import { buildProductSaleReceiptData } from "../product-sale-receipt";
 import type { CrmSaleEntry } from "./sales-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 
 export type SalesLogReceiptKind = "pos" | "product_sale" | "unsupported";
 
@@ -102,14 +106,18 @@ export function buildPosReceiptFromProductSaleEntries(
 
 async function loadProductSaleRows(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope,
   filter:
     | { kind: "id"; id: string }
     | { kind: "invoice_no"; invoiceNo: string },
 ): Promise<ProductSaleEntry[]> {
-  let query = supabase
-    .from("income_register")
-    .select(PRODUCT_SALES_SELECT)
-    .eq("entry_type", "product_sale");
+  let query = applyBusinessUnitScope(
+    supabase
+      .from("income_register")
+      .select(PRODUCT_SALES_SELECT)
+      .eq("entry_type", "product_sale"),
+    buScope,
+  );
 
   if (filter.kind === "id") {
     query = query.eq("id", filter.id);
@@ -127,6 +135,7 @@ async function loadProductSaleRows(
 
 export async function loadSalesLogReceiptData(
   supabase: SupabaseClient,
+  buScope: BusinessUnitReadScope,
   sale: CrmSaleEntry,
   clients: ClientEntry[] = [],
 ):
@@ -155,7 +164,7 @@ export async function loadSalesLogReceiptData(
       };
     }
 
-    const rows = await loadProductSaleRows(supabase, {
+    const rows = await loadProductSaleRows(supabase, buScope, {
       kind: "invoice_no",
       invoiceNo,
     });
@@ -172,7 +181,7 @@ export async function loadSalesLogReceiptData(
     };
   }
 
-  const rows = await loadProductSaleRows(supabase, { kind: "id", id: sale.id });
+  const rows = await loadProductSaleRows(supabase, buScope, { kind: "id", id: sale.id });
   const entry = rows[0];
   if (!entry) {
     return {

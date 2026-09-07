@@ -2,9 +2,15 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { ReferenceLookupsPayload } from "@/lib/client-cache/types";
 import {
+  getActiveBusinessUnitId,
   getCurrentAuthUid,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 
 export const runtime = "nodejs";
@@ -20,6 +26,14 @@ export async function GET() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     departmentsResult,
@@ -41,12 +55,14 @@ export async function GET() {
       .select("position_title")
       .eq("tenant_id", tenantId)
       .order("position_title", { ascending: true }),
-    supabase
-      .from("projects")
-      .select("project_code, project_name")
-      .eq("tenant_id", tenantId)
-      .eq("is_archived", false)
-      .order("project_name", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("projects")
+        .select("project_code, project_name")
+        .eq("tenant_id", tenantId)
+        .eq("is_archived", false),
+      buScope,
+    ).order("project_name", { ascending: true }),
     supabase.from("shifts").select("name").order("name", { ascending: true }),
     supabase
       .from("expense_categories")

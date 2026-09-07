@@ -2,7 +2,15 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import { getPlatformOnlyUnitActivationPricing } from "@/utils/platform-billing-config";
 import {
   DAVORS_TENANT_ID,
@@ -21,12 +29,20 @@ export default async function ProductsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const admin = createAdminClient();
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data, error }, platformPricing] = await Promise.all([
-    supabase
-      .from("crm_products")
-      .select(CRM_PRODUCT_SELECT)
-      .order("name", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase.from("crm_products").select(CRM_PRODUCT_SELECT),
+      buScope,
+    ).order("name", { ascending: true }),
     getPlatformOnlyUnitActivationPricing(admin),
   ]);
 

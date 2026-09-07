@@ -3,8 +3,12 @@
  *
  * Separates:
  *   - All Businesses (aggregate, view-only — not a stamp target)
- *   - Workspace default (active_business_unit_id null — untagged/legacy rows)
+ *   - Workspace default (active_business_unit_id null — legacy untagged rows only)
  *   - Specific business unit (uuid)
+ *
+ * After business-unit backfill, named units (including Davors Facilities) always
+ * use mode "unit" with a real UUID. mode "default" remains for tenants with no
+ * active business_units rows and for reading legacy NULL-tagged data explicitly.
  *
  * Distinctive string constants below are intentional guard-262 scan markers.
  */

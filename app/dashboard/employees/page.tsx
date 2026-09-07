@@ -53,7 +53,7 @@ export default async function EmployeesPage() {
 
   const [{ data, error }, lookups, payConfig] = await Promise.all([
     employeeQuery,
-    loadEmployeeLookups(supabase, tenantId),
+    loadEmployeeLookups(supabase, tenantId, buScope),
     loadEmployeePayConfig(supabase, tenantId),
   ]);
 

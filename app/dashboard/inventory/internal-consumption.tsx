@@ -24,6 +24,7 @@ import {
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "./finished-product-bu-stock-utils";
 import {
   filterInternalConsumptionSites,
@@ -118,9 +119,7 @@ export default function InternalConsumption({
       )
         .order("consumption_date", { ascending: false })
         .order("created_at", { ascending: false }),
-      supabase
-        .from("finished_products")
-        .select(FINISHED_PRODUCT_SELECT)
+      scopedFinishedProductsQuery(supabase, buReadScope, FINISHED_PRODUCT_SELECT)
         .eq("is_archived", false)
         .order("product_name", { ascending: true }),
     ]);

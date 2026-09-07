@@ -27,6 +27,7 @@ import {
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "../finished-product-bu-stock-utils";
 import InventoryShell from "../inventory-shell";
 
@@ -50,10 +51,10 @@ export default async function FinishedProductsPage() {
     lotDatesResult,
     scopedStock,
   ] = await Promise.all([
-    supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
-      .order("product_name", { ascending: true }),
+    scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT).order(
+      "product_name",
+      { ascending: true },
+    ),
     tenantId
       ? supabase
           .from("suppliers")
@@ -85,8 +86,7 @@ export default async function FinishedProductsPage() {
     ),
     lotDatesResult.lots,
   );
-  // Named BUs only see products with a balance row (stock list).
-  // Adjustment picker keeps the full catalog via initialCatalogProducts.
+  // Scoped catalog rows; stock overlay still applies per active BU.
   const displayProducts = mergeScopedStockOntoProducts(
     catalogProducts,
     scopedStock.stockMap,

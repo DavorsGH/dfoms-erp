@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { STAFF_BUSINESS_UNIT_SWITCHER_ROLES } from "@/app/dashboard/user-account-role-utils";
-import { getCurrentAuthUid } from "@/utils/dashboard-auth";
+import {
+  getCurrentAuthUid,
+  getCurrentUserAllowedBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { getUserAllowedBusinessUnits } from "@/utils/business-unit-access";
+import {
+  canViewAllBusinessUnits,
+} from "@/utils/business-unit-switcher-scope";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { resolveFallbackBusinessUnitId } from "@/utils/tenant-default-business-unit";
 import {
   BU_SELECTION_ALL,
   BU_SELECTION_DEFAULT,
@@ -73,6 +81,46 @@ export async function POST(request: Request) {
     }
   }
 
+  const allowedUnits = await getCurrentUserAllowedBusinessUnits();
+  if (!canViewAllBusinessUnits(allowedUnits)) {
+    if (
+      selection === BU_SELECTION_ALL ||
+      selection === BU_SELECTION_DEFAULT
+    ) {
+      return NextResponse.json(
+        { error: "Your account is restricted to specific business units." },
+        { status: 403 },
+      );
+    }
+  }
+
+  const admin = createAdminClient();
+
+  if (selection === BU_SELECTION_DEFAULT) {
+    const { data: units } = await admin
+      .from("business_units")
+      .select("id, name")
+      .eq("tenant_id", auth.tenantId)
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+
+    const { data: tenant } = await admin
+      .from("tenants")
+      .select("name")
+      .eq("id", auth.tenantId)
+      .maybeSingle();
+
+    const fallbackId = resolveFallbackBusinessUnitId(
+      (units as Array<{ id: string; name: string }> | null) ?? [],
+      tenant?.name ?? null,
+    );
+
+    if (fallbackId) {
+      selection = BU_SELECTION_UNIT;
+      body.business_unit_id = fallbackId;
+    }
+  }
+
   const rawId = body.business_unit_id;
   if (rawId !== null && rawId !== undefined && typeof rawId !== "string") {
     return NextResponse.json(
@@ -83,8 +131,6 @@ export async function POST(request: Request) {
 
   const businessUnitId =
     rawId === null || rawId === undefined ? null : rawId.trim() || null;
-
-  const admin = createAdminClient();
 
   if (selection === BU_SELECTION_UNIT) {
     if (!businessUnitId) {
@@ -122,6 +168,21 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Business unit is not active" },
         { status: 400 },
+      );
+    }
+
+    const allowedUnits = await getUserAllowedBusinessUnits(
+      admin,
+      auth.tenantId,
+      authUid,
+    );
+    if (
+      allowedUnits !== null &&
+      !allowedUnits.businessUnitIds.includes(businessUnitId!)
+    ) {
+      return NextResponse.json(
+        { error: "You do not have access to this business unit." },
+        { status: 403 },
       );
     }
   }

@@ -36,7 +36,7 @@ export default async function StaffIdCardsPage() {
       supabase.from("employees").select(STAFF_ID_CARD_EMPLOYEE_SELECT),
       buScope,
     ).order("staff_id", { ascending: true }),
-    loadEmployeeLookups(supabase),
+    loadEmployeeLookups(supabase, undefined, buScope),
   ]);
 
   const departmentNameMap = buildDepartmentNameMap(lookups.departments);

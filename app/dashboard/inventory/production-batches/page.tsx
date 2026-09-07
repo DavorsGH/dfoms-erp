@@ -22,6 +22,7 @@ import {
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "../finished-product-bu-stock-utils";
 import {
   normalizeProductionBatch,
@@ -69,9 +70,7 @@ export default async function ProductionBatchesPage() {
         .select(PRODUCTION_BATCH_DETAIL_SELECT),
       buScope,
     ).order("production_date", { ascending: false }),
-    supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
+    scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT)
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),
     supabase
@@ -93,10 +92,7 @@ export default async function ProductionBatchesPage() {
       normalizeFinishedProduct(row),
     ) ?? [],
     productStockMap,
-    // Full catalog so a named BU can produce a product for the first time
-    // (balance row created on first production). Stock still overlays from
-    // the active BU's stockMap; missing → 0.
-    "default",
+    buScope.mode,
   );
   const initialMaterials = mergeScopedStockOntoMaterials(
     (materials as RawMaterialRecord[] | null)?.map((row) =>

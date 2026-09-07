@@ -22,6 +22,7 @@ import FilteredListCount, {
   anyRegisterColumnFiltersActive,
 } from "../../filtered-list-count";
 import type { ClientEntry } from "../../operations/clients-utils";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import {
   ProductSaleReceiptPanel,
   type ProductSaleReceiptData,
@@ -61,6 +62,7 @@ export default function Sales({
   fetchError,
 }: SalesProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [activeReceipt, setActiveReceipt] = useState<ActiveReceipt>(null);
   const [printingKey, setPrintingKey] = useState<string | null>(null);
   const [printError, setPrintError] = useState<string | null>(null);
@@ -307,6 +309,7 @@ export default function Sales({
     try {
       const result = await loadSalesLogReceiptData(
         supabase,
+        buReadScope,
         sale,
         initialClients,
       );

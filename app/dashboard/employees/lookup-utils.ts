@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  applyBusinessUnitScope,
+  type BusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { NamedLookup } from "../lookup-types";
 import type { SiteLookup, EmployeeRecord } from "./employee-record-utils";
 import {
@@ -55,12 +59,16 @@ async function fetchDepartments(
 async function fetchProjects(
   supabase: SupabaseClient,
   tenantId?: string | null,
+  buScope?: BusinessUnitReadScope,
 ): Promise<ProjectLookup[]> {
   let query = supabase
     .from("projects")
     .select("project_code, project_name")
-    .eq("is_archived", false)
-    .order("project_name", { ascending: true });
+    .eq("is_archived", false);
+  if (buScope) {
+    query = applyBusinessUnitScope(query, buScope);
+  }
+  query = query.order("project_name", { ascending: true });
   if (tenantId) {
     query = query.eq("tenant_id", tenantId);
   }
@@ -173,11 +181,12 @@ export type EmployeePayConfig = {
 export async function loadEmployeeLookups(
   supabase: SupabaseClient,
   tenantId?: string | null,
+  buScope?: BusinessUnitReadScope,
 ): Promise<EmployeeLookups> {
   const [departments, positions, projects, shifts, sites] = await Promise.all([
     fetchDepartments(supabase, tenantId),
     fetchPositions(supabase, tenantId),
-    fetchProjects(supabase, tenantId),
+    fetchProjects(supabase, tenantId, buScope),
     fetchNamedLookup(supabase, "shifts"),
     fetchSites(supabase),
   ]);

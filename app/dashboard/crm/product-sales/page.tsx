@@ -24,6 +24,7 @@ import {
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "../../inventory/finished-product-bu-stock-utils";
 import { CLIENT_SELECT, type ClientEntry } from "../../operations/clients-utils";
 import CrmShell from "../crm-shell";
@@ -71,9 +72,7 @@ export default async function ProductSalesPage() {
       buScope,
     ).order("date", { ascending: false }),
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
-    supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
+    scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT)
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),
     supabase.from("payment_methods").select("name").order("name", { ascending: true }),

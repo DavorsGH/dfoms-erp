@@ -13,7 +13,8 @@ import ScrollableTable, {
 } from "@/app/dashboard/scrollable-table";
 import FilteredListCount from "@/app/dashboard/filtered-list-count";
 import { inputClassName } from "@/app/dashboard/hr-payroll/hr-register-utils";
-import { resolveSessionTenantId } from "@/utils/session-tenant-client";
+import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
   assertCanModifyBusinessUnitRow,
   formatBusinessUnitAccessError,
@@ -41,6 +42,7 @@ import {
   type CrmProductEntry,
   type CrmProductFormState,
 } from "./products-utils";
+import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 
 type ProductsProps = {
   initialProducts: CrmProductEntry[];
@@ -62,6 +64,7 @@ export default function Products({
   fetchError,
 }: ProductsProps) {
   const supabase = createClient();
+  const buReadScope = useBusinessUnitReadScope();
   const [products, setProducts] = useState(initialProducts);
   const [filterCategory, setFilterCategory] = useState(ERP_SUITE_CATEGORY);
   const [showBulkImport, setShowBulkImport] = useState(false);
@@ -111,10 +114,10 @@ export default function Products({
   );
 
   async function refreshProducts() {
-    const { data, error: refreshError } = await supabase
-      .from("crm_products")
-      .select(CRM_PRODUCT_SELECT)
-      .order("name", { ascending: true });
+    const { data, error: refreshError } = await applyBusinessUnitScope(
+      supabase.from("crm_products").select(CRM_PRODUCT_SELECT),
+      buReadScope,
+    ).order("name", { ascending: true });
 
     if (refreshError) {
       setError(refreshError.message);

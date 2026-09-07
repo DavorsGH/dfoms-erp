@@ -37,6 +37,7 @@ type DashboardShellProps = {
     activeBusinessUnitId: string | null;
     viewAllBusinessUnits: boolean;
     workspaceName: string;
+    allowViewAll?: boolean;
   } | null;
 };
 

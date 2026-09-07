@@ -29,6 +29,7 @@ import {
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "../inventory/finished-product-bu-stock-utils";
 import {
   formatInventoryMoney,
@@ -531,9 +532,11 @@ export default function PosCheckout({
       return;
     }
 
-    const { data, error: productError } = await supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
+    const { data, error: productError } = await scopedFinishedProductsQuery(
+      supabase,
+      buReadScope,
+      FINISHED_PRODUCT_SELECT,
+    )
       .eq("is_archived", false)
       .order("product_name", { ascending: true });
 

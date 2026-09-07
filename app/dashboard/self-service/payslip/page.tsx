@@ -1,6 +1,11 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserEmployeeId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserEmployeeId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { loadEmployeeLookups } from "../../employees/lookup-utils";
 import Payslip from "../../hr-payroll/payslip";
 import {
@@ -25,6 +30,14 @@ export default async function SelfServicePayslipPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [{ data: historyMonths, error: historyMonthsError }, lookups] =
     await Promise.all([
@@ -32,7 +45,7 @@ export default async function SelfServicePayslipPage() {
         .from("payroll_history")
         .select("payroll_month")
         .eq("employee_id", employeeId),
-      loadEmployeeLookups(supabase),
+      loadEmployeeLookups(supabase, undefined, buScope),
     ]);
 
   const payrollMonths = [

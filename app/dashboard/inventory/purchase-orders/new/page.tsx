@@ -1,6 +1,12 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canEditInventory } from "@/utils/rbac-access";
@@ -11,6 +17,7 @@ import {
   type PurchaseOrderRawMaterialOption,
 } from "@/utils/purchase-orders-types";
 import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
+import { scopedFinishedProductsQuery } from "../../finished-product-bu-stock-utils";
 import InventoryShell from "../../inventory-shell";
 import PurchaseOrderForm from "../purchase-order-form";
 
@@ -41,6 +48,14 @@ export default async function NewPurchaseOrderPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
   const [
     { data: suppliers, error: suppliersError },
@@ -58,9 +73,7 @@ export default async function NewPurchaseOrderPage() {
       .select(PO_RAW_MATERIAL_OPTION_SELECT)
       .eq("tenant_id", tenantId)
       .order("material_name", { ascending: true }),
-    supabase
-      .from("finished_products")
-      .select(PO_FINISHED_PRODUCT_OPTION_SELECT)
+    scopedFinishedProductsQuery(supabase, buScope, PO_FINISHED_PRODUCT_OPTION_SELECT)
       .eq("tenant_id", tenantId)
       .eq("sourcing_type", "purchased")
       .eq("is_archived", false)

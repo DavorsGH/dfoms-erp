@@ -26,6 +26,7 @@ import {
   type ContractProjectOption,
 } from "../../administration/projects-utils";
 import type { NamedLookup } from "../../lookup-types";
+import { scopedFinishedProductsQuery } from "../finished-product-bu-stock-utils";
 import InventoryShell from "../inventory-shell";
 import ProductPurchases from "../product-purchases";
 
@@ -69,9 +70,7 @@ export default async function ProductPurchasesPage() {
     )
       .order("purchase_date", { ascending: false })
       .order("created_at", { ascending: false }),
-    supabase
-      .from("finished_products")
-      .select(PURCHASED_PRODUCT_SELECT)
+    scopedFinishedProductsQuery(supabase, buScope, PURCHASED_PRODUCT_SELECT)
       .eq("tenant_id", tenantId)
       .eq("sourcing_type", "purchased")
       .eq("is_archived", false)

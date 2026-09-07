@@ -10,6 +10,7 @@ import {
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "@/app/dashboard/inventory/finished-product-bu-stock-utils";
 import {
   normalizeRawMaterial,
@@ -64,9 +65,7 @@ export async function getFinishedProductsSummary(): Promise<unknown> {
 
     const [{ data: products, error: productsError }, lotSources, scopedStock] =
       await Promise.all([
-        supabase
-          .from("finished_products")
-          .select(FINISHED_PRODUCT_SELECT)
+        scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT)
           .eq("is_archived", false)
           .order("product_name", { ascending: true }),
         fetchFinishedProductLotDateSources(supabase, buScope),

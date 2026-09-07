@@ -65,6 +65,7 @@ import {
 import {
   fetchScopedFinishedProductStock,
   mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
 } from "./finished-product-bu-stock-utils";
 
 type FinishedProductsProps = {
@@ -189,10 +190,10 @@ export default function FinishedProducts({
       purchaseCountsResult,
       { stockMap, error: stockScopeError },
     ] = await Promise.all([
-      supabase
-        .from("finished_products")
-        .select(FINISHED_PRODUCT_SELECT)
-        .order("product_name", { ascending: true }),
+      scopedFinishedProductsQuery(supabase, buReadScope, FINISHED_PRODUCT_SELECT).order(
+        "product_name",
+        { ascending: true },
+      ),
       applyBusinessUnitScope(
         supabase
           .from("finished_product_stock_adjustments")

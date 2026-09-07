@@ -24,7 +24,13 @@ import type {
 import {
   FINISHED_PRODUCT_SELECT,
   normalizeFinishedProduct,
+  type FinishedProductRecord,
 } from "../inventory/finished-products-utils";
+import {
+  fetchScopedFinishedProductStock,
+  mergeScopedStockOntoProducts,
+  scopedFinishedProductsQuery,
+} from "../inventory/finished-product-bu-stock-utils";
 import type {
   FinishedProductAverageCostRow,
   InventoryBalanceConfig,
@@ -197,9 +203,7 @@ export async function fetchInventoryBalanceSheetInput(
       .select(RAW_MATERIAL_SELECT)
       .eq("tenant_id", tenantId)
       .order("material_name", { ascending: true }),
-    supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
+    scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT)
       .eq("tenant_id", tenantId)
       .order("product_name", { ascending: true }),
     // Combined production_batches + product_purchases weighted average cost
@@ -311,9 +315,9 @@ export async function fetchInventoryBalanceSheetInput(
       } satisfies InventoryBalanceConfig)
     : null;
 
-  const normalizedFinishedProducts = (finishedProducts ?? []).map((row) =>
-    normalizeFinishedProduct(row),
-  );
+  const normalizedFinishedProducts = (
+    (finishedProducts ?? []) as FinishedProductRecord[]
+  ).map((row) => normalizeFinishedProduct(row));
 
   const cogsExpenseIds = new Set<string>();
   for (const sale of productSaleCogs ?? []) {

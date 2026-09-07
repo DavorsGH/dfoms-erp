@@ -20,6 +20,7 @@ type TopBarProps = {
     activeBusinessUnitId: string | null;
     viewAllBusinessUnits: boolean;
     workspaceName: string;
+    allowViewAll?: boolean;
   } | null;
 };
 
@@ -70,6 +71,7 @@ export default function TopBar({
             activeBusinessUnitId={businessUnitSwitcher.activeBusinessUnitId}
             viewAllBusinessUnits={businessUnitSwitcher.viewAllBusinessUnits}
             workspaceName={businessUnitSwitcher.workspaceName}
+            allowViewAll={businessUnitSwitcher.allowViewAll ?? true}
           />
         ) : null}
         {userRole === "client" ? <ClientNotificationBell /> : <NotificationBell />}

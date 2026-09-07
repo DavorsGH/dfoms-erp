@@ -55,11 +55,13 @@ export default async function BudgetPage() {
       .select("name")
       .order("name", { ascending: true }),
     queryExpenseSubcategoryLookups(supabase),
-    supabase
-      .from("projects")
-      .select(CONTRACT_PROJECT_SELECT)
-      .eq("tenant_id", tenantId)
-      .order("project_name", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("projects")
+        .select(CONTRACT_PROJECT_SELECT)
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("project_name", { ascending: true }),
   ]);
 
   const fetchError =

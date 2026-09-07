@@ -24,6 +24,7 @@ import {
   normalizeFinishedProduct,
   type FinishedProductRecord,
 } from "@/app/dashboard/inventory/finished-products-utils";
+import { scopedFinishedProductsQuery } from "@/app/dashboard/inventory/finished-product-bu-stock-utils";
 import { peekNextQuotationNumber } from "@/utils/client-quotations-api";
 import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
 import {
@@ -92,9 +93,7 @@ export default async function NewClientQuotationPage() {
         .select("id, opportunity_name, client_id"),
       buScope,
     ).order("opportunity_name", { ascending: true }),
-    supabase
-      .from("finished_products")
-      .select(FINISHED_PRODUCT_SELECT)
+    scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT)
       .eq("tenant_id", tenantId)
       .eq("is_archived", false)
       .order("product_name", { ascending: true }),

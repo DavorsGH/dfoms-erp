@@ -32,6 +32,8 @@ type Props = {
   viewAllBusinessUnits: boolean;
   /** tenants.name — label for the default/untagged option. */
   workspaceName: string;
+  /** When false, hide All Businesses (restricted users). */
+  allowViewAll?: boolean;
 };
 
 export default function BusinessUnitSwitcher({
@@ -39,6 +41,7 @@ export default function BusinessUnitSwitcher({
   activeBusinessUnitId,
   viewAllBusinessUnits,
   workspaceName,
+  allowViewAll = true,
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -160,8 +163,9 @@ export default function BusinessUnitSwitcher({
         }}
         aria-busy={pending}
       >
-        <option value={BU_SWITCHER_ALL_VALUE}>All Businesses</option>
-        <option value={BU_SWITCHER_DEFAULT_VALUE}>{defaultLabel}</option>
+        {allowViewAll ? (
+          <option value={BU_SWITCHER_ALL_VALUE}>All Businesses</option>
+        ) : null}
         {units.map((unit) => (
           <option key={unit.id} value={unit.id}>
             {unit.name}

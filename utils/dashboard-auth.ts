@@ -5,6 +5,10 @@ import { cookies, headers } from "next/headers";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { getUserAllowedBusinessUnits } from "@/utils/business-unit-access";
+import type { AllowedBusinessUnits } from "@/utils/business-unit-access";
+import { resolveRestrictedActiveBusinessUnitId } from "@/utils/business-unit-switcher-scope";
+import { resolveFallbackBusinessUnitId } from "@/utils/tenant-default-business-unit";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import {
   AUTH_CONTEXT_HEADER,
@@ -150,49 +154,106 @@ export async function getCurrentUserTenantId(): Promise<string | null> {
 }
 
 /**
+ * null = unrestricted; otherwise restricted to listed business units.
+ */
+export const getCurrentUserAllowedBusinessUnits = cache(
+  async (): Promise<AllowedBusinessUnits> => {
+    const account = await getCurrentUserAccount();
+    const authUid = (await getCurrentAuthUid())?.trim() || null;
+    const tenantId = account?.tenant_id?.trim() || null;
+
+    if (!authUid || !tenantId) {
+      return null;
+    }
+
+    try {
+      return await getUserAllowedBusinessUnits(
+        createAdminClient(),
+        tenantId,
+        authUid,
+      );
+    } catch (error) {
+      console.error(
+        "[dashboard-auth] failed to load user business unit access:",
+        error,
+      );
+      return null;
+    }
+  },
+);
+
+/**
  * Scoped business-unit id for the current staff user.
- * null = workspace default/untagged rows (not All Businesses).
- * When the stored unit is missing/inactive/wrong tenant, returns null.
+ * null only when the tenant has no active business units (legacy untagged mode).
+ * Restricted users always receive an allowed unit id (never null / never out-of-scope).
+ * When stored id is null but the tenant has active units, resolves to the tenant's
+ * matched/fallback business unit (e.g. Davors Facilities row after backfill).
  * Pair with getViewAllBusinessUnits() for aggregate view.
  */
 export const getActiveBusinessUnitId = cache(async (): Promise<string | null> => {
   const account = await getCurrentUserAccount();
   const storedId = account?.active_business_unit_id?.trim() || null;
-  if (!storedId) {
-    return null;
-  }
-
   const tenantId = account?.tenant_id?.trim() || null;
-  if (!tenantId) {
-    return null;
+  const allowedUnits = await getCurrentUserAllowedBusinessUnits();
+
+  let validatedId: string | null = null;
+  if (storedId && tenantId) {
+    const admin = createAdminClient();
+
+    layoutPerf.dbCalls += 1;
+    const { data: unit } = await admin
+      .from("business_units")
+      .select("id, tenant_id, is_active")
+      .eq("id", storedId)
+      .maybeSingle();
+
+    if (
+      unit &&
+      unit.tenant_id === tenantId &&
+      unit.is_active === true
+    ) {
+      validatedId = unit.id;
+    }
   }
 
-  const admin = createAdminClient();
+  if (!validatedId && tenantId) {
+    const admin = createAdminClient();
+    layoutPerf.dbCalls += 1;
+    const [{ data: units }, { data: tenant }] = await Promise.all([
+      admin
+        .from("business_units")
+        .select("id, name")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
+      admin.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
+    ]);
 
-  layoutPerf.dbCalls += 1;
-  const { data: unit } = await admin
-    .from("business_units")
-    .select("id, tenant_id, is_active")
-    .eq("id", storedId)
-    .maybeSingle();
-
-  if (
-    !unit ||
-    unit.tenant_id !== tenantId ||
-    unit.is_active !== true
-  ) {
-    return null;
+    validatedId = resolveFallbackBusinessUnitId(
+      (units as Array<{ id: string; name: string }> | null) ?? [],
+      tenant?.name ?? null,
+    );
   }
 
-  return unit.id;
+  if (allowedUnits !== null) {
+    return resolveRestrictedActiveBusinessUnitId(allowedUnits, validatedId);
+  }
+
+  return validatedId;
 });
 
 /**
  * True when the staff switcher is on All Businesses (aggregate, not a stamp target).
+ * Restricted users never receive true here even if the DB flag is set.
  */
 export const getViewAllBusinessUnits = cache(async (): Promise<boolean> => {
   const account = await getCurrentUserAccount();
-  return account?.view_all_business_units === true;
+  if (account?.view_all_business_units !== true) {
+    return false;
+  }
+
+  const allowedUnits = await getCurrentUserAllowedBusinessUnits();
+  return allowedUnits === null;
 });
 
 /** One leave-approver RPC result per request. */

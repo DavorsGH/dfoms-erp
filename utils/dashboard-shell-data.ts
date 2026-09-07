@@ -5,12 +5,14 @@ import {
   getActiveBusinessUnitId,
   getCurrentAuthUser,
   getCurrentUserAccount,
+  getCurrentUserAllowedBusinessUnits,
   getCurrentUserRole,
   getViewAllBusinessUnits,
   hasLeaveApprovalInbox,
   isDavorsPlatformRealEstateStaff,
   isDavorsPlatformSuperAdmin,
 } from "@/utils/dashboard-auth";
+import { resolveEffectiveSwitcherState } from "@/utils/business-unit-switcher-scope";
 import { getCurrentTenantBranding } from "@/utils/tenant-branding";
 import { getUserDisplayInfo } from "@/utils/user-display";
 import type { UserDisplayInfo } from "@/utils/user-display";
@@ -35,6 +37,7 @@ export type DashboardShellData = {
     activeBusinessUnitId: string | null;
     viewAllBusinessUnits: boolean;
     workspaceName: string;
+    allowViewAll: boolean;
   } | null;
   perf?: ReturnType<typeof createPerfProbe>;
 };
@@ -118,17 +121,19 @@ export async function loadDashboardShellData(): Promise<DashboardShellData> {
 
   let businessUnitSwitcher: DashboardShellData["businessUnitSwitcher"] = null;
   if (isStaffBusinessUnitSwitcherRole(userRole) && account?.tenant_id) {
-    const units = await loadBusinessUnitSwitcherOptions(account.tenant_id);
-    if (units.length >= 1) {
-      const activeStillListed =
-        activeBusinessUnitId &&
-        units.some((unit) => unit.id === activeBusinessUnitId)
-          ? activeBusinessUnitId
-          : null;
-      businessUnitSwitcher = {
-        units,
-        activeBusinessUnitId: activeStillListed,
+    const allUnits = await loadBusinessUnitSwitcherOptions(account.tenant_id);
+    if (allUnits.length >= 1) {
+      const allowedUnits = authUser
+        ? await getCurrentUserAllowedBusinessUnits()
+        : null;
+      const effective = resolveEffectiveSwitcherState({
+        units: allUnits,
+        allowedUnits,
+        activeBusinessUnitId,
         viewAllBusinessUnits,
+      });
+      businessUnitSwitcher = {
+        ...effective,
         workspaceName: tenantBranding.workspaceName,
       };
     }
