@@ -34,6 +34,10 @@ import {
   textareaClassName,
   type EmployeeRecord,
 } from "./employee-record-utils";
+import {
+  formatDefaultWelfareDeductionRate,
+  WELFARE_DEDUCTION_RATE_HELPER_TEXT,
+} from "@/utils/hr-payroll-settings-types";
 import { allocateNewEmployeeCodes } from "./employee-ids-api";
 import {
   getDepartmentName,
@@ -120,6 +124,8 @@ type EmployeesDirectoryProps = {
   fetchError: string | null;
   canEditEmployees: boolean;
   canViewSalary: boolean;
+  /** Tenant default from HR Settings → Salary Settings; pre-fills new employee form only. */
+  defaultWelfareDeductionRate?: number | null;
   /** Active business-unit context for create-only stamping; null = All Businesses. */
   activeBusinessUnitId?: string | null;
 };
@@ -428,6 +434,7 @@ export default function EmployeesDirectory({
   fetchError,
   canEditEmployees,
   canViewSalary,
+  defaultWelfareDeductionRate = null,
   activeBusinessUnitId = null,
 }: EmployeesDirectoryProps) {
   const supabase = createClient();
@@ -870,6 +877,9 @@ export default function EmployeesDirectory({
     setForm({
       ...emptyForm,
       employment_status: DEFAULT_EMPLOYMENT_STATUS,
+      welfare_deduction_rate: formatDefaultWelfareDeductionRate(
+        defaultWelfareDeductionRate,
+      ),
     });
     setChangeReason("");
     setEmploymentHistory([]);
@@ -1833,10 +1843,7 @@ export default function EmployeesDirectory({
                   />
                 </Field>
               </div>
-              <p className="text-xs text-slate-500">
-                Applied automatically each payroll period as a percentage of
-                that period&apos;s gross pay (e.g. 2.50 = 2.5%).
-              </p>
+              <p className="text-xs text-slate-500">{WELFARE_DEDUCTION_RATE_HELPER_TEXT}</p>
             </div>
             ) : null}
 

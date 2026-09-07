@@ -26,6 +26,12 @@ import {
   loadEmployeePayConfig,
 } from "./lookup-utils";
 import { loadDirectoryNetPayContext } from "./directory-net-pay-utils";
+import {
+  HR_PAYROLL_SETTINGS_SELECT,
+  normalizeHrPayrollSettingsRow,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
+import { scopeToBusinessUnitId } from "@/utils/phase5e-key-structure";
 
 export default async function EmployeesPage() {
   const cookieStore = await cookies();
@@ -51,10 +57,20 @@ export default async function EmployeesPage() {
   }
   employeeQuery = applyBusinessUnitScope(employeeQuery, buScope);
 
-  const [{ data, error }, lookups, payConfig] = await Promise.all([
+  const [{ data, error }, lookups, payConfig, hrPayrollSettingsResult] =
+    await Promise.all([
     employeeQuery,
     loadEmployeeLookups(supabase, tenantId, buScope),
     loadEmployeePayConfig(supabase, tenantId),
+    tenantId
+      ? scopeToBusinessUnitId(
+          supabase
+            .from("hr_payroll_settings")
+            .select(HR_PAYROLL_SETTINGS_SELECT)
+            .eq("tenant_id", tenantId),
+          activeBusinessUnitId,
+        ).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   const employees = (data as EmployeeRecord[] | null) ?? [];
@@ -65,6 +81,10 @@ export default async function EmployeesPage() {
   );
 
   const role = (await getCurrentUserRole()) as AppRole | null;
+  const defaultWelfareDeductionRate =
+    normalizeHrPayrollSettingsRow(
+      hrPayrollSettingsResult.data as HrPayrollSettingsRow | null,
+    )?.default_welfare_deduction_rate ?? null;
 
   return (
     <HrPayrollShell sectionTitle="Employee Directory">
@@ -76,8 +96,9 @@ export default async function EmployeesPage() {
         netPayPeriodLabel={netPayContext.periodLabel}
         departmentNameMap={buildDepartmentNameMap(lookups.departments)}
         projectNameMap={buildProjectNameMap(lookups.projects)}
-        fetchError={error?.message ?? null}
+        fetchError={error?.message ?? hrPayrollSettingsResult.error?.message ?? null}
         canEditEmployees={canEditEmployees(role)}
+        defaultWelfareDeductionRate={defaultWelfareDeductionRate}
         canViewSalary={canViewEmployeeSalary(role)}
         activeBusinessUnitId={activeBusinessUnitId}
       />

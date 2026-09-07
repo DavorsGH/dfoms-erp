@@ -34,7 +34,7 @@ export const PAYROLL_INCOME_RECEIPT_SUFFIX = "DEDSAV";
 export const PAYROLL_INCOME_CUSTOMER_NAME = "Payroll";
 export const PAYROLL_INCOME_PAYMENT_STATUS = "Unpaid";
 export const PAYROLL_INCOME_DED_SAVINGS_DESCRIPTION_SUFFIX =
-  " - Deduction Savings (absence/loan/advance/welfare/other)";
+  " - Deduction Savings (absence/loan/advance/other)";
 
 export type PayrollLockFinanceTotals = {
   totalGrossPay: number;
@@ -47,7 +47,8 @@ export type PayrollLockFinanceTotals = {
   /** Prior-period net top-ups included in net_pay; settle Accrued Wages, not P&L. */
   totalNetOnlyAdjustment: number;
   /**
-   * Sum of absence + loan + advance + welfare + other deductions.
+   * Sum of absence + loan + advance + other deductions (welfare excluded — posts to
+   * staff_welfare_fund_ledger as a liability accrual on lock).
    * Posted as Other Income (deduction savings) so BS stays in balance vs net pay.
    */
   totalDeductionSavings: number;
@@ -141,7 +142,6 @@ export function calculatePayrollDeductionSavingsTotal(
     | "absence_deduction"
     | "loan_repayment"
     | "salary_advance"
-    | "welfare_deduction"
     | "other_deductions"
   >[],
 ): number {
@@ -152,7 +152,6 @@ export function calculatePayrollDeductionSavingsTotal(
         (Number(row.absence_deduction) || 0) +
         (Number(row.loan_repayment) || 0) +
         (Number(row.salary_advance) || 0) +
-        (Number(row.welfare_deduction) || 0) +
         (Number(row.other_deductions) || 0),
       0,
     ),
@@ -405,7 +404,7 @@ function buildDeductionSavingsIncomePayload(
     outstanding_balance: 0,
     payment_status: PAYROLL_INCOME_PAYMENT_STATUS,
     notes:
-      "Non-cash payroll deduction savings (absence/loan/advance/welfare/other); auto-posted on payroll lock.",
+      "Non-cash payroll deduction savings (absence/loan/advance/other); auto-posted on payroll lock.",
     tax_inclusive: true,
     net_of_tax_amount: amount,
     output_vat_amount: 0,
@@ -859,9 +858,17 @@ export async function postPayrollLockFinanceEntries(
     deleted: number;
     skippedPaid: number;
   };
+  welfareFundAccrual: {
+    sourceId: string;
+    action: string;
+    amount: number;
+  };
 }> {
   const { syncPayrollPeriodTaxLedger } = await import(
     "./payroll-statutory-ledger-sync"
+  );
+  const { syncPayrollWelfareFundAccrual } = await import(
+    "./payroll-welfare-fund-sync"
   );
   const totals = calculatePayrollLockFinanceTotals(rows);
   let insertedExpenses = 0;
@@ -972,6 +979,16 @@ export async function postPayrollLockFinanceEntries(
       : undefined,
   );
 
+  const welfareFundAccrual = await syncPayrollWelfareFundAccrual(
+    admin,
+    period,
+    rows,
+    tenantId,
+    Object.prototype.hasOwnProperty.call(options ?? {}, "businessUnitId")
+      ? { businessUnitId }
+      : undefined,
+  );
+
   return {
     insertedExpenses,
     updatedExpenses,
@@ -982,6 +999,7 @@ export async function postPayrollLockFinanceEntries(
     // Soft-deprecated: no new Statutory - SSNIT / Statutory - PAYE AP rows.
     insertedPayables: 0,
     statutoryLedger,
+    welfareFundAccrual,
   };
 }
 
@@ -994,12 +1012,15 @@ export async function deletePayrollLockFinanceEntries(
       PayrollLockFinanceSourceRow,
       "employee_id" | "loan_repayment"
     >[];
+    /** Lock-scoped BU for statutory/welfare ledger teardown (NULL = legacy default). */
+    businessUnitId?: string | null;
   },
 ): Promise<{
   deletedExpenses: number;
   deletedIncome: number;
   deletedPayables: number;
   deletedStatutoryLedger: number;
+  deletedWelfareFundAccrual: number;
   reversedLoans: number;
 }> {
   // Reverse loan balances using caller-supplied rows when available (reopen/
@@ -1011,10 +1032,18 @@ export async function deletePayrollLockFinanceEntries(
     options?.loanRepaymentRows,
   );
 
+  const businessUnitId = Object.prototype.hasOwnProperty.call(
+    options ?? {},
+    "businessUnitId",
+  )
+    ? (options?.businessUnitId ?? null)
+    : null;
+
   const expenseDescription = buildPayrollExpenseAutoDescription(period.monthLabel);
   const periodKey = payrollMonthToPeriodKey(period.payrollMonth) ?? "unknown";
   const deductionInvoiceNo = buildPayrollDeductionSavingsInvoiceNo(periodKey);
 
+  // KNOWN ISSUE: expense/income/AP teardown below is still tenant-wide (not BU-scoped).
   const { data: expenseRows, error: expenseSelectError } = await admin
     .from("expense_register")
     .select("id")
@@ -1111,6 +1140,17 @@ export async function deletePayrollLockFinanceEntries(
     admin,
     period.payrollMonth,
     tenantId,
+    businessUnitId,
+  );
+
+  const { deleteOpenPayrollWelfareFundAccrual } = await import(
+    "./payroll-welfare-fund-sync"
+  );
+  const deletedWelfareFundAccrual = await deleteOpenPayrollWelfareFundAccrual(
+    admin,
+    period.payrollMonth,
+    tenantId,
+    businessUnitId,
   );
 
   return {
@@ -1118,6 +1158,7 @@ export async function deletePayrollLockFinanceEntries(
     deletedIncome: incomeIds.length,
     deletedPayables: payableRows?.length ?? 0,
     deletedStatutoryLedger,
+    deletedWelfareFundAccrual,
     reversedLoans,
   };
 }

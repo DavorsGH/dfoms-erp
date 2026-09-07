@@ -22,6 +22,14 @@ import {
   type AllowanceTypeRow,
   type CompensationPolicyRow,
 } from "./compensation-policy-utils";
+import {
+  formatDefaultWelfareDeductionRate,
+  HR_PAYROLL_SETTINGS_ON_CONFLICT,
+  parseDefaultWelfareDeductionRateInput,
+  WELFARE_DEDUCTION_RATE_HELPER_TEXT,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
+import { useStampBusinessUnitId } from "../business-unit-view-context";
 
 type TabId = "basic" | "allowances" | "types";
 
@@ -31,6 +39,7 @@ type SalarySettingsProps = {
   initialPositions: string[];
   initialAllowanceTypes: AllowanceTypeRow[];
   initialPolicies: CompensationPolicyRow[];
+  initialHrPayrollSettings: HrPayrollSettingsRow | null;
   fetchError: string | null;
   activeBusinessUnitId?: string | null;
 };
@@ -53,15 +62,26 @@ export default function SalarySettings({
   initialPositions,
   initialAllowanceTypes,
   initialPolicies,
+  initialHrPayrollSettings,
   fetchError,
 }: SalarySettingsProps) {
   const supabase = createClient();
+  const stampBusinessUnit = useStampBusinessUnitId();
   const [tab, setTab] = useState<TabId>("basic");
   const [positions, setPositions] = useState(initialPositions);
   const [allowanceTypes, setAllowanceTypes] = useState(initialAllowanceTypes);
   const [policies, setPolicies] = useState(initialPolicies);
   const [error, setError] = useState<string | null>(fetchError);
   const [loading, setLoading] = useState(false);
+  const [defaultWelfareRateDraft, setDefaultWelfareRateDraft] = useState(() =>
+    formatDefaultWelfareDeductionRate(
+      initialHrPayrollSettings?.default_welfare_deduction_rate,
+    ),
+  );
+  const [savingDefaultWelfare, setSavingDefaultWelfare] = useState(false);
+  const [defaultWelfareSuccess, setDefaultWelfareSuccess] = useState<string | null>(
+    null,
+  );
 
   const [policyForm, setPolicyForm] = useState(emptyPolicyForm);
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
@@ -76,7 +96,17 @@ export default function SalarySettings({
     setPositions(initialPositions);
     setAllowanceTypes(initialAllowanceTypes);
     setPolicies(initialPolicies);
-  }, [initialPositions, initialAllowanceTypes, initialPolicies]);
+    setDefaultWelfareRateDraft(
+      formatDefaultWelfareDeductionRate(
+        initialHrPayrollSettings?.default_welfare_deduction_rate,
+      ),
+    );
+  }, [
+    initialPositions,
+    initialAllowanceTypes,
+    initialPolicies,
+    initialHrPayrollSettings,
+  ]);
 
   const activeTypes = useMemo(
     () =>
@@ -126,6 +156,73 @@ export default function SalarySettings({
       ),
     );
   }, [policies]);
+
+  async function handleSaveDefaultWelfareRate(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingDefaultWelfare(true);
+    setError(null);
+    setDefaultWelfareSuccess(null);
+
+    const default_welfare_deduction_rate = parseDefaultWelfareDeductionRateInput(
+      defaultWelfareRateDraft,
+    );
+
+    if (defaultWelfareRateDraft.trim() && default_welfare_deduction_rate === null) {
+      setError("Enter a valid welfare deduction rate (0 or greater), or leave blank.");
+      setSavingDefaultWelfare(false);
+      return;
+    }
+
+    if (!stampBusinessUnit.ok) {
+      setError(stampBusinessUnit.error);
+      setSavingDefaultWelfare(false);
+      return;
+    }
+
+    const business_unit_id = stampBusinessUnit.businessUnitId;
+
+    const { error: saveError } = await supabase.from("hr_payroll_settings").upsert(
+      {
+        tenant_id: tenantId,
+        business_unit_id,
+        default_welfare_deduction_rate,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: HR_PAYROLL_SETTINGS_ON_CONFLICT },
+    );
+
+    if (saveError) {
+      setError(saveError.message);
+      setSavingDefaultWelfare(false);
+      return;
+    }
+
+    let bulkQuery = supabase
+      .from("employees")
+      .update({ welfare_deduction_rate: default_welfare_deduction_rate })
+      .eq("tenant_id", tenantId)
+      .eq("employment_status", "Active");
+
+    bulkQuery =
+      business_unit_id === null
+        ? bulkQuery.is("business_unit_id", null)
+        : bulkQuery.eq("business_unit_id", business_unit_id);
+
+    const { error: bulkError } = await bulkQuery;
+
+    if (bulkError) {
+      setError(
+        `Default rate saved, but applying it to active employees in this business unit failed: ${bulkError.message}`,
+      );
+      setSavingDefaultWelfare(false);
+      return;
+    }
+
+    setDefaultWelfareSuccess(
+      "Default welfare deduction rate saved and applied to active employees in this business unit.",
+    );
+    setSavingDefaultWelfare(false);
+  }
 
   async function refreshPoliciesAndTypes() {
     const [{ data: types, error: typesError }, { data: policyRows, error: policyError }] =
@@ -390,6 +487,47 @@ export default function SalarySettings({
         Global salary policy: basic rates and allowances by position, employment
         type, and shift. Employee compensation is read-only from this policy.
       </p>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-[#0f2744]">Employee Welfare Deduction</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Setting this rate applies it immediately to all active employees in
+          the current business unit. You can still adjust any individual
+          employee&apos;s rate afterward on their record.
+        </p>
+        <form onSubmit={handleSaveDefaultWelfareRate} className="mt-4 space-y-4">
+          <div className="max-w-xs">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Default Welfare Deduction Rate (%)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={defaultWelfareRateDraft}
+              onChange={(event) => {
+                setDefaultWelfareRateDraft(event.target.value);
+                setDefaultWelfareSuccess(null);
+              }}
+              placeholder="e.g. 2.50"
+              className={inputClassName}
+            />
+          </div>
+          <p className="text-xs text-slate-500">{WELFARE_DEDUCTION_RATE_HELPER_TEXT}</p>
+          {defaultWelfareSuccess ? (
+            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {defaultWelfareSuccess}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={savingDefaultWelfare}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {savingDefaultWelfare ? "Saving…" : "Save Default Rate"}
+          </button>
+        </form>
+      </section>
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px">
         {tabs.map((item) => (

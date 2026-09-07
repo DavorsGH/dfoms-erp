@@ -1668,6 +1668,7 @@ export default function PayrollProcessing({
               <th className={scrollableTableThClassName}>Employee SSNIT</th>
               <th className={scrollableTableThClassName}>PAYE Tax</th>
               <th className={scrollableTableThClassName}>Loan Repayment</th>
+              <th className={scrollableTableThClassName}>Welfare Deduction</th>
               <th className={scrollableTableThClassName}>Total Deductions</th>
               <th className={scrollableTableThClassName}>Net Pay</th>
               <th className={scrollableTableThClassName}>Payment Method</th>
@@ -1681,7 +1682,7 @@ export default function PayrollProcessing({
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={isPeriodClosed ? 14 : 15}
+                  colSpan={isPeriodClosed ? 15 : 16}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   {isPeriodClosed
@@ -1741,6 +1742,9 @@ export default function PayrollProcessing({
                       {formatGHS(row.loan_repayment)}
                     </td>
                     <td className="px-4 py-3">
+                      {formatGHS(row.welfare_deduction)}
+                    </td>
+                    <td className="px-4 py-3">
                       {formatGHS(row.total_deductions)}
                     </td>
                     <td className="px-4 py-3">{formatGHS(row.net_pay)}</td>
@@ -1783,7 +1787,7 @@ export default function PayrollProcessing({
                 return [
                   mainRow,
                   <tr key={`${row.id}-adjustments`} className="bg-slate-50">
-                    <td colSpan={14} className="px-4 py-4">
+                    <td colSpan={15} className="px-4 py-4">
                       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                         {(
                           [

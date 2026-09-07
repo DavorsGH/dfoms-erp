@@ -211,13 +211,20 @@ export async function syncPayrollPeriodTaxLedger(
     desired.map((leg) => [leg.tax_component, leg]),
   );
 
-  const { data: existingRows, error: selectError } = await admin
+  let existingQuery = admin
     .from("tax_ledger_entries")
     .select("id, tax_component, status, tax_amount")
     .eq("tenant_id", tenantId)
     .eq("source_type", PAYROLL_PERIOD_SOURCE_TYPE)
     .eq("source_id", sourceId)
     .neq("status", "reversed");
+  if (businessUnitId === null) {
+    existingQuery = existingQuery.is("business_unit_id", null);
+  } else {
+    existingQuery = existingQuery.eq("business_unit_id", businessUnitId);
+  }
+
+  const { data: existingRows, error: selectError } = await existingQuery;
 
   if (selectError) {
     throw new Error(selectError.message);
@@ -372,16 +379,24 @@ export async function deleteOpenPayrollPeriodTaxLedger(
   admin: SupabaseClient,
   payrollMonth: string,
   tenantId: string,
+  businessUnitId: string | null,
 ): Promise<number> {
   const sourceId = buildPayrollPeriodTaxLedgerSourceId(payrollMonth);
 
-  const { data, error: selectError } = await admin
+  let selectQuery = admin
     .from("tax_ledger_entries")
     .select("id")
     .eq("tenant_id", tenantId)
     .eq("source_type", PAYROLL_PERIOD_SOURCE_TYPE)
     .eq("source_id", sourceId)
     .eq("status", "open");
+  if (businessUnitId === null) {
+    selectQuery = selectQuery.is("business_unit_id", null);
+  } else {
+    selectQuery = selectQuery.eq("business_unit_id", businessUnitId);
+  }
+
+  const { data, error: selectError } = await selectQuery;
 
   if (selectError) {
     throw new Error(selectError.message);
@@ -392,13 +407,20 @@ export async function deleteOpenPayrollPeriodTaxLedger(
     return 0;
   }
 
-  const { error: deleteError } = await admin
+  let deleteQuery = admin
     .from("tax_ledger_entries")
     .delete()
     .eq("tenant_id", tenantId)
     .eq("source_type", PAYROLL_PERIOD_SOURCE_TYPE)
     .eq("source_id", sourceId)
     .eq("status", "open");
+  if (businessUnitId === null) {
+    deleteQuery = deleteQuery.is("business_unit_id", null);
+  } else {
+    deleteQuery = deleteQuery.eq("business_unit_id", businessUnitId);
+  }
+
+  const { error: deleteError } = await deleteQuery;
 
   if (deleteError) {
     throw new Error(deleteError.message);

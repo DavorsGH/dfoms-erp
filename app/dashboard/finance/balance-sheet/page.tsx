@@ -61,6 +61,7 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
     initialInventoryBalanceSheet,
     initialManualEntries,
     initialTaxLedgerEntries,
+    initialWelfareFundEntries,
     availableYears,
     fetchError,
   } = data;
@@ -82,6 +83,7 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
         initialInventoryBalanceSheet={initialInventoryBalanceSheet}
         initialManualEntries={initialManualEntries}
         initialTaxLedgerEntries={initialTaxLedgerEntries}
+        initialWelfareFundEntries={initialWelfareFundEntries}
         availableYears={availableYears}
         fetchError={fetchError}
         initialFocusMonth={initialFocusMonth}

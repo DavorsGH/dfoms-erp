@@ -625,6 +625,7 @@ function buildBalanceSheetReportForYear(
   referenceDate?: Date,
   manualEntries: ManualFinancialEntry[] = [],
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[] = [],
+  welfareFundEntries: import("./finance/staff-welfare-fund-utils").BalanceSheetWelfareFundEntry[] = [],
 ) {
   return buildBalanceSheetReport(
     incomeEntries,
@@ -642,6 +643,7 @@ function buildBalanceSheetReportForYear(
     },
     manualEntries,
     taxLedgerEntries,
+    welfareFundEntries,
     reportOptions,
   );
 }

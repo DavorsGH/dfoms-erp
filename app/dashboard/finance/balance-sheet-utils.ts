@@ -59,6 +59,13 @@ import {
   type AccountsPayablePaymentRow,
   type DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
+import {
+  calculateStaffWelfarePayableByMonth,
+  type BalanceSheetWelfareFundEntry,
+} from "./staff-welfare-fund-utils";
+
+export type { BalanceSheetWelfareFundEntry } from "./staff-welfare-fund-utils";
+export { calculateStaffWelfarePayableByMonth } from "./staff-welfare-fund-utils";
 
 export type BalanceSheetReportOptions = {
   tenantId: string;
@@ -509,6 +516,7 @@ export function buildBalanceSheetReport(
   },
   manualEntries: CashMovementManualEntry[] = [],
   taxLedgerEntries: BalanceSheetTaxLedgerEntry[] = [],
+  welfareFundEntries: BalanceSheetWelfareFundEntry[] = [],
   options: BalanceSheetReportOptions = { tenantId: "" },
 ): BalanceSheetReport {
   const staffSalaryNetByPayrollMonth = buildNetPayByPayrollMonth(
@@ -535,6 +543,9 @@ export function buildBalanceSheetReport(
   const openTax = calculateOpenTaxBalancesByMonth(
     taxLedgerEntries,
     financialYear,
+  );
+  const staffWelfarePayable = roundMonthlyTotals(
+    calculateStaffWelfarePayableByMonth(welfareFundEntries, financialYear),
   );
   const fixedAssetsNet = roundMonthlyTotals(
     calculateFixedAssetsNetByMonth(fixedAssets, financialYear),
@@ -601,6 +612,7 @@ export function buildBalanceSheetReport(
       openTax.netVatPayable,
       openTax.payePayable,
       openTax.ssnitPayable,
+      staffWelfarePayable,
       bankLoans,
       otherLongTermLiabilities,
       directorsLoan,
@@ -632,6 +644,7 @@ export function buildBalanceSheetReport(
       openTax.netVatPayable,
       openTax.payePayable,
       openTax.ssnitPayable,
+      staffWelfarePayable,
       bankLoans,
       otherLongTermLiabilities,
       directorsLoan,
@@ -744,6 +757,13 @@ export function buildBalanceSheetReport(
       key: "ssnit-payable",
       label: "SSNIT Payable",
       amounts: openTax.ssnitPayable,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "staff-welfare-payable",
+      label: "Staff Welfare Payable",
+      amounts: staffWelfarePayable,
       kind: "data",
       side: "liabilities",
     },

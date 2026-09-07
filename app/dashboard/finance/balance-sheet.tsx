@@ -13,6 +13,7 @@ import {
   type BalanceSheetIncomeEntry,
   type BalanceSheetRow,
   type BalanceSheetTaxLedgerEntry,
+  type BalanceSheetWelfareFundEntry,
   type InventoryBalanceSheetInput,
   type AccountsPayablePaymentRow,
   type DirectorsLoanRepaymentRow,
@@ -50,6 +51,7 @@ type BalanceSheetProps = {
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   initialManualEntries?: CashMovementManualEntry[];
   initialTaxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
+  initialWelfareFundEntries?: BalanceSheetWelfareFundEntry[];
   availableYears: number[];
   fetchError: string | null;
   initialFocusMonth?: number | null;
@@ -146,6 +148,7 @@ export default function BalanceSheet({
   initialInventoryBalanceSheet,
   initialManualEntries = [],
   initialTaxLedgerEntries = [],
+  initialWelfareFundEntries = [],
   availableYears,
   fetchError,
   initialFocusMonth = null,
@@ -178,6 +181,7 @@ export default function BalanceSheet({
         initialInventoryBalanceSheet,
         initialManualEntries,
         initialTaxLedgerEntries,
+        initialWelfareFundEntries,
         {
           tenantId,
           accountsPayablePayments: initialAccountsPayablePayments,
@@ -199,6 +203,7 @@ export default function BalanceSheet({
       initialInventoryBalanceSheet,
       initialManualEntries,
       initialTaxLedgerEntries,
+      initialWelfareFundEntries,
       selectedYear,
     ],
   );
@@ -214,7 +219,8 @@ export default function BalanceSheet({
         <p className="text-sm text-slate-600">
           Monthly balance sheet for financial year {report.financialYear},
           calculated live from cash, receivables, inventory, fixed assets,
-          payables, accrued wages, open tax ledger positions, and equity.
+          payables, accrued wages, open tax ledger positions, staff welfare
+          payable, and equity.
         </p>
         <FinancialYearSelector
           years={availableYears}

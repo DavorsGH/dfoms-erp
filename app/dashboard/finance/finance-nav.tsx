@@ -17,6 +17,7 @@ const navItems = [
     href: "/dashboard/finance/manual-financial-entries",
   },
   { label: "Statutory Ledger", href: "/dashboard/finance/tax-ledger" },
+  { label: "Staff Welfare Fund", href: "/dashboard/finance/staff-welfare-fund" },
   { label: "Profit & Loss", href: "/dashboard/finance/profit-loss" },
   { label: "Cash Flow", href: "/dashboard/finance/cash-flow" },
   {
@@ -48,7 +49,10 @@ export default function FinanceNav() {
                   : item.href === "/dashboard/finance/tax-ledger"
                   ? pathname === item.href ||
                     pathname.startsWith("/dashboard/finance/tax-ledger/")
-                  : item.href === "/dashboard/finance/budget"
+                  : item.href === "/dashboard/finance/staff-welfare-fund"
+                    ? pathname === item.href ||
+                      pathname.startsWith("/dashboard/finance/staff-welfare-fund/")
+                    : item.href === "/dashboard/finance/budget"
                     ? pathname === item.href ||
                       pathname.startsWith("/dashboard/finance/budget/")
                     : pathname === item.href;

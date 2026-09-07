@@ -9,6 +9,7 @@ import {
   resolveProfitLossRevenueCategory,
 } from "./income-register-utils";
 import { STATUTORY_REMITTANCE_EXPENSE_CATEGORY } from "./tax-ledger-remit";
+import { STAFF_WELFARE_DISBURSEMENT_CATEGORY } from "./staff-welfare-fund-utils";
 
 export const MONTH_LABELS = [
   "Jan",
@@ -232,7 +233,9 @@ export function shouldIncludeExpenseInProfitLoss(
 
   return (
     normalized !==
-    normalizeCategoryName(STATUTORY_REMITTANCE_EXPENSE_CATEGORY)
+      normalizeCategoryName(STATUTORY_REMITTANCE_EXPENSE_CATEGORY) &&
+    normalized !==
+      normalizeCategoryName(STAFF_WELFARE_DISBURSEMENT_CATEGORY)
   );
 }
 

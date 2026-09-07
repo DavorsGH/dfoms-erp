@@ -126,6 +126,7 @@ export async function auditTenantBalanceSheetIntegrity(
     data.initialInventoryBalanceSheet,
     data.initialManualEntries,
     data.initialTaxLedgerEntries,
+    data.initialWelfareFundEntries,
     {
       tenantId: tenant.id,
       accountsPayablePayments: data.initialAccountsPayablePayments,
