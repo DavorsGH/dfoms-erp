@@ -3,12 +3,15 @@ import { NextResponse } from "next/server";
 import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import {
-  ghsToPesewas,
-  initializePaystackTransaction,
-} from "@/utils/paystack";
+import { ghsToPesewas, initializePaystackTransaction } from "@/utils/paystack";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import { ERP_SUITE_CATEGORY } from "@/app/dashboard/crm/products/products-utils";
+import { clearCustomPriceOverrideOnTierMismatch } from "@/utils/custom-subscription-price-tier-lock";
+import { resolveSubscriptionCheckoutChargeSplit } from "@/utils/subscription-checkout-pricing";
+import {
+  deductPartialSubscriptionCredit,
+  fulfillSubscriptionCheckoutWithAccountCredit,
+} from "@/utils/subscription-checkout-fulfillment";
 
 type InitializeBody = {
   product_id?: string;
@@ -60,7 +63,6 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
 
-  // Re-confirm tenant exists and load account email via service role.
   const [
     { data: tenant },
     { data: accountRow },
@@ -96,7 +98,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Defense in depth: account row must still point at the same tenant.
   if (accountRow?.tenant_id && accountRow.tenant_id !== auth.tenantId) {
     console.error(
       `[checkout/initialize] tenant mismatch auth=${auth.tenantId} account=${accountRow.tenant_id} user=${user?.id}`,
@@ -120,22 +121,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const planCode =
+  const tierPlanCode =
     typeof product.paystack_plan_code === "string"
       ? product.paystack_plan_code.trim()
       : "";
-  if (!planCode) {
-    return NextResponse.json(
-      {
-        error:
-          "This tier is not linked to a Paystack plan yet. Contact Davors support.",
-      },
-      { status: 400 },
-    );
-  }
 
-  const priceGhs = Number(product.price_ghs);
-  if (!Number.isFinite(priceGhs) || priceGhs <= 0) {
+  const tierPriceGhs = Number(product.price_ghs);
+  if (!Number.isFinite(tierPriceGhs) || tierPriceGhs <= 0) {
     return NextResponse.json(
       { error: "This tier does not have a valid GHS price configured." },
       { status: 400 },
@@ -159,24 +151,120 @@ export async function POST(request: Request) {
     );
   }
 
+  try {
+    await clearCustomPriceOverrideOnTierMismatch(admin, {
+      linkedTenantId: tenantId,
+      selectedProductId: product.id,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to reconcile custom subscription pricing for checkout.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  let chargeSplit;
+  try {
+    chargeSplit = await resolveSubscriptionCheckoutChargeSplit(admin, {
+      linkedTenantId: tenantId,
+      tierPriceGhs,
+      selectedProductId: product.id,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to resolve checkout amount.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  const planCode = chargeSplit.usesCustomPriceOverride
+    ? (chargeSplit.customPricePaystackPlanCode ?? "")
+    : tierPlanCode;
+
+  if (!planCode) {
+    return NextResponse.json(
+      chargeSplit.usesCustomPriceOverride
+        ? {
+            error:
+              "This tenant has a custom price but no Paystack plan yet. Re-save the custom price from Tenant Management to provision the plan.",
+          }
+        : {
+            error:
+              "This tier is not linked to a Paystack plan yet. Contact Davors support.",
+          },
+      { status: 400 },
+    );
+  }
+
+  if (chargeSplit.creditFullyCovers) {
+    try {
+      const fulfilled = await fulfillSubscriptionCheckoutWithAccountCredit(admin, {
+        tenantId,
+        productId: product.id,
+        listPriceGhs: chargeSplit.listPriceGhs,
+        creditAppliedGhs: chargeSplit.creditAppliedGhs,
+      });
+
+      return NextResponse.json({
+        credit_only: true,
+        reference: fulfilled.reference,
+        list_price_ghs: chargeSplit.listPriceGhs,
+        credit_applied_ghs: chargeSplit.creditAppliedGhs,
+        paystack_amount_ghs: 0,
+        new_credit_balance_ghs: fulfilled.newCreditBalanceGhs,
+        product_name: product.name,
+        tenant_id: tenantId,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Credit-only checkout failed.";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
   const callbackUrl = `${resolveSiteUrl(request)}/dashboard/administration/billing/callback`;
+
+  const checkoutMetadata = {
+    tenant_id: tenantId,
+    product_id: product.id,
+    product_name: product.name,
+    billing_cycle: product.billing_cycle,
+    plan_code: planCode,
+    list_price_ghs: chargeSplit.listPriceGhs,
+    credit_applied_ghs: chargeSplit.creditAppliedGhs,
+    paystack_amount_ghs: chargeSplit.paystackAmountGhs,
+    ...(chargeSplit.usesCustomPriceOverride
+      ? { custom_price_override: true }
+      : {}),
+  };
 
   const initialized = await initializePaystackTransaction({
     email: billingEmail,
     planCode,
-    amountPesewas: ghsToPesewas(priceGhs),
+    amountPesewas: ghsToPesewas(chargeSplit.paystackAmountGhs),
     callbackUrl,
     currency: "GHS",
-    metadata: {
-      tenant_id: tenantId,
-      product_id: product.id,
-      product_name: product.name,
-      billing_cycle: product.billing_cycle,
-    },
+    metadata: checkoutMetadata,
   });
 
   if (!initialized.ok) {
     return NextResponse.json({ error: initialized.error }, { status: 502 });
+  }
+
+  if (chargeSplit.creditAppliedGhs > 0) {
+    try {
+      await deductPartialSubscriptionCredit(admin, {
+        tenantId,
+        creditAppliedGhs: chargeSplit.creditAppliedGhs,
+        paystackReference: initialized.reference,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to apply account credit before Paystack checkout.";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
   }
 
   return NextResponse.json({
@@ -187,5 +275,8 @@ export async function POST(request: Request) {
     tenant_id: tenantId,
     plan_code: planCode,
     product_name: product.name,
+    list_price_ghs: chargeSplit.listPriceGhs,
+    credit_applied_ghs: chargeSplit.creditAppliedGhs,
+    paystack_amount_ghs: chargeSplit.paystackAmountGhs,
   });
 }

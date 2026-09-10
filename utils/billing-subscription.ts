@@ -16,6 +16,8 @@ export type TenantBillingSubscription = {
   billingWaived: boolean;
   cancelledAt: string | null;
   cancellationReason: string | null;
+  customPriceGhs: number | null;
+  customPriceTierProductId: string | null;
 };
 
 type SubscriptionRecord = {
@@ -29,6 +31,8 @@ type SubscriptionRecord = {
   billing_waived: boolean | null;
   cancelled_at: string | null;
   cancellation_reason: string | null;
+  custom_price_ghs: number | null;
+  custom_price_tier_product_id: string | null;
   product: { name: string } | { name: string }[] | null;
 };
 
@@ -53,7 +57,7 @@ export const getTenantBillingSubscription = cache(
     const { data, error } = await admin
       .from("crm_subscriptions")
       .select(
-        "subscription_status, trial_end_date, created_at, activated_at, next_billing_date, product_id, paystack_subscription_id, billing_waived, cancelled_at, cancellation_reason, product:crm_products(name)",
+        "subscription_status, trial_end_date, created_at, activated_at, next_billing_date, product_id, paystack_subscription_id, billing_waived, cancelled_at, cancellation_reason, custom_price_ghs, custom_price_tier_product_id, product:crm_products(name)",
       )
       .eq("linked_tenant_id", linkedTenantId)
       .order("created_at", { ascending: false })
@@ -77,6 +81,8 @@ export const getTenantBillingSubscription = cache(
         billingWaived: false,
         cancelledAt: null,
         cancellationReason: null,
+        customPriceGhs: null,
+        customPriceTierProductId: null,
       };
     }
 
@@ -100,6 +106,9 @@ export const getTenantBillingSubscription = cache(
       billingWaived: row.billing_waived === true,
       cancelledAt: row.cancelled_at,
       cancellationReason: row.cancellation_reason,
+      customPriceGhs:
+        row.custom_price_ghs != null ? Number(row.custom_price_ghs) : null,
+      customPriceTierProductId: row.custom_price_tier_product_id,
     };
   },
 );

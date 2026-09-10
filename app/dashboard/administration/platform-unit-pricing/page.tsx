@@ -5,6 +5,7 @@ import {
   getPlatformOnlyUnitActivationPricing,
   getPlatformOnlyUnitAnnualPricing,
   getPlatformOnlyUnitCapConfig,
+  getReferralRewardGhsConfig,
 } from "@/utils/platform-billing-config";
 import PlatformUnitPricing, {
   type PlatformUnitPricingRow,
@@ -16,11 +17,13 @@ export default async function PlatformUnitPricingPage() {
   }
 
   const admin = createAdminClient();
-  const [monthlyPricing, annualPricing, capConfig] = await Promise.all([
-    getPlatformOnlyUnitActivationPricing(admin),
-    getPlatformOnlyUnitAnnualPricing(admin),
-    getPlatformOnlyUnitCapConfig(admin),
-  ]);
+  const [monthlyPricing, annualPricing, capConfig, referralReward] =
+    await Promise.all([
+      getPlatformOnlyUnitActivationPricing(admin),
+      getPlatformOnlyUnitAnnualPricing(admin),
+      getPlatformOnlyUnitCapConfig(admin),
+      getReferralRewardGhsConfig(admin),
+    ]);
 
   const initialRows: PlatformUnitPricingRow[] = [
     {
@@ -43,6 +46,13 @@ export default async function PlatformUnitPricingPage() {
       priceGhs: capConfig.unitCap,
       updatedAt: capConfig.updatedAt,
       valueKind: "integer",
+    },
+    {
+      configKey: referralReward.configKey,
+      label: "ERP referral reward",
+      priceGhs: referralReward.rewardGhs,
+      updatedAt: referralReward.updatedAt,
+      valueKind: "price",
     },
   ];
 

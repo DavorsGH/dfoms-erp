@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { validateAdminCustomerTenantId } from "@/utils/admin-tenant-api";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import { parseRequiredUuid } from "@/utils/uuid-validation";
 
 type MarkActiveBody = {
   tenant_id?: string;
@@ -21,20 +23,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { tenant_id, product_id } = body;
+  const { product_id } = body;
 
-  if (!tenant_id || !product_id) {
-    return NextResponse.json(
-      { error: "tenant_id and product_id are required" },
-      { status: 400 },
-    );
+  const tenantValidation = validateAdminCustomerTenantId(body.tenant_id);
+  if (!tenantValidation.ok) {
+    return tenantValidation.response;
   }
+  const tenant_id = tenantValidation.tenantId;
 
-  if (tenant_id === DAVORS_TENANT_ID) {
-    return NextResponse.json(
-      { error: "The platform tenant cannot be modified from this screen." },
-      { status: 400 },
-    );
+  const productValidation = parseRequiredUuid(product_id, "product_id");
+  if (!productValidation.ok) {
+    return NextResponse.json({ error: productValidation.message }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -42,7 +41,7 @@ export async function POST(request: Request) {
   const { data: product, error: productError } = await admin
     .from("crm_products")
     .select("id")
-    .eq("id", product_id)
+    .eq("id", productValidation.value)
     .eq("tenant_id", DAVORS_TENANT_ID)
     .maybeSingle();
 
@@ -78,7 +77,7 @@ export async function POST(request: Request) {
   const subscriptionUpdate: {
     product_id: string;
     subscription_status?: "active";
-  } = { product_id };
+  } = { product_id: productValidation.value };
 
   if (!isAlreadyActive) {
     subscriptionUpdate.subscription_status = "active";

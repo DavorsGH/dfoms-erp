@@ -5,9 +5,11 @@ import {
   PLATFORM_ONLY_UNIT_ACTIVATION_CONFIG_KEY,
   PLATFORM_ONLY_UNIT_ANNUAL_CONFIG_KEY,
   PLATFORM_ONLY_UNIT_CAP_CONFIG_KEY,
+  REFERRAL_REWARD_GHS_CONFIG_KEY,
   updatePlatformOnlyUnitActivationPriceGhs,
   updatePlatformOnlyUnitAnnualPriceGhs,
   updatePlatformOnlyUnitCap,
+  updateReferralRewardGhs,
 } from "@/utils/platform-billing-config";
 
 type UpdatePlatformBillingBody = {
@@ -86,7 +88,9 @@ export async function POST(request: Request) {
       ? await updatePlatformOnlyUnitAnnualPriceGhs(admin, price_ghs)
       : configKey === PLATFORM_ONLY_UNIT_ACTIVATION_CONFIG_KEY
         ? await updatePlatformOnlyUnitActivationPriceGhs(admin, price_ghs)
-        : { ok: false as const, error: "Unsupported config_key." };
+        : configKey === REFERRAL_REWARD_GHS_CONFIG_KEY
+          ? await updateReferralRewardGhs(admin, price_ghs)
+          : { ok: false as const, error: "Unsupported config_key." };
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });

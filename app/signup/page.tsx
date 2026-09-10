@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import PasswordInput from "@/components/password-input";
 import OAuthProviderButtons from "@/components/auth/oauth-provider-buttons";
@@ -14,11 +14,15 @@ import {
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [companyName, setCompanyName] = useState("");
   const [adminFullName, setAdminFullName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [referralCode, setReferralCode] = useState(
+    () => searchParams.get("ref")?.trim().toUpperCase() ?? "",
+  );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +49,7 @@ export default function SignupPage() {
         admin_email: adminEmail,
         password,
         confirm_password: confirmPassword,
+        referral_code: referralCode.trim() || undefined,
       }),
     });
 
@@ -176,6 +181,26 @@ export default function SignupPage() {
 
             <div>
               <label
+                htmlFor="referral_code"
+                className="mb-1 block text-sm font-medium text-zinc-700"
+              >
+                Referral code <span className="font-normal text-zinc-500">(optional)</span>
+              </label>
+              <input
+                id="referral_code"
+                type="text"
+                value={referralCode}
+                onChange={(event) =>
+                  setReferralCode(event.target.value.toUpperCase())
+                }
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 uppercase text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
+                placeholder="Enter a referral code if you have one"
+                autoComplete="off"
+              />
+            </div>
+
+            <div>
+              <label
                 htmlFor="confirm_password"
                 className="mb-1 block text-sm font-medium text-zinc-700"
               >
@@ -208,6 +233,7 @@ export default function SignupPage() {
                 company_name: companyName,
                 admin_full_name: adminFullName,
                 admin_email: adminEmail,
+                referral_code: referralCode.trim() || undefined,
               }}
               disabled={
                 !companyName.trim() ||

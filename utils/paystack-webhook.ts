@@ -35,7 +35,10 @@ import {
   isSmsCreditPaystackContext,
   processSmsCreditPaystackEvent,
 } from "@/utils/sms-credit-paystack";
+import { assertPaidAmountMatchesExpected } from "@/utils/account-credit";
+import { resolveExpectedSubscriptionPaystackAmountGhs } from "@/utils/subscription-checkout-pricing";
 import { postErpSubscriptionPaystackFinance } from "@/utils/paystack-finance-posting";
+import { maybeQualifyReferralOnFirstSubscriptionPayment } from "@/utils/referral-qualification";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { verifyPaystackTransaction } from "@/utils/paystack";
 
@@ -513,6 +516,27 @@ async function findProductIdByPlanCode(planCode: string): Promise<string | null>
   return data?.id ?? null;
 }
 
+async function findProductIdByCustomPlanCode(
+  planCode: string,
+): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("crm_subscriptions")
+    .select("product_id")
+    .eq("tenant_id", DAVORS_TENANT_ID)
+    .eq("custom_price_paystack_plan_code", planCode)
+    .not("product_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return asString(data?.product_id);
+}
+
 /**
  * Resolve the CRM product for a paid plan. Prefer Paystack plan_code (what was
  * actually charged) over checkout metadata.product_id so upgrades always land
@@ -526,6 +550,11 @@ async function resolvePurchasedProductId(options: {
     const fromPlan = await findProductIdByPlanCode(options.planCode);
     if (fromPlan) {
       return fromPlan;
+    }
+
+    const fromCustomPlan = await findProductIdByCustomPlanCode(options.planCode);
+    if (fromCustomPlan) {
+      return fromCustomPlan;
     }
   }
 
@@ -557,6 +586,23 @@ async function findSubscriptionByEmailAndPlan(options: {
   }
 
   if (tenantIds.length > 1 && options.planCode) {
+    const { data: customPlanSub, error: customPlanError } = await admin
+      .from("crm_subscriptions")
+      .select(CRM_SUBSCRIPTION_ROW_SELECT)
+      .eq("tenant_id", DAVORS_TENANT_ID)
+      .eq("custom_price_paystack_plan_code", options.planCode)
+      .in("linked_tenant_id", tenantIds)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (customPlanError) {
+      throw new Error(customPlanError.message);
+    }
+    if (customPlanSub) {
+      return customPlanSub as SubscriptionRow;
+    }
+
     const productId = await findProductIdByPlanCode(options.planCode);
     if (productId) {
       const { data, error } = await admin
@@ -1059,6 +1105,35 @@ async function handleChargeSuccess(
   }
 
   const admin = createAdminClient();
+
+  const metadataPaystackAmount = asNumber(meta.paystack_amount_ghs);
+  const metadataCreditApplied = asNumber(meta.credit_applied_ghs);
+  const resolvedProductId = productId ?? row.product_id;
+
+  let expectedPaystackAmountGhs: number | null = null;
+  if (row.linked_tenant_id && resolvedProductId) {
+    expectedPaystackAmountGhs = await resolveExpectedSubscriptionPaystackAmountGhs(
+      admin,
+      {
+        linkedTenantId: row.linked_tenant_id,
+        productId: resolvedProductId,
+        metadataCreditAppliedGhs: metadataCreditApplied,
+        metadataPaystackAmountGhs: metadataPaystackAmount,
+      },
+    );
+  }
+
+  if (expectedPaystackAmountGhs != null && expectedPaystackAmountGhs >= 0) {
+    transactionAmountGhs = assertPaidAmountMatchesExpected(
+      transactionAmountGhs,
+      expectedPaystackAmountGhs,
+      "ERP Suite subscription",
+    );
+  }
+
+  const wasFirstPaidActivation =
+    previousStatus === "trialing" && !row.activated_at;
+
   await postErpSubscriptionPaystackFinance(admin, {
     reference,
     transactionAmountGhs,
@@ -1076,6 +1151,22 @@ async function handleChargeSuccess(
     productId: productId ?? row.product_id,
     chargeAmountLabel: extractChargeAmountLabel(data),
   });
+
+  if (row.linked_tenant_id) {
+    console.log(
+      `[paystack-webhook] referral qualification check linked_tenant_id=${row.linked_tenant_id} ref=${reference ?? "n/a"} wasFirstPaidActivation=${wasFirstPaidActivation}`,
+    );
+    await maybeQualifyReferralOnFirstSubscriptionPayment(admin, {
+      linkedTenantId: row.linked_tenant_id,
+      reference,
+      wasFirstPaidActivation,
+    }).catch((error) => {
+      console.error(
+        "[paystack-webhook] referral qualification failed:",
+        error instanceof Error ? error.message : error,
+      );
+    });
+  }
 
   return {
     detail: `charge.success ${created ? "created+activated" : "activated"} subscription ${row.id} (linked_tenant_id=${row.linked_tenant_id}, product_id=${productId ?? row.product_id ?? "unchanged"}, ref=${reference ?? "n/a"}, next_billing_date=${nextBillingDate ?? "unchanged"}).`,

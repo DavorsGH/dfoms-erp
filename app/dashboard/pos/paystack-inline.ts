@@ -41,6 +41,26 @@ type PaystackPopInstance = {
 
 type PaystackPopConstructor = new () => PaystackPopInstance;
 
+/** Remove Paystack inline iframes/overlays that can block page clicks after close. */
+export function dismissPaystackInlineOverlays(): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  for (const element of document.querySelectorAll("iframe")) {
+    const src = element.getAttribute("src") ?? "";
+    if (/paystack/i.test(src)) {
+      element.remove();
+    }
+  }
+
+  for (const element of document.querySelectorAll("[id*='paystack' i], [class*='paystack' i]")) {
+    if (element instanceof HTMLElement) {
+      element.remove();
+    }
+  }
+}
+
 /**
  * Opens Paystack Inline checkout for an already-initialized transaction
  * (access_code from Transaction Initialize). MoMo-only channels are set
@@ -54,5 +74,18 @@ export async function openPaystackInlineWithAccessCode(
   const PaystackPop = (PaystackPopModule.default ??
     PaystackPopModule) as PaystackPopConstructor;
   const popup = new PaystackPop();
-  popup.resumeTransaction(accessCode, callbacks);
+  popup.resumeTransaction(accessCode, {
+    onSuccess: (transaction) => {
+      dismissPaystackInlineOverlays();
+      callbacks.onSuccess?.(transaction);
+    },
+    onCancel: () => {
+      dismissPaystackInlineOverlays();
+      callbacks.onCancel?.();
+    },
+    onError: (error) => {
+      dismissPaystackInlineOverlays();
+      callbacks.onError?.(error);
+    },
+  });
 }

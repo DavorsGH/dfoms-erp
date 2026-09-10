@@ -14,6 +14,9 @@ export const PLATFORM_ONLY_UNIT_ANNUAL_CONFIG_KEY =
 export const PLATFORM_ONLY_UNIT_CAP_CONFIG_KEY =
   "platform_only_unit_cap" as const;
 
+/** Config key for ERP referral reward amount (GHS). */
+export const REFERRAL_REWARD_GHS_CONFIG_KEY = "referral_reward_ghs" as const;
+
 /** Fallback when DB row is missing (pre-migration or read failure). */
 export const DEFAULT_PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS = 110;
 
@@ -44,6 +47,12 @@ export type PlatformOnlyUnitAnnualPricing = {
 export type PlatformOnlyUnitCapConfig = {
   configKey: typeof PLATFORM_ONLY_UNIT_CAP_CONFIG_KEY;
   unitCap: number;
+  updatedAt: string | null;
+};
+
+export type ReferralRewardGhsConfig = {
+  configKey: typeof REFERRAL_REWARD_GHS_CONFIG_KEY;
+  rewardGhs: number;
   updatedAt: string | null;
 };
 
@@ -264,6 +273,68 @@ export async function updatePlatformOnlyUnitCap(
     {
       config_key: PLATFORM_ONLY_UNIT_CAP_CONFIG_KEY,
       price_ghs: unitCap,
+      updated_at: now,
+    },
+    { onConflict: "config_key" },
+  );
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true };
+}
+
+export async function getReferralRewardGhsConfig(
+  admin: SupabaseClient,
+): Promise<ReferralRewardGhsConfig> {
+  const { data, error } = await admin
+    .from("platform_billing_config")
+    .select("config_key, price_ghs, updated_at")
+    .eq("config_key", REFERRAL_REWARD_GHS_CONFIG_KEY)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `[platform-billing-config] referral reward read failed: ${error.message}`,
+    );
+  }
+
+  const row = data as PlatformBillingConfigRow | null;
+  const rewardGhs = parsePriceGhs(row?.price_ghs);
+  if (rewardGhs === null) {
+    throw new Error(
+      "[platform-billing-config] referral_reward_ghs row is missing or invalid.",
+    );
+  }
+
+  return {
+    configKey: REFERRAL_REWARD_GHS_CONFIG_KEY,
+    rewardGhs,
+    updatedAt: row?.updated_at ?? null,
+  };
+}
+
+export async function getReferralRewardGhs(
+  admin: SupabaseClient,
+): Promise<number> {
+  const config = await getReferralRewardGhsConfig(admin);
+  return config.rewardGhs;
+}
+
+export async function updateReferralRewardGhs(
+  admin: SupabaseClient,
+  rewardGhs: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!Number.isFinite(rewardGhs) || rewardGhs < 0) {
+    return { ok: false, error: "reward_ghs must be a non-negative number." };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await admin.from("platform_billing_config").upsert(
+    {
+      config_key: REFERRAL_REWARD_GHS_CONFIG_KEY,
+      price_ghs: rewardGhs,
       updated_at: now,
     },
     { onConflict: "config_key" },

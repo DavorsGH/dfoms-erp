@@ -26,6 +26,28 @@ interface ClientCacheDbSchema extends DBSchema {
 
 let dbPromise: Promise<IDBPDatabase<ClientCacheDbSchema>> | null = null;
 
+const IDB_CLOSE_TIMEOUT_MS = 2_000;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 export function getClientCacheDb(): Promise<IDBPDatabase<ClientCacheDbSchema>> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB is not available."));
@@ -139,13 +161,14 @@ export async function deleteClientCacheDatabase(): Promise<void> {
   }
 
   if (dbPromise) {
+    const pendingOpen = dbPromise;
+    dbPromise = null;
     try {
-      const db = await dbPromise;
-      db.close();
+      const db = await withTimeout(pendingOpen, IDB_CLOSE_TIMEOUT_MS);
+      db?.close();
     } catch {
       // Non-fatal — proceed with deleteDatabase.
     }
-    dbPromise = null;
   }
 
   await new Promise<void>((resolve, reject) => {

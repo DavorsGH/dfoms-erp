@@ -278,11 +278,15 @@ async function handleOpenSignupFlow(
       },
     });
 
+    const referralCodeInput =
+      flow.signup?.referral_code?.trim().toUpperCase() || null;
+
     const provisioned = await provisionStaffTenantSignup(admin, {
       authUserId: authUid,
       companyName,
       adminFullName,
       adminEmail,
+      referralCodeInput,
     });
 
     if (!provisioned.ok) {

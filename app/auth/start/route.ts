@@ -40,11 +40,13 @@ function buildSignupFields(searchParams: URLSearchParams): OAuthSignupFields | u
   const email = searchParams.get("email")?.trim();
   const phone = searchParams.get("phone")?.trim();
   const address = searchParams.get("address")?.trim();
+  const referral_code = searchParams.get("referral_code")?.trim();
 
   if (
     !company_name &&
     !admin_full_name &&
     !admin_email &&
+    !referral_code &&
     !name &&
     !email &&
     !phone &&
@@ -57,6 +59,7 @@ function buildSignupFields(searchParams: URLSearchParams): OAuthSignupFields | u
     company_name,
     admin_full_name,
     admin_email,
+    referral_code,
     name,
     email,
     phone,

@@ -38,6 +38,7 @@ export type SignupRequestBody = {
   admin_email?: string;
   password?: string;
   confirm_password?: string;
+  referral_code?: string;
 };
 
 export type SignupValidationResult =
@@ -49,6 +50,7 @@ export type SignupValidatedInput = {
   adminFullName: string;
   adminEmail: string;
   password: string;
+  referralCodeInput: string | null;
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -89,6 +91,8 @@ export function validateSignupInput(body: SignupRequestBody): SignupValidationRe
     return { ok: false, error: "Password and confirmation do not match." };
   }
 
+  const referralCodeInput = body.referral_code?.trim().toUpperCase() || null;
+
   return {
     ok: true,
     data: {
@@ -96,6 +100,7 @@ export function validateSignupInput(body: SignupRequestBody): SignupValidationRe
       adminFullName,
       adminEmail,
       password,
+      referralCodeInput,
     },
   };
 }

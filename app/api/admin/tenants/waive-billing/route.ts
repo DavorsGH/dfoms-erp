@@ -1,9 +1,13 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import {
+  staffAuditActorLabel,
+  validateAdminCustomerTenantId,
+} from "@/utils/admin-tenant-api";
 import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import { logSystemEvent } from "@/lib/system-event-log";
 
 type WaiveBillingBody = {
   tenant_id?: string;
@@ -24,22 +28,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { tenant_id, waived } = body;
+  const { waived } = body;
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
 
-  if (!tenant_id || typeof waived !== "boolean") {
+  if (typeof waived !== "boolean") {
     return NextResponse.json(
       { error: "tenant_id and waived (boolean) are required" },
       { status: 400 },
     );
   }
 
-  if (tenant_id === DAVORS_TENANT_ID) {
-    return NextResponse.json(
-      { error: "The platform tenant cannot be modified from this screen." },
-      { status: 400 },
-    );
+  const tenantValidation = validateAdminCustomerTenantId(body.tenant_id);
+  if (!tenantValidation.ok) {
+    return tenantValidation.response;
   }
+  const tenant_id = tenantValidation.tenantId;
 
   if (waived && !reason) {
     return NextResponse.json(
@@ -53,16 +56,13 @@ export async function POST(request: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const waivedBy =
-    user?.email?.trim() ||
-    user?.id ||
-    "davors-platform-super-admin";
+  const waivedBy = staffAuditActorLabel(user);
 
   const admin = createAdminClient();
 
   const { data: subscription, error: subscriptionError } = await admin
     .from("crm_subscriptions")
-    .select("id")
+    .select("id, billing_waived, trial_end_date")
     .eq("linked_tenant_id", tenant_id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -77,6 +77,41 @@ export async function POST(request: Request) {
       { error: "No subscription record exists for this tenant." },
       { status: 404 },
     );
+  }
+
+  const oldTrialEndDate = subscription.trial_end_date ?? null;
+  let newTrialEndDate: string | null = oldTrialEndDate;
+
+  if (!waived && subscription.billing_waived === true) {
+    const { data: graceEnd, error: graceError } = await admin.rpc(
+      "grant_post_waiver_grace_period",
+      {
+        p_tenant_id: tenant_id,
+        p_grace_days: 14,
+      },
+    );
+
+    if (graceError) {
+      return NextResponse.json({ error: graceError.message }, { status: 400 });
+    }
+
+    newTrialEndDate =
+      typeof graceEnd === "string"
+        ? graceEnd.slice(0, 10)
+        : oldTrialEndDate;
+
+    await logSystemEvent({
+      eventType: "payment",
+      eventName: "billing_waiver_revoked_grace_period",
+      status: "success",
+      message: `Granted 14-day post-waiver grace for tenant ${tenant_id}.`,
+      metadata: {
+        tenant_id,
+        revoked_by: waivedBy,
+        old_trial_end_date: oldTrialEndDate,
+        new_trial_end_date: newTrialEndDate,
+      },
+    });
   }
 
   const updatePayload = waived
@@ -102,5 +137,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true, ...updatePayload });
+  return NextResponse.json({
+    success: true,
+    ...updatePayload,
+    old_trial_end_date: oldTrialEndDate,
+    new_trial_end_date: newTrialEndDate,
+  });
 }

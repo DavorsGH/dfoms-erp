@@ -25,6 +25,7 @@ import {
   type BillingInvoiceRow,
   type BillingSettingsRow,
 } from "@/utils/billing-settings-types";
+import type { AccountCreditLedgerRow } from "@/utils/account-credit";
 import type { TenantBillingSubscription } from "@/utils/billing-subscription";
 import {
   formatSubscriptionAccessEndDate,
@@ -63,6 +64,8 @@ type BillingSettingsProps = {
   smsCreditBalance: number;
   /** False for Davors platform tenant — Hubtel account holder, not a prepaid SMS customer. */
   showSmsCreditPurchase?: boolean;
+  referralCode?: string | null;
+  creditLedger?: AccountCreditLedgerRow[];
   fetchError: string | null;
   /** Initial tab, e.g. from ?tab=payment deep links (POS Payment Settings). */
   initialTab?: "billing" | "payment";
@@ -189,6 +192,8 @@ export default function BillingSettings({
   smsCreditPacks,
   smsCreditBalance,
   showSmsCreditPurchase = true,
+  referralCode = null,
+  creditLedger = [],
   fetchError,
   initialTab = "billing",
 }: BillingSettingsProps) {
@@ -198,6 +203,7 @@ export default function BillingSettings({
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [planModalOpen, setPlanModalOpen] = useState(false);
+  const [referralCopied, setReferralCopied] = useState(false);
   const [checkoutLoadingId, setCheckoutLoadingId] = useState<string | null>(
     null,
   );
@@ -424,15 +430,37 @@ export default function BillingSettings({
 
     const payload = (await response.json().catch(() => null)) as {
       error?: string;
+      credit_only?: boolean;
       authorization_url?: string;
+      product_name?: string;
+      credit_applied_ghs?: number;
     } | null;
 
-    if (!response.ok || !payload?.authorization_url) {
+    if (!response.ok) {
       setCheckoutLoadingId(null);
       setError(
         payload?.error ??
           "Unable to start Paystack checkout. Try again or contact support.",
       );
+      return;
+    }
+
+    if (payload?.credit_only) {
+      setCheckoutLoadingId(null);
+      setSuccess(
+        `Subscription activated for ${payload.product_name ?? "your selected tier"} using account credit${
+          payload.credit_applied_ghs
+            ? ` (GHS ${Number(payload.credit_applied_ghs).toFixed(2)} applied)`
+            : ""
+        }.`,
+      );
+      router.refresh();
+      return;
+    }
+
+    if (!payload?.authorization_url) {
+      setCheckoutLoadingId(null);
+      setError("Unable to start Paystack checkout. Try again or contact support.");
       return;
     }
 
@@ -453,11 +481,13 @@ export default function BillingSettings({
 
       const initPayload = (await initResponse.json().catch(() => null)) as {
         ok?: boolean;
+        credit_only?: boolean;
         error?: string;
         access_code?: string;
         reference?: string;
         purchase_request_id?: string;
         credits?: number;
+        credit_applied_ghs?: number;
       } | null;
 
       if (!initResponse.ok || !initPayload?.ok) {
@@ -466,6 +496,20 @@ export default function BillingSettings({
             "Unable to start SMS credit checkout. Try again or contact support.",
         );
         setSmsPackLoadingKey(null);
+        return;
+      }
+
+      if (initPayload.credit_only) {
+        const credited = initPayload.credits ?? pack.credits;
+        setSuccess(
+          `Added ${credited.toLocaleString("en-GH")} SMS credits using account credit${
+            initPayload.credit_applied_ghs
+              ? ` (GHS ${Number(initPayload.credit_applied_ghs).toFixed(2)} applied)`
+              : ""
+          }.`,
+        );
+        setSmsPackLoadingKey(null);
+        router.refresh();
         return;
       }
 
@@ -833,16 +877,108 @@ export default function BillingSettings({
         )}
       </section>
 
+      {referralCode ? (
+        <section className={cardClassName}>
+          <div>
+            <h3 className="text-sm font-medium text-slate-700">Referral Code</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Share this code with other businesses at signup. When they subscribe,
+              you earn account credit.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <code className="rounded-md bg-slate-100 px-3 py-2 text-lg font-semibold tracking-widest text-[#0f2744]">
+              {referralCode}
+            </code>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(referralCode);
+                  setReferralCopied(true);
+                  window.setTimeout(() => setReferralCopied(false), 2000);
+                } catch {
+                  setError("Unable to copy referral code.");
+                }
+              }}
+              className={secondaryButtonClassName}
+            >
+              {referralCopied ? "Copied" : "Copy code"}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const shareUrl = `${window.location.origin}/signup?ref=${encodeURIComponent(referralCode)}`;
+                try {
+                  if (navigator.share) {
+                    await navigator.share({
+                      title: "Davors ERP referral",
+                      text: `Use my referral code ${referralCode} when you sign up for Davors ERP.`,
+                      url: shareUrl,
+                    });
+                    return;
+                  }
+                  await navigator.clipboard.writeText(shareUrl);
+                  setReferralCopied(true);
+                  window.setTimeout(() => setReferralCopied(false), 2000);
+                } catch {
+                  setError("Unable to share referral link.");
+                }
+              }}
+              className={secondaryButtonClassName}
+            >
+              Share link
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className={cardClassName}>
         <div>
           <h3 className="text-sm font-medium text-slate-700">Credit Balance</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Account credit applied to future invoices.
+            Account credit applied automatically to subscription checkout and SMS
+            credit purchases.
           </p>
         </div>
         <p className="text-2xl font-semibold text-[#0f2744]">
           {formatCreditBalance(billingSettings.credit_balance)}
         </p>
+        {creditLedger.length > 0 ? (
+          <ScrollableTable>
+            <table className={scrollableTableClassName}>
+              <thead className={scrollableTableHeadClassName}>
+                <tr>
+                  <th className={scrollableTableThClassName}>Date</th>
+                  <th className={scrollableTableThClassName}>Change</th>
+                  <th className={scrollableTableThClassName}>Reason</th>
+                  <th className={scrollableTableThClassName}>Reference</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {creditLedger.map((entry, index) => (
+                  <tr key={entry.id} className={getStripedRowClassName(index)}>
+                    <td className="px-4 py-3 text-sm">
+                      {formatInvoiceDate(entry.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium">
+                      {entry.delta_ghs >= 0 ? "+" : "−"}
+                      {formatCreditBalance(Math.abs(entry.delta_ghs))}
+                    </td>
+                    <td className="px-4 py-3 text-sm capitalize">
+                      {entry.reason.replace(/_/g, " ")}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                      {entry.reference ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollableTable>
+        ) : (
+          <p className="text-sm text-slate-500">No credit ledger entries yet.</p>
+        )}
       </section>
 
       <form onSubmit={handleSave} className="space-y-8">
@@ -1225,6 +1361,15 @@ export default function BillingSettings({
                     tier.paystack_plan_code.trim().length > 0;
                   const hasPrice =
                     tier.price_ghs != null && Number(tier.price_ghs) > 0;
+                  const customPriceGhs =
+                    subscription.customPriceGhs != null &&
+                    subscription.customPriceTierProductId === tier.id
+                      ? subscription.customPriceGhs
+                      : null;
+                  const showCustomPrice =
+                    customPriceGhs != null &&
+                    Number.isFinite(customPriceGhs) &&
+                    customPriceGhs > 0;
 
                   return (
                     <button
@@ -1251,9 +1396,20 @@ export default function BillingSettings({
                         ) : null}
                       </div>
                       <div className="text-right text-sm text-slate-700">
-                        <p className="font-medium">
-                          {formatProductPrice(tier.price_ghs)}
-                        </p>
+                        {showCustomPrice ? (
+                          <div className="space-y-0.5">
+                            <p className="font-semibold text-[#0f2744]">
+                              {formatProductPrice(customPriceGhs)}
+                            </p>
+                            <p className="text-xs text-slate-500 line-through">
+                              {formatProductPrice(tier.price_ghs)}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="font-medium">
+                            {formatProductPrice(tier.price_ghs)}
+                          </p>
+                        )}
                         {isCurrent ? (
                           <p className="mt-1 text-xs font-medium text-emerald-700">
                             Current plan

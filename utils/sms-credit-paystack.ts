@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { assertPaidAmountMatchesExpected } from "@/utils/account-credit";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { postSmsCreditPurchasePaystackFinance } from "@/utils/paystack-finance-posting";
 
@@ -190,10 +191,30 @@ export async function fulfillSmsCreditPurchase(
   }
 
   const nowIso = options.paidAt?.trim() || new Date().toISOString();
+  const expectedPaystackAmount = roundGhs(
+    Number(requestRow.amount_requested_ghs) || 0,
+  );
+  const isCreditOnlyReference = reference.startsWith("CREDIT-SMS-");
   const paidAmount =
     options.paidAmountGhs != null
-      ? roundGhs(options.paidAmountGhs)
-      : roundGhs(Number(requestRow.amount_requested_ghs) || 0);
+      ? isCreditOnlyReference
+        ? roundGhs(options.paidAmountGhs)
+        : assertPaidAmountMatchesExpected(
+            options.paidAmountGhs,
+            expectedPaystackAmount,
+            "SMS credit purchase",
+          )
+      : expectedPaystackAmount;
+
+  if (
+    paidAmount <= 0 &&
+    !isCreditOnlyReference &&
+    requestStatus !== "paid"
+  ) {
+    throw new Error(
+      "SMS credit purchase expected a positive Paystack charge amount.",
+    );
+  }
 
   async function postFinanceRecords() {
     await postSmsCreditPurchasePaystackFinance(admin, {

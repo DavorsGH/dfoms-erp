@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import type { CrmSubscriptionStatus } from "@/utils/tenant-signup";
+import { isValidUuid } from "@/utils/uuid-validation";
 
 export type TenantStatus = "active" | "suspended";
 
@@ -23,6 +24,16 @@ export type CustomerTenantRow = {
   billingWaivedReason: string | null;
   billingWaivedBy: string | null;
   billingWaivedAt: string | null;
+  customPriceGhs: number | null;
+  customPriceReason: string | null;
+  /** auth.users id stored in crm_subscriptions.custom_price_set_by */
+  customPriceSetBy: string | null;
+  /** Display-only label resolved from user_accounts at read time */
+  customPriceSetByLabel: string | null;
+  customPriceSetAt: string | null;
+  /** Tier the custom price override is locked to (crm_products.id). */
+  customPriceTierProductId: string | null;
+  customPriceTierName: string | null;
 };
 
 type TenantRecord = {
@@ -44,13 +55,45 @@ type SubscriptionRecord = {
   billing_waived_reason: string | null;
   billing_waived_by: string | null;
   billing_waived_at: string | null;
-  product: { name: string } | { name: string }[] | null;
+  custom_price_ghs: number | null;
+  custom_price_reason: string | null;
+  custom_price_set_by: string | null;
+  custom_price_set_at: string | null;
+  custom_price_tier_product_id: string | null;
 };
 
 type CustomerRecord = {
   client_id: string;
   email: string | null;
 };
+
+type UserAccountActorRecord = {
+  auth_uid: string;
+  email: string | null;
+  employees:
+    | { full_name: string | null }
+    | { full_name: string | null }[]
+    | null;
+};
+
+function customPriceSetByLabelFromAccount(
+  account: UserAccountActorRecord,
+): string {
+  const employee = Array.isArray(account.employees)
+    ? account.employees[0]
+    : account.employees;
+  const fullName = employee?.full_name?.trim();
+  if (fullName) {
+    return fullName;
+  }
+
+  const email = account.email?.trim();
+  if (email) {
+    return email;
+  }
+
+  return account.auth_uid;
+}
 
 function latestSubscriptionByTenant(
   subscriptions: SubscriptionRecord[],
@@ -69,20 +112,6 @@ function latestSubscriptionByTenant(
   }
 
   return map;
-}
-
-function productNameFromRow(
-  product: SubscriptionRecord["product"],
-): string | null {
-  if (!product) {
-    return null;
-  }
-
-  if (Array.isArray(product)) {
-    return product[0]?.name ?? null;
-  }
-
-  return product.name ?? null;
 }
 
 export async function fetchCustomerTenantRows(
@@ -108,7 +137,7 @@ export async function fetchCustomerTenantRows(
   const { data: subscriptions, error: subscriptionsError } = await admin
     .from("crm_subscriptions")
     .select(
-      "id, linked_tenant_id, customer_id, product_id, subscription_status, trial_end_date, created_at, billing_waived, billing_waived_reason, billing_waived_by, billing_waived_at, product:crm_products(name)",
+      "id, linked_tenant_id, customer_id, product_id, subscription_status, trial_end_date, created_at, billing_waived, billing_waived_reason, billing_waived_by, billing_waived_at, custom_price_ghs, custom_price_reason, custom_price_set_by, custom_price_set_at, custom_price_tier_product_id",
     )
     .in("linked_tenant_id", tenantIds)
     .order("created_at", { ascending: false });
@@ -117,9 +146,44 @@ export async function fetchCustomerTenantRows(
     return { rows: [], fetchError: subscriptionsError.message };
   }
 
-  const subscriptionByTenant = latestSubscriptionByTenant(
-    (subscriptions as SubscriptionRecord[] | null) ?? [],
+  const subscriptionRecords = (
+    (subscriptions as SubscriptionRecord[] | null) ?? []
+  ).filter(
+    (row) =>
+      Boolean(row.linked_tenant_id) && isValidUuid(row.linked_tenant_id ?? ""),
   );
+
+  const productIds = [
+    ...new Set(
+      subscriptionRecords
+        .flatMap((row) => [row.product_id, row.custom_price_tier_product_id])
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && isValidUuid(value),
+        ),
+    ),
+  ];
+
+  let productNameById = new Map<string, string>();
+
+  if (productIds.length > 0) {
+    const { data: products, error: productsError } = await admin
+      .from("crm_products")
+      .select("id, name")
+      .in("id", productIds);
+
+    if (productsError) {
+      return { rows: [], fetchError: productsError.message };
+    }
+
+    productNameById = new Map(
+      ((products as { id: string; name: string }[] | null) ?? []).map(
+        (product) => [product.id, product.name],
+      ),
+    );
+  }
+
+  const subscriptionByTenant = latestSubscriptionByTenant(subscriptionRecords);
 
   const customerIds = [
     ...new Set(
@@ -128,6 +192,41 @@ export async function fetchCustomerTenantRows(
         .filter((value): value is string => Boolean(value)),
     ),
   ];
+
+  const customPriceSetByIds = [
+    ...new Set(
+      [...subscriptionByTenant.values()]
+        .map((row) => row.custom_price_set_by)
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && isValidUuid(value),
+        ),
+    ),
+  ];
+
+  let customPriceSetByLabelByAuthUid = new Map<string, string>();
+
+  if (customPriceSetByIds.length > 0) {
+    const { data: actorAccounts, error: actorAccountsError } = await admin
+      .from("user_accounts")
+      .select(
+        "auth_uid, email, employees!user_accounts_employee_id_fkey(full_name)",
+      )
+      .in("auth_uid", customPriceSetByIds);
+
+    if (actorAccountsError) {
+      return { rows: [], fetchError: actorAccountsError.message };
+    }
+
+    customPriceSetByLabelByAuthUid = new Map(
+      ((actorAccounts as UserAccountActorRecord[] | null) ?? []).map(
+        (account) => [
+          account.auth_uid,
+          customPriceSetByLabelFromAccount(account),
+        ],
+      ),
+    );
+  }
 
   let customersById = new Map<string, CustomerRecord>();
 
@@ -154,7 +253,10 @@ export async function fetchCustomerTenantRows(
     const customer = subscription?.customer_id
       ? customersById.get(subscription.customer_id)
       : null;
-    const tierName = productNameFromRow(subscription?.product ?? null);
+    const tierName =
+      subscription?.product_id != null
+        ? (productNameById.get(subscription.product_id) ?? null)
+        : null;
 
     return {
       tenantId: tenant.id,
@@ -171,6 +273,24 @@ export async function fetchCustomerTenantRows(
       billingWaivedReason: subscription?.billing_waived_reason ?? null,
       billingWaivedBy: subscription?.billing_waived_by ?? null,
       billingWaivedAt: subscription?.billing_waived_at ?? null,
+      customPriceGhs:
+        subscription?.custom_price_ghs != null
+          ? Number(subscription.custom_price_ghs)
+          : null,
+      customPriceReason: subscription?.custom_price_reason ?? null,
+      customPriceSetBy: subscription?.custom_price_set_by ?? null,
+      customPriceSetByLabel: subscription?.custom_price_set_by
+        ? (customPriceSetByLabelByAuthUid.get(subscription.custom_price_set_by) ??
+          null)
+        : null,
+      customPriceSetAt: subscription?.custom_price_set_at ?? null,
+      customPriceTierProductId:
+        subscription?.custom_price_tier_product_id ?? null,
+      customPriceTierName:
+        subscription?.custom_price_tier_product_id != null
+          ? (productNameById.get(subscription.custom_price_tier_product_id) ??
+            null)
+          : null,
     };
   });
 

@@ -24,7 +24,7 @@ export default function UserAccountMenu({
       return;
     }
 
-    function handlePointerDown(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent) {
       if (!menuRef.current?.contains(event.target as Node)) {
         setOpen(false);
       }
@@ -36,11 +36,11 @@ export default function UserAccountMenu({
       }
     }
 
-    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("click", handleClickOutside);
     document.addEventListener("keydown", handleEscape);
 
     return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("click", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
     };
   }, [open]);

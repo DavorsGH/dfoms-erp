@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireDavorsPlatformSuperAdmin } from "@/utils/admin-auth";
+import { validateAdminCustomerTenantId } from "@/utils/admin-tenant-api";
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { TenantStatus } from "@/utils/tenant-management";
-import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
 type UpdateTenantStatusBody = {
   tenant_id?: string;
@@ -22,21 +22,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { tenant_id, status } = body;
+  const { status } = body;
 
-  if (!tenant_id || !status) {
+  if (!status) {
     return NextResponse.json(
       { error: "tenant_id and status are required" },
       { status: 400 },
     );
   }
 
-  if (tenant_id === DAVORS_TENANT_ID) {
-    return NextResponse.json(
-      { error: "The platform tenant cannot be modified from this screen." },
-      { status: 400 },
-    );
+  const tenantValidation = validateAdminCustomerTenantId(body.tenant_id);
+  if (!tenantValidation.ok) {
+    return tenantValidation.response;
   }
+  const tenant_id = tenantValidation.tenantId;
 
   if (status !== "active" && status !== "suspended") {
     return NextResponse.json({ error: "Invalid tenant status." }, { status: 400 });

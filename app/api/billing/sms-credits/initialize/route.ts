@@ -111,12 +111,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
+  if (result.creditOnly) {
+    return NextResponse.json({
+      ok: true,
+      credit_only: true,
+      purchase_request_id: result.purchaseRequestId,
+      pack_key: result.packKey,
+      credits: result.credits,
+      list_price_ghs: result.listPriceGhs,
+      credit_applied_ghs: result.creditAppliedGhs,
+      paystack_amount_ghs: result.paystackAmountGhs,
+      reference: result.reference,
+      balance: result.balance,
+      new_credit_balance_ghs: result.newCreditBalanceGhs,
+    });
+  }
+
   return NextResponse.json({
     ok: true,
+    credit_only: false,
     purchase_request_id: result.purchaseRequestId,
     pack_key: result.packKey,
     credits: result.credits,
-    amount_ghs: result.amountGhs,
+    list_price_ghs: result.listPriceGhs,
+    credit_applied_ghs: result.creditAppliedGhs,
+    paystack_amount_ghs: result.paystackAmountGhs,
+    amount_ghs: result.paystackAmountGhs,
     reference: result.reference,
     access_code: result.accessCode,
     authorization_url: result.authorizationUrl,

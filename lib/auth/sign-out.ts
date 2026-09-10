@@ -5,25 +5,11 @@ import {
   AUTH_PERSIST_FLAG_COOKIE,
   authPersistFlagCookieOptions,
 } from "@/lib/auth/session-persistence";
-import { invalidateMfaGateCache } from "@/lib/mfa/middleware-gate-cache";
-import { createClient } from "@/utils/supabase/server";
+import { runPlatformSignOut } from "@/lib/auth/platform-sign-out-core";
 
 /** Clear persist flag and Supabase session — use from all sign-out buttons. */
 export async function completePlatformSignOut(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.set(AUTH_PERSIST_FLAG_COOKIE, "", {
-    ...authPersistFlagCookieOptions(false),
-    maxAge: 0,
-  });
-
-  const supabase = createClient(cookieStore);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) {
-    invalidateMfaGateCache(user.id);
-  }
-  await supabase.auth.signOut();
+  await runPlatformSignOut();
 }
 
 /** Set stay-logged-in preference before password sign-in completes. */

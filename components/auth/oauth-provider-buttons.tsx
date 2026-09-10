@@ -35,6 +35,7 @@ function buildStartUrl(
   if (signup?.company_name) params.set("company_name", signup.company_name);
   if (signup?.admin_full_name) params.set("admin_full_name", signup.admin_full_name);
   if (signup?.admin_email) params.set("admin_email", signup.admin_email);
+  if (signup?.referral_code) params.set("referral_code", signup.referral_code);
   if (signup?.name) params.set("name", signup.name);
   if (signup?.email) params.set("email", signup.email);
   if (signup?.phone) params.set("phone", signup.phone);

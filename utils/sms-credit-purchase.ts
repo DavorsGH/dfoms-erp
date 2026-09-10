@@ -6,18 +6,40 @@ import {
   initializePaystackOneOffTransaction,
 } from "@/utils/paystack";
 import {
+  applyAccountCredit,
+  getTenantCreditBalanceGhs,
+  splitChargeWithAccountCredit,
+} from "@/utils/account-credit";
+import {
   isValidEmail,
   roundGhs,
 } from "@/utils/product-sale-paystack";
+import { fulfillSmsCreditPurchaseWithAccountCredit } from "@/utils/sms-credit-fulfillment";
 import { SMS_CREDIT_PAYSTACK_CONTEXT } from "@/utils/sms-credit-paystack";
 
 export type InitializeSmsCreditPurchaseResult =
   | {
       ok: true;
+      creditOnly: true;
       purchaseRequestId: string;
       packKey: string;
       credits: number;
-      amountGhs: number;
+      listPriceGhs: number;
+      creditAppliedGhs: number;
+      paystackAmountGhs: number;
+      reference: string;
+      balance: number | null;
+      newCreditBalanceGhs: number;
+    }
+  | {
+      ok: true;
+      creditOnly: false;
+      purchaseRequestId: string;
+      packKey: string;
+      credits: number;
+      listPriceGhs: number;
+      creditAppliedGhs: number;
+      paystackAmountGhs: number;
       reference: string;
       accessCode: string;
       authorizationUrl: string | null;
@@ -77,7 +99,7 @@ export async function initializeSmsCreditPurchase(
   }
 
   const credits = Number(pack.credits);
-  const priceGhs = roundGhs(Number(pack.price_ghs));
+  const listPriceGhs = roundGhs(Number(pack.price_ghs));
   if (!Number.isFinite(credits) || credits <= 0) {
     return {
       ok: false,
@@ -85,7 +107,7 @@ export async function initializeSmsCreditPurchase(
       status: 400,
     };
   }
-  if (!Number.isFinite(priceGhs) || priceGhs <= 0) {
+  if (!Number.isFinite(listPriceGhs) || listPriceGhs <= 0) {
     return {
       ok: false,
       error: "Pack does not have a valid GHS price.",
@@ -93,13 +115,16 @@ export async function initializeSmsCreditPurchase(
     };
   }
 
+  const creditBalanceGhs = await getTenantCreditBalanceGhs(admin, tenantId);
+  const chargeSplit = splitChargeWithAccountCredit(listPriceGhs, creditBalanceGhs);
+
   const { data: inserted, error: insertError } = await admin
     .from("sms_credit_purchase_requests")
     .insert({
       tenant_id: tenantId,
       pack_key: pack.pack_key,
       credits_requested: credits,
-      amount_requested_ghs: priceGhs,
+      amount_requested_ghs: chargeSplit.paystackAmountGhs,
       status: "pending",
     })
     .select("id")
@@ -117,20 +142,59 @@ export async function initializeSmsCreditPurchase(
 
   const purchaseRequestId = inserted.id as string;
 
+  if (chargeSplit.creditFullyCovers) {
+    try {
+      const fulfilled = await fulfillSmsCreditPurchaseWithAccountCredit(admin, {
+        tenantId,
+        purchaseRequestId,
+        creditAppliedGhs: chargeSplit.creditAppliedGhs,
+      });
+
+      return {
+        ok: true,
+        creditOnly: true,
+        purchaseRequestId,
+        packKey: pack.pack_key as string,
+        credits,
+        listPriceGhs: chargeSplit.listPriceGhs,
+        creditAppliedGhs: chargeSplit.creditAppliedGhs,
+        paystackAmountGhs: 0,
+        reference: fulfilled.reference,
+        balance: fulfilled.balance,
+        newCreditBalanceGhs: fulfilled.newCreditBalanceGhs,
+      };
+    } catch (error) {
+      await admin
+        .from("sms_credit_purchase_requests")
+        .update({
+          status: "failed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", purchaseRequestId)
+        .eq("tenant_id", tenantId);
+
+      const message =
+        error instanceof Error ? error.message : "Credit-only SMS purchase failed.";
+      return { ok: false, error: message, status: 400 };
+    }
+  }
+
   const initialized = await initializePaystackOneOffTransaction({
     email: billingEmail,
-    amountPesewas: ghsToPesewas(priceGhs),
+    amountPesewas: ghsToPesewas(chargeSplit.paystackAmountGhs),
     callbackUrl: options.callbackUrl,
     currency: "GHS",
     channels: ["mobile_money", "card"],
-    // No subaccount — SMS credit revenue settles to Davors.
     metadata: {
       context: SMS_CREDIT_PAYSTACK_CONTEXT,
       tenant_id: tenantId,
       purchase_request_id: purchaseRequestId,
       pack_key: pack.pack_key,
       credits,
-      amount_ghs: priceGhs,
+      list_price_ghs: chargeSplit.listPriceGhs,
+      credit_applied_ghs: chargeSplit.creditAppliedGhs,
+      paystack_amount_ghs: chargeSplit.paystackAmountGhs,
+      amount_ghs: chargeSplit.paystackAmountGhs,
       flow: options.flow,
     },
   });
@@ -165,6 +229,32 @@ export async function initializeSmsCreditPurchase(
     };
   }
 
+  if (chargeSplit.creditAppliedGhs > 0) {
+    try {
+      await applyAccountCredit(admin, {
+        tenantId,
+        amountGhs: -chargeSplit.creditAppliedGhs,
+        reason: "sms_purchase",
+        reference: initialized.reference,
+      });
+    } catch (error) {
+      await admin
+        .from("sms_credit_purchase_requests")
+        .update({
+          status: "failed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", purchaseRequestId)
+        .eq("tenant_id", tenantId);
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to apply account credit before SMS Paystack checkout.";
+      return { ok: false, error: message, status: 400 };
+    }
+  }
+
   const { error: updateError } = await admin
     .from("sms_credit_purchase_requests")
     .update({
@@ -186,10 +276,13 @@ export async function initializeSmsCreditPurchase(
 
   return {
     ok: true,
+    creditOnly: false,
     purchaseRequestId,
     packKey: pack.pack_key as string,
     credits,
-    amountGhs: priceGhs,
+    listPriceGhs: chargeSplit.listPriceGhs,
+    creditAppliedGhs: chargeSplit.creditAppliedGhs,
+    paystackAmountGhs: chargeSplit.paystackAmountGhs,
     reference: initialized.reference,
     accessCode: initialized.accessCode,
     authorizationUrl: initialized.authorizationUrl,

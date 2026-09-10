@@ -27,6 +27,76 @@ function requireSecretKey():
   return { ok: true, secretKey };
 }
 
+export async function createPaystackPlan(options: {
+  name: string;
+  amountPesewas: number;
+  interval: string;
+  currency?: string;
+}): Promise<{ ok: true; planCode: string } | { ok: false; error: string }> {
+  const auth = requireSecretKey();
+  if (!auth.ok) {
+    return auth;
+  }
+
+  const name = options.name.trim();
+  const interval = options.interval.trim();
+  if (!name) {
+    return { ok: false, error: "Paystack plan name is required." };
+  }
+  if (!interval) {
+    return { ok: false, error: "Paystack plan interval is required." };
+  }
+
+  try {
+    const response = await fetch(`${PAYSTACK_BASE}/plan`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${auth.secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        amount: options.amountPesewas,
+        interval,
+        currency: options.currency ?? "GHS",
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      status?: boolean;
+      message?: string;
+      data?: { plan_code?: string };
+    } | null;
+
+    if (!response.ok || payload?.status === false) {
+      return {
+        ok: false,
+        error:
+          payload?.message ??
+          `Paystack plan create failed (${response.status}).`,
+      };
+    }
+
+    const planCode = payload?.data?.plan_code?.trim() ?? "";
+    if (!planCode) {
+      return {
+        ok: false,
+        error: "Paystack plan create response missing plan_code.",
+      };
+    }
+
+    return { ok: true, planCode };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Paystack plan create request failed.",
+    };
+  }
+}
+
 /**
  * Updates a Paystack Plan amount. Uses Paystack defaults for
  * update_existing_subscriptions (true when omitted) — existing subscriptions

@@ -15,6 +15,11 @@ import {
   ERP_SUITE_CATEGORY,
 } from "../../crm/products/products-utils";
 import { DAVORS_TENANT_ID, isDavorsPlatformTenant } from "@/utils/tenant-signup";
+import {
+  loadAccountCreditLedger,
+  type AccountCreditLedgerRow,
+} from "@/utils/account-credit";
+import { ensureReferralCodeForTenant } from "@/utils/referral-codes";
 import BillingSettings, {
   type BillingTierOption,
 } from "../billing-settings";
@@ -54,6 +59,15 @@ export default async function BillingSettingsPage({
   const supabase = createClient(cookieStore);
   const admin = createAdminClient();
 
+  const referralCodePromise: Promise<
+    Awaited<ReturnType<typeof ensureReferralCodeForTenant>> | null | Error
+  > = isDavorsPlatformTenant(tenantId)
+    ? Promise.resolve(null)
+    : ensureReferralCodeForTenant(admin, tenantId).catch(
+        (error: unknown) =>
+          error instanceof Error ? error : new Error(String(error)),
+      );
+
   const [
     subscription,
     tenantResult,
@@ -62,6 +76,8 @@ export default async function BillingSettingsPage({
     tiersResult,
     smsPacksResult,
     smsWalletResult,
+    referralCodeResult,
+    creditLedgerRows,
   ] = await Promise.all([
     getTenantBillingSubscription(tenantId),
     admin.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
@@ -91,6 +107,8 @@ export default async function BillingSettingsPage({
       .select("balance")
       .eq("tenant_id", tenantId)
       .maybeSingle(),
+    referralCodePromise,
+    loadAccountCreditLedger(admin, tenantId, 50).catch(() => [] as AccountCreditLedgerRow[]),
   ]);
 
   let billingSettings = (billingSettingsResult.data as BillingSettingsRow | null) ??
@@ -108,6 +126,13 @@ export default async function BillingSettingsPage({
     }
   }
 
+  const referralCodeError =
+    referralCodeResult instanceof Error ? referralCodeResult.message : null;
+  const resolvedReferralCode =
+    referralCodeResult && !(referralCodeResult instanceof Error)
+      ? referralCodeResult.code
+      : null;
+
   const fetchError =
     billingSettingsResult.error?.message ??
     invoicesResult.error?.message ??
@@ -115,6 +140,7 @@ export default async function BillingSettingsPage({
     smsPacksResult.error?.message ??
     smsWalletResult.error?.message ??
     tenantResult.error?.message ??
+    referralCodeError ??
     null;
 
   const workspaceName = tenantResult.data?.name?.trim() ?? "Workspace";
@@ -154,6 +180,8 @@ export default async function BillingSettingsPage({
         smsCreditPacks={smsCreditPacks}
         smsCreditBalance={smsCreditBalance}
         showSmsCreditPurchase={!isDavorsPlatformTenant(tenantId)}
+        referralCode={resolvedReferralCode}
+        creditLedger={creditLedgerRows}
         fetchError={fetchError}
         initialTab={initialTab}
       />

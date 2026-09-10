@@ -9,6 +9,7 @@ import ScrollableTable, {
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import { formatProductPrice } from "../crm/products/products-utils";
 import type { CustomerTenantRow } from "@/utils/tenant-management";
 
 type TenantManagementProps = {
@@ -75,7 +76,7 @@ export default function TenantManagement({
 }: TenantManagementProps) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
-  const [error, setError] = useState<string | null>(fetchError);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [loadingTenantId, setLoadingTenantId] = useState<string | null>(null);
   const [changeTierTenant, setChangeTierTenant] = useState<CustomerTenantRow | null>(
     null,
@@ -83,9 +84,14 @@ export default function TenantManagement({
   const [selectedProductId, setSelectedProductId] = useState("");
   const [waiveTenant, setWaiveTenant] = useState<CustomerTenantRow | null>(null);
   const [waiveReason, setWaiveReason] = useState("");
+  const [customPriceTenant, setCustomPriceTenant] =
+    useState<CustomerTenantRow | null>(null);
+  const [customPriceGhs, setCustomPriceGhs] = useState("");
+  const [customPriceReason, setCustomPriceReason] = useState("");
 
   useEffect(() => {
     setRows(initialRows);
+    setActionError(null);
   }, [initialRows]);
 
   async function refreshRows() {
@@ -97,7 +103,7 @@ export default function TenantManagement({
     status: "active" | "suspended",
   ) {
     setLoadingTenantId(tenantId);
-    setError(null);
+    setActionError(null);
 
     const response = await fetch("/api/admin/tenants/update-status", {
       method: "POST",
@@ -110,7 +116,7 @@ export default function TenantManagement({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to update tenant status.");
+      setActionError(payload?.error ?? "Unable to update tenant status.");
       setLoadingTenantId(null);
       return;
     }
@@ -148,36 +154,57 @@ export default function TenantManagement({
     setWaiveTenant(null);
     setChangeTierTenant(row);
     setSelectedProductId(row.productId ?? tierOptions[0]?.id ?? "");
-    setError(null);
+    setActionError(null);
   }
 
   function closeChangeTier() {
     setChangeTierTenant(null);
     setSelectedProductId("");
+    setActionError(null);
+  }
+
+  function openCustomPrice(row: CustomerTenantRow) {
+    setChangeTierTenant(null);
+    setWaiveTenant(null);
+    setCustomPriceTenant(row);
+    setCustomPriceGhs(
+      row.customPriceGhs != null ? String(row.customPriceGhs) : "",
+    );
+    setCustomPriceReason(row.customPriceReason ?? "");
+    setActionError(null);
+  }
+
+  function closeCustomPrice() {
+    setCustomPriceTenant(null);
+    setCustomPriceGhs("");
+    setCustomPriceReason("");
+    setActionError(null);
   }
 
   function openWaiveBilling(row: CustomerTenantRow) {
     setChangeTierTenant(null);
+    setCustomPriceTenant(null);
     setWaiveTenant(row);
     setWaiveReason(row.billingWaivedReason ?? "");
-    setError(null);
+    setActionError(null);
   }
 
   function closeWaiveBilling() {
     setWaiveTenant(null);
     setWaiveReason("");
+    setActionError(null);
   }
 
   async function handleChangeTierSubmit(event: React.FormEvent) {
     event.preventDefault();
 
     if (!changeTierTenant || !selectedProductId) {
-      setError("Select a tier before confirming.");
+      setActionError("Select a tier before confirming.");
       return;
     }
 
     setLoadingTenantId(changeTierTenant.tenantId);
-    setError(null);
+    setActionError(null);
 
     const response = await fetch("/api/admin/tenants/mark-active", {
       method: "POST",
@@ -193,7 +220,7 @@ export default function TenantManagement({
       | null;
 
     if (!response.ok) {
-      setError(
+      setActionError(
         payload?.error ??
           (changeTierTenant.subscriptionStatus === "active"
             ? "Unable to update tier."
@@ -217,12 +244,12 @@ export default function TenantManagement({
 
     const reason = waiveReason.trim();
     if (!reason) {
-      setError("A reason is required when waiving billing.");
+      setActionError("A reason is required when waiving billing.");
       return;
     }
 
     setLoadingTenantId(waiveTenant.tenantId);
-    setError(null);
+    setActionError(null);
 
     const response = await fetch("/api/admin/tenants/waive-billing", {
       method: "POST",
@@ -239,12 +266,56 @@ export default function TenantManagement({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to waive billing.");
+      setActionError(payload?.error ?? "Unable to waive billing.");
       setLoadingTenantId(null);
       return;
     }
 
     closeWaiveBilling();
+    setLoadingTenantId(null);
+    await refreshRows();
+  }
+
+  async function handleCustomPriceSubmit(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!customPriceTenant) {
+      return;
+    }
+
+    const priceRaw = customPriceGhs.trim();
+    const reason = customPriceReason.trim();
+    const clearing = !priceRaw;
+
+    if (!clearing && !reason) {
+      setActionError("A reason is required when setting a custom subscription price.");
+      return;
+    }
+
+    setLoadingTenantId(customPriceTenant.tenantId);
+    setActionError(null);
+
+    const response = await fetch("/api/admin/tenants/custom-price", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: customPriceTenant.tenantId,
+        custom_price_ghs: clearing ? null : Number(priceRaw),
+        custom_price_reason: clearing ? null : reason,
+      }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null;
+
+    if (!response.ok) {
+      setActionError(payload?.error ?? "Unable to update custom price.");
+      setLoadingTenantId(null);
+      return;
+    }
+
+    closeCustomPrice();
     setLoadingTenantId(null);
     await refreshRows();
   }
@@ -259,7 +330,7 @@ export default function TenantManagement({
     }
 
     setLoadingTenantId(row.tenantId);
-    setError(null);
+    setActionError(null);
 
     const response = await fetch("/api/admin/tenants/waive-billing", {
       method: "POST",
@@ -275,7 +346,7 @@ export default function TenantManagement({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to remove billing waiver.");
+      setActionError(payload?.error ?? "Unable to remove billing waiver.");
       setLoadingTenantId(null);
       return;
     }
@@ -291,9 +362,15 @@ export default function TenantManagement({
         platform tenant is excluded from this list.
       </p>
 
-      {error ? (
+      {fetchError ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
+          Unable to load tenant data. {fetchError}
+        </p>
+      ) : null}
+
+      {actionError ? (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {actionError}
         </p>
       ) : null}
 
@@ -342,6 +419,65 @@ export default function TenantManagement({
                 type="button"
                 onClick={closeChangeTier}
                 disabled={loadingTenantId === changeTierTenant.tenantId}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      {customPriceTenant ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="mb-2 text-lg font-semibold text-[#0f2744]">
+            Custom Subscription Price — {customPriceTenant.companyName}
+          </h3>
+          <p className="mb-4 text-sm text-slate-600">
+            Override the tier list price for Paystack checkout. Leave price blank
+            and save to clear an existing override.
+          </p>
+          <form onSubmit={handleCustomPriceSubmit} className="max-w-lg space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Custom price (GHS)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={customPriceGhs}
+                onChange={(event) => setCustomPriceGhs(event.target.value)}
+                className={inputClassName}
+                placeholder="Leave blank to clear override"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Reason {customPriceGhs.trim() ? "(required)" : ""}
+              </label>
+              <textarea
+                rows={3}
+                value={customPriceReason}
+                onChange={(event) => setCustomPriceReason(event.target.value)}
+                className={inputClassName}
+                placeholder="e.g. Partner discount — 12-month agreement"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={loadingTenantId === customPriceTenant.tenantId}
+                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loadingTenantId === customPriceTenant.tenantId
+                  ? "Saving…"
+                  : "Save Custom Price"}
+              </button>
+              <button
+                type="button"
+                onClick={closeCustomPrice}
+                disabled={loadingTenantId === customPriceTenant.tenantId}
                 className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
@@ -408,15 +544,18 @@ export default function TenantManagement({
               <th className={scrollableTableThClassName}>Trial End</th>
               <th className={scrollableTableThClassName}>Billing Waiver</th>
               <th className={scrollableTableThClassName}>Current Tier</th>
+              <th className={scrollableTableThClassName}>Custom Price</th>
               <th className={scrollableTableThClassName}>Contact Email</th>
-              <th className={scrollableTableThClassName}>Actions</th>
+              <th className={`${scrollableTableThClassName} min-w-[20rem]`}>
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No customer tenants found.
@@ -462,9 +601,36 @@ export default function TenantManagement({
                     <td className="px-4 py-3">
                       {row.tierName ?? "None selected"}
                     </td>
+                    <td className="px-4 py-3 text-sm">
+                      {row.customPriceGhs != null ? (
+                        <div className="space-y-1">
+                          <p className="font-medium text-[#0f2744]">
+                            {formatProductPrice(row.customPriceGhs)}
+                            {row.customPriceTierName ? (
+                              <span className="font-normal text-slate-600">
+                                {" "}
+                                (locked to {row.customPriceTierName})
+                              </span>
+                            ) : null}
+                            {row.customPriceReason ? (
+                              <span className="font-normal text-slate-700">
+                                {" "}
+                                — {row.customPriceReason}
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            by {row.customPriceSetByLabel ?? "—"} ·{" "}
+                            {formatWaiverAt(row.customPriceSetAt)}
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">Tier list price</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">{row.contactEmail ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
+                    <td className="px-4 py-3 align-top">
+                      <div className="inline-flex max-w-full flex-row flex-wrap items-center gap-x-2 gap-y-1">
                         {row.tenantStatus === "active" ? (
                           <button
                             type="button"
@@ -492,6 +658,16 @@ export default function TenantManagement({
                             className={primaryActionButtonClassName}
                           >
                             Change Tier
+                          </button>
+                        ) : null}
+                        {canChangeTier ? (
+                          <button
+                            type="button"
+                            disabled={isLoading}
+                            onClick={() => openCustomPrice(row)}
+                            className={primaryActionButtonClassName}
+                          >
+                            Custom Price
                           </button>
                         ) : null}
                         {canWaive && !row.billingWaived ? (

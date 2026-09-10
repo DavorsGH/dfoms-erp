@@ -10,6 +10,7 @@ export type OAuthSignupFields = {
   company_name?: string;
   admin_full_name?: string;
   admin_email?: string;
+  referral_code?: string;
   name?: string;
   email?: string;
   phone?: string;

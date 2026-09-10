@@ -33,7 +33,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
 
-  const { companyName, adminFullName, adminEmail, password } = validation.data;
+  const { companyName, adminFullName, adminEmail, password, referralCodeInput } =
+    validation.data;
   const admin = createAdminClient();
 
   const crossPersona = await findCrossPersonaConflictForEmail(admin, adminEmail);
@@ -116,6 +117,7 @@ export async function POST(request: Request) {
       companyName,
       adminFullName,
       adminEmail,
+      referralCodeInput,
     },
     { deleteAuthUserOnRollback },
   );

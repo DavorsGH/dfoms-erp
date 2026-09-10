@@ -21,6 +21,10 @@ import {
   seedTenantClientDocumentNotifications,
 } from "@/utils/tenant-client-document-notifications-seed";
 import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
+import {
+  captureReferralAtSignup,
+  createReferralCodeForTenant,
+} from "@/utils/referral-codes";
 
 type AdminClient = SupabaseClient;
 
@@ -29,6 +33,7 @@ export type StaffTenantSignupInput = {
   companyName: string;
   adminFullName: string;
   adminEmail: string;
+  referralCodeInput?: string | null;
 };
 
 type SignupRollbackState = {
@@ -282,6 +287,20 @@ export async function provisionStaffTenantSignup(
   }
 
   rollbackState.subscriptionId = subscriptionRow.id;
+
+  try {
+    await createReferralCodeForTenant(admin, tenantRow.id);
+  } catch (referralCodeError) {
+    console.error(
+      "[staff-tenant-signup] referral code generation failed:",
+      referralCodeError,
+    );
+  }
+
+  await captureReferralAtSignup(admin, {
+    referredTenantId: tenantRow.id,
+    referralCodeInput: input.referralCodeInput,
+  });
 
   await syncAuthUserPortalMetadata(authUserId, "staff");
 
