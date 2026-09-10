@@ -2,10 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** finished_products.product_code */
 export const FINISHED_PRODUCT_ENTITY_TYPE = "FP";
+/** finished_products.barcode */
+export const FINISHED_PRODUCT_BARCODE_ENTITY_TYPE = "BC";
 /** raw_materials.material_code */
 export const RAW_MATERIAL_ENTITY_TYPE = "RM";
 /** production_batches.batch_number */
 export const PRODUCTION_BATCH_ENTITY_TYPE = "BATCH";
+/** product_purchases.batch_number (purchased finished-product lot/plot code) */
+export const PRODUCT_PURCHASE_PLOT_ENTITY_TYPE = "PLOT";
 
 async function resolveSessionTenantId(
   supabase: SupabaseClient,
@@ -85,6 +89,18 @@ export async function allocateProductCode(
   return { productCode: result.code, error: result.error };
 }
 
+/** finished_products.barcode — generate_next_code(..., 'BC', 4). Create-save only. */
+export async function allocateProductBarcode(
+  supabase: SupabaseClient,
+): Promise<{ barcode: string | null; error: string | null }> {
+  const result = await allocateInventoryCode(
+    supabase,
+    FINISHED_PRODUCT_BARCODE_ENTITY_TYPE,
+    "generate_next_code returned an empty product barcode.",
+  );
+  return { barcode: result.code, error: result.error };
+}
+
 /** raw_materials.material_code — generate_next_code(..., 'RM', 4). Create-save only. */
 export async function allocateMaterialCode(
   supabase: SupabaseClient,
@@ -107,4 +123,16 @@ export async function allocateBatchNumber(
     "generate_next_code returned an empty batch number.",
   );
   return { batchNumber: result.code, error: result.error };
+}
+
+/** product_purchases.batch_number — generate_next_code(..., 'PLOT', 4). Create-save only. */
+export async function allocatePlotNumber(
+  supabase: SupabaseClient,
+): Promise<{ plotNumber: string | null; error: string | null }> {
+  const result = await allocateInventoryCode(
+    supabase,
+    PRODUCT_PURCHASE_PLOT_ENTITY_TYPE,
+    "generate_next_code returned an empty plot number.",
+  );
+  return { plotNumber: result.code, error: result.error };
 }

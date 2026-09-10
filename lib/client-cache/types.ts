@@ -30,6 +30,7 @@ export type DashboardSummaryCachePayload = {
 export type StockLevelCacheRow = {
   id: string;
   product_code: string;
+  barcode: string;
   product_name: string;
   unit_of_measure: string;
   current_stock: number;

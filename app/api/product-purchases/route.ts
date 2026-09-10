@@ -21,6 +21,7 @@ import {
   type ProductPurchaseListRow,
   type ProductPurchaseWriteBody,
 } from "@/utils/product-purchases-types";
+import { allocatePlotNumber } from "@/app/dashboard/inventory/inventory-ids-api";
 import { createClient } from "@/utils/supabase/server";
 
 async function getTenantSupabase() {
@@ -237,6 +238,14 @@ export async function POST(request: Request) {
     businessUnitId = writeBu.businessUnitId;
   }
 
+  const { plotNumber, error: plotError } = await allocatePlotNumber(supabase);
+  if (plotError || !plotNumber) {
+    return NextResponse.json(
+      { error: plotError ?? "Unable to allocate a lot code for this purchase." },
+      { status: 400 },
+    );
+  }
+
   const { data: purchaseId, error: rpcError } = await supabase.rpc(
     "create_product_purchase",
     {
@@ -247,6 +256,7 @@ export async function POST(request: Request) {
       p_supplier_id: trimmed.supplier_id,
       p_payment_method: trimmed.payment_method,
       p_notes: trimmed.notes,
+      p_batch_number: plotNumber,
       p_po_id: trimmed.po_id,
       p_po_item_id: trimmed.po_item_id,
       p_manufacturing_date: trimmed.manufacturing_date,

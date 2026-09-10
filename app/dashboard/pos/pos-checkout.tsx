@@ -98,6 +98,12 @@ import {
   openPosCustomerDisplayWindow,
   posCartLinesToDisplayLines,
 } from "@/lib/pos-customer-display-channel";
+import {
+  BarcodeManualTestEntry,
+  BarcodeScanStatus,
+} from "@/components/barcode-scan-field";
+import { useBarcodeScannerWedge } from "@/hooks/use-barcode-scanner-wedge";
+import { findProductByScanCode } from "@/utils/barcode-scan-utils";
 
 type PosCheckoutProps = {
   /** Hidden when the page renders inside the Sales & CRM shell, which already
@@ -201,6 +207,8 @@ export default function PosCheckout({
   const [employees, setEmployees] = useState(initialEmployees);
   const [cartLines, setCartLines] = useState<PosCartLine[]>(initialCartLines);
   const [productSearch, setProductSearch] = useState("");
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanSuccess, setScanSuccess] = useState<string | null>(null);
   const [clientId, setClientId] = useState(initialClientId);
   const [customerName, setCustomerName] = useState("");
   const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
@@ -562,6 +570,27 @@ export default function PosCheckout({
     setProducts(next);
     await onStockLevelsChanged?.(next);
   }
+
+  const scannerPaused = showRequestPayment || momoWaiting || Boolean(receipt);
+
+  function handlePosBarcodeScan(rawPayload: string) {
+    const product = findProductByScanCode(products, rawPayload);
+    if (!product) {
+      setScanSuccess(null);
+      setScanError("Product not found for scanned code.");
+      return;
+    }
+
+    setScanError(null);
+    setScanSuccess(`Added ${product.product_code} — ${product.product_name}`);
+    addProductToCart(product);
+  }
+
+  useBarcodeScannerWedge({
+    enabled: !busy,
+    paused: scannerPaused,
+    onScan: handlePosBarcodeScan,
+  });
 
   function addProductToCart(product: FinishedProductRecord) {
     const available = getAvailableStockForProduct(product, cartLines);
@@ -1366,6 +1395,21 @@ export default function PosCheckout({
         <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
           Product Search
         </h2>
+        <div className="mb-4">
+          <BarcodeScanStatus
+            label="Barcode scanner"
+            hint="Ready to scan — focus outside text fields, then scan a product or batch label."
+            errorMessage={scanError}
+            successMessage={scanSuccess}
+          />
+          <BarcodeManualTestEntry
+            enabled={!busy}
+            paused={scannerPaused}
+            onScan={(_parsed, rawPayload) => {
+              handlePosBarcodeScan(rawPayload);
+            }}
+          />
+        </div>
         <input
           type="search"
           value={productSearch}

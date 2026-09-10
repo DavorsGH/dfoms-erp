@@ -58,6 +58,8 @@ import {
   mergeScopedStockOntoMaterials,
 } from "./raw-material-bu-stock-utils";
 import { isRawMaterialLowStock } from "../reports/inventory-reports-utils";
+import BarcodeScanField from "@/components/barcode-scan-field";
+import { findMaterialByScanCode } from "@/utils/barcode-scan-utils";
 import type { NamedLookup } from "../lookup-types";
 import {
   resolveOptionalProjectId,
@@ -159,6 +161,10 @@ export default function RawMaterials({
   const [adjustmentForm, setAdjustmentForm] = useState(emptyAdjustmentForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [purchaseScanError, setPurchaseScanError] = useState<string | null>(null);
+  const [purchaseScanSuccess, setPurchaseScanSuccess] = useState<string | null>(
+    null,
+  );
   const skipFirstStockScopeRefresh = useRef(true);
 
   useEffect(() => {
@@ -980,6 +986,35 @@ export default function RawMaterials({
         {showPurchaseForm && !readOnly ? (
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <form onSubmit={handlePurchaseSubmit} className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <BarcodeScanField
+                  enabled={showPurchaseForm && !readOnly}
+                  label="Scan material"
+                  hint="Scan a material code to select it below."
+                  errorMessage={purchaseScanError}
+                  successMessage={purchaseScanSuccess}
+                  onScan={(parsedCode) => {
+                    const material = findMaterialByScanCode(
+                      catalogMaterials,
+                      parsedCode,
+                    );
+                    if (!material) {
+                      setPurchaseScanSuccess(null);
+                      setPurchaseScanError("Material not found.");
+                      return;
+                    }
+
+                    setPurchaseScanError(null);
+                    setPurchaseScanSuccess(
+                      `Selected ${material.material_code} — ${material.material_name}`,
+                    );
+                    setPurchaseForm((current) => ({
+                      ...current,
+                      material_id: material.id,
+                    }));
+                  }}
+                />
+              </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Material

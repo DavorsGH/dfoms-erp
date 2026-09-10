@@ -26,7 +26,7 @@ import {
   formatInventoryMoney,
   formatInventoryQuantity,
 } from "./inventory-utils";
-import { allocateProductCode } from "./inventory-ids-api";
+import { allocateProductBarcode, allocateProductCode } from "./inventory-ids-api";
 import {
   buildFinishedProductSavePayload,
   DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
@@ -419,9 +419,17 @@ export default function FinishedProducts({
         return;
       }
 
-      const allocated = await allocateProductCode(supabase);
+      const [allocated, barcodeAllocated] = await Promise.all([
+        allocateProductCode(supabase),
+        allocateProductBarcode(supabase),
+      ]);
       if (allocated.error || !allocated.productCode) {
         setError(allocated.error ?? "Unable to allocate product code.");
+        setLoading(false);
+        return;
+      }
+      if (barcodeAllocated.error || !barcodeAllocated.barcode) {
+        setError(barcodeAllocated.error ?? "Unable to allocate product barcode.");
         setLoading(false);
         return;
       }
@@ -435,6 +443,7 @@ export default function FinishedProducts({
         .from("finished_products")
         .insert({
           ...payload,
+          barcode: barcodeAllocated.barcode,
           business_unit_id: stampResult.businessUnitId,
         })
         .select("id")

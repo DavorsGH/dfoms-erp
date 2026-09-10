@@ -1,12 +1,13 @@
 export const PRODUCT_PURCHASE_LIST_SELECT =
-  "id, product_id, purchase_date, quantity, cost_per_unit, total_cost, supplier_id, payment_method, notes, project_id, created_at, tenant_id, product:finished_products!product_id(product_code, product_name, unit_of_measure), supplier:suppliers!supplier_id(name)" as const;
+  "id, product_id, batch_number, purchase_date, quantity, cost_per_unit, total_cost, supplier_id, payment_method, notes, project_id, created_at, tenant_id, product:finished_products!product_id(product_code, product_name, unit_of_measure), supplier:suppliers!supplier_id(name)" as const;
 
 export const PURCHASED_PRODUCT_SELECT =
-  "id, product_code, product_name, unit_of_measure, sourcing_type" as const;
+  "id, product_code, barcode, product_name, unit_of_measure, sourcing_type" as const;
 
 export type PurchasedProductOption = {
   id: string;
   product_code: string;
+  barcode?: string | null;
   product_name: string;
   unit_of_measure: string;
   sourcing_type: string | null;
@@ -25,6 +26,7 @@ export type ProductPurchaseSupplier = {
 export type ProductPurchaseListRow = {
   id: string;
   product_id: string;
+  batch_number: string;
   purchase_date: string;
   quantity: number;
   cost_per_unit: number;
@@ -93,6 +95,7 @@ export function normalizeProductPurchaseRow(
 
   return {
     ...raw,
+    batch_number: raw.batch_number?.trim() ?? "",
     quantity: Number(raw.quantity) || 0,
     cost_per_unit: Number(raw.cost_per_unit) || 0,
     total_cost: Number(raw.total_cost) || 0,

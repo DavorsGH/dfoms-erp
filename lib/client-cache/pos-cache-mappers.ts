@@ -12,6 +12,7 @@ export function finishedProductsToStockCachePayload(
   const rows: StockLevelCacheRow[] = products.map((product) => ({
     id: product.id,
     product_code: product.product_code,
+    barcode: product.barcode,
     product_name: product.product_name,
     unit_of_measure: product.unit_of_measure,
     current_stock: product.current_stock,
@@ -34,6 +35,7 @@ export function stockCachePayloadToFinishedProducts(
   return payload.products.map((row) => ({
     id: row.id,
     product_code: row.product_code,
+    barcode: row.barcode ?? "",
     product_name: row.product_name,
     unit_of_measure: row.unit_of_measure,
     current_stock: row.current_stock,

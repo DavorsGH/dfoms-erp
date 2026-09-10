@@ -14,6 +14,7 @@ export type FinishedProductExpirationStatus =
 export type FinishedProductRecord = {
   id: string;
   product_code: string;
+  barcode: string;
   product_name: string;
   unit_of_measure: string;
   current_stock: number;
@@ -56,7 +57,7 @@ export const FINISHED_PRODUCT_SOURCING_OPTIONS = [
 
 /** Master columns only — lot dates live on production_batches / product_purchases. */
 export const FINISHED_PRODUCT_SELECT =
-  "id, product_code, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, photo_url, is_archived, business_unit_id, created_at, updated_at";
+  "id, product_code, barcode, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, photo_url, is_archived, business_unit_id, created_at, updated_at";
 
 function normalizeDateOnly(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -241,6 +242,7 @@ export function normalizeFinishedProduct(
 ): FinishedProductRecord {
   return {
     ...raw,
+    barcode: String(raw.barcode ?? "").trim(),
     current_stock: Number(raw.current_stock) || 0,
     standard_selling_price:
       raw.standard_selling_price == null

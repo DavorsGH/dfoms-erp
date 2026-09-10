@@ -31,6 +31,8 @@ import {
 } from "@/utils/product-purchases-types";
 import type { SupplierRow } from "@/utils/suppliers-types";
 import type { ContractProjectOption } from "../administration/projects-utils";
+import BarcodeScanField from "@/components/barcode-scan-field";
+import { findProductByScanCode } from "@/utils/barcode-scan-utils";
 
 type ProductPurchasesProps = {
   initialPurchases: ProductPurchaseListRow[];
@@ -77,6 +79,10 @@ export default function ProductPurchases({
   );
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
+  const [purchaseScanError, setPurchaseScanError] = useState<string | null>(null);
+  const [purchaseScanSuccess, setPurchaseScanSuccess] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setPurchases(initialPurchases);
@@ -117,6 +123,8 @@ export default function ProductPurchases({
     setModalOpen(true);
     setError(null);
     setSuccess(null);
+    setPurchaseScanError(null);
+    setPurchaseScanSuccess(null);
   }
 
   function openEditModal(purchase: ProductPurchaseListRow) {
@@ -136,12 +144,16 @@ export default function ProductPurchases({
     setModalOpen(true);
     setError(null);
     setSuccess(null);
+    setPurchaseScanError(null);
+    setPurchaseScanSuccess(null);
   }
 
   function closeModal() {
     setModalOpen(false);
     setEditingPurchaseId(null);
     setForm(emptyProductPurchaseForm());
+    setPurchaseScanError(null);
+    setPurchaseScanSuccess(null);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -218,7 +230,12 @@ export default function ProductPurchases({
       await refreshPurchases();
     }
 
-    setSuccess("Purchase recorded.");
+    const lotCode = payload?.product_purchase?.batch_number?.trim();
+    setSuccess(
+      lotCode
+        ? `Purchase recorded. Lot code: ${lotCode}.`
+        : "Purchase recorded.",
+    );
     closeModal();
     setLoading(false);
     router.refresh();
@@ -298,6 +315,7 @@ export default function ProductPurchases({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
+              <th className={scrollableTableThClassName}>Lot Code</th>
               <th className={scrollableTableThClassName}>Product</th>
               <th className={scrollableTableThClassName}>Supplier</th>
               <th className={scrollableTableThClassName}>Quantity</th>
@@ -313,7 +331,7 @@ export default function ProductPurchases({
             {purchases.length === 0 ? (
               <tr>
                 <td
-                  colSpan={readOnly ? 7 : 8}
+                  colSpan={readOnly ? 8 : 9}
                   className="px-4 py-6 text-center text-sm text-slate-500"
                 >
                   No product purchases recorded yet.
@@ -323,6 +341,9 @@ export default function ProductPurchases({
               purchases.map((purchase, index) => (
                 <tr key={purchase.id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{formatDate(purchase.purchase_date)}</td>
+                  <td className="px-4 py-3 font-mono text-sm">
+                    {purchase.batch_number || "—"}
+                  </td>
                   <td className="px-4 py-3">
                     {getProductPurchaseProductLabel(purchase)}
                   </td>
@@ -437,6 +458,34 @@ export default function ProductPurchases({
             </div>
 
             <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
+              {!editingPurchaseId ? (
+                <div className="md:col-span-2">
+                  <BarcodeScanField
+                    enabled={modalOpen && !readOnly}
+                    label="Scan product"
+                    hint="Scan a product barcode to select it below."
+                    errorMessage={purchaseScanError}
+                    successMessage={purchaseScanSuccess}
+                    onScan={(parsedCode) => {
+                      const product = findProductByScanCode(products, parsedCode);
+                      if (!product) {
+                        setPurchaseScanSuccess(null);
+                        setPurchaseScanError("Product not found.");
+                        return;
+                      }
+
+                      setPurchaseScanError(null);
+                      setPurchaseScanSuccess(
+                        `Selected ${product.product_code} — ${product.product_name}`,
+                      );
+                      setForm((current) => ({
+                        ...current,
+                        product_id: product.id,
+                      }));
+                    }}
+                  />
+                </div>
+              ) : null}
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Product

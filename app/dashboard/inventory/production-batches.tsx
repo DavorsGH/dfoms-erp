@@ -49,6 +49,15 @@ import {
   scopedFinishedProductsQuery,
 } from "./finished-product-bu-stock-utils";
 import BatchLabelPrint from "./batch-label-print";
+import {
+  BarcodeManualTestEntry,
+  BarcodeScanStatus,
+} from "@/components/barcode-scan-field";
+import { useBarcodeScannerWedge } from "@/hooks/use-barcode-scanner-wedge";
+import {
+  findMaterialByScanCode,
+  findProductByScanCode,
+} from "@/utils/barcode-scan-utils";
 
 type ProductionBatchesProps = {
   initialBatches: ProductionBatchRecord[];
@@ -118,6 +127,23 @@ export default function ProductionBatches({
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [labelPrintBatch, setLabelPrintBatch] =
     useState<ProductionBatchRecord | null>(null);
+  const [productScanError, setProductScanError] = useState<string | null>(null);
+  const [productScanSuccess, setProductScanSuccess] = useState<string | null>(
+    null,
+  );
+  const [materialScanError, setMaterialScanError] = useState<string | null>(
+    null,
+  );
+  const [materialScanSuccess, setMaterialScanSuccess] = useState<string | null>(
+    null,
+  );
+  const [activeMaterialLineIndex, setActiveMaterialLineIndex] = useState(0);
+  const scanTargetRef = useRef<"product" | "material">("product");
+  const activeMaterialLineIndexRef = useRef(0);
+
+  useEffect(() => {
+    activeMaterialLineIndexRef.current = activeMaterialLineIndex;
+  }, [activeMaterialLineIndex]);
 
   useEffect(() => {
     setBatches(initialBatches.map(normalizeProductionBatch));
@@ -287,6 +313,57 @@ export default function ProductionBatches({
         : current.filter((_, lineIndex) => lineIndex !== index),
     );
   }
+
+  function handleProductBarcodeScan(rawPayload: string) {
+    const product = findProductByScanCode(products, rawPayload);
+    if (!product) {
+      setProductScanSuccess(null);
+      setProductScanError("Product not found for scanned code.");
+      return;
+    }
+
+    setProductScanError(null);
+    setMaterialScanError(null);
+    setProductScanSuccess(
+      `Selected ${product.product_code} — ${product.product_name}`,
+    );
+    setBatchForm((current) => ({
+      ...current,
+      finished_product_id: product.id,
+    }));
+  }
+
+  function handleMaterialBarcodeScan(rawPayload: string) {
+    const material = findMaterialByScanCode(materials, rawPayload);
+    if (!material) {
+      setMaterialScanSuccess(null);
+      setMaterialScanError("Material not found.");
+      return;
+    }
+
+    const lineIndex = activeMaterialLineIndexRef.current;
+    setMaterialScanError(null);
+    setProductScanError(null);
+    setMaterialScanSuccess(
+      `Line ${lineIndex + 1}: ${material.material_code} — ${material.material_name}`,
+    );
+    updateMaterialLine(lineIndex, "material_id", material.id);
+  }
+
+  const batchScanEnabled = showForm && !readOnly;
+  const batchScanPaused = Boolean(labelPrintBatch);
+
+  useBarcodeScannerWedge({
+    enabled: batchScanEnabled,
+    paused: batchScanPaused,
+    onScan: (rawPayload) => {
+      if (scanTargetRef.current === "product") {
+        handleProductBarcodeScan(rawPayload);
+        return;
+      }
+      handleMaterialBarcodeScan(rawPayload);
+    },
+  });
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -504,6 +581,21 @@ export default function ProductionBatches({
                   className={inputClassName}
                 />
               </div>
+              <div className="md:col-span-2">
+                <BarcodeScanStatus
+                  label="Scan finished product"
+                  hint="Focus the finished product field below, then scan."
+                  errorMessage={productScanError}
+                  successMessage={productScanSuccess}
+                />
+                <BarcodeManualTestEntry
+                  enabled={batchScanEnabled}
+                  paused={batchScanPaused}
+                  onScan={(_parsed, rawPayload) => {
+                    handleProductBarcodeScan(rawPayload);
+                  }}
+                />
+              </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Finished Product
@@ -511,6 +603,9 @@ export default function ProductionBatches({
                 <select
                   required
                   value={batchForm.finished_product_id}
+                  onFocus={() => {
+                    scanTargetRef.current = "product";
+                  }}
                   onChange={(event) =>
                     setBatchForm((current) => ({
                       ...current,
@@ -599,6 +694,19 @@ export default function ProductionBatches({
             </div>
 
             <div className="space-y-3">
+              <BarcodeScanStatus
+                label="Scan raw material"
+                hint="Focus a material line below, then scan to fill that line."
+                errorMessage={materialScanError}
+                successMessage={materialScanSuccess}
+              />
+              <BarcodeManualTestEntry
+                enabled={batchScanEnabled}
+                paused={batchScanPaused}
+                onScan={(_parsed, rawPayload) => {
+                  handleMaterialBarcodeScan(rawPayload);
+                }}
+              />
               <div className="flex items-center justify-between gap-4">
                 <h4 className="text-sm font-semibold text-[#0f2744]">
                   Materials Consumed
@@ -624,6 +732,10 @@ export default function ProductionBatches({
                     <select
                       required
                       value={line.material_id}
+                      onFocus={() => {
+                        scanTargetRef.current = "material";
+                        setActiveMaterialLineIndex(index);
+                      }}
                       onChange={(event) =>
                         updateMaterialLine(index, "material_id", event.target.value)
                       }
