@@ -53,8 +53,8 @@ function deliverScan(
   onScan(parseBarcodeScanPayload(trimmed), trimmed);
 }
 
-/** Temporary manual entry for testing lookup without wedge hardware. */
-export function BarcodeManualTestEntry({
+/** Manual barcode entry when the wedge scanner is unavailable or malfunctioning. */
+export function BarcodeManualEntry({
   enabled = true,
   paused = false,
   onScan,
@@ -76,7 +76,7 @@ export function BarcodeManualTestEntry({
   return (
     <div className="mt-2 space-y-1">
       <label className="block text-xs font-medium text-slate-600">
-        Manual test entry (no scanner)
+        Enter code manually
       </label>
       <div className="flex flex-wrap gap-2">
         <input
@@ -132,7 +132,7 @@ export default function BarcodeScanField({
         errorMessage={errorMessage}
         successMessage={successMessage}
       />
-      <BarcodeManualTestEntry
+      <BarcodeManualEntry
         enabled={enabled}
         paused={paused}
         onScan={onScan}

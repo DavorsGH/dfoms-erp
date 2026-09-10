@@ -50,7 +50,7 @@ import {
 } from "./finished-product-bu-stock-utils";
 import BatchLabelPrint from "./batch-label-print";
 import {
-  BarcodeManualTestEntry,
+  BarcodeManualEntry,
   BarcodeScanStatus,
 } from "@/components/barcode-scan-field";
 import { useBarcodeScannerWedge } from "@/hooks/use-barcode-scanner-wedge";
@@ -588,7 +588,7 @@ export default function ProductionBatches({
                   errorMessage={productScanError}
                   successMessage={productScanSuccess}
                 />
-                <BarcodeManualTestEntry
+                <BarcodeManualEntry
                   enabled={batchScanEnabled}
                   paused={batchScanPaused}
                   onScan={(_parsed, rawPayload) => {
@@ -700,7 +700,7 @@ export default function ProductionBatches({
                 errorMessage={materialScanError}
                 successMessage={materialScanSuccess}
               />
-              <BarcodeManualTestEntry
+              <BarcodeManualEntry
                 enabled={batchScanEnabled}
                 paused={batchScanPaused}
                 onScan={(_parsed, rawPayload) => {

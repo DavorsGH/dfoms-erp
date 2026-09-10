@@ -99,7 +99,7 @@ import {
   posCartLinesToDisplayLines,
 } from "@/lib/pos-customer-display-channel";
 import {
-  BarcodeManualTestEntry,
+  BarcodeManualEntry,
   BarcodeScanStatus,
 } from "@/components/barcode-scan-field";
 import { useBarcodeScannerWedge } from "@/hooks/use-barcode-scanner-wedge";
@@ -1402,7 +1402,7 @@ export default function PosCheckout({
             errorMessage={scanError}
             successMessage={scanSuccess}
           />
-          <BarcodeManualTestEntry
+          <BarcodeManualEntry
             enabled={!busy}
             paused={scannerPaused}
             onScan={(_parsed, rawPayload) => {
