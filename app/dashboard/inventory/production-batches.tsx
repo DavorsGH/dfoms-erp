@@ -48,6 +48,7 @@ import {
   mergeScopedStockOntoProducts,
   scopedFinishedProductsQuery,
 } from "./finished-product-bu-stock-utils";
+import BatchLabelPrint from "./batch-label-print";
 
 type ProductionBatchesProps = {
   initialBatches: ProductionBatchRecord[];
@@ -115,6 +116,8 @@ export default function ProductionBatches({
     null,
   );
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+  const [labelPrintBatch, setLabelPrintBatch] =
+    useState<ProductionBatchRecord | null>(null);
 
   useEffect(() => {
     setBatches(initialBatches.map(normalizeProductionBatch));
@@ -699,6 +702,13 @@ export default function ProductionBatches({
         </section>
       ) : null}
 
+      {labelPrintBatch ? (
+        <BatchLabelPrint
+          batch={labelPrintBatch}
+          onClose={() => setLabelPrintBatch(null)}
+        />
+      ) : null}
+
       <FilteredListCount
         filteredCount={batches.length}
         totalCount={batches.length}
@@ -716,16 +726,14 @@ export default function ProductionBatches({
               <th className={scrollableTableThClassName}>Total Cost</th>
               <th className={scrollableTableThClassName}>Cost / Unit</th>
               <th className={scrollableTableThClassName}>Materials</th>
-              {!readOnly ? (
-                <th className={scrollableTableThClassName}>Actions</th>
-              ) : null}
+              <th className={scrollableTableThClassName}>Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {batches.length === 0 ? (
               <tr>
                 <td
-                  colSpan={readOnly ? 7 : 8}
+                  colSpan={8}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No production batches yet.
@@ -763,50 +771,63 @@ export default function ProductionBatches({
                       </div>
                     ))}
                   </td>
-                  {!readOnly ? (
-                    <td className="px-4 py-3">
-                      {confirmingBatchId === batch.id ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="whitespace-normal text-sm text-red-700">
-                            Delete this batch? This cannot be undone.
-                          </span>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setError(null);
+                          setSuccess(null);
+                          setLabelPrintBatch(batch);
+                        }}
+                        className="rounded-md border border-[#0f2744] px-3 py-1.5 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+                      >
+                        Print Batch Label
+                      </button>
+                      {!readOnly ? (
+                        confirmingBatchId === batch.id ? (
+                          <>
+                            <span className="whitespace-normal text-sm text-red-700">
+                              Delete this batch? This cannot be undone.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteBatch(batch)}
+                              disabled={deletingBatchId === batch.id}
+                              className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {deletingBatchId === batch.id
+                                ? "Deleting…"
+                                : "Yes, delete"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingBatchId(null)}
+                              disabled={deletingBatchId === batch.id}
+                              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
                           <button
                             type="button"
-                            onClick={() => void handleDeleteBatch(batch)}
+                            onClick={() => {
+                              setError(null);
+                              setSuccess(null);
+                              setConfirmingBatchId(batch.id);
+                            }}
                             disabled={deletingBatchId === batch.id}
                             className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {deletingBatchId === batch.id
                               ? "Deleting…"
-                              : "Yes, delete"}
+                              : "Delete"}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmingBatchId(null)}
-                            disabled={deletingBatchId === batch.id}
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setError(null);
-                            setSuccess(null);
-                            setConfirmingBatchId(batch.id);
-                          }}
-                          disabled={deletingBatchId === batch.id}
-                          className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {deletingBatchId === batch.id
-                            ? "Deleting…"
-                            : "Delete"}
-                        </button>
-                      )}
-                    </td>
-                  ) : null}
+                        )
+                      ) : null}
+                    </div>
+                  </td>
                 </tr>
               ))
             )}

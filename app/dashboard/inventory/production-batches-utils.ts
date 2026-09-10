@@ -21,9 +21,11 @@ export type ProductionBatchRecord = {
   cost_per_unit_produced: number;
   total_batch_cost: number;
   notes: string | null;
+  expiration_date: string | null;
   created_at: string;
   product?: {
     product_code: string;
+    barcode: string | null;
     product_name: string;
     unit_of_measure: string;
   } | null;
@@ -36,10 +38,10 @@ export type ProductionMaterialInput = {
 };
 
 export const PRODUCTION_BATCH_SELECT =
-  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, created_at, product:finished_products!finished_product_id(product_code, product_name, unit_of_measure)";
+  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, expiration_date, created_at, product:finished_products!finished_product_id(product_code, barcode, product_name, unit_of_measure)";
 
 export const PRODUCTION_BATCH_DETAIL_SELECT =
-  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, created_at, product:finished_products!finished_product_id(product_code, product_name, unit_of_measure), materials:production_batch_materials(id, batch_id, material_id, quantity_used, cost_at_time, material:raw_materials!material_id(material_code, material_name, unit_of_measure))";
+  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, expiration_date, created_at, product:finished_products!finished_product_id(product_code, barcode, product_name, unit_of_measure), materials:production_batch_materials(id, batch_id, material_id, quantity_used, cost_at_time, material:raw_materials!material_id(material_code, material_name, unit_of_measure))";
 
 export function normalizeProductionBatch(
   raw: ProductionBatchRecord,
@@ -64,6 +66,9 @@ export function normalizeProductionBatch(
 
   return {
     ...raw,
+    expiration_date: raw.expiration_date?.trim()
+      ? raw.expiration_date.trim().slice(0, 10)
+      : null,
     quantity_produced: Number(raw.quantity_produced) || 0,
     cost_per_unit_produced: Number(raw.cost_per_unit_produced) || 0,
     total_batch_cost: Number(raw.total_batch_cost) || 0,
