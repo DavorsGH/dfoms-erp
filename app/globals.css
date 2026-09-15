@@ -32,11 +32,21 @@ body {
   --st-edge-actions-min-width: 11rem;
 }
 
+/**
+ * Fixed layout so sticky edge width vars are enforced on cols 1–2 (auto layout
+ * ignores max-width when nowrap min-content exceeds the cap).
+ */
+.scrollable-table-host--sticky-edges table {
+  table-layout: fixed;
+  width: 100%;
+}
+
 .scrollable-table-host--sticky-edges table thead th:nth-child(1),
 .scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]) {
   position: sticky;
   left: 0;
   z-index: 12;
+  width: var(--st-edge-col-1-width);
   min-width: var(--st-edge-col-1-width);
   max-width: var(--st-edge-col-1-width);
   background-color: #ffffff;
@@ -48,6 +58,7 @@ body {
   position: sticky;
   left: var(--st-edge-col-1-width);
   z-index: 11;
+  width: var(--st-edge-col-2-width);
   min-width: var(--st-edge-col-2-width);
   max-width: var(--st-edge-col-2-width);
   background-color: #ffffff;
@@ -109,8 +120,21 @@ body {
   white-space: nowrap;
 }
 
-/* Long free-text body cells (names, emails, addresses) — skip wrap + action columns */
-.scrollable-table-host table tbody td:not([colspan]):not(.scrollable-table-cell--wrap):not(:last-child) {
+/* Clip block/flex children inside sticky edge cells (e.g. Customer Name link row). */
+.scrollable-table-host--sticky-edges table tbody td:nth-child(1):not(.scrollable-table-cell--wrap) > *,
+.scrollable-table-host--sticky-edges table tbody td:nth-child(2):not(.scrollable-table-cell--wrap) > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Long free-text body cells (cols 3+ on sticky tables, all non-edge cols elsewhere).
+ * Exclude sticky edge cols 1–2 so their 13rem/9rem caps are never overridden by 18rem.
+ */
+.scrollable-table-host table tbody td:not([colspan]):not(.scrollable-table-cell--wrap):not(:last-child):not(:nth-child(1)):not(:nth-child(2)) {
   max-width: 18rem;
   overflow: hidden;
   text-overflow: ellipsis;
