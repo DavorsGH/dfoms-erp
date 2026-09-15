@@ -93,3 +93,26 @@ body {
   td:last-child:not([colspan]):not(:nth-child(1)):not(:nth-child(2)) {
   background-color: rgb(248 250 252);
 }
+
+/**
+ * ScrollableTable text overflow — sticky edge columns have fixed max-widths but
+ * previously allowed visible overflow into the next column (whitespace-nowrap on
+ * the table). Truncate with ellipsis; full value is surfaced via title in
+ * ScrollableTable when clipped.
+ */
+.scrollable-table-host--sticky-edges table thead th:nth-child(1):not(.scrollable-table-cell--wrap),
+.scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]):not(.scrollable-table-cell--wrap),
+.scrollable-table-host--sticky-edges table thead th:nth-child(2):not(.scrollable-table-cell--wrap),
+.scrollable-table-host--sticky-edges table tbody td:nth-child(2):not([colspan]):not(.scrollable-table-cell--wrap) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Long free-text body cells (names, emails, addresses) — skip wrap + action columns */
+.scrollable-table-host table tbody td:not([colspan]):not(.scrollable-table-cell--wrap):not(:last-child) {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

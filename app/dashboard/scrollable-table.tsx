@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
 
 type ScrollableTableProps = {
   children: ReactNode;
@@ -9,6 +11,9 @@ type ScrollableTableProps = {
    */
   stickyEdgeColumns?: boolean;
 };
+
+/** Marks cells that should wrap instead of single-line truncation. */
+export const scrollableTableWrapCellClassName = "scrollable-table-cell--wrap";
 
 /**
  * Shared responsive table container for wide register/list screens.
@@ -30,10 +35,10 @@ export const scrollableTableThClassName =
 
 /** Use on description / notes / other long free-text columns in scrollable tables. */
 export const scrollableTableWrapThClassName =
-  `${scrollableTableThClassName} whitespace-normal`;
+  `${scrollableTableThClassName} whitespace-normal ${scrollableTableWrapCellClassName}`;
 
 export const scrollableTableWrapTdClassName =
-  "max-w-md px-4 py-3 whitespace-normal break-words align-top";
+  `max-w-md px-4 py-3 whitespace-normal break-words align-top ${scrollableTableWrapCellClassName}`;
 
 /** Wider first column for register tables (2–3 lines of name text). */
 export const scrollableTableStickyFirstColumnWidthClassName =
@@ -67,6 +72,7 @@ export function scrollableTableStickyFirstWrapTdClassName(
 ): string {
   return [
     "px-4 py-3 whitespace-normal break-words align-top",
+    scrollableTableWrapCellClassName,
     "sticky left-0 z-[5]",
     scrollableTableStickyFirstColumnWidthClassName,
     scrollableTableStickyFirstCellBackground(options),
@@ -111,11 +117,74 @@ export function scrollableTableHeadingClassName(heading: string): string {
 
 export const scrollableTableBodyClassName = "divide-y divide-slate-200";
 
+function syncScrollableTableOverflowTitles(host: HTMLElement) {
+  host
+    .querySelectorAll<HTMLElement>("table tbody td:not([colspan]), table thead th")
+    .forEach((cell) => {
+      if (cell.classList.contains(scrollableTableWrapCellClassName)) {
+        cell.removeAttribute("title");
+        return;
+      }
+
+      if (
+        cell.matches(":last-child") &&
+        cell.querySelector("button, a[role='button']")
+      ) {
+        cell.removeAttribute("title");
+        return;
+      }
+
+      if (cell.scrollWidth > cell.clientWidth + 1) {
+        const text = cell.textContent?.replace(/\s+/g, " ").trim();
+        if (text && text !== "—") {
+          cell.title = text;
+          return;
+        }
+      }
+
+      cell.removeAttribute("title");
+    });
+}
+
+function useScrollableTableOverflowTitles(enabled: boolean) {
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const host = hostRef.current;
+    if (!host) return;
+
+    const sync = () => syncScrollableTableOverflowTitles(host);
+
+    sync();
+
+    const mutationObserver = new MutationObserver(sync);
+    mutationObserver.observe(host, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    const resizeObserver = new ResizeObserver(sync);
+    resizeObserver.observe(host);
+    host.querySelectorAll("table").forEach((table) => resizeObserver.observe(table));
+
+    return () => {
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
+  }, [enabled]);
+
+  return hostRef;
+}
+
 /** Viewport-bounded scroll box with sticky column headers and optional edge columns. */
 export default function ScrollableTable({
   children,
   stickyEdgeColumns = true,
 }: ScrollableTableProps) {
+  const hostRef = useScrollableTableOverflowTitles(true);
+
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="relative min-w-0">
@@ -128,6 +197,7 @@ export default function ScrollableTable({
           className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-6 bg-gradient-to-l from-white via-white/80 to-transparent md:hidden"
         />
         <div
+          ref={hostRef}
           className={`min-w-0 max-h-[calc(100vh-300px)] overflow-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] scrollable-table-host${stickyEdgeColumns ? " scrollable-table-host--sticky-edges" : ""}`}
         >
           {children}
