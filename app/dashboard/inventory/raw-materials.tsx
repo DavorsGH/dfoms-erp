@@ -19,6 +19,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
+import InventoryCollapsibleHistorySection from "./inventory-collapsible-history-section";
 import {
   useBusinessUnitReadScope,
   useBusinessUnitView,
@@ -1377,71 +1378,76 @@ export default function RawMaterials({
           </section>
         ) : null}
 
-        <FilteredListCount
-          filteredCount={purchases.length}
-          totalCount={purchases.length}
-          itemSingular="purchase"
-        />
+        <InventoryCollapsibleHistorySection
+          title="Purchases"
+          count={purchases.length}
+        >
+          <FilteredListCount
+            filteredCount={purchases.length}
+            totalCount={purchases.length}
+            itemSingular="purchase"
+          />
 
-        <ScrollableTable>
-          <table className={scrollableTableClassName}>
-            <thead className={scrollableTableHeadClassName}>
-              <tr>
-                <th className={scrollableTableThClassName}>Date</th>
-                <th className={scrollableTableThClassName}>Material</th>
-                <th className={scrollableTableThClassName}>Quantity</th>
-                <th className={scrollableTableThClassName}>Cost / Unit</th>
-                <th className={scrollableTableThClassName}>Total Cost</th>
-                <th className={scrollableTableThClassName}>Supplier</th>
-                <th className={scrollableTableThClassName}>Payment</th>
-                <th className={scrollableTableThClassName}>Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {purchases.length === 0 ? (
+          <ScrollableTable>
+            <table className={scrollableTableClassName}>
+              <thead className={scrollableTableHeadClassName}>
                 <tr>
-                  <td
-                    colSpan={8}
-                    className="px-4 py-8 text-center text-sm text-slate-500"
-                  >
-                    No purchases recorded yet.
-                  </td>
+                  <th className={scrollableTableThClassName}>Date</th>
+                  <th className={scrollableTableThClassName}>Material</th>
+                  <th className={scrollableTableThClassName}>Quantity</th>
+                  <th className={scrollableTableThClassName}>Cost / Unit</th>
+                  <th className={scrollableTableThClassName}>Total Cost</th>
+                  <th className={scrollableTableThClassName}>Supplier</th>
+                  <th className={scrollableTableThClassName}>Payment</th>
+                  <th className={scrollableTableThClassName}>Actions</th>
                 </tr>
-              ) : (
-                purchases.map((purchase, index) => (
-                  <tr
-                    key={purchase.id}
-                    className={getStripedRowClassName(index)}
-                  >
-                    <td className="px-4 py-3">{purchase.purchase_date}</td>
-                    <td className="px-4 py-3">
-                      {purchase.material?.material_name ?? purchase.material_id}
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {purchases.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-4 py-8 text-center text-sm text-slate-500"
+                    >
+                      No purchases recorded yet.
                     </td>
-                    <td className="px-4 py-3">
-                      {formatInventoryQuantity(purchase.quantity)}{" "}
-                      {purchase.material?.unit_of_measure ?? ""}
-                    </td>
-                    <td className="px-4 py-3">
-                      {formatInventoryMoney(purchase.cost_per_unit)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {formatInventoryMoney(purchase.total_cost)}
-                    </td>
-                    <td className="px-4 py-3">{purchase.supplier ?? "—"}</td>
-                    <td className="px-4 py-3">{purchase.payment_method ?? "—"}</td>
-                    {!readOnly ? (
-                    <RegisterRowActions
-                      onEdit={() => openEditPurchaseForm(purchase)}
-                      onDelete={() => handleDeletePurchase(purchase.id)}
-                      deleting={deletingPurchaseId === purchase.id}
-                    />
-                    ) : null}
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </ScrollableTable>
+                ) : (
+                  purchases.map((purchase, index) => (
+                    <tr
+                      key={purchase.id}
+                      className={getStripedRowClassName(index)}
+                    >
+                      <td className="px-4 py-3">{purchase.purchase_date}</td>
+                      <td className="px-4 py-3">
+                        {purchase.material?.material_name ?? purchase.material_id}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatInventoryQuantity(purchase.quantity)}{" "}
+                        {purchase.material?.unit_of_measure ?? ""}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatInventoryMoney(purchase.cost_per_unit)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatInventoryMoney(purchase.total_cost)}
+                      </td>
+                      <td className="px-4 py-3">{purchase.supplier ?? "—"}</td>
+                      <td className="px-4 py-3">{purchase.payment_method ?? "—"}</td>
+                      {!readOnly ? (
+                      <RegisterRowActions
+                        onEdit={() => openEditPurchaseForm(purchase)}
+                        onDelete={() => handleDeletePurchase(purchase.id)}
+                        deleting={deletingPurchaseId === purchase.id}
+                      />
+                      ) : null}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </ScrollableTable>
+        </InventoryCollapsibleHistorySection>
       </section>
 
       <section className="space-y-4">
@@ -1642,72 +1648,77 @@ export default function RawMaterials({
           </section>
         ) : null}
 
-        <FilteredListCount
-          filteredCount={adjustments.length}
-          totalCount={adjustments.length}
-          itemSingular="adjustment"
-        />
+        <InventoryCollapsibleHistorySection
+          title="Stock Adjustments"
+          count={adjustments.length}
+        >
+          <FilteredListCount
+            filteredCount={adjustments.length}
+            totalCount={adjustments.length}
+            itemSingular="adjustment"
+          />
 
-        <ScrollableTable>
-          <table className={scrollableTableClassName}>
-            <thead className={scrollableTableHeadClassName}>
-              <tr>
-                <th className={scrollableTableThClassName}>Date</th>
-                <th className={scrollableTableThClassName}>Material</th>
-                <th className={scrollableTableThClassName}>Type</th>
-                <th className={scrollableTableThClassName}>Quantity</th>
-                <th className={scrollableTableThClassName}>Cost / Unit</th>
-                <th className={scrollableTableThClassName}>Reason</th>
-                <th className={scrollableTableThClassName}>Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {adjustments.length === 0 ? (
+          <ScrollableTable>
+            <table className={scrollableTableClassName}>
+              <thead className={scrollableTableHeadClassName}>
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-8 text-center text-sm text-slate-500"
-                  >
-                    No stock adjustments recorded yet.
-                  </td>
+                  <th className={scrollableTableThClassName}>Date</th>
+                  <th className={scrollableTableThClassName}>Material</th>
+                  <th className={scrollableTableThClassName}>Type</th>
+                  <th className={scrollableTableThClassName}>Quantity</th>
+                  <th className={scrollableTableThClassName}>Cost / Unit</th>
+                  <th className={scrollableTableThClassName}>Reason</th>
+                  <th className={scrollableTableThClassName}>Notes</th>
                 </tr>
-              ) : (
-                adjustments.map((adjustment, index) => (
-                  <tr
-                    key={adjustment.id}
-                    className={getStripedRowClassName(index)}
-                  >
-                    <td className="px-4 py-3">
-                      {adjustment.created_at.slice(0, 10)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {adjustment.material?.material_name ??
-                        adjustment.material_id}
-                    </td>
-                    <td className="px-4 py-3">
-                      {formatRawMaterialAdjustmentType(
-                        adjustment.adjustment_type,
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {formatInventoryQuantity(adjustment.quantity_delta)}{" "}
-                      {adjustment.material?.unit_of_measure ?? ""}
-                    </td>
-                    <td className="px-4 py-3">
-                      {adjustment.cost_per_unit == null
-                        ? "—"
-                        : formatInventoryMoney(adjustment.cost_per_unit)}
-                    </td>
-                    <td className="px-4 py-3">{adjustment.reason}</td>
-                    <td className="px-4 py-3">
-                      {adjustment.notes ?? "—"}
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {adjustments.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-4 py-8 text-center text-sm text-slate-500"
+                    >
+                      No stock adjustments recorded yet.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </ScrollableTable>
+                ) : (
+                  adjustments.map((adjustment, index) => (
+                    <tr
+                      key={adjustment.id}
+                      className={getStripedRowClassName(index)}
+                    >
+                      <td className="px-4 py-3">
+                        {adjustment.created_at.slice(0, 10)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {adjustment.material?.material_name ??
+                          adjustment.material_id}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatRawMaterialAdjustmentType(
+                          adjustment.adjustment_type,
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatInventoryQuantity(adjustment.quantity_delta)}{" "}
+                        {adjustment.material?.unit_of_measure ?? ""}
+                      </td>
+                      <td className="px-4 py-3">
+                        {adjustment.cost_per_unit == null
+                          ? "—"
+                          : formatInventoryMoney(adjustment.cost_per_unit)}
+                      </td>
+                      <td className="px-4 py-3">{adjustment.reason}</td>
+                      <td className="px-4 py-3">
+                        {adjustment.notes ?? "—"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </ScrollableTable>
+        </InventoryCollapsibleHistorySection>
       </section>
     </div>
   );

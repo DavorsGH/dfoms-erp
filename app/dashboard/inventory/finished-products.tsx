@@ -17,6 +17,7 @@ import {
   normalizeFinishedProductDeletePreview,
 } from "./inventory-delete-utils";
 import FilteredListCount from "../filtered-list-count";
+import InventoryCollapsibleHistorySection from "./inventory-collapsible-history-section";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -1322,72 +1323,77 @@ export default function FinishedProducts({
           </section>
         ) : null}
 
-        <FilteredListCount
-          filteredCount={adjustments.length}
-          totalCount={adjustments.length}
-          itemSingular="adjustment"
-        />
+        <InventoryCollapsibleHistorySection
+          title="Stock Adjustments"
+          count={adjustments.length}
+        >
+          <FilteredListCount
+            filteredCount={adjustments.length}
+            totalCount={adjustments.length}
+            itemSingular="adjustment"
+          />
 
-        <ScrollableTable>
-          <table className={scrollableTableClassName}>
-            <thead className={scrollableTableHeadClassName}>
-              <tr>
-                <th className={scrollableTableThClassName}>Date</th>
-                <th className={scrollableTableThClassName}>Product</th>
-                <th className={scrollableTableThClassName}>Type</th>
-                <th className={scrollableTableThClassName}>Quantity</th>
-                <th className={scrollableTableThClassName}>Cost / Unit</th>
-                <th className={scrollableTableThClassName}>Reason</th>
-                <th className={scrollableTableThClassName}>Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {adjustments.length === 0 ? (
+          <ScrollableTable>
+            <table className={scrollableTableClassName}>
+              <thead className={scrollableTableHeadClassName}>
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-8 text-center text-sm text-slate-500"
-                  >
-                    No stock adjustments recorded yet.
-                  </td>
+                  <th className={scrollableTableThClassName}>Date</th>
+                  <th className={scrollableTableThClassName}>Product</th>
+                  <th className={scrollableTableThClassName}>Type</th>
+                  <th className={scrollableTableThClassName}>Quantity</th>
+                  <th className={scrollableTableThClassName}>Cost / Unit</th>
+                  <th className={scrollableTableThClassName}>Reason</th>
+                  <th className={scrollableTableThClassName}>Notes</th>
                 </tr>
-              ) : (
-                adjustments.map((adjustment, index) => (
-                  <tr
-                    key={adjustment.id}
-                    className={getStripedRowClassName(index)}
-                  >
-                    <td className="px-4 py-3">
-                      {adjustment.created_at.slice(0, 10)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {adjustment.product?.product_name ??
-                        adjustment.product_id}
-                    </td>
-                    <td className="px-4 py-3">
-                      {formatFinishedProductAdjustmentType(
-                        adjustment.adjustment_type,
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {formatInventoryQuantity(adjustment.quantity_delta)}{" "}
-                      {adjustment.product?.unit_of_measure ?? ""}
-                    </td>
-                    <td className="px-4 py-3">
-                      {adjustment.cost_per_unit == null
-                        ? "—"
-                        : formatInventoryMoney(adjustment.cost_per_unit)}
-                    </td>
-                    <td className="px-4 py-3">{adjustment.reason}</td>
-                    <td className="px-4 py-3">
-                      {adjustment.notes ?? "—"}
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {adjustments.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-4 py-8 text-center text-sm text-slate-500"
+                    >
+                      No stock adjustments recorded yet.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </ScrollableTable>
+                ) : (
+                  adjustments.map((adjustment, index) => (
+                    <tr
+                      key={adjustment.id}
+                      className={getStripedRowClassName(index)}
+                    >
+                      <td className="px-4 py-3">
+                        {adjustment.created_at.slice(0, 10)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {adjustment.product?.product_name ??
+                          adjustment.product_id}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatFinishedProductAdjustmentType(
+                          adjustment.adjustment_type,
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatInventoryQuantity(adjustment.quantity_delta)}{" "}
+                        {adjustment.product?.unit_of_measure ?? ""}
+                      </td>
+                      <td className="px-4 py-3">
+                        {adjustment.cost_per_unit == null
+                          ? "—"
+                          : formatInventoryMoney(adjustment.cost_per_unit)}
+                      </td>
+                      <td className="px-4 py-3">{adjustment.reason}</td>
+                      <td className="px-4 py-3">
+                        {adjustment.notes ?? "—"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </ScrollableTable>
+        </InventoryCollapsibleHistorySection>
       </section>
     </div>
   );
