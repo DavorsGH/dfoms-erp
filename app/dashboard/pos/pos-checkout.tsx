@@ -246,6 +246,7 @@ export default function PosCheckout({
   const [loyaltyRedeemError, setLoyaltyRedeemError] = useState<string | null>(null);
   const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
   const [openArBalance, setOpenArBalance] = useState<number | null>(null);
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const skipFirstEmployeeScopeRefresh = useRef(true);
   const customerDisplaySessionIdRef = useRef("");
   const customerDisplayBroadcasterRef = useRef<ReturnType<
@@ -737,6 +738,7 @@ export default function PosCheckout({
   }
 
   function resetCheckoutForm() {
+    setMobileCartOpen(false);
     setCartLines([]);
     setClientId("");
     setCustomerName("");
@@ -1320,158 +1322,10 @@ export default function PosCheckout({
     setCartLines([]);
   }
 
-  if (receipt) {
+  const cartLineCount = cartLines.length;
+
+  function renderCartSection() {
     return (
-      <PosReceiptPanel
-        receipt={receipt}
-        onPrint={() => window.print()}
-        onNewSale={resetCheckoutForm}
-      />
-    );
-  }
-
-  return (
-    <div className="min-w-0 space-y-6">
-      <div>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            {showTitle ? (
-              <h1 className="text-2xl font-semibold text-[#0f2744]">POS</h1>
-            ) : null}
-            <p className={`text-sm text-slate-600 ${showTitle ? "mt-2" : ""}`}>
-              Search products, build a cart, and complete a multi-line product sale
-              with one shared invoice number.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleOpenCustomerDisplay}
-            className="shrink-0 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
-          >
-            Open Customer Display
-          </button>
-        </div>
-        {quoteConversionId && quoteNumber ? (
-          <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-            Converting accepted product quote {quoteNumber}. Cart and customer
-            are pre-filled — review and complete checkout normally.
-          </p>
-        ) : null}
-      </div>
-
-      {error ? (
-        <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {isPosCheckoutLineFailureMessage(error) ||
-          /only .* in stock, cannot sell/i.test(error) ? (
-            <p className="font-medium">
-              No sale was recorded. Fix the failed line below and retry the
-              whole cart.
-            </p>
-          ) : null}
-          <p>{error}</p>
-          {paymentSettingsRequired ? (
-            <p>
-              <Link
-                href="/dashboard/administration/billing?tab=payment"
-                className="inline-block rounded-md bg-[#0f2744] px-3 py-1.5 font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-              >
-                Set up Payment Settings
-              </Link>{" "}
-              <span className="text-red-600">
-                (Administration → Billing Settings → Payment Settings)
-              </span>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {momoWaiting ? (
-        <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          Waiting for Mobile Money confirmation in the Paystack window…
-        </p>
-      ) : null}
-
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
-          Product Search
-        </h2>
-        <div className="mb-4">
-          <BarcodeScanStatus
-            label="Barcode scanner"
-            hint="Ready to scan — focus outside text fields, then scan a product or batch label."
-            errorMessage={scanError}
-            successMessage={scanSuccess}
-          />
-          <BarcodeManualEntry
-            enabled={!busy}
-            paused={scannerPaused}
-            onScan={(_parsed, rawPayload) => {
-              handlePosBarcodeScan(rawPayload);
-            }}
-          />
-        </div>
-        <input
-          type="search"
-          value={productSearch}
-          onChange={(event) => setProductSearch(event.target.value)}
-          placeholder="Search by product name or code"
-          className={inputClassName}
-        />
-        <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
-          {filteredProducts.length === 0 ? (
-            <p className="text-sm text-slate-500">No products match your search.</p>
-          ) : (
-            filteredProducts.map((product) => {
-              const available = getAvailableStockForProduct(product, cartLines);
-              const outOfStock = available <= 0;
-
-              return (
-                <div
-                  key={product.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 px-4 py-3"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <FinishedProductPhoto
-                      photoUrl={product.photo_url}
-                      productName={product.product_name}
-                      size="md"
-                    />
-                    <div className="min-w-0">
-                      <p className="font-medium text-[#0f2744]">
-                        {product.product_code} — {product.product_name}
-                      </p>
-                      <p className="text-sm text-slate-600">
-                        Stock:{" "}
-                        <span
-                          className={
-                            outOfStock ? "font-medium text-red-700" : "font-medium"
-                          }
-                        >
-                          {formatInventoryQuantity(available)} {product.unit_of_measure}
-                        </span>
-                        {isOffline ? (
-                          <span className="ml-1 text-xs text-amber-800">(cached)</span>
-                        ) : null}
-                        {" · "}
-                        Price: {formatInventoryMoney(product.standard_selling_price)}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={outOfStock || busy}
-                    onClick={() => addProductToCart(product)}
-                    className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Add to Cart
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </section>
-
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">Cart</h2>
         {cartLines.length === 0 ? (
@@ -1571,7 +1425,11 @@ export default function PosCheckout({
           </span>
         </p>
       </section>
+    );
+  }
 
+  function renderCheckoutForm() {
+    return (
       <form
         onSubmit={handleCompleteSale}
         className="space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
@@ -1686,7 +1544,7 @@ export default function PosCheckout({
           </div>
         ) : null}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Customer
@@ -1790,7 +1648,7 @@ export default function PosCheckout({
             </select>
           </div>
           {isCash ? (
-            <div className="md:col-span-2 xl:col-span-2">
+            <div className="md:col-span-2 2xl:col-span-2">
               <div className="flex flex-wrap items-end gap-4">
                 <div className="min-w-[180px] flex-1">
                   <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -1833,7 +1691,7 @@ export default function PosCheckout({
               ) : null}
             </div>
           ) : null}
-          <div className="md:col-span-2 xl:col-span-3">
+          <div className="md:col-span-2 2xl:col-span-2">
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Notes
             </label>
@@ -1901,6 +1759,218 @@ export default function PosCheckout({
           </button>
         </div>
       </form>
+    );
+  }
+
+  function renderCartAndCheckout() {
+    return (
+      <>
+        {renderCartSection()}
+        {renderCheckoutForm()}
+      </>
+    );
+  }
+
+  if (receipt) {
+    return (
+      <PosReceiptPanel
+        receipt={receipt}
+        onPrint={() => window.print()}
+        onNewSale={resetCheckoutForm}
+      />
+    );
+  }
+
+  return (
+    <div className="min-w-0 space-y-6 pb-24 lg:pb-6">
+      <div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            {showTitle ? (
+              <h1 className="text-2xl font-semibold text-[#0f2744]">POS</h1>
+            ) : null}
+            <p className={`text-sm text-slate-600 ${showTitle ? "mt-2" : ""}`}>
+              Search products, build a cart, and complete a multi-line product sale
+              with one shared invoice number.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenCustomerDisplay}
+            className="shrink-0 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+          >
+            Open Customer Display
+          </button>
+        </div>
+        {quoteConversionId && quoteNumber ? (
+          <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            Converting accepted product quote {quoteNumber}. Cart and customer
+            are pre-filled — review and complete checkout normally.
+          </p>
+        ) : null}
+      </div>
+
+      {error ? (
+        <div className="space-y-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {isPosCheckoutLineFailureMessage(error) ||
+          /only .* in stock, cannot sell/i.test(error) ? (
+            <p className="font-medium">
+              No sale was recorded. Fix the failed line below and retry the
+              whole cart.
+            </p>
+          ) : null}
+          <p>{error}</p>
+          {paymentSettingsRequired ? (
+            <p>
+              <Link
+                href="/dashboard/administration/billing?tab=payment"
+                className="inline-block rounded-md bg-[#0f2744] px-3 py-1.5 font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+              >
+                Set up Payment Settings
+              </Link>{" "}
+              <span className="text-red-600">
+                (Administration → Billing Settings → Payment Settings)
+              </span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {momoWaiting ? (
+        <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          Waiting for Mobile Money confirmation in the Paystack window…
+        </p>
+      ) : null}
+
+      <div className="lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start lg:gap-6">
+        <section className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:max-h-[calc(100dvh-10rem)]">
+          <h2 className="mb-4 shrink-0 text-lg font-semibold text-[#0f2744]">
+            Product Search
+          </h2>
+          <div className="mb-4 shrink-0">
+            <BarcodeScanStatus
+              label="Barcode scanner"
+              hint="Ready to scan — focus outside text fields, then scan a product or batch label."
+              errorMessage={scanError}
+              successMessage={scanSuccess}
+            />
+            <BarcodeManualEntry
+              enabled={!busy}
+              paused={scannerPaused}
+              onScan={(_parsed, rawPayload) => {
+                handlePosBarcodeScan(rawPayload);
+              }}
+            />
+          </div>
+          <input
+            type="search"
+            value={productSearch}
+            onChange={(event) => setProductSearch(event.target.value)}
+            placeholder="Search by product name or code"
+            className={`${inputClassName} shrink-0`}
+          />
+          <div className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto lg:min-h-[12rem]">
+            {filteredProducts.length === 0 ? (
+              <p className="text-sm text-slate-500">No products match your search.</p>
+            ) : (
+              filteredProducts.map((product) => {
+                const available = getAvailableStockForProduct(product, cartLines);
+                const outOfStock = available <= 0;
+
+                return (
+                  <div
+                    key={product.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 px-4 py-3"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <FinishedProductPhoto
+                        photoUrl={product.photo_url}
+                        productName={product.product_name}
+                        size="md"
+                      />
+                      <div className="min-w-0">
+                        <p className="font-medium text-[#0f2744]">
+                          {product.product_code} — {product.product_name}
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          Stock:{" "}
+                          <span
+                            className={
+                              outOfStock ? "font-medium text-red-700" : "font-medium"
+                            }
+                          >
+                            {formatInventoryQuantity(available)} {product.unit_of_measure}
+                          </span>
+                          {isOffline ? (
+                            <span className="ml-1 text-xs text-amber-800">(cached)</span>
+                          ) : null}
+                          {" · "}
+                          Price: {formatInventoryMoney(product.standard_selling_price)}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={outOfStock || busy}
+                      onClick={() => addProductToCart(product)}
+                      className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Add to Cart
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+
+        <div className="hidden lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:block lg:max-h-[calc(100dvh-5rem)] lg:space-y-4 lg:overflow-y-auto">
+          {renderCartAndCheckout()}
+        </div>
+      </div>
+
+      {mobileCartOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close cart and checkout"
+            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+            onClick={() => setMobileCartOpen(false)}
+          />
+          <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90dvh] flex-col rounded-t-xl border border-slate-200 bg-white shadow-lg lg:hidden">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h2 className="text-lg font-semibold text-[#0f2744]">Cart & Checkout</h2>
+              <button
+                type="button"
+                onClick={() => setMobileCartOpen(false)}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+              {renderCartAndCheckout()}
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {!mobileCartOpen ? (
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(15,39,68,0.08)] lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileCartOpen(true)}
+          className="flex w-full items-center justify-between gap-4 rounded-md bg-[#0f2744] px-4 py-3 text-left text-white transition-colors hover:bg-[#1a3a5c]"
+        >
+          <span className="text-sm font-medium">
+            {cartLineCount === 0
+              ? "Cart empty"
+              : `${cartLineCount} item${cartLineCount === 1 ? "" : "s"}`}
+          </span>
+          <span className="text-base font-semibold">{formatGHS(payableTotal)}</span>
+        </button>
+      </div>
+      ) : null}
 
       {showRequestPayment && requestPaymentDraft ? (
         <RequestPaymentModal

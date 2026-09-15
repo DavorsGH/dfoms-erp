@@ -4,9 +4,18 @@
  * Usage:
  *   npx tsx scripts/apply-286-287-sales-rep-attribution-production.ts --confirm-286-287-production
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import pg from "pg";
+
+const PRODUCTION_REF = "tvcurcnmasnocwdxzgvz";
+const STAGING_REF = "wieflwbfdmjtsdnwbfii";
+const ENV_FILES = [".env.production.local", ".env.local.backup"] as const;
+
+const SQL_FILES = [
+  "scripts/286_create_product_sale_persist_sales_rep_id.sql",
+  "scripts/287_client_quotations_assigned_sales_rep_id.sql",
+] as const;
 
 function loadEnvForce(filePath: string) {
   for (const line of readFileSync(filePath, "utf8").split(/\r?\n/)) {
@@ -25,18 +34,136 @@ function loadEnvForce(filePath: string) {
   }
 }
 
-for (const envFile of [".env.production.local", ".env.local"]) {
+function loadProductionEnv(): string {
+  const loaded: string[] = [];
+
+  for (const envFile of ENV_FILES) {
+    const path = resolve(process.cwd(), envFile);
+    if (!existsSync(path)) {
+      continue;
+    }
+
+    delete process.env.PRODUCTION_DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    delete process.env.SUPABASE_DB_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    loadEnvForce(path);
+    loaded.push(envFile);
+  }
+
+  if (loaded.length === 0) {
+    throw new Error(
+      `No production env file found. Expected one of: ${ENV_FILES.join(", ")}`,
+    );
+  }
+
+  console.log(`Loaded production env from: ${loaded.join(" -> ")}`);
+  return loaded[loaded.length - 1]!;
+}
+
+function resolveDatabaseUrl(): { url: string; sourceVar: string } {
+  const candidates = [
+    "PRODUCTION_DATABASE_URL",
+    "DATABASE_URL",
+    "SUPABASE_DB_URL",
+  ] as const;
+
+  for (const name of candidates) {
+    const value = process.env[name]?.trim();
+    if (value && !value.includes("[SENSITIVE]")) {
+      return { url: value, sourceVar: name };
+    }
+  }
+
+  throw new Error(
+    "PRODUCTION_DATABASE_URL, DATABASE_URL, or SUPABASE_DB_URL required (non-scrubbed) in production env file.",
+  );
+}
+
+function extractProjectRef(connectionUrl: string): string | null {
+  const trimmed = connectionUrl.trim();
+  if (trimmed.includes(STAGING_REF)) {
+    return STAGING_REF;
+  }
+  if (trimmed.includes(PRODUCTION_REF)) {
+    return PRODUCTION_REF;
+  }
+
   try {
-    loadEnvForce(resolve(process.cwd(), envFile));
+    const parsed = new URL(trimmed);
+    const hostRef = parsed.hostname.split(".")[0]?.replace(/^postgres\./, "") ?? "";
+    if (hostRef === STAGING_REF || hostRef === PRODUCTION_REF) {
+      return hostRef;
+    }
+    const userRef = decodeURIComponent(parsed.username).replace(/^postgres\./, "");
+    if (userRef === STAGING_REF || userRef === PRODUCTION_REF) {
+      return userRef;
+    }
   } catch {
-    // optional
+    // fall through
+  }
+
+  return null;
+}
+
+function assertProductionConnectionUrl(connectionUrl: string, sourceVar: string) {
+  const ref = extractProjectRef(connectionUrl);
+  if (ref === STAGING_REF) {
+    throw new Error(
+      `Refusing to run: ${sourceVar} resolves to staging (${STAGING_REF}). Production apply aborted before any SQL.`,
+    );
+  }
+  if (ref !== PRODUCTION_REF) {
+    throw new Error(
+      `Refusing to run: ${sourceVar} does not resolve to production (${PRODUCTION_REF}). Found ref=${ref ?? "unknown"}. Production apply aborted before any SQL.`,
+    );
   }
 }
 
-const SQL_FILES = [
-  "scripts/286_create_product_sale_persist_sales_rep_id.sql",
-  "scripts/287_client_quotations_assigned_sales_rep_id.sql",
-] as const;
+function connectionHostForLog(connectionUrl: string): string {
+  try {
+    const parsed = new URL(connectionUrl);
+    return `${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`;
+  } catch {
+    return "(unparseable URL)";
+  }
+}
+
+async function assertConnectedProductionProject(
+  client: pg.Client,
+  expectedRef: string,
+  connectionUrl: string,
+) {
+  const urlRef = extractProjectRef(connectionUrl);
+  if (urlRef !== expectedRef) {
+    throw new Error(
+      `Connected URL does not match production project ${expectedRef} (resolved ref=${urlRef ?? "unknown"}). Aborting before any SQL.`,
+    );
+  }
+
+  const { rows } = await client.query<{ current_user: string; current_database: string }>(
+    "SELECT current_user, current_database() AS current_database",
+  );
+  const currentUser = rows[0]?.current_user ?? "";
+
+  if (currentUser.includes(STAGING_REF)) {
+    throw new Error(
+      `Connected database user resolves to staging (${STAGING_REF}). Aborting before any SQL.`,
+    );
+  }
+
+  if (currentUser.includes(expectedRef)) {
+    console.log(
+      `Verified production project ref: ${expectedRef} (current_user=${currentUser}, current_database=${rows[0]?.current_database ?? "?"})`,
+    );
+    return;
+  }
+
+  console.log(
+    `Verified production project ref: ${expectedRef} from connection URL (current_user=${currentUser}, current_database=${rows[0]?.current_database ?? "?"})`,
+  );
+}
 
 async function main() {
   if (!process.argv.includes("--confirm-286-287-production")) {
@@ -44,23 +171,24 @@ async function main() {
     process.exit(1);
   }
 
-  const rawUrl =
-    process.env.PRODUCTION_DATABASE_URL ||
-    process.env.DATABASE_URL ||
-    process.env.SUPABASE_DB_URL;
-  if (!rawUrl) {
-    throw new Error("PRODUCTION_DATABASE_URL, DATABASE_URL, or SUPABASE_DB_URL required");
-  }
+  const envFileUsed = loadProductionEnv();
+  const { url: rawUrl, sourceVar } = resolveDatabaseUrl();
+  assertProductionConnectionUrl(rawUrl, sourceVar);
 
-  // Supabase transaction pooler (6543) can swallow DDL — use session pooler/direct.
   const ddlUrl = rawUrl.replace(":6543/", ":5432/");
+  assertProductionConnectionUrl(ddlUrl, sourceVar);
+
+  console.log(
+    `Resolved ${sourceVar} from ${envFileUsed} -> host ${connectionHostForLog(ddlUrl)} (project ref ${PRODUCTION_REF})`,
+  );
 
   const client = new pg.Client({
     connectionString: ddlUrl,
     ssl: { rejectUnauthorized: false },
   });
   await client.connect();
-  console.log(`Connected (session pooler port 5432).`);
+  await assertConnectedProductionProject(client, PRODUCTION_REF, ddlUrl);
+  console.log(`Connected to production (${PRODUCTION_REF}) on session pooler port 5432.`);
 
   for (const file of SQL_FILES) {
     const sql = readFileSync(resolve(process.cwd(), file), "utf8");
@@ -69,7 +197,6 @@ async function main() {
     console.log(`OK: ${file}`);
   }
 
-  // 1. create_product_sale persists sales_rep_id
   const fnCheck = await client.query<{ def: string; has_var: boolean; has_insert: boolean }>(`
     SELECT
       pg_get_functiondef(p.oid) AS def,
@@ -88,7 +215,6 @@ async function main() {
   console.log("    - v_sales_rep_id assignment: yes");
   console.log("    - INSERT includes sales_rep_id: yes");
 
-  // 2. assigned_sales_rep_id column exists
   const colCheck = await client.query<{ column_name: string; is_nullable: string; data_type: string }>(`
     SELECT column_name, is_nullable, data_type
     FROM information_schema.columns
@@ -102,7 +228,6 @@ async function main() {
   console.log("\n[2] client_quotations.assigned_sales_rep_id: PASS");
   console.log(`    - type: ${colCheck.rows[0]?.data_type}, nullable: ${colCheck.rows[0]?.is_nullable}`);
 
-  // 3. No existing rows modified (additive nullable column; function replace only)
   const quotStats = await client.query<{ total: string; non_null: string }>(`
     SELECT
       COUNT(*)::text AS total,
@@ -122,7 +247,7 @@ async function main() {
     );
   }
 
-  console.log("\nPASS: 286 + 287 applied on production.");
+  console.log(`\nPASS: 286 + 287 applied on production (${PRODUCTION_REF}).`);
   await client.end();
 }
 
