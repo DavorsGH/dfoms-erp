@@ -15,7 +15,8 @@ Sales & CRM (Pipeline, Product Quotes, Client Quotations, Returns &
 Credit Notes, Discounts & Loyalty, Targets & Commissions) · Point of
 Sale · Email & Promotions · HR Management · Operations (incl. Duty
 Roster Approvals) · Inventory (Production & Purchasing, Stock
-Adjustments) · Real Estate (Davors platform) · Reports · Administration
+Adjustments, Barcode Scanning) · Real Estate (Davors platform) · Reports ·
+Administration
 · Your Subscription*
 
 # **Table of Contents**
@@ -1624,6 +1625,91 @@ stock adjustments (quantity × cost on each adjustment row), divided by
 current stock for that business. Raw materials follow the same idea
 through their purchase and adjustment helpers. Always switch to the
 business unit whose stock you mean before adjusting.
+
+## **10.7 Barcode Scanning**
+
+Every finished product in your workspace has a **barcode** (assigned
+automatically when the product is created). Every **production batch**
+has a **batch number**, and every **purchased-product lot** recorded
+under Inventory → Purchases has a **lot code** (plot number). Together,
+these identify a specific item and the exact lot on your shelf.
+
+When you print a **batch label**, the system encodes all of this as a
+single **Code128** barcode in the form:
+
++-----------------------------------------------------------------------+
+| **Example label payload**                                             |
+|                                                                       |
+| `DF-BC-0001|DF-BATCH-0003|2026-12-31`                               |
+|                                                                       |
+| product barcode \| batch or lot number \| expiration date (if set)    |
++-----------------------------------------------------------------------+
+
+Scanning that label (or typing the same payload into the manual entry
+field) lets staff select the right product or lot without searching long
+dropdown lists.
+
+### **Where scanning works**
+
+  **Screen**                          **What a scan does**
+  ----------------------------------- -----------------------------------
+  Point of Sale / Product Sales       Adds the scanned product (or batch
+  checkout                            label) to the cart
+
+  Raw Materials → Record Purchase     Selects the material in the purchase
+                                      form (matches material code)
+
+  Production Batches                  Scan finished product --- selects
+                                      the product on the batch form; scan
+                                      raw material --- fills the focused
+                                      material line
+
+  Inventory → Purchases               Selects the purchased finished
+                                      product on the Record Purchase form
+                                      (matches barcode, then product code)
+
+At each scan point, focus the relevant field or open the form first so
+the scanner knows what you are trying to fill in (for example, focus a
+material line before scanning a raw material on Production Batches).
+
+### **Printing batch labels**
+
+1.  Go to **Inventory → Production Batches**.
+
+2.  On the batch row you want to label, click **Print Batch Label**.
+
+3.  Set **Quantity to print** (how many identical labels you need --- for
+    example, one label per unit produced).
+
+4.  Use your browser's print dialog to print the label sheet. Each label
+    shows the product name, batch number, expiration date (if recorded),
+    and the scannable Code128 barcode described above.
+
+Print labels after recording a production batch so warehouse and POS
+staff can scan the exact lot at checkout or when moving stock.
+
+### **Enter code manually (permanent fallback)**
+
+Every scan point also shows an **Enter code manually** field. Use this
+when the physical wedge scanner is unavailable or malfunctioning: type the
+barcode, product code, material code, or full batch-label payload, then
+press **Enter** or **Submit**. The system runs the **same lookup** as a
+hardware scan --- there is no separate "test mode."
+
+### **When a code is not found**
+
+If the scanned or typed code does not match anything in your workspace,
+the form shows a clear message such as **Product not found** or
+**Material not found**. Nothing is selected silently --- fix the code or
+choose the item from the dropdown instead.
+
++-----------------------------------------------------------------------+
+| **Tip**                                                               |
+|                                                                       |
+| Batch labels encode the product barcode and batch number together. At |
+| POS, scanning a printed batch label adds the correct product to the   |
+| cart using the barcode segment of the label.                          |
++-----------------------------------------------------------------------+
 
 # **Section 10A --- Real Estate (Davors platform only)**
 
