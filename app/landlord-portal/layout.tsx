@@ -1,4 +1,5 @@
 import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
+import { StickyBottomBarProvider } from "@/components/sticky-bottom-bar";
 import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
@@ -48,7 +49,7 @@ export default async function LandlordPortalLayout({
   }
 
   return (
-    <>
+    <StickyBottomBarProvider>
       <PortalLayoutClient
         userLabel={session?.fullName ?? null}
         userPhotoUrl={session?.logoUrl ?? null}
@@ -60,6 +61,6 @@ export default async function LandlordPortalLayout({
         {children}
       </PortalLayoutClient>
       {session ? <AssistantChatWidget /> : null}
-    </>
+    </StickyBottomBarProvider>
   );
 }

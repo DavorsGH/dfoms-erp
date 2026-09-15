@@ -1,5 +1,6 @@
 import DashboardShell from "./dashboard-shell";
 import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
+import { StickyBottomBarProvider } from "@/components/sticky-bottom-bar";
 import { loadDashboardShellData } from "@/utils/dashboard-shell-data";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 
@@ -14,7 +15,7 @@ export default async function DashboardLayout({
   const shell = await loadDashboardShellData();
 
   return (
-    <>
+    <StickyBottomBarProvider>
       <DashboardShell
         userRole={shell.userRole as AppRole | null}
         showLeaveApprovals={shell.showLeaveApprovals}
@@ -31,6 +32,6 @@ export default async function DashboardLayout({
         {children}
       </DashboardShell>
       <AssistantChatWidget />
-    </>
+    </StickyBottomBarProvider>
   );
 }

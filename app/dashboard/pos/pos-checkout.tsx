@@ -102,6 +102,10 @@ import {
   BarcodeManualEntry,
   BarcodeScanStatus,
 } from "@/components/barcode-scan-field";
+import {
+  StickyBottomBar,
+  StickyEdgePanel,
+} from "@/components/floating-ui-avoidance";
 import { useBarcodeScannerWedge } from "@/hooks/use-barcode-scanner-wedge";
 import { findProductByScanCode } from "@/utils/barcode-scan-utils";
 
@@ -1924,9 +1928,12 @@ export default function PosCheckout({
           </div>
         </section>
 
-        <div className="hidden lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:block lg:max-h-[calc(100dvh-5rem)] lg:space-y-4 lg:overflow-y-auto">
+        <StickyEdgePanel
+          edge="right"
+          className="hidden lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:block lg:max-h-[calc(100dvh-5rem)] lg:space-y-4 lg:overflow-y-auto"
+        >
           {renderCartAndCheckout()}
-        </div>
+        </StickyEdgePanel>
       </div>
 
       {mobileCartOpen ? (
@@ -1956,20 +1963,20 @@ export default function PosCheckout({
       ) : null}
 
       {!mobileCartOpen ? (
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(15,39,68,0.08)] lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileCartOpen(true)}
-          className="flex w-full items-center justify-between gap-4 rounded-md bg-[#0f2744] px-4 py-3 text-left text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          <span className="text-sm font-medium">
-            {cartLineCount === 0
-              ? "Cart empty"
-              : `${cartLineCount} item${cartLineCount === 1 ? "" : "s"}`}
-          </span>
-          <span className="text-base font-semibold">{formatGHS(payableTotal)}</span>
-        </button>
-      </div>
+        <StickyBottomBar className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(15,39,68,0.08)] lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileCartOpen(true)}
+            className="flex w-full items-center justify-between gap-4 rounded-md bg-[#0f2744] px-4 py-3 text-left text-white transition-colors hover:bg-[#1a3a5c]"
+          >
+            <span className="text-sm font-medium">
+              {cartLineCount === 0
+                ? "Cart empty"
+                : `${cartLineCount} item${cartLineCount === 1 ? "" : "s"}`}
+            </span>
+            <span className="text-base font-semibold">{formatGHS(payableTotal)}</span>
+          </button>
+        </StickyBottomBar>
       ) : null}
 
       {showRequestPayment && requestPaymentDraft ? (

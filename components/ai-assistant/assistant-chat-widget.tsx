@@ -10,6 +10,8 @@ import {
   type KeyboardEvent,
 } from "react";
 import AssistantMarkdown from "@/components/ai-assistant/assistant-markdown";
+import { useFloatingUiAvoidanceInsets } from "@/components/floating-ui-avoidance";
+import { useAssistantBubblePosition } from "@/components/ai-assistant/use-assistant-bubble-position";
 
 type ChatRole = "user" | "assistant";
 
@@ -85,6 +87,18 @@ export default function AssistantChatWidget() {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  const avoidanceInsets = useFloatingUiAvoidanceInsets();
+  const {
+    isDragging,
+    panelAnchorClass,
+    fixedStyle,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handlePointerCancel,
+    dragHandleStyle,
+  } = useAssistantBubblePosition(avoidanceInsets);
 
   const scrollToBottom = useCallback(() => {
     const list = listRef.current;
@@ -187,15 +201,19 @@ export default function AssistantChatWidget() {
   }
 
   return (
-    <div className="fixed right-4 bottom-4 z-50 sm:right-6 sm:bottom-6">
+    <div
+      className={`fixed z-50 ${isDragging ? "" : "transition-[left,top] duration-200 ease-out motion-reduce:transition-none"}`}
+      style={{
+        left: fixedStyle.left,
+        top: fixedStyle.top,
+      }}
+    >
       <div className="relative">
         <section
           aria-labelledby={titleId}
           aria-hidden={!isOpen}
-          className={`absolute bottom-[calc(100%+0.75rem)] right-0 flex w-[min(24rem,calc(100vw-2rem))] max-h-[min(32rem,calc(100dvh-8rem))] origin-bottom flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl transition duration-300 ease-out motion-reduce:transition-none ${
-            isOpen
-              ? "translate-y-0 scale-100 opacity-100"
-              : "hidden"
+          className={`absolute bottom-[calc(100%+0.75rem)] ${panelAnchorClass} flex w-[min(24rem,calc(100vw-2rem))] max-h-[min(32rem,calc(100dvh-8rem))] origin-bottom flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl transition duration-300 ease-out motion-reduce:transition-none ${
+            isOpen ? "translate-y-0 scale-100 opacity-100" : "hidden"
           }`}
         >
           <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-[#0f2744] px-4 py-3 text-white">
@@ -302,11 +320,24 @@ export default function AssistantChatWidget() {
 
         <button
           type="button"
-          onClick={handleToggleOpen}
           aria-expanded={isOpen}
           aria-controls={titleId}
-          aria-label={isOpen ? "Close Ask Davors Technologies ERP" : "Open Ask Davors Technologies ERP"}
-          className="relative z-10 inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#0f2744] text-white shadow-lg transition-transform duration-300 hover:bg-[#1a3a5c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f2744] motion-reduce:transition-none"
+          aria-label={
+            isOpen
+              ? "Close Ask Davors Technologies ERP"
+              : "Open Ask Davors Technologies ERP"
+          }
+          className={`relative z-10 inline-flex h-16 w-16 shrink-0 cursor-grab items-center justify-center rounded-full bg-[#0f2744] text-white shadow-lg hover:bg-[#1a3a5c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f2744] active:cursor-grabbing ${isDragging ? "scale-105 shadow-xl" : "transition-transform duration-150"}`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={(event) => {
+            const wasDrag = handlePointerUp(event);
+            if (!wasDrag) {
+              handleToggleOpen();
+            }
+          }}
+          onPointerCancel={handlePointerCancel}
+          style={dragHandleStyle}
         >
           {isOpen ? (
             <svg
