@@ -21,3 +21,75 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/**
+ * ScrollableTable edge pinning — first two columns left, last column right.
+ * Applied when ScrollableTable uses stickyEdgeColumns (default true).
+ */
+.scrollable-table-host--sticky-edges {
+  --st-edge-col-1-width: 13rem;
+  --st-edge-col-2-width: 9rem;
+  --st-edge-actions-min-width: 11rem;
+}
+
+.scrollable-table-host--sticky-edges table thead th:nth-child(1),
+.scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]) {
+  position: sticky;
+  left: 0;
+  z-index: 12;
+  min-width: var(--st-edge-col-1-width);
+  max-width: var(--st-edge-col-1-width);
+  background-color: #ffffff;
+  box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
+}
+
+.scrollable-table-host--sticky-edges table thead th:nth-child(2),
+.scrollable-table-host--sticky-edges table tbody td:nth-child(2):not([colspan]) {
+  position: sticky;
+  left: var(--st-edge-col-1-width);
+  z-index: 11;
+  min-width: var(--st-edge-col-2-width);
+  max-width: var(--st-edge-col-2-width);
+  background-color: #ffffff;
+  box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
+}
+
+.scrollable-table-host--sticky-edges
+  table
+  thead
+  th:last-child:not(:nth-child(1)):not(:nth-child(2)),
+.scrollable-table-host--sticky-edges
+  table
+  tbody
+  td:last-child:not([colspan]):not(:nth-child(1)):not(:nth-child(2)) {
+  position: sticky;
+  right: 0;
+  z-index: 11;
+  min-width: var(--st-edge-actions-min-width);
+  background-color: #ffffff;
+  box-shadow: -2px 0 4px -2px rgba(15, 39, 68, 0.12);
+}
+
+.scrollable-table-host--sticky-edges table thead th:nth-child(1),
+.scrollable-table-host--sticky-edges table thead th:nth-child(2),
+.scrollable-table-host--sticky-edges
+  table
+  thead
+  th:last-child:not(:nth-child(1)):not(:nth-child(2)) {
+  z-index: 30;
+  background-color: #0f2744;
+}
+
+.scrollable-table-host--sticky-edges table thead th:nth-child(1) {
+  z-index: 31;
+}
+
+.scrollable-table-host--sticky-edges table tbody tr.bg-slate-50 td:nth-child(1):not([colspan]),
+.scrollable-table-host--sticky-edges table tbody tr.bg-slate-50 td:nth-child(2):not([colspan]),
+.scrollable-table-host--sticky-edges
+  table
+  tbody
+  tr.bg-slate-50
+  td:last-child:not([colspan]):not(:nth-child(1)):not(:nth-child(2)) {
+  background-color: rgb(248 250 252);
+}

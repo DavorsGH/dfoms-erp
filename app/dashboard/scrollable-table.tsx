@@ -2,6 +2,12 @@ import type { ReactNode } from "react";
 
 type ScrollableTableProps = {
   children: ReactNode;
+  /**
+   * Pin the first two columns on the left and the last column on the right during
+   * horizontal scroll (CSS via `.scrollable-table-host--sticky-edges` in globals.css).
+   * Disable for narrow tables where edge pinning is unnecessary.
+   */
+  stickyEdgeColumns?: boolean;
 };
 
 /**
@@ -105,8 +111,11 @@ export function scrollableTableHeadingClassName(heading: string): string {
 
 export const scrollableTableBodyClassName = "divide-y divide-slate-200";
 
-/** Viewport-bounded scroll box with sticky column headers. */
-export default function ScrollableTable({ children }: ScrollableTableProps) {
+/** Viewport-bounded scroll box with sticky column headers and optional edge columns. */
+export default function ScrollableTable({
+  children,
+  stickyEdgeColumns = true,
+}: ScrollableTableProps) {
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="relative min-w-0">
@@ -118,7 +127,9 @@ export default function ScrollableTable({ children }: ScrollableTableProps) {
           aria-hidden
           className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-6 bg-gradient-to-l from-white via-white/80 to-transparent md:hidden"
         />
-        <div className="min-w-0 max-h-[calc(100vh-300px)] overflow-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+        <div
+          className={`min-w-0 max-h-[calc(100vh-300px)] overflow-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] scrollable-table-host${stickyEdgeColumns ? " scrollable-table-host--sticky-edges" : ""}`}
+        >
           {children}
         </div>
       </div>
