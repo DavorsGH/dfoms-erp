@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import SignatureInput from "@/components/signature-input";
 import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import { DEFAULT_WORKSPACE_LOGO } from "@/utils/tenant-branding-types";
 import { uploadTenantLogo } from "@/utils/tenant-logo";
@@ -419,32 +420,26 @@ export default function WorkspaceSettings({
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="space-y-4">
           {usesStorageSignature ? (
             <TenantLogosMediaImage
               reference={signatureUrl!}
               tenantId={tenantId}
-              alt="Signature preview"
-              className="h-16 max-w-[200px] shrink-0 rounded-sm border border-slate-200 object-contain bg-white p-1"
+              alt="Current authorized signature"
+              className="h-16 max-w-[200px] rounded-sm border border-slate-200 object-contain bg-white p-1"
             />
           ) : (
-            <div className="flex h-16 w-[200px] shrink-0 items-center justify-center rounded-sm border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500">
+            <div className="flex h-16 w-full max-w-md items-center justify-center rounded-sm border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500">
               No signature uploaded
             </div>
           )}
-          <ImageFileUploadButton
-            files={[]}
-            onChange={(next) => {
-              const file = next[0];
-              if (file) {
-                void handleSignatureUpload(file);
-              }
-            }}
-            multiple={false}
+          <SignatureInput
+            defaultTypedName={signatureAuthorName}
             disabled={uploadingSignature}
-            addLabel={uploadingSignature ? "Uploading…" : "Upload signature"}
-            showClear={false}
-            resetInputAfterSelect
+            confirmLabel={uploadingSignature ? "Uploading…" : "Save signature image"}
+            onSignatureReady={async (file) => {
+              await handleSignatureUpload(file);
+            }}
           />
         </div>
 
