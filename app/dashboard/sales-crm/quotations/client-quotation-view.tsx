@@ -22,6 +22,11 @@ import {
   normalizeQuotationEngagementType,
   resolveRaisedContractLink,
 } from "@/utils/client-quotations-types";
+import {
+  formatEmailDeliveryTimelineLabel,
+  formatEmailDeliveryTimestamp,
+  type QuotationEmailDeliverySummary,
+} from "@/utils/email-delivery-status";
 import type { ActiveServiceContractSummary } from "@/utils/service-contracts-api";
 import ClientQuotationPdfDocument from "./client-quotation-pdf-document";
 import ClientQuotationPrintLayout from "./client-quotation-print-layout";
@@ -78,6 +83,8 @@ export default function ClientQuotationView({
   const [confirmAction, setConfirmAction] = useState<
     "convert" | "raise-contract" | "apply-to-contract" | null
   >(null);
+  const [emailDelivery, setEmailDelivery] =
+    useState<QuotationEmailDeliverySummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,7 +115,9 @@ export default function ClientQuotationView({
         payment_account_ids: body.payment_account_ids ?? [],
         payment_accounts: body.payment_accounts ?? [],
         business_unit_contact: body.business_unit_contact ?? null,
+        email_delivery: body.email_delivery ?? null,
       });
+      setEmailDelivery(body.email_delivery ?? null);
       setLoading(false);
     }
 
@@ -323,6 +332,37 @@ export default function ClientQuotationView({
         <p className="no-print rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
+      ) : null}
+
+      {showStaffActions && emailDelivery?.resend_message_id ? (
+        <section className="no-print rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-medium text-slate-700">Email delivery</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Quotation email lifecycle from Resend webhooks (quotation_sent).
+          </p>
+          {emailDelivery.timeline.length > 0 ? (
+            <p className="mt-3 text-sm text-slate-800">
+              {emailDelivery.timeline.map((step, index) => (
+                <span key={`${step.event_type}-${step.occurred_at}-${index}`}>
+                  {index > 0 ? (
+                    <span className="mx-2 text-slate-400">→</span>
+                  ) : null}
+                  <span className="font-medium text-[#0f2744]">
+                    {formatEmailDeliveryTimelineLabel(step.event_type)}
+                  </span>
+                  <span className="text-slate-600">
+                    {" "}
+                    {formatEmailDeliveryTimestamp(step.occurred_at)}
+                  </span>
+                </span>
+              ))}
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-slate-600">
+              Email sent via Resend; waiting for delivery webhook events.
+            </p>
+          )}
+        </section>
       ) : null}
 
       {showStaffActions ? (

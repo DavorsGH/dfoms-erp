@@ -13,7 +13,7 @@ export async function insertClientPortalNotification(options: {
   body: string;
   actionUrl: string | null;
   context: string;
-}): Promise<boolean> {
+}): Promise<string | null> {
   try {
     const admin = createAdminClient();
     const { data: account, error: accountError } = await admin
@@ -30,39 +30,44 @@ export async function insertClientPortalNotification(options: {
         `[client-portal-notifications] account lookup failed (${options.context}):`,
         accountError.message,
       );
-      return false;
+      return null;
     }
 
     const authUserId =
       typeof account?.auth_uid === "string" ? account.auth_uid.trim() : "";
     if (!authUserId) {
-      return false;
+      return null;
     }
 
-    const { error } = await admin.from("client_notifications").insert({
-      tenant_id: options.tenantId,
-      recipient_user_id: authUserId,
-      client_id: options.clientId,
-      announcement_id: null,
-      title: options.title,
-      body: options.body,
-      action_url: options.actionUrl,
-    });
+    const { data, error } = await admin
+      .from("client_notifications")
+      .insert({
+        tenant_id: options.tenantId,
+        recipient_user_id: authUserId,
+        client_id: options.clientId,
+        announcement_id: null,
+        title: options.title,
+        body: options.body,
+        action_url: options.actionUrl,
+        notification_context: options.context.trim() || null,
+      })
+      .select("id")
+      .single();
 
-    if (error) {
+    if (error || !data?.id) {
       console.error(
         `[client-portal-notifications] insert failed (${options.context}):`,
-        error.message,
+        error?.message ?? "missing id",
       );
-      return false;
+      return null;
     }
 
-    return true;
+    return data.id as string;
   } catch (error) {
     console.error(
       `[client-portal-notifications] insert failed (${options.context}):`,
       error instanceof Error ? error.message : error,
     );
-    return false;
+    return null;
   }
 }

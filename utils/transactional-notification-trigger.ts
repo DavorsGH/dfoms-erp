@@ -14,6 +14,10 @@ import { buildClientDocumentPortalUrlVars } from "@/utils/client-document-notifi
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 import { loadBusinessUnitReplyToEmail } from "@/utils/business-unit-document-contact";
 import {
+  recordTransactionalEmailSend,
+  type TransactionalEmailDeliveryTracking,
+} from "@/utils/transactional-email-log";
+import {
   TRANSACTIONAL_EVENT_TYPES,
   type TransactionalEventType,
   type TransactionalNotificationChannel,
@@ -70,6 +74,8 @@ export async function fireTransactionalNotification(
     businessUnitId?: string | null;
     /** Explicit Reply-To override (takes precedence over businessUnitId lookup). */
     replyTo?: string | null;
+    /** When set, persist Resend message id for webhook delivery tracking. */
+    emailDeliveryTracking?: TransactionalEmailDeliveryTracking | null;
   },
 ): Promise<void> {
   try {
@@ -232,6 +238,14 @@ export async function fireTransactionalNotification(
             `[transactional-notification] Email failed (${eventType}/${clientId}):`,
             result.error,
           );
+        } else if (result.id) {
+          await recordTransactionalEmailSend(admin, {
+            tenantId,
+            eventType,
+            customerId: clientId,
+            resendMessageId: result.id,
+            tracking: options?.emailDeliveryTracking ?? null,
+          });
         }
       }
     }

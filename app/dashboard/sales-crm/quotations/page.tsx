@@ -21,6 +21,7 @@ import {
   type ClientQuotationListRow,
 } from "@/utils/client-quotations-types";
 import { loadActiveServiceContractsByClientId } from "@/utils/service-contracts-api";
+import { loadQuotationEmailDeliverySummaries } from "@/utils/email-delivery-status";
 import CrmShell from "@/app/dashboard/crm/crm-shell";
 import ClientQuotationsList from "./client-quotations-list";
 
@@ -68,14 +69,20 @@ export default async function ClientQuotationsPage() {
     loadActiveServiceContractsByClientId(supabase, tenantId),
   ]);
 
+  const quotationRows = ((data as ClientQuotationListRow[] | null) ?? []).map(
+    normalizeClientQuotationListRow,
+  );
+
+  const emailDeliveryByQuotationId = await loadQuotationEmailDeliverySummaries(
+    supabase,
+    tenantId,
+    quotationRows.map((row) => row.id),
+  );
+
   return (
     <CrmShell sectionTitle="Quotations">
       <ClientQuotationsList
-        initialQuotations={
-          ((data as ClientQuotationListRow[] | null) ?? []).map(
-            normalizeClientQuotationListRow,
-          )
-        }
+        initialQuotations={quotationRows}
         fetchError={
           error?.message ?? employeesError?.message ?? employeeScopeError ?? null
         }
@@ -83,6 +90,7 @@ export default async function ClientQuotationsPage() {
           (employees as HrEmployee[] | null) ?? [],
         )}
         activeContractByClientId={activeContractByClientId}
+        emailDeliveryByQuotationId={emailDeliveryByQuotationId}
       />
     </CrmShell>
   );

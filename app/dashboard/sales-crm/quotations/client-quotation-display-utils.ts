@@ -25,6 +25,7 @@ import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types
 import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
 import type { BusinessUnitDocumentContact } from "@/utils/business-unit-document-contact-types";
+import type { QuotationEmailDeliverySummary } from "@/utils/email-delivery-status";
 import {
   CLIENT_INVOICE_COLORS,
   CLIENT_INVOICE_LABOUR_TAX_NOTE,
@@ -48,6 +49,7 @@ export type ClientQuotationDetailPayload = {
   payment_account_ids: string[];
   payment_accounts: PaymentAccountRow[];
   business_unit_contact?: BusinessUnitDocumentContact | null;
+  email_delivery?: QuotationEmailDeliverySummary | null;
 };
 
 export type ClientQuotationDisplayProps = {

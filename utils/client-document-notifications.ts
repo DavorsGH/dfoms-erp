@@ -148,7 +148,7 @@ export async function notifyClientDocumentEvent(
   options: NotifyClientDocumentOptions,
 ): Promise<void> {
   try {
-    void insertClientPortalNotification({
+    const clientNotificationId = await insertClientPortalNotification({
       tenantId: options.tenantId,
       clientId: options.clientId,
       title: options.inbox.title,
@@ -181,6 +181,10 @@ export async function notifyClientDocumentEvent(
       {
         emailAttachments: attachment ? [attachment] : undefined,
         businessUnitId,
+        emailDeliveryTracking: {
+          notificationContext: options.context,
+          clientNotificationId,
+        },
       },
     );
   } catch (error) {

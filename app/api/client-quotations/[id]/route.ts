@@ -21,6 +21,7 @@ import { PAYMENT_ACCOUNT_SELECT, type PaymentAccountRow } from "@/utils/payment-
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
+import { loadQuotationEmailDeliverySummary } from "@/utils/email-delivery-status";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -104,6 +105,10 @@ export async function GET(_request: Request, context: RouteContext) {
     paymentAccounts = (data as PaymentAccountRow[] | null) ?? [];
   }
 
+  const emailDelivery = auth.isClientPortal
+    ? null
+    : await loadQuotationEmailDeliverySummary(supabase, auth.tenantId, id);
+
   return NextResponse.json({
     client_quotation: auth.isClientPortal
       ? (({ internal_notes: _internalNotes, ...clientSafeQuotation }) =>
@@ -117,6 +122,7 @@ export async function GET(_request: Request, context: RouteContext) {
       auth.tenantId,
       detail.quotation.business_unit_id,
     ),
+    email_delivery: emailDelivery,
   });
 }
 

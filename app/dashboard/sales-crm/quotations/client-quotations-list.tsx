@@ -28,12 +28,14 @@ import {
 } from "@/utils/client-quotations-types";
 import type { ActiveServiceContractSummary } from "@/utils/service-contracts-api";
 import type { HrEmployee } from "@/app/dashboard/hr-payroll/employee-utils";
+import type { QuotationEmailDeliverySummary } from "@/utils/email-delivery-status";
 
 type ClientQuotationsListProps = {
   initialQuotations: ClientQuotationListRow[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
   activeContractByClientId?: Record<string, ActiveServiceContractSummary>;
+  emailDeliveryByQuotationId?: Record<string, QuotationEmailDeliverySummary>;
 };
 
 type QuotationStatusAction =
@@ -68,6 +70,26 @@ const traceabilityBadgeClassName =
 
 const contractTraceabilityBadgeClassName =
   "inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-xs font-medium text-violet-800 hover:bg-violet-100";
+
+const emailDeliveryBadgeBaseClassName =
+  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium";
+
+function emailDeliveryBadgeClassName(
+  kind: NonNullable<QuotationEmailDeliverySummary["badge"]>["kind"],
+): string {
+  switch (kind) {
+    case "failed":
+      return `${emailDeliveryBadgeBaseClassName} border-red-200 bg-red-50 text-red-800`;
+    case "opened":
+      return `${emailDeliveryBadgeBaseClassName} border-sky-200 bg-sky-50 text-sky-900`;
+    case "not_opened":
+      return `${emailDeliveryBadgeBaseClassName} border-amber-200 bg-amber-50 text-amber-900`;
+    case "delivered":
+      return `${emailDeliveryBadgeBaseClassName} border-emerald-200 bg-emerald-50 text-emerald-800`;
+    default:
+      return `${emailDeliveryBadgeBaseClassName} border-slate-200 bg-slate-50 text-slate-700`;
+  }
+}
 
 const dangerButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -154,6 +176,7 @@ export default function ClientQuotationsList({
   initialEmployees,
   fetchError,
   activeContractByClientId = {},
+  emailDeliveryByQuotationId = {},
 }: ClientQuotationsListProps) {
   const router = useRouter();
   const [quotations, setQuotations] = useState(
@@ -367,6 +390,8 @@ export default function ClientQuotationsList({
                     quotation.status === "accepted" &&
                     !quotation.contract_id &&
                     Boolean(customerActiveContract);
+                  const emailDelivery = emailDeliveryByQuotationId[quotation.id];
+                  const emailBadge = emailDelivery?.badge ?? null;
 
                   return (
                     <tr key={quotation.id} className={getStripedRowClassName(index)}>
@@ -425,7 +450,18 @@ export default function ClientQuotationsList({
                               Contract disabled
                             </span>
                           ) : null}
-                          {!raisedContract && !convertedInvoice && !raiseContractBlocked ? (
+                          {emailBadge ? (
+                            <span
+                              className={emailDeliveryBadgeClassName(emailBadge.kind)}
+                              title="Quotation email delivery (Resend)"
+                            >
+                              {emailBadge.label}
+                            </span>
+                          ) : null}
+                          {!raisedContract &&
+                          !convertedInvoice &&
+                          !raiseContractBlocked &&
+                          !emailBadge ? (
                             <span className="text-sm text-slate-500">—</span>
                           ) : null}
                         </div>
