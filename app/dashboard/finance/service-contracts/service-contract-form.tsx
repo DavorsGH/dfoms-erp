@@ -18,6 +18,7 @@ import {
   emptyLineItem,
   formatBillingFrequencyLabel,
   formatServiceContractTaxBasisLabel,
+  normalizeServiceContractStatus,
   type ServiceContractBillingFrequency,
   type ServiceContractFormLineItem,
   type ServiceContractStatus,
@@ -113,55 +114,99 @@ export default function ServiceContractForm({
     return documentUrl;
   }
 
+  function buildWritePayload(
+    status: ServiceContractStatus | undefined,
+    documentUrl: string | null | undefined,
+  ): ServiceContractWriteBody {
+    return {
+      client_id: form.client_id,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      auto_renew: form.auto_renew,
+      billing_frequency: form.billing_frequency,
+      next_billing_date: form.next_billing_date,
+      status,
+      tax_basis: form.tax_basis,
+      vat_nhil_getfund_rate: form.vat_nhil_getfund_rate,
+      wht_rate: form.wht_rate,
+      document_url: documentUrl,
+      notes: form.notes,
+      line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => line),
+    };
+  }
+
+  async function saveContract(
+    targetContractId: string | undefined,
+    payload: ServiceContractWriteBody,
+  ): Promise<{ id: string }> {
+    const response = await fetch(
+      mode === "create" || !targetContractId
+        ? "/api/service-contracts"
+        : `/api/service-contracts/${targetContractId}`,
+      {
+        method: mode === "create" || !targetContractId ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    const result = (await response.json().catch(() => null)) as
+      | { service_contract?: { id: string }; error?: string }
+      | null;
+
+    if (!response.ok) {
+      throw new Error(result?.error ?? "Unable to save service contract.");
+    }
+
+    const id = result?.service_contract?.id ?? targetContractId;
+    if (!id) {
+      throw new Error("Unable to save service contract.");
+    }
+
+    return { id };
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSaving(true);
     setError(null);
 
     try {
-      let savedContractId = contractId;
-      const payload: ServiceContractWriteBody = {
-        client_id: form.client_id,
-        start_date: form.start_date,
-        end_date: form.end_date,
-        auto_renew: form.auto_renew,
-        billing_frequency: form.billing_frequency,
-        next_billing_date: form.next_billing_date,
-        status: form.status,
-        tax_basis: form.tax_basis,
-        vat_nhil_getfund_rate: form.vat_nhil_getfund_rate,
-        wht_rate: form.wht_rate,
-        document_url: form.document_url,
-        notes: form.notes,
-        line_items: reindexLineItems(form.line_items).map(({ key: _key, ...line }) => line),
-      };
+      const intendedStatus = (form.status ?? "draft") as ServiceContractStatus;
+      let documentUrlForSave = form.document_url?.trim() || null;
 
-      const response = await fetch(
-        mode === "create" ? "/api/service-contracts" : `/api/service-contracts/${contractId}`,
-        {
-          method: mode === "create" ? "POST" : "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
-
-      const result = (await response.json().catch(() => null)) as
-        | { service_contract?: { id: string }; error?: string }
-        | null;
-
-      if (!response.ok) {
-        setError(result?.error ?? "Unable to save service contract.");
-        setSaving(false);
-        return;
+      // Edit: upload pending file before PUT so activation validation sees document_url.
+      if (mode === "edit" && contractId && pendingDocument.length > 0) {
+        documentUrlForSave = await uploadDocument(contractId);
+        setForm((current) => ({ ...current, document_url: documentUrlForSave }));
       }
 
-      savedContractId = result?.service_contract?.id ?? savedContractId;
+      const activatingWithPendingUpload =
+        mode === "create" &&
+        pendingDocument.length > 0 &&
+        normalizeServiceContractStatus(intendedStatus) === "active";
 
-      if (savedContractId && pendingDocument.length > 0) {
-        const documentUrl = await uploadDocument(savedContractId);
-        if (documentUrl) {
-          setForm((current) => ({ ...current, document_url: documentUrl }));
-        }
+      const initialSaveStatus: ServiceContractStatus = activatingWithPendingUpload
+        ? "draft"
+        : intendedStatus;
+
+      let savedContractId = contractId;
+      const { id } = await saveContract(
+        savedContractId,
+        buildWritePayload(initialSaveStatus, documentUrlForSave),
+      );
+      savedContractId = id;
+
+      if (mode === "create" && pendingDocument.length > 0) {
+        documentUrlForSave = await uploadDocument(savedContractId);
+        setForm((current) => ({ ...current, document_url: documentUrlForSave }));
+      }
+
+      if (activatingWithPendingUpload) {
+        await saveContract(
+          savedContractId,
+          buildWritePayload("active", documentUrlForSave),
+        );
       }
 
       router.push(
