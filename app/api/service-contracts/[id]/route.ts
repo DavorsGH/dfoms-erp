@@ -7,9 +7,13 @@ import {
 } from "@/utils/business-unit-access.server";
 import {
   loadGeneratedInvoicesForContract,
+  loadLinkedQuotationsForContract,
   loadServiceContractDetail,
   updateServiceContract,
 } from "@/utils/service-contracts-api";
+import { validateServiceContractActivationRequiresDocument } from "@/utils/service-contract-document-send";
+import { maybeNotifyServiceContractDocumentChange } from "@/utils/service-contract-document-notify";
+import { normalizeServiceContractStatus } from "@/utils/service-contracts-types";
 import {
   validateServiceContractBody,
   type ServiceContractWriteBody,
@@ -52,9 +56,11 @@ export async function GET(_request: Request, context: RouteContext) {
     );
   }
 
-  const [{ invoices, error: invoicesError }] = await Promise.all([
-    loadGeneratedInvoicesForContract(supabase, auth.tenantId, id),
-  ]);
+  const [{ invoices, error: invoicesError }, { quotations, error: quotationsError }] =
+    await Promise.all([
+      loadGeneratedInvoicesForContract(supabase, auth.tenantId, id),
+      loadLinkedQuotationsForContract(supabase, auth.tenantId, id),
+    ]);
 
   let documentSignedUrl: string | null = null;
   const documentPath = detail.contract.document_url?.trim();
@@ -68,8 +74,9 @@ export async function GET(_request: Request, context: RouteContext) {
     service_contract: detail.contract,
     line_items: detail.line_items,
     generated_invoices: invoices,
+    linked_quotations: quotations,
     document_signed_url: documentSignedUrl,
-    fetch_warnings: invoicesError ? [invoicesError] : [],
+    fetch_warnings: [invoicesError, quotationsError].filter(Boolean),
   });
 }
 
@@ -126,6 +133,21 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
+  const nextStatus = normalizeServiceContractStatus(body.status);
+  const nextDocumentUrl =
+    body.document_url !== undefined
+      ? (body.document_url?.trim() || null)
+      : existing.contract.document_url;
+
+  const activationError = validateServiceContractActivationRequiresDocument(
+    existing.contract,
+    nextStatus,
+    nextDocumentUrl,
+  );
+  if (activationError) {
+    return NextResponse.json({ error: activationError }, { status: 400 });
+  }
+
   const { contract, error } = await updateServiceContract(
     supabase,
     auth.tenantId,
@@ -141,6 +163,16 @@ export async function PUT(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
+
+  maybeNotifyServiceContractDocumentChange({
+    supabase,
+    tenantId: auth.tenantId,
+    before: {
+      status: existing.contract.status,
+      document_url: existing.contract.document_url,
+    },
+    after: contract,
+  });
 
   return NextResponse.json({ service_contract: contract });
 }

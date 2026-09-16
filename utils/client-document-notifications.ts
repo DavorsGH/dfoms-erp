@@ -352,6 +352,46 @@ async function resolveReceiptIssuedAmountSection(options: {
   return formatReceiptAmountSectionForEmail(invoice, options.amount);
 }
 
+export async function notifyClientContractDocumentSent(options: {
+  tenantId: string;
+  clientId: string;
+  contractId: string;
+  contractNumber: string;
+  customerName: string;
+  attachment: ResendEmailAttachment | null;
+  businessUnitId?: string | null;
+}): Promise<void> {
+  try {
+    void insertClientPortalNotification({
+      tenantId: options.tenantId,
+      clientId: options.clientId,
+      title: `Service contract ${options.contractNumber}`,
+      body: "Your signed service contract document is ready in the customer portal.",
+      actionUrl: "/dashboard/client-portal/invoices",
+      context: `contract_document_sent/${options.contractId}`,
+    });
+
+    await fireTransactionalNotification(
+      options.tenantId,
+      "contract_document_sent",
+      options.clientId,
+      {
+        customer_name: options.customerName,
+        contract_number: options.contractNumber,
+      },
+      {
+        emailAttachments: options.attachment ? [options.attachment] : undefined,
+        businessUnitId: options.businessUnitId ?? null,
+      },
+    );
+  } catch (error) {
+    console.error(
+      `[client-document-notifications] contract_document_sent failed (${options.contractId}):`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 export async function notifyClientContractRaised(options: {
   tenantId: string;
   clientId: string;

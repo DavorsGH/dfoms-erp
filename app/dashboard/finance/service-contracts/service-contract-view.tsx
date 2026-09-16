@@ -11,6 +11,11 @@ import ScrollableTable, {
 } from "@/app/dashboard/scrollable-table";
 import { formatInvoiceStatus } from "@/utils/client-invoices-types";
 import {
+  formatQuotationEngagementTypeLabel,
+  formatQuotationStatus,
+  normalizeQuotationEngagementType,
+} from "@/utils/client-quotations-types";
+import {
   formatBillingFrequencyLabel,
   formatInvoiceDate,
   formatInvoiceMoney,
@@ -21,6 +26,7 @@ import {
   type ServiceContractGeneratedInvoice,
   type ServiceContractHeaderRow,
   type ServiceContractLineItemRow,
+  type ServiceContractLinkedQuotation,
 } from "@/utils/service-contracts-types";
 import {
   ServiceContractDocumentPanel,
@@ -47,6 +53,12 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
     [],
   );
   const [documentSignedUrl, setDocumentSignedUrl] = useState<string | null>(null);
+  const [linkedQuotations, setLinkedQuotations] = useState<ServiceContractLinkedQuotation[]>(
+    [],
+  );
+  const [resendConfirm, setResendConfirm] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +73,7 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
             service_contract?: ServiceContractHeaderRow;
             line_items?: ServiceContractLineItemRow[];
             generated_invoices?: ServiceContractGeneratedInvoice[];
+            linked_quotations?: ServiceContractLinkedQuotation[];
             document_signed_url?: string | null;
             error?: string;
           }
@@ -93,6 +106,12 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
         })),
       );
       setDocumentSignedUrl(payload.document_signed_url ?? null);
+      setLinkedQuotations(
+        (payload.linked_quotations ?? []).map((row) => ({
+          ...row,
+          total_amount_due: toNumber(row.total_amount_due),
+        })),
+      );
       setLoading(false);
     }
 
@@ -119,6 +138,43 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
     ? (contract.client[0]?.client_name ?? contract.client_id)
     : (contract.client?.client_name ?? contract.client_id);
 
+  const hasDocument = Boolean(contract.document_url?.trim());
+
+  async function handleResendDocument() {
+    setResending(true);
+    setActionMessage(null);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/service-contracts/${contractId}/resend-document`,
+        { method: "POST" },
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+
+      if (!response.ok) {
+        setError(payload?.error ?? "Unable to resend contract document.");
+        return;
+      }
+
+      setActionMessage("Contract document notification sent.");
+      setResendConfirm(false);
+      const refresh = await fetch(`/api/service-contracts/${contractId}`);
+      const refreshed = (await refresh.json().catch(() => null)) as
+        | { service_contract?: ServiceContractHeaderRow }
+        | null;
+      if (refreshed?.service_contract) {
+        setContract(normalizeServiceContractHeaderRow(refreshed.service_contract));
+      }
+    } catch {
+      setError("Unable to resend contract document. Check your connection and try again.");
+    } finally {
+      setResending(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-3">
@@ -128,10 +184,48 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
         >
           Edit contract
         </Link>
+        {hasDocument ? (
+          resendConfirm ? (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span className="text-sm text-slate-700">Resend contract document to customer?</span>
+              <button
+                type="button"
+                onClick={() => void handleResendDocument()}
+                disabled={resending}
+                className={secondaryButtonClassName}
+              >
+                {resending ? "Sending…" : "Confirm resend"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setResendConfirm(false)}
+                disabled={resending}
+                className={secondaryButtonClassName}
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setResendConfirm(true)}
+              disabled={resending}
+              className={secondaryButtonClassName}
+            >
+              Resend Contract
+            </button>
+          )
+        ) : null}
         <Link href="/dashboard/finance/service-contracts" className={secondaryButtonClassName}>
           Back to list
         </Link>
       </div>
+
+      {actionMessage ? (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {actionMessage}
+        </p>
+      ) : null}
 
       <ServiceContractRecordHeader
         contractNumber={contract.contract_number}
@@ -219,6 +313,59 @@ export default function ServiceContractView({ contractId }: ServiceContractViewP
         subtotal={contract.subtotal}
         totalAmountDue={contract.total_amount_due}
       />
+
+      <section className={cardClassName}>
+        <div className="mb-4">
+          <h3 className="text-sm font-medium text-slate-700">Linked Quotations</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Original and renewal/amendment quotations linked to this contract.
+          </p>
+        </div>
+
+        {linkedQuotations.length === 0 ? (
+          <p className="text-sm text-slate-500">No linked quotations yet.</p>
+        ) : (
+          <ScrollableTable>
+            <table className={scrollableTableClassName}>
+              <thead className={scrollableTableHeadClassName}>
+                <tr>
+                  <th className={scrollableTableThClassName}>Quotation #</th>
+                  <th className={scrollableTableThClassName}>Type</th>
+                  <th className={scrollableTableThClassName}>Issue Date</th>
+                  <th className={scrollableTableThClassName}>Status</th>
+                  <th className={scrollableTableThClassName}>Total</th>
+                  <th className={scrollableTableThClassName}>Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white text-slate-900">
+                {linkedQuotations.map((quotation, index) => (
+                  <tr key={quotation.id} className={getStripedRowClassName(index)}>
+                    <td className="px-4 py-3 font-medium text-[#0f2744]">
+                      {quotation.quotation_number}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatQuotationEngagementTypeLabel(
+                        normalizeQuotationEngagementType(quotation.quotation_engagement_type),
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{formatInvoiceDate(quotation.issue_date)}</td>
+                    <td className="px-4 py-3">{formatQuotationStatus(quotation.status)}</td>
+                    <td className="px-4 py-3">{formatInvoiceMoney(quotation.total_amount_due)}</td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/dashboard/sales-crm/quotations/${quotation.id}`}
+                        className={secondaryButtonClassName}
+                      >
+                        View quotation
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollableTable>
+        )}
+      </section>
 
       <section className={cardClassName}>
         <div className="mb-4">

@@ -8,6 +8,7 @@ import {
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 import { uploadServiceContractDocument } from "@/utils/service-contract-document-upload";
+import { maybeNotifyServiceContractDocumentChange } from "@/utils/service-contract-document-notify";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
 
 export async function POST(request: Request) {
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const { data: existing, error: existingError } = await admin
     .from("service_contracts")
-    .select("id")
+    .select("id, status, document_url, client_id, contract_number, business_unit_id")
     .eq("tenant_id", auth.tenantId)
     .eq("id", contractId)
     .maybeSingle();
@@ -90,6 +91,27 @@ export async function POST(request: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
+  }
+
+  const { data: updatedContract } = await admin
+    .from("service_contracts")
+    .select(
+      "id, tenant_id, client_id, business_unit_id, contract_number, status, document_url, start_date, end_date, auto_renew, billing_frequency, next_billing_date, tax_basis, vat_nhil_getfund_rate, wht_rate, subtotal, tax_due, wht_amount, total_amount_due, document_sent_at, notes, contract_sequence, created_at, updated_at",
+    )
+    .eq("tenant_id", auth.tenantId)
+    .eq("id", contractId)
+    .maybeSingle();
+
+  if (updatedContract && existing) {
+    maybeNotifyServiceContractDocumentChange({
+      supabase: admin,
+      tenantId: auth.tenantId,
+      before: {
+        status: existing.status,
+        document_url: existing.document_url,
+      },
+      after: updatedContract as import("@/utils/service-contracts-types").ServiceContractHeaderRow,
+    });
   }
 
   return NextResponse.json({

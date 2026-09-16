@@ -46,6 +46,15 @@ export type ClientQuotationDocumentType =
 export const CLIENT_QUOTATION_TYPES = ["service", "product"] as const;
 export type ClientQuotationType = (typeof CLIENT_QUOTATION_TYPES)[number];
 
+/** Distinct from quotation_type (service|product). DB column: quotation_engagement_type. */
+export const CLIENT_QUOTATION_ENGAGEMENT_TYPES = [
+  "new_business",
+  "renewal",
+  "amendment",
+] as const;
+export type ClientQuotationEngagementType =
+  (typeof CLIENT_QUOTATION_ENGAGEMENT_TYPES)[number];
+
 export const CLIENT_QUOTATION_STATUSES = [
   "draft",
   "sent",
@@ -72,10 +81,10 @@ export const DEFAULT_CLIENT_QUOTATION_PAYMENT_TERMS: ClientQuotationPaymentTerms
   "Net 30";
 
 export const CLIENT_QUOTATION_LIST_SELECT =
-  "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, contract_id, converted_invoice_id, assigned_sales_rep_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
+  "id, tenant_id, client_id, quotation_number, quotation_sequence, document_type, quotation_type, quotation_engagement_type, issue_date, valid_until, bill_to_name, subtotal, tax_due, wht_amount, total_amount_due, status, contract_id, converted_invoice_id, assigned_sales_rep_id, created_at, client:customers!client_quotations_tenant_id_client_id_fkey(client_id, client_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_QUOTATION_HEADER_SELECT =
-  "id, tenant_id, client_id, opportunity_id, business_unit_id, quotation_number, quotation_sequence, document_type, quotation_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, contract_id, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, assigned_sales_rep_id, converted_invoice_id, accepted_at, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
+  "id, tenant_id, client_id, opportunity_id, business_unit_id, quotation_number, quotation_sequence, document_type, quotation_type, quotation_engagement_type, tax_basis, issue_date, valid_until, bill_to_name, bill_to_address, bill_to_phone, ship_to_name, ship_to_address, ship_to_phone, subtotal, vat_nhil_getfund_rate, tax_due, wht_rate, wht_amount, header_discount_amount, discount_type, discount_percentage, total_amount_due, status, contract_id, notes, commercial_terms, internal_notes, payment_terms, authorized_by_name, authorized_by_title, assigned_sales_rep_id, converted_invoice_id, accepted_at, created_at, updated_at, opportunity:sales_opportunities(id, opportunity_name), converted_invoice:client_invoices!client_quotations_converted_invoice_id_fkey(id, invoice_number), source_contract:service_contracts!client_quotations_contract_id_fkey(id, contract_number)" as const;
 
 export const CLIENT_QUOTATION_LINE_ITEM_SELECT =
   "id, quotation_id, tenant_id, site_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, total_cost, product_id, quantity, unit_price, sort_order" as const;
@@ -106,6 +115,7 @@ export type ClientQuotationListRow = {
   quotation_sequence: number;
   document_type: ClientQuotationDocumentType;
   quotation_type: ClientQuotationType;
+  quotation_engagement_type: ClientQuotationEngagementType;
   issue_date: string;
   valid_until: string | null;
   bill_to_name: string;
@@ -168,6 +178,7 @@ export type ClientQuotationHeaderRow = {
   quotation_sequence: number;
   document_type: ClientQuotationDocumentType;
   quotation_type: ClientQuotationType;
+  quotation_engagement_type: ClientQuotationEngagementType;
   tax_basis: SalesTaxBasis | null;
   issue_date: string;
   valid_until: string | null;
@@ -226,6 +237,8 @@ export type ClientQuotationWriteBody = {
   opportunity_id?: string | null;
   document_type?: ClientQuotationDocumentType;
   quotation_type?: ClientQuotationType;
+  quotation_engagement_type?: ClientQuotationEngagementType;
+  contract_id?: string | null;
   tax_basis?: SalesTaxBasis;
   issue_date: string;
   valid_until?: string | null;
@@ -294,6 +307,34 @@ export function resolveQuotationOpportunityName(
 
 export function normalizeQuotationType(value: unknown): ClientQuotationType {
   return value === "product" ? "product" : "service";
+}
+
+export function normalizeQuotationEngagementType(
+  value: unknown,
+): ClientQuotationEngagementType {
+  if (value === "renewal" || value === "amendment") {
+    return value;
+  }
+  return "new_business";
+}
+
+export function formatQuotationEngagementTypeLabel(
+  value: ClientQuotationEngagementType,
+): string {
+  switch (value) {
+    case "renewal":
+      return "Renewal";
+    case "amendment":
+      return "Amendment";
+    default:
+      return "New Business";
+  }
+}
+
+export function isRenewalOrAmendmentQuotation(
+  engagement: ClientQuotationEngagementType,
+): boolean {
+  return engagement === "renewal" || engagement === "amendment";
 }
 
 export function isProductPickerLine(
@@ -727,6 +768,7 @@ export function normalizeClientQuotationListRow(
   return {
     ...row,
     quotation_type: normalizeQuotationType(row.quotation_type),
+    quotation_engagement_type: normalizeQuotationEngagementType(row.quotation_engagement_type),
     subtotal: toNumber(row.subtotal),
     tax_due: toNumber(row.tax_due),
     wht_amount: toNumber(row.wht_amount),
@@ -815,6 +857,11 @@ export function validateClientQuotationBody(body: ClientQuotationWriteBody): str
     return "Authorized By is required.";
   }
 
+  const engagement = normalizeQuotationEngagementType(body.quotation_engagement_type);
+  if (isRenewalOrAmendmentQuotation(engagement) && !body.contract_id?.trim()) {
+    return "Select a service contract for renewal or amendment quotations.";
+  }
+
   return null;
 }
 
@@ -827,6 +874,8 @@ export function emptyQuotationForm() {
     opportunity_id: "",
     document_type: "quotation" as ClientQuotationDocumentType,
     quotation_type: "service" as ClientQuotationType,
+    quotation_engagement_type: "new_business" as ClientQuotationEngagementType,
+    contract_id: "",
     tax_basis: "service_only" as SalesTaxBasis,
     issue_date: todayIsoDate(),
     valid_until: defaultValidUntil(),
@@ -865,6 +914,10 @@ export function clientQuotationToFormState(
     opportunity_id: quotation.opportunity_id ?? "",
     document_type: normalizeDocumentType(quotation.document_type),
     quotation_type: normalizeQuotationType(quotation.quotation_type),
+    quotation_engagement_type: normalizeQuotationEngagementType(
+      quotation.quotation_engagement_type,
+    ),
+    contract_id: quotation.contract_id ?? "",
     tax_basis: resolveQuotationTaxBasis(
       quotation.tax_basis,
       normalizeQuotationType(quotation.quotation_type),

@@ -16,7 +16,12 @@ import {
   resolveSignatureImageUrl,
   type ClientQuotationDetailPayload,
 } from "./client-quotation-display-utils";
-import { resolveRaisedContractLink } from "@/utils/client-quotations-types";
+import {
+  formatQuotationEngagementTypeLabel,
+  isRenewalOrAmendmentQuotation,
+  normalizeQuotationEngagementType,
+  resolveRaisedContractLink,
+} from "@/utils/client-quotations-types";
 import type { ActiveServiceContractSummary } from "@/utils/service-contracts-api";
 import ClientQuotationPdfDocument from "./client-quotation-pdf-document";
 import ClientQuotationPrintLayout from "./client-quotation-print-layout";
@@ -69,9 +74,10 @@ export default function ClientQuotationView({
   const [downloading, setDownloading] = useState(false);
   const [converting, setConverting] = useState(false);
   const [raisingContract, setRaisingContract] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"convert" | "raise-contract" | null>(
-    null,
-  );
+  const [applyingToContract, setApplyingToContract] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    "convert" | "raise-contract" | "apply-to-contract" | null
+  >(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,6 +240,35 @@ export default function ClientQuotationView({
     }
   }, [quotationId, router]);
 
+  const handleApplyToContract = useCallback(async () => {
+    setApplyingToContract(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/client-quotations/${quotationId}/apply-to-contract`,
+        { method: "POST" },
+      );
+
+      const body = (await response.json().catch(() => null)) as
+        | { service_contract?: { id: string }; error?: string }
+        | null;
+
+      if (!response.ok || !body?.service_contract?.id) {
+        setError(body?.error ?? "Unable to apply quotation to contract.");
+        return;
+      }
+
+      setConfirmAction(null);
+      router.push(`/dashboard/finance/service-contracts/${body.service_contract.id}`);
+      router.refresh();
+    } catch {
+      setError("Unable to apply to contract. Check your connection and try again.");
+    } finally {
+      setApplyingToContract(false);
+    }
+  }, [quotationId, router]);
+
   if (loading) {
     return <LoadingState label="Loading quotation…" />;
   }
@@ -261,11 +296,22 @@ export default function ClientQuotationView({
     quotation.status === "accepted" &&
     !quotation.converted_invoice_id;
 
+  const engagement = normalizeQuotationEngagementType(quotation.quotation_engagement_type);
+  const renewalOrAmendment = isRenewalOrAmendmentQuotation(engagement);
+  const linkedContract = raisedContract;
+
   const showRaiseContractButton =
     showStaffActions &&
     quotation.status === "accepted" &&
+    !renewalOrAmendment &&
     !quotation.contract_id &&
     !customerActiveContract;
+
+  const showApplyToContractButton =
+    showStaffActions &&
+    quotation.status === "accepted" &&
+    renewalOrAmendment &&
+    Boolean(quotation.contract_id);
 
   const portalContractHref = "/dashboard/client-portal/contract";
 
@@ -277,6 +323,44 @@ export default function ClientQuotationView({
         <p className="no-print rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
+      ) : null}
+
+      {showStaffActions ? (
+        <section className="no-print rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-medium text-slate-700">Contract relationship</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Engagement Type
+              </p>
+              <p className="mt-1 text-sm text-slate-900">
+                {formatQuotationEngagementTypeLabel(engagement)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Linked Service Contract
+              </p>
+              <p className="mt-1 text-sm text-slate-900">
+                {linkedContract ? (
+                  <Link
+                    href={`/dashboard/finance/service-contracts/${linkedContract.id}`}
+                    className="font-medium text-[#0f2744] underline-offset-2 hover:underline"
+                  >
+                    {linkedContract.contract_number}
+                  </Link>
+                ) : renewalOrAmendment ? (
+                  "Not linked — edit quotation to select a contract"
+                ) : (
+                  "— (new business)"
+                )}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            To change engagement type or link a contract, use Edit on the quotations list.
+          </p>
+        </section>
       ) : null}
 
       {convertedInvoice ? (
@@ -345,6 +429,30 @@ export default function ClientQuotationView({
         </p>
       ) : null}
 
+      {confirmAction === "apply-to-contract" ? (
+        <p className="no-print rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          Apply {quotation.quotation_number} to the linked service contract?
+          <span className="ml-3 inline-flex gap-2">
+            <button
+              type="button"
+              onClick={() => void handleApplyToContract()}
+              disabled={applyingToContract}
+              className={primaryButtonClassName}
+            >
+              {applyingToContract ? "Applying…" : "Confirm"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmAction(null)}
+              disabled={applyingToContract}
+              className={secondaryButtonClassName}
+            >
+              Cancel
+            </button>
+          </span>
+        </p>
+      ) : null}
+
       {confirmAction === "raise-contract" ? (
         <p className="no-print rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           Raise a service contract from {quotation.quotation_number}?
@@ -393,6 +501,16 @@ export default function ClientQuotationView({
             className={primaryButtonClassName}
           >
             Raise Contract
+          </button>
+        ) : null}
+        {showApplyToContractButton ? (
+          <button
+            type="button"
+            onClick={() => setConfirmAction("apply-to-contract")}
+            disabled={applyingToContract || confirmAction !== null}
+            className={primaryButtonClassName}
+          >
+            Apply to Contract
           </button>
         ) : null}
         {showConvertButton ? (

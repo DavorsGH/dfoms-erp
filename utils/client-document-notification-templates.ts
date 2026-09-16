@@ -6,6 +6,7 @@ export const CLIENT_DOCUMENT_NOTIFICATION_EVENTS = [
   "invoice_created",
   "receipt_issued",
   "contract_raised",
+  "contract_document_sent",
 ] as const satisfies readonly TransactionalEventType[];
 
 export type ClientDocumentNotificationEvent =
@@ -125,6 +126,24 @@ View your account: ${portal.portal_invoices_url}`,
         "customer_name",
         "contract_number",
         "quotation_number",
+        "portal_invoices_url",
+      ],
+    },
+    {
+      event_type: "contract_document_sent",
+      name: "Contract Document Sent",
+      subject: "Service contract {{contract_number}} from {{tenant_name}}",
+      body_email: `Dear {{customer_name}},
+
+Your service contract {{contract_number}} is now active. The signed contract document is attached.
+
+View your account: ${portal.portal_invoices_url}`,
+      body_sms:
+        "{{tenant_name}}: Your service contract {{contract_number}} is now active.",
+      variables: [
+        "tenant_name",
+        "customer_name",
+        "contract_number",
         "portal_invoices_url",
       ],
     },

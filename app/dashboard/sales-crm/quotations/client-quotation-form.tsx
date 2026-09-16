@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
 import { useTenantBranding } from "@/app/dashboard/tenant-branding-context";
@@ -23,6 +23,7 @@ import {
   emptyProductQuotationLineItem,
   emptyQuotationLineItem,
   formatInvoiceMoney,
+  formatQuotationEngagementTypeLabel,
   normalizeClientQuotationPaymentTerms,
   normalizeQuotationDiscountType,
   normalizeQuotationType,
@@ -39,8 +40,12 @@ import {
   type ClientQuotationPipelineOpportunityOption,
   type ClientQuotationSiteOption,
   type ClientQuotationStatus,
+  type ClientQuotationEngagementType,
   type ClientQuotationType,
   type ClientQuotationWriteBody,
+  CLIENT_QUOTATION_ENGAGEMENT_TYPES,
+  isRenewalOrAmendmentQuotation,
+  normalizeQuotationEngagementType,
 } from "@/utils/client-quotations-types";
 import {
   buildClientQuotationPreviewDisplay,
@@ -141,6 +146,73 @@ export default function ClientQuotationForm({
   const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [customerContracts, setCustomerContracts] = useState<
+    Array<{ id: string; contract_number: string; status: string }>
+  >([]);
+  const [loadingCustomerContracts, setLoadingCustomerContracts] = useState(false);
+  const [customerContractsError, setCustomerContractsError] = useState<string | null>(null);
+
+  const engagementType = normalizeQuotationEngagementType(form.quotation_engagement_type);
+  const showContractPicker = isRenewalOrAmendmentQuotation(engagementType);
+
+  useEffect(() => {
+    if (!showContractPicker || !form.client_id.trim()) {
+      setCustomerContracts([]);
+      setCustomerContractsError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadContracts() {
+      setLoadingCustomerContracts(true);
+      setCustomerContractsError(null);
+      try {
+        const response = await fetch(
+          `/api/service-contracts/for-customer?client_id=${encodeURIComponent(form.client_id)}`,
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | { contracts?: Array<{ id: string; contract_number: string; status: string }> }
+          | { error?: string }
+          | null;
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.ok) {
+          setCustomerContracts([]);
+          setCustomerContractsError(
+            payload && "error" in payload && payload.error
+              ? payload.error
+              : "Unable to load service contracts for this customer.",
+          );
+          return;
+        }
+
+        setCustomerContracts(
+          payload && "contracts" in payload ? (payload.contracts ?? []) : [],
+        );
+      } catch {
+        if (!cancelled) {
+          setCustomerContracts([]);
+          setCustomerContractsError(
+            "Unable to load service contracts. Check your connection and try again.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingCustomerContracts(false);
+        }
+      }
+    }
+
+    void loadContracts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.client_id, showContractPicker]);
 
   const clientSites = useMemo(
     () =>
@@ -398,6 +470,15 @@ export default function ClientQuotationForm({
       opportunity_id: form.opportunity_id?.trim() || null,
       document_type: form.document_type,
       quotation_type: normalizeQuotationType(form.quotation_type),
+      quotation_engagement_type: normalizeQuotationEngagementType(
+        form.quotation_engagement_type,
+      ),
+      contract_id:
+        isRenewalOrAmendmentQuotation(
+          normalizeQuotationEngagementType(form.quotation_engagement_type),
+        ) && form.contract_id?.trim()
+          ? form.contract_id.trim()
+          : null,
       tax_basis: resolveQuotationTaxBasis(
         form.tax_basis,
         normalizeQuotationType(form.quotation_type),
@@ -686,6 +767,87 @@ export default function ClientQuotationForm({
 
       <section className={cardClassName}>
         <div>
+          <h3 className="text-sm font-medium text-slate-700">Contract relationship</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            New business creates a future contract via Raise Contract. Renewal and amendment
+            apply to an existing service contract — separate from service vs product line items
+            below.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Engagement Type
+            </label>
+            <select
+              disabled={isConverted}
+              value={engagementType}
+              onChange={(event) => {
+                const next = event.target.value as ClientQuotationEngagementType;
+                setForm((current) => ({
+                  ...current,
+                  quotation_engagement_type: next,
+                  contract_id:
+                    next === "new_business" ? "" : current.contract_id,
+                }));
+              }}
+              className={inputClassName}
+            >
+              {CLIENT_QUOTATION_ENGAGEMENT_TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {formatQuotationEngagementTypeLabel(value)}
+                </option>
+              ))}
+            </select>
+          </div>
+          {showContractPicker ? (
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Linked Service Contract *
+              </label>
+              <select
+                required
+                disabled={isConverted || loadingCustomerContracts || !form.client_id}
+                value={form.contract_id ?? ""}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    contract_id: event.target.value,
+                  }))
+                }
+                className={inputClassName}
+              >
+                <option value="">
+                  {loadingCustomerContracts
+                    ? "Loading contracts…"
+                    : form.client_id
+                      ? "Select a draft or active contract"
+                      : "Select a customer first"}
+                </option>
+                {customerContracts.map((contract) => (
+                  <option key={contract.id} value={contract.id}>
+                    {contract.contract_number} ({contract.status})
+                  </option>
+                ))}
+              </select>
+              {customerContractsError ? (
+                <p className="mt-1 text-xs text-red-600">{customerContractsError}</p>
+              ) : null}
+              {!loadingCustomerContracts &&
+              !customerContractsError &&
+              form.client_id &&
+              customerContracts.length === 0 ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  No draft or active service contracts found for this customer.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className={cardClassName}>
+        <div>
           <h3 className="text-sm font-medium text-slate-700">Quotation Details</h3>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -810,7 +972,7 @@ export default function ClientQuotationForm({
 
       <section className={cardClassName}>
         <div>
-          <h3 className="text-sm font-medium text-slate-700">Quotation Type</h3>
+          <h3 className="text-sm font-medium text-slate-700">Line item source</h3>
           <p className="mt-1 text-xs text-slate-500">
             Service quotations use labour/material line items. Product quotations use
             finished products with optional manual lines.
@@ -818,7 +980,7 @@ export default function ClientQuotationForm({
         </div>
         <div className="max-w-md">
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Quotation Type
+            Quotation Type (Service / Product)
           </label>
           <select
             disabled={isConverted}

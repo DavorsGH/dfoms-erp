@@ -13,9 +13,12 @@ import {
 import {
   SERVICE_CONTRACT_LIST_SELECT,
   validateServiceContractBody,
+  normalizeServiceContractStatus,
   type ServiceContractListRow,
   type ServiceContractWriteBody,
 } from "@/utils/service-contracts-types";
+import { validateServiceContractActivationRequiresDocument } from "@/utils/service-contract-document-send";
+import { maybeNotifyServiceContractDocumentChange } from "@/utils/service-contract-document-notify";
 import {
   getActiveBusinessUnitId,
   getViewAllBusinessUnits,
@@ -116,6 +119,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
+  const activationError = validateServiceContractActivationRequiresDocument(
+    { status: "draft", document_url: null },
+    normalizeServiceContractStatus(body.status),
+    body.document_url?.trim() || null,
+  );
+  if (activationError) {
+    return NextResponse.json({ error: activationError }, { status: 400 });
+  }
+
   const supabase = await getTenantSupabase();
   const authUser = await getServerAuthUid(supabase);
   if (!authUser.ok) {
@@ -144,6 +156,13 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  maybeNotifyServiceContractDocumentChange({
+    supabase,
+    tenantId: auth.tenantId,
+    before: { status: "draft", document_url: null },
+    after: contract,
+  });
 
   return NextResponse.json({ service_contract: contract });
 }

@@ -456,6 +456,48 @@ export async function loadServiceContractDetail(
   };
 }
 
+export async function loadLinkedQuotationsForContract(
+  supabase: DbClient,
+  tenantId: string,
+  contractId: string,
+) {
+  const { data, error } = await supabase
+    .from("client_quotations")
+    .select(
+      "id, quotation_number, quotation_engagement_type, status, issue_date, total_amount_due",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("contract_id", contractId)
+    .order("issue_date", { ascending: false })
+    .order("quotation_sequence", { ascending: false });
+
+  if (error) {
+    return { quotations: [], error: error.message };
+  }
+
+  return { quotations: data ?? [], error: null };
+}
+
+export async function loadDraftOrActiveServiceContractsForCustomer(
+  supabase: DbClient,
+  tenantId: string,
+  clientId: string,
+) {
+  const { data, error } = await supabase
+    .from("service_contracts")
+    .select("id, contract_number, client_id, status, start_date, end_date")
+    .eq("tenant_id", tenantId)
+    .eq("client_id", clientId.trim())
+    .in("status", ["draft", "active"])
+    .order("contract_number", { ascending: true });
+
+  if (error) {
+    return { contracts: [], error: error.message };
+  }
+
+  return { contracts: data ?? [], error: null };
+}
+
 export async function loadGeneratedInvoicesForContract(
   supabase: DbClient,
   tenantId: string,

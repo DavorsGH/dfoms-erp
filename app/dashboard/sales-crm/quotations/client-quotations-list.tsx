@@ -19,7 +19,9 @@ import {
   formatQuotationDocumentType,
   formatQuotationStatus,
   formatQuotationType,
+  isRenewalOrAmendmentQuotation,
   normalizeClientQuotationListRow,
+  normalizeQuotationEngagementType,
   resolveConvertedInvoiceLink,
   resolveRaisedContractLink,
   type ClientQuotationListRow,
@@ -34,7 +36,13 @@ type ClientQuotationsListProps = {
   activeContractByClientId?: Record<string, ActiveServiceContractSummary>;
 };
 
-type QuotationStatusAction = "send" | "accept" | "decline" | "raise-contract" | "convert";
+type QuotationStatusAction =
+  | "send"
+  | "accept"
+  | "decline"
+  | "raise-contract"
+  | "apply-to-contract"
+  | "convert";
 
 type PendingQuotationAction = {
   quotationId: string;
@@ -107,8 +115,19 @@ function getQuotationStatusActions(
 
   if (quotation.status === "accepted") {
     const actions: ListRowStatusActionItem<QuotationStatusAction>[] = [];
+    const engagement = normalizeQuotationEngagementType(quotation.quotation_engagement_type);
 
-    if (!quotation.contract_id && !activeContractByClientId[quotation.client_id]) {
+    if (isRenewalOrAmendmentQuotation(engagement) && quotation.contract_id) {
+      actions.push({
+        action: "apply-to-contract",
+        label: "Apply to Contract",
+        confirmMessage: `Apply ${quotation.quotation_number} to the linked service contract?`,
+      });
+    } else if (
+      !isRenewalOrAmendmentQuotation(engagement) &&
+      !quotation.contract_id &&
+      !activeContractByClientId[quotation.client_id]
+    ) {
       actions.push({
         action: "raise-contract",
         label: "Raise Contract",
@@ -194,6 +213,26 @@ export default function ClientQuotationsList({
     setError(null);
 
     try {
+      if (action === "apply-to-contract") {
+        const response = await fetch(
+          `/api/client-quotations/${quotationId}/apply-to-contract`,
+          { method: "POST" },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | { service_contract?: { id: string }; error?: string }
+          | null;
+
+        if (!response.ok || !payload?.service_contract?.id) {
+          setError(payload?.error ?? "Unable to apply quotation to contract.");
+          return;
+        }
+
+        setPendingAction(null);
+        router.push(`/dashboard/finance/service-contracts/${payload.service_contract.id}`);
+        router.refresh();
+        return;
+      }
+
       if (action === "raise-contract") {
         const response = await fetch(
           `/api/client-quotations/${quotationId}/raise-contract`,

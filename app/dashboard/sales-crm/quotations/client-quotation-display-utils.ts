@@ -5,6 +5,7 @@ import {
   groupLineItemsByCategory,
   mapQuotationLineForDisplay,
   normalizeQuotationDiscountType,
+  normalizeQuotationEngagementType,
   normalizeQuotationType,
   quotationHeaderDiscountLabel,
   quotationPaymentTermsLabel,
@@ -70,6 +71,9 @@ export function normalizeClientQuotationDetail(
     quotation: {
       ...quotation,
       quotation_type: quotationType,
+      quotation_engagement_type: normalizeQuotationEngagementType(
+        quotation.quotation_engagement_type,
+      ),
       tax_basis: resolveQuotationTaxBasis(quotation.tax_basis, quotationType),
       subtotal: toNumber(quotation.subtotal),
       vat_nhil_getfund_rate: toNumber(quotation.vat_nhil_getfund_rate),
@@ -263,6 +267,9 @@ export function buildClientQuotationPreviewDisplay(input: {
     quotation_sequence: 0,
     document_type: input.form.document_type ?? "quotation",
     quotation_type: quotationType,
+    quotation_engagement_type: normalizeQuotationEngagementType(
+      input.form.quotation_engagement_type,
+    ),
     tax_basis: taxBasis,
     issue_date: input.form.issue_date,
     valid_until: input.form.valid_until ?? null,
@@ -292,7 +299,7 @@ export function buildClientQuotationPreviewDisplay(input: {
     authorized_by_name: input.authorizedBy.authorized_by_name,
     authorized_by_title: input.authorizedBy.authorized_by_title,
     assigned_sales_rep_id: input.form.assigned_sales_rep_id?.trim() || null,
-    contract_id: null,
+    contract_id: input.form.contract_id?.trim() || null,
     converted_invoice_id: null,
     accepted_at: null,
     created_at: new Date().toISOString(),

@@ -2,8 +2,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { createClientInvoice } from "@/utils/client-invoices-api";
 import type { ClientInvoiceWriteBody } from "@/utils/client-invoices-types";
-import { createServiceContract, findActiveServiceContractForClient } from "@/utils/service-contracts-api";
-import type { ServiceContractLineItemInput } from "@/utils/service-contracts-types";
+import {
+  createServiceContract,
+  findActiveServiceContractForClient,
+  loadServiceContractDetail,
+} from "@/utils/service-contracts-api";
+import {
+  computeServiceContractTotals,
+  normalizeServiceContractStatus,
+  resolveServiceContractTaxBasis,
+  SERVICE_CONTRACT_HEADER_SELECT,
+  type ServiceContractHeaderRow,
+  type ServiceContractLineItemInput,
+} from "@/utils/service-contracts-types";
+import { logSystemEvent } from "@/lib/system-event-log";
 import {
   CLIENT_QUOTATION_ENTITY_TYPE,
   CLIENT_QUOTATION_HEADER_SELECT,
@@ -14,8 +26,10 @@ import {
   isProductCatalogLine,
   normalizeDocumentType,
   normalizeQuotationDiscountType,
+  normalizeQuotationEngagementType,
   normalizeQuotationStatus,
   normalizeQuotationType,
+  isRenewalOrAmendmentQuotation,
   resolveQuotationTaxBasis,
   quotationToInvoiceWriteBody,
   defaultValidUntil,
@@ -47,6 +61,7 @@ function buildHeaderPayload(
   quotationNumber: string,
 ) {
   const quotationType = normalizeQuotationType(body.quotation_type);
+  const engagementType = normalizeQuotationEngagementType(body.quotation_engagement_type);
   const taxBasis = resolveQuotationTaxBasis(body.tax_basis, quotationType);
   const discountType =
     quotationType === "product"
@@ -71,6 +86,10 @@ function buildHeaderPayload(
     quotation_sequence: quotationSequence,
     document_type: normalizeDocumentType(body.document_type),
     quotation_type: quotationType,
+    quotation_engagement_type: engagementType,
+    contract_id: isRenewalOrAmendmentQuotation(engagementType)
+      ? nullableText(body.contract_id ?? null)
+      : null,
     tax_basis: taxBasis,
     issue_date: body.issue_date,
     valid_until: nullableText(body.valid_until ?? null),
@@ -502,6 +521,14 @@ export async function raiseContractFromQuotation(
     };
   }
 
+  const engagement = normalizeQuotationEngagementType(quotation.quotation_engagement_type);
+  if (isRenewalOrAmendmentQuotation(engagement)) {
+    return {
+      contract: null,
+      error: "Renewal and amendment quotations use Apply to Contract instead of Raise Contract.",
+    };
+  }
+
   if (quotation.contract_id) {
     return {
       contract: null,
@@ -782,4 +809,227 @@ export async function convertClientQuotationToInvoice(
   }
 
   return { invoice, error: null };
+}
+
+function contractLineRowsFromQuotation(
+  tenantId: string,
+  contractId: string,
+  lineItems: ServiceContractLineItemInput[],
+  vatRate: number,
+  whtRate: number,
+  taxBasis: ReturnType<typeof resolveServiceContractTaxBasis>,
+) {
+  const totals = computeServiceContractTotals(lineItems, vatRate, whtRate, taxBasis);
+
+  return totals.line_items.map((line, index) => ({
+    contract_id: contractId,
+    tenant_id: tenantId,
+    category_label: nullableText(line.category_label ?? null),
+    description: line.description.trim(),
+    labour_amount: roundMoney(toNumber(line.labour_amount)),
+    material_amount: roundMoney(toNumber(line.material_amount)),
+    discount_amount: roundMoney(toNumber(line.discount_amount)),
+    taxed: line.taxed ?? true,
+    total_cost: line.total_cost,
+    sort_order: line.sort_order ?? index,
+  }));
+}
+
+export async function applyQuotationToServiceContract(
+  supabase: DbClient,
+  tenantId: string,
+  quotationId: string,
+) {
+  const detail = await loadClientQuotationDetail(supabase, tenantId, quotationId);
+  if (detail.error || !detail.quotation) {
+    return { contract: null, error: detail.error ?? "Quotation not found." };
+  }
+
+  const quotation = detail.quotation;
+  if (normalizeQuotationStatus(quotation.status) !== "accepted") {
+    return {
+      contract: null,
+      error: "Only accepted quotations can be applied to a contract.",
+    };
+  }
+
+  const engagement = normalizeQuotationEngagementType(quotation.quotation_engagement_type);
+  if (!isRenewalOrAmendmentQuotation(engagement)) {
+    return {
+      contract: null,
+      error: "Apply to Contract is only available for renewal or amendment quotations.",
+    };
+  }
+
+  if (!quotation.contract_id) {
+    return {
+      contract: null,
+      error: "Link a service contract on the quotation before applying.",
+    };
+  }
+
+  const contractDetail = await loadServiceContractDetail(
+    supabase,
+    tenantId,
+    quotation.contract_id,
+  );
+  if (contractDetail.error || !contractDetail.contract) {
+    return {
+      contract: null,
+      error: contractDetail.error ?? "Linked service contract not found.",
+    };
+  }
+
+  const contract = contractDetail.contract;
+  if (contract.client_id !== quotation.client_id) {
+    return {
+      contract: null,
+      error: "The linked contract belongs to a different customer.",
+    };
+  }
+
+  const contractStatus = normalizeServiceContractStatus(contract.status);
+  if (contractStatus !== "active" && contractStatus !== "draft") {
+    return {
+      contract: null,
+      error: "Only active or draft contracts can receive quotation updates.",
+    };
+  }
+
+  const quotationType = normalizeQuotationType(quotation.quotation_type);
+  const lineItems: ClientQuotationLineItemInput[] = detail.line_items.map((line) => ({
+    site_id: line.site_id,
+    category_label: line.category_label,
+    description: line.description,
+    labour_amount: toNumber(line.labour_amount),
+    material_amount: toNumber(line.material_amount),
+    discount_amount: toNumber(line.discount_amount),
+    taxed: line.taxed,
+    sort_order: line.sort_order,
+    product_id: line.product_id,
+    quantity: line.quantity != null ? toNumber(line.quantity) : null,
+    unit_price: line.unit_price != null ? toNumber(line.unit_price) : null,
+  }));
+
+  const contractLines = quotationLinesToContractLines(lineItems);
+  if (contractLines.length === 0) {
+    return {
+      contract: null,
+      error: "Quotation has no line items to apply to the contract.",
+    };
+  }
+
+  const taxBasis = resolveServiceContractTaxBasis(
+    resolveQuotationTaxBasis(quotation.tax_basis, quotationType),
+  );
+  const vatRate = toNumber(quotation.vat_nhil_getfund_rate);
+  const whtRate = toNumber(quotation.wht_rate);
+  const totals = computeServiceContractTotals(contractLines, vatRate, whtRate, taxBasis);
+
+  const auditBefore = {
+    start_date: contract.start_date,
+    end_date: contract.end_date,
+    next_billing_date: contract.next_billing_date,
+    subtotal: contract.subtotal,
+    total_amount_due: contract.total_amount_due,
+    line_item_count: contractDetail.line_items.length,
+  };
+
+  const updatePayload: Partial<ServiceContractHeaderRow> & Record<string, unknown> = {
+    tax_basis: taxBasis,
+    vat_nhil_getfund_rate: roundMoney(vatRate),
+    wht_rate: roundMoney(whtRate),
+    subtotal: totals.subtotal,
+    tax_due: totals.tax_due,
+    wht_amount: totals.wht_amount,
+    total_amount_due: totals.total_amount_due,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (engagement === "renewal") {
+    const endDate =
+      quotation.valid_until?.trim() ||
+      defaultValidUntil(new Date(`${quotation.issue_date}T00:00:00`));
+    updatePayload.end_date = endDate;
+    const existingNext = contract.next_billing_date?.trim();
+    if (!existingNext || existingNext > endDate) {
+      updatePayload.next_billing_date = quotation.issue_date;
+    }
+  }
+
+  const { data: updatedContract, error: updateError } = await supabase
+    .from("service_contracts")
+    .update(updatePayload)
+    .eq("id", contract.id)
+    .eq("tenant_id", tenantId)
+    .select(SERVICE_CONTRACT_HEADER_SELECT)
+    .single();
+
+  if (updateError || !updatedContract) {
+    return {
+      contract: null,
+      error: updateError?.message ?? "Unable to update service contract.",
+    };
+  }
+
+  const { error: deleteLinesError } = await supabase
+    .from("service_contract_line_items")
+    .delete()
+    .eq("contract_id", contract.id)
+    .eq("tenant_id", tenantId);
+
+  if (deleteLinesError) {
+    return {
+      contract: updatedContract as ServiceContractHeaderRow,
+      error: deleteLinesError.message,
+    };
+  }
+
+  const lineRows = contractLineRowsFromQuotation(
+    tenantId,
+    contract.id,
+    contractLines,
+    vatRate,
+    whtRate,
+    taxBasis,
+  );
+
+  if (lineRows.length > 0) {
+    const { error: insertLinesError } = await supabase
+      .from("service_contract_line_items")
+      .insert(lineRows);
+
+    if (insertLinesError) {
+      return {
+        contract: updatedContract as ServiceContractHeaderRow,
+        error: insertLinesError.message,
+      };
+    }
+  }
+
+  void logSystemEvent({
+    eventType: "cron",
+    eventName: `quotation_apply_to_contract_${engagement}`,
+    status: "success",
+    message: `Applied ${quotation.quotation_number} to contract ${contract.contract_number}.`,
+    metadata: {
+      tenant_id: tenantId,
+      quotation_id: quotationId,
+      contract_id: contract.id,
+      engagement_type: engagement,
+      before: auditBefore,
+      after: {
+        start_date: updatePayload.start_date ?? contract.start_date,
+        end_date: updatePayload.end_date ?? contract.end_date,
+        next_billing_date:
+          (updatePayload.next_billing_date as string | undefined) ??
+          contract.next_billing_date,
+        subtotal: totals.subtotal,
+        total_amount_due: totals.total_amount_due,
+        line_item_count: lineRows.length,
+      },
+    },
+  });
+
+  return { contract: updatedContract as ServiceContractHeaderRow, error: null };
 }

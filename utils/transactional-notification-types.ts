@@ -6,6 +6,7 @@ export const TRANSACTIONAL_EVENT_TYPES = [
   "receipt_issued",
   "payment_due_reminder",
   "contract_raised",
+  "contract_document_sent",
 ] as const;
 
 export type TransactionalEventType = (typeof TRANSACTIONAL_EVENT_TYPES)[number];
@@ -19,6 +20,7 @@ export const TRANSACTIONAL_EVENT_LABELS: Record<TransactionalEventType, string> 
     receipt_issued: "Receipt Issued",
     payment_due_reminder: "Payment Due Reminder",
     contract_raised: "Contract Raised",
+    contract_document_sent: "Contract Document Sent",
   };
 
 export const TRANSACTIONAL_CHANNELS = ["email", "sms", "both"] as const;
@@ -58,7 +60,7 @@ export function validateRuleUpsert(
   if (
     !(TRANSACTIONAL_EVENT_TYPES as readonly string[]).includes(eventType)
   ) {
-    return "event_type must be sale_completed, payment_received, invoice_created, quotation_sent, receipt_issued, payment_due_reminder, or contract_raised.";
+    return "event_type must be sale_completed, payment_received, invoice_created, quotation_sent, receipt_issued, payment_due_reminder, contract_raised, or contract_document_sent.";
   }
 
   const templateId = body.template_id?.trim() ?? "";
