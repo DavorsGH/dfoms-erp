@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 type ScrollableTableProps = {
   children: ReactNode;
   /**
-   * Pin the first two columns on the left and the last column on the right during
-   * horizontal scroll (CSS via `.scrollable-table-host--sticky-edges` in globals.css).
+   * Pin the first two columns on the left during horizontal scroll on md+; first
+   * column only on mobile (CSS via `.scrollable-table-host--sticky-edges` in
+   * globals.css). Last/Actions column is never pinned.
    * Disable for narrow tables where edge pinning is unnecessary.
    */
   stickyEdgeColumns?: boolean;
@@ -146,9 +147,10 @@ function syncScrollableTableOverflowTitles(host: HTMLElement) {
     });
 }
 
-function useScrollableTableOverflowTitles(enabled: boolean) {
-  const hostRef = useRef<HTMLDivElement>(null);
-
+function useScrollableTableOverflowTitles(
+  hostRef: RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+) {
   useEffect(() => {
     if (!enabled) return;
     const host = hostRef.current;
@@ -173,9 +175,63 @@ function useScrollableTableOverflowTitles(enabled: boolean) {
       mutationObserver.disconnect();
       resizeObserver.disconnect();
     };
-  }, [enabled]);
+  }, [enabled, hostRef]);
+}
 
-  return hostRef;
+type HorizontalScrollAffordance = {
+  canScrollRight: boolean;
+  showSwipeHint: boolean;
+};
+
+function useHorizontalScrollAffordance(
+  hostRef: RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+): HorizontalScrollAffordance {
+  const [affordance, setAffordance] = useState<HorizontalScrollAffordance>({
+    canScrollRight: false,
+    showSwipeHint: false,
+  });
+  const swipeHintDismissedRef = useRef(false);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const host = hostRef.current;
+    if (!host) return;
+
+    const update = () => {
+      const maxScroll = Math.max(0, host.scrollWidth - host.clientWidth);
+      const sl = host.scrollLeft;
+      const canScroll = maxScroll > 4;
+      if (sl > 8) {
+        swipeHintDismissedRef.current = true;
+      }
+      setAffordance({
+        canScrollRight: canScroll && sl < maxScroll - 4,
+        showSwipeHint:
+          canScroll && sl < 4 && !swipeHintDismissedRef.current,
+      });
+    };
+
+    update();
+
+    const hintTimer = window.setTimeout(() => {
+      swipeHintDismissedRef.current = true;
+      update();
+    }, 7000);
+
+    host.addEventListener("scroll", update, { passive: true });
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(host);
+    host.querySelectorAll("table").forEach((table) => resizeObserver.observe(table));
+
+    return () => {
+      window.clearTimeout(hintTimer);
+      host.removeEventListener("scroll", update);
+      resizeObserver.disconnect();
+    };
+  }, [enabled, hostRef]);
+
+  return affordance;
 }
 
 /** Viewport-bounded scroll box with sticky column headers and optional edge columns. */
@@ -183,22 +239,30 @@ export default function ScrollableTable({
   children,
   stickyEdgeColumns = true,
 }: ScrollableTableProps) {
-  const hostRef = useScrollableTableOverflowTitles(true);
+  const hostRef = useRef<HTMLDivElement>(null);
+  useScrollableTableOverflowTitles(hostRef, true);
+  const scrollAffordance = useHorizontalScrollAffordance(hostRef, stickyEdgeColumns);
 
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="relative min-w-0">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-4 bg-gradient-to-r from-white to-transparent md:hidden"
+          className={`pointer-events-none absolute inset-y-0 right-0 z-[3] w-10 bg-gradient-to-l from-slate-300/50 via-white/95 to-transparent shadow-[-6px_0_12px_-8px_rgba(15,39,68,0.35)] transition-opacity duration-200 md:hidden ${
+            scrollAffordance.canScrollRight ? "opacity-100" : "opacity-0"
+          }`}
         />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-6 bg-gradient-to-l from-white via-white/80 to-transparent md:hidden"
-        />
+        {scrollAffordance.showSwipeHint ? (
+          <p
+            aria-hidden
+            className="pointer-events-none absolute bottom-2 left-1/2 z-[3] -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm md:hidden"
+          >
+            Swipe for more columns →
+          </p>
+        ) : null}
         <div
           ref={hostRef}
-          className={`min-w-0 w-full max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] scrollable-table-host${stickyEdgeColumns ? " scrollable-table-host--sticky-edges" : ""}`}
+          className={`min-w-0 w-full max-h-[min(calc(100dvh-8rem),calc(100vh-300px))] overflow-x-auto overflow-y-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] scrollable-table-host${stickyEdgeColumns ? " scrollable-table-host--sticky-edges" : ""}`}
         >
           {children}
         </div>
