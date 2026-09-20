@@ -33,12 +33,14 @@ body {
 }
 
 /**
- * Fixed layout so sticky edge width vars are enforced on cols 1–2 (auto layout
- * ignores max-width when nowrap min-content exceeds the cap).
+ * Wide enough to scroll horizontally on narrow viewports; at least full width on
+ * desktop. (width: 100% + table-layout: fixed prevented overflow — mobile could not
+ * swipe to Amount / Actions.)
  */
 .scrollable-table-host--sticky-edges table {
-  table-layout: fixed;
-  width: 100%;
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
 }
 
 .scrollable-table-host--sticky-edges table thead th:nth-child(1),

@@ -198,7 +198,7 @@ export default function ScrollableTable({
         />
         <div
           ref={hostRef}
-          className={`min-w-0 max-h-[calc(100vh-300px)] overflow-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] scrollable-table-host${stickyEdgeColumns ? " scrollable-table-host--sticky-edges" : ""}`}
+          className={`min-w-0 w-full max-h-[calc(100vh-300px)] overflow-x-auto overflow-y-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] scrollable-table-host${stickyEdgeColumns ? " scrollable-table-host--sticky-edges" : ""}`}
         >
           {children}
         </div>
