@@ -249,10 +249,10 @@ export default function ClientInvoicesList({
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Invoice #</th>
-                <th className={scrollableTableThClassName}>Customer</th>
-                <th className={scrollableTableThClassName}>Bill To</th>
                 <th className={scrollableTableThClassName}>Date</th>
+                <th className={scrollableTableThClassName}>Customer</th>
+                <th className={scrollableTableThClassName}>Invoice #</th>
+                <th className={scrollableTableThClassName}>Bill To</th>
                 <th className={scrollableTableThClassName}>Due</th>
                 <th className={scrollableTableThClassName}>Total Due</th>
                 <th className={scrollableTableThClassName}>Status</th>
@@ -277,12 +277,12 @@ export default function ClientInvoicesList({
 
                   return (
                     <tr key={invoice.id} className={getStripedRowClassName(index)}>
+                      <td className="px-4 py-3">{formatInvoiceDate(invoice.invoice_date)}</td>
+                      <td className="px-4 py-3">{clientName ?? invoice.client_id}</td>
                       <td className="px-4 py-3 font-medium text-[#0f2744]">
                         {invoice.invoice_number}
                       </td>
-                      <td className="px-4 py-3">{clientName ?? invoice.client_id}</td>
                       <td className="px-4 py-3">{invoice.bill_to_name}</td>
-                      <td className="px-4 py-3">{formatInvoiceDate(invoice.invoice_date)}</td>
                       <td className="px-4 py-3">{formatInvoiceDate(invoice.due_date)}</td>
                       <td className="px-4 py-3">
                         {formatInvoiceMoney(invoice.total_amount_due)}

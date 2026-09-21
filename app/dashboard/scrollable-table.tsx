@@ -1,14 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+
+/** Below this scroll-host width, only column 2 stays sticky (column 1 scrolls). */
+export const SCROLLABLE_TABLE_SINGLE_STICKY_EDGE_MAX_WIDTH = 640;
 
 type ScrollableTableProps = {
   children: ReactNode;
   /**
-   * Pin the first two columns on the left during horizontal scroll on md+; first
-   * column only on mobile (CSS via `.scrollable-table-host--sticky-edges` in
-   * globals.css). Last/Actions column is never pinned.
-   * Disable for narrow tables where edge pinning is unnecessary.
+   * Pin columns 1–2 when the scroll host is wide enough; only column 2 when the
+   * host is narrow (ResizeObserver — see `.scrollable-table-host--single-sticky-edge`
+   * in globals.css). Prefer Date col 1 + Name col 2. Last/Actions never pinned.
    */
   stickyEdgeColumns?: boolean;
 };
@@ -41,20 +50,17 @@ export const scrollableTableWrapThClassName =
 export const scrollableTableWrapTdClassName =
   `max-w-md px-4 py-3 whitespace-normal break-words align-top ${scrollableTableWrapCellClassName}`;
 
-/** Wider first column for register tables (2–3 lines of name text). */
+/** Width hint for column-2 name cells (globals.css caps sticky edge columns). */
 export const scrollableTableStickyFirstColumnWidthClassName =
-  "min-w-[13rem] max-w-[15rem]";
+  "min-w-0 max-w-[10rem]";
 
-const scrollableTableStickyFirstColumnShadowClassName =
-  "shadow-[2px_0_4px_-2px_rgba(15,39,68,0.12)]";
-
-/** Sticky first header — use on the leftmost identifying column (Expense Name, Vendor Name, etc.). */
+/** Second-column header (name/label). Sticky position comes from globals.css edge rules. */
 export const scrollableTableStickyFirstThClassName =
-  `${scrollableTableThClassName} sticky left-0 top-0 z-20 ${scrollableTableStickyFirstColumnWidthClassName} ${scrollableTableStickyFirstColumnShadowClassName}`;
+  `${scrollableTableThClassName} ${scrollableTableStickyFirstColumnWidthClassName}`;
 
-/** Sticky first header when the column wraps long text. */
+/** Second-column header when the column wraps long text. */
 export const scrollableTableStickyFirstWrapThClassName =
-  `${scrollableTableWrapThClassName} sticky left-0 top-0 z-20 ${scrollableTableStickyFirstColumnWidthClassName} ${scrollableTableStickyFirstColumnShadowClassName}`;
+  `${scrollableTableWrapThClassName} ${scrollableTableStickyFirstColumnWidthClassName}`;
 
 type ScrollableTableStickyFirstCellOptions = {
   /** Match alternating row shading (odd index = slate-50). */
@@ -67,30 +73,25 @@ function scrollableTableStickyFirstCellBackground(
   return options?.striped ? "bg-slate-50" : "bg-white";
 }
 
-/** Sticky first body cell for wrapped identifying text. */
+/** Second-column body cell for name/label text (truncated via sticky-edge CSS). */
 export function scrollableTableStickyFirstWrapTdClassName(
   options?: ScrollableTableStickyFirstCellOptions,
 ): string {
   return [
-    "px-4 py-3 whitespace-normal break-words align-top",
-    scrollableTableWrapCellClassName,
-    "sticky left-0 z-[5]",
+    "px-4 py-3 truncate align-top",
     scrollableTableStickyFirstColumnWidthClassName,
     scrollableTableStickyFirstCellBackground(options),
-    scrollableTableStickyFirstColumnShadowClassName,
   ].join(" ");
 }
 
-/** Sticky first body cell for single-line identifying text. */
+/** Second-column body cell for single-line name/label text. */
 export function scrollableTableStickyFirstTdClassName(
   options?: ScrollableTableStickyFirstCellOptions,
 ): string {
   return [
-    "px-4 py-3 whitespace-normal break-words align-top",
-    "sticky left-0 z-[5]",
+    "px-4 py-3 truncate align-top",
     scrollableTableStickyFirstColumnWidthClassName,
     scrollableTableStickyFirstCellBackground(options),
-    scrollableTableStickyFirstColumnShadowClassName,
   ].join(" ");
 }
 
@@ -234,6 +235,36 @@ function useHorizontalScrollAffordance(
   return affordance;
 }
 
+function useScrollableTableSingleStickyEdge(
+  hostRef: RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+): boolean {
+  const [singleStickyEdge, setSingleStickyEdge] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!enabled) {
+      setSingleStickyEdge(false);
+      return;
+    }
+    const host = hostRef.current;
+    if (!host) return;
+
+    const update = () => {
+      setSingleStickyEdge(
+        host.clientWidth < SCROLLABLE_TABLE_SINGLE_STICKY_EDGE_MAX_WIDTH,
+      );
+    };
+
+    update();
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(host);
+
+    return () => resizeObserver.disconnect();
+  }, [enabled, hostRef]);
+
+  return singleStickyEdge;
+}
+
 /** Viewport-bounded scroll box with sticky column headers and optional edge columns. */
 export default function ScrollableTable({
   children,
@@ -242,27 +273,41 @@ export default function ScrollableTable({
   const hostRef = useRef<HTMLDivElement>(null);
   useScrollableTableOverflowTitles(hostRef, true);
   const scrollAffordance = useHorizontalScrollAffordance(hostRef, stickyEdgeColumns);
+  const singleStickyEdge = useScrollableTableSingleStickyEdge(
+    hostRef,
+    stickyEdgeColumns,
+  );
 
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="relative min-w-0">
         <div
           aria-hidden
-          className={`pointer-events-none absolute inset-y-0 right-0 z-[3] w-10 bg-gradient-to-l from-slate-300/50 via-white/95 to-transparent shadow-[-6px_0_12px_-8px_rgba(15,39,68,0.35)] transition-opacity duration-200 md:hidden ${
+          className={`pointer-events-none absolute inset-y-0 right-0 z-[3] w-10 bg-gradient-to-l from-slate-300/50 via-white/95 to-transparent shadow-[-6px_0_12px_-8px_rgba(15,39,68,0.35)] transition-opacity duration-200 ${
             scrollAffordance.canScrollRight ? "opacity-100" : "opacity-0"
-          }`}
+          } ${singleStickyEdge ? "" : "md:opacity-0 md:pointer-events-none"}`}
         />
         {scrollAffordance.showSwipeHint ? (
           <p
             aria-hidden
-            className="pointer-events-none absolute bottom-2 left-1/2 z-[3] -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm md:hidden"
+            className={`pointer-events-none absolute bottom-2 left-1/2 z-[3] -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm ${
+              singleStickyEdge ? "" : "md:hidden"
+            }`}
           >
             Swipe for more columns →
           </p>
         ) : null}
         <div
           ref={hostRef}
-          className={`min-w-0 w-full max-h-[min(calc(100dvh-8rem),calc(100vh-300px))] overflow-x-auto overflow-y-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] scrollable-table-host${stickyEdgeColumns ? " scrollable-table-host--sticky-edges" : ""}`}
+          className={[
+            "min-w-0 w-full max-h-[min(calc(100dvh-8rem),calc(100vh-300px))] overflow-x-auto overflow-y-auto overscroll-x-contain touch-pan-x [-webkit-overflow-scrolling:touch] scrollable-table-host",
+            stickyEdgeColumns ? "scrollable-table-host--sticky-edges" : "",
+            stickyEdgeColumns && singleStickyEdge
+              ? "scrollable-table-host--single-sticky-edge"
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         >
           {children}
         </div>

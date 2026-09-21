@@ -365,10 +365,10 @@ export default function LoanRegister({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Loan ID</th>
-              <th className={scrollableTableThClassName}>Employee</th>
-              <th className={scrollableTableThClassName}>Loan Amount</th>
               <th className={scrollableTableThClassName}>Date Issued</th>
+              <th className={scrollableTableThClassName}>Employee</th>
+              <th className={scrollableTableThClassName}>Loan ID</th>
+              <th className={scrollableTableThClassName}>Loan Amount</th>
               <th className={scrollableTableThClassName}>Repayment Period</th>
               <th className={scrollableTableThClassName}>Monthly Deduction</th>
               <th className={scrollableTableThClassName}>Total Repaid</th>
@@ -398,12 +398,12 @@ export default function LoanRegister({
 
                 return (
                   <tr key={entry.loan_id} className={getStripedRowClassName(index)}>
-                    <td className="px-4 py-3">{entry.loan_id}</td>
+                    <td className="px-4 py-3">{formatDate(entry.date_issued)}</td>
                     <td className="px-4 py-3">
                       {getEmployeeDisplayName(employees, entry.employee_id)}
                     </td>
+                    <td className="px-4 py-3">{entry.loan_id}</td>
                     <td className="px-4 py-3">{formatGHS(entry.loan_amount)}</td>
-                    <td className="px-4 py-3">{formatDate(entry.date_issued)}</td>
                     <td className="px-4 py-3">
                       {entry.repayment_period_months} months
                     </td>

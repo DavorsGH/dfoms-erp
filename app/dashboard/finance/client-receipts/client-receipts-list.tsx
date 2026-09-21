@@ -43,9 +43,9 @@ export default function ClientReceiptsList({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Receipt #</th>
               <th className={scrollableTableThClassName}>Date</th>
               <th className={scrollableTableThClassName}>Customer</th>
+              <th className={scrollableTableThClassName}>Receipt #</th>
               <th className={scrollableTableThClassName}>Invoice #</th>
               <th className={scrollableTableThClassName}>Amount</th>
               <th className={scrollableTableThClassName}>Method</th>
@@ -67,11 +67,11 @@ export default function ClientReceiptsList({
 
                 return (
                   <tr key={receipt.id} className={getStripedRowClassName(index)}>
+                    <td className="px-4 py-3">{formatInvoiceDate(receipt.receipt_date)}</td>
+                    <td className="px-4 py-3">{customerName}</td>
                     <td className="px-4 py-3 font-medium text-[#0f2744]">
                       {receipt.receipt_number}
                     </td>
-                    <td className="px-4 py-3">{formatInvoiceDate(receipt.receipt_date)}</td>
-                    <td className="px-4 py-3">{customerName}</td>
                     <td className="px-4 py-3">{invoiceNumber}</td>
                     <td className="px-4 py-3">{formatReceiptMoney(receipt.amount)}</td>
                     <td className="px-4 py-3">{receipt.payment_method ?? "—"}</td>

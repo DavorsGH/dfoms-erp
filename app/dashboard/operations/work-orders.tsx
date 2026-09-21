@@ -782,9 +782,9 @@ export default function WorkOrders({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Work Order No</th>
               <th className={scrollableTableThClassName}>Date</th>
               <th className={scrollableTableThClassName}>Customer</th>
+              <th className={scrollableTableThClassName}>Work Order No</th>
               <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Service Type</th>
               <th className={scrollableTableThClassName}>Assigned Cleaner</th>
@@ -806,11 +806,11 @@ export default function WorkOrders({
             ) : (
               filteredWorkOrders.map((entry, index) => (
                 <tr key={entry.work_order_no} className={getStripedRowClassName(index)}>
+                  <td className="px-4 py-3">{formatDate(entry.date)}</td>
+                  <td className="px-4 py-3">{getWorkOrderClientName(entry)}</td>
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
                     {entry.work_order_no}
                   </td>
-                  <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                  <td className="px-4 py-3">{getWorkOrderClientName(entry)}</td>
                   <td className="px-4 py-3">{getWorkOrderSiteName(entry)}</td>
                   <td className="px-4 py-3">{entry.service_type ?? "—"}</td>
                   <td className="px-4 py-3">

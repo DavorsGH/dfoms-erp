@@ -475,10 +475,10 @@ export default function LeaveManagement({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Leave ID</th>
-              <th className={scrollableTableThClassName}>Employee</th>
-              <th className={scrollableTableThClassName}>Leave Type</th>
               <th className={scrollableTableThClassName}>Start Date</th>
+              <th className={scrollableTableThClassName}>Employee</th>
+              <th className={scrollableTableThClassName}>Leave ID</th>
+              <th className={scrollableTableThClassName}>Leave Type</th>
               <th className={scrollableTableThClassName}>End Date</th>
               <th className={scrollableTableThClassName}>Days Requested</th>
               <th className={scrollableTableThClassName}>Days Approved</th>
@@ -500,12 +500,12 @@ export default function LeaveManagement({
             ) : (
               filteredEntries.map((entry, index) => (
                 <tr key={entry.leave_id} className={getStripedRowClassName(index)}>
-                  <td className="px-4 py-3">{entry.leave_id}</td>
+                  <td className="px-4 py-3">{formatDate(entry.start_date)}</td>
                   <td className="px-4 py-3">
                     {getEmployeeDisplayName(employees, entry.employee_id)}
                   </td>
+                  <td className="px-4 py-3">{entry.leave_id}</td>
                   <td className="px-4 py-3">{entry.leave_type}</td>
-                  <td className="px-4 py-3">{formatDate(entry.start_date)}</td>
                   <td className="px-4 py-3">{formatDate(entry.end_date)}</td>
                   <td className="px-4 py-3">{entry.days_requested}</td>
                   <td className="px-4 py-3">{entry.days_approved ?? "—"}</td>

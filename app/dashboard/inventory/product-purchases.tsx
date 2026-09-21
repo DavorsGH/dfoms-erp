@@ -315,8 +315,8 @@ export default function ProductPurchases({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Lot Code</th>
               <th className={scrollableTableThClassName}>Product</th>
+              <th className={scrollableTableThClassName}>Lot Code</th>
               <th className={scrollableTableThClassName}>Supplier</th>
               <th className={scrollableTableThClassName}>Quantity</th>
               <th className={scrollableTableThClassName}>Cost/Unit</th>
@@ -341,11 +341,11 @@ export default function ProductPurchases({
               purchases.map((purchase, index) => (
                 <tr key={purchase.id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{formatDate(purchase.purchase_date)}</td>
-                  <td className="px-4 py-3 font-mono text-sm">
-                    {purchase.batch_number || "—"}
-                  </td>
                   <td className="px-4 py-3">
                     {getProductPurchaseProductLabel(purchase)}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm">
+                    {purchase.batch_number || "—"}
                   </td>
                   <td className="px-4 py-3">
                     {getProductPurchaseSupplierLabel(purchase)}

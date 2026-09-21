@@ -951,7 +951,6 @@ export default function ProductSales({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Invoice No.</th>
               <th className={scrollableTableThClassName}>
                 <RegisterColumnFilterHeader
                   label="Customer"
@@ -960,6 +959,7 @@ export default function ProductSales({
                   onApply={setCustomerFilter}
                 />
               </th>
+              <th className={scrollableTableThClassName}>Invoice No.</th>
               <th className={scrollableTableThClassName}>
                 <RegisterColumnFilterHeader
                   label="Product"
@@ -1028,10 +1028,10 @@ export default function ProductSales({
                   className={`${getStripedRowClassName(index)}${voided ? " opacity-60" : ""}`}
                 >
                   <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                  <td className="px-4 py-3">{entry.invoice_no}</td>
                   <td className="px-4 py-3">
                     {getIncomeCustomerDisplayName(entry, initialClients)}
                   </td>
+                  <td className="px-4 py-3">{entry.invoice_no}</td>
                   <td className="px-4 py-3">{getProductSaleProductLabel(entry)}</td>
                   <td className="px-4 py-3">
                     {entry.sale_quantity?.toLocaleString("en-GB", {

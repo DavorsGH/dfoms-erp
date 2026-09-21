@@ -1002,11 +1002,11 @@ export default function AccountsPayable({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
+                <th className={scrollableTableThClassName}>Invoice Date</th>
                 <th className={scrollableTableStickyFirstThClassName}>Supplier Name</th>
                 <th className={scrollableTableThClassName}>Invoice Number</th>
                 <th className={scrollableTableThClassName}>Expense Category</th>
                 <th className={scrollableTableThClassName}>Sub-Category</th>
-                <th className={scrollableTableThClassName}>Invoice Date</th>
                 <th className={scrollableTableThClassName}>Due Date</th>
                 <th className={scrollableTableThClassName}>Gross</th>
                 <th className={scrollableTableThClassName}>WHT</th>
@@ -1046,6 +1046,9 @@ export default function AccountsPayable({
                       key={entry.id}
                       className={getStripedRowClassName(index)}
                     >
+                      <td className="px-4 py-3">
+                        {formatDate(entry.invoice_date)}
+                      </td>
                       <td
                         className={scrollableTableStickyFirstTdClassName({
                           striped: index % 2 === 1,
@@ -1056,9 +1059,6 @@ export default function AccountsPayable({
                       <td className="px-4 py-3">{entry.invoice_number}</td>
                       <td className="px-4 py-3">{entry.expense_category}</td>
                       <td className="px-4 py-3">{entry.sub_category}</td>
-                      <td className="px-4 py-3">
-                        {formatDate(entry.invoice_date)}
-                      </td>
                       <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
                       <td className="px-4 py-3">{formatGHS(gross)}</td>
                       <td className="px-4 py-3">

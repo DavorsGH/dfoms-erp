@@ -845,7 +845,6 @@ export default function IncomeRegister({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Invoice No.</th>
               <th className={scrollableTableThClassName}>
                 <RegisterColumnFilterHeader
                   label="Customer Name"
@@ -854,6 +853,7 @@ export default function IncomeRegister({
                   onApply={setCustomerNameFilter}
                 />
               </th>
+              <th className={scrollableTableThClassName}>Invoice No.</th>
               <th className={scrollableTableThClassName}>
                 <RegisterColumnFilterHeader
                   label="Service Category"
@@ -902,10 +902,10 @@ export default function IncomeRegister({
                     className={getRegisterRowClassName(index, autoPosted)}
                   >
                     <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                    <td className="px-4 py-3">{entry.invoice_no}</td>
                     <td className="px-4 py-3">
                       {getIncomeCustomerDisplayName(entry, initialClients)}
                     </td>
+                    <td className="px-4 py-3">{entry.invoice_no}</td>
                     <td className="px-4 py-3">
                       {entry.service_category ?? "—"}
                       {autoPosted ? (

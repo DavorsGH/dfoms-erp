@@ -23,68 +23,86 @@ body {
 }
 
 /**
- * ScrollableTable edge pinning — first two columns left (desktop/tablet); first
- * column only on mobile. Actions/last column scrolls with the row at all sizes.
- * Applied when ScrollableTable uses stickyEdgeColumns (default true).
+ * ScrollableTable edge pinning — both columns sticky when the scroll host is wide
+ * enough; only column 2 (name) when narrow (see `.scrollable-table-host--single-sticky-edge`,
+ * toggled from ScrollableTable via ResizeObserver on the host — not viewport breakpoints).
  */
 .scrollable-table-host--sticky-edges {
-  --st-edge-col-1-width: 13rem;
-  --st-edge-col-2-width: 9rem;
+  --st-edge-col-1-width: 7rem;
+  --st-edge-col-2-width: 9.5rem;
 }
 
-/* Mobile (< md / 768px): one narrow sticky column; middle + actions scroll together. */
-@media (max-width: 767px) {
-  .scrollable-table-host--sticky-edges {
-    --st-edge-col-1-width: 5.75rem;
-  }
+/* Narrow scroll host: column 1 scrolls; column 2 (name) pinned at left. */
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(1),
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table tbody td:nth-child(1):not([colspan]) {
+  position: static;
+  left: auto;
+  z-index: auto;
+  width: auto;
+  min-width: max-content;
+  max-width: none;
+  box-shadow: none;
+  background-color: transparent;
+}
 
-  .scrollable-table-host--sticky-edges table thead th:nth-child(1),
-  .scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]) {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-    width: var(--st-edge-col-1-width) !important;
-    min-width: var(--st-edge-col-1-width) !important;
-    max-width: var(--st-edge-col-1-width) !important;
-  }
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge
+  table
+  thead
+  th:nth-child(1):not(.scrollable-table-cell--wrap),
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge
+  table
+  tbody
+  td:nth-child(1):not([colspan]):not(.scrollable-table-cell--wrap) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
 
-  .scrollable-table-host--sticky-edges table thead th:nth-child(2),
-  .scrollable-table-host--sticky-edges table tbody td:nth-child(2):not([colspan]) {
-    position: static;
-    left: auto;
-    z-index: auto;
-    width: auto;
-    min-width: max-content;
-    max-width: none;
-    box-shadow: none;
-    background-color: transparent;
-  }
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge
+  table
+  tbody
+  td:nth-child(1):not(.scrollable-table-cell--wrap)
+  > * {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
 
-  .scrollable-table-host--sticky-edges
-    table
-    thead
-    th:nth-child(2):not(.scrollable-table-cell--wrap),
-  .scrollable-table-host--sticky-edges
-    table
-    tbody
-    td:nth-child(2):not([colspan]):not(.scrollable-table-cell--wrap) {
-    overflow: visible;
-    text-overflow: clip;
-    white-space: nowrap;
-  }
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(1) {
+  background-color: #0f2744;
+}
 
-  .scrollable-table-host--sticky-edges table tbody td:nth-child(2):not(.scrollable-table-cell--wrap) > * {
-    max-width: none;
-    overflow: visible;
-    text-overflow: clip;
-  }
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge
+  table
+  tbody
+  tr.bg-slate-50
+  td:nth-child(1):not([colspan]) {
+  background-color: rgb(248 250 252);
+}
 
-  .scrollable-table-host--sticky-edges table thead th:nth-child(2) {
-    background-color: #0f2744;
-  }
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(2),
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table tbody td:nth-child(2):not([colspan]) {
+  position: sticky;
+  left: 0;
+  z-index: 12;
+  width: var(--st-edge-col-2-width) !important;
+  min-width: var(--st-edge-col-2-width) !important;
+  max-width: var(--st-edge-col-2-width) !important;
+  box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
+  background-color: #ffffff;
+}
 
-  .scrollable-table-host--sticky-edges table tbody tr.bg-slate-50 td:nth-child(2):not([colspan]) {
-    background-color: rgb(248 250 252);
-  }
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(2) {
+  z-index: 30;
+  background-color: #0f2744;
+}
+
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge
+  table
+  tbody
+  tr.bg-slate-50
+  td:nth-child(2):not([colspan]) {
+  background-color: rgb(248 250 252);
 }
 
 /**
@@ -145,8 +163,8 @@ body {
  */
 .scrollable-table-host--sticky-edges table thead th:nth-child(1):not(.scrollable-table-cell--wrap),
 .scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]):not(.scrollable-table-cell--wrap),
-.scrollable-table-host--sticky-edges table thead th:nth-child(2):not(.scrollable-table-cell--wrap),
-.scrollable-table-host--sticky-edges table tbody td:nth-child(2):not([colspan]):not(.scrollable-table-cell--wrap) {
+.scrollable-table-host--sticky-edges table thead th:nth-child(2),
+.scrollable-table-host--sticky-edges table tbody td:nth-child(2):not([colspan]) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -164,7 +182,7 @@ body {
 
 /*
  * Long free-text body cells (cols 3+ on sticky tables, all non-edge cols elsewhere).
- * Exclude sticky edge cols 1–2 so their 13rem/9rem caps are never overridden by 18rem.
+ * Exclude sticky edge cols 1–2 so their width caps are never overridden by 18rem.
  */
 .scrollable-table-host table tbody td:not([colspan]):not(.scrollable-table-cell--wrap):not(:last-child):not(:nth-child(1)):not(:nth-child(2)) {
   max-width: 18rem;

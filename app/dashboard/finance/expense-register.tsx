@@ -1453,19 +1453,19 @@ export default function ExpenseRegister({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
+                <th className={scrollableTableThClassName}>
+                  <RegisterDateRangeFilterHeader
+                    label="Date"
+                    applied={dateFilter}
+                    onApply={setDateFilter}
+                  />
+                </th>
                 <th className={scrollableTableStickyFirstWrapThClassName}>
                   <RegisterColumnFilterHeader
                     label="Expense Name"
                     options={descriptionOptions}
                     applied={descriptionFilter}
                     onApply={setDescriptionFilter}
-                  />
-                </th>
-                <th className={scrollableTableThClassName}>
-                  <RegisterDateRangeFilterHeader
-                    label="Date"
-                    applied={dateFilter}
-                    onApply={setDateFilter}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>
@@ -1531,6 +1531,7 @@ export default function ExpenseRegister({
                       key={entry.id}
                       className={getRegisterRowClassName(index, systemLinked)}
                     >
+                      <td className="px-4 py-3">{formatDate(entry.date)}</td>
                       <td
                         className={scrollableTableStickyFirstWrapTdClassName({
                           striped: index % 2 === 1,
@@ -1577,7 +1578,6 @@ export default function ExpenseRegister({
                           </button>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3">{formatDate(entry.date)}</td>
                       <td className="px-4 py-3">{entry.expense_category}</td>
                       <td className="px-4 py-3">{entry.sub_category}</td>
                       <td className="px-4 py-3">{entry.vendor}</td>

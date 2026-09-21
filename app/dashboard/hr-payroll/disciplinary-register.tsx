@@ -350,8 +350,8 @@ export default function DisciplinaryRegister({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Employee</th>
               <th className={scrollableTableThClassName}>Incident Date</th>
+              <th className={scrollableTableThClassName}>Employee</th>
               <th className={scrollableTableThClassName}>Warning Level</th>
               <th className={scrollableTableWrapThClassName}>Description</th>
               <th className={scrollableTableWrapThClassName}>Action Taken</th>
@@ -372,10 +372,10 @@ export default function DisciplinaryRegister({
               entries.map((entry, index) => (
                 <tr key={entry.id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">
-                    {getEmployeeDisplayName(employees, entry.employee_id)}
+                    {formatDate(entry.incident_date)}
                   </td>
                   <td className="px-4 py-3">
-                    {formatDate(entry.incident_date)}
+                    {getEmployeeDisplayName(employees, entry.employee_id)}
                   </td>
                   <td className="px-4 py-3">{entry.warning_level ?? "—"}</td>
                   <td className={scrollableTableWrapTdClassName}>

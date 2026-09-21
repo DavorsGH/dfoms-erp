@@ -681,8 +681,8 @@ export default function AttendanceRegister({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Staff ID</th>
               <th className={scrollableTableThClassName}>Employee Name</th>
+              <th className={scrollableTableThClassName}>Staff ID</th>
               <th className={scrollableTableThClassName}>Employment Type</th>
               <th className={scrollableTableThClassName}>Project</th>
               <th className={scrollableTableThClassName}>Clock In</th>
@@ -709,10 +709,10 @@ export default function AttendanceRegister({
               displayEntries.map((entry, index) => (
                 <tr key={entry.id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{formatDate(entry.date)}</td>
-                  <td className="px-4 py-3">{entry.staff_id}</td>
                   <td className="px-4 py-3">
                     {employeeNameByStaffId.get(entry.staff_id) ?? "—"}
                   </td>
+                  <td className="px-4 py-3">{entry.staff_id}</td>
                   <td className="px-4 py-3">{entry.employment_type ?? "—"}</td>
                   <td className="px-4 py-3">{entry.project_assignment ?? "—"}</td>
                   <td className="px-4 py-3">{formatTime(entry.clock_in)}</td>

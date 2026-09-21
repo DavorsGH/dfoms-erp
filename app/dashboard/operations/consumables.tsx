@@ -545,8 +545,8 @@ export default function ConsumablesRegister({
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
-              <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Item</th>
+              <th className={scrollableTableThClassName}>Site</th>
               <th className={scrollableTableThClassName}>Remaining</th>
               <th className={scrollableTableThClassName}>Min</th>
               <th className={scrollableTableThClassName}>Status</th>
@@ -568,10 +568,10 @@ export default function ConsumablesRegister({
               entries.map((entry, index) => (
                 <tr key={entry.id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{formatDate(entry.date)}</td>
+                  <td className="px-4 py-3">{entry.item}</td>
                   <td className="px-4 py-3">
                     {siteLabel(sites, entry.client_site)}
                   </td>
-                  <td className="px-4 py-3">{entry.item}</td>
                   <td className="px-4 py-3">
                     {formatQty(entry.remaining)}
                     {entry.unit ? ` ${entry.unit}` : ""}

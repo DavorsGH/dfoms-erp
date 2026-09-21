@@ -619,8 +619,8 @@ export default function StaffWelfareFund({
             <thead className={scrollableTableHeadClassName}>
               <tr>
                 <th className={scrollableTableThClassName}>Date</th>
-                <th className={scrollableTableThClassName}>Type</th>
                 <th className={scrollableTableThClassName}>Employee / Counterparty</th>
+                <th className={scrollableTableThClassName}>Type</th>
                 <th className={scrollableTableThClassName}>Amount</th>
                 <th className={scrollableTableThClassName}>Status</th>
                 <th className={scrollableTableThClassName}>Source</th>
@@ -643,9 +643,6 @@ export default function StaffWelfareFund({
                   >
                     <td className="px-4 py-3 text-sm">{formatDate(entry.entry_date)}</td>
                     <td className="px-4 py-3 text-sm">
-                      {getEntryTypeLabel(entry.entry_type)}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
                       {entry.counterparty_name ??
                         (entry.employee_id
                           ? (employeeOptions.find(
@@ -653,6 +650,9 @@ export default function StaffWelfareFund({
                                 employee.employee_id === entry.employee_id,
                             )?.full_name ?? entry.employee_id)
                           : "—")}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {getEntryTypeLabel(entry.entry_type)}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium">
                       {entry.entry_type === "disbursement" ? "−" : "+"}

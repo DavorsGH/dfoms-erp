@@ -357,12 +357,12 @@ export default function ClientQuotationsList({
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
+                <th className={scrollableTableThClassName}>Issue Date</th>
+                <th className={scrollableTableThClassName}>Customer</th>
                 <th className={scrollableTableThClassName}>Quotation #</th>
                 <th className={scrollableTableThClassName}>Document Type</th>
                 <th className={scrollableTableThClassName}>Quotation Type</th>
-                <th className={scrollableTableThClassName}>Customer</th>
                 <th className={scrollableTableThClassName}>Assigned To</th>
-                <th className={scrollableTableThClassName}>Issue Date</th>
                 <th className={scrollableTableThClassName}>Valid Until</th>
                 <th className={scrollableTableThClassName}>Total Due</th>
                 <th className={scrollableTableThClassName}>Status</th>
@@ -395,6 +395,10 @@ export default function ClientQuotationsList({
 
                   return (
                     <tr key={quotation.id} className={getStripedRowClassName(index)}>
+                      <td className="px-4 py-3">
+                        {formatInvoiceDate(quotation.issue_date)}
+                      </td>
+                      <td className="px-4 py-3">{clientName ?? quotation.client_id}</td>
                       <td className="px-4 py-3 font-medium text-[#0f2744]">
                         {quotation.quotation_number}
                       </td>
@@ -404,15 +408,11 @@ export default function ClientQuotationsList({
                       <td className="px-4 py-3">
                         {formatQuotationType(quotation.quotation_type)}
                       </td>
-                      <td className="px-4 py-3">{clientName ?? quotation.client_id}</td>
                       <td className="px-4 py-3">
                         {employeeLabel(
                           quotation.assigned_sales_rep_id,
                           initialEmployees,
                         )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {formatInvoiceDate(quotation.issue_date)}
                       </td>
                       <td className="px-4 py-3">
                         {formatInvoiceDate(quotation.valid_until)}
