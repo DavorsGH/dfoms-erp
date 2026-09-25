@@ -4,13 +4,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_PRODUCT_TYPE,
   ERP_SUITE_CATEGORY,
+  LEGACY_PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME,
   PLATFORM_BILLING_CATEGORY,
-  PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME,
   SMS_CREDIT_CATALOG_NAME_PREFIX,
+  TENANCY_MANAGEMENT_ANNUAL_UNIT_BILLING_PRODUCT_NAME,
+  TENANCY_MANAGEMENT_MONTHLY_UNIT_BILLING_PRODUCT_NAME,
+  TENANCY_MANAGEMENT_UNIT_ACTIVATION_PRODUCT_NAME,
   isSystemManagedCrmProduct,
 } from "@/app/dashboard/crm/products/products-utils";
 import { resolveTenantPrimaryBusinessUnitId } from "@/utils/business-units-server";
-import { getPlatformOnlyUnitActivationPriceGhs } from "@/utils/platform-billing-config";
+import {
+  getPlatformOnlyUnitActivationPriceGhs,
+  getPlatformOnlyUnitAnnualPriceGhs,
+} from "@/utils/platform-billing-config";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
 type ExistingManagedRow = {
@@ -32,6 +38,29 @@ function businessUnitIdForManagedUpdate(
   return undefined;
 }
 
+async function findManagedProductByName(
+  admin: SupabaseClient,
+  tenantId: string,
+  category: string,
+  name: string,
+): Promise<ExistingManagedRow | null> {
+  const { data, error } = await admin
+    .from("crm_products")
+    .select("id, business_unit_id")
+    .eq("tenant_id", tenantId)
+    .eq("category", category)
+    .eq("name", name)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `[sync-davors-system-crm-catalog] load failed (${name}): ${error.message}`,
+    );
+  }
+
+  return (data as ExistingManagedRow | null) ?? null;
+}
+
 async function upsertManagedProduct(
   admin: SupabaseClient,
   tenantId: string,
@@ -39,19 +68,27 @@ async function upsertManagedProduct(
   match: { category: string; name: string },
   insertPayload: Record<string, unknown>,
   updatePayload: Record<string, unknown>,
+  legacyNames: string[] = [],
 ): Promise<void> {
-  const { data: existing, error: fetchError } = await admin
-    .from("crm_products")
-    .select("id, business_unit_id")
-    .eq("tenant_id", tenantId)
-    .eq("category", match.category)
-    .eq("name", match.name)
-    .maybeSingle();
+  let existing = await findManagedProductByName(
+    admin,
+    tenantId,
+    match.category,
+    match.name,
+  );
 
-  if (fetchError) {
-    throw new Error(
-      `[sync-davors-system-crm-catalog] load failed (${match.name}): ${fetchError.message}`,
-    );
+  if (!existing) {
+    for (const legacyName of legacyNames) {
+      existing = await findManagedProductByName(
+        admin,
+        tenantId,
+        match.category,
+        legacyName,
+      );
+      if (existing) {
+        break;
+      }
+    }
   }
 
   if (!existing) {
@@ -71,7 +108,7 @@ async function upsertManagedProduct(
   }
 
   const row = existing as ExistingManagedRow;
-  const payload = { ...updatePayload };
+  const payload: Record<string, unknown> = { ...updatePayload, name: match.name };
   const businessUnitId = businessUnitIdForManagedUpdate(
     row.business_unit_id,
     primaryBusinessUnitId,
@@ -93,31 +130,78 @@ async function upsertManagedProduct(
   }
 }
 
-async function syncPlatformUnitActivationProduct(
+async function syncTenancyManagementCatalogProducts(
   admin: SupabaseClient,
   tenantId: string,
   primaryBusinessUnitId: string,
 ): Promise<void> {
-  const priceGhs = await getPlatformOnlyUnitActivationPriceGhs(admin);
+  const activationAndMonthlyPriceGhs =
+    await getPlatformOnlyUnitActivationPriceGhs(admin);
+  const annualPriceGhs = await getPlatformOnlyUnitAnnualPriceGhs(admin);
+
+  const managedPayloadBase = {
+    product_type: DEFAULT_PRODUCT_TYPE,
+    is_active: true,
+  };
+
   await upsertManagedProduct(
     admin,
     tenantId,
     primaryBusinessUnitId,
     {
       category: PLATFORM_BILLING_CATEGORY,
-      name: PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME,
+      name: TENANCY_MANAGEMENT_UNIT_ACTIVATION_PRODUCT_NAME,
     },
     {
-      product_type: DEFAULT_PRODUCT_TYPE,
-      unit_price: priceGhs,
+      ...managedPayloadBase,
+      unit_price: activationAndMonthlyPriceGhs,
       billing_cycle: "one_time",
-      is_active: true,
     },
     {
-      product_type: DEFAULT_PRODUCT_TYPE,
-      unit_price: priceGhs,
+      ...managedPayloadBase,
+      unit_price: activationAndMonthlyPriceGhs,
       billing_cycle: "one_time",
-      is_active: true,
+    },
+    [LEGACY_PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME],
+  );
+
+  await upsertManagedProduct(
+    admin,
+    tenantId,
+    primaryBusinessUnitId,
+    {
+      category: PLATFORM_BILLING_CATEGORY,
+      name: TENANCY_MANAGEMENT_MONTHLY_UNIT_BILLING_PRODUCT_NAME,
+    },
+    {
+      ...managedPayloadBase,
+      unit_price: activationAndMonthlyPriceGhs,
+      billing_cycle: "monthly",
+    },
+    {
+      ...managedPayloadBase,
+      unit_price: activationAndMonthlyPriceGhs,
+      billing_cycle: "monthly",
+    },
+  );
+
+  await upsertManagedProduct(
+    admin,
+    tenantId,
+    primaryBusinessUnitId,
+    {
+      category: PLATFORM_BILLING_CATEGORY,
+      name: TENANCY_MANAGEMENT_ANNUAL_UNIT_BILLING_PRODUCT_NAME,
+    },
+    {
+      ...managedPayloadBase,
+      unit_price: annualPriceGhs,
+      billing_cycle: "yearly",
+    },
+    {
+      ...managedPayloadBase,
+      unit_price: annualPriceGhs,
+      billing_cycle: "yearly",
     },
   );
 }
@@ -227,7 +311,7 @@ export async function syncDavorsSystemManagedCrmCatalogProducts(
     return;
   }
 
-  await syncPlatformUnitActivationProduct(
+  await syncTenancyManagementCatalogProducts(
     admin,
     DAVORS_TENANT_ID,
     primaryBusinessUnitId,

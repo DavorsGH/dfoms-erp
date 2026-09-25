@@ -4,9 +4,11 @@ import { useMemo, useState } from "react";
 import { getStripedRowClassName } from "../finance/register-row-actions";
 import { inputClassName } from "../employees/employee-record-utils";
 import {
+  catalogUnitPriceGhsValue,
   formatActiveStatus,
   formatBillingCycle,
-  formatProductPrice,
+  formatCatalogUnitPrice,
+  formatCatalogUsdReference,
   formatProductType,
   getUniqueProductCategories,
   type CrmProductEntry,
@@ -92,7 +94,8 @@ export function ProductCatalogReport({
         "Name",
         "Product Type",
         "Category",
-        "Unit Price",
+        "Unit Price (GHS)",
+        "USD Reference",
         "Billing Cycle",
         "Active",
       ],
@@ -100,7 +103,8 @@ export function ProductCatalogReport({
         product.name,
         formatProductType(product.product_type),
         product.category ?? "",
-        product.unit_price ?? "",
+        catalogUnitPriceGhsValue(product) ?? "",
+        formatCatalogUsdReference(product),
         formatBillingCycle(product.billing_cycle),
         formatActiveStatus(product.is_active),
       ]),
@@ -142,7 +146,8 @@ export function ProductCatalogReport({
                 <th className={scrollableTableThClassName}>Name</th>
                 <th className={scrollableTableThClassName}>Product Type</th>
                 <th className={scrollableTableThClassName}>Category</th>
-                <th className={scrollableTableThClassName}>Unit Price</th>
+                <th className={scrollableTableThClassName}>Unit Price (GHS)</th>
+                <th className={scrollableTableThClassName}>USD Reference</th>
                 <th className={scrollableTableThClassName}>Billing Cycle</th>
                 <th className={scrollableTableThClassName}>Active</th>
               </tr>
@@ -151,7 +156,7 @@ export function ProductCatalogReport({
               {rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No products match the selected filter.
@@ -168,7 +173,10 @@ export function ProductCatalogReport({
                     </td>
                     <td className="px-4 py-3">{product.category ?? "—"}</td>
                     <td className="px-4 py-3">
-                      {formatProductPrice(product.unit_price)}
+                      {formatCatalogUnitPrice(product)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {formatCatalogUsdReference(product) || "—"}
                     </td>
                     <td className="px-4 py-3">
                       {formatBillingCycle(product.billing_cycle)}

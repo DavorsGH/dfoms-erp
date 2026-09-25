@@ -8,12 +8,15 @@ import {
   type CrmProductEntry,
 } from "../crm/products/products-utils";
 
+/** Includes unit_price, price_ghs, and fields needed for catalog price display. */
+const PRODUCT_CATALOG_REPORT_SELECT = CRM_PRODUCT_SELECT;
+
 export async function fetchProductCatalogReportData(
   supabase: SupabaseClient,
   buScope: BusinessUnitReadScope = { mode: "all" },
 ) {
   const { data, error } = await applyBusinessUnitScope(
-    supabase.from("crm_products").select(CRM_PRODUCT_SELECT),
+    supabase.from("crm_products").select(PRODUCT_CATALOG_REPORT_SELECT),
     buScope,
   ).order("name", { ascending: true });
 

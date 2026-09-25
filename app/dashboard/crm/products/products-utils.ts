@@ -16,8 +16,21 @@ export const ERP_SUITE_CATEGORY = "ERP Suite";
 
 export const PLATFORM_BILLING_CATEGORY = "Platform Billing";
 
-export const PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME =
+export const TENANCY_MANAGEMENT_UNIT_ACTIVATION_PRODUCT_NAME =
+  "Tenancy Management — Unit Activation";
+
+export const TENANCY_MANAGEMENT_MONTHLY_UNIT_BILLING_PRODUCT_NAME =
+  "Tenancy Management — Monthly Unit Billing";
+
+export const TENANCY_MANAGEMENT_ANNUAL_UNIT_BILLING_PRODUCT_NAME =
+  "Tenancy Management — Annual Unit Billing";
+
+/** Pre-rename catalog row title; sync renames in place to activation product name. */
+export const LEGACY_PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME =
   "Platform-only unit activation";
+
+export const PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME =
+  TENANCY_MANAGEMENT_UNIT_ACTIVATION_PRODUCT_NAME;
 
 export const SMS_CREDIT_CATALOG_NAME_PREFIX = "SMS Credits — ";
 
@@ -114,13 +127,43 @@ export function formatProductPrice(value: number | null | undefined): string {
   })}`;
 }
 
-/** Product Catalog Unit Price column — GHS for display. */
+/**
+ * Product Catalog Unit Price column — GHS for display.
+ * ERP Suite: price_ghs is billable GHS; unit_price is USD reference only.
+ * All other rows: unit_price is GHS.
+ */
 export function formatCatalogUnitPrice(product: CrmProductEntry): string {
   if (isErpSuiteCatalogProduct(product)) {
     return formatProductPrice(product.price_ghs);
   }
 
   return formatProductPrice(product.unit_price);
+}
+
+/** ERP Suite → price_ghs; other catalog rows → unit_price (numeric, for exports). */
+export function catalogUnitPriceGhsValue(
+  product: CrmProductEntry,
+): number | null {
+  if (isErpSuiteCatalogProduct(product)) {
+    if (product.price_ghs == null) {
+      return null;
+    }
+    const value = Number(product.price_ghs);
+    return Number.isFinite(value) ? value : null;
+  }
+  if (product.unit_price == null) {
+    return null;
+  }
+  const value = Number(product.unit_price);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** USD reference column — ERP Suite only; blank for other rows. */
+export function formatCatalogUsdReference(product: CrmProductEntry): string {
+  if (!isErpSuiteCatalogProduct(product)) {
+    return "";
+  }
+  return formatUsdPrice(product.unit_price);
 }
 
 export function formatUsdPrice(value: number | null | undefined): string {
