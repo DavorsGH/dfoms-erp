@@ -12,12 +12,14 @@ import {
 } from "@/utils/message-template-render";
 import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 export const CAMPAIGN_SEND_BATCH_SIZE = 50;
 
-export const UNSUBSCRIBE_BASE_URL =
-  "https://portal.davorsfacilities.com/unsubscribe";
+export function getUnsubscribeBaseUrl(): string {
+  return `${resolvePublicSiteUrl()}/unsubscribe`;
+}
 
 export type RecipientDeliveryChannel = "email" | "sms";
 
@@ -141,7 +143,7 @@ export function buildCustomerVariables(
 }
 
 export function buildUnsubscribeUrl(token: string): string {
-  return `${UNSUBSCRIBE_BASE_URL}/${token}`;
+  return `${getUnsubscribeBaseUrl()}/${token}`;
 }
 
 export function appendEmailUnsubscribeFooter(
@@ -158,7 +160,8 @@ export function appendEmailUnsubscribeFooter(
 
 export function appendSmsUnsubscribeFooter(body: string, token: string): string {
   const trimmed = body.trimEnd();
-  return `${trimmed} Reply STOP or visit portal.davorsfacilities.com/unsubscribe/${token} to opt out`;
+  const portalHost = new URL(resolvePublicSiteUrl()).host;
+  return `${trimmed} Reply STOP or visit ${portalHost}/unsubscribe/${token} to opt out`;
 }
 
 export async function loadCampaignCustomers(

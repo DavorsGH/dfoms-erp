@@ -7,6 +7,27 @@ import { BUSINESS_UNIT_SELECT, type BusinessUnitRow } from "@/utils/business-uni
 
 type AdminClient = SupabaseClient;
 
+export async function resolveTenantPrimaryBusinessUnitId(
+  admin: AdminClient,
+  tenantId: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("business_units")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .eq("is_primary", true)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `[business-units] Failed loading primary business unit for tenant ${tenantId}: ${error.message}`,
+    );
+  }
+
+  return typeof data?.id === "string" ? data.id.trim() || null : null;
+}
+
 export const PRIMARY_DEACTIVATE_ERROR =
   "This is your primary business unit. Set another unit as primary before deactivating it.";
 

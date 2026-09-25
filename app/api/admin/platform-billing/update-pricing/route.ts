@@ -11,6 +11,7 @@ import {
   updatePlatformOnlyUnitCap,
   updateReferralRewardGhs,
 } from "@/utils/platform-billing-config";
+import { syncDavorsSystemManagedCrmCatalogProducts } from "@/utils/sync-davors-system-crm-catalog-products";
 
 type UpdatePlatformBillingBody = {
   config_key?: string;
@@ -94,6 +95,20 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+
+  if (
+    configKey === PLATFORM_ONLY_UNIT_ACTIVATION_CONFIG_KEY ||
+    configKey === PLATFORM_ONLY_UNIT_ANNUAL_CONFIG_KEY
+  ) {
+    try {
+      await syncDavorsSystemManagedCrmCatalogProducts(admin);
+    } catch (syncError) {
+      console.error(
+        "[platform-billing/update-pricing] catalog sync failed:",
+        syncError,
+      );
+    }
   }
 
   return NextResponse.json({

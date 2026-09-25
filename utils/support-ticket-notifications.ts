@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getAdminNotificationEmail } from "@/utils/admin-notifications";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import { sendResendEmail } from "@/utils/resend-email";
 
 function escapeHtml(value: string): string {
@@ -12,10 +13,7 @@ function escapeHtml(value: string): string {
 }
 
 function getSupportTicketAdminUrl(ticketId: string): string {
-  const base = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://portal.davorsfacilities.com").replace(
-    /\/$/,
-    "",
-  );
+  const base = resolvePublicSiteUrl();
   return `${base}/dashboard/administration/support-tickets?ticket=${encodeURIComponent(ticketId)}`;
 }
 

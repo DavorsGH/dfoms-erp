@@ -9,11 +9,17 @@ export type CrmProductEntry = {
   is_active: boolean | null;
   category: string | null;
   business_unit_id?: string | null;
+  tier_slug?: string | null;
 };
 
 export const ERP_SUITE_CATEGORY = "ERP Suite";
 
 export const PLATFORM_BILLING_CATEGORY = "Platform Billing";
+
+export const PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME =
+  "Platform-only unit activation";
+
+export const SMS_CREDIT_CATALOG_NAME_PREFIX = "SMS Credits — ";
 
 /** Synthetic catalog id — not a crm_products row. */
 export const PLATFORM_UNIT_ACTIVATION_CATALOG_ID =
@@ -21,6 +27,25 @@ export const PLATFORM_UNIT_ACTIVATION_CATALOG_ID =
 
 export function isErpSuiteCatalogProduct(product: CrmProductEntry): boolean {
   return (product.category ?? "").trim() === ERP_SUITE_CATEGORY;
+}
+
+export function isSystemManagedCrmProduct(product: {
+  category?: string | null;
+  tier_slug?: string | null;
+  name?: string | null;
+}): boolean {
+  const category = (product.category ?? "").trim();
+  if (category === ERP_SUITE_CATEGORY && product.tier_slug?.trim()) {
+    return true;
+  }
+  if (category === PLATFORM_BILLING_CATEGORY) {
+    return true;
+  }
+  const name = product.name?.trim() ?? "";
+  if (name.startsWith(SMS_CREDIT_CATALOG_NAME_PREFIX)) {
+    return true;
+  }
+  return false;
 }
 
 export function isPlatformUnitActivationCatalogProduct(
@@ -36,6 +61,13 @@ export function getCatalogManagedLabel(product: CrmProductEntry): string | null 
   if (isPlatformUnitActivationCatalogProduct(product)) {
     return "Managed via Platform Unit Pricing";
   }
+  const name = product.name?.trim() ?? "";
+  if (name.startsWith(SMS_CREDIT_CATALOG_NAME_PREFIX)) {
+    return "Managed via SMS Credit Pricing";
+  }
+  if ((product.category ?? "").trim() === PLATFORM_BILLING_CATEGORY) {
+    return "Managed via Platform Unit Pricing";
+  }
   return null;
 }
 
@@ -44,7 +76,7 @@ export function buildPlatformUnitActivationCatalogEntry(
 ): CrmProductEntry {
   return {
     id: PLATFORM_UNIT_ACTIVATION_CATALOG_ID,
-    name: "Platform-only unit activation",
+    name: PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME,
     product_type: DEFAULT_PRODUCT_TYPE,
     category: PLATFORM_BILLING_CATEGORY,
     unit_price: priceGhs,
@@ -54,7 +86,7 @@ export function buildPlatformUnitActivationCatalogEntry(
 }
 
 export const CRM_PRODUCT_SELECT =
-  "id, name, product_type, unit_price, price_ghs, billing_cycle, is_active, category, business_unit_id";
+  "id, name, product_type, unit_price, price_ghs, billing_cycle, is_active, category, business_unit_id, tier_slug";
 
 export const DEFAULT_PRODUCT_TYPE = "service";
 
@@ -190,7 +222,7 @@ export function buildCrmProductSavePayload(form: CrmProductFormState): {
 
 export function isCatalogProductEditable(product: CrmProductEntry): boolean {
   return (
-    !isErpSuiteCatalogProduct(product) &&
+    !isSystemManagedCrmProduct(product) &&
     !isPlatformUnitActivationCatalogProduct(product)
   );
 }

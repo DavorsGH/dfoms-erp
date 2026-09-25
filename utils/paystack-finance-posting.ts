@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import { resolveTenantPrimaryBusinessUnitId } from "@/utils/business-units-server";
 import { resolveFallbackBusinessUnitId } from "@/utils/tenant-default-business-unit";
 
 /** Paystack Ghana transaction fee rate applied platform-wide. */
@@ -171,27 +172,6 @@ function isPlatformPaystackIncomeServiceCategory(serviceCategory: string): boole
     serviceCategory === ERP_SUITE_SUBSCRIPTION_INCOME_CATEGORY ||
     serviceCategory === PLATFORM_BILLING_INCOME_CATEGORY
   );
-}
-
-async function resolveTenantPrimaryBusinessUnitId(
-  admin: SupabaseClient,
-  tenantId: string,
-): Promise<string | null> {
-  const { data, error } = await admin
-    .from("business_units")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .eq("is_primary", true)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(
-      `[paystack-finance] Failed loading primary business unit for tenant ${tenantId}: ${error.message}`,
-    );
-  }
-
-  return typeof data?.id === "string" ? data.id.trim() || null : null;
 }
 
 async function resolveTenantFallbackBusinessUnitId(

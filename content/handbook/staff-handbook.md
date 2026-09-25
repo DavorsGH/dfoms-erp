@@ -870,7 +870,7 @@ while still using the service.
 | *"Hi Central University, this is a test."*                            |
 |                                                                       |
 | *Unsubscribe:                                                         |
-| https://portal.davorsfacilities.com/unsubscribe/\[your-link\]*        |
+| https://portal.davorstechnologies.com/unsubscribe/\[your-link\]*        |
 +-----------------------------------------------------------------------+
 
 ## **Choosing the Right Audience**

@@ -25,7 +25,7 @@ invite ("You're invited to the Davors Tenant Portal") with a link to
 set your own password. This link expires after 7 days - if it's expired
 or you never received it, ask your landlord to resend your invite.
 
-To log in, go to portal.davorsfacilities.com, choose "I'm a Tenant,"
+To log in, go to portal.davorstechnologies.com, choose "I'm a Tenant,"
 and log in with the email and password you set.
 
 ## Section 2 --- Your Home

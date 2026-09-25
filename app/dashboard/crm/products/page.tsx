@@ -11,11 +11,11 @@ import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
-import { getPlatformOnlyUnitActivationPricing } from "@/utils/platform-billing-config";
 import {
   DAVORS_TENANT_ID,
   isDavorsPlatformTenant,
 } from "@/utils/tenant-signup";
+import { syncDavorsSystemManagedCrmCatalogProducts } from "@/utils/sync-davors-system-crm-catalog-products";
 import CrmShell from "../crm-shell";
 import Products from "./products";
 import { CRM_PRODUCT_SELECT, type CrmProductEntry } from "./products-utils";
@@ -38,20 +38,23 @@ export default async function ProductsPage() {
     activeBusinessUnitId,
   });
 
-  const [{ data, error }, platformPricing] = await Promise.all([
-    applyBusinessUnitScope(
-      supabase.from("crm_products").select(CRM_PRODUCT_SELECT),
-      buScope,
-    ).order("name", { ascending: true }),
-    getPlatformOnlyUnitActivationPricing(admin),
-  ]);
+  if (tenantId === DAVORS_TENANT_ID) {
+    try {
+      await syncDavorsSystemManagedCrmCatalogProducts(admin);
+    } catch (syncError) {
+      console.error("[products-page] system catalog sync failed:", syncError);
+    }
+  }
+
+  const { data, error } = await applyBusinessUnitScope(
+    supabase.from("crm_products").select(CRM_PRODUCT_SELECT),
+    buScope,
+  ).order("name", { ascending: true });
 
   return (
     <CrmShell sectionTitle="Product Catalog">
       <Products
         initialProducts={(data as CrmProductEntry[] | null) ?? []}
-        platformUnitActivationPriceGhs={platformPricing.priceGhs}
-        showPlatformBillingCatalogEntry={tenantId === DAVORS_TENANT_ID}
         fetchError={error?.message ?? null}
       />
     </CrmShell>

@@ -7,6 +7,7 @@ import {
 } from "@/utils/tenant-signup";
 import { mapSupabasePasswordError } from "@/utils/password-policy";
 import { recordPasswordUpdatedAt } from "@/lib/security/password-updated-at";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import { provisionStaffTenantSignup } from "@/utils/staff-tenant-signup";
 import {
   crossPersonaErrorMessage,
@@ -139,7 +140,7 @@ export async function POST(request: Request) {
     if (linkError || !linkData?.properties?.hashed_token) {
       console.error("Failed to generate signup verification link:", linkError?.message);
     } else {
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://portal.davorsfacilities.com";
+      const siteUrl = resolvePublicSiteUrl();
       const verifyUrl = `${siteUrl}/verify-email?token_hash=${linkData.properties.hashed_token}&type=signup`;
 
       try {

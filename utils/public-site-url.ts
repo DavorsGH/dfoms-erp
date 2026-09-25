@@ -1,5 +1,5 @@
 /** Canonical public portal origin for links embedded in SMS, email, and short URLs. */
-export const PRODUCTION_PORTAL_SITE_URL = "https://portal.davorsfacilities.com";
+export const PRODUCTION_PORTAL_SITE_URL = "https://portal.davorstechnologies.com";
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/$/, "");

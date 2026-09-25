@@ -36,7 +36,7 @@ account or any other role you might hold on the platform.
 
 ### 2.2 Logging in
 
-Go to portal.davorsfacilities.com and choose "I'm a Facility Manager."
+Go to portal.davorstechnologies.com and choose "I'm a Facility Manager."
 You'll only see the properties the landlord has assigned you to.
 
 ## Section 3 --- What You Can Do

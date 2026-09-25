@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 
 export const RENTAL_APPLICATION_LINK_EXPIRY_DAYS = 30;
 
@@ -14,10 +15,7 @@ export function generateRentalApplicationRawToken(): string {
 }
 
 function siteBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-    "https://portal.davorsfacilities.com"
-  );
+  return resolvePublicSiteUrl();
 }
 
 export function buildRentalApplicationUrl(rawToken: string): string {

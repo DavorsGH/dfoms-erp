@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildPortalInviteEmail } from "@/utils/portal-invite-email";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import { sendResendEmail } from "@/utils/resend-email";
 
 export const LANDLORD_INVITE_EXPIRY_DAYS = 7;
@@ -16,10 +17,7 @@ export function generateLandlordInviteRawToken(): string {
 }
 
 function siteBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-    "https://portal.davorsfacilities.com"
-  );
+  return resolvePublicSiteUrl();
 }
 
 /**

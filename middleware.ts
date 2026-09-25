@@ -16,6 +16,9 @@ import {
 } from "@/lib/middleware-persona";
 import { resolveMiddlewareAuthUser } from "@/lib/auth/middleware-resolve-user";
 import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
+import { PRODUCTION_PORTAL_SITE_URL } from "@/utils/public-site-url";
+
+const LEGACY_PORTAL_HOST = "portal.davorsfacilities.com";
 
 /** Redirect to a validated relative path+query (pathname + search). */
 function redirectToRelativePath(request: NextRequest, relativePath: string) {
@@ -61,6 +64,19 @@ const ACCOUNT_SETTINGS_ALIASES: Record<string, string> = {
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  if (process.env.LEGACY_DOMAIN_REDIRECT === "on" && !pathname.startsWith("/api/")) {
+    const rawHost =
+      request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+    const host = rawHost.split(",")[0]?.trim().split(":")[0]?.toLowerCase() ?? "";
+    if (host === LEGACY_PORTAL_HOST) {
+      const target = new URL(
+        `${pathname}${request.nextUrl.search}`,
+        PRODUCTION_PORTAL_SITE_URL,
+      );
+      return NextResponse.redirect(target, 301);
+    }
+  }
 
   const accountAliasTarget = ACCOUNT_SETTINGS_ALIASES[pathname];
   if (accountAliasTarget) {

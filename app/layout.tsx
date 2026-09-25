@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import ServiceWorkerRegistrar from "./service-worker-registrar";
 import "./globals.css";
 
@@ -19,19 +20,21 @@ export const viewport: Viewport = {
   themeColor: "#0F2744",
 };
 
+const portalSiteUrl = resolvePublicSiteUrl();
+
 export const metadata: Metadata = {
   title: "Davors Technologies ERP",
   description: "Davors Technologies Ltd ERP System",
   manifest: "/manifest.json",
-  metadataBase: new URL("https://portal.davorsfacilities.com"),
+  metadataBase: new URL(portalSiteUrl),
   openGraph: {
     title: "Davors Technologies ERP",
     description: "Davors Technologies Ltd ERP System",
-    url: "https://portal.davorsfacilities.com",
+    url: portalSiteUrl,
     siteName: "Davors Technologies ERP",
     images: [
       {
-        url: "https://portal.davorsfacilities.com/og-image.png",
+        url: `${portalSiteUrl}/og-image.png`,
         width: 1200,
         height: 630,
         alt: "Davors Technologies ERP",
@@ -43,7 +46,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Davors Technologies ERP",
     description: "Davors Technologies Ltd ERP System",
-    images: ["https://portal.davorsfacilities.com/og-image.png"],
+    images: [`${portalSiteUrl}/og-image.png`],
   },
   appleWebApp: {
     capable: true,

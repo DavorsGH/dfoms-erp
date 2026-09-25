@@ -25,7 +25,6 @@ import ProductsBulkImport from "./products-bulk-import";
 import {
   BILLING_CYCLE_OPTIONS,
   buildCrmProductSavePayload,
-  buildPlatformUnitActivationCatalogEntry,
   CRM_PRODUCT_SELECT,
   EMPTY_CRM_PRODUCT_FORM,
   ERP_SUITE_CATEGORY,
@@ -46,8 +45,6 @@ import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 
 type ProductsProps = {
   initialProducts: CrmProductEntry[];
-  platformUnitActivationPriceGhs: number;
-  showPlatformBillingCatalogEntry: boolean;
   fetchError: string | null;
 };
 
@@ -59,8 +56,6 @@ const primaryButtonClassName =
 
 export default function Products({
   initialProducts,
-  platformUnitActivationPriceGhs,
-  showPlatformBillingCatalogEntry,
   fetchError,
 }: ProductsProps) {
   const supabase = createClient();
@@ -80,23 +75,15 @@ export default function Products({
   }, [initialProducts]);
 
   const catalogProducts = useMemo(() => {
-    const rows = showPlatformBillingCatalogEntry
-      ? [
-          ...products,
-          buildPlatformUnitActivationCatalogEntry(platformUnitActivationPriceGhs),
-        ]
-      : products;
-    return [...rows].sort((a, b) => a.name.localeCompare(b.name));
-  }, [platformUnitActivationPriceGhs, products, showPlatformBillingCatalogEntry]);
+    return [...products].sort((a, b) => a.name.localeCompare(b.name));
+  }, [products]);
 
   const categoryOptions = useMemo(() => {
     const unique = new Set(getUniqueProductCategories(catalogProducts));
     unique.add(ERP_SUITE_CATEGORY);
-    if (showPlatformBillingCatalogEntry) {
-      unique.add(PLATFORM_BILLING_CATEGORY);
-    }
+    unique.add(PLATFORM_BILLING_CATEGORY);
     return [...unique].sort((a, b) => a.localeCompare(b));
-  }, [catalogProducts, showPlatformBillingCatalogEntry]);
+  }, [catalogProducts]);
 
   const filteredProducts = useMemo(() => {
     return catalogProducts.filter((product) => {

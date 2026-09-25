@@ -36,7 +36,7 @@ needed.
 
 ### 1.2 Signing Up
 
-If you don't have an account yet, go to portal.davorsfacilities.com,
+If you don't have an account yet, go to portal.davorstechnologies.com,
 choose "I'm a Landlord," and click Sign Up. Fill in your name, email,
 phone, and address, and set a password. Your account starts as Platform
 Only and Pending - you can log in right away, but you'll see a "Pending
@@ -48,7 +48,7 @@ Once approved, your real dashboard becomes available.
 If Davors staff added your property to the platform on your behalf,
 you'll receive an invite by email and SMS once your account is approved,
 with a link to set your own password. After that, log in any time at
-portal.davorsfacilities.com under "I'm a Landlord."
+portal.davorstechnologies.com under "I'm a Landlord."
 
 ### 1.4 Getting Your Portfolio Onboarded
 
@@ -296,7 +296,7 @@ allow.
     Rent and/or Collect Charges. Nothing is switched on by default
     except the operational ones --- you choose what fits.
 
--   **Their portal ---** a Facility Manager logs in at portal.davorsfacilities.com under
+-   **Their portal ---** a Facility Manager logs in at portal.davorstechnologies.com under
     "I'm a Facility Manager," and sees only the properties and tools
     you've assigned --- never your financials, payouts, or account
     settings.

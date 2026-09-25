@@ -11,6 +11,7 @@ import {
   REUSED_ACCOUNT_LOGIN_HINT,
 } from "@/utils/email-reuse";
 import { buildPortalInviteEmail } from "@/utils/portal-invite-email";
+import { resolvePublicSiteUrl } from "@/utils/public-site-url";
 import {
   isResendConfigured,
   resendNotConfiguredMessage,
@@ -28,10 +29,7 @@ export function generateLesseeInviteRawToken(): string {
 }
 
 function siteBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-    "https://portal.davorsfacilities.com"
-  );
+  return resolvePublicSiteUrl();
 }
 
 function buildLesseeInviteEmailContent(args: {
