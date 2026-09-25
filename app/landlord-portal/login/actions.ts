@@ -13,6 +13,7 @@ import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
 import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
 import { logAuthActivity } from "@/lib/user-activity-log";
 import { LOGIN_RATE_LIMIT_MESSAGE } from "@/utils/login-rate-limit";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
 
@@ -79,7 +80,12 @@ export async function landlordPortalLoginWithPassword(
       method: "password",
       failureReason: error?.message ?? "invalid_credentials",
     });
-    return { ok: false, error: error?.message ?? "Invalid email or password." };
+    return {
+      ok: false,
+      error: error
+        ? formatAuthErrorMessage(error)
+        : "Invalid email or password.",
+    };
   }
 
   const admin = createAdminClient();
@@ -101,7 +107,7 @@ export async function landlordPortalLoginWithPassword(
       method: "password",
       failureReason: landlordError.message,
     });
-    return { ok: false, error: landlordError.message };
+    return { ok: false, error: formatAuthErrorMessage(landlordError) };
   }
 
   if (!landlord) {
@@ -158,7 +164,7 @@ export async function landlordPortalLoginWithPassword(
       method: "password",
       failureReason: authUserError.message,
     });
-    return { ok: false, error: authUserError.message };
+    return { ok: false, error: formatAuthErrorMessage(authUserError) };
   }
   if (isAuthUserBanned(authUserData.user?.banned_until)) {
     await supabase.auth.signOut();

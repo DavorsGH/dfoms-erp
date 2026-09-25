@@ -9,6 +9,7 @@ import {
 } from "@/lib/mfa/format-sms-resend-wait";
 import type { MfaActionResult, MfaPersona } from "@/lib/mfa/types";
 import { useSmsResendCooldown } from "@/lib/mfa/use-sms-resend-cooldown";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 type Settings = {
   method: string;
@@ -139,7 +140,7 @@ export default function MfaSettingsPanel({
     setSuccess(null);
     const result = await onStartTotp();
     if (!result.ok) {
-      setError(result.error);
+      setError(formatAuthErrorMessage(result.error));
       setLoading(false);
       return;
     }
@@ -156,7 +157,7 @@ export default function MfaSettingsPanel({
     setError(null);
     const result = await onConfirmTotp(totpFactorId, totpCode);
     if (!result.ok) {
-      setError(result.error);
+      setError(formatAuthErrorMessage(result.error));
       setLoading(false);
       return;
     }
@@ -188,7 +189,7 @@ export default function MfaSettingsPanel({
     setError(null);
     const result = await onConfirmSms(smsCode, resolveSmsPhoneOverride());
     if (!result.ok) {
-      setError(result.error);
+      setError(formatAuthErrorMessage(result.error));
       setLoading(false);
       return;
     }
@@ -205,7 +206,7 @@ export default function MfaSettingsPanel({
     setError(null);
     const result = await onDisable(disableCode);
     if (!result.ok) {
-      setError(result.error);
+      setError(formatAuthErrorMessage(result.error));
       setLoading(false);
       return;
     }

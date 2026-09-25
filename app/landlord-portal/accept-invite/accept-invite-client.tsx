@@ -18,6 +18,7 @@ import {
   portalLabelClassName,
 } from "../portal-ui";
 import { createClient } from "@/utils/supabase/client";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export default function LandlordAcceptInvitePage() {
   const [password, setPassword] = useState("");
@@ -66,7 +67,9 @@ export default function LandlordAcceptInvitePage() {
     setLoading(false);
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to accept invite.");
+      setError(
+        formatAuthErrorMessage(payload?.error ?? "Unable to accept invite."),
+      );
       return;
     }
 

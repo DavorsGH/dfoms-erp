@@ -18,6 +18,7 @@ import {
   portalLabelClassName,
 } from "../portal-ui";
 import { createClient } from "@/utils/supabase/client";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export default function AcceptInvitePage() {
   const [password, setPassword] = useState("");
@@ -55,7 +56,11 @@ export default function AcceptInvitePage() {
       } | null;
       if (cancelled) return;
       if (!response.ok) {
-        setError(payload?.error ?? "This invite link is invalid.");
+        setError(
+          formatAuthErrorMessage(
+            payload?.error ?? "This invite link is invalid.",
+          ),
+        );
         return;
       }
       setExistingAccount(Boolean(payload?.existingAccount));
@@ -101,7 +106,9 @@ export default function AcceptInvitePage() {
     setLoading(false);
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to accept invite.");
+      setError(
+        formatAuthErrorMessage(payload?.error ?? "Unable to accept invite."),
+      );
       return;
     }
 

@@ -7,6 +7,7 @@ import { isSmsResendRateLimited } from "@/lib/mfa/format-sms-resend-wait";
 import type { MfaActionResult, MfaPersona } from "@/lib/mfa/types";
 import { useSmsResendCooldown } from "@/lib/mfa/use-sms-resend-cooldown";
 import { getSafeNext } from "@/utils/safe-redirect";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 type ChallengeActions = {
   getContext: () => Promise<
@@ -73,7 +74,7 @@ export default function MfaLoginChallengeForm({
     }
 
     setResendCooldownUntilMs(null);
-    setError(result.error);
+    setError(formatAuthErrorMessage(result.error));
     return false;
   }
 
@@ -83,7 +84,7 @@ export default function MfaLoginChallengeForm({
       const ctx = await actions.getContext();
       if (cancelled) return;
       if (!ctx.ok) {
-        setError(ctx.error);
+        setError(formatAuthErrorMessage(ctx.error));
         setLoading(false);
         return;
       }
@@ -116,7 +117,7 @@ export default function MfaLoginChallengeForm({
           : await actions.verifyTotp(code);
 
       if (!result.ok) {
-        setError(result.error);
+        setError(formatAuthErrorMessage(result.error));
         setSubmitting(false);
         return;
       }
@@ -124,11 +125,7 @@ export default function MfaLoginChallengeForm({
       // Full navigation so middleware sees fresh auth/MFA cookies and DB session rows.
       window.location.assign(destination);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Verification failed. Please try again.",
-      );
+      setError(formatAuthErrorMessage(err));
       setSubmitting(false);
     }
   }

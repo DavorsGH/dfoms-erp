@@ -15,6 +15,7 @@ import { evaluatePostPasswordMfa } from "@/lib/mfa/post-login";
 import { syncAuthUserPortalMetadata } from "@/lib/auth/portal-metadata";
 import { logAuthActivity } from "@/lib/user-activity-log";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export type FacilityPortalLoginActionResult = LoginWithMfaResult;
 
@@ -77,7 +78,12 @@ export async function facilityPortalLoginWithPassword(
       method: "password",
       failureReason: error?.message ?? "invalid_credentials",
     });
-    return { ok: false, error: error?.message ?? "Invalid email or password." };
+    return {
+      ok: false,
+      error: error
+        ? formatAuthErrorMessage(error)
+        : "Invalid email or password.",
+    };
   }
 
   const admin = createAdminClient();
@@ -100,7 +106,7 @@ export async function facilityPortalLoginWithPassword(
       method: "password",
       failureReason: fmError.message,
     });
-    return { ok: false, error: fmError.message };
+    return { ok: false, error: formatAuthErrorMessage(fmError) };
   }
 
   if (!fm) {
@@ -137,7 +143,7 @@ export async function facilityPortalLoginWithPassword(
       method: "password",
       failureReason: authUserError.message,
     });
-    return { ok: false, error: authUserError.message };
+    return { ok: false, error: formatAuthErrorMessage(authUserError) };
   }
   if (isAuthUserBanned(authUserData.user?.banned_until)) {
     await supabase.auth.signOut();

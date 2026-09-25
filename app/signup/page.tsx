@@ -11,6 +11,7 @@ import {
   PASSWORD_POLICY_HINT,
   validatePasswordClient,
 } from "@/utils/password-policy";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -58,7 +59,11 @@ export default function SignupPage() {
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to complete signup.");
+      setError(
+        formatAuthErrorMessage(
+          payload?.error ?? "Unable to complete signup.",
+        ),
+      );
       setLoading(false);
       return;
     }

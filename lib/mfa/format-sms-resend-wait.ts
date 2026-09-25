@@ -1,4 +1,5 @@
 import type { MfaActionResult } from "./types";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export function formatSmsResendRateLimitMessage(
   resendAvailableInSeconds: number,
@@ -56,5 +57,5 @@ export function formatMfaActionError(result: {
     return formatSmsResendRateLimitMessage(result.resendAvailableInSeconds);
   }
 
-  return result.error;
+  return formatAuthErrorMessage(result.error);
 }

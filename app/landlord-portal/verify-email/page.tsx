@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 import {
   portalAuthCardClassName,
   portalAuthPrimaryButtonClassName,
@@ -36,9 +37,7 @@ export default function LandlordPortalVerifyEmailPage() {
 
       if (verifyError) {
         setStatus("error");
-        setError(
-          "This verification link is invalid or has expired. Sign up again or contact support if you need help.",
-        );
+        setError(formatAuthErrorMessage(verifyError));
         return;
       }
 

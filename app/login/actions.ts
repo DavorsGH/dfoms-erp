@@ -15,6 +15,7 @@ import {
   resolveAuthActivityTenantId,
 } from "@/lib/user-activity-log";
 import { LOGIN_RATE_LIMIT_MESSAGE } from "@/utils/login-rate-limit";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type LoginActionResult = LoginWithMfaResult;
@@ -109,7 +110,7 @@ export async function loginWithPassword(
       method: "password",
       failureReason: error.message,
     });
-    return { ok: false, error: error.message };
+    return { ok: false, error: formatAuthErrorMessage(error) };
   }
 
   const {

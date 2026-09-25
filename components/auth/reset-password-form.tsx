@@ -8,12 +8,12 @@ import PasswordInput from "@/components/password-input";
 import {
   PASSWORD_MIN_LENGTH,
   PASSWORD_POLICY_HINT,
-  mapSupabasePasswordError,
   validatePasswordClient,
 } from "@/utils/password-policy";
 import { resolvePasswordResetRedirect } from "@/lib/auth/reset-password-redirect-action";
 import { recordOwnPasswordChanged } from "@/lib/security/update-password-action";
 import { establishRecoverySessionFromUrl } from "@/utils/auth/establish-recovery-session";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 import { PORTAL_CHOOSER_PATH } from "@/utils/portal-chooser";
 
 export type ResetPasswordFormProps = {
@@ -73,7 +73,9 @@ function ResetPasswordFormInner({
     setLoading(false);
 
     if (updateError) {
-      setError(mapSupabasePasswordError(updateError));
+      setError(
+        formatAuthErrorMessage(updateError, { context: "reset-password" }),
+      );
       return;
     }
 

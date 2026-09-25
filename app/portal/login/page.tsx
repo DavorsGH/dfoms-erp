@@ -16,6 +16,7 @@ import {
   portalLabelClassName,
 } from "../portal-ui";
 import { portalLoginWithPassword } from "./actions";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export default function PortalLoginPage() {
   const [email, setEmail] = useState("");
@@ -33,7 +34,7 @@ export default function PortalLoginPage() {
     const result = await portalLoginWithPassword(email, password, stayLoggedIn);
 
     if (!result.ok) {
-      setError(result.error);
+      setError(formatAuthErrorMessage(result.error));
       setLoading(false);
       return;
     }

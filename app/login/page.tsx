@@ -10,6 +10,7 @@ import OAuthProviderButtons from "@/components/auth/oauth-provider-buttons";
 import PasswordInput from "@/components/password-input";
 import { getSafeNext } from "@/utils/safe-redirect";
 import { loginWithPassword } from "./actions";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -28,7 +29,7 @@ function LoginForm() {
     const result = await loginWithPassword(email, password, stayLoggedIn);
 
     if (!result.ok) {
-      setError(result.error);
+      setError(formatAuthErrorMessage(result.error));
       setLoading(false);
       return;
     }

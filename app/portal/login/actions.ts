@@ -16,6 +16,7 @@ import {
   logAuthActivity,
 } from "@/lib/user-activity-log";
 import { LOGIN_RATE_LIMIT_MESSAGE } from "@/utils/login-rate-limit";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 import type { LoginWithMfaResult } from "@/lib/mfa/types";
 
 export type PortalLoginActionResult = LoginWithMfaResult;
@@ -80,7 +81,12 @@ export async function portalLoginWithPassword(
       method: "password",
       failureReason: error?.message ?? "invalid_credentials",
     });
-    return { ok: false, error: error?.message ?? "Invalid email or password." };
+    return {
+      ok: false,
+      error: error
+        ? formatAuthErrorMessage(error)
+        : "Invalid email or password.",
+    };
   }
 
   const admin = createAdminClient();
@@ -103,7 +109,7 @@ export async function portalLoginWithPassword(
       method: "password",
       failureReason: lesseeError.message,
     });
-    return { ok: false, error: lesseeError.message };
+    return { ok: false, error: formatAuthErrorMessage(lesseeError) };
   }
 
   if (!lessee) {

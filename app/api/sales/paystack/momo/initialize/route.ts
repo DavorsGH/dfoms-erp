@@ -75,12 +75,7 @@ export async function POST(request: Request) {
       ? body.customer_name.trim()
       : null;
 
-  if (!clientId && !customerName) {
-    return NextResponse.json(
-      { error: "Select a customer or enter a walk-in name." },
-      { status: 400 },
-    );
-  }
+  // POS customer / walk-in payer are optional (create_product_sale, migration 235).
 
   const saleDate =
     typeof body.sale_date === "string" && body.sale_date.trim()

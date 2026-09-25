@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export default function VerifyEmailPage() {
   const [status, setStatus] = useState<"verifying" | "success" | "error">(
@@ -29,9 +30,7 @@ export default function VerifyEmailPage() {
       .then(({ error }) => {
         if (error) {
           setStatus("error");
-          setError(
-            "This verification link is invalid or has expired. You can still log in — try requesting a new confirmation email from your account settings.",
-          );
+          setError(formatAuthErrorMessage(error));
           return;
         }
         setStatus("success");

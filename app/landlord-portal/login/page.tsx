@@ -16,6 +16,7 @@ import {
   portalLabelClassName,
 } from "../portal-ui";
 import { landlordPortalLoginWithPassword } from "./actions";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export default function LandlordPortalLoginPage() {
   const [email, setEmail] = useState("");
@@ -37,7 +38,7 @@ export default function LandlordPortalLoginPage() {
     );
 
     if (!result.ok) {
-      setError(result.error);
+      setError(formatAuthErrorMessage(result.error));
       setLoading(false);
       return;
     }

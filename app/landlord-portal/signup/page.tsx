@@ -16,6 +16,7 @@ import {
   portalAuthPrimaryButtonClassName,
   portalLabelClassName,
 } from "../portal-ui";
+import { formatAuthErrorMessage } from "@/utils/auth-error-message";
 
 export default function LandlordPortalSignupPage() {
   const [name, setName] = useState("");
@@ -62,7 +63,11 @@ export default function LandlordPortalSignupPage() {
     } | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to create account.");
+      setError(
+        formatAuthErrorMessage(
+          payload?.error ?? "Unable to create account.",
+        ),
+      );
       setLoading(false);
       return;
     }

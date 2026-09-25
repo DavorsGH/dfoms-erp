@@ -4,6 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import {
+  FORGOT_PASSWORD_NEUTRAL_SUCCESS_MESSAGE,
+  formatAuthErrorMessage,
+  shouldTreatForgotPasswordAsSuccess,
+} from "@/utils/auth-error-message";
 
 export type ForgotPasswordFormProps = {
   /** Path the recovery email should land on (e.g. /landlord-portal/reset-password). */
@@ -43,15 +48,14 @@ export default function ForgotPasswordForm({
 
     setLoading(false);
 
-    // Always show the neutral confirmation for successful API responses.
-    // Supabase does not reveal whether the email exists for valid requests.
-    if (resetError) {
-      // Rate-limit / config errors still surface; do not invent "email not found".
-      setError(resetError.message);
+    if (shouldTreatForgotPasswordAsSuccess(resetError)) {
+      setSubmitted(true);
       return;
     }
 
-    setSubmitted(true);
+    setError(
+      formatAuthErrorMessage(resetError, { context: "forgot-password" }),
+    );
   }
 
   return (
@@ -75,8 +79,8 @@ export default function ForgotPasswordForm({
 
         {submitted ? (
           <p className="text-center text-sm text-zinc-700">
-            If an account exists for that email, a password reset link has been
-            sent. Check your inbox (and spam folder).
+            {FORGOT_PASSWORD_NEUTRAL_SUCCESS_MESSAGE} Check your inbox (and
+            spam folder).
           </p>
         ) : (
           <>
