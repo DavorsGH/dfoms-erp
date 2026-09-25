@@ -166,6 +166,34 @@ async function lookupIncomeRegisterBusinessUnitId(
   return null;
 }
 
+function isPlatformPaystackIncomeServiceCategory(serviceCategory: string): boolean {
+  return (
+    serviceCategory === ERP_SUITE_SUBSCRIPTION_INCOME_CATEGORY ||
+    serviceCategory === PLATFORM_BILLING_INCOME_CATEGORY
+  );
+}
+
+async function resolveTenantPrimaryBusinessUnitId(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("business_units")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .eq("is_primary", true)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `[paystack-finance] Failed loading primary business unit for tenant ${tenantId}: ${error.message}`,
+    );
+  }
+
+  return typeof data?.id === "string" ? data.id.trim() || null : null;
+}
+
 async function resolveTenantFallbackBusinessUnitId(
   admin: SupabaseClient,
   tenantId: string,
@@ -316,6 +344,12 @@ export async function postPaystackIncomeRegisterEntry(
   }
 
   const paymentDate = resolvePaystackPaymentDate(options.paidAt);
+  const businessUnitId = isPlatformPaystackIncomeServiceCategory(
+    options.serviceCategory,
+  )
+    ? await resolveTenantPrimaryBusinessUnitId(admin, options.tenantId)
+    : null;
+
   const { error: insertError } = await admin.from("income_register").insert({
     tenant_id: options.tenantId,
     date: paymentDate,
@@ -339,6 +373,7 @@ export async function postPaystackIncomeRegisterEntry(
     wht_amount: 0,
     sale_status: "active",
     is_system_adjustment: false,
+    ...(businessUnitId ? { business_unit_id: businessUnitId } : {}),
   });
 
   if (insertError) {
@@ -563,6 +598,7 @@ export async function postErpSubscriptionPaystackFinance(
     paidAt: options.paidAt,
     description: `Paystack transaction fee — ERP Suite subscription (${reference})`,
     notes: `Transaction amount GHS ${transactionAmountGhs.toFixed(2)}; fee rate ${(PAYSTACK_TRANSACTION_FEE_RATE * 100).toFixed(2)}%. paystack_reference=${reference}`,
+    invoiceNo: paystackIncomeInvoiceNo(reference),
   });
 }
 
@@ -617,6 +653,7 @@ export async function postSmsCreditPurchasePaystackFinance(
     paidAt: options.paidAt,
     description: `Paystack transaction fee — SMS credit purchase (${reference})`,
     notes: `Transaction amount GHS ${transactionAmountGhs.toFixed(2)}; fee rate ${(PAYSTACK_TRANSACTION_FEE_RATE * 100).toFixed(2)}%. paystack_reference=${reference}`,
+    invoiceNo: paystackIncomeInvoiceNo(reference),
   });
 }
 
@@ -672,6 +709,7 @@ export async function postPlatformUnitActivationPaystackFinance(
     paidAt: options.paidAt,
     description: `Paystack transaction fee — platform unit activation (${reference})`,
     notes: `Transaction amount GHS ${transactionAmountGhs.toFixed(2)}; fee rate ${(PAYSTACK_TRANSACTION_FEE_RATE * 100).toFixed(2)}%. paystack_reference=${reference}`,
+    invoiceNo: paystackIncomeInvoiceNo(reference),
   });
 }
 
@@ -727,6 +765,7 @@ export async function postPlatformMonthlyUnitBillingPaystackFinance(
     paidAt: options.paidAt,
     description: `Paystack transaction fee — platform monthly unit billing (${reference})`,
     notes: `Transaction amount GHS ${transactionAmountGhs.toFixed(2)}; fee rate ${(PAYSTACK_TRANSACTION_FEE_RATE * 100).toFixed(2)}%. paystack_reference=${reference}`,
+    invoiceNo: paystackIncomeInvoiceNo(reference),
   });
 }
 
@@ -784,6 +823,7 @@ export async function postPlatformAnnualUnitBillingPaystackFinance(
     paidAt: options.paidAt,
     description: `Paystack transaction fee — platform annual unit billing (${reference})`,
     notes: `Transaction amount GHS ${transactionAmountGhs.toFixed(2)}; fee rate ${(PAYSTACK_TRANSACTION_FEE_RATE * 100).toFixed(2)}%. paystack_reference=${reference}`,
+    invoiceNo: paystackIncomeInvoiceNo(reference),
   });
 }
 
