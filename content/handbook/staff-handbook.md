@@ -2062,9 +2062,8 @@ handbook:
              resolved directly by them.
 
   2          For anything else, use Administration → Report a Problem if
-             you are an Admin, or contact the Davors Facilities support
-             team through the WordPress site at davorsfacilities.com or
-             your usual Davors contact.
+             you are an Admin, or contact Davors Technologies support at
+             admin@davorstechnologies.com or your usual Davors contact.
 
 When reporting an issue, it helps to include: your workspace name, the
 page you were on, what you expected to happen, and what happened

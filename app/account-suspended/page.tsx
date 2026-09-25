@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import LogoutButton from "@/app/dashboard/logout-button";
 
-const SUPPORT_EMAIL = "info@davorsfacilities.com";
+const SUPPORT_EMAIL = "admin@davorstechnologies.com";
 
 export default function AccountSuspendedPage() {
   return (
