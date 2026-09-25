@@ -98,8 +98,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Paystack webhooks — public POST; signature verified inside the route.
-  if (pathname === "/api/webhooks/paystack") {
+  // External webhooks — public POST; signature verified inside each route.
+  if (pathname.startsWith("/api/webhooks/")) {
     return NextResponse.next();
   }
 
@@ -200,6 +200,7 @@ export async function middleware(request: NextRequest) {
     "/auth/error",
     "/api/signup",
     "/api/webhooks/paystack",
+    "/api/webhooks/resend",
     "/forgot-password",
     "/reset-password",
     "/verify-email",
