@@ -7,6 +7,8 @@ import {
   LEGACY_PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME,
   PLATFORM_BILLING_CATEGORY,
   SMS_CREDIT_CATALOG_NAME_PREFIX,
+  SMS_CREDITS_CATEGORY,
+  TENANCY_MANAGEMENT_CATEGORY,
   TENANCY_MANAGEMENT_ANNUAL_UNIT_BILLING_PRODUCT_NAME,
   TENANCY_MANAGEMENT_MONTHLY_UNIT_BILLING_PRODUCT_NAME,
   TENANCY_MANAGEMENT_UNIT_ACTIVATION_PRODUCT_NAME,
@@ -61,6 +63,23 @@ async function findManagedProductByName(
   return (data as ExistingManagedRow | null) ?? null;
 }
 
+async function findManagedProductForUpsert(
+  admin: SupabaseClient,
+  tenantId: string,
+  names: string[],
+  categories: string[],
+): Promise<ExistingManagedRow | null> {
+  for (const name of names) {
+    for (const category of categories) {
+      const row = await findManagedProductByName(admin, tenantId, category, name);
+      if (row) {
+        return row;
+      }
+    }
+  }
+  return null;
+}
+
 async function upsertManagedProduct(
   admin: SupabaseClient,
   tenantId: string,
@@ -70,26 +89,15 @@ async function upsertManagedProduct(
   updatePayload: Record<string, unknown>,
   legacyNames: string[] = [],
 ): Promise<void> {
-  let existing = await findManagedProductByName(
+  const namesToSearch = [match.name, ...legacyNames];
+  const categoriesToSearch = [match.category, PLATFORM_BILLING_CATEGORY];
+
+  const existing = await findManagedProductForUpsert(
     admin,
     tenantId,
-    match.category,
-    match.name,
+    namesToSearch,
+    categoriesToSearch,
   );
-
-  if (!existing) {
-    for (const legacyName of legacyNames) {
-      existing = await findManagedProductByName(
-        admin,
-        tenantId,
-        match.category,
-        legacyName,
-      );
-      if (existing) {
-        break;
-      }
-    }
-  }
 
   if (!existing) {
     const { error: insertError } = await admin.from("crm_products").insert({
@@ -108,7 +116,11 @@ async function upsertManagedProduct(
   }
 
   const row = existing as ExistingManagedRow;
-  const payload: Record<string, unknown> = { ...updatePayload, name: match.name };
+  const payload: Record<string, unknown> = {
+    ...updatePayload,
+    name: match.name,
+    category: match.category,
+  };
   const businessUnitId = businessUnitIdForManagedUpdate(
     row.business_unit_id,
     primaryBusinessUnitId,
@@ -149,7 +161,7 @@ async function syncTenancyManagementCatalogProducts(
     tenantId,
     primaryBusinessUnitId,
     {
-      category: PLATFORM_BILLING_CATEGORY,
+      category: TENANCY_MANAGEMENT_CATEGORY,
       name: TENANCY_MANAGEMENT_UNIT_ACTIVATION_PRODUCT_NAME,
     },
     {
@@ -170,7 +182,7 @@ async function syncTenancyManagementCatalogProducts(
     tenantId,
     primaryBusinessUnitId,
     {
-      category: PLATFORM_BILLING_CATEGORY,
+      category: TENANCY_MANAGEMENT_CATEGORY,
       name: TENANCY_MANAGEMENT_MONTHLY_UNIT_BILLING_PRODUCT_NAME,
     },
     {
@@ -190,7 +202,7 @@ async function syncTenancyManagementCatalogProducts(
     tenantId,
     primaryBusinessUnitId,
     {
-      category: PLATFORM_BILLING_CATEGORY,
+      category: TENANCY_MANAGEMENT_CATEGORY,
       name: TENANCY_MANAGEMENT_ANNUAL_UNIT_BILLING_PRODUCT_NAME,
     },
     {
@@ -240,7 +252,7 @@ async function syncSmsCreditPackProducts(
       admin,
       tenantId,
       primaryBusinessUnitId,
-      { category: PLATFORM_BILLING_CATEGORY, name },
+      { category: SMS_CREDITS_CATEGORY, name },
       {
         product_type: DEFAULT_PRODUCT_TYPE,
         unit_price: priceGhs,

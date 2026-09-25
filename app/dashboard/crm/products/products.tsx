@@ -36,7 +36,6 @@ import {
   getUniqueProductCategories,
   isCatalogProductEditable,
   crmProductEntryToForm,
-  PLATFORM_BILLING_CATEGORY,
   PRODUCT_TYPE_OPTIONS,
   type CrmProductEntry,
   type CrmProductFormState,
@@ -78,12 +77,10 @@ export default function Products({
     return [...products].sort((a, b) => a.name.localeCompare(b.name));
   }, [products]);
 
-  const categoryOptions = useMemo(() => {
-    const unique = new Set(getUniqueProductCategories(catalogProducts));
-    unique.add(ERP_SUITE_CATEGORY);
-    unique.add(PLATFORM_BILLING_CATEGORY);
-    return [...unique].sort((a, b) => a.localeCompare(b));
-  }, [catalogProducts]);
+  const categoryOptions = useMemo(
+    () => getUniqueProductCategories(catalogProducts),
+    [catalogProducts],
+  );
 
   const filteredProducts = useMemo(() => {
     return catalogProducts.filter((product) => {

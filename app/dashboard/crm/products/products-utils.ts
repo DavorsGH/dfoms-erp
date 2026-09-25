@@ -14,7 +14,12 @@ export type CrmProductEntry = {
 
 export const ERP_SUITE_CATEGORY = "ERP Suite";
 
+/** Legacy crm_products category; sync migrates rows to Tenancy Management / SMS Credits. */
 export const PLATFORM_BILLING_CATEGORY = "Platform Billing";
+
+export const TENANCY_MANAGEMENT_CATEGORY = "Tenancy Management";
+
+export const SMS_CREDITS_CATEGORY = "SMS Credits";
 
 export const TENANCY_MANAGEMENT_UNIT_ACTIVATION_PRODUCT_NAME =
   "Tenancy Management — Unit Activation";
@@ -42,6 +47,62 @@ export function isErpSuiteCatalogProduct(product: CrmProductEntry): boolean {
   return (product.category ?? "").trim() === ERP_SUITE_CATEGORY;
 }
 
+export function isTenancyManagementCatalogProductName(
+  name: string | null | undefined,
+): boolean {
+  const trimmed = name?.trim() ?? "";
+  if (!trimmed) {
+    return false;
+  }
+  return (
+    trimmed === TENANCY_MANAGEMENT_UNIT_ACTIVATION_PRODUCT_NAME ||
+    trimmed === TENANCY_MANAGEMENT_MONTHLY_UNIT_BILLING_PRODUCT_NAME ||
+    trimmed === TENANCY_MANAGEMENT_ANNUAL_UNIT_BILLING_PRODUCT_NAME ||
+    trimmed === LEGACY_PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME ||
+    trimmed.startsWith("Tenancy Management —")
+  );
+}
+
+export function isSmsCreditsCatalogProductName(
+  name: string | null | undefined,
+): boolean {
+  return (name?.trim() ?? "").startsWith(SMS_CREDIT_CATALOG_NAME_PREFIX);
+}
+
+export function isTenancyManagementCatalogProduct(product: {
+  category?: string | null;
+  name?: string | null;
+}): boolean {
+  const category = (product.category ?? "").trim();
+  if (category === TENANCY_MANAGEMENT_CATEGORY) {
+    return true;
+  }
+  if (
+    category === PLATFORM_BILLING_CATEGORY &&
+    isTenancyManagementCatalogProductName(product.name)
+  ) {
+    return true;
+  }
+  return isTenancyManagementCatalogProductName(product.name);
+}
+
+export function isSmsCreditsCatalogProduct(product: {
+  category?: string | null;
+  name?: string | null;
+}): boolean {
+  const category = (product.category ?? "").trim();
+  if (category === SMS_CREDITS_CATEGORY) {
+    return true;
+  }
+  if (isSmsCreditsCatalogProductName(product.name)) {
+    return true;
+  }
+  return (
+    category === PLATFORM_BILLING_CATEGORY &&
+    isSmsCreditsCatalogProductName(product.name)
+  );
+}
+
 export function isSystemManagedCrmProduct(product: {
   category?: string | null;
   tier_slug?: string | null;
@@ -51,11 +112,19 @@ export function isSystemManagedCrmProduct(product: {
   if (category === ERP_SUITE_CATEGORY && product.tier_slug?.trim()) {
     return true;
   }
+  if (category === TENANCY_MANAGEMENT_CATEGORY) {
+    return true;
+  }
+  if (category === SMS_CREDITS_CATEGORY) {
+    return true;
+  }
   if (category === PLATFORM_BILLING_CATEGORY) {
     return true;
   }
-  const name = product.name?.trim() ?? "";
-  if (name.startsWith(SMS_CREDIT_CATALOG_NAME_PREFIX)) {
+  if (isTenancyManagementCatalogProduct(product)) {
+    return true;
+  }
+  if (isSmsCreditsCatalogProduct(product)) {
     return true;
   }
   return false;
@@ -74,9 +143,11 @@ export function getCatalogManagedLabel(product: CrmProductEntry): string | null 
   if (isPlatformUnitActivationCatalogProduct(product)) {
     return "Managed via Platform Unit Pricing";
   }
-  const name = product.name?.trim() ?? "";
-  if (name.startsWith(SMS_CREDIT_CATALOG_NAME_PREFIX)) {
+  if (isSmsCreditsCatalogProduct(product)) {
     return "Managed via SMS Credit Pricing";
+  }
+  if (isTenancyManagementCatalogProduct(product)) {
+    return "Managed via Platform Unit Pricing";
   }
   if ((product.category ?? "").trim() === PLATFORM_BILLING_CATEGORY) {
     return "Managed via Platform Unit Pricing";
@@ -91,7 +162,7 @@ export function buildPlatformUnitActivationCatalogEntry(
     id: PLATFORM_UNIT_ACTIVATION_CATALOG_ID,
     name: PLATFORM_UNIT_ACTIVATION_PRODUCT_NAME,
     product_type: DEFAULT_PRODUCT_TYPE,
-    category: PLATFORM_BILLING_CATEGORY,
+    category: TENANCY_MANAGEMENT_CATEGORY,
     unit_price: priceGhs,
     billing_cycle: "one_time",
     is_active: true,
