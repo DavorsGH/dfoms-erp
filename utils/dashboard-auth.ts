@@ -222,21 +222,39 @@ export const getActiveBusinessUnitId = cache(async (): Promise<string | null> =>
     const [{ data: units }, { data: tenant }] = await Promise.all([
       admin
         .from("business_units")
-        .select("id, name")
+        .select("id, name, is_primary")
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
         .order("name", { ascending: true }),
       admin.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
     ]);
 
+    const activeUnits =
+      (units as Array<{ id: string; name: string; is_primary: boolean }> | null) ??
+      [];
+
     validatedId = resolveFallbackBusinessUnitId(
-      (units as Array<{ id: string; name: string }> | null) ?? [],
+      activeUnits,
       tenant?.name ?? null,
     );
   }
 
   if (allowedUnits !== null) {
-    return resolveRestrictedActiveBusinessUnitId(allowedUnits, validatedId);
+    const admin = createAdminClient();
+    layoutPerf.dbCalls += 1;
+    const { data: activeUnitRows } = await admin
+      .from("business_units")
+      .select("id")
+      .eq("tenant_id", tenantId!)
+      .eq("is_active", true);
+
+    const activeBusinessUnitIds = (activeUnitRows ?? []).map((row) => row.id);
+
+    return resolveRestrictedActiveBusinessUnitId(
+      allowedUnits,
+      validatedId,
+      activeBusinessUnitIds,
+    );
   }
 
   return validatedId;

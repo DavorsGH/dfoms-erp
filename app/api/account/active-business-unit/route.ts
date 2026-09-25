@@ -99,7 +99,7 @@ export async function POST(request: Request) {
   if (selection === BU_SELECTION_DEFAULT) {
     const { data: units } = await admin
       .from("business_units")
-      .select("id, name")
+      .select("id, name, is_primary")
       .eq("tenant_id", auth.tenantId)
       .eq("is_active", true)
       .order("name", { ascending: true });
@@ -111,7 +111,8 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     const fallbackId = resolveFallbackBusinessUnitId(
-      (units as Array<{ id: string; name: string }> | null) ?? [],
+      (units as Array<{ id: string; name: string; is_primary: boolean }> | null) ??
+        [],
       tenant?.name ?? null,
     );
 

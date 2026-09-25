@@ -173,7 +173,7 @@ async function resolveTenantFallbackBusinessUnitId(
   const [{ data: units }, { data: tenant }] = await Promise.all([
     admin
       .from("business_units")
-      .select("id, name")
+      .select("id, name, is_primary")
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .order("name", { ascending: true }),

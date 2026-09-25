@@ -117,7 +117,7 @@ export async function validateBusinessUnitIdsBelongToTenant(
 
   const { data, error } = await admin
     .from("business_units")
-    .select("id")
+    .select("id, is_active")
     .eq("tenant_id", tenantId)
     .in("id", businessUnitIds);
 
@@ -127,6 +127,11 @@ export async function validateBusinessUnitIdsBelongToTenant(
 
   if ((data ?? []).length !== businessUnitIds.length) {
     return "One or more business units are invalid for this workspace.";
+  }
+
+  const inactive = (data ?? []).filter((row) => row.is_active !== true);
+  if (inactive.length > 0) {
+    return "One or more selected business units are inactive.";
   }
 
   return null;

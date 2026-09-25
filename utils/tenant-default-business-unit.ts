@@ -6,6 +6,7 @@
 export type BusinessUnitNameRow = {
   id: string;
   name: string;
+  is_primary?: boolean;
 };
 
 function normalizeLabel(value: string): string {
@@ -49,6 +50,12 @@ export function resolveFallbackBusinessUnitId(
   if (units.length === 0) {
     return null;
   }
+
+  const primaryUnit = units.find((unit) => unit.is_primary === true);
+  if (primaryUnit) {
+    return primaryUnit.id;
+  }
+
   if (units.length === 1) {
     return units[0]!.id;
   }

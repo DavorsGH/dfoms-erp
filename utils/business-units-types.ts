@@ -1,5 +1,5 @@
 export const BUSINESS_UNIT_SELECT =
-  "id, tenant_id, name, logo_url, invoice_address, business_email, is_active, created_at, updated_at" as const;
+  "id, tenant_id, name, logo_url, invoice_address, business_email, is_active, is_primary, created_at, updated_at" as const;
 
 export type BusinessUnitRow = {
   id: string;
@@ -9,6 +9,7 @@ export type BusinessUnitRow = {
   invoice_address: string | null;
   business_email: string | null;
   is_active: boolean;
+  is_primary: boolean;
   created_at: string;
   updated_at: string;
 };

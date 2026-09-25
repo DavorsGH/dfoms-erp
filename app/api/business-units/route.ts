@@ -2,10 +2,13 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import {
+  assertCanDeactivateBusinessUnit,
+  setTenantPrimaryBusinessUnit,
+} from "@/utils/business-units-server";
+import {
   BUSINESS_UNIT_SELECT,
   trimBusinessUnitInput,
   validateBusinessUnitInput,
-  type BusinessUnitDeactivateBody,
   type BusinessUnitInput,
   type BusinessUnitRow,
   type BusinessUnitUpdateBody,
@@ -27,6 +30,20 @@ function rejectClientTenantId(body: unknown): NextResponse | null {
   }
 
   return null;
+}
+
+async function clearActiveBusinessUnitPointers(
+  tenantId: string,
+  businessUnitId: string,
+): Promise<string | null> {
+  const admin = createAdminClient();
+  const { error: clearError } = await admin
+    .from("user_accounts")
+    .update({ active_business_unit_id: null })
+    .eq("tenant_id", tenantId)
+    .eq("active_business_unit_id", businessUnitId);
+
+  return clearError?.message ?? null;
 }
 
 export async function GET() {
@@ -77,6 +94,16 @@ export async function POST(request: Request) {
 
   const trimmed = trimBusinessUnitInput(body);
   const supabase = await getTenantSupabase();
+  const admin = createAdminClient();
+
+  const { count: primaryCount } = await admin
+    .from("business_units")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", auth.tenantId)
+    .eq("is_primary", true);
+
+  const shouldBePrimary =
+    trimmed.is_active !== false && (primaryCount ?? 0) === 0;
 
   const { data, error } = await supabase
     .from("business_units")
@@ -86,6 +113,7 @@ export async function POST(request: Request) {
       invoice_address: trimmed.invoice_address,
       business_email: trimmed.business_email,
       is_active: trimmed.is_active,
+      is_primary: shouldBePrimary,
       ...(trimmed.logo_url !== undefined ? { logo_url: trimmed.logo_url } : {}),
       updated_at: new Date().toISOString(),
     })
@@ -129,10 +157,11 @@ export async function PUT(request: Request) {
 
   const trimmed = trimBusinessUnitInput(body);
   const supabase = await getTenantSupabase();
+  const admin = createAdminClient();
 
   const { data: existing, error: fetchError } = await supabase
     .from("business_units")
-    .select("id")
+    .select("id, is_active, is_primary")
     .eq("id", body.id)
     .eq("tenant_id", auth.tenantId)
     .maybeSingle();
@@ -143,6 +172,20 @@ export async function PUT(request: Request) {
 
   if (!existing) {
     return NextResponse.json({ error: "Business unit not found" }, { status: 404 });
+  }
+
+  if (
+    trimmed.is_active === false &&
+    existing.is_active === true
+  ) {
+    const guard = await assertCanDeactivateBusinessUnit(
+      admin,
+      auth.tenantId,
+      body.id,
+    );
+    if (!guard.ok) {
+      return NextResponse.json({ error: guard.error }, { status: 400 });
+    }
   }
 
   const { data, error } = await supabase
@@ -164,13 +207,36 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
+  if (trimmed.is_active === false && existing.is_active === true) {
+    const clearError = await clearActiveBusinessUnitPointers(
+      auth.tenantId,
+      body.id,
+    );
+    if (clearError) {
+      console.error(
+        "[business-units] failed to clear active_business_unit_id on deactivate:",
+        clearError,
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Business unit deactivated, but failed to reset users still pointing at it.",
+          business_unit: data as BusinessUnitRow,
+        },
+        { status: 500 },
+      );
+    }
+  }
+
   return NextResponse.json({ business_unit: data as BusinessUnitRow });
 }
 
-/**
- * Soft-deactivate only — hard deletes are not allowed while business_unit_id
- * is referenced by other tables.
- */
+type BusinessUnitPatchBody = {
+  id: string;
+  is_active?: boolean;
+  set_primary?: boolean;
+};
+
 export async function PATCH(request: Request) {
   const auth = await requireTenantSuperAdmin();
   if (!auth.ok) {
@@ -189,14 +255,28 @@ export async function PATCH(request: Request) {
     return tenantRejection;
   }
 
-  const body = rawBody as BusinessUnitDeactivateBody & { is_active?: boolean };
+  const body = rawBody as BusinessUnitPatchBody;
   if (!body.id?.trim()) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
+  const admin = createAdminClient();
+
+  if (body.set_primary === true) {
+    const result = await setTenantPrimaryBusinessUnit(
+      admin,
+      auth.tenantId,
+      body.id,
+    );
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    return NextResponse.json({ business_unit: result.business_unit });
+  }
+
   if (typeof body.is_active !== "boolean") {
     return NextResponse.json(
-      { error: "is_active must be a boolean" },
+      { error: "is_active must be a boolean, or set set_primary to true" },
       { status: 400 },
     );
   }
@@ -205,7 +285,7 @@ export async function PATCH(request: Request) {
 
   const { data: existing, error: fetchError } = await supabase
     .from("business_units")
-    .select("id")
+    .select("id, is_active")
     .eq("id", body.id)
     .eq("tenant_id", auth.tenantId)
     .maybeSingle();
@@ -216,6 +296,17 @@ export async function PATCH(request: Request) {
 
   if (!existing) {
     return NextResponse.json({ error: "Business unit not found" }, { status: 404 });
+  }
+
+  if (body.is_active === false && existing.is_active === true) {
+    const guard = await assertCanDeactivateBusinessUnit(
+      admin,
+      auth.tenantId,
+      body.id,
+    );
+    if (!guard.ok) {
+      return NextResponse.json({ error: guard.error }, { status: 400 });
+    }
   }
 
   const { data, error } = await supabase
@@ -234,17 +325,14 @@ export async function PATCH(request: Request) {
   }
 
   if (body.is_active === false) {
-    const admin = createAdminClient();
-    const { error: clearError } = await admin
-      .from("user_accounts")
-      .update({ active_business_unit_id: null })
-      .eq("tenant_id", auth.tenantId)
-      .eq("active_business_unit_id", body.id);
-
+    const clearError = await clearActiveBusinessUnitPointers(
+      auth.tenantId,
+      body.id,
+    );
     if (clearError) {
       console.error(
         "[business-units] failed to clear active_business_unit_id on deactivate:",
-        clearError.message,
+        clearError,
       );
       return NextResponse.json(
         {

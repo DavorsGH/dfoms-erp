@@ -51,6 +51,7 @@ export default function BusinessUnitsSettings({
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [settingPrimaryId, setSettingPrimaryId] = useState<string | null>(null);
 
   const editingUnit = useMemo(
     () =>
@@ -90,6 +91,17 @@ export default function BusinessUnitsSettings({
         : [...current, next];
       return list.sort((a, b) => a.name.localeCompare(b.name));
     });
+  }
+
+  function applyPrimaryUnit(primaryId: string) {
+    setUnits((current) =>
+      current
+        .map((unit) => ({
+          ...unit,
+          is_primary: unit.id === primaryId,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    );
   }
 
   async function persistLogoUrl(
@@ -223,8 +235,14 @@ export default function BusinessUnitsSettings({
       | { business_unit?: BusinessUnitRow; error?: string }
       | null;
 
-    if (!response.ok || !payload?.business_unit) {
+    if (!response.ok) {
       setError(payload?.error ?? `Unable to ${actionLabel} business unit.`);
+      setTogglingId(null);
+      return;
+    }
+
+    if (!payload?.business_unit) {
+      setError(`Unable to ${actionLabel} business unit.`);
       setTogglingId(null);
       return;
     }
@@ -239,6 +257,42 @@ export default function BusinessUnitsSettings({
       isActive ? "Business unit reactivated." : "Business unit deactivated.",
     );
     setTogglingId(null);
+    router.refresh();
+  }
+
+  async function handleSetPrimary(unit: BusinessUnitRow) {
+    const confirmed = window.confirm(
+      `Set "${unit.name}" as the primary business unit? The primary unit is the default for system-generated records when no other business unit applies.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSettingPrimaryId(unit.id);
+    setError(null);
+    setSuccess(null);
+
+    const response = await fetch("/api/business-units", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: unit.id, set_primary: true }),
+    });
+
+    const payload = (await response.json().catch(() => null)) as
+      | { business_unit?: BusinessUnitRow; error?: string }
+      | null;
+
+    if (!response.ok || !payload?.business_unit) {
+      setError(payload?.error ?? "Unable to set primary business unit.");
+      setSettingPrimaryId(null);
+      return;
+    }
+
+    applyPrimaryUnit(payload.business_unit.id);
+    upsertUnit(payload.business_unit);
+    setSuccess(`"${unit.name}" is now the primary business unit.`);
+    setSettingPrimaryId(null);
     router.refresh();
   }
 
@@ -324,15 +378,22 @@ export default function BusinessUnitsSettings({
                       <h4 className="truncate text-base font-semibold text-[#0f2744]">
                         {unit.name}
                       </h4>
-                      <span
-                        className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          unit.is_active
-                            ? "bg-emerald-50 text-emerald-800"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {unit.is_active ? "Active" : "Inactive"}
-                      </span>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                            unit.is_active
+                              ? "bg-emerald-50 text-emerald-800"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {unit.is_active ? "Active" : "Inactive"}
+                        </span>
+                        {unit.is_primary ? (
+                          <span className="inline-flex rounded-full bg-[#0f2744]/10 px-2 py-0.5 text-xs font-medium text-[#0f2744]">
+                            Primary
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -358,29 +419,58 @@ export default function BusinessUnitsSettings({
                     type="button"
                     onClick={() => openEditForm(unit)}
                     className={secondaryButtonClassName}
-                    disabled={saving || togglingId === unit.id}
+                    disabled={
+                      saving ||
+                      togglingId === unit.id ||
+                      settingPrimaryId === unit.id
+                    }
                   >
                     Edit
                   </button>
-                  {unit.is_active ? (
+                  {unit.is_active && !unit.is_primary ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSetPrimary(unit)}
+                      className={secondaryButtonClassName}
+                      disabled={
+                        saving ||
+                        togglingId === unit.id ||
+                        settingPrimaryId === unit.id
+                      }
+                    >
+                      {settingPrimaryId === unit.id
+                        ? "Setting primary…"
+                        : "Set as primary"}
+                    </button>
+                  ) : null}
+                  {unit.is_active && !unit.is_primary ? (
                     <button
                       type="button"
                       onClick={() => handleSetActive(unit, false)}
                       className={dangerButtonClassName}
-                      disabled={saving || togglingId === unit.id}
+                      disabled={
+                        saving ||
+                        togglingId === unit.id ||
+                        settingPrimaryId === unit.id
+                      }
                     >
                       {togglingId === unit.id ? "Deactivating…" : "Deactivate"}
                     </button>
-                  ) : (
+                  ) : null}
+                  {!unit.is_active ? (
                     <button
                       type="button"
                       onClick={() => handleSetActive(unit, true)}
                       className={secondaryButtonClassName}
-                      disabled={saving || togglingId === unit.id}
+                      disabled={
+                        saving ||
+                        togglingId === unit.id ||
+                        settingPrimaryId === unit.id
+                      }
                     >
                       {togglingId === unit.id ? "Reactivating…" : "Reactivate"}
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </article>
             ))}

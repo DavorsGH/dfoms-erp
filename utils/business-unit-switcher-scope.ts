@@ -22,22 +22,30 @@ export function filterSwitcherUnitsForUser(
 export function resolveRestrictedActiveBusinessUnitId(
   allowedUnits: AllowedBusinessUnits,
   activeBusinessUnitId: string | null,
+  activeBusinessUnitIds: string[],
 ): string | null {
   if (allowedUnits === null) {
     return activeBusinessUnitId;
   }
 
-  const allowedSet = new Set(allowedUnits.businessUnitIds);
-  if (activeBusinessUnitId && allowedSet.has(activeBusinessUnitId)) {
+  const activeAllowed = allowedUnits.businessUnitIds.filter((id) =>
+    activeBusinessUnitIds.includes(id),
+  );
+
+  if (activeAllowed.length === 0) {
+    return null;
+  }
+
+  if (activeBusinessUnitId && activeAllowed.includes(activeBusinessUnitId)) {
     return activeBusinessUnitId;
   }
 
   const defaultId = allowedUnits.defaultBusinessUnitId?.trim() || null;
-  if (defaultId && allowedSet.has(defaultId)) {
+  if (defaultId && activeAllowed.includes(defaultId)) {
     return defaultId;
   }
 
-  return allowedUnits.businessUnitIds[0] ?? null;
+  return activeAllowed[0] ?? null;
 }
 
 export function resolveEffectiveSwitcherState(args: {
@@ -74,6 +82,7 @@ export function resolveEffectiveSwitcherState(args: {
     activeBusinessUnitId: resolveRestrictedActiveBusinessUnitId(
       args.allowedUnits,
       args.activeBusinessUnitId,
+      args.units.map((unit) => unit.id),
     ),
     viewAllBusinessUnits: false,
     allowViewAll: false,
