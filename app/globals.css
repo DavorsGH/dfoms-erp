@@ -23,6 +23,16 @@ body {
 }
 
 /**
+ * ScrollableTable scroll host (the div that wraps `<table>` rows).
+ * pan-x alone blocked vertical row scrolling on mobile; both axes must be allowed.
+ */
+.scrollable-table-host {
+  overflow-x: auto;
+  overflow-y: auto;
+  touch-action: pan-x pan-y;
+}
+
+/**
  * ScrollableTable edge pinning — both columns sticky when the scroll host is wide
  * enough; only column 2 (name) when narrow (see `.scrollable-table-host--single-sticky-edge`,
  * toggled from ScrollableTable via ResizeObserver on the host — not viewport breakpoints).
