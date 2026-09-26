@@ -42,8 +42,13 @@ body {
   --st-edge-col-2-width: 9.5rem;
 }
 
-/* Narrow scroll host: column 1 scrolls; column 2 (name) pinned at left. */
-.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(1),
+/* All register headers pin to the top of the scroll host (vertical scroll). */
+.scrollable-table-host table thead th {
+  position: sticky;
+  top: 0;
+}
+
+/* Narrow scroll host: column 1 body scrolls horizontally; header col 1 still pins vertically. */
 .scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table tbody td:nth-child(1):not([colspan]) {
   position: static;
   left: auto;
@@ -53,6 +58,18 @@ body {
   max-width: none;
   box-shadow: none;
   background-color: transparent;
+}
+
+.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(1) {
+  position: sticky;
+  top: 0;
+  left: auto;
+  z-index: 30;
+  width: auto;
+  min-width: max-content;
+  max-width: none;
+  box-shadow: none;
+  background-color: #0f2744;
 }
 
 .scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge
@@ -78,10 +95,6 @@ body {
   text-overflow: clip;
 }
 
-.scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(1) {
-  background-color: #0f2744;
-}
-
 .scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge
   table
   tbody
@@ -103,7 +116,8 @@ body {
 }
 
 .scrollable-table-host--sticky-edges.scrollable-table-host--single-sticky-edge table thead th:nth-child(2) {
-  z-index: 30;
+  top: 0;
+  z-index: 31;
   background-color: #0f2744;
 }
 
