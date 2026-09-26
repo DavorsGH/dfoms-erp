@@ -30,8 +30,8 @@ export const scrollableTableWrapCellClassName = "scrollable-table-cell--wrap";
  *
  * Phase 2 pattern (apply via this component in Phase 3):
  * - Desktop/tablet: unchanged table layout with vertical scroll when tall.
- * - Mobile (< md / 768px): horizontal scroll within this container only,
- *   with edge fade cues indicating more columns are available.
+ * - Mobile (< md / 768px): horizontal scroll within this container only;
+ *   optional swipe hint when more columns are off-screen.
  *
  * Do not add page-level horizontal overflow — only scroll inside this box.
  */
@@ -179,19 +179,11 @@ function useScrollableTableOverflowTitles(
   }, [enabled, hostRef]);
 }
 
-type HorizontalScrollAffordance = {
-  canScrollRight: boolean;
-  showSwipeHint: boolean;
-};
-
-function useHorizontalScrollAffordance(
+function useHorizontalScrollSwipeHint(
   hostRef: RefObject<HTMLDivElement | null>,
   enabled: boolean,
-): HorizontalScrollAffordance {
-  const [affordance, setAffordance] = useState<HorizontalScrollAffordance>({
-    canScrollRight: false,
-    showSwipeHint: false,
-  });
+): boolean {
+  const [showSwipeHint, setShowSwipeHint] = useState(false);
   const swipeHintDismissedRef = useRef(false);
 
   useEffect(() => {
@@ -206,11 +198,9 @@ function useHorizontalScrollAffordance(
       if (sl > 8) {
         swipeHintDismissedRef.current = true;
       }
-      setAffordance({
-        canScrollRight: canScroll && sl < maxScroll - 4,
-        showSwipeHint:
-          canScroll && sl < 4 && !swipeHintDismissedRef.current,
-      });
+      setShowSwipeHint(
+        canScroll && sl < 4 && !swipeHintDismissedRef.current,
+      );
     };
 
     update();
@@ -232,7 +222,7 @@ function useHorizontalScrollAffordance(
     };
   }, [enabled, hostRef]);
 
-  return affordance;
+  return showSwipeHint;
 }
 
 function useScrollableTableSingleStickyEdge(
@@ -272,7 +262,7 @@ export default function ScrollableTable({
 }: ScrollableTableProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   useScrollableTableOverflowTitles(hostRef, true);
-  const scrollAffordance = useHorizontalScrollAffordance(hostRef, stickyEdgeColumns);
+  const showSwipeHint = useHorizontalScrollSwipeHint(hostRef, stickyEdgeColumns);
   const singleStickyEdge = useScrollableTableSingleStickyEdge(
     hostRef,
     stickyEdgeColumns,
@@ -281,13 +271,7 @@ export default function ScrollableTable({
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="relative min-w-0">
-        <div
-          aria-hidden
-          className={`pointer-events-none absolute inset-y-0 right-0 z-[3] w-10 bg-gradient-to-l from-slate-300/50 via-white/95 to-transparent shadow-[-6px_0_12px_-8px_rgba(15,39,68,0.35)] transition-opacity duration-200 ${
-            scrollAffordance.canScrollRight ? "opacity-100" : "opacity-0"
-          } ${singleStickyEdge ? "" : "md:opacity-0 md:pointer-events-none"}`}
-        />
-        {scrollAffordance.showSwipeHint ? (
+        {showSwipeHint ? (
           <p
             aria-hidden
             className={`pointer-events-none absolute bottom-2 left-1/2 z-[3] -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm ${
