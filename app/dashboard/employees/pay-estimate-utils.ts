@@ -34,8 +34,14 @@ export type PayEstimateInputs = {
 export type PayEstimateConfig = {
   ssnitConfig: SsnitRateConfig | null;
   casualTaxConfig: CasualTaxRateConfig | null;
+  /** Bands already resolved for the estimate as-of date (see resolvePayEstimatePayeBands). */
   payeBands: PayeTaxBand[];
 };
+
+/** Calendar date used when resolving PAYE bands for net-pay estimates (law in force today). */
+export function payEstimatePayeAsOfDate(reference = new Date()): string {
+  return reference.toISOString().slice(0, 10);
+}
 
 export function calculateGrossMonthlyPay(employee: {
   basic_salary?: number | null;

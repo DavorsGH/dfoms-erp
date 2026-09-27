@@ -7,13 +7,17 @@ import type { NamedLookup } from "../lookup-types";
 import type { SiteLookup, EmployeeRecord } from "./employee-record-utils";
 import {
   mapCasualTaxConfigRow,
-  mapPayeBandRows,
   mapSsnitConfigRow,
+  payEstimatePayeAsOfDate,
   type CasualTaxRateConfig,
   type PayeTaxBand,
   type SalaryRateConfig,
   type SsnitRateConfig,
 } from "./pay-estimate-utils";
+import {
+  mapPayrollPayeBandRows,
+  pickPayeBandsForDate,
+} from "../hr-payroll/payroll-processing-utils";
 
 export type DepartmentLookup = {
   code: string;
@@ -225,6 +229,26 @@ export async function loadEmployeePayConfig(
     );
   }
 
+  let ssnitQuery = supabase
+    .from("ssnit_rate_config")
+    .select("*")
+    .order("effective_date", { ascending: false });
+  let casualQuery = supabase
+    .from("casual_tax_rate_config")
+    .select("*")
+    .order("effective_date", { ascending: false });
+  let payeQuery = supabase
+    .from("paye_tax_bands")
+    .select("band_order, lower_bound, upper_bound, rate, effective_date")
+    .order("effective_date", { ascending: false })
+    .order("band_order", { ascending: true });
+
+  if (tenantId) {
+    ssnitQuery = ssnitQuery.eq("tenant_id", tenantId);
+    casualQuery = casualQuery.eq("tenant_id", tenantId);
+    payeQuery = payeQuery.eq("tenant_id", tenantId);
+  }
+
   const [
     { data: salaryRates, error: salaryRatesError },
     { data: allowanceTypes },
@@ -236,12 +260,9 @@ export async function loadEmployeePayConfig(
     salaryRatesQuery,
     allowanceTypesQuery,
     compensationPoliciesQuery,
-    supabase.from("ssnit_rate_config").select("*").limit(1),
-    supabase.from("casual_tax_rate_config").select("*").limit(1),
-    supabase
-      .from("paye_tax_bands")
-      .select("*")
-      .order("band_from", { ascending: true }),
+    ssnitQuery,
+    casualQuery,
+    payeQuery,
   ]);
 
   if (salaryRatesError || ssnitError || casualError || payeError) {
@@ -261,8 +282,11 @@ export async function loadEmployeePayConfig(
     casualTaxConfig: mapCasualTaxConfigRow(
       (casualRows?.[0] as Record<string, unknown> | undefined) ?? null,
     ),
-    payeBands: mapPayeBandRows(
-      (payeRows as Record<string, unknown>[] | null) ?? [],
+    payeBands: pickPayeBandsForDate(
+      mapPayrollPayeBandRows(
+        (payeRows as Record<string, unknown>[] | null) ?? [],
+      ),
+      payEstimatePayeAsOfDate(),
     ),
   };
 }
