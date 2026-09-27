@@ -25,6 +25,7 @@ import type { ManualFinancialEntry } from "../../app/dashboard/finance/cash-flow
 import type { CashMovementManualEntry } from "../../app/dashboard/finance/cash-movement-utils";
 import {
   DIRECTORS_LOAN_NON_CASH_REFERENCE_PREFIX,
+  patchManualFinancialEntriesForDirectorLoanLedger,
   type DirectorsLoanLedgerEntry,
   type DirectorsLoanLedgerEntryType,
 } from "../../app/dashboard/finance/directors-loan-ledger-utils";
@@ -102,7 +103,6 @@ export function planLedgerInserts(
           const row = manualRows.find(
             (r) => r.period_month?.slice(0, 7) === period.slice(0, 7),
           );
-          const nonCash = (row?.notes ?? "").includes("[Non-cash]");
           const entry_date = getMonthEndDate(year, month);
           const payload: PlannedLedgerInsert = {
             tenant_id: tenantId,
@@ -111,9 +111,7 @@ export function planLedgerInserts(
             entry_type: "director_lent_company",
             amount: delta,
             description: "Migrated from monthly entry",
-            reference: nonCash
-              ? `${DIRECTORS_LOAN_NON_CASH_REFERENCE_PREFIX} migrated`
-              : "migrated",
+            reference: "migrated",
           };
           const key = `${payload.entry_type}:${payload.entry_date}:${payload.amount}`;
           if (!migratedRefs.has(key)) {
@@ -170,19 +168,31 @@ export function simulateLedgerEntries(
 
 export function patchManualEntriesForLedger(
   manuals: ManualFinancialEntry[],
-  _planned: PlannedLedgerInsert[],
+  planned: PlannedLedgerInsert[],
   fy: number,
+  existingLedger: DirectorsLoanLedgerEntry[] = [],
 ): ManualFinancialEntry[] {
-  return manuals.map((entry) => {
-    const y = Number(entry.period_month.slice(0, 4));
-    if (y !== fy) {
-      return entry;
-    }
-    return {
-      ...entry,
-      directors_loan: 0,
-    };
-  });
+  const ledgerForPatch = [
+    ...existingLedger,
+    ...simulateLedgerEntries(planned),
+  ];
+  return patchManualFinancialEntriesForDirectorLoanLedger(
+    manuals as ManualFinancialEntryRecord[],
+    ledgerForPatch,
+    fy,
+  ) as ManualFinancialEntry[];
+}
+
+export function normalizeMigratedLedgerReference(
+  reference: string | null,
+): string | null {
+  const ref = (reference ?? "").trim();
+  if (!ref.toLowerCase().startsWith(DIRECTORS_LOAN_NON_CASH_REFERENCE_PREFIX)) {
+    return reference;
+  }
+  const rest = ref.slice(DIRECTORS_LOAN_NON_CASH_REFERENCE_PREFIX.length).trim();
+  if (rest.startsWith("migrated")) return rest || "migrated";
+  return "migrated";
 }
 
 function resolveManualEntries(
@@ -424,6 +434,12 @@ export function compareReportBundles(
   }
 
   return diffs;
+}
+
+export function snapshotOldPath(
+  bundle: ReportBundle,
+): Record<string, number[]> {
+  return snapshotNewPath(bundle);
 }
 
 export function snapshotNewPath(

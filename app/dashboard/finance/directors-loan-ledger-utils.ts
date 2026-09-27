@@ -13,8 +13,6 @@ import {
   getEntryMonthIndex,
   type MonthlyTotals,
 } from "./profit-loss-utils";
-import type { CashMovementManualEntry } from "./cash-movement-utils";
-
 export const DIRECTORS_LOAN_LEDGER_SELECT =
   "id, tenant_id, business_unit_id, entry_date, entry_type, amount, description, reference, notes, linked_expense_id, reversed_at, reversed_by, reversal_reason, created_at, created_by";
 
@@ -262,6 +260,64 @@ export function calculateDirectorsLoanLedgerNetByMonth(
     dueFromDirector: roundMonthlyTotals(dueFromDirector),
   };
 }
+
+export function patchManualFinancialEntriesForDirectorLoanLedger(
+  manuals: Array<
+    ManualFinancialEntryRecordLike
+  >,
+  ledgerEntries: DirectorsLoanLedgerEntry[],
+  fy: number,
+): typeof manuals {
+  const proceedsByBuMonth = new Map<string, number>();
+  const repaymentsByBuMonth = new Map<string, number>();
+
+  for (const entry of ledgerEntries) {
+    if (isNonCashDirectorsLoanLedgerEntry(entry)) continue;
+    const y = Number(entry.entry_date.slice(0, 4));
+    if (y !== fy) continue;
+    const mi = getEntryMonthIndex(entry.entry_date, fy);
+    if (mi === null) continue;
+    const buKey = entry.business_unit_id ?? "null";
+    const key = `${buKey}:${mi}`;
+    const amount = Number(entry.amount) || 0;
+    if (entry.entry_type === "director_lent_company") {
+      proceedsByBuMonth.set(key, roundCurrency((proceedsByBuMonth.get(key) ?? 0) + amount));
+    }
+    if (entry.entry_type === "company_repaid_director") {
+      repaymentsByBuMonth.set(
+        key,
+        roundCurrency((repaymentsByBuMonth.get(key) ?? 0) + amount),
+      );
+    }
+  }
+
+  return manuals.map((row) => {
+    const y = Number(String(row.period_month).slice(0, 4));
+    if (y !== fy) return row;
+    const mi = getEntryMonthIndex(String(row.period_month).slice(0, 10), fy);
+    if (mi === null) return row;
+    const buKey = (row as { business_unit_id?: string | null }).business_unit_id ?? "null";
+    const key = `${buKey}:${mi}`;
+    const lent = proceedsByBuMonth.get(key) ?? 0;
+    const repaid = repaymentsByBuMonth.get(key) ?? 0;
+    return {
+      ...row,
+      directors_loan: 0,
+      loan_proceeds: roundCurrency(Math.max(0, (Number(row.loan_proceeds) || 0) - lent)),
+      loan_repayments: roundCurrency(
+        Math.max(0, (Number(row.loan_repayments) || 0) - repaid),
+      ),
+    };
+  });
+}
+
+type ManualFinancialEntryRecordLike = {
+  period_month: string;
+  loan_proceeds?: number | null;
+  loan_repayments?: number | null;
+  directors_loan?: number | null;
+  business_unit_id?: string | null;
+};
 
 export function calculateDirectorsLoanLedgerCashByMonth(
   ledgerEntries: DirectorsLoanLedgerEntry[],

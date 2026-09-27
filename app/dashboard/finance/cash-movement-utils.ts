@@ -47,7 +47,6 @@ import {
 import {
   calculateDirectorsLoanCashInflowsByMonth,
   calculateDirectorsLoanCashOutflowsByMonth,
-  shouldUseDirectorsLoanLedger,
   type DirectorsLoanLedgerEntry,
 } from "./directors-loan-ledger-utils";
 
@@ -377,7 +376,6 @@ export function buildMonthlyCashComponents(
           financialYear,
         );
   const ledgerEntries = inputs.directorsLoanLedgerEntries ?? [];
-  const useLedger = shouldUseDirectorsLoanLedger(ledgerEntries);
   const directorsLoanRepayments = calculateDirectorsLoanCashOutflowsByMonth(
     inputs.directorsLoanRepayments ?? [],
     ledgerEntries,
@@ -389,22 +387,8 @@ export function buildMonthlyCashComponents(
     inputs.tenantId,
     financialYear,
   );
-  const loanProceedsForCash = useLedger
-    ? roundMonthlyTotals(
-        loanProceeds.map((value, index) =>
-          roundCurrency((value ?? 0) - (directorsLoanInflows[index] ?? 0)),
-        ) as MonthlyTotals,
-      )
-    : loanProceeds;
-  const loanRepaymentsForCash = useLedger
-    ? roundMonthlyTotals(
-        loanRepayments.map((value, index) =>
-          roundCurrency(
-            Math.max(0, (value ?? 0) - (directorsLoanRepayments[index] ?? 0)),
-          ),
-        ) as MonthlyTotals,
-      )
-    : loanRepayments;
+  const loanProceedsForCash = loanProceeds;
+  const loanRepaymentsForCash = loanRepayments;
   const fixedAssetPurchases = roundMonthlyTotals(
     calculateFixedAssetPurchaseOutflowsByMonth(
       inputs.fixedAssets,
