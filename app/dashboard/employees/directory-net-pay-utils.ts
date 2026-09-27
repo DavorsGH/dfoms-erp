@@ -5,9 +5,6 @@ import {
   calculateLoanRepaymentForEmployee,
   calculatePayrollRow,
   countAbsencesForStaff,
-  mapCasualTaxConfigRows,
-  mapPayrollPayeBandRows,
-  mapSsnitConfigRows,
   resolvePayrollPolicyCompensation,
   sumOvertimeForEmployee,
   type PayrollAttendanceSource,
@@ -18,6 +15,7 @@ import {
   type PayrollTaxConfigs,
 } from "../hr-payroll/payroll-processing-utils";
 import type { LoanRegisterEntry } from "../hr-payroll/loan-register-utils";
+import { fetchStatutoryPayrollTaxConfigs } from "../hr-payroll/statutory-payroll-config-utils";
 import {
   formatPeriodLabel,
   getPeriodEndDate,
@@ -218,19 +216,6 @@ export async function loadDirectoryNetPayContext(
     .select("id, code, name, is_active, sort_order")
     .order("sort_order", { ascending: true });
   let compensationPoliciesQuery = supabase.from("compensation_policy").select("*");
-  let ssnitQuery = supabase
-    .from("ssnit_rate_config")
-    .select("*")
-    .order("effective_date", { ascending: false });
-  let casualQuery = supabase
-    .from("casual_tax_rate_config")
-    .select("*")
-    .order("effective_date", { ascending: false });
-  let payeQuery = supabase
-    .from("paye_tax_bands")
-    .select("band_order, lower_bound, upper_bound, rate, effective_date")
-    .order("effective_date", { ascending: false })
-    .order("band_order", { ascending: true });
 
   if (tenantId) {
     processingQuery = processingQuery.eq("tenant_id", tenantId);
@@ -243,9 +228,6 @@ export async function loadDirectoryNetPayContext(
       "tenant_id",
       tenantId,
     );
-    ssnitQuery = ssnitQuery.eq("tenant_id", tenantId);
-    casualQuery = casualQuery.eq("tenant_id", tenantId);
-    payeQuery = payeQuery.eq("tenant_id", tenantId);
   }
 
   const [
@@ -256,9 +238,7 @@ export async function loadDirectoryNetPayContext(
     { data: salaryRates },
     { data: allowanceTypes },
     { data: compensationPolicies },
-    { data: ssnitRows },
-    { data: casualRows },
-    { data: payeRows },
+    statutoryTaxBundle,
   ] = await Promise.all([
     processingQuery,
     attendanceQuery,
@@ -267,22 +247,10 @@ export async function loadDirectoryNetPayContext(
     salaryRatesQuery,
     allowanceTypesQuery,
     compensationPoliciesQuery,
-    ssnitQuery,
-    casualQuery,
-    payeQuery,
+    fetchStatutoryPayrollTaxConfigs(supabase),
   ]);
 
-  const taxConfigs: PayrollTaxConfigs = {
-    ssnitRows: mapSsnitConfigRows(
-      (ssnitRows as Record<string, unknown>[] | null) ?? [],
-    ),
-    casualRows: mapCasualTaxConfigRows(
-      (casualRows as Record<string, unknown>[] | null) ?? [],
-    ),
-    payeBands: mapPayrollPayeBandRows(
-      (payeRows as Record<string, unknown>[] | null) ?? [],
-    ),
-  };
+  const taxConfigs = statutoryTaxBundle.taxConfigs;
 
   const built = buildDirectoryNetPayByEmployee(
     employees,

@@ -55,6 +55,10 @@ import {
   type PayrollProcessingRow,
   type PayrollTaxConfigs,
 } from "./payroll-processing-utils";
+import {
+  assessStatutoryPayrollForPeriodMonth,
+  validateStatutoryPayrollBeforeLock,
+} from "./statutory-payroll-config-utils";
 import { syncProcessingAllowanceLines } from "./payroll-allowance-lines-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 import {
@@ -241,6 +245,36 @@ export default function PayrollProcessing({
     );
   }, [employees, compensationPolicyConfig, currentPeriod]);
 
+  const statutoryPayrollAssessment = useMemo(() => {
+    if (!currentPeriod) {
+      return { ok: true, missing: [], message: null };
+    }
+
+    const requireCasualTax = periodEmployees.some(
+      (employee) => String(employee.employment_type ?? "").trim() === "Casual",
+    );
+
+    return assessStatutoryPayrollForPeriodMonth(
+      taxConfigs,
+      currentPeriod.year,
+      currentPeriod.month,
+      { requireCasualTax },
+    );
+  }, [currentPeriod, periodEmployees, taxConfigs]);
+
+  const statutoryLockBlockMessage = useMemo(() => {
+    if (!currentPeriod) {
+      return null;
+    }
+
+    return validateStatutoryPayrollBeforeLock({
+      taxConfigs,
+      periodYear: currentPeriod.year,
+      periodMonth: currentPeriod.month,
+      employees: periodEmployees,
+    });
+  }, [currentPeriod, periodEmployees, taxConfigs]);
+
   const isPeriodClosed = isMonthClosed(monthEndClose);
   const isPartiallyLocked = isPartiallyLockedMonth(monthEndClose);
   const isFullyLocked = monthEndClose?.lock_status === PAYROLL_STATUS_LOCKED;
@@ -292,6 +326,10 @@ export default function PayrollProcessing({
       return `Permanent lock is only available on or after ${formatPeriodLabel(currentPeriod.year, currentPeriod.month)} ends (${endDate}). Use Partial Lock Period until then.`;
     }
 
+    if (statutoryLockBlockMessage) {
+      return statutoryLockBlockMessage;
+    }
+
     return undefined;
   }, [
     currentPeriod,
@@ -299,6 +337,7 @@ export default function PayrollProcessing({
     isPayrollMonthEndedForPeriod,
     isPeriodClosed,
     rows.length,
+    statutoryLockBlockMessage,
   ]);
 
   function getRowSources(
@@ -1503,14 +1542,23 @@ export default function PayrollProcessing({
                   {locking ? "Locking…" : "Lock Period"}
                 </button>
               </span>
-              <button
-                type="button"
-                onClick={handlePartialLockPeriod}
-                disabled={locking || loading || reopening || releasing || rows.length === 0}
-                className="rounded-md border border-amber-500 bg-amber-400 px-4 py-2 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Partial Lock Period
-              </button>
+              <span title={statutoryLockBlockMessage ?? undefined}>
+                <button
+                  type="button"
+                  onClick={handlePartialLockPeriod}
+                  disabled={
+                    locking ||
+                    loading ||
+                    reopening ||
+                    releasing ||
+                    rows.length === 0 ||
+                    Boolean(statutoryLockBlockMessage)
+                  }
+                  className="rounded-md border border-amber-500 bg-amber-400 px-4 py-2 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Partial Lock Period
+                </button>
+              </span>
             </>
           ) : null}
         </div>
@@ -1525,6 +1573,16 @@ export default function PayrollProcessing({
           {" · "}
           Status:{" "}
           <span className="font-medium text-[#0f2744]">{periodStatus}</span>
+        </p>
+      ) : null}
+
+      {currentPeriod &&
+      !isPeriodClosed &&
+      !statutoryPayrollAssessment.ok &&
+      statutoryPayrollAssessment.message ? (
+        <p className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">
+          {statutoryPayrollAssessment.message} Payroll lock is blocked until
+          Ghana statutory rates are available for this period.
         </p>
       ) : null}
 

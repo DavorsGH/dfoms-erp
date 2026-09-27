@@ -14,9 +14,6 @@ import {
   calculateLoanRepaymentForEmployee,
   calculatePayrollRow,
   countAbsencesForStaff,
-  mapCasualTaxConfigRows,
-  mapPayrollPayeBandRows,
-  mapSsnitConfigRows,
   resolvePayrollPolicyCompensation,
   sumOvertimeForEmployee,
   type PayrollAttendanceSource,
@@ -26,6 +23,7 @@ import {
   type PayrollProcessingRow,
   type PayrollTaxConfigs,
 } from "./payroll-processing-utils";
+import { fetchStatutoryPayrollTaxConfigs } from "./statutory-payroll-config-utils";
 import {
   getPeriodEndDate,
   resolveSelectedPeriod,
@@ -133,9 +131,7 @@ export async function fetchPayrollLiveRecalcBundle(
     { data: salaryRates, error: salaryRatesError },
     { data: allowanceTypes, error: allowanceTypesError },
     { data: compensationPolicies, error: compensationPoliciesError },
-    { data: ssnitRows, error: ssnitError },
-    { data: casualRows, error: casualError },
-    { data: payeRows, error: payeError },
+    statutoryTaxBundle,
   ] = await Promise.all([
     employeesQuery.order("staff_id", { ascending: true }),
     withOptionalTenant(
@@ -165,22 +161,7 @@ export async function fetchPayrollLiveRecalcBundle(
       supabase.from("compensation_policy").select("*"),
       tenantId,
     ),
-    withOptionalTenant(
-      supabase.from("ssnit_rate_config").select("*"),
-      tenantId,
-    ).order("effective_date", { ascending: false }),
-    withOptionalTenant(
-      supabase.from("casual_tax_rate_config").select("*"),
-      tenantId,
-    ).order("effective_date", { ascending: false }),
-    withOptionalTenant(
-      supabase
-        .from("paye_tax_bands")
-        .select("band_order, lower_bound, upper_bound, rate, effective_date"),
-      tenantId,
-    )
-      .order("effective_date", { ascending: false })
-      .order("band_order", { ascending: true }),
+    fetchStatutoryPayrollTaxConfigs(supabase),
   ]);
 
   return {
@@ -189,17 +170,7 @@ export async function fetchPayrollLiveRecalcBundle(
       attendance: (attendance as PayrollAttendanceSource[] | null) ?? [],
       overtime: (overtime as PayrollOvertimeSource[] | null) ?? [],
       loans: (loans as LoanRegisterEntry[] | null) ?? [],
-      taxConfigs: {
-        ssnitRows: mapSsnitConfigRows(
-          (ssnitRows as Record<string, unknown>[] | null) ?? [],
-        ),
-        casualRows: mapCasualTaxConfigRows(
-          (casualRows as Record<string, unknown>[] | null) ?? [],
-        ),
-        payeBands: mapPayrollPayeBandRows(
-          (payeRows as Record<string, unknown>[] | null) ?? [],
-        ),
-      },
+      taxConfigs: statutoryTaxBundle.taxConfigs,
       compensationPolicyConfig: {
         salaryRates: salaryRates ?? [],
         allowanceTypes: allowanceTypes ?? [],
@@ -214,9 +185,7 @@ export async function fetchPayrollLiveRecalcBundle(
       salaryRatesError?.message ??
       allowanceTypesError?.message ??
       compensationPoliciesError?.message ??
-      ssnitError?.message ??
-      casualError?.message ??
-      payeError?.message ??
+      statutoryTaxBundle.error ??
       null,
   };
 }

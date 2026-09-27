@@ -14,10 +14,7 @@ import {
   type SalaryRateConfig,
   type SsnitRateConfig,
 } from "./pay-estimate-utils";
-import {
-  mapPayrollPayeBandRows,
-  pickPayeBandsForDate,
-} from "../hr-payroll/payroll-processing-utils";
+import { loadStatutoryPayrollConfig } from "../hr-payroll/statutory-payroll-config-utils";
 
 export type DepartmentLookup = {
   code: string;
@@ -229,43 +226,21 @@ export async function loadEmployeePayConfig(
     );
   }
 
-  let ssnitQuery = supabase
-    .from("ssnit_rate_config")
-    .select("*")
-    .order("effective_date", { ascending: false });
-  let casualQuery = supabase
-    .from("casual_tax_rate_config")
-    .select("*")
-    .order("effective_date", { ascending: false });
-  let payeQuery = supabase
-    .from("paye_tax_bands")
-    .select("band_order, lower_bound, upper_bound, rate, effective_date")
-    .order("effective_date", { ascending: false })
-    .order("band_order", { ascending: true });
-
-  if (tenantId) {
-    ssnitQuery = ssnitQuery.eq("tenant_id", tenantId);
-    casualQuery = casualQuery.eq("tenant_id", tenantId);
-    payeQuery = payeQuery.eq("tenant_id", tenantId);
-  }
+  const payeAsOf = payEstimatePayeAsOfDate();
 
   const [
     { data: salaryRates, error: salaryRatesError },
     { data: allowanceTypes },
     { data: compensationPolicies },
-    { data: ssnitRows, error: ssnitError },
-    { data: casualRows, error: casualError },
-    { data: payeRows, error: payeError },
+    statutoryLoaded,
   ] = await Promise.all([
     salaryRatesQuery,
     allowanceTypesQuery,
     compensationPoliciesQuery,
-    ssnitQuery,
-    casualQuery,
-    payeQuery,
+    loadStatutoryPayrollConfig(supabase, payeAsOf),
   ]);
 
-  if (salaryRatesError || ssnitError || casualError || payeError) {
+  if (salaryRatesError || statutoryLoaded.error) {
     // Config tables may be empty during initial setup; fall back gracefully.
   }
 
@@ -277,17 +252,12 @@ export async function loadEmployeePayConfig(
       (compensationPolicies as EmployeePayConfig["compensationPolicies"] | null) ??
       [],
     ssnitConfig: mapSsnitConfigRow(
-      (ssnitRows?.[0] as Record<string, unknown> | undefined) ?? null,
+      statutoryLoaded.ssnitConfig as Record<string, unknown> | null | undefined,
     ),
     casualTaxConfig: mapCasualTaxConfigRow(
-      (casualRows?.[0] as Record<string, unknown> | undefined) ?? null,
+      statutoryLoaded.casualConfig as Record<string, unknown> | null | undefined,
     ),
-    payeBands: pickPayeBandsForDate(
-      mapPayrollPayeBandRows(
-        (payeRows as Record<string, unknown>[] | null) ?? [],
-      ),
-      payEstimatePayeAsOfDate(),
-    ),
+    payeBands: statutoryLoaded.payeBandsForDate,
   };
 }
 

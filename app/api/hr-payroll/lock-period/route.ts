@@ -17,6 +17,10 @@ import {
   resolvePayrollPeriodScopedEmployeeIds,
 } from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
 import type { PayrollProcessingRow } from "@/app/dashboard/hr-payroll/payroll-processing-utils";
+import {
+  fetchStatutoryPayrollTaxConfigs,
+  validateStatutoryPayrollBeforeLock,
+} from "@/app/dashboard/hr-payroll/statutory-payroll-config-utils";
 
 type LockPeriodBody = {
   payrollMonth?: string;
@@ -128,6 +132,59 @@ export async function POST(request: Request) {
         },
         { status: 400 },
       );
+    }
+
+    const periodYear =
+      body.periodYear ??
+      (payrollMonth ? Number(payrollMonth.slice(0, 4)) : undefined);
+    const periodMonth =
+      body.periodMonth ??
+      (payrollMonth ? Number(payrollMonth.slice(5, 7)) : undefined);
+
+    if (periodYear && periodMonth) {
+      const { taxConfigs, error: statutoryFetchError } =
+        await fetchStatutoryPayrollTaxConfigs(admin);
+      if (statutoryFetchError) {
+        return NextResponse.json(
+          { error: statutoryFetchError },
+          { status: 400 },
+        );
+      }
+
+      let employeesQuery = admin
+        .from("employees")
+        .select("employment_type")
+        .eq("tenant_id", tenantId);
+      if (employeeIds !== null) {
+        if (employeeIds.length === 0) {
+          return NextResponse.json(
+            { error: "No employees in scope for this lock." },
+            { status: 400 },
+          );
+        }
+        employeesQuery = employeesQuery.in("employee_id", employeeIds);
+      }
+
+      const { data: scopedEmployeeRows, error: scopedEmployeesError } =
+        await employeesQuery;
+      if (scopedEmployeesError) {
+        return NextResponse.json(
+          { error: scopedEmployeesError.message },
+          { status: 400 },
+        );
+      }
+
+      const statutoryBlock = validateStatutoryPayrollBeforeLock({
+        taxConfigs,
+        periodYear,
+        periodMonth,
+        employees: (scopedEmployeeRows ?? []) as Array<{
+          employment_type: string | null;
+        }>,
+      });
+      if (statutoryBlock) {
+        return NextResponse.json({ error: statutoryBlock }, { status: 400 });
+      }
     }
 
     const { data, error } = await admin.rpc("lock_payroll_period", {

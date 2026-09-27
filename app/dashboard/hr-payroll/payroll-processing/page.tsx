@@ -15,13 +15,11 @@ import type { AppRole } from "@/app/dashboard/user-account-types";
 import { canManagePayrollPeriod } from "@/utils/rbac-access";
 import HrPayrollShell from "../hr-payroll-shell";
 import PayrollProcessing from "../payroll-processing";
-import {
-  mapCasualTaxConfigRows,
-  mapPayrollPayeBandRows,
-  mapSsnitConfigRows,
-  type PayrollAttendanceSource,
-  type PayrollEmployeeSource,
-  type PayrollOvertimeSource,
+import { fetchStatutoryPayrollTaxConfigs } from "../statutory-payroll-config-utils";
+import type {
+  PayrollAttendanceSource,
+  PayrollEmployeeSource,
+  PayrollOvertimeSource,
 } from "../payroll-processing-utils";
 import type { MonthEndCloseRecord } from "../payroll-period-utils";
 import type { LoanRegisterEntry } from "../loan-register-utils";
@@ -52,27 +50,6 @@ export default async function PayrollProcessingPage() {
     activeBusinessUnitId,
   });
 
-  const taxConfigQueries = tenantId
-    ? ([
-        admin
-          .from("ssnit_rate_config")
-          .select("*")
-          .eq("tenant_id", tenantId)
-          .order("effective_date", { ascending: false }),
-        admin
-          .from("casual_tax_rate_config")
-          .select("*")
-          .eq("tenant_id", tenantId)
-          .order("effective_date", { ascending: false }),
-        admin
-          .from("paye_tax_bands")
-          .select("band_order, lower_bound, upper_bound, rate, effective_date")
-          .eq("tenant_id", tenantId)
-          .order("effective_date", { ascending: false })
-          .order("band_order", { ascending: true }),
-      ] as const)
-    : null;
-
   const employeeSelect =
     "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
 
@@ -87,9 +64,7 @@ export default async function PayrollProcessingPage() {
     { data: salaryRates },
     { data: allowanceTypes },
     { data: compensationPolicies },
-    ssnitResult,
-    casualResult,
-    payeResult,
+    statutoryTaxBundle,
   ] = await Promise.all([
     supabase.from("payroll_processing").select("payroll_month"),
     supabase.from("payroll_history").select("payroll_month"),
@@ -137,22 +112,11 @@ export default async function PayrollProcessingPage() {
       .from("compensation_policy")
       .select("*")
       .eq("tenant_id", tenantId),
-    taxConfigQueries?.[0] ?? Promise.resolve({ data: null, error: null }),
-    taxConfigQueries?.[1] ?? Promise.resolve({ data: null, error: null }),
-    taxConfigQueries?.[2] ?? Promise.resolve({ data: null, error: null }),
+    fetchStatutoryPayrollTaxConfigs(admin),
   ]);
 
-  const ssnitRows = ssnitResult.data;
-  const ssnitError = ssnitResult.error;
-  const casualRows = casualResult.data;
-  const casualError = casualResult.error;
-  const payeRows = payeResult.data;
-  const payeError = payeResult.error;
-
   const fetchError =
-    (!tenantId
-      ? "Unable to resolve tenant for payroll tax configs."
-      : null) ??
+    (!tenantId ? "Unable to resolve tenant for payroll." : null) ??
     processingMonthsError?.message ??
     historyMonthsError?.message ??
     monthEndCloseError?.message ??
@@ -160,9 +124,7 @@ export default async function PayrollProcessingPage() {
     attendanceError?.message ??
     overtimeError?.message ??
     loansError?.message ??
-    ssnitError?.message ??
-    casualError?.message ??
-    payeError?.message ??
+    statutoryTaxBundle.error ??
     null;
 
   return (
@@ -191,17 +153,7 @@ export default async function PayrollProcessingPage() {
         initialAttendance={(attendance as PayrollAttendanceSource[] | null) ?? []}
         initialOvertime={(overtime as PayrollOvertimeSource[] | null) ?? []}
         initialLoans={(loans as LoanRegisterEntry[] | null) ?? []}
-        taxConfigs={{
-          ssnitRows: mapSsnitConfigRows(
-            (ssnitRows as Record<string, unknown>[] | null) ?? [],
-          ),
-          casualRows: mapCasualTaxConfigRows(
-            (casualRows as Record<string, unknown>[] | null) ?? [],
-          ),
-          payeBands: mapPayrollPayeBandRows(
-            (payeRows as Record<string, unknown>[] | null) ?? [],
-          ),
-        }}
+        taxConfigs={statutoryTaxBundle.taxConfigs}
         compensationPolicyConfig={{
           salaryRates: (salaryRates as SalaryRateConfig[] | null) ?? [],
           allowanceTypes: (allowanceTypes as AllowanceTypeRow[] | null) ?? [],
