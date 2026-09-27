@@ -31,10 +31,15 @@ import {
   filterManualEntriesForYear,
   type CashFlowRow,
 } from "./cash-flow-utils";
-import ScrollableTable, {
-  scrollableTableClassName,
-  scrollableTableHeadClassName,
-  scrollableTableThClassName,
+import {
+  FinancialStatementScrollableTable,
+  scrollableTableFinancialStatementClassName,
+  scrollableTableFinancialStatementHeadClassName,
+  scrollableTableFinancialStatementLineItemTdClassName,
+  scrollableTableFinancialStatementLineItemThClassName,
+  scrollableTableFinancialStatementThClassName,
+  scrollableTableStatementSectionRowClassName,
+  type ScrollableTableFinancialStatementLineItemKind,
 } from "../scrollable-table";
 
 type CashFlowProps = {
@@ -56,11 +61,17 @@ type CashFlowProps = {
   fetchError: string | null;
 };
 
-const fullYearHeaderClassName =
-  "sticky top-0 z-10 bg-slate-200 px-4 py-3 font-semibold text-[#0f2744]";
-
 const fullYearCellClassName =
-  "bg-slate-100 px-4 py-3 font-semibold text-[#0f2744]";
+  "bg-slate-100 px-4 py-3 text-[#0f2744]";
+
+function cashFlowLineItemKind(
+  row: CashFlowRow,
+): ScrollableTableFinancialStatementLineItemKind {
+  if (row.kind === "section") return "section";
+  if (row.kind === "subtotal") return "subtotal";
+  if (row.kind === "total") return "total";
+  return "normal";
+}
 
 function formatAmount(amount: number): string {
   return formatGHS(amount);
@@ -68,19 +79,20 @@ function formatAmount(amount: number): string {
 
 function getRowClassName(row: CashFlowRow, index: number): string {
   if (row.kind === "section") {
-    return "bg-[#0f2744] text-sm font-semibold uppercase tracking-wide text-white";
+    return scrollableTableStatementSectionRowClassName;
   }
 
-  if (
-    row.kind === "subtotal" ||
-    row.kind === "total" ||
-    row.kind === "metric" ||
-    row.kind === "balance"
-  ) {
+  if (row.kind === "subtotal" || row.kind === "total") {
     return "bg-slate-50 text-sm font-semibold text-[#0f2744]";
   }
 
-  return index % 2 === 1 ? "bg-slate-50 text-slate-700" : "text-slate-700";
+  if (row.kind === "metric" || row.kind === "balance") {
+    return "bg-slate-50 text-sm text-[#0f2744]";
+  }
+
+  return index % 2 === 1
+    ? "bg-slate-50 text-sm text-slate-700"
+    : "text-sm text-slate-700";
 }
 
 function getFullYearAmount(row: CashFlowRow): number {
@@ -184,33 +196,35 @@ export default function CashFlow({
         </p>
       )}
 
-      <ScrollableTable>
-        <table className={scrollableTableClassName}>
-          <thead className={scrollableTableHeadClassName}>
+      <FinancialStatementScrollableTable>
+        <table className={scrollableTableFinancialStatementClassName}>
+          <thead className={scrollableTableFinancialStatementHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Line Item</th>
+              <th className={scrollableTableFinancialStatementLineItemThClassName}>
+                Line Item
+              </th>
               {MONTH_LABELS.map((month) => (
-                <th key={month} className={scrollableTableThClassName}>
+                <th
+                  key={month}
+                  className={`${scrollableTableFinancialStatementThClassName} whitespace-nowrap`}
+                >
                   {month} {report.financialYear}
                 </th>
               ))}
-              <th className={fullYearHeaderClassName}>Full Year</th>
+              <th
+                className={`${scrollableTableFinancialStatementThClassName} whitespace-nowrap`}
+              >
+                Full Year
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {report.rows.map((row, index) => (
               <tr key={row.key} className={getRowClassName(row, index)}>
                 <td
-                  className={`px-4 py-3 ${
-                    row.kind === "section"
-                      ? "font-semibold uppercase"
-                      : row.kind === "subtotal" ||
-                          row.kind === "total" ||
-                          row.kind === "metric" ||
-                          row.kind === "balance"
-                        ? "font-semibold"
-                        : ""
-                  }`}
+                  className={scrollableTableFinancialStatementLineItemTdClassName(
+                    cashFlowLineItemKind(row),
+                  )}
                 >
                   {row.label}
                 </td>
@@ -219,18 +233,27 @@ export default function CashFlow({
                     {MONTH_LABELS.map((month) => (
                       <td key={month} className="px-4 py-3" />
                     ))}
-                    <td className={fullYearCellClassName} />
+                    <td className="px-4 py-3" />
                   </>
                 ) : (
                   <>
                     {row.amounts
                       .slice(0, FULL_YEAR_INDEX)
                       .map((amount, monthIndex) => (
-                        <td key={monthIndex} className="px-4 py-3">
+                        <td
+                          key={monthIndex}
+                          className="whitespace-nowrap px-4 py-3"
+                        >
                           {formatAmount(amount)}
                         </td>
                       ))}
-                    <td className={fullYearCellClassName}>
+                    <td
+                      className={`whitespace-nowrap ${fullYearCellClassName}${
+                        row.kind === "subtotal" || row.kind === "total"
+                          ? " font-semibold"
+                          : ""
+                      }`}
+                    >
                       {formatAmount(getFullYearAmount(row))}
                     </td>
                   </>
@@ -239,7 +262,7 @@ export default function CashFlow({
             ))}
           </tbody>
         </table>
-      </ScrollableTable>
+      </FinancialStatementScrollableTable>
 
       <p className="text-sm text-slate-600">
         Manual cash flow inputs are managed in{" "}

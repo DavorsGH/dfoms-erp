@@ -114,6 +114,8 @@ export type DashboardSummaryCards = {
   };
   /** Key Balance Sheet liability line amounts for the selected month. */
   balanceSheetLiabilityLines: BalanceSheetLiabilityLine[];
+  /** Director owes company — Due from Director asset line (ledger net). */
+  dueFromDirectorGhs: number;
 };
 
 export type BalanceSheetLiabilityLine = {
@@ -464,6 +466,9 @@ function buildMonthSnapshot(input: {
     monthIndex,
   );
   const cashRow = balanceSheetReport.rows.find((row) => row.key === "cash");
+  const dueFromDirectorRow = balanceSheetReport.rows.find(
+    (row) => row.key === "due-from-director",
+  );
   const closeRecord = getCurrentMonthCloseRecord(
     input.monthEndCloseRecords,
     input.year,
@@ -569,6 +574,9 @@ function buildMonthSnapshot(input: {
         balanceSheetReport,
         monthIndex,
       ),
+      dueFromDirectorGhs: dueFromDirectorRow
+        ? getBalanceSheetAmountForMonth(dueFromDirectorRow, monthIndex)
+        : 0,
     },
     payroll: {
       periodLabel,

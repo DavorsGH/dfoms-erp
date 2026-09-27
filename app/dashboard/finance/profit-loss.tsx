@@ -14,10 +14,15 @@ import {
   type ProfitLossIncomeEntry,
   type ProfitLossRow,
 } from "./profit-loss-utils";
-import ScrollableTable, {
-  scrollableTableClassName,
-  scrollableTableHeadClassName,
-  scrollableTableThClassName,
+import {
+  FinancialStatementScrollableTable,
+  scrollableTableFinancialStatementClassName,
+  scrollableTableFinancialStatementHeadClassName,
+  scrollableTableFinancialStatementLineItemTdClassName,
+  scrollableTableFinancialStatementLineItemThClassName,
+  scrollableTableFinancialStatementThClassName,
+  scrollableTableStatementSectionRowClassName,
+  type ScrollableTableFinancialStatementLineItemKind,
 } from "../scrollable-table";
 
 type ProfitLossProps = {
@@ -28,11 +33,17 @@ type ProfitLossProps = {
   fetchError: string | null;
 };
 
-const fullYearHeaderClassName =
-  "sticky top-0 z-10 bg-slate-200 px-4 py-3 font-semibold text-[#0f2744]";
-
 const fullYearCellClassName =
-  "bg-slate-100 px-4 py-3 font-semibold text-[#0f2744]";
+  "bg-slate-100 px-4 py-3 text-[#0f2744]";
+
+function profitLossLineItemKind(
+  row: ProfitLossRow,
+): ScrollableTableFinancialStatementLineItemKind {
+  if (row.kind === "section") return "section";
+  if (row.kind === "subtotal") return "subtotal";
+  if (row.kind === "total") return "total";
+  return "normal";
+}
 
 function formatAmount(row: ProfitLossRow, amount: number): string {
   if (row.kind === "percent") {
@@ -44,14 +55,20 @@ function formatAmount(row: ProfitLossRow, amount: number): string {
 
 function getRowClassName(row: ProfitLossRow, index: number): string {
   if (row.kind === "section") {
-    return "bg-[#0f2744] text-sm font-semibold uppercase tracking-wide text-white";
+    return scrollableTableStatementSectionRowClassName;
   }
 
-  if (row.kind === "subtotal" || row.kind === "total" || row.kind === "metric") {
+  if (row.kind === "subtotal" || row.kind === "total") {
     return "bg-slate-50 text-sm font-semibold text-[#0f2744]";
   }
 
-  return index % 2 === 1 ? "bg-slate-50 text-slate-700" : "text-slate-700";
+  if (row.kind === "metric") {
+    return "bg-slate-50 text-sm text-[#0f2744]";
+  }
+
+  return index % 2 === 1
+    ? "bg-slate-50 text-sm text-slate-700"
+    : "text-sm text-slate-700";
 }
 
 export default function ProfitLoss({
@@ -101,32 +118,35 @@ export default function ProfitLoss({
         </p>
       )}
 
-      <ScrollableTable>
-        <table className={scrollableTableClassName}>
-          <thead className={scrollableTableHeadClassName}>
+      <FinancialStatementScrollableTable>
+        <table className={scrollableTableFinancialStatementClassName}>
+          <thead className={scrollableTableFinancialStatementHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Line Item</th>
+              <th className={scrollableTableFinancialStatementLineItemThClassName}>
+                Line Item
+              </th>
               {MONTH_LABELS.map((month) => (
-                <th key={month} className={scrollableTableThClassName}>
+                <th
+                  key={month}
+                  className={`${scrollableTableFinancialStatementThClassName} whitespace-nowrap`}
+                >
                   {month} {report.financialYear}
                 </th>
               ))}
-              <th className={fullYearHeaderClassName}>Full Year</th>
+              <th
+                className={`${scrollableTableFinancialStatementThClassName} whitespace-nowrap`}
+              >
+                Full Year
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {report.rows.map((row, index) => (
               <tr key={row.key} className={getRowClassName(row, index)}>
                 <td
-                  className={`px-4 py-3 ${
-                    row.kind === "section"
-                      ? "font-semibold uppercase"
-                      : row.kind === "subtotal" ||
-                          row.kind === "total" ||
-                          row.kind === "metric"
-                        ? "font-semibold"
-                        : ""
-                  }`}
+                  className={scrollableTableFinancialStatementLineItemTdClassName(
+                    profitLossLineItemKind(row),
+                  )}
                 >
                   {row.label}
                 </td>
@@ -135,18 +155,27 @@ export default function ProfitLoss({
                     {MONTH_LABELS.map((month) => (
                       <td key={month} className="px-4 py-3" />
                     ))}
-                    <td className={fullYearCellClassName} />
+                    <td className="px-4 py-3" />
                   </>
                 ) : (
                   <>
                     {row.amounts
                       .slice(0, FULL_YEAR_INDEX)
                       .map((amount, monthIndex) => (
-                        <td key={monthIndex} className="px-4 py-3">
+                        <td
+                          key={monthIndex}
+                          className="whitespace-nowrap px-4 py-3"
+                        >
                           {formatAmount(row, amount)}
                         </td>
                       ))}
-                    <td className={fullYearCellClassName}>
+                    <td
+                      className={`whitespace-nowrap ${fullYearCellClassName}${
+                        row.kind === "subtotal" || row.kind === "total"
+                          ? " font-semibold"
+                          : ""
+                      }`}
+                    >
                       {formatAmount(row, row.amounts[FULL_YEAR_INDEX] ?? 0)}
                     </td>
                   </>
@@ -155,7 +184,7 @@ export default function ProfitLoss({
             ))}
           </tbody>
         </table>
-      </ScrollableTable>
+      </FinancialStatementScrollableTable>
     </div>
   );
 }

@@ -183,7 +183,7 @@ export function getStaffAssistantTools(
       ),
       tool(
         GET_BALANCE_SHEET_STATUS_TOOL_NAME,
-        "Balance Sheet Check (balanced vs out-of-balance) with key liability lines for the dashboard month — AP on the BS is month-end outstanding (later-dated payments do not rewrite earlier months). Nightly integrity audit covers each business unit.",
+        "Balance Sheet Check (balanced vs out-of-balance) for the dashboard month with key liability lines, Director's Loan liability (company owes director), Due from Director asset (director owes company), and net Director's Loan position label from the ledger. AP is month-end outstanding (later-dated payments do not rewrite earlier months).",
       ),
       tool(
         GET_BUDGET_STATUS_TOOL_NAME,
@@ -569,7 +569,8 @@ export function staffAccountToolsSystemPromptAddition(
 
   if (canAccessFinanceSection(role)) {
     lines.push(
-      "- get_financial_summary / get_balance_sheet_status: Dashboard financial summary and balance sheet check (includes key liability line amounts)",
+      "- get_financial_summary / get_balance_sheet_status: Dashboard financial summary and balance sheet check (key liability lines, Director's Loan liability, Due from Director asset, net position label from ledger)",
+      "- Director's Loan how-to (handbook §6.5): ledger on Manual Financial Entries; personal company-paid expenses → ledger type 'Company paid for my personal expense', not Expense Register; correct via Edit/Reverse, never delete",
       "- get_budget_status: Budget vs Actual (Monthly Pro-rated) — budgeted/actual/variance/status per category (optional month, year, project_id); use for budget status, budget vs actual, over/under budget, and category spend vs budget questions instead of handbook RAG",
       "- get_outstanding_invoices / get_outstanding_payables: unpaid client invoices and supplier payables with aging",
       "- get_tax_ledger_status: open WHT/VAT/PAYE/SSNIT statutory balances",

@@ -180,6 +180,83 @@ body {
 }
 
 /**
+ * Financial statements (Balance Sheet, Cash Flow, P&L, statement reports).
+ * Independent of register `.scrollable-table-host--sticky-edges` rules.
+ */
+.scrollable-table-host--financial-statement {
+  --fs-line-item-width: 15rem;
+}
+
+.scrollable-table-host--financial-statement table {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+}
+
+.scrollable-table-host--financial-statement table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: #0f2744;
+  color: #ffffff;
+}
+
+.scrollable-table-host--financial-statement table thead th:first-child {
+  left: 0;
+  z-index: 30;
+  min-width: var(--fs-line-item-width);
+  width: var(--fs-line-item-width);
+  max-width: var(--fs-line-item-width);
+  box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
+}
+
+.scrollable-table-host--financial-statement
+  table
+  tbody
+  td:first-child:not([colspan]) {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  min-width: var(--fs-line-item-width);
+  width: var(--fs-line-item-width);
+  max-width: var(--fs-line-item-width);
+  box-sizing: border-box;
+  box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
+  background-color: #ffffff;
+  color: inherit;
+}
+
+.scrollable-table-host--financial-statement
+  table
+  tbody
+  tr.bg-slate-50
+  td:first-child:not([colspan]) {
+  background-color: rgb(248 250 252);
+}
+
+.scrollable-table-host--financial-statement
+  table
+  tbody
+  tr.scrollable-table-row--statement-section
+  td:first-child:not([colspan]) {
+  background-color: #0f2744;
+  color: #ffffff;
+}
+
+.scrollable-table-host--financial-statement
+  table
+  thead
+  th:first-child.scrollable-table-cell--wrap,
+.scrollable-table-host--financial-statement
+  table
+  tbody
+  td:first-child:not([colspan]).scrollable-table-cell--wrap {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+/**
  * ScrollableTable text overflow — sticky edge columns have fixed max-widths but
  * previously allowed visible overflow into the next column (whitespace-nowrap on
  * the table). Truncate with ellipsis; full value is surfaced via title in
@@ -208,7 +285,7 @@ body {
  * Long free-text body cells (cols 3+ on sticky tables, all non-edge cols elsewhere).
  * Exclude sticky edge cols 1–2 so their width caps are never overridden by 18rem.
  */
-.scrollable-table-host table tbody td:not([colspan]):not(.scrollable-table-cell--wrap):not(:last-child):not(:nth-child(1)):not(:nth-child(2)) {
+.scrollable-table-host--sticky-edges table tbody td:not([colspan]):not(.scrollable-table-cell--wrap):not(:last-child):not(:nth-child(1)):not(:nth-child(2)) {
   max-width: 18rem;
   overflow: hidden;
   text-overflow: ellipsis;

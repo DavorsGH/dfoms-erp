@@ -579,6 +579,19 @@ export async function getBalanceSheetStatus(): Promise<unknown> {
     "@/app/dashboard/finance/income-register-utils"
   );
 
+  const directorsLoanLine = summary.balanceSheetLiabilityLines.find(
+    (line) => line.key === "directors-loan",
+  );
+  const dueFromDirectorGhs = summary.dueFromDirectorGhs ?? 0;
+  const owedToDirector = directorsLoanLine?.amountGhs ?? 0;
+  const owedByDirector = dueFromDirectorGhs;
+  let directorsLoanNetLabel = "Director and company are square (GHS 0.00 net).";
+  if (owedToDirector > 0.005) {
+    directorsLoanNetLabel = `Company owes director ${formatGHS(owedToDirector)}`;
+  } else if (owedByDirector > 0.005) {
+    directorsLoanNetLabel = `Director owes company ${formatGHS(owedByDirector)}`;
+  }
+
   return {
     asOfPeriodLabel: summary.periodLabel,
     currency: "GHS" as const,
@@ -592,6 +605,12 @@ export async function getBalanceSheetStatus(): Promise<unknown> {
       label: line.label,
       amountGhs: line.amountGhs,
     })),
+    directorsLoanPosition: {
+      owedToDirectorGhs: owedToDirector,
+      owedByDirectorGhs: owedByDirector,
+      dueFromDirectorGhs: owedByDirector,
+      netLabel: directorsLoanNetLabel,
+    },
     fetchWarning: dashboardResult.fetchError,
   };
 }

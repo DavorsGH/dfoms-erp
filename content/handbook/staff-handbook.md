@@ -539,8 +539,72 @@ Fixed Asset credit APs).
 
 ## **6.5 Manual Financial Entries**
 
-For adjustments and entries that do not belong in the Income or Expense
-Registers directly (for example, journal-style corrections).
+Finance → Manual Financial Entries is where you record balance-sheet and
+cash-flow adjustments that are not ordinary Income or Expense register
+rows (for example bank loan balances, other long-term liabilities, opening
+cash, and other cash inflows).
+
+### **Director's Loan ledger**
+
+Director's Loan movements are **not** entered as a monthly stock figure
+any more. Each movement is its own **dated line** on the **Director's Loan**
+ledger (same screen, below the monthly table). For each entry you set:
+
+-   **Date** --- when the movement happened
+-   **Type** --- one of four choices (plain language below)
+-   **Amount**
+-   **Business unit** --- when you work in a single unit; stamped from the
+    switcher when you create the row
+-   **Description** and **Notes** (optional)
+-   **Linked expense** (optional) --- tie the row to an Expense Register
+    line when relevant
+
+**The four types and what they mean**
+
+  **Type (plain language)**                    **Cash effect**              **Who owes whom**
+  -------------------------------------------- ---------------------------- ---------------------------------
+  I lent the company money                     Cash **into** the business   Company owes the director more
+  Company repaid me                            Cash **out** of the business Company owes the director less
+  Company paid for my personal expense         Cash **out** of the business Director owes the company more
+  I repaid the company                         Cash **into** the business   Director owes the company less
+
+The ledger shows a **position line** at the top, for example **Company
+owes director** or **Director owes company**, with the net amount in
+GHS.
+
+On the **Balance Sheet**, when the director owes the company, **Due from
+Director** appears under **Assets** (money the business should recover
+from the director). When the company owes the director, the liability
+appears on the **Director's Loan** line under liabilities.
+
+**Corrections --- Edit or Reverse, never Delete**
+
+Wrong amount, date, or type? Use **Edit** on the ledger row, or
+**Reverse** (you must give a reason). Reversed rows stay in the audit
+trail; they no longer affect cash or the balance sheet. Do **not** delete
+ledger rows.
+
+**Personal expenses paid with company money**
+
+If the company paid for the director's **personal** spending, do **not**
+post it in the **Expense Register** as a normal business expense. Record
+**Company paid for my personal expense** on the Director's Loan ledger
+instead (cash out; director owes the company).
+
+### **Monthly manual row (Bank Loans, Other LTL, cash fields)**
+
+**Bank Loans** and **Other Long-Term Liabilities** still use the monthly
+table and guided actions (**Money received**, **Money repaid**, **Non-cash
+adjustment**) on that month row. **Loan Proceeds** and **Loan
+Repayments** on the monthly row are for **bank / other long-term loan
+cash only** --- not Director's Loan (Director's Loan cash is only on the
+ledger).
+
+**Delete** on a monthly row removes the **whole month row** for that
+business unit. If more than one field is non-zero, the confirmation warns
+you that deleting removes **all** of them (bank loans, LTL, loan
+proceeds, opening cash, etc.) --- use guided actions or edit to change a
+single field instead.
 
 ## **6.5a Budget**
 
@@ -1316,10 +1380,9 @@ the Bulk Import button on the Employee Directory --- see Section 2.4.
 
 ## **8.2a Ghana statutory payroll rates (platform-wide)**
 
-PAYE monthly bands, SSNIT percentages, and casual-worker flat tax are
-stored in **platform-wide** tables (`statutory_paye_tax_bands`,
-`statutory_ssnit_rate_config`, `statutory_casual_tax_rate_config`) with
-**effective dates** --- they are **not** configured per company under HR
+PAYE monthly bands, SSNIT percentages, and casual-worker flat tax come
+from **platform-wide statutory rate tables maintained by Davors** (with
+**effective dates**) --- they are **not** configured per company under HR
 Settings. Payroll Processing picks the ladder and rates that apply to the
 **period end date** (same for every tenant on the platform).
 
@@ -2294,6 +2357,17 @@ you paid at the warehouse.
 
   Fixed Asset        Equipment, vehicles, or property kept and used
                      long-term, tracked separately from Inventory
+
+  Director's Loan    Money moving between the director and the company,
+                     recorded as dated lines on Finance → Manual
+                     Financial Entries (Director's Loan ledger): lent,
+                     repaid, company paid for personal expense, or
+                     director repaid the company
+
+  Due from Director  Balance Sheet asset when the director owes the
+                     company (for example after "Company paid for my
+                     personal expense" entries); shown from the Director's
+                     Loan ledger net position
 
   PAYE               Pay As You Earn --- statutory income tax deducted
                      from payroll; Ghana monthly bands are platform-wide

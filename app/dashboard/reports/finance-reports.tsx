@@ -56,11 +56,19 @@ import type {
 } from "../finance/directors-loan-utils";
 import type { TaxLedgerEntry } from "../finance/tax-ledger-utils";
 import ScrollableTable, {
+  FinancialStatementScrollableTable,
   scrollableTableClassName,
+  scrollableTableFinancialStatementClassName,
+  scrollableTableFinancialStatementHeadClassName,
   scrollableTableHeadClassName,
+  scrollableTableFinancialStatementLineItemTdClassName,
+  scrollableTableFinancialStatementLineItemThClassName,
+  scrollableTableFinancialStatementThClassName,
+  scrollableTableStatementSectionRowClassName,
   scrollableTableThClassName,
   scrollableTableWrapTdClassName,
   scrollableTableWrapThClassName,
+  type ScrollableTableFinancialStatementLineItemKind,
 } from "../scrollable-table";
 import {
   AGING_BUCKET_LABELS,
@@ -156,24 +164,41 @@ function getStatementRowClassName(
   index: number,
 ): string {
   if (row.kind === "section") {
-    return "bg-[#0f2744] text-sm font-semibold uppercase tracking-wide text-white";
+    return scrollableTableStatementSectionRowClassName;
   }
 
-  if (row.kind === "subtotal" || row.kind === "total" || row.kind === "metric") {
+  if (row.kind === "subtotal" || row.kind === "total") {
     return "bg-slate-50 text-sm font-semibold text-[#0f2744]";
+  }
+
+  if (row.kind === "metric") {
+    return "bg-slate-50 text-sm text-[#0f2744]";
   }
 
   return getStripedRowClassName(index);
 }
 
+function statementReportLineItemKind(
+  row: StatementReportRow,
+): ScrollableTableFinancialStatementLineItemKind {
+  if (row.kind === "section") return "section";
+  if (row.kind === "subtotal") return "subtotal";
+  if (row.kind === "total") return "total";
+  return "normal";
+}
+
 function StatementReportTable({ rows }: { rows: StatementReportRow[] }) {
   return (
-    <ScrollableTable>
-      <table className={scrollableTableClassName}>
-        <thead className={scrollableTableHeadClassName}>
+    <FinancialStatementScrollableTable>
+      <table className={scrollableTableFinancialStatementClassName}>
+        <thead className={scrollableTableFinancialStatementHeadClassName}>
           <tr>
-            <th className={scrollableTableThClassName}>Line Item</th>
-            <th className={`${scrollableTableThClassName} text-right`}>
+            <th className={scrollableTableFinancialStatementLineItemThClassName}>
+              Line Item
+            </th>
+            <th
+              className={`${scrollableTableFinancialStatementThClassName} whitespace-nowrap text-right`}
+            >
               Amount
             </th>
           </tr>
@@ -181,15 +206,27 @@ function StatementReportTable({ rows }: { rows: StatementReportRow[] }) {
         <tbody className="divide-y divide-slate-200">
           {rows.map((row, index) => (
             <tr key={row.key} className={getStatementRowClassName(row, index)}>
-              <td className="px-4 py-3">{row.label}</td>
-              <td className="px-4 py-3 text-right">
+              <td
+                className={scrollableTableFinancialStatementLineItemTdClassName(
+                  statementReportLineItemKind(row),
+                )}
+              >
+                {row.label}
+              </td>
+              <td
+                className={`whitespace-nowrap px-4 py-3 text-right${
+                  row.kind === "subtotal" || row.kind === "total"
+                    ? " font-semibold"
+                    : ""
+                }`}
+              >
                 {formatStatementAmount(row)}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </ScrollableTable>
+    </FinancialStatementScrollableTable>
   );
 }
 

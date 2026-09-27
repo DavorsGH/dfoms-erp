@@ -45,7 +45,7 @@ export type ManualEntryFieldSection = {
 };
 
 export const MANUAL_ENTRY_PAIRING_NOTE =
-  "If you record a liability (like Bank Loans or Director's Loan), also record the matching amount under Loan Proceeds so the Balance Sheet stays balanced — unless it's a non-cash adjustment.";
+  "If you record Bank Loans or Other Long-Term Liabilities on this monthly row, also record the matching bank/LTL cash under Loan Proceeds or Loan Repayments so the Balance Sheet stays balanced — unless it's a non-cash adjustment. Director's Loan movements use the Director's Loan ledger below, not this monthly row.";
 
 export const MANUAL_ENTRY_SECTION_STYLES: Record<
   ManualEntryFieldSection["variant"],

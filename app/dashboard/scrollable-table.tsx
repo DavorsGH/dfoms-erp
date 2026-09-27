@@ -38,10 +38,57 @@ export const scrollableTableWrapCellClassName = "scrollable-table-cell--wrap";
 export const scrollableTableClassName =
   "min-w-full text-left text-sm whitespace-nowrap";
 
+/** Month / amount columns stay on one line; line item column wraps separately. */
+export const scrollableTableFinancialStatementClassName =
+  "min-w-full text-left text-sm";
+
 export const scrollableTableHeadClassName = "bg-[#0f2744] text-white";
 
 export const scrollableTableThClassName =
   "sticky top-0 z-10 bg-[#0f2744] px-4 py-3 font-medium text-white";
+
+/** Financial statements — sticky layout is entirely in `.scrollable-table-host--financial-statement`. */
+export const scrollableTableFinancialStatementHeadClassName = "text-white";
+
+export const scrollableTableFinancialStatementThClassName =
+  "px-4 py-3 font-medium text-white";
+
+export const scrollableTableFinancialStatementLineItemThClassName =
+  `${scrollableTableFinancialStatementThClassName} ${scrollableTableWrapCellClassName} whitespace-normal align-top break-normal`;
+
+export const scrollableTableLineItemThClassName =
+  `${scrollableTableThClassName} ${scrollableTableWrapCellClassName} whitespace-normal align-top`;
+
+export const scrollableTableLineItemTdClassName =
+  `px-4 py-3 align-top whitespace-normal break-words ${scrollableTableWrapCellClassName}`;
+
+export const scrollableTableFinancialStatementLineItemTdClassNameBase =
+  `px-4 py-3 align-top whitespace-normal break-words ${scrollableTableWrapCellClassName}`;
+
+export type ScrollableTableFinancialStatementLineItemKind =
+  | "section"
+  | "subtotal"
+  | "total"
+  | "normal";
+
+export function scrollableTableFinancialStatementLineItemTdClassName(
+  rowKind: ScrollableTableFinancialStatementLineItemKind,
+): string {
+  if (rowKind === "section") {
+    return `${scrollableTableFinancialStatementLineItemTdClassNameBase} break-normal uppercase`;
+  }
+  if (rowKind === "subtotal" || rowKind === "total") {
+    return `${scrollableTableFinancialStatementLineItemTdClassNameBase} font-semibold`;
+  }
+  return scrollableTableFinancialStatementLineItemTdClassNameBase;
+}
+
+/**
+ * P&L / Balance Sheet / Cash Flow section heading rows (ASSETS, LIABILITIES, …).
+ * Hook for `.scrollable-table-host--financial-statement` sticky line-item backgrounds.
+ */
+export const scrollableTableStatementSectionRowClassName =
+  "scrollable-table-row--statement-section bg-[#0f2744] text-sm uppercase tracking-wide text-white";
 
 /** Use on description / notes / other long free-text columns in scrollable tables. */
 export const scrollableTableWrapThClassName =
@@ -255,6 +302,43 @@ function useScrollableTableSingleStickyEdge(
   return singleStickyEdge;
 }
 
+function ScrollableTableFrame({
+  hostRef,
+  hostClassName,
+  showSwipeHint,
+  swipeHintWideOnly,
+  children,
+}: {
+  hostRef: RefObject<HTMLDivElement | null>;
+  hostClassName: string;
+  showSwipeHint: boolean;
+  swipeHintWideOnly?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="relative min-w-0">
+        {showSwipeHint ? (
+          <p
+            aria-hidden
+            className={`pointer-events-none absolute bottom-2 left-1/2 z-[3] -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm ${
+              swipeHintWideOnly ? "" : "md:hidden"
+            }`}
+          >
+            Swipe for more columns →
+          </p>
+        ) : null}
+        <div ref={hostRef} className={hostClassName}>
+          {children}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const scrollableTableHostBaseClassName =
+  "min-w-0 w-full max-h-[min(calc(100dvh-8rem),calc(100vh-300px))] overflow-x-auto overflow-y-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] scrollable-table-host";
+
 /** Viewport-bounded scroll box with sticky column headers and optional edge columns. */
 export default function ScrollableTable({
   children,
@@ -269,33 +353,45 @@ export default function ScrollableTable({
   );
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="relative min-w-0">
-        {showSwipeHint ? (
-          <p
-            aria-hidden
-            className={`pointer-events-none absolute bottom-2 left-1/2 z-[3] -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-2.5 py-1 text-[10px] font-medium text-slate-600 shadow-sm ${
-              singleStickyEdge ? "" : "md:hidden"
-            }`}
-          >
-            Swipe for more columns →
-          </p>
-        ) : null}
-        <div
-          ref={hostRef}
-          className={[
-            "min-w-0 w-full max-h-[min(calc(100dvh-8rem),calc(100vh-300px))] overflow-x-auto overflow-y-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] scrollable-table-host",
-            stickyEdgeColumns ? "scrollable-table-host--sticky-edges" : "",
-            stickyEdgeColumns && singleStickyEdge
-              ? "scrollable-table-host--single-sticky-edge"
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
-          {children}
-        </div>
-      </div>
-    </section>
+    <ScrollableTableFrame
+      hostRef={hostRef}
+      showSwipeHint={showSwipeHint}
+      swipeHintWideOnly={!singleStickyEdge}
+      hostClassName={[
+        scrollableTableHostBaseClassName,
+        stickyEdgeColumns ? "scrollable-table-host--sticky-edges" : "",
+        stickyEdgeColumns && singleStickyEdge
+          ? "scrollable-table-host--single-sticky-edge"
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {children}
+    </ScrollableTableFrame>
+  );
+}
+
+/**
+ * Balance Sheet / Cash Flow / P&L / statement reports — not register sticky-edges.
+ * See `.scrollable-table-host--financial-statement` in globals.css.
+ */
+export function FinancialStatementScrollableTable({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  useScrollableTableOverflowTitles(hostRef, true);
+  const showSwipeHint = useHorizontalScrollSwipeHint(hostRef, true);
+
+  return (
+    <ScrollableTableFrame
+      hostRef={hostRef}
+      showSwipeHint={showSwipeHint}
+      hostClassName={`${scrollableTableHostBaseClassName} scrollable-table-host--financial-statement`}
+    >
+      {children}
+    </ScrollableTableFrame>
   );
 }
