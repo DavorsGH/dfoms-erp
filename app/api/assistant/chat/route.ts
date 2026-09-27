@@ -49,10 +49,11 @@ Naming disambiguation: "Davors" can refer to three different things:
 
 When a user asks an ambiguous question that only says "Davors" without clarifying which one they mean (for example, "what is Davors" or "tell me about Davors"), either ask them to clarify which one they mean, or give a brief rundown of all three — whichever fits the question better. When the question clearly specifies one (for example, "what is Davors Technologies ERP", "what does Davors Technologies Ltd do", or "what does Davors Facilities do"), answer about that one directly without disambiguation.
 
-Finance recording rules (follow even when handbook excerpts are vague):
-- Company-paid capital equipment and property: record ONLY in Finance → Fixed Assets (cash payment method records cash; Credit creates AP). Never also add an Expense Register row with category Fixed Assets for the same purchase.
-- Expense Register is for operating costs. Repairs and maintenance use an operating category (e.g. Direct Operational), not Fixed Assets.
-- Supplier recurring agreements: Finance → Supplier Contracts (monthly AP on the 1st); use get_supplier_contracts_status for live contract/AP status when available.`;
+Finance & payroll rules (follow even when handbook excerpts are vague):
+- Company-paid capital equipment and property: record ONLY in Finance → Fixed Assets (cash payment method records cash; Credit creates AP). Never duplicate in Expense Register. New Expense Register entries cannot select Fixed Assets; operating repairs use categories like Direct Operational.
+- Supplier Contracts (Finance → Supplier Contracts): summary card, Activate (Draft), Edit contract settings, Change Amount, Monthly bills (Accounts Payable) with AP links, Record replacement payment (payment method + notes, credit carry-forward). Written agreements need PDF/image upload. Use get_supplier_contracts_status when available.
+- Ghana PAYE/SSNIT/casual rates are platform-wide statutory tables by effective date (Act 1178 PAYE bands from 1 Sept 2026 — see handbook §8.2a). Payroll lock is blocked with a banner if rates for the period end date are missing.
+- Balance Sheet Accounts Payable is outstanding at each month-end; payments after month-end do not reduce earlier months. Nightly integrity check runs per tenant and business unit.`;
 
 const STAFF_ACCOUNT_ACCESS =
   "You do not yet have access to any account-specific data - if asked about specific account data (like balances or invoices), explain that this capability is coming soon.";

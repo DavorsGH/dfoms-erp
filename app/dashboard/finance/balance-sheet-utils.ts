@@ -62,6 +62,11 @@ import {
   type DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
 import {
+  calculateDirectorsLoanLiabilityByMonth,
+  shouldUseDirectorsLoanLedger,
+  type DirectorsLoanLedgerEntry,
+} from "./directors-loan-ledger-utils";
+import {
   calculateStaffWelfarePayableByMonth,
   type BalanceSheetWelfareFundEntry,
 } from "./staff-welfare-fund-utils";
@@ -73,6 +78,10 @@ export type BalanceSheetReportOptions = {
   tenantId: string;
   accountsPayablePayments?: AccountsPayablePaymentRow[];
   directorsLoanRepayments?: DirectorsLoanRepaymentRow[];
+  directorsLoanLedgerEntries?: DirectorsLoanLedgerEntry[];
+  /** Sum director's loan net per business unit (All Businesses view). */
+  allBusinessUnitsDirectorsLoan?: boolean;
+  rawManualFinancialEntries?: CashMovementManualEntry[];
 };
 
 export type {
@@ -274,6 +283,60 @@ export function calculateManualLiabilityStockByMonth(
   return roundMonthlyTotals(totals);
 }
 
+type ManualEntryWithBusinessUnit = CashMovementManualEntry & {
+  business_unit_id?: string | null;
+};
+
+function scopeRowsByBusinessUnit<T extends { business_unit_id?: string | null }>(
+  rows: T[],
+  businessUnitId: string | null,
+): T[] {
+  return rows.filter((row) => (row.business_unit_id ?? null) === businessUnitId);
+}
+
+/** Legacy director's loan net when viewing All Businesses (per-BU stock + scoped repayments). */
+export function calculateDirectorsLoanNetAllBusinessUnits(
+  rawManualEntries: ManualEntryWithBusinessUnit[],
+  apPayments: AccountsPayablePaymentRow[],
+  repayments: DirectorsLoanRepaymentRow[],
+  tenantId: string,
+  financialYear: number,
+): MonthlyTotals {
+  const businessUnitIds = new Set<string | null>();
+  for (const entry of rawManualEntries) {
+    businessUnitIds.add(entry.business_unit_id ?? null);
+  }
+  for (const repayment of repayments) {
+    businessUnitIds.add(repayment.business_unit_id ?? null);
+  }
+
+  let summed = createEmptyMonthlyTotals();
+  for (const businessUnitId of businessUnitIds) {
+    const scopedManuals = scopeRowsByBusinessUnit(rawManualEntries, businessUnitId);
+    const stock = calculateManualLiabilityStockByMonth(
+      scopedManuals,
+      "directors_loan",
+      financialYear,
+    );
+    const scopedRepayments = scopeRowsByBusinessUnit(repayments, businessUnitId);
+    const scopedAp = scopeRowsByBusinessUnit(
+      apPayments as Array<
+        AccountsPayablePaymentRow & { business_unit_id?: string | null }
+      >,
+      businessUnitId,
+    );
+    const net = calculateDirectorsLoanNetByMonth(
+      stock,
+      scopedAp,
+      scopedRepayments,
+      tenantId,
+      financialYear,
+    );
+    summed = sumMonthlyTotals([summed, net]);
+  }
+  return roundMonthlyTotals(summed);
+}
+
 type OpenTaxBalancesByMonth = {
   whtReceivable: MonthlyTotals;
   whtPayable: MonthlyTotals;
@@ -440,6 +503,7 @@ function calculateCashAndCashEquivalentsByMonth(
       accountsPayableSettlements: payableEntries,
       accountsPayablePayments: options.accountsPayablePayments,
       directorsLoanRepayments: options.directorsLoanRepayments,
+      directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
       staffSalaryNetByPayrollMonth,
     },
     financialYear,
@@ -556,6 +620,39 @@ export function buildBalanceSheetReport(
       inventoryInput.referenceDate,
     ),
   );
+  const manualDirectorsLoan = calculateManualLiabilityStockByMonth(
+    manualEntries,
+    "directors_loan",
+    financialYear,
+  );
+  const ledgerEntries = options.directorsLoanLedgerEntries ?? [];
+  const useAllBuDirectorsLoan =
+    options.allBusinessUnitsDirectorsLoan &&
+    (options.rawManualFinancialEntries?.length ?? 0) > 0;
+  const directorsLoanLines =
+    useAllBuDirectorsLoan &&
+    !shouldUseDirectorsLoanLedger(ledgerEntries)
+      ? {
+          liability: calculateDirectorsLoanNetAllBusinessUnits(
+            options.rawManualFinancialEntries as ManualEntryWithBusinessUnit[],
+            options.accountsPayablePayments ?? [],
+            options.directorsLoanRepayments ?? [],
+            options.tenantId,
+            financialYear,
+          ),
+          dueFromDirector: createEmptyMonthlyTotals(),
+        }
+      : calculateDirectorsLoanLiabilityByMonth(
+          manualDirectorsLoan,
+          options.accountsPayablePayments ?? [],
+          options.directorsLoanRepayments ?? [],
+          ledgerEntries,
+          options.tenantId,
+          financialYear,
+        );
+  const directorsLoan = directorsLoanLines.liability;
+  const dueFromDirector = directorsLoanLines.dueFromDirector;
+
   const totalAssets = roundMonthlyTotals(
     sumMonthlyTotals([
       cash,
@@ -564,6 +661,7 @@ export function buildBalanceSheetReport(
       openTax.netVatReceivable,
       fixedAssetsNet,
       inventory,
+      dueFromDirector,
     ]),
   );
 
@@ -596,20 +694,6 @@ export function buildBalanceSheetReport(
     "other_long_term_liabilities",
     financialYear,
   );
-  const manualDirectorsLoan = calculateManualLiabilityStockByMonth(
-    manualEntries,
-    "directors_loan",
-    financialYear,
-  );
-  const directorsLoan = options.tenantId
-    ? calculateDirectorsLoanNetByMonth(
-        manualDirectorsLoan,
-        options.accountsPayablePayments ?? [],
-        options.directorsLoanRepayments ?? [],
-        options.tenantId,
-        financialYear,
-      )
-    : manualDirectorsLoan;
   const totalLiabilities = roundMonthlyTotals(
     sumMonthlyTotals([
       accountsPayable,
@@ -707,6 +791,13 @@ export function buildBalanceSheetReport(
       key: "inventory",
       label: "Inventory",
       amounts: inventory,
+      kind: "data",
+      side: "assets",
+    },
+    {
+      key: "due-from-director",
+      label: "Due from Director",
+      amounts: dueFromDirector,
       kind: "data",
       side: "assets",
     },

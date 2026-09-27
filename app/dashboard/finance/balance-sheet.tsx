@@ -18,6 +18,7 @@ import {
   type AccountsPayablePaymentRow,
   type DirectorsLoanRepaymentRow,
 } from "./balance-sheet-utils";
+import type { DirectorsLoanLedgerEntry } from "./directors-loan-ledger-utils";
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type {
   BalanceSheetCashExpenseEntry,
@@ -44,12 +45,15 @@ type BalanceSheetProps = {
   initialPayableEntries: BalanceSheetAccountsPayableEntry[];
   initialAccountsPayablePayments: AccountsPayablePaymentRow[];
   initialDirectorsLoanRepayments: DirectorsLoanRepaymentRow[];
+  initialDirectorsLoanLedgerEntries?: DirectorsLoanLedgerEntry[];
   initialCapitalContributions: CapitalContributionEntry[];
   initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
   initialPayrollHistory: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   initialManualEntries?: CashMovementManualEntry[];
+  initialRawManualEntries?: CashMovementManualEntry[];
+  viewAllBusinessUnits?: boolean;
   initialTaxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
   initialWelfareFundEntries?: BalanceSheetWelfareFundEntry[];
   availableYears: number[];
@@ -141,6 +145,7 @@ export default function BalanceSheet({
   initialPayableEntries,
   initialAccountsPayablePayments,
   initialDirectorsLoanRepayments,
+  initialDirectorsLoanLedgerEntries = [],
   initialCapitalContributions,
   initialCashFlowExpenseEntries,
   initialPayrollHistory,
@@ -153,6 +158,8 @@ export default function BalanceSheet({
   fetchError,
   initialFocusMonth = null,
   initialFocusYear = null,
+  initialRawManualEntries = [],
+  viewAllBusinessUnits = false,
 }: BalanceSheetProps) {
   const [selectedYear, setSelectedYear] = useState(() => {
     if (
@@ -186,6 +193,11 @@ export default function BalanceSheet({
           tenantId,
           accountsPayablePayments: initialAccountsPayablePayments,
           directorsLoanRepayments: initialDirectorsLoanRepayments,
+          directorsLoanLedgerEntries: initialDirectorsLoanLedgerEntries,
+          allBusinessUnitsDirectorsLoan: viewAllBusinessUnits,
+          rawManualFinancialEntries: viewAllBusinessUnits
+            ? initialRawManualEntries
+            : undefined,
         },
       ),
     [
@@ -196,6 +208,7 @@ export default function BalanceSheet({
       initialPayableEntries,
       initialAccountsPayablePayments,
       initialDirectorsLoanRepayments,
+      initialDirectorsLoanLedgerEntries,
       initialCapitalContributions,
       initialCashFlowExpenseEntries,
       initialPayrollHistory,

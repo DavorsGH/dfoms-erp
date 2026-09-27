@@ -41,10 +41,15 @@ import {
 } from "./balance-sheet-ap-cash-utils";
 import {
   calculateAccountsPayableCashOutflowsFromPayments,
-  calculateDirectorsLoanRepaymentOutflowsByMonth,
   type AccountsPayablePaymentRow,
   type DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
+import {
+  calculateDirectorsLoanCashInflowsByMonth,
+  calculateDirectorsLoanCashOutflowsByMonth,
+  shouldUseDirectorsLoanLedger,
+  type DirectorsLoanLedgerEntry,
+} from "./directors-loan-ledger-utils";
 
 export {
   parseCashPaidFromExpenseNotes,
@@ -101,6 +106,7 @@ export type CashMovementInputs = {
   /** AP payment ledger — preferred source for cash vs director-personal settlements. */
   accountsPayablePayments?: AccountsPayablePaymentRow[];
   directorsLoanRepayments?: DirectorsLoanRepaymentRow[];
+  directorsLoanLedgerEntries?: DirectorsLoanLedgerEntry[];
   /**
    * Fallback for Paid PAYROLL-SAL cash when notes lack cash_paid=<amount>.
    * Prefer actual bank cash_paid from expense notes over this map.
@@ -119,6 +125,7 @@ export type MonthlyCashComponents = {
   productPurchases: MonthlyTotals;
   accountsPayableSettlements: MonthlyTotals;
   directorsLoanRepayments: MonthlyTotals;
+  directorsLoanInflows: MonthlyTotals;
   fixedAssetPurchases: MonthlyTotals;
   /** Signed net movement per month (inflows − outflows). */
   netMovement: MonthlyTotals;
@@ -369,11 +376,35 @@ export function buildMonthlyCashComponents(
           inputs.accountsPayableSettlements ?? [],
           financialYear,
         );
-  const directorsLoanRepayments = calculateDirectorsLoanRepaymentOutflowsByMonth(
+  const ledgerEntries = inputs.directorsLoanLedgerEntries ?? [];
+  const useLedger = shouldUseDirectorsLoanLedger(ledgerEntries);
+  const directorsLoanRepayments = calculateDirectorsLoanCashOutflowsByMonth(
     inputs.directorsLoanRepayments ?? [],
+    ledgerEntries,
     inputs.tenantId,
     financialYear,
   );
+  const directorsLoanInflows = calculateDirectorsLoanCashInflowsByMonth(
+    ledgerEntries,
+    inputs.tenantId,
+    financialYear,
+  );
+  const loanProceedsForCash = useLedger
+    ? roundMonthlyTotals(
+        loanProceeds.map((value, index) =>
+          roundCurrency((value ?? 0) - (directorsLoanInflows[index] ?? 0)),
+        ) as MonthlyTotals,
+      )
+    : loanProceeds;
+  const loanRepaymentsForCash = useLedger
+    ? roundMonthlyTotals(
+        loanRepayments.map((value, index) =>
+          roundCurrency(
+            Math.max(0, (value ?? 0) - (directorsLoanRepayments[index] ?? 0)),
+          ),
+        ) as MonthlyTotals,
+      )
+    : loanRepayments;
   const fixedAssetPurchases = roundMonthlyTotals(
     calculateFixedAssetPurchaseOutflowsByMonth(
       inputs.fixedAssets,
@@ -384,8 +415,11 @@ export function buildMonthlyCashComponents(
 
   const totalInflows = addMonthlyTotals(
     addMonthlyTotals(
-      addMonthlyTotals(incomeReceived, capitalContributions),
-      loanProceeds,
+      addMonthlyTotals(
+        addMonthlyTotals(incomeReceived, capitalContributions),
+        loanProceedsForCash,
+      ),
+      directorsLoanInflows,
     ),
     otherCashInflows,
   );
@@ -394,7 +428,7 @@ export function buildMonthlyCashComponents(
       addMonthlyTotals(
         addMonthlyTotals(
           addMonthlyTotals(
-            addMonthlyTotals(paidExpenses, loanRepayments),
+            addMonthlyTotals(paidExpenses, loanRepaymentsForCash),
             rawMaterialPurchases,
           ),
           productPurchases,
@@ -410,14 +444,15 @@ export function buildMonthlyCashComponents(
   return {
     incomeReceived,
     capitalContributions,
-    loanProceeds,
+    loanProceeds: loanProceedsForCash,
     otherCashInflows,
     paidExpenses,
-    loanRepayments,
+    loanRepayments: loanRepaymentsForCash,
     rawMaterialPurchases,
     productPurchases,
     accountsPayableSettlements,
     directorsLoanRepayments,
+    directorsLoanInflows,
     fixedAssetPurchases,
     netMovement,
   };

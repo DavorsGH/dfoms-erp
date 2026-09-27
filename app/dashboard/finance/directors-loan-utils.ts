@@ -20,6 +20,7 @@ export type DirectorsLoanRepaymentRow = {
   amount: number;
   applied_to_ap_component?: number | null;
   applied_to_manual_component?: number | null;
+  business_unit_id?: string | null;
 };
 
 function roundCurrency(value: number): number {

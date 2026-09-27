@@ -106,7 +106,6 @@ export const MANUAL_ENTRY_FIELD_SECTIONS: ManualEntryFieldSection[] = [
         key: "other_long_term_liabilities",
         label: "Other Long-Term Liabilities",
       },
-      { key: "directors_loan", label: "Director's Loan" },
     ],
   },
   {
@@ -127,7 +126,6 @@ export const MANUAL_ENTRY_LIST_COLUMNS: Array<{
 }> = [
   { key: "bank_loans", label: "Bank Loans" },
   { key: "other_long_term_liabilities", label: "Other LTL" },
-  { key: "directors_loan", label: "Director's Loan" },
   { key: "loan_proceeds", label: "Loan Proceeds" },
   { key: "loan_repayments", label: "Loan Repayments" },
   { key: "opening_cash_balance", label: "Opening Cash" },
@@ -154,6 +152,11 @@ const MANUAL_ENTRY_LEGACY_COLUMN_KEYS: ManualEntryLegacyColumnKey[] = [
 const MANUAL_ENTRY_NUMERIC_KEYS: Array<
   ManualEntryFormFieldKey | ManualEntryLegacyColumnKey
 > = [...MANUAL_ENTRY_FORM_FIELD_KEYS, ...MANUAL_ENTRY_LEGACY_COLUMN_KEYS];
+
+/** Includes legacy-only DB columns still used in reports (e.g. director's loan stock). */
+const MANUAL_ENTRY_AGGREGATE_NUMERIC_KEYS: Array<
+  ManualEntryFormFieldKey | ManualEntryLegacyColumnKey
+> = [...MANUAL_ENTRY_NUMERIC_KEYS, "directors_loan"];
 
 export const emptyManualEntryForm: Record<ManualEntryFormFieldKey, string> =
   Object.fromEntries(
@@ -229,14 +232,14 @@ export function aggregateManualEntriesByPeriodMonth(
         business_unit_id: null,
         notes: entry.notes ?? null,
       };
-      for (const key of MANUAL_ENTRY_NUMERIC_KEYS) {
+      for (const key of MANUAL_ENTRY_AGGREGATE_NUMERIC_KEYS) {
         seeded[key] = Number(entry[key]) || 0;
       }
       byPeriod.set(periodMonth, seeded);
       continue;
     }
 
-    for (const key of MANUAL_ENTRY_NUMERIC_KEYS) {
+    for (const key of MANUAL_ENTRY_AGGREGATE_NUMERIC_KEYS) {
       existing[key] = (Number(existing[key]) || 0) + (Number(entry[key]) || 0);
     }
   }
@@ -281,13 +284,11 @@ export function getDefaultPeriodSelection(): { year: number; month: number } {
 
 export type LiabilityStockKey =
   | "bank_loans"
-  | "other_long_term_liabilities"
-  | "directors_loan";
+  | "other_long_term_liabilities";
 
 export const LIABILITY_STOCK_LABELS: Record<LiabilityStockKey, string> = {
   bank_loans: "Bank Loans",
   other_long_term_liabilities: "Other Long-Term Liabilities",
-  directors_loan: "Director's Loan",
 };
 
 function roundCurrency(value: number): number {
@@ -483,11 +484,18 @@ export function applyAddOtherCashInflows(params: {
 export function confirmDeleteManualEntry(
   entry: ManualFinancialEntryRecord,
 ): boolean {
-  const lines = MANUAL_ENTRY_LIST_COLUMNS.map(
-    (column) => `${column.label}: ${formatGHS(entry[column.key] ?? 0)}`,
-  ).join("\n");
+  const nonZeroColumns = MANUAL_ENTRY_LIST_COLUMNS.filter(
+    (column) => Math.abs(Number(entry[column.key]) || 0) > 0.005,
+  );
+  const lines = nonZeroColumns
+    .map((column) => `${column.label}: ${formatGHS(entry[column.key] ?? 0)}`)
+    .join("\n");
+  const warning =
+    nonZeroColumns.length > 1
+      ? `\n\nWarning: this month row has ${nonZeroColumns.length} non-zero fields. Deleting removes ALL of them (bank loans, LTL, loan proceeds, opening cash, etc.) — not just one line. Use guided actions to adjust a single field instead, or clear fields individually by editing the row.\n`
+      : "";
   return window.confirm(
-    `Delete manual entry for ${formatPeriodMonthLabel(entry.period_month)}?\n\nThis removes the entire month row:\n${lines}`,
+    `Delete manual entry for ${formatPeriodMonthLabel(entry.period_month)}?${warning}\n${lines || "(all amounts are zero)"}`,
   );
 }
 

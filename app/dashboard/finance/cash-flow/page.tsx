@@ -27,6 +27,10 @@ import type { PayrollProcessingRow } from "../../hr-payroll/payroll-processing-u
 import type { AccountsPayablePaymentRow } from "../directors-loan-utils";
 import type { DirectorsLoanRepaymentRow } from "../directors-loan-utils";
 import {
+  DIRECTORS_LOAN_LEDGER_SELECT,
+  type DirectorsLoanLedgerEntry,
+} from "../directors-loan-ledger-utils";
+import {
   aggregateManualEntriesByPeriodMonth,
   type ManualFinancialEntryRecord,
 } from "../manual-financial-entries-utils";
@@ -91,6 +95,7 @@ export default async function CashFlowPage() {
     { data: payableEntries, error: payableError },
     { data: apPayments, error: apPaymentsError },
     { data: directorsLoanRepayments, error: directorsLoanRepaymentsError },
+    { data: directorsLoanLedgerEntries, error: directorsLoanLedgerError },
     { data: payrollHistory, error: payrollHistoryError },
     { data: payrollProcessing, error: payrollProcessingError },
     { data: monthEndCloseRecords, error: monthEndCloseError },
@@ -155,6 +160,13 @@ export default async function CashFlowPage() {
         .eq("tenant_id", tenantId),
       buScope,
     ).order("repayment_date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("directors_loan_entries")
+        .select(DIRECTORS_LOAN_LEDGER_SELECT)
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("entry_date", { ascending: true }),
     applyEmployeeIdScope(
       supabase
         .from("payroll_history")
@@ -193,6 +205,7 @@ export default async function CashFlowPage() {
     payableError?.message ??
     apPaymentsError?.message ??
     directorsLoanRepaymentsError?.message ??
+    directorsLoanLedgerError?.message ??
     payrollHistoryError?.message ??
     payrollProcessingError?.message ??
     monthEndCloseError?.message ??
@@ -236,6 +249,9 @@ export default async function CashFlowPage() {
         }
         initialDirectorsLoanRepayments={
           (directorsLoanRepayments as DirectorsLoanRepaymentRow[] | null) ?? []
+        }
+        initialDirectorsLoanLedgerEntries={
+          (directorsLoanLedgerEntries as DirectorsLoanLedgerEntry[] | null) ?? []
         }
         initialPayrollHistory={initialPayrollHistory}
         initialMonthEndCloseNetPay={

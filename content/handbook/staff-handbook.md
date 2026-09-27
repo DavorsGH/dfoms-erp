@@ -6,7 +6,7 @@ ERP System
 
 **For Customer Use**
 
-Version 2.9 | September 2026
+Version 3.0 | September 2026
 
 *Covers: Getting Started · Bulk Import · User Roles (incl. Director) ·
 Business Units · Finance (incl. Budget, Tax Settings, Client Receipts, Staff
@@ -417,6 +417,12 @@ your list of expense categories. Cost of Goods Sold (COGS) is posted
 here automatically whenever you sell stock --- see Section 10 for how
 this is calculated.
 
+When you **create** a new expense, **Fixed Assets** is **not** offered
+in the Expense Category dropdown (the form shows a short note pointing
+you to **Finance → Fixed Assets** instead). If an older row still has
+category Fixed Assets, you can **edit** it to reclassify to an operating
+category such as Direct Operational.
+
 You can bulk import existing expenses from a spreadsheet using the Bulk
 Import button on this page --- see Section 2.4.
 
@@ -449,7 +455,9 @@ Use **Finance → Fixed Assets** for equipment, vehicles, and other
 long-term property the company buys. **Do not** also add a row in the
 Expense Register with category **Fixed Assets** for the same purchase
 --- that double-counts cash and wrongly hits Profit & Loss (Fixed Assets
-category expenses roll into **Other Expenses** on the P&L).
+category expenses roll into **Other Expenses** on the P&L). New Expense
+Register entries cannot select Fixed Assets; use the Fixed Assets module
+only.
 
 **Cash purchase (company paid immediately).** Record **only** in Fixed
 Assets. Choose the **actual payment method** (Cash, Mobile Money, Bank
@@ -483,39 +491,51 @@ Fixed Assets and never in the Fixed Assets module.
 **Finance → Supplier Contracts** tracks recurring supplier agreements
 (written or verbal) that bill on a **monthly** cycle.
 
--   **Agreement types.** Written agreements need a document URL before
-    they can be set **Active**. Verbal agreements can be activated
-    without a document.
+-   **List & detail.** Open a contract to see a **summary card** (status
+    badge, supplier, contract number, agreement type, start/end dates,
+    auto-renew, category/sub-category, WHT rate, business unit,
+    mid-month reminder, next billing date, current monthly amount, and a
+    document link when uploaded).
 
--   **Monthly AP (1st of month).** A nightly job creates an **Accounts
-    Payable** invoice on the **1st** of each billing month for each
-    active contract (invoice number pattern
-    `{contract_number}-{YYYY-MM}`). Amount comes from the latest
-    **Change Amount** amendment effective on or before that month.
+-   **Create.** Pick supplier, agreement type, business unit (when your
+    workspace uses business units), dates, category, and initial monthly
+    amount. **Written** agreements require an uploaded document (PDF or
+    image); the contract is saved as **Draft** until you **Activate** it
+    from the detail page (confirm dialog). **Verbal** agreements can be
+    activated without a document.
 
--   **Mid-month payments.** When you pay the supplier before month-end,
-    use **Accounts Payable → Record Payment** as for any other AP --- the
-    same partial/full payment rules apply.
+-   **Edit contract** (not available for **Terminated** contracts).
+    Update end date, auto-renew, mid-month reminder, notes, business unit
+    (only while no monthly bills exist yet), and replace the agreement
+    document. **Monthly amount** changes use **Change Amount** only.
 
--   **Mid-month reminder (optional).** If enabled on the contract, the
-    system can remind you mid-month to decide whether to pay early.
+-   **Monthly bills (Accounts Payable).** The detail page lists each
+    generated bill (month, invoice number, amount, paid, balance,
+    status) with a link to the AP entry. If none exist yet, the empty
+    state explains that the **first bill is created automatically on the
+    1st of the contract's start month**. A nightly job creates AP for
+    active contracts (invoice pattern `{contract_number}-{YYYY-MM}`);
+    amount comes from the latest **Change Amount** amendment effective on
+    or before that month.
 
--   **Record Replacement Payment.** When a stand-in supplier covers a
-    service, record the replacement cost here. It reduces the generated
-    AP for that month (and can carry unused credit on the contract's
-    **credit balance** for later months).
+-   **Mid-month payments.** Pay through **Accounts Payable → Record
+    Payment** like any other AP.
 
--   **Change Amount.** Add an amendment with an **effective date** and
-    new monthly amount; billing from that month forward uses the new
-    figure.
+-   **Record replacement payment.** When a stand-in covers a service,
+    record service date, replacement name, amount, **payment method**
+    (same options as Expense Register), and optional **notes**. This
+    reduces that month's generated AP; unused amounts can **carry
+    forward** on the contract **credit balance** (shown before
+    **Terminate** if credit remains).
 
--   **Renewal & termination.** Contracts can **auto-renew** by extending
-    the end date for the same term. **Terminate** when the agreement
-    ends; unused **credit balance** is surfaced before termination if
-    money is still owed back to you on the contract.
+-   **Change Amount.** Amendment with effective date, new monthly amount,
+    reason, and optional amendment document (PDF or image).
 
-Supplier contract APs follow the normal AP accrual rules for operating
-expenses (not Fixed Asset credit APs).
+-   **Renewal & termination.** **Auto-renew** extends the term. **Terminate**
+    stops future billing; generated AP stays as real obligations.
+
+Supplier contract APs follow normal operating AP accrual rules (not
+Fixed Asset credit APs).
 
 ## **6.5 Manual Financial Entries**
 
@@ -538,6 +558,17 @@ view.
 Profit & Loss, Cash Flow, and Balance Sheet statements are generated
 automatically from your registers and can be viewed by month or exported
 from Reports.
+
+**Balance Sheet --- Accounts Payable at month-end.** The **Accounts
+Payable** line on the Balance Sheet shows **outstanding** supplier
+liability **as at each month-end**. Payments dated **after** that
+month-end do **not** reduce Accounts Payable shown for **earlier**
+months (historical months stay consistent with what was still owed then).
+
+**Balance Sheet integrity check.** A **nightly** job audits Balance Sheet
+balance for **every business** on the platform and **each business
+unit** separately. Out-of-balance results are logged (Administration →
+System Event Log); alert email may be sent when configured.
 
 Under Finance → Balance Sheet you can also open **Capital
 Contributions**, which tracks owner or investor capital injected into
@@ -1259,14 +1290,16 @@ the Bulk Import button on the Employee Directory --- see Section 2.4.
 ## **8.2 Payroll**
 
 -   Payroll Processing --- runs monthly payroll based on your salary
-    rate structures and statutory settings
+    rate structures and **platform statutory rates** (Section 8.2a)
 
 -   Payroll History --- past periods and what was processed
 
 -   Payslips --- generated per employee per pay period
 
--   PAYE, SSNIT, and Casual Tax configuration --- set under HR Settings,
-    applied automatically during processing
+-   **Payroll lock** --- when statutory rates for the period are
+    missing, Payroll Processing shows a **red banner** and **Lock** is
+    blocked until Ghana PAYE bands, SSNIT, and (if needed) casual tax
+    rates exist for that period's end date
 
 -   Salary Settings --- set default Basic Salary and allowances
     (Housing, Transport, Night Differential, and any others you add)
@@ -1280,6 +1313,28 @@ the Bulk Import button on the Employee Directory --- see Section 2.4.
     the Employee Directory if needed. Locked payroll accrues the total to
     the Staff Welfare Fund (see Section 6.6a) --- welfare no longer feeds
     DEDSAV Other Income.
+
+## **8.2a Ghana statutory payroll rates (platform-wide)**
+
+PAYE monthly bands, SSNIT percentages, and casual-worker flat tax are
+stored in **platform-wide** tables (`statutory_paye_tax_bands`,
+`statutory_ssnit_rate_config`, `statutory_casual_tax_rate_config`) with
+**effective dates** --- they are **not** configured per company under HR
+Settings. Payroll Processing picks the ladder and rates that apply to the
+**period end date** (same for every tenant on the platform).
+
+**PAYE --- Income Tax (Amendment) Act 2026 (Act 1178).** For payroll
+periods ending **on or after 1 September 2026**, monthly taxable income
+uses these bands (GHS): first **588** at **0%**; next **80** at **5%**;
+next **100** at **10%**; next **2,900** at **17.5%**; next **16,000**
+at **25%**; next **30,332** at **30%**; exceeding **50,000** at **35%**.
+For periods ending **before** September 2026, the **previous** monthly
+bands apply (also loaded from the statutory tables by effective date).
+
+SSNIT employee/employer rates and casual tax likewise follow the latest
+statutory row on or before the period end date. If any required row is
+missing, PAYE/SSNIT may calculate as zero and **payroll lock is
+blocked** until rates are available.
 
 ## **8.3 HR Operations**
 
@@ -1900,11 +1955,11 @@ organized into the following groups:
                      Categories; Depreciation Methods; Inventory Go-Live;
                      Approvers
 
-  HR Settings        PAYE/SSNIT/casual tax configuration, Salary Settings
-                     (default pay and allowances by Position/Employment
-                     Type), Leave Settings (approver and default leave
-                     entitlements), Manage Positions, roster
-                     configuration
+  HR Settings        Salary Settings (default pay and allowances by
+                     Position/Employment Type), Leave Settings (approver
+                     and default leave entitlements), Manage Positions,
+                     roster configuration. Ghana PAYE/SSNIT/casual rates
+                     are platform-wide (Section 8.2a), not set here.
 
   Operations         Service Categories, Contract/Project Assignments,
   Settings           Roster Settings
@@ -2241,7 +2296,9 @@ you paid at the warehouse.
                      long-term, tracked separately from Inventory
 
   PAYE               Pay As You Earn --- statutory income tax deducted
-                     from payroll
+                     from payroll; Ghana monthly bands are platform-wide
+                     by effective date (Act 1178 from Sept 2026 --- Section
+                     8.2a)
 
   SSNIT              Social Security and National Insurance Trust
                      contributions

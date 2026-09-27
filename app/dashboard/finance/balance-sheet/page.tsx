@@ -54,12 +54,14 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
     initialPayableEntries,
     initialAccountsPayablePayments,
     initialDirectorsLoanRepayments,
+    initialDirectorsLoanLedgerEntries,
     initialCapitalContributions,
     initialCashFlowExpenseEntries,
     initialPayrollHistory,
     initialMonthEndCloseNetPay,
     initialInventoryBalanceSheet,
     initialManualEntries,
+    initialRawManualEntries,
     initialTaxLedgerEntries,
     initialWelfareFundEntries,
     availableYears,
@@ -76,12 +78,15 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
         initialPayableEntries={initialPayableEntries}
         initialAccountsPayablePayments={initialAccountsPayablePayments}
         initialDirectorsLoanRepayments={initialDirectorsLoanRepayments}
+        initialDirectorsLoanLedgerEntries={initialDirectorsLoanLedgerEntries}
         initialCapitalContributions={initialCapitalContributions}
         initialCashFlowExpenseEntries={initialCashFlowExpenseEntries}
         initialPayrollHistory={initialPayrollHistory}
         initialMonthEndCloseNetPay={initialMonthEndCloseNetPay}
         initialInventoryBalanceSheet={initialInventoryBalanceSheet}
         initialManualEntries={initialManualEntries}
+        initialRawManualEntries={initialRawManualEntries}
+        viewAllBusinessUnits={viewAllBusinessUnits}
         initialTaxLedgerEntries={initialTaxLedgerEntries}
         initialWelfareFundEntries={initialWelfareFundEntries}
         availableYears={availableYears}

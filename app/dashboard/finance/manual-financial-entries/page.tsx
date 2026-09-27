@@ -12,8 +12,11 @@ import {
 import FinanceNav from "../finance-nav";
 import ManualFinancialEntries from "../manual-financial-entries";
 import type { ManualFinancialEntryRecord } from "../manual-financial-entries-utils";
-import type { DirectorsLoanRepaymentRecord } from "../directors-loan-repayments-panel";
 import type { AccountsPayablePaymentRow } from "../directors-loan-utils";
+import {
+  DIRECTORS_LOAN_LEDGER_SELECT,
+  type DirectorsLoanLedgerEntry,
+} from "../directors-loan-ledger-utils";
 
 export default async function ManualFinancialEntriesPage() {
   const cookieStore = await cookies();
@@ -37,7 +40,8 @@ export default async function ManualFinancialEntriesPage() {
   const [
     { data, error },
     { data: apPayments, error: apPaymentsError },
-    { data: repayments, error: repaymentsError },
+    { data: ledgerEntries, error: ledgerError },
+    { data: expenseRows, error: expenseError },
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase
@@ -55,11 +59,20 @@ export default async function ManualFinancialEntriesPage() {
     ).order("payment_date", { ascending: true }),
     applyBusinessUnitScope(
       supabase
-        .from("directors_loan_repayments")
-        .select("*")
+        .from("directors_loan_entries")
+        .select(DIRECTORS_LOAN_LEDGER_SELECT)
         .eq("tenant_id", tenantId),
       buScope,
-    ).order("repayment_date", { ascending: false }),
+    ).order("entry_date", { ascending: false }),
+    applyBusinessUnitScope(
+      supabase
+        .from("expense_register")
+        .select("id, date, amount, description, expense_category")
+        .eq("tenant_id", tenantId),
+      buScope,
+    )
+      .order("date", { ascending: false })
+      .limit(200),
   ]);
 
   const manualCashEntries = (data ?? []).map((entry) => ({
@@ -85,11 +98,24 @@ export default async function ManualFinancialEntriesPage() {
         initialEntries={(data as ManualFinancialEntryRecord[] | null) ?? []}
         initialManualCashEntries={manualCashEntries}
         initialApPayments={(apPayments as AccountsPayablePaymentRow[] | null) ?? []}
-        initialDirectorsLoanRepayments={
-          (repayments as DirectorsLoanRepaymentRecord[] | null) ?? []
+        initialDirectorsLoanLedgerEntries={
+          (ledgerEntries as DirectorsLoanLedgerEntry[] | null) ?? []
+        }
+        initialExpenseLinkOptions={
+          (expenseRows as Array<{
+            id: string;
+            date: string;
+            amount: number;
+            description: string | null;
+            expense_category: string | null;
+          }> | null) ?? []
         }
         fetchError={
-          error?.message ?? apPaymentsError?.message ?? repaymentsError?.message ?? null
+          error?.message ??
+          apPaymentsError?.message ??
+          ledgerError?.message ??
+          expenseError?.message ??
+          null
         }
         activeBusinessUnitId={activeBusinessUnitId}
       />

@@ -29,6 +29,7 @@ import type {
   AccountsPayablePaymentRow,
   DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
+import type { DirectorsLoanLedgerEntry } from "./directors-loan-ledger-utils";
 import type {
   IncomeEntryType,
   ProductSaleStatus,
@@ -38,6 +39,7 @@ export type CashFlowReportOptions = {
   tenantId: string;
   accountsPayablePayments?: AccountsPayablePaymentRow[];
   directorsLoanRepayments?: DirectorsLoanRepaymentRow[];
+  directorsLoanLedgerEntries?: DirectorsLoanLedgerEntry[];
 };
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
@@ -238,6 +240,7 @@ export function buildCashFlowReport(
       accountsPayableSettlements,
       accountsPayablePayments: options.accountsPayablePayments,
       directorsLoanRepayments: options.directorsLoanRepayments,
+      directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
       staffSalaryNetByPayrollMonth,
     },
     financialYear,
@@ -376,8 +379,10 @@ export function buildCashFlowReport(
   const loanProceeds = components.loanProceeds;
   const loanRepayments = components.loanRepayments;
   const directorsLoanRepayments = components.directorsLoanRepayments;
+  const directorsLoanInflows = components.directorsLoanInflows;
   const netFinancing = loanProceeds.map((value, index) =>
-    (value ?? 0) -
+    (value ?? 0) +
+    (directorsLoanInflows[index] ?? 0) -
     (loanRepayments[index] ?? 0) -
     (directorsLoanRepayments[index] ?? 0),
   );
@@ -401,9 +406,19 @@ export function buildCashFlowReport(
       amounts: loanRepayments,
       kind: "data",
     },
+    ...(directorsLoanInflows.some((amount) => amount !== 0)
+      ? [
+          {
+            key: "directors-loan-inflows",
+            label: "Director's Loan Cash In",
+            amounts: directorsLoanInflows,
+            kind: "data" as const,
+          },
+        ]
+      : []),
     {
       key: "directors-loan-repayments",
-      label: "Director's Loan Repayments",
+      label: "Director's Loan Cash Out",
       amounts: directorsLoanRepayments,
       kind: "data",
     },

@@ -46,16 +46,10 @@ import {
   type LiabilityStockKey,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
-import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
-
-import DirectorsLoanRepaymentsPanel, {
-  type DirectorsLoanRepaymentRecord,
-} from "./directors-loan-repayments-panel";
-import {
-  calculateDirectorsLoanOutstandingAsAt,
-  type AccountsPayablePaymentRow,
-} from "./directors-loan-utils";
-import { calculateManualLiabilityStockByMonth } from "./balance-sheet-utils";
+import DirectorsLoanLedgerPanel from "./directors-loan-ledger-panel";
+import type { AccountsPayablePaymentRow } from "./directors-loan-utils";
+import type { DirectorsLoanLedgerEntry } from "./directors-loan-ledger-utils";
+import { getMonthEndDate } from "./capital-contributions-utils";
 import type { CashMovementManualEntry } from "./cash-movement-utils";
 
 type ManualFinancialEntriesProps = {
@@ -63,7 +57,14 @@ type ManualFinancialEntriesProps = {
   initialEntries: ManualFinancialEntryRecord[];
   initialManualCashEntries: CashMovementManualEntry[];
   initialApPayments: AccountsPayablePaymentRow[];
-  initialDirectorsLoanRepayments: DirectorsLoanRepaymentRecord[];
+  initialDirectorsLoanLedgerEntries: DirectorsLoanLedgerEntry[];
+  initialExpenseLinkOptions: Array<{
+    id: string;
+    date: string;
+    amount: number;
+    description: string | null;
+    expense_category: string | null;
+  }>;
   fetchError: string | null;
   /** Create-only stamp for director loan repayments; null = All Businesses. */
   activeBusinessUnitId?: string | null;
@@ -124,7 +125,8 @@ export default function ManualFinancialEntries({
   initialEntries,
   initialManualCashEntries,
   initialApPayments,
-  initialDirectorsLoanRepayments,
+  initialDirectorsLoanLedgerEntries,
+  initialExpenseLinkOptions,
   fetchError,
   activeBusinessUnitId = null,
 }: ManualFinancialEntriesProps) {
@@ -152,14 +154,6 @@ export default function ManualFinancialEntries({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [directorsLoanRepayments, setDirectorsLoanRepayments] = useState(
-    initialDirectorsLoanRepayments,
-  );
-
-  useEffect(() => {
-    setDirectorsLoanRepayments(initialDirectorsLoanRepayments);
-  }, [initialDirectorsLoanRepayments]);
-
   const availableYears = useMemo(() => {
     const years = new Set<number>([
       defaultPeriod.year,
@@ -184,34 +178,7 @@ export default function ManualFinancialEntries({
     [entries],
   );
 
-  /** Display-only net for Director's Loan card (matches Repayments panel / BS). */
-  const directorsLoanNetOutstanding = useMemo(() => {
-    const year = Number(selectedYear);
-    const month = Number(selectedMonth);
-    const manualStock = calculateManualLiabilityStockByMonth(
-      liveManualCashEntries.length > 0
-        ? liveManualCashEntries
-        : initialManualCashEntries,
-      "directors_loan",
-      year,
-    );
-    return calculateDirectorsLoanOutstandingAsAt(
-      manualStock,
-      initialApPayments,
-      directorsLoanRepayments,
-      tenantId,
-      buildPeriodMonth(year, month),
-      year,
-    ).netOutstanding;
-  }, [
-    directorsLoanRepayments,
-    initialApPayments,
-    initialManualCashEntries,
-    liveManualCashEntries,
-    selectedMonth,
-    selectedYear,
-    tenantId,
-  ]);
+  const asAtDate = getMonthEndDate(Number(selectedYear), Number(selectedMonth));
 
   useEffect(() => {
     setEntries(initialEntries);
@@ -253,7 +220,6 @@ export default function ManualFinancialEntries({
   async function saveRow(
     row: ManualFinancialEntryRecord,
     successMessage: string,
-    notifyDirectorsLoanReceive?: number,
   ) {
     setLoading(true);
     setError(null);
@@ -310,17 +276,6 @@ export default function ManualFinancialEntries({
       setError(saveError.message);
       setLoading(false);
       return;
-    }
-
-    if (
-      notifyDirectorsLoanReceive !== undefined &&
-      notifyDirectorsLoanReceive > 0
-    ) {
-      requestTenantAdminDirectorNotification({
-        title: "Director's loan cash received",
-        detail: formatGHS(notifyDirectorsLoanReceive),
-        actionUrl: "/dashboard/finance/manual-financial-entries",
-      });
     }
 
     closeActionForm();
@@ -483,7 +438,6 @@ export default function ManualFinancialEntries({
       await saveRow(
         row,
         `${label}: recorded ${formatGHS(parsedAmount)} received (${formatGHS(priorStock)} → ${formatGHS(nextStock)}).`,
-        stockKey === "directors_loan" ? parsedAmount : undefined,
       );
       return;
     }
@@ -552,10 +506,7 @@ export default function ManualFinancialEntries({
       Number(selectedMonth),
     );
     // Director's Loan headline only: net after AP + repayments (same as panel / BS).
-    const displayOutstanding =
-      stockKey === "directors_loan"
-        ? directorsLoanNetOutstanding
-        : stockOutstanding;
+    const displayOutstanding = stockOutstanding;
     const isActive =
       activeAction &&
       (activeAction.kind === "receive" ||
@@ -593,12 +544,6 @@ export default function ManualFinancialEntries({
                 {formatGHS(displayOutstanding)}
               </span>
             </p>
-            {stockKey === "directors_loan" ? (
-              <p className="mt-1 text-xs text-slate-500">
-                To repay the director in cash, use Director&apos;s Loan —
-                Repayments below.
-              </p>
-            ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -837,7 +782,15 @@ export default function ManualFinancialEntries({
       {renderLiabilityCard("other_long_term_liabilities", {
         includeRepay: true,
       })}
-      {renderLiabilityCard("directors_loan", { includeRepay: false })}
+
+      <DirectorsLoanLedgerPanel
+        tenantId={tenantId}
+        financialYear={Number(selectedYear)}
+        asAtDate={asAtDate}
+        initialEntries={initialDirectorsLoanLedgerEntries}
+        apPayments={initialApPayments}
+        expenseOptions={initialExpenseLinkOptions}
+      />
 
       <section className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50/40 p-5">
         <h3 className="text-lg font-semibold text-[#0f2744]">Cash-only entries</h3>
@@ -1056,18 +1009,6 @@ export default function ManualFinancialEntries({
         </table>
       </ScrollableTable>
 
-      <DirectorsLoanRepaymentsPanel
-        tenantId={tenantId}
-        manualEntries={
-          liveManualCashEntries.length > 0
-            ? liveManualCashEntries
-            : initialManualCashEntries
-        }
-        apPayments={initialApPayments}
-        initialRepayments={directorsLoanRepayments}
-        onRepaymentsChange={setDirectorsLoanRepayments}
-        activeBusinessUnitId={activeBusinessUnitId}
-      />
     </div>
   );
 }

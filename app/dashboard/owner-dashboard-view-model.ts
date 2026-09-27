@@ -35,6 +35,7 @@ export async function buildOwnerDashboardViewModel(
     initialPayableEntries: payableEntries,
     initialAccountsPayablePayments: accountsPayablePayments,
     initialDirectorsLoanRepayments: directorsLoanRepayments,
+    initialDirectorsLoanLedgerEntries: directorsLoanLedgerEntries,
     initialCapitalContributions: capitalContributions,
     initialCashFlowExpenseEntries: cashFlowExpenseEntries,
     initialPayrollHistory: payrollHistoryWages,
@@ -67,6 +68,12 @@ export async function buildOwnerDashboardViewModel(
     tenantId,
     accountsPayablePayments,
     directorsLoanRepayments,
+    directorsLoanLedgerEntries,
+    allBusinessUnitsDirectorsLoan: options.buScope.mode === "all",
+    rawManualFinancialEntries:
+      options.buScope.mode === "all"
+        ? dashboardPageData.initialRawManualEntries
+        : undefined,
   };
 
   const dashboardData = buildDashboardViewModel({

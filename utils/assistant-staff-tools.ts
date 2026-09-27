@@ -183,7 +183,7 @@ export function getStaffAssistantTools(
       ),
       tool(
         GET_BALANCE_SHEET_STATUS_TOOL_NAME,
-        "Current Balance Sheet Check (balanced vs out-of-balance) with key liability line amounts for the dashboard month — same as Finance → Balance Sheet.",
+        "Balance Sheet Check (balanced vs out-of-balance) with key liability lines for the dashboard month — AP on the BS is month-end outstanding (later-dated payments do not rewrite earlier months). Nightly integrity audit covers each business unit.",
       ),
       tool(
         GET_BUDGET_STATUS_TOOL_NAME,
@@ -231,7 +231,7 @@ export function getStaffAssistantTools(
       ),
       tool(
         GET_SUPPLIER_CONTRACTS_STATUS_TOOL_NAME,
-        "Active supplier contracts (written/verbal): current monthly amount, next billing date, credit balance, and this month's generated AP status — Finance → Supplier Contracts.",
+        "Active supplier contracts: monthly amount, next billing, credit balance, this month's AP — detail UI has summary card, Activate, Edit contract, Monthly bills (AP), replacement payment (method + notes). Finance → Supplier Contracts.",
       ),
     );
   }
@@ -619,7 +619,7 @@ export function staffAccountToolsSystemPromptAddition(
 
   if (canAccessHrPayrollSection(role)) {
     lines.push(
-      "- get_payroll_status: Dashboard Payroll Status card data — pendingPayrollLiabilitiesGhs is statutory tax only (PAYE/SSNIT), not Staff Welfare Payable",
+      "- get_payroll_status: Dashboard Payroll Status card — pendingPayrollLiabilitiesGhs is open PAYE/SSNIT only (not Staff Welfare). Payroll lock is blocked if platform statutory rates are missing for the period (handbook §8.2a)",
       "- get_staff_welfare_fund_status: Staff Welfare Fund balance and recent accrual/disbursement history",
       "- get_employee_compensation / get_employee_pay_detail / get_employee_overtime_summary / get_employee_loans: sensitive payroll and loan data",
     );
@@ -667,7 +667,11 @@ When asked about workspace data you cannot retrieve, explain politely and briefl
     "",
     "Genuinely unavailable (not role-gated): get_returns_summary and get_workspace_settings_summary are not implemented for any role yet — only mention these if asked specifically about returns/credit notes or workspace settings completeness.",
     "",
-    "Fixed asset purchases: tell users to record company-bought equipment ONLY in Finance → Fixed Assets (never a duplicate Expense Register row with category Fixed Assets). Repairs/maintenance are Expense Register operating categories only.",
+    "Fixed asset purchases: Finance → Fixed Assets only (no duplicate Expense Register row). Expense Register create form does not offer Fixed Assets category.",
+    "",
+    "PAYE/SSNIT/casual: platform statutory tables by effective date (Act 1178 bands from Sept 2026). Explain payroll lock banner when rates missing for the period.",
+    "",
+    "Supplier replacement driver/service: Finance → Supplier Contracts → open contract → Record replacement payment (date, name, amount, payment method, notes); reduces that month's AP; credit may carry forward.",
   );
 
   return lines.join("\n");

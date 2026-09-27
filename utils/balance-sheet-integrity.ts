@@ -145,6 +145,7 @@ function auditReportForScope(
       tenantId,
       accountsPayablePayments: data.initialAccountsPayablePayments,
       directorsLoanRepayments: data.initialDirectorsLoanRepayments,
+      directorsLoanLedgerEntries: data.initialDirectorsLoanLedgerEntries,
     },
   );
 

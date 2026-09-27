@@ -58,6 +58,10 @@ import type {
   DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
 import {
+  DIRECTORS_LOAN_LEDGER_SELECT,
+  type DirectorsLoanLedgerEntry,
+} from "./directors-loan-ledger-utils";
+import {
   aggregateManualEntriesByPeriodMonth,
   type ManualFinancialEntryRecord,
 } from "./manual-financial-entries-utils";
@@ -75,7 +79,7 @@ export const MONTH_END_CLOSE_SELECT =
   "month, employees_recorded, total_net_pay, lock_status, notes";
 
 export const MANUAL_FINANCIAL_ENTRY_SELECT =
-  "period_month, cash_on_hand, bank_balance, prepayments_wht_receivable, inventory_consumables, accrued_expenses, withholding_tax_payable, vat_payable, bank_loans, other_long_term_liabilities, directors_loan, retained_earnings_prior_years, share_capital, purchase_of_fixed_assets, loan_proceeds, loan_repayments, opening_cash_balance, other_cash_inflows";
+  "period_month, business_unit_id, cash_on_hand, bank_balance, prepayments_wht_receivable, inventory_consumables, accrued_expenses, withholding_tax_payable, vat_payable, bank_loans, other_long_term_liabilities, directors_loan, retained_earnings_prior_years, share_capital, purchase_of_fixed_assets, loan_proceeds, loan_repayments, opening_cash_balance, other_cash_inflows";
 
 export const BALANCE_SHEET_INCOME_SELECT =
   "date, amount, amount_received, outstanding_balance, wht_amount, service_category, description, entry_type, sale_status, net_of_tax_amount, output_vat_amount, id, invoice_no, client_id, product_id, payment_status, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price)";
@@ -149,12 +153,15 @@ export type BalanceSheetPageData = {
   initialPayableEntries: BalanceSheetAccountsPayableEntry[];
   initialAccountsPayablePayments: AccountsPayablePaymentRow[];
   initialDirectorsLoanRepayments: DirectorsLoanRepaymentRow[];
+  initialDirectorsLoanLedgerEntries: DirectorsLoanLedgerEntry[];
   initialCapitalContributions: CapitalContributionEntry[];
   initialCashFlowIncomeEntries: CashFlowIncomeEntry[];
   initialCashFlowExpenseEntries: BalanceSheetCashExpenseEntry[];
   initialPayrollHistory: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay: MonthEndCloseNetPayEntry[];
   initialManualEntries: ManualFinancialEntry[];
+  /** Unaggregated manual rows (All Businesses director's loan uses per-BU nets). */
+  initialRawManualEntries: ManualFinancialEntryRecord[];
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   initialTaxLedgerEntries: BalanceSheetTaxLedgerEntry[];
   initialWelfareFundEntries: BalanceSheetWelfareFundEntry[];
@@ -585,11 +592,18 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("directors_loan_repayments")
       .select(
-        "tenant_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
+        "tenant_id, business_unit_id, repayment_date, amount, applied_to_ap_component, applied_to_manual_component",
       )
       .eq("tenant_id", tenantId),
     buScope,
   ).order("repayment_date", { ascending: true });
+  let directorsLoanLedgerQuery = applyBusinessUnitScope(
+    supabase
+      .from("directors_loan_entries")
+      .select(DIRECTORS_LOAN_LEDGER_SELECT)
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("entry_date", { ascending: true });
   let taxLedgerQuery = applyBusinessUnitScope(
     supabase
       .from("tax_ledger_entries")
@@ -631,6 +645,7 @@ export async function fetchBalanceSheetPageData(
     { data: payableEntries, error: payableError },
     { data: apPayments, error: apPaymentsError },
     { data: directorsLoanRepayments, error: directorsLoanRepaymentsError },
+    { data: directorsLoanLedgerEntries, error: directorsLoanLedgerError },
     { data: capitalContributions, error: capitalContributionsError },
     { data: manualEntries, error: manualError },
     { data: payrollHistory, error: payrollHistoryError },
@@ -646,6 +661,7 @@ export async function fetchBalanceSheetPageData(
     payableQuery,
     apPaymentsQuery,
     directorsLoanRepaymentsQuery,
+    directorsLoanLedgerQuery,
     applyBusinessUnitScope(
       supabase
         .from("capital_contributions")
@@ -751,6 +767,8 @@ export async function fetchBalanceSheetPageData(
       (apPayments as AccountsPayablePaymentRow[] | null) ?? [],
     initialDirectorsLoanRepayments:
       (directorsLoanRepayments as DirectorsLoanRepaymentRow[] | null) ?? [],
+    initialDirectorsLoanLedgerEntries:
+      (directorsLoanLedgerEntries as DirectorsLoanLedgerEntry[] | null) ?? [],
     initialCapitalContributions:
       (capitalContributions as CapitalContributionEntry[] | null) ?? [],
     initialCashFlowIncomeEntries: cashFlowIncomeEntries,
@@ -772,6 +790,7 @@ export async function fetchBalanceSheetPageData(
         gross_pay: Number(entry.gross_pay) || 0,
       })),
     initialManualEntries: resolvedManualEntries,
+    initialRawManualEntries: rawManualEntries,
     initialInventoryBalanceSheet: inventoryBalanceSheet,
     initialTaxLedgerEntries:
       (taxLedgerEntries as BalanceSheetTaxLedgerEntry[] | null) ?? [],
@@ -797,6 +816,7 @@ export async function fetchBalanceSheetPageData(
       payableError?.message ??
       apPaymentsError?.message ??
       directorsLoanRepaymentsError?.message ??
+      directorsLoanLedgerError?.message ??
       capitalContributionsError?.message ??
       manualError?.message ??
       payrollHistoryError?.message ??

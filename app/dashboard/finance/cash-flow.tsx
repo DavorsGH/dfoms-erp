@@ -18,6 +18,7 @@ import type {
   AccountsPayablePaymentRow,
   DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
+import type { DirectorsLoanLedgerEntry } from "./directors-loan-ledger-utils";
 import {
   buildNetPayByPayrollMonth,
   type MonthEndCloseNetPayEntry,
@@ -47,6 +48,7 @@ type CashFlowProps = {
   initialPayableEntries?: BalanceSheetAccountsPayableEntry[];
   initialAccountsPayablePayments?: AccountsPayablePaymentRow[];
   initialDirectorsLoanRepayments?: DirectorsLoanRepaymentRow[];
+  initialDirectorsLoanLedgerEntries?: DirectorsLoanLedgerEntry[];
   /** Same payroll inputs Balance Sheet uses to build the staff-salary net map. */
   initialPayrollHistory?: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
@@ -96,6 +98,7 @@ export default function CashFlow({
   initialPayableEntries = [],
   initialAccountsPayablePayments = [],
   initialDirectorsLoanRepayments = [],
+  initialDirectorsLoanLedgerEntries = [],
   initialPayrollHistory = [],
   initialMonthEndCloseNetPay = [],
   availableYears,
@@ -136,6 +139,7 @@ export default function CashFlow({
           tenantId,
           accountsPayablePayments: initialAccountsPayablePayments,
           directorsLoanRepayments: initialDirectorsLoanRepayments,
+          directorsLoanLedgerEntries: initialDirectorsLoanLedgerEntries,
         },
       ),
     [
@@ -148,6 +152,7 @@ export default function CashFlow({
       initialPayableEntries,
       initialAccountsPayablePayments,
       initialDirectorsLoanRepayments,
+      initialDirectorsLoanLedgerEntries,
       staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       selectedYear,
