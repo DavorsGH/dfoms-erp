@@ -5,7 +5,7 @@ import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import type { NamedLookup } from "@/app/dashboard/lookup-types";
 import FinanceNav from "../../finance-nav";
 import { queryExpenseSubcategoryLookups } from "../../expense-register-utils";
-import SupplierContractsWorkspace from "../supplier-contracts-workspace";
+import SupplierContractCreateForm from "../supplier-contract-create-form";
 
 export default async function NewSupplierContractPage() {
   const tenantId = await getCurrentUserTenantId();
@@ -40,11 +40,9 @@ export default async function NewSupplierContractPage() {
           Back
         </Link>
       </div>
-      <SupplierContractsWorkspace
-        initialContracts={[]}
+      <SupplierContractCreateForm
         expenseCategories={(expenseCategories as NamedLookup[] | null) ?? []}
         expenseSubcategories={(expenseSubcategories as NamedLookup[] | null) ?? []}
-        initialMode="create"
       />
     </div>
   );

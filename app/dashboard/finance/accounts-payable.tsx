@@ -174,6 +174,19 @@ export default function AccountsPayable({
   }, [initialEntries]);
 
   useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash.startsWith("ap-")) return;
+    const row = document.getElementById(hash);
+    if (row) {
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      row.classList.add("ring-2", "ring-[#0f2744]");
+      window.setTimeout(() => {
+        row.classList.remove("ring-2", "ring-[#0f2744]");
+      }, 2500);
+    }
+  }, [entries]);
+
+  useEffect(() => {
     if (!showForm) {
       return;
     }
@@ -1044,6 +1057,7 @@ export default function AccountsPayable({
                   return (
                     <tr
                       key={entry.id}
+                      id={`ap-${entry.id}`}
                       className={getStripedRowClassName(index)}
                     >
                       <td className="px-4 py-3">

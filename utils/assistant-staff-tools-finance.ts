@@ -47,6 +47,16 @@ import {
   normalizeServiceContractListRow,
 } from "@/utils/service-contracts-types";
 import {
+  SUPPLIER_CONTRACT_LIST_SELECT,
+  SUPPLIER_CONTRACT_SOURCE_TYPE,
+  billingMonthStartFromDate,
+  formatSupplierContractApInvoiceNumber,
+  normalizeSupplierContractListRow,
+  resolveMonthlyAmountForBillingMonth,
+  type SupplierContractAmendmentRow,
+  type SupplierContractListRow,
+} from "@/utils/supplier-contracts-types";
+import {
   LIST_LIMIT,
   STAFF_DATA_UNAVAILABLE_MESSAGE,
   getStaffSupabase,
@@ -393,6 +403,111 @@ export async function getServiceContractsStatus(): Promise<unknown> {
     };
   } catch (error) {
     console.error("[assistant] get_service_contracts_status threw:", error);
+    return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+  }
+}
+
+export async function getSupplierContractsStatus(): Promise<unknown> {
+  const sessionResult = await requireStaffSession();
+  if ("error" in sessionResult) {
+    return sessionResult;
+  }
+  if (!canAccessFinanceSection(sessionResult.session.role)) {
+    return { error: "You do not have access to supplier contract data." };
+  }
+
+  try {
+    const supabase = await getStaffSupabase();
+    const tenantId = sessionResult.session.tenantId;
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const billingMonthStart = billingMonthStartFromDate(today);
+
+    const { data, error } = await applyBusinessUnitScope(
+      supabase
+        .from("supplier_contracts")
+        .select(SUPPLIER_CONTRACT_LIST_SELECT)
+        .eq("tenant_id", tenantId)
+        .eq("status", "active"),
+      buScope,
+    ).order("next_billing_date", { ascending: true });
+
+    if (error) {
+      console.error(
+        "[assistant] get_supplier_contracts_status failed:",
+        error.message,
+      );
+      return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
+    }
+
+    const contracts = ((data ?? []) as SupplierContractListRow[]).map(
+      normalizeSupplierContractListRow,
+    );
+
+    const rows = await Promise.all(
+      contracts.slice(0, LIST_LIMIT).map(async (contract) => {
+        const { data: amendments } = await supabase
+          .from("supplier_contract_amendments")
+          .select("effective_date, new_monthly_amount")
+          .eq("tenant_id", tenantId)
+          .eq("contract_id", contract.id)
+          .order("effective_date", { ascending: true });
+
+        const monthlyGhs = resolveMonthlyAmountForBillingMonth(
+          (amendments ?? []) as SupplierContractAmendmentRow[],
+          billingMonthStart,
+        );
+        const invoiceNumber = formatSupplierContractApInvoiceNumber(
+          contract.contract_number,
+          billingMonthStart,
+        );
+        const { data: apRow } = await supabase
+          .from("accounts_payable")
+          .select("invoice_number, invoice_date, amount, balance_due, amount_paid, status")
+          .eq("tenant_id", tenantId)
+          .eq("source_type", SUPPLIER_CONTRACT_SOURCE_TYPE)
+          .eq("source_id", contract.id)
+          .eq("invoice_number", invoiceNumber)
+          .maybeSingle();
+
+        return {
+          contractNumber: contract.contract_number,
+          supplierName: contract.supplier_name,
+          agreementType: contract.agreement_type,
+          currentMonthlyAmountGhs: monthlyGhs,
+          nextBillingDate: contract.next_billing_date,
+          creditBalanceGhs: contract.credit_balance,
+          thisMonthBillingMonth: billingMonthStart.slice(0, 7),
+          thisMonthAp: apRow
+            ? {
+                invoiceNumber: apRow.invoice_number,
+                invoiceDate: apRow.invoice_date,
+                amountGhs: Number(apRow.amount) || 0,
+                balanceDueGhs: Number(apRow.balance_due) || 0,
+                amountPaidGhs: Number(apRow.amount_paid) || 0,
+                status: apRow.status,
+              }
+            : { status: "not_generated", invoiceNumber },
+        };
+      }),
+    );
+
+    return {
+      currency: "GHS" as const,
+      billingMonth: billingMonthStart.slice(0, 7),
+      activeCount: contracts.length,
+      contracts: rows,
+      note: "Scoped to active business unit (or all units when View All is selected). Monthly AP is created on the 1st by automation.",
+    };
+  } catch (error) {
+    console.error("[assistant] get_supplier_contracts_status threw:", error);
     return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
   }
 }

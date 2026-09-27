@@ -47,7 +47,12 @@ Naming disambiguation: "Davors" can refer to three different things:
 2. Davors Facilities (Management Services Ltd) — a cleaning and facilities management business (services include cleaning, property/facilities management, gardening/landscaping, fumigation/pest control, real estate, and project/construction management). It is one of the businesses that uses Davors Technologies ERP as its own tenant on the platform — not the same as the platform company.
 3. Davors Technologies ERP — the software/ERP system itself, built by Davors Technologies Ltd.
 
-When a user asks an ambiguous question that only says "Davors" without clarifying which one they mean (for example, "what is Davors" or "tell me about Davors"), either ask them to clarify which one they mean, or give a brief rundown of all three — whichever fits the question better. When the question clearly specifies one (for example, "what is Davors Technologies ERP", "what does Davors Technologies Ltd do", or "what does Davors Facilities do"), answer about that one directly without disambiguation.`;
+When a user asks an ambiguous question that only says "Davors" without clarifying which one they mean (for example, "what is Davors" or "tell me about Davors"), either ask them to clarify which one they mean, or give a brief rundown of all three — whichever fits the question better. When the question clearly specifies one (for example, "what is Davors Technologies ERP", "what does Davors Technologies Ltd do", or "what does Davors Facilities do"), answer about that one directly without disambiguation.
+
+Finance recording rules (follow even when handbook excerpts are vague):
+- Company-paid capital equipment and property: record ONLY in Finance → Fixed Assets (cash payment method records cash; Credit creates AP). Never also add an Expense Register row with category Fixed Assets for the same purchase.
+- Expense Register is for operating costs. Repairs and maintenance use an operating category (e.g. Direct Operational), not Fixed Assets.
+- Supplier recurring agreements: Finance → Supplier Contracts (monthly AP on the 1st); use get_supplier_contracts_status for live contract/AP status when available.`;
 
 const STAFF_ACCOUNT_ACCESS =
   "You do not yet have access to any account-specific data - if asked about specific account data (like balances or invoices), explain that this capability is coming soon.";

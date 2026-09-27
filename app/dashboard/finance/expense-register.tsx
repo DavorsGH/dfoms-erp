@@ -33,6 +33,10 @@ import {
   type LinkedProductSaleCogs,
 } from "./product-sale-cogs-expense-utils";
 import {
+  isFixedAssetsExpenseCategory,
+  validateNewExpenseRegisterCategory,
+} from "@/utils/expense-register-category-guard";
+import {
   computePurchaseTaxAmounts,
   computeWhtAmount,
   resolveDefaultWhtRate,
@@ -246,6 +250,17 @@ export default function ExpenseRegister({
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => Number(left.value) - Number(right.value));
   }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
+
+  const expenseCategorySelectOptions = useMemo(() => {
+    const keepFixedAssetsForEdit =
+      Boolean(editingId) && isFixedAssetsExpenseCategory(form.expense_category);
+    return expenseCategories.filter((category) => {
+      if (!isFixedAssetsExpenseCategory(category.name)) {
+        return true;
+      }
+      return keepFixedAssetsForEdit;
+    });
+  }, [expenseCategories, editingId, form.expense_category]);
 
   const categoryOptions = useMemo(
     () =>
@@ -780,6 +795,17 @@ export default function ExpenseRegister({
       stampId = stampResult.businessUnitId;
     }
 
+    if (!editingId) {
+      const categoryError = validateNewExpenseRegisterCategory(
+        form.expense_category,
+      );
+      if (categoryError) {
+        setError(categoryError);
+        setLoading(false);
+        return;
+      }
+    }
+
     const price = Number(form.price);
     const quantity = form.quantity.trim() === "" ? 1 : Number(form.quantity);
     const grossBeforeWht = calculateAmount(price, quantity);
@@ -1127,12 +1153,17 @@ export default function ExpenseRegister({
                   className={inputClassName}
                 >
                   <option value="">Select category</option>
-                  {expenseCategories.map((category) => (
+                  {expenseCategorySelectOptions.map((category) => (
                     <option key={category.name} value={category.name}>
                       {category.name}
                     </option>
                   ))}
                 </select>
+                {!editingId ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Buying an asset? Record it in Finance → Fixed Assets.
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">

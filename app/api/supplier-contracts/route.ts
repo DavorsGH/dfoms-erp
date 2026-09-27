@@ -91,9 +91,16 @@ export async function POST(request: Request) {
     supabase,
     tenantId: auth.tenantId,
     authUid: authUser.authUid,
+    requestedBusinessUnitId: body.business_unit_id,
   });
   if (!stamp.ok) {
     return NextResponse.json({ error: stamp.error }, { status: stamp.status });
+  }
+  if (stamp.allowedUnits !== null && !stamp.businessUnitId) {
+    return NextResponse.json(
+      { error: "Business unit is required for this workspace." },
+      { status: 400 },
+    );
   }
 
   const { contract, error } = await createSupplierContract(

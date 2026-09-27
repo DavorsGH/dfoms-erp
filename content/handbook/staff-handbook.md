@@ -410,10 +410,12 @@ yourself here, through Add Entry, keep full Edit and Delete as normal.
 
 ## **6.2 Expense Register**
 
-Records all business expenses by category. Use Finance Settings to
-manage your list of expense categories. Cost of Goods Sold (COGS) is
-posted here automatically whenever you sell stock --- see Section 10 for
-how this is calculated.
+Records **running costs** (operating expenses) by category --- not
+capital asset purchases. Company-bought equipment and property belong in
+**Fixed Assets** only (Section 6.4a). Use Finance Settings to manage
+your list of expense categories. Cost of Goods Sold (COGS) is posted
+here automatically whenever you sell stock --- see Section 10 for how
+this is calculated.
 
 You can bulk import existing expenses from a spreadsheet using the Bulk
 Import button on this page --- see Section 2.4.
@@ -440,6 +442,80 @@ distinction.
 
 You can bulk import your existing asset register from a spreadsheet
 using the Bulk Import button on this page --- see Section 2.4.
+
+## **6.4a Recording asset purchases (company equipment & property)**
+
+Use **Finance → Fixed Assets** for equipment, vehicles, and other
+long-term property the company buys. **Do not** also add a row in the
+Expense Register with category **Fixed Assets** for the same purchase
+--- that double-counts cash and wrongly hits Profit & Loss (Fixed Assets
+category expenses roll into **Other Expenses** on the P&L).
+
+**Cash purchase (company paid immediately).** Record **only** in Fixed
+Assets. Choose the **actual payment method** (Cash, Mobile Money, Bank
+Transfer, POS/VISA, etc.). The system records the cash outflow from that
+Fixed Asset row for Balance Sheet cash and Cash Flow.
+
+**Credit purchase (supplier credit / pay later).** Record in Fixed Assets
+with payment method **Credit** (or Supplier Credit). The system creates
+the linked **Accounts Payable** invoice automatically. Record supplier
+payments on **Finance → Accounts Payable → Record Payment** when cash
+leaves the business --- not as a separate Paid expense for the asset.
+
+**Repairs and maintenance** (e.g. replacing a mirror, servicing a
+machine) are **running costs**, not new capital assets. Record those in
+**Expense Register** under an operating category such as **Direct
+Operational** (e.g. Equipment / Equipment Repairs) --- **never** under
+Fixed Assets and never in the Fixed Assets module.
+
++-----------------------------------------------------------------------+
+| **Why double recording is wrong**                                       |
+|                                                                       |
+| Fixed Assets already capitalises the cost on the Balance Sheet and    |
+| (for cash methods) reduces Cash. A Paid Expense Register row for the  |
+| same amount reduces Cash again and reduces retained earnings via P&L.   |
+| Credit assets need AP on the Balance Sheet until paid --- not a duplicate |
+| Paid expense on purchase date.                                        |
++-----------------------------------------------------------------------+
+
+## **6.4b Supplier Contracts**
+
+**Finance → Supplier Contracts** tracks recurring supplier agreements
+(written or verbal) that bill on a **monthly** cycle.
+
+-   **Agreement types.** Written agreements need a document URL before
+    they can be set **Active**. Verbal agreements can be activated
+    without a document.
+
+-   **Monthly AP (1st of month).** A nightly job creates an **Accounts
+    Payable** invoice on the **1st** of each billing month for each
+    active contract (invoice number pattern
+    `{contract_number}-{YYYY-MM}`). Amount comes from the latest
+    **Change Amount** amendment effective on or before that month.
+
+-   **Mid-month payments.** When you pay the supplier before month-end,
+    use **Accounts Payable → Record Payment** as for any other AP --- the
+    same partial/full payment rules apply.
+
+-   **Mid-month reminder (optional).** If enabled on the contract, the
+    system can remind you mid-month to decide whether to pay early.
+
+-   **Record Replacement Payment.** When a stand-in supplier covers a
+    service, record the replacement cost here. It reduces the generated
+    AP for that month (and can carry unused credit on the contract's
+    **credit balance** for later months).
+
+-   **Change Amount.** Add an amendment with an **effective date** and
+    new monthly amount; billing from that month forward uses the new
+    figure.
+
+-   **Renewal & termination.** Contracts can **auto-renew** by extending
+    the end date for the same term. **Terminate** when the agreement
+    ends; unused **credit balance** is surfaced before termination if
+    money is still owed back to you on the contract.
+
+Supplier contract APs follow the normal AP accrual rules for operating
+expenses (not Fixed Asset credit APs).
 
 ## **6.5 Manual Financial Entries**
 

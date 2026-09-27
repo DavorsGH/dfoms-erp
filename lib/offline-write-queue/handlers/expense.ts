@@ -8,6 +8,7 @@ import {
   loadWriteBusinessUnitContext,
 } from "@/utils/business-unit-access";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
+import { validateNewExpenseRegisterCategory } from "@/utils/expense-register-category-guard";
 
 function isUniqueViolation(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
@@ -78,6 +79,13 @@ export async function syncExpenseQueueItem(
         ok: false,
         error: resolved.error ?? "Unable to allocate receipt number.",
       };
+    }
+
+    const categoryError = validateNewExpenseRegisterCategory(
+      payload.expense_category,
+    );
+    if (categoryError) {
+      return { ok: false, error: categoryError };
     }
 
     const insertRow = {

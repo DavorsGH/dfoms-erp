@@ -18,6 +18,10 @@ import {
 } from "@/lib/bulk-import/expense-duplicate-key";
 import { isCreditPaymentMethod } from "@/lib/bulk-import/payment-method-credit";
 import {
+  EXPENSE_REGISTER_FIXED_ASSETS_REJECTION_MESSAGE,
+  isFixedAssetsExpenseCategory,
+} from "@/utils/expense-register-category-guard";
+import {
   normalizeTenantLookupKey,
   validateTenantNameLookup,
   validateTenantNameLookupRequireMatch,
@@ -162,7 +166,6 @@ const EXPENSE_AUTO_POST_CATEGORY_PATTERNS = [
   "staff salaries",
   "employer ssnit",
   "statutory remittance",
-  "fixed assets",
 ] as const;
 
 const CUSTOMER_TYPE_VALUES = [...CUSTOMER_RECORD_TYPE_VALUES];
@@ -1625,6 +1628,23 @@ export function validateImportRows(input: {
 
 
     if (input.importType === "expense") {
+      const expenseCategoryRaw = row.mapped_data.expense_category;
+      const expenseCategory =
+        typeof expenseCategoryRaw === "string"
+          ? expenseCategoryRaw
+          : expenseCategoryRaw == null
+            ? null
+            : String(expenseCategoryRaw);
+      if (isFixedAssetsExpenseCategory(expenseCategory)) {
+        return {
+          id: row.id,
+          row_number: row.row_number,
+          mapped_data: row.mapped_data,
+          status: "error",
+          error_message: EXPENSE_REGISTER_FIXED_ASSETS_REJECTION_MESSAGE,
+        };
+      }
+
       const warnings = collectExpenseWarnings(row.mapped_data, {
         inFileDuplicateExpenseKeys,
         existingExpenseDuplicateKeys,

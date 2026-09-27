@@ -20,6 +20,7 @@ import {
   getOutstandingInvoices,
   getOutstandingPayables,
   getServiceContractsStatus,
+  getSupplierContractsStatus,
   getTaxLedgerStatus,
 } from "@/utils/assistant-staff-tools-finance";
 import {
@@ -86,6 +87,8 @@ export const GET_EXPENSE_BREAKDOWN_TOOL_NAME = "get_expense_breakdown";
 export const GET_FIXED_ASSETS_SUMMARY_TOOL_NAME = "get_fixed_assets_summary";
 export const GET_SERVICE_CONTRACTS_STATUS_TOOL_NAME =
   "get_service_contracts_status";
+export const GET_SUPPLIER_CONTRACTS_STATUS_TOOL_NAME =
+  "get_supplier_contracts_status";
 export const GET_PROPERTIES_OVERVIEW_TOOL_NAME = "get_properties_overview";
 export const GET_RENT_COLLECTION_OVERVIEW_TOOL_NAME =
   "get_rent_collection_overview";
@@ -225,6 +228,10 @@ export function getStaffAssistantTools(
       tool(
         GET_SERVICE_CONTRACTS_STATUS_TOOL_NAME,
         "Active service contracts and any due for renewal within 60 days.",
+      ),
+      tool(
+        GET_SUPPLIER_CONTRACTS_STATUS_TOOL_NAME,
+        "Active supplier contracts (written/verbal): current monthly amount, next billing date, credit balance, and this month's generated AP status — Finance → Supplier Contracts.",
       ),
     );
   }
@@ -483,6 +490,8 @@ export async function executeStaffAssistantTool(
       return getFixedAssetsSummary();
     case GET_SERVICE_CONTRACTS_STATUS_TOOL_NAME:
       return getServiceContractsStatus();
+    case GET_SUPPLIER_CONTRACTS_STATUS_TOOL_NAME:
+      return getSupplierContractsStatus();
     case GET_PROPERTIES_OVERVIEW_TOOL_NAME:
       return getPropertiesOverview();
     case GET_RENT_COLLECTION_OVERVIEW_TOOL_NAME:
@@ -565,7 +574,7 @@ export function staffAccountToolsSystemPromptAddition(
       "- get_outstanding_invoices / get_outstanding_payables: unpaid client invoices and supplier payables with aging",
       "- get_tax_ledger_status: open WHT/VAT/PAYE/SSNIT statutory balances",
       "- get_expense_breakdown: top expense categories (optional period: this_month, last_month, ytd)",
-      "- get_fixed_assets_summary / get_service_contracts_status: fixed assets schedule summary and active service contracts due for renewal",
+      "- get_fixed_assets_summary / get_service_contracts_status / get_supplier_contracts_status: fixed assets schedule, service contracts due for renewal, and supplier contract billing/AP status",
     );
   }
 
@@ -657,6 +666,8 @@ When asked about workspace data you cannot retrieve, explain politely and briefl
     "Access vs missing features: If the user asks about workspace data you cannot retrieve because no matching tool appears in YOUR list above, do NOT say you lack the capability, do not have a tool, or that the feature is coming soon. Other staff roles may have assistant tools for that data. Explain briefly that the information is not available to their current role, name the relevant Dashboard module when you can infer it (Finance, Operations, Inventory, Sales & CRM, HR Management, Real Estate, Administration), and suggest they check with an administrator about module access if they need it. Stay polite; keep it short.",
     "",
     "Genuinely unavailable (not role-gated): get_returns_summary and get_workspace_settings_summary are not implemented for any role yet — only mention these if asked specifically about returns/credit notes or workspace settings completeness.",
+    "",
+    "Fixed asset purchases: tell users to record company-bought equipment ONLY in Finance → Fixed Assets (never a duplicate Expense Register row with category Fixed Assets). Repairs/maintenance are Expense Register operating categories only.",
   );
 
   return lines.join("\n");

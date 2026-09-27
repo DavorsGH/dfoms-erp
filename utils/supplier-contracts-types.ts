@@ -113,20 +113,68 @@ export function formatSupplierContractStatus(status: SupplierContractStatus): st
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-export function supplierContractStatusBadgeClassName(
-  status: SupplierContractStatus,
-): string {
+export type SupplierContractDisplayStatus =
+  | "Draft"
+  | "Active"
+  | "Renewal Due"
+  | "Expired"
+  | "Terminated";
+
+export function resolveSupplierContractDisplayStatus(input: {
+  status: SupplierContractStatus | string;
+  end_date: string;
+  reference?: Date;
+}): SupplierContractDisplayStatus {
+  const status = normalizeSupplierContractStatus(input.status);
+  if (status === "active" && isSupplierContractRenewalDue(input.end_date, 30, input.reference)) {
+    return "Renewal Due";
+  }
   switch (status) {
     case "active":
-      return "border-green-200 bg-green-50 text-green-800";
+      return "Active";
     case "expired":
-      return "border-slate-200 bg-slate-100 text-slate-700";
+      return "Expired";
     case "terminated":
+      return "Terminated";
+    default:
+      return "Draft";
+  }
+}
+
+export function supplierContractDisplayStatusBadgeClassName(
+  displayStatus: SupplierContractDisplayStatus,
+): string {
+  switch (displayStatus) {
+    case "Active":
+      return "border-green-200 bg-green-50 text-green-800";
+    case "Renewal Due":
+      return "border-amber-200 bg-amber-50 text-amber-900";
+    case "Expired":
+      return "border-slate-200 bg-slate-100 text-slate-700";
+    case "Terminated":
       return "border-red-200 bg-red-50 text-red-800";
     default:
       return "border-amber-200 bg-amber-50 text-amber-900";
   }
 }
+
+export function supplierContractStatusBadgeClassName(
+  status: SupplierContractStatus,
+): string {
+  return supplierContractDisplayStatusBadgeClassName(
+    resolveSupplierContractDisplayStatus({ status, end_date: "" }),
+  );
+}
+
+export type SupplierContractSettingsPatch = {
+  status?: SupplierContractStatus | string;
+  end_date?: string;
+  auto_renew?: boolean;
+  mid_month_reminder_enabled?: boolean;
+  mid_month_reminder_day?: number;
+  notes?: string | null;
+  business_unit_id?: string | null;
+};
 
 export function isSupplierContractRenewalDue(
   endDate: string,

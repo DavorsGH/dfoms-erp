@@ -584,6 +584,16 @@ async function insertExpenseRow(
   },
   businessUnitId: string | null = null,
 ) {
+  const {
+    validateNewExpenseRegisterCategory,
+  } = await import("@/utils/expense-register-category-guard");
+  const blocked = validateNewExpenseRegisterCategory(
+    String(mappedData.expense_category ?? ""),
+  );
+  if (blocked) {
+    throw new Error(blocked);
+  }
+
   const expenseCategory = await resolveExpenseCategoryForCommit({
     client,
     tenantId,
