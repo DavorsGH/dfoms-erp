@@ -31,7 +31,10 @@ function buildTenantLogMessage(result: TenantBalanceSheetIntegrityResult): strin
   }
 
   const monthSummary = result.imbalances
-    .map((row) => `${row.monthLabel}=${row.diff.toFixed(2)}`)
+    .map(
+      (row) =>
+        `${row.businessUnitName}/${row.monthLabel}=${row.diff.toFixed(2)}`,
+    )
     .join(", ");
   return `FY${result.fiscalYear}: out of balance — ${monthSummary}`;
 }
@@ -50,7 +53,10 @@ async function sendBalanceSheetIntegrityAlertEmail(
       const monthSummary = tenant.fetchError
         ? `Fetch error: ${tenant.fetchError}`
         : tenant.imbalances
-            .map((row) => `${row.monthLabel}: GHS ${row.diff.toFixed(2)}`)
+            .map(
+              (row) =>
+                `${row.businessUnitName} ${row.monthLabel}: GHS ${row.diff.toFixed(2)}`,
+            )
             .join("; ");
       return `<tr><td style="padding:8px;border:1px solid #e2e8f0;">${tenant.tenantName}</td><td style="padding:8px;border:1px solid #e2e8f0;">${monthSummary}</td></tr>`;
     })
@@ -145,6 +151,7 @@ export async function runBalanceSheetIntegrityWithLogging(
         fiscalYear: result.fiscalYear,
         monthsChecked: result.monthsChecked,
         imbalances: result.imbalances,
+        scopeResults: result.scopeResults,
         maxAbsDiff: result.maxAbsDiff,
         durationMs: result.durationMs,
         fetchError: result.fetchError,

@@ -46,7 +46,9 @@ import {
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
 import {
+  getPayableOutstandingAsOf,
   isStatutoryRemittancePayable,
+  type AccountsPayablePaymentLedgerRow,
   type BalanceSheetAccountsPayableEntry,
 } from "./balance-sheet-ap-cash-utils";
 import type {
@@ -171,13 +173,10 @@ function getOutstandingBalance(entry: BalanceSheetIncomeEntry): number {
   return resolveIncomeOutstandingBalance(entry);
 }
 
-function getPayableBalance(entry: BalanceSheetAccountsPayableEntry): number {
-  if (entry.balance_due !== null && entry.balance_due !== undefined) {
-    return Math.max(Number(entry.balance_due) || 0, 0);
-  }
-
-  return Math.max((Number(entry.amount) || 0) - (Number(entry.amount_paid) || 0), 0);
-}
+export {
+  getPayableBalanceFromCurrentRow as getPayableBalance,
+  getPayableOutstandingAsOf,
+} from "./balance-sheet-ap-cash-utils";
 
 function calculateAccountsReceivableByMonth(
   incomeEntries: BalanceSheetIncomeEntry[],
@@ -206,9 +205,10 @@ function calculateAccountsReceivableByMonth(
   return totals;
 }
 
-function calculateAccountsPayableByMonth(
+export function calculateAccountsPayableByMonth(
   payableEntries: BalanceSheetAccountsPayableEntry[],
   financialYear: number,
+  payments: AccountsPayablePaymentLedgerRow[] = [],
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
 
@@ -220,12 +220,10 @@ function calculateAccountsPayableByMonth(
         return sum;
       }
 
-      const entryDate = normalizeDate(entry.invoice_date);
-      if (!entryDate || entryDate > monthEnd) {
-        return sum;
-      }
-
-      return sum + getPayableBalance(entry);
+      return (
+        sum +
+        getPayableOutstandingAsOf(entry, monthEnd, payments)
+      );
     }, 0);
   }
 
@@ -570,7 +568,15 @@ export function buildBalanceSheetReport(
   );
 
   const accountsPayable = roundMonthlyTotals(
-    calculateAccountsPayableByMonth(payableEntries, financialYear),
+    calculateAccountsPayableByMonth(
+      payableEntries,
+      financialYear,
+      (options.accountsPayablePayments ?? []).map((row) => ({
+        accounts_payable_id: row.accounts_payable_id,
+        payment_date: row.payment_date,
+        amount: row.amount,
+      })),
+    ),
   );
   const accruedWagesPayable = roundMonthlyTotals(
     calculateAccruedWagesPayableByMonth(

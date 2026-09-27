@@ -1,0 +1,212 @@
+import { formatInvoiceDate, formatInvoiceMoney, roundMoney, toNumber } from "@/utils/client-invoices-types";
+
+export { formatInvoiceDate, formatInvoiceMoney, roundMoney, toNumber };
+
+export const SUPPLIER_CONTRACT_ENTITY_TYPE = "SPC" as const;
+export const SUPPLIER_CONTRACT_SOURCE_TYPE = "supplier_contract" as const;
+
+export const SUPPLIER_CONTRACT_STATUSES = [
+  "draft",
+  "active",
+  "expired",
+  "terminated",
+] as const;
+export type SupplierContractStatus = (typeof SUPPLIER_CONTRACT_STATUSES)[number];
+
+export const SUPPLIER_AGREEMENT_TYPES = ["written", "verbal"] as const;
+export type SupplierAgreementType = (typeof SUPPLIER_AGREEMENT_TYPES)[number];
+
+export const SUPPLIER_CONTRACT_LIST_SELECT =
+  "id, tenant_id, business_unit_id, supplier_id, supplier_name, contract_number, contract_sequence, agreement_type, start_date, end_date, auto_renew, status, expense_category, sub_category, wht_rate, next_billing_date, mid_month_reminder_enabled, mid_month_reminder_day, credit_balance, created_at" as const;
+
+export const SUPPLIER_CONTRACT_HEADER_SELECT =
+  "id, tenant_id, business_unit_id, supplier_id, supplier_name, contract_number, contract_sequence, agreement_type, document_url, start_date, end_date, auto_renew, status, expense_category, sub_category, wht_rate, next_billing_date, mid_month_reminder_enabled, mid_month_reminder_day, credit_balance, notes, created_at, updated_at" as const;
+
+export type SupplierContractAmendmentRow = {
+  id: string;
+  tenant_id: string;
+  contract_id: string;
+  effective_date: string;
+  previous_monthly_amount: number | null;
+  new_monthly_amount: number;
+  change_reason: string;
+  document_url: string | null;
+  created_at: string;
+  created_by: string | null;
+};
+
+export type SupplierContractDeductionRow = {
+  id: string;
+  contract_id: string;
+  service_date: string;
+  billing_month: string;
+  accounts_payable_id: string | null;
+  replacement_expense_id: string | null;
+  replacement_name: string;
+  deduction_amount: number;
+  amount_applied: number;
+  amount_carried_forward: number;
+  notes: string | null;
+  created_at: string;
+};
+
+export type SupplierContractListRow = {
+  id: string;
+  tenant_id: string;
+  business_unit_id: string | null;
+  supplier_id: string;
+  supplier_name: string;
+  contract_number: string;
+  contract_sequence: number;
+  agreement_type: SupplierAgreementType;
+  start_date: string;
+  end_date: string;
+  auto_renew: boolean;
+  status: SupplierContractStatus;
+  expense_category: string;
+  sub_category: string;
+  wht_rate: number;
+  next_billing_date: string | null;
+  mid_month_reminder_enabled: boolean;
+  mid_month_reminder_day: number;
+  credit_balance: number;
+  created_at: string;
+};
+
+export type SupplierContractWriteBody = {
+  supplier_id: string;
+  agreement_type: SupplierAgreementType;
+  document_url?: string | null;
+  start_date: string;
+  end_date: string;
+  auto_renew?: boolean;
+  status?: SupplierContractStatus;
+  expense_category: string;
+  sub_category: string;
+  wht_rate?: number;
+  initial_monthly_amount: number;
+  next_billing_date?: string | null;
+  mid_month_reminder_enabled?: boolean;
+  mid_month_reminder_day?: number;
+  notes?: string | null;
+  business_unit_id?: string | null;
+};
+
+export type SupplierContractAmendmentWriteBody = {
+  effective_date: string;
+  new_monthly_amount: number;
+  change_reason: string;
+  document_url?: string | null;
+};
+
+export function normalizeSupplierContractStatus(
+  value: string | null | undefined,
+): SupplierContractStatus {
+  const normalized = String(value ?? "draft").trim().toLowerCase();
+  if (SUPPLIER_CONTRACT_STATUSES.includes(normalized as SupplierContractStatus)) {
+    return normalized as SupplierContractStatus;
+  }
+  return "draft";
+}
+
+export function formatSupplierContractStatus(status: SupplierContractStatus): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+export function supplierContractStatusBadgeClassName(
+  status: SupplierContractStatus,
+): string {
+  switch (status) {
+    case "active":
+      return "border-green-200 bg-green-50 text-green-800";
+    case "expired":
+      return "border-slate-200 bg-slate-100 text-slate-700";
+    case "terminated":
+      return "border-red-200 bg-red-50 text-red-800";
+    default:
+      return "border-amber-200 bg-amber-50 text-amber-900";
+  }
+}
+
+export function isSupplierContractRenewalDue(
+  endDate: string,
+  withinDays = 30,
+  reference = new Date(),
+): boolean {
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) {
+    return false;
+  }
+  const ref = new Date(reference);
+  ref.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  const diffMs = end.getTime() - ref.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays >= 0 && diffDays <= withinDays;
+}
+
+export function billingMonthStartFromDate(dateStr: string): string {
+  const d = dateStr.slice(0, 10);
+  return `${d.slice(0, 7)}-01`;
+}
+
+export function resolveMonthlyAmountForBillingMonth(
+  amendments: Array<Pick<SupplierContractAmendmentRow, "effective_date" | "new_monthly_amount">>,
+  billingMonthStart: string,
+): number {
+  const eligible = amendments
+    .filter((row) => String(row.effective_date).slice(0, 10) <= billingMonthStart)
+    .sort((a, b) =>
+      String(b.effective_date).slice(0, 10).localeCompare(
+        String(a.effective_date).slice(0, 10),
+      ),
+    );
+  return roundMoney(toNumber(eligible[0]?.new_monthly_amount ?? 0));
+}
+
+export function formatSupplierContractApInvoiceNumber(
+  contractNumber: string,
+  billingMonthStart: string,
+): string {
+  const ym = billingMonthStart.slice(0, 7);
+  return `${contractNumber}-${ym}`;
+}
+
+export function validateSupplierContractBody(
+  body: SupplierContractWriteBody,
+): string | null {
+  if (!body.supplier_id?.trim()) {
+    return "Supplier is required.";
+  }
+  if (!body.start_date || !body.end_date) {
+    return "Start and end dates are required.";
+  }
+  if (body.end_date < body.start_date) {
+    return "End date must be on or after start date.";
+  }
+  if (!body.expense_category?.trim() || !body.sub_category?.trim()) {
+    return "Category and sub-category are required.";
+  }
+  if (toNumber(body.initial_monthly_amount) <= 0) {
+    return "Initial monthly amount must be greater than zero.";
+  }
+  if (
+    body.agreement_type === "written" &&
+    normalizeSupplierContractStatus(body.status) === "active" &&
+    !body.document_url?.trim()
+  ) {
+    return "Written agreements require a document before activation.";
+  }
+  return null;
+}
+
+export function normalizeSupplierContractListRow(
+  row: SupplierContractListRow,
+): SupplierContractListRow {
+  return {
+    ...row,
+    wht_rate: toNumber(row.wht_rate),
+    credit_balance: roundMoney(toNumber(row.credit_balance)),
+    contract_sequence: toNumber(row.contract_sequence),
+  };
+}

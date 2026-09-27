@@ -19,6 +19,16 @@ export type BalanceSheetMonthImbalance = {
   diff: number;
   totalAssets: number;
   totalLiabilitiesAndEquity: number;
+  businessUnitId: string | null;
+  businessUnitName: string;
+};
+
+export type BalanceSheetIntegrityScopeResult = {
+  scope: "tenant" | "business_unit";
+  businessUnitId: string | null;
+  businessUnitName: string;
+  imbalances: BalanceSheetMonthImbalance[];
+  maxAbsDiff: number;
 };
 
 export type TenantBalanceSheetIntegrityResult = {
@@ -26,7 +36,9 @@ export type TenantBalanceSheetIntegrityResult = {
   tenantName: string;
   fiscalYear: number;
   monthsChecked: number[];
+  /** Flat list across tenant-wide + each business unit (for alerts / metadata). */
   imbalances: BalanceSheetMonthImbalance[];
+  scopeResults: BalanceSheetIntegrityScopeResult[];
   maxAbsDiff: number;
   status: SystemEventStatus;
   fetchError: string | null;
@@ -87,32 +99,34 @@ export function classifyBalanceSheetIntegrityStatus(
   return "success";
 }
 
-export async function auditTenantBalanceSheetIntegrity(
-  admin: SupabaseClient,
-  tenant: { id: string; name: string },
-  fiscalYear: number,
-  referenceDate = new Date(),
-): Promise<TenantBalanceSheetIntegrityResult> {
-  const startedAt = Date.now();
-  const monthsChecked = resolveClosedMonthIndices(fiscalYear, referenceDate);
+type BusinessUnitRow = { id: string; name: string };
 
-  const data = await fetchBalanceSheetPageData(admin, tenant.id, {
-    dateRange: null,
-  });
-  if (data.fetchError) {
-    return {
-      tenantId: tenant.id,
-      tenantName: tenant.name,
-      fiscalYear,
-      monthsChecked,
-      imbalances: [],
-      maxAbsDiff: 0,
-      status: "failure",
-      fetchError: data.fetchError,
-      durationMs: Date.now() - startedAt,
-    };
+async function loadTenantBusinessUnits(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<BusinessUnitRow[]> {
+  const { data, error } = await admin
+    .from("business_units")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .order("name");
+
+  if (error) {
+    throw new Error(`Failed to load business units: ${error.message}`);
   }
 
+  return (data ?? []) as BusinessUnitRow[];
+}
+
+function auditReportForScope(
+  data: Awaited<ReturnType<typeof fetchBalanceSheetPageData>>,
+  tenantId: string,
+  fiscalYear: number,
+  monthsChecked: number[],
+  businessUnitId: string | null,
+  businessUnitName: string,
+  scope: "tenant" | "business_unit",
+): BalanceSheetIntegrityScopeResult {
   const report = buildBalanceSheetReport(
     data.initialIncomeEntries,
     data.initialExpenseEntries,
@@ -128,7 +142,7 @@ export async function auditTenantBalanceSheetIntegrity(
     data.initialTaxLedgerEntries,
     data.initialWelfareFundEntries,
     {
-      tenantId: tenant.id,
+      tenantId,
       accountsPayablePayments: data.initialAccountsPayablePayments,
       directorsLoanRepayments: data.initialDirectorsLoanRepayments,
     },
@@ -144,10 +158,121 @@ export async function auditTenantBalanceSheetIntegrity(
         diff: roundCurrency(check.difference),
         totalAssets: roundCurrency(check.totalAssets),
         totalLiabilitiesAndEquity: roundCurrency(check.totalLiabilitiesAndEquity),
+        businessUnitId,
+        businessUnitName,
       });
     }
   }
 
+  const maxAbsDiff =
+    imbalances.length > 0
+      ? Math.max(...imbalances.map((row) => Math.abs(row.diff)))
+      : 0;
+
+  return {
+    scope,
+    businessUnitId,
+    businessUnitName,
+    imbalances,
+    maxAbsDiff: roundCurrency(maxAbsDiff),
+  };
+}
+
+export async function auditTenantBalanceSheetIntegrity(
+  admin: SupabaseClient,
+  tenant: { id: string; name: string },
+  fiscalYear: number,
+  referenceDate = new Date(),
+): Promise<TenantBalanceSheetIntegrityResult> {
+  const startedAt = Date.now();
+  const monthsChecked = resolveClosedMonthIndices(fiscalYear, referenceDate);
+
+  let businessUnits: BusinessUnitRow[] = [];
+  try {
+    businessUnits = await loadTenantBusinessUnits(admin, tenant.id);
+  } catch (error) {
+    return {
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      fiscalYear,
+      monthsChecked,
+      imbalances: [],
+      scopeResults: [],
+      maxAbsDiff: 0,
+      status: "failure",
+      fetchError: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  const scopeResults: BalanceSheetIntegrityScopeResult[] = [];
+
+  const tenantWideData = await fetchBalanceSheetPageData(admin, tenant.id, {
+    dateRange: null,
+    viewAllBusinessUnits: true,
+  });
+  if (tenantWideData.fetchError) {
+    return {
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      fiscalYear,
+      monthsChecked,
+      imbalances: [],
+      scopeResults: [],
+      maxAbsDiff: 0,
+      status: "failure",
+      fetchError: tenantWideData.fetchError,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
+  scopeResults.push(
+    auditReportForScope(
+      tenantWideData,
+      tenant.id,
+      fiscalYear,
+      monthsChecked,
+      null,
+      "All businesses",
+      "tenant",
+    ),
+  );
+
+  for (const unit of businessUnits) {
+    const unitData = await fetchBalanceSheetPageData(admin, tenant.id, {
+      dateRange: null,
+      viewAllBusinessUnits: false,
+      activeBusinessUnitId: unit.id,
+    });
+    if (unitData.fetchError) {
+      return {
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        fiscalYear,
+        monthsChecked,
+        imbalances: [],
+        scopeResults,
+        maxAbsDiff: 0,
+        status: "failure",
+        fetchError: unitData.fetchError,
+        durationMs: Date.now() - startedAt,
+      };
+    }
+
+    scopeResults.push(
+      auditReportForScope(
+        unitData,
+        tenant.id,
+        fiscalYear,
+        monthsChecked,
+        unit.id,
+        unit.name,
+        "business_unit",
+      ),
+    );
+  }
+
+  const imbalances = scopeResults.flatMap((row) => row.imbalances);
   const maxAbsDiff =
     imbalances.length > 0
       ? Math.max(...imbalances.map((row) => Math.abs(row.diff)))
@@ -159,6 +284,7 @@ export async function auditTenantBalanceSheetIntegrity(
     fiscalYear,
     monthsChecked,
     imbalances,
+    scopeResults,
     maxAbsDiff: roundCurrency(maxAbsDiff),
     status: classifyBalanceSheetIntegrityStatus(imbalances),
     fetchError: null,

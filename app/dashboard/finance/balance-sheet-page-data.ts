@@ -569,7 +569,7 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("accounts_payable")
       .select(
-        "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
+        "id, invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
       )
       .eq("tenant_id", tenantId),
     buScope,
@@ -577,7 +577,7 @@ export async function fetchBalanceSheetPageData(
   let apPaymentsQuery = applyBusinessUnitScope(
     supabase
       .from("accounts_payable_payments")
-      .select("tenant_id, payment_date, amount, payment_source")
+      .select("tenant_id, accounts_payable_id, payment_date, amount, payment_source")
       .eq("tenant_id", tenantId),
     buScope,
   ).order("payment_date", { ascending: true });

@@ -211,7 +211,7 @@ export async function fetchCashFlowReportData(
       supabase
         .from("accounts_payable")
         .select(
-          "invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
+          "id, invoice_date, balance_due, amount, amount_paid, vendor_name, invoice_number, expense_category",
         ),
       buScope,
     ).order("invoice_date", { ascending: true }),
@@ -219,7 +219,7 @@ export async function fetchCashFlowReportData(
     applyBusinessUnitScope(
       supabase
         .from("accounts_payable_payments")
-        .select("tenant_id, payment_date, amount, payment_source"),
+        .select("tenant_id, accounts_payable_id, payment_date, amount, payment_source"),
       buScope,
     ).order("payment_date", { ascending: true }),
     applyBusinessUnitScope(

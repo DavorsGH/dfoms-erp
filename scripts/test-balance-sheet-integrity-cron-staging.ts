@@ -125,6 +125,7 @@ async function main() {
         fiscalYear: result.fiscalYear,
         monthsChecked: result.monthsChecked,
         imbalances: result.imbalances,
+        scopeResults: result.scopeResults,
         maxAbsDiff: result.maxAbsDiff,
         durationMs: result.durationMs,
         fetchError: result.fetchError,

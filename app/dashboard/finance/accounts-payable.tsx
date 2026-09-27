@@ -1056,7 +1056,15 @@ export default function AccountsPayable({
                       >
                         {entry.vendor_name}
                       </td>
-                      <td className="px-4 py-3">{entry.invoice_number}</td>
+                      <td className="px-4 py-3">
+                        <div>{entry.invoice_number}</div>
+                        {entry.source_type === "supplier_contract" ? (
+                          <span className="mt-1 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-800">
+                            From Contract{" "}
+                            {entry.invoice_number.replace(/-\d{4}-\d{2}$/, "")}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3">{entry.expense_category}</td>
                       <td className="px-4 py-3">{entry.sub_category}</td>
                       <td className="px-4 py-3">{formatDate(entry.due_date)}</td>

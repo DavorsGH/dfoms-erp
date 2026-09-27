@@ -8,6 +8,7 @@ import {
 
 export type AccountsPayablePaymentRow = {
   tenant_id: string;
+  accounts_payable_id?: string | null;
   payment_date: string;
   amount: number;
   payment_source: "company_cash" | "directors_loan";
