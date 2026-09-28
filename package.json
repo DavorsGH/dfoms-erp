@@ -18,8 +18,7 @@
     "gate:tenant-security": "npm run audit:tenant-rls && npm run test:tenant-isolation",
     "sql:list-applied": "npx tsx scripts/list-applied-sql-scripts.ts --env staging",
     "sql:record-applied": "npx tsx scripts/record-applied-sql-script.ts",
-    "generate-favicons": "node scripts/generate-favicons.mjs",
-    "generate-og-image": "node scripts/generate-og-image.mjs"
+    "generate-favicons": "node scripts/generate-favicons.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

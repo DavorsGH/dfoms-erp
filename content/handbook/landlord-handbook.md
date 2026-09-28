@@ -1,4 +1,4 @@
-**DAVORS FACILITIES MANAGEMENT SERVICES LTD**
+**DAVORS TECHNOLOGIES LTD**
 
 Davors Real Estate System
 
@@ -243,7 +243,7 @@ and send these themselves.
 
 -   **Workspace Settings ---** your own contact and notification details, and your own workspace
     logo/photo, shown at the top of your portal (if you don't upload
-    one, the Davors Facilities logo is shown instead).
+    one, the Davors Technologies logo is shown instead).
 
 -   **Account Security ---** change your own password.
 

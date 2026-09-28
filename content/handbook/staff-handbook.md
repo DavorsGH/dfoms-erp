@@ -1,4 +1,4 @@
-**DAVORS FACILITIES MANAGEMENT SERVICES LTD**
+**DAVORS TECHNOLOGIES LTD**
 
 ERP System
 
@@ -258,7 +258,7 @@ by your workspace administrator under Administration → User Accounts.
 +-----------------------------------------------------------------------+
 | **Note**                                                              |
 |                                                                       |
-| Only Davors Facilities platform administrators can access Platform    |
+| Only Davors Technologies platform administrators can access Platform    |
 | Settings and Monitoring & Support --- these are not part of a         |
 | customer workspace.                                                   |
 +-----------------------------------------------------------------------+
@@ -882,7 +882,7 @@ button on this page --- see Section 2.4.
 
 ## **7.1b Product Catalog (Davors platform)**
 
-On the Davors Facilities platform tenant only, Sales & CRM includes a
+On the Davors Technologies platform tenant only, Sales & CRM includes a
 **Product Catalog** tab for platform product listings used in billing
 and related flows. Other customer workspaces do not see this tab.
 
@@ -1907,7 +1907,7 @@ choose the item from the dropdown instead.
 
 # **Section 10A --- Real Estate (Davors platform only)**
 
-Real Estate appears in the sidebar only for Davors Facilities platform
+Real Estate appears in the sidebar only for Davors Technologies platform
 staff with Admin or Director access on the Davors tenant. Ordinary
 customer workspaces do not see this module.
 
@@ -2073,7 +2073,7 @@ From Administration → User Accounts, an Admin can:
 phone, and email, and upload your own logo and signature. These appear
 in your sidebar and on printed documents such as payslips, reports, and
 client invoices. Your login and signup pages remain generically branded
-as Davors Facilities.
+as Davors Technologies.
 
 **Business Units** --- create and manage the named businesses under your
 workspace (Section 10.0). Each unit can be selected from the Business
@@ -2110,7 +2110,7 @@ Record Stock Adjustment → Opening Balance (Section 10.6).
 
 ## **13.5 Platform Settings and Monitoring (Davors only)**
 
-These groups appear only for Davors Facilities platform super Admins:
+These groups appear only for Davors Technologies platform super Admins:
 
 -   Tenant Management --- customer workspaces on the platform
 
@@ -2184,7 +2184,7 @@ View and manage your subscription from Administration → Billing
 Settings:
 
 -   Subscription Plan --- see your current tier and request a plan
-    change; your Davors Facilities contact confirms and applies it.
+    change; your Davors Technologies contact confirms and applies it.
 
 -   Email Recipient --- set which email address receives billing-related
     notices.
@@ -2226,7 +2226,7 @@ on the platform:
 -   Your employees, customers, financial records, and settings are
     visible only to users within your own workspace.
 
--   Even Davors Facilities' own platform administrators cannot see your
+-   Even Davors Technologies' own platform administrators cannot see your
     workspace's day-to-day data through the application --- platform
     administration is limited to account-level actions such as
     activating your subscription.

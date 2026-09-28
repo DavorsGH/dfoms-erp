@@ -33,21 +33,12 @@ export const metadata: Metadata = {
     description: "Davors Technologies Ltd ERP System",
     url: portalSiteUrl,
     siteName: "Davors Technologies ERP",
-    images: [
-      {
-        url: `${portalSiteUrl}/og-image.png`,
-        width: 1200,
-        height: 630,
-        alt: "Davors Technologies ERP",
-      },
-    ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Davors Technologies ERP",
     description: "Davors Technologies Ltd ERP System",
-    images: [`${portalSiteUrl}/og-image.png`],
   },
   appleWebApp: {
     capable: true,
