@@ -5,7 +5,10 @@ import {
   getBalanceCheckForPeriod,
   BALANCE_TOLERANCE,
 } from "@/app/dashboard/finance/balance-sheet-utils";
-import { fetchBalanceSheetPageData } from "@/app/dashboard/finance/balance-sheet-page-data";
+import {
+  buildCustomerCreditsBalanceSheetOptions,
+  fetchBalanceSheetPageData,
+} from "@/app/dashboard/finance/balance-sheet-page-data";
 import type { SystemEventStatus } from "@/utils/system-event-log-types";
 
 const MONTH_LABELS = [
@@ -146,6 +149,7 @@ function auditReportForScope(
       accountsPayablePayments: data.initialAccountsPayablePayments,
       directorsLoanRepayments: data.initialDirectorsLoanRepayments,
       directorsLoanLedgerEntries: data.initialDirectorsLoanLedgerEntries,
+      ...buildCustomerCreditsBalanceSheetOptions(data),
     },
   );
 

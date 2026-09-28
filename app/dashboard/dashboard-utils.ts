@@ -132,6 +132,7 @@ const BALANCE_SHEET_LIABILITY_LINE_KEYS = [
   "paye-payable",
   "ssnit-payable",
   "staff-welfare-payable",
+  "customer-credits",
   "bank-loans",
   "other-long-term-liabilities",
   "directors-loan",

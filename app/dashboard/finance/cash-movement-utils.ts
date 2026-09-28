@@ -28,6 +28,7 @@ import {
   type MonthlyTotals,
   type ProfitLossAssetEntry,
 } from "./profit-loss-utils";
+import type { CustomerCreditsApplicationRow } from "./customer-credits-liability-utils";
 import {
   calculateProductPurchaseCashOutflowsByMonth,
   calculateRawMaterialPurchaseCashOutflowsByMonth,
@@ -111,6 +112,8 @@ export type CashMovementInputs = {
    * Prefer actual bank cash_paid from expense notes over this map.
    */
   staffSalaryNetByPayrollMonth?: Map<string, number>;
+  /** Store credit applied to sales — not cash received (by applied_date). */
+  creditNoteApplications?: CustomerCreditsApplicationRow[];
 };
 
 export type MonthlyCashComponents = {
@@ -198,6 +201,23 @@ function sumIncomeReceivedByMonth(
     }
 
     addAmountToMonth(totals, monthIndex, Number(entry.amount_received) || 0);
+  }
+
+  return roundMonthlyTotals(totals);
+}
+
+function sumCreditNoteApplicationsByMonth(
+  applications: CustomerCreditsApplicationRow[],
+  financialYear: number,
+): MonthlyTotals {
+  const totals = createEmptyMonthlyTotals();
+
+  for (const row of applications) {
+    const monthIndex = getEntryMonthIndex(row.applied_date, financialYear);
+    if (monthIndex === null) {
+      continue;
+    }
+    addAmountToMonth(totals, monthIndex, Number(row.amount) || 0);
   }
 
   return roundMonthlyTotals(totals);
@@ -321,9 +341,17 @@ export function buildMonthlyCashComponents(
   inputs: CashMovementInputs,
   financialYear: number,
 ): MonthlyCashComponents {
-  const incomeReceived = sumIncomeReceivedByMonth(
+  const incomeReceivedGross = sumIncomeReceivedByMonth(
     inputs.incomeEntries,
     financialYear,
+  );
+  const creditApplied = sumCreditNoteApplicationsByMonth(
+    inputs.creditNoteApplications ?? [],
+    financialYear,
+  );
+  const incomeReceived = subtractMonthlyTotals(
+    incomeReceivedGross,
+    creditApplied,
   );
   const capitalContributions = sumCapitalContributionsByMonth(
     inputs.capitalContributions,

@@ -54,6 +54,7 @@ export type IncomeRegisterEntry = {
   client?: IncomeRegisterClient | null;
   product?: IncomeRegisterProduct | null;
   client_invoice_id?: string | null;
+  is_sale_return?: boolean | null;
 };
 
 export const SERVICE_INCOME_REGISTER_SELECT =
@@ -72,6 +73,7 @@ export function normalizeIncomeRegisterEntry(
     ...raw,
     entry_type: raw.entry_type ?? "service",
     sale_status: raw.sale_status ?? "active",
+    is_sale_return: raw.is_sale_return === true,
     service_category: raw.service_category ?? null,
     net_of_tax_amount: toNullableNumber(raw.net_of_tax_amount),
     output_tax_component: raw.output_tax_component ?? null,
@@ -226,8 +228,16 @@ export function resolveIncomeOutstandingBalance(entry: {
   return getIncomeEntryOutstanding(entry);
 }
 
-export function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString("en-GB", {
+export function formatDate(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) {
+    return "—";
+  }
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return date.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",

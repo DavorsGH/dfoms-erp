@@ -119,6 +119,11 @@ export type Customer360ProductSale = {
   payment_status: string;
   sale_quantity: number | null;
   sale_status: string | null;
+  is_sale_return?: boolean;
+  credit_note?:
+    | { credit_note_number: string }
+    | { credit_note_number: string }[]
+    | null;
   product?:
     | { product_code: string; product_name: string }
     | { product_code: string; product_name: string }[]
@@ -158,7 +163,7 @@ export const CUSTOMER_360_SERVICE_CONTRACT_SELECT =
   "id, contract_number, start_date, end_date, status, next_billing_date, total_amount_due";
 
 export const CUSTOMER_360_PRODUCT_SALE_SELECT =
-  "id, date, invoice_no, amount, amount_received, payment_status, sale_quantity, sale_status, product:finished_products(product_code, product_name)";
+  "id, date, invoice_no, amount, amount_received, payment_status, sale_quantity, sale_status, is_sale_return, credit_note:credit_notes!income_register_credit_note_fkey(credit_note_number), product:finished_products(product_code, product_name)";
 
 export const CUSTOMER_360_TABS = [
   { id: "opportunities", label: "Opportunities" },
@@ -175,6 +180,22 @@ export function isProductSaleVoided(
   entry: Pick<Customer360ProductSale, "sale_status">,
 ): boolean {
   return entry.sale_status === "voided";
+}
+
+export function isCustomer360ProductSaleReturn(
+  entry: Pick<Customer360ProductSale, "is_sale_return">,
+): boolean {
+  return entry.is_sale_return === true;
+}
+
+export function getCustomer360CreditNoteNumber(
+  entry: Pick<Customer360ProductSale, "credit_note">,
+): string | null {
+  const note = Array.isArray(entry.credit_note)
+    ? entry.credit_note[0]
+    : entry.credit_note;
+  const num = note?.credit_note_number?.trim();
+  return num || null;
 }
 
 export function normalizeCustomer360Opportunity(
@@ -240,6 +261,10 @@ export function normalizeCustomer360ProductSale(
     amount_received: toNumber(row.amount_received),
     sale_quantity: row.sale_quantity == null ? null : toNumber(row.sale_quantity),
     sale_status: row.sale_status ?? "active",
+    is_sale_return: row.is_sale_return === true,
+    credit_note: Array.isArray(row.credit_note)
+      ? row.credit_note[0] ?? null
+      : row.credit_note ?? null,
     product: Array.isArray(row.product) ? row.product[0] ?? null : row.product ?? null,
   };
 }
@@ -258,6 +283,9 @@ export function computeCustomer360Summary(
   productSales: Customer360ProductSale[],
   invoices: Customer360Invoice[],
   activities: SalesActivity[],
+  options?: {
+    creditAppliedToProductSales?: number;
+  },
 ): Customer360Summary {
   const totalProductSales = roundMoney(
     productSales
@@ -269,10 +297,16 @@ export function computeCustomer360Summary(
     invoices.reduce((sum, entry) => sum + entry.total_amount_due, 0),
   );
 
+  const creditApplied = roundMoney(
+    Number(options?.creditAppliedToProductSales) || 0,
+  );
   const productSalesReceived = roundMoney(
-    productSales
-      .filter((entry) => !isProductSaleVoided(entry))
-      .reduce((sum, entry) => sum + entry.amount_received, 0),
+    Math.max(
+      0,
+      productSales
+        .filter((entry) => !isProductSaleVoided(entry))
+        .reduce((sum, entry) => sum + entry.amount_received, 0) - creditApplied,
+    ),
   );
 
   const invoicesReceived = roundMoney(

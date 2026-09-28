@@ -386,7 +386,7 @@ export async function maybeNotifyLargeProductSale(
   tenantId: string,
   saleAmount: number,
   recordedBy: string,
-  actionUrl = "/dashboard/crm/product-sales",
+  actionUrl = "/dashboard/crm/sales",
 ): Promise<void> {
   const amount = Math.round((Number(saleAmount) || 0) * 100) / 100;
   if (amount <= 0) {

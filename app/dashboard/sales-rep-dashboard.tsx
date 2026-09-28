@@ -76,7 +76,7 @@ export default function SalesRepDashboard({
           title="Product Sales"
           subtitle={salePeriodSubtitle(summary.productSales, summary.periodLabel)}
           value={formatGHS(summary.productSales.todaysTotal)}
-          href="/dashboard/crm/product-sales"
+          href="/dashboard/crm/sales"
         />
         <SummaryCard
           title="Quotations"

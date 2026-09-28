@@ -13,6 +13,7 @@ import {
   fetchBalanceSheetPageData,
   fetchCashFlowInventoryPurchaseInput,
 } from "../finance/balance-sheet-page-data";
+import { filterCreditNoteChildRowsForScopedNotes } from "../finance/customer-credits-liability-utils";
 import { buildAvailableYears } from "../finance/finance-year-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
 import type {
@@ -92,7 +93,7 @@ export async function fetchMonthlyPlReportData(supabase: SupabaseClient) {
       supabase
         .from("expense_register")
         .select(
-          "date, expense_category, sub_category, amount, net_of_tax_amount, input_vat_amount",
+          "date, expense_category, sub_category, amount, net_of_tax_amount, input_vat_amount, is_customer_refund",
         ),
       buScope,
     ).order("date", { ascending: true }),
@@ -177,6 +178,8 @@ export async function fetchCashFlowReportData(
     { data: monthEndCloseRecords, error: monthEndCloseError },
     inventoryPurchases,
     livePayrollBundle,
+    { data: scopedCreditNotesRows, error: scopedCreditNotesError },
+    { data: creditApplicationsRows, error: creditApplicationsError },
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase
@@ -188,7 +191,7 @@ export async function fetchCashFlowReportData(
       supabase
         .from("expense_register")
         .select(
-          "date, sub_category, amount, payment_status, expense_category, description, receipt_no, notes",
+          "date, sub_category, amount, payment_status, expense_category, description, receipt_no, notes, is_customer_refund",
         ),
       buScope,
     ).order("date", { ascending: true }),
@@ -242,6 +245,18 @@ export async function fetchCashFlowReportData(
     monthEndCloseQuery,
     fetchCashFlowInventoryPurchaseInput(supabase, tenantId, buScope),
     fetchPayrollLiveRecalcBundle(supabase, { tenantId, buScope }),
+    applyBusinessUnitScope(
+      supabase
+        .from("credit_notes")
+        .select("id")
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
+    supabase
+      .from("credit_note_applications")
+      .select("credit_note_id, applied_date, amount")
+      .eq("tenant_id", tenantId)
+      .order("applied_date", { ascending: true }),
   ]);
 
   const rawManualEntries =
@@ -274,6 +289,14 @@ export async function fetchCashFlowReportData(
     ),
     initialMonthEndCloseNetPay:
       (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? [],
+    initialCreditNoteApplications: filterCreditNoteChildRowsForScopedNotes(
+      creditApplicationsRows ?? [],
+      new Set((scopedCreditNotesRows ?? []).map((row) => String(row.id))),
+    ).map((row) => ({
+      credit_note_id: String(row.credit_note_id),
+      applied_date: String(row.applied_date),
+      amount: Number(row.amount) || 0,
+    })),
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),
@@ -303,6 +326,8 @@ export async function fetchCashFlowReportData(
       payrollProcessingError?.message ??
       monthEndCloseError?.message ??
       livePayrollBundle.error ??
+      creditApplicationsError?.message ??
+      scopedCreditNotesError?.message ??
       null,
   };
 }
@@ -518,7 +543,9 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
     applyBusinessUnitScope(
       supabase
         .from("expense_register")
-        .select("date, expense_category, sub_category, amount, project_id")
+        .select(
+          "date, expense_category, sub_category, amount, project_id, is_customer_refund",
+        )
         .eq("tenant_id", tenantId),
       buScope,
     ).order("date", { ascending: true }),

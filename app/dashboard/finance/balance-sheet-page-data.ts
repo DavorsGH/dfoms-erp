@@ -70,6 +70,13 @@ import {
   applyBusinessUnitScope,
   type BusinessUnitReadScope,
 } from "@/utils/business-unit-view";
+import { EXPENSE_REGISTER_PROFIT_LOSS_SELECT } from "./customer-refund-expense-utils";
+import {
+  filterCreditNoteChildRowsForScopedNotes,
+  type CustomerCreditsApplicationRow,
+  type CustomerCreditsCreditNoteRow,
+  type CustomerCreditsRefundRow,
+} from "./customer-credits-liability-utils";
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
@@ -106,6 +113,21 @@ export type FetchBalanceSheetPageDataOptions = {
   activeBusinessUnitId?: string | null;
   viewAllBusinessUnits?: boolean;
 };
+
+export function buildCustomerCreditsBalanceSheetOptions(
+  data: Pick<
+    BalanceSheetPageData,
+    | "initialCreditNotesForCustomerCredits"
+    | "initialRefundsForCustomerCredits"
+    | "initialCreditNoteApplications"
+  >,
+) {
+  return {
+    creditNotesForCustomerCredits: data.initialCreditNotesForCustomerCredits,
+    refundsForCustomerCredits: data.initialRefundsForCustomerCredits,
+    creditNoteApplicationsForCash: data.initialCreditNoteApplications,
+  };
+}
 
 export function getDefaultBalanceSheetDateRange(
   referenceDate = new Date(),
@@ -165,6 +187,9 @@ export type BalanceSheetPageData = {
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   initialTaxLedgerEntries: BalanceSheetTaxLedgerEntry[];
   initialWelfareFundEntries: BalanceSheetWelfareFundEntry[];
+  initialCreditNotesForCustomerCredits: CustomerCreditsCreditNoteRow[];
+  initialRefundsForCustomerCredits: CustomerCreditsRefundRow[];
+  initialCreditNoteApplications: CustomerCreditsApplicationRow[];
   /** Full month-end rows (Dashboard lock status / payroll widgets). */
   initialMonthEndCloseRecords: MonthEndCloseRecord[];
   /** Open-period payroll processing rows (Dashboard gross-pay trend). */
@@ -528,11 +553,29 @@ export async function fetchBalanceSheetPageData(
     supabase
       .from("expense_register")
       .select(
-        "date, expense_category, sub_category, amount, payment_status, description, receipt_no, notes, net_of_tax_amount, input_vat_amount",
+        `${EXPENSE_REGISTER_PROFIT_LOSS_SELECT}, payment_status, description, receipt_no, notes`,
       )
       .eq("tenant_id", tenantId),
     buScope,
   ).order("date", { ascending: true });
+  let creditNotesQuery = applyBusinessUnitScope(
+    supabase
+      .from("credit_notes")
+      .select("id, credit_note_date, total_amount")
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("credit_note_date", { ascending: true });
+  // refunds / credit_note_applications: tenant-wide load, scoped in JS via credit_notes.business_unit_id
+  let refundsQuery = supabase
+    .from("refunds")
+    .select("credit_note_id, refund_date, amount")
+    .eq("tenant_id", tenantId)
+    .order("refund_date", { ascending: true });
+  let creditApplicationsQuery = supabase
+    .from("credit_note_applications")
+    .select("credit_note_id, applied_date, amount")
+    .eq("tenant_id", tenantId)
+    .order("applied_date", { ascending: true });
   let payrollHistoryQuery = applyEmployeeIdScope(
     supabase
       .from("payroll_history")
@@ -653,6 +696,9 @@ export async function fetchBalanceSheetPageData(
     { data: monthEndCloseRecords, error: monthEndCloseError },
     { data: taxLedgerEntries, error: taxLedgerError },
     { data: welfareFundEntries, error: welfareFundError },
+    { data: creditNotesRows, error: creditNotesError },
+    { data: refundsRows, error: refundsError },
+    { data: creditApplicationsRows, error: creditApplicationsError },
     inventoryBalanceSheet,
   ] = await Promise.all([
     incomeQuery,
@@ -675,6 +721,9 @@ export async function fetchBalanceSheetPageData(
     monthEndCloseQuery,
     taxLedgerQuery,
     welfareFundQuery,
+    creditNotesQuery,
+    refundsQuery,
+    creditApplicationsQuery,
     fetchInventoryBalanceSheetInput(supabase, tenantId, {
       requestCounter,
       buScope,
@@ -682,7 +731,7 @@ export async function fetchBalanceSheetPageData(
   ]);
 
   if (requestCounter) {
-    tickRequestCounter(requestCounter, 13);
+    tickRequestCounter(requestCounter, 16);
   }
 
   const payrollHistoryRows =
@@ -737,16 +786,51 @@ export async function fetchBalanceSheetPageData(
     })) ?? [];
 
   const cashFlowExpenseEntries =
-    expenseEntries?.map((entry) => ({
-      date: entry.date,
-      expense_category: entry.expense_category,
-      sub_category: entry.sub_category,
-      amount: entry.amount,
-      payment_status: entry.payment_status,
-      description: entry.description ?? null,
-      receipt_no: entry.receipt_no ?? null,
-      notes: entry.notes ?? null,
-    })) ?? [];
+    expenseEntries?.map((entry) => {
+      const row = entry as typeof entry & { is_customer_refund?: boolean | null };
+      return {
+        date: row.date,
+        expense_category: row.expense_category,
+        sub_category: row.sub_category,
+        amount: row.amount,
+        payment_status: row.payment_status,
+        description: row.description ?? null,
+        receipt_no: row.receipt_no ?? null,
+        notes: row.notes ?? null,
+        is_customer_refund: row.is_customer_refund ?? false,
+      };
+    }) ?? [];
+
+  const initialCreditNotesForCustomerCredits: CustomerCreditsCreditNoteRow[] =
+    (creditNotesRows ?? []).map((row) => ({
+      id: String(row.id),
+      credit_note_date: String(row.credit_note_date),
+      total_amount: Number(row.total_amount) || 0,
+    }));
+
+  const scopedCreditNoteIds = new Set(
+    initialCreditNotesForCustomerCredits.map((note) => note.id),
+  );
+
+  const initialRefundsForCustomerCredits: CustomerCreditsRefundRow[] =
+    filterCreditNoteChildRowsForScopedNotes(
+      refundsRows ?? [],
+      scopedCreditNoteIds,
+    ).map((row) => ({
+      credit_note_id: String(row.credit_note_id),
+      refund_date: String(row.refund_date),
+      amount: Number(row.amount) || 0,
+    }));
+
+  const initialCreditNoteApplications: CustomerCreditsApplicationRow[] =
+    filterCreditNoteChildRowsForScopedNotes(
+      creditApplicationsRows ?? [],
+      scopedCreditNoteIds,
+    ).map((row) => ({
+      credit_note_id: String(row.credit_note_id),
+      applied_date: String(row.applied_date),
+      amount: Number(row.amount) || 0,
+    }));
 
   const rawManualEntries =
     (manualEntries as ManualFinancialEntryRecord[] | null) ?? [];
@@ -796,6 +880,9 @@ export async function fetchBalanceSheetPageData(
       (taxLedgerEntries as BalanceSheetTaxLedgerEntry[] | null) ?? [],
     initialWelfareFundEntries:
       (welfareFundEntries as BalanceSheetWelfareFundEntry[] | null) ?? [],
+    initialCreditNotesForCustomerCredits,
+    initialRefundsForCustomerCredits,
+    initialCreditNoteApplications,
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),
@@ -824,6 +911,9 @@ export async function fetchBalanceSheetPageData(
       monthEndCloseError?.message ??
       taxLedgerError?.message ??
       welfareFundError?.message ??
+      creditNotesError?.message ??
+      refundsError?.message ??
+      creditApplicationsError?.message ??
       livePayrollBundle.error ??
       null,
   };

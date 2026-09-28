@@ -89,6 +89,14 @@ expect(
   !isCrmNavItemVisibleForRole("/dashboard/crm/services", "sales_rep"),
   "services tab hidden",
 );
+expect(
+  !isCrmNavItemVisibleForRole("/dashboard/crm/product-sales", "sales_rep"),
+  "legacy Product Sales nav href hidden",
+);
+expect(
+  isCrmNavItemVisibleForRole("/dashboard/crm/sales", "sales_rep"),
+  "Sales register nav visible",
+);
 
 /** Regression: layout guard must not depend on x-pathname (often empty on RSC fetches). */
 expect(
@@ -132,7 +140,7 @@ for (const segment of restrictedSegments) {
   );
 }
 
-const allowedSegments = ["customers", "product-sales", "sales"];
+const allowedSegments = ["customers", "sales"];
 for (const segment of allowedSegments) {
   const layoutPath = join(crmRoot, segment, "layout.tsx");
   let hasNestedLayout = false;

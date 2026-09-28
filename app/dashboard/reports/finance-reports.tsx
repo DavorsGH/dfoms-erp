@@ -6,6 +6,7 @@ import { getStripedRowClassName } from "../finance/register-row-actions";
 import { buildBalanceSheetReport, getBalanceCheckForPeriod, getBalanceSheetForMonth, type InventoryBalanceSheetInput } from "../finance/balance-sheet-utils";
 import type { CapitalContributionEntry } from "../finance/capital-contributions-utils";
 import { getContributorName } from "../finance/capital-contributions-utils";
+import type { CustomerCreditsApplicationRow } from "../finance/customer-credits-liability-utils";
 import { buildCashFlowReport, filterManualEntriesForYear } from "../finance/cash-flow-utils";
 import type {
   CashFlowExpenseEntry,
@@ -483,6 +484,7 @@ export function CashFlowStatementReport({
   initialDirectorsLoanRepayments = [],
   initialPayrollHistory = [],
   initialMonthEndCloseNetPay = [],
+  initialCreditNoteApplications = [],
   availableYears,
   fetchError,
 }: {
@@ -498,6 +500,7 @@ export function CashFlowStatementReport({
   initialDirectorsLoanRepayments?: DirectorsLoanRepaymentRow[];
   initialPayrollHistory?: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
+  initialCreditNoteApplications?: CustomerCreditsApplicationRow[];
   availableYears: number[];
   fetchError: string | null;
 }) {
@@ -534,6 +537,7 @@ export function CashFlowStatementReport({
           tenantId,
           accountsPayablePayments: initialAccountsPayablePayments,
           directorsLoanRepayments: initialDirectorsLoanRepayments,
+          creditNoteApplications: initialCreditNoteApplications,
         },
       ),
     [
@@ -546,6 +550,7 @@ export function CashFlowStatementReport({
       initialPayableEntries,
       initialAccountsPayablePayments,
       initialDirectorsLoanRepayments,
+      initialCreditNoteApplications,
       staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       year,

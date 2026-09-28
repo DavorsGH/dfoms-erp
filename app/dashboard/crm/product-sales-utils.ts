@@ -10,6 +10,15 @@ import {
 } from "../finance/income-register-utils";
 import { formatInventoryQuantity } from "../inventory/inventory-utils";
 
+export type ProductSaleCreditNoteRelation = {
+  credit_note_number: string;
+  return_mode?: string | null;
+  status?: string | null;
+  refunded_amount?: number | null;
+  total_amount?: number | null;
+  credit_note_date?: string | null;
+};
+
 export type ProductSaleEntry = {
   id: string;
   date: string;
@@ -30,12 +39,20 @@ export type ProductSaleEntry = {
   cogs_expense_id: string | null;
   cogs_reversal_expense_id: string | null;
   business_unit_id?: string | null;
+  payment_method?: string | null;
+  sales_rep_id?: string | null;
+  is_sale_return?: boolean;
+  credit_note_id?: string | null;
+  credit_note?:
+    | ProductSaleCreditNoteRelation
+    | ProductSaleCreditNoteRelation[]
+    | null;
   client?: IncomeRegisterClient | null;
   product?: IncomeRegisterProduct | null;
 };
 
 export const PRODUCT_SALES_SELECT =
-  "*, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price)";
+  "*, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price), credit_note:credit_notes!income_register_credit_note_fkey(credit_note_number, return_mode, status, refunded_amount, total_amount, credit_note_date)";
 
 export function normalizeProductSaleEntry(raw: ProductSaleEntry): ProductSaleEntry {
   const product = Array.isArray(raw.product)
@@ -52,6 +69,13 @@ export function normalizeProductSaleEntry(raw: ProductSaleEntry): ProductSaleEnt
     cogs_expense_id: raw.cogs_expense_id ?? null,
     cogs_reversal_expense_id: raw.cogs_reversal_expense_id ?? null,
     business_unit_id: raw.business_unit_id?.trim() || null,
+    payment_method: raw.payment_method?.trim() || null,
+    sales_rep_id: raw.sales_rep_id?.trim() || null,
+    is_sale_return: raw.is_sale_return === true,
+    credit_note_id: raw.credit_note_id ?? null,
+    credit_note: Array.isArray(raw.credit_note)
+      ? raw.credit_note[0] ?? null
+      : raw.credit_note ?? null,
     client: Array.isArray(raw.client) ? raw.client[0] ?? null : raw.client ?? null,
     product,
   };

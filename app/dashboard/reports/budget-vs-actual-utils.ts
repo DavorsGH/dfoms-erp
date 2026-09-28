@@ -10,6 +10,7 @@ import {
 } from "../finance/budget-utils";
 import { getPeriodMonthParts } from "../finance/cash-flow-utils";
 import { getEntryMonthIndex } from "../finance/profit-loss-utils";
+import { shouldIncludeExpenseInNonCashTotals } from "../finance/customer-refund-expense-utils";
 
 export type BudgetActualExpenseEntry = {
   date: string;
@@ -18,6 +19,7 @@ export type BudgetActualExpenseEntry = {
   sub_category?: string | null;
   amount: number;
   project_id?: string | null;
+  is_customer_refund?: boolean | null;
 };
 
 export type BudgetActualInventoryPurchaseEntry = {
@@ -231,6 +233,14 @@ function sumExpensesForLineInMonthRange(
 ): number {
   return roundCurrency(
     expenses.reduce((sum, entry) => {
+      if (
+        !shouldIncludeExpenseInNonCashTotals({
+          expense_category: entry.expense_category ?? "",
+          is_customer_refund: entry.is_customer_refund,
+        })
+      ) {
+        return sum;
+      }
       if (
         !expenseMatchesLine({
           entry,

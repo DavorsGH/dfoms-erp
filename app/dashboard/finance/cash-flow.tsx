@@ -24,6 +24,7 @@ import {
   type MonthEndCloseNetPayEntry,
   type PayrollHistoryWagesEntry,
 } from "./accrued-wages-utils";
+import type { CustomerCreditsApplicationRow } from "./customer-credits-liability-utils";
 import {
   FULL_YEAR_INDEX,
   MONTH_LABELS,
@@ -57,6 +58,7 @@ type CashFlowProps = {
   /** Same payroll inputs Balance Sheet uses to build the staff-salary net map. */
   initialPayrollHistory?: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
+  initialCreditNoteApplications?: CustomerCreditsApplicationRow[];
   availableYears: number[];
   fetchError: string | null;
 };
@@ -113,6 +115,7 @@ export default function CashFlow({
   initialDirectorsLoanLedgerEntries = [],
   initialPayrollHistory = [],
   initialMonthEndCloseNetPay = [],
+  initialCreditNoteApplications = [],
   availableYears,
   fetchError,
 }: CashFlowProps) {
@@ -152,6 +155,7 @@ export default function CashFlow({
           accountsPayablePayments: initialAccountsPayablePayments,
           directorsLoanRepayments: initialDirectorsLoanRepayments,
           directorsLoanLedgerEntries: initialDirectorsLoanLedgerEntries,
+          creditNoteApplications: initialCreditNoteApplications,
         },
       ),
     [
@@ -165,6 +169,7 @@ export default function CashFlow({
       initialAccountsPayablePayments,
       initialDirectorsLoanRepayments,
       initialDirectorsLoanLedgerEntries,
+      initialCreditNoteApplications,
       staffSalaryNetByPayrollMonth,
       manualEntriesForYear,
       selectedYear,

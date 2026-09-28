@@ -16,7 +16,7 @@ export function formatLinkedProductSaleCogsDeleteMessage(
     return `This is a system-generated COGS reversal for voided product sale ${link.invoiceNo}. It cannot be deleted directly.`;
   }
 
-  return `This is a system-generated cost entry for product sale ${link.invoiceNo}. To remove it, void the original sale from Sales & CRM → Sales Log instead.`;
+  return `This is a system-generated cost entry for product sale ${link.invoiceNo}. To remove it, void the original sale from Sales & CRM → Sales instead.`;
 }
 
 export function isIncomeRegisterCogsExpenseFkError(

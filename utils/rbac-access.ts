@@ -95,7 +95,6 @@ export const CRM_QUOTATIONS_EDIT_ROLES: readonly AppRole[] = [
 export const CRM_SALES_REP_NAV_HREFS: readonly string[] = [
   "/dashboard/crm/customers",
   "/dashboard/sales-crm/quotations",
-  "/dashboard/crm/product-sales",
   "/dashboard/pos",
   "/dashboard/crm/sales",
 ];

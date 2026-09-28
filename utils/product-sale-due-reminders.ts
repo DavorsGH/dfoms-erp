@@ -467,6 +467,7 @@ export async function runProductSaleDueReminders(
       "id, tenant_id, client_id, customer_name, invoice_no, amount, amount_received, outstanding_balance, payment_status, due_date, last_reminder_sent_at, business_unit_id",
     )
     .eq("entry_type", "product_sale")
+    .eq("is_sale_return", false)
     .eq("sale_status", "active")
     .gt("outstanding_balance", 0)
     .not("due_date", "is", null)

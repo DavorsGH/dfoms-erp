@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
@@ -67,8 +68,19 @@ import {
   ProductSaleReceiptPanel,
   type ProductSaleReceiptData,
 } from "./product-sale-receipt";
+import ProductReturnModal from "./product-return-modal";
+import { ProductSaleReturnBadge } from "./product-return-badge";
+import {
+  fetchIncomeIdsWithReturnCredits,
+  formatVoidProductSaleRpcError,
+  getCreditNoteNumberFromEntry,
+  isProductSaleReturn,
+} from "./product-return-utils";
 
 function productSaleStatusLabel(entry: ProductSaleEntry): string {
+  if (isProductSaleReturn(entry)) {
+    return "Return";
+  }
   return isProductSaleVoided(entry) ? "Voided" : "Active";
 }
 
@@ -84,6 +96,20 @@ type ProductSalesProps = {
   activeBusinessUnitId?: string | null;
   /** Workspace id for BU-scoped finished-product stock overlay. */
   tenantId?: string | null;
+  /** When true, only forms/modals — list lives in Sales register. */
+  embeddedInSalesRegister?: boolean;
+  controlledShowForm?: boolean;
+  onControlledShowFormChange?: (open: boolean) => void;
+  controlledShowBulkImport?: boolean;
+  onControlledShowBulkImportChange?: (open: boolean) => void;
+  controlledEntries?: ProductSaleEntry[];
+  onControlledEntriesChange?: (entries: ProductSaleEntry[]) => void;
+  controlledReturnInvoiceNo?: string | null;
+  onControlledReturnInvoiceNoChange?: (invoiceNo: string | null) => void;
+  controlledRecordPaymentEntry?: ProductSaleEntry | null;
+  onControlledRecordPaymentEntryChange?: (entry: ProductSaleEntry | null) => void;
+  onRefreshEntriesReady?: (refresh: () => Promise<void>) => void;
+  onRegisterMutationComplete?: () => void;
 };
 
 const emptyForm = {
@@ -111,14 +137,30 @@ export default function ProductSales({
   fetchError,
   activeBusinessUnitId = null,
   tenantId = null,
+  embeddedInSalesRegister = false,
+  controlledShowForm,
+  onControlledShowFormChange,
+  controlledShowBulkImport,
+  onControlledShowBulkImportChange,
+  controlledEntries,
+  onControlledEntriesChange,
+  controlledReturnInvoiceNo,
+  onControlledReturnInvoiceNoChange,
+  controlledRecordPaymentEntry,
+  onControlledRecordPaymentEntryChange,
+  onRefreshEntriesReady,
+  onRegisterMutationComplete,
 }: ProductSalesProps) {
   const supabase = createClient();
+  const router = useRouter();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const skipFirstStockScopeRefresh = useRef(true);
-  const [entries, setEntries] = useState(
+  const [internalEntries, setInternalEntries] = useState(
     initialEntries.map(normalizeProductSaleEntry),
   );
+  const entries = controlledEntries ?? internalEntries;
+  const setEntries = onControlledEntriesChange ?? setInternalEntries;
   const [customerFilter, setCustomerFilter] =
     useState<RegisterColumnFilterValue>(null);
   const [productFilter, setProductFilter] =
@@ -130,16 +172,34 @@ export default function ProductSales({
   const [finishedProducts, setFinishedProducts] = useState(
     initialFinishedProducts.map(normalizeFinishedProduct),
   );
-  const [showForm, setShowForm] = useState(false);
-  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [internalShowForm, setInternalShowForm] = useState(false);
+  const [internalShowBulkImport, setInternalShowBulkImport] = useState(false);
+  const showForm = controlledShowForm ?? internalShowForm;
+  const setShowForm = onControlledShowFormChange ?? setInternalShowForm;
+  const showBulkImport = controlledShowBulkImport ?? internalShowBulkImport;
+  const setShowBulkImport =
+    onControlledShowBulkImportChange ?? setInternalShowBulkImport;
   const [form, setForm] = useState(emptyForm);
   const [salesRepId, setSalesRepId] = useState(defaultSalesRepId);
   const [loading, setLoading] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [internalReturnInvoiceNo, setInternalReturnInvoiceNo] = useState<
+    string | null
+  >(null);
+  const returnInvoiceNo = controlledReturnInvoiceNo ?? internalReturnInvoiceNo;
+  const setReturnInvoiceNo =
+    onControlledReturnInvoiceNoChange ?? setInternalReturnInvoiceNo;
+  const [incomeIdsWithReturns, setIncomeIdsWithReturns] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [error, setError] = useState<string | null>(fetchError);
   const [receipt, setReceipt] = useState<ProductSaleReceiptData | null>(null);
-  const [recordPaymentEntry, setRecordPaymentEntry] =
+  const [internalRecordPaymentEntry, setInternalRecordPaymentEntry] =
     useState<ProductSaleEntry | null>(null);
+  const recordPaymentEntry =
+    controlledRecordPaymentEntry ?? internalRecordPaymentEntry;
+  const setRecordPaymentEntry =
+    onControlledRecordPaymentEntryChange ?? setInternalRecordPaymentEntry;
   const [recordingPaymentId, setRecordingPaymentId] = useState<string | null>(
     null,
   );
@@ -399,6 +459,20 @@ export default function ProductSales({
     setError(null);
   }
 
+  useEffect(() => {
+    void (async () => {
+      const ids = entries
+        .filter((entry) => !isProductSaleReturn(entry) && !isProductSaleVoided(entry))
+        .map((entry) => entry.id);
+      const next = await fetchIncomeIdsWithReturnCredits(supabase, ids);
+      setIncomeIdsWithReturns(next);
+    })();
+  }, [entries, supabase]);
+
+  useEffect(() => {
+    onRefreshEntriesReady?.(refreshEntries);
+  });
+
   function openAddForm() {
     setShowBulkImport(false);
     setForm(emptyForm);
@@ -538,7 +612,7 @@ export default function ProductSales({
       title: "Large product sale recorded",
       detail: formatGHS(amount),
       thresholdAmount: amount,
-      actionUrl: "/dashboard/crm/product-sales",
+      actionUrl: "/dashboard/crm/sales",
     });
 
     // VFRS output tax + tax ledger for the new sale. Non-fatal: the sale is
@@ -550,6 +624,7 @@ export default function ProductSales({
 
     closeForm();
     await refreshEntries();
+    onRegisterMutationComplete?.();
 
     if (taxError) {
       setError(
@@ -616,7 +691,7 @@ export default function ProductSales({
     });
 
     if (voidError) {
-      setError(voidError.message);
+      setError(formatVoidProductSaleRpcError(voidError.message));
       setVoidingId(null);
       return;
     }
@@ -641,28 +716,30 @@ export default function ProductSales({
 
   return (
     <div className="min-w-0 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-600">
-          Record product sales with full or partial payment, stock movements, and
-          auto-posted COGS. Remaining balances use the due date for reminders.
-        </p>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => (showBulkImport ? closeBulkImport() : openBulkImport())}
-            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
-          >
-            {showBulkImport ? "Cancel Import" : "Bulk Import"}
-          </button>
-          <button
-            type="button"
-            onClick={() => (showForm ? closeForm() : openAddForm())}
-            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-          >
-            {showForm ? "Cancel" : "Add Sale"}
-          </button>
+      {!embeddedInSalesRegister ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-slate-600">
+            Record product sales with full or partial payment, stock movements, and
+            auto-posted COGS. Remaining balances use the due date for reminders.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => (showBulkImport ? closeBulkImport() : openBulkImport())}
+              className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+            >
+              {showBulkImport ? "Cancel Import" : "Bulk Import"}
+            </button>
+            <button
+              type="button"
+              onClick={() => (showForm ? closeForm() : openAddForm())}
+              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+            >
+              {showForm ? "Cancel" : "Add Sale"}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -675,6 +752,20 @@ export default function ProductSales({
           receipt={receipt}
           onPrint={() => window.print()}
           onClose={() => setReceipt(null)}
+        />
+      ) : null}
+
+      {returnInvoiceNo && tenantId ? (
+        <ProductReturnModal
+          invoiceNo={returnInvoiceNo}
+          tenantId={tenantId}
+          paymentMethods={initialPaymentMethods}
+          onClose={() => setReturnInvoiceNo(null)}
+          onSuccess={() => {
+            void refreshEntries();
+            router.refresh();
+            onRegisterMutationComplete?.();
+          }}
         />
       ) : null}
 
@@ -691,7 +782,11 @@ export default function ProductSales({
           onClose={() => setRecordPaymentEntry(null)}
           onSuccess={() => {
             setRecordingPaymentId(recordPaymentEntry.id);
-            void refreshEntries().finally(() => setRecordingPaymentId(null));
+            void refreshEntries()
+              .then(() => {
+                onRegisterMutationComplete?.();
+              })
+              .finally(() => setRecordingPaymentId(null));
           }}
         />
       ) : null}
@@ -702,7 +797,10 @@ export default function ProductSales({
           finishedProducts={finishedProducts}
           activeBusinessUnitId={activeBusinessUnitId}
           onClose={closeBulkImport}
-          onImported={refreshEntries}
+          onImported={async () => {
+            await refreshEntries();
+            onRegisterMutationComplete?.();
+          }}
         />
       ) : null}
 
@@ -934,18 +1032,21 @@ export default function ProductSales({
         </section>
       )}
 
-      <FilteredListCount
-        filteredCount={visibleEntries.length}
-        totalCount={entries.length}
-        itemSingular="sale"
-        hasActiveFilters={anyRegisterColumnFiltersActive(
-          customerFilter,
-          productFilter,
-          paymentStatusFilter,
-          statusFilter,
-        )}
-      />
+      {!embeddedInSalesRegister ? (
+        <FilteredListCount
+          filteredCount={visibleEntries.length}
+          totalCount={entries.length}
+          itemSingular="sale"
+          hasActiveFilters={anyRegisterColumnFiltersActive(
+            customerFilter,
+            productFilter,
+            paymentStatusFilter,
+            statusFilter,
+          )}
+        />
+      ) : null}
 
+      {!embeddedInSalesRegister ? (
       <ScrollableTable>
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
@@ -1015,23 +1116,34 @@ export default function ProductSales({
             ) : (
               visibleEntries.map((entry, index) => {
                 const voided = isProductSaleVoided(entry);
+                const isReturn = isProductSaleReturn(entry);
+                const hasReturns = incomeIdsWithReturns.has(entry.id);
+                const creditNoteNo = getCreditNoteNumberFromEntry(entry);
                 const outstanding = resolveIncomeOutstandingBalance({
                   amount: Number(entry.amount) || 0,
                   amount_received: Number(entry.amount_received) || 0,
                   outstanding_balance: entry.outstanding_balance,
                 });
-                const canRecordPayment = !voided && outstanding > 0;
+                const canRecordPayment =
+                  !voided && !isReturn && outstanding > 0;
 
                 return (
                 <tr
                   key={entry.id}
-                  className={`${getStripedRowClassName(index)}${voided ? " opacity-60" : ""}`}
+                  className={`${getStripedRowClassName(index)}${voided || isReturn ? " opacity-60" : ""}`}
                 >
                   <td className="px-4 py-3">{formatDate(entry.date)}</td>
                   <td className="px-4 py-3">
                     {getIncomeCustomerDisplayName(entry, initialClients)}
                   </td>
-                  <td className="px-4 py-3">{entry.invoice_no}</td>
+                  <td className="px-4 py-3">
+                    {entry.invoice_no}
+                    {isReturn && creditNoteNo ? (
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        {creditNoteNo}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3">{getProductSaleProductLabel(entry)}</td>
                   <td className="px-4 py-3">
                     {entry.sale_quantity?.toLocaleString("en-GB", {
@@ -1045,14 +1157,20 @@ export default function ProductSales({
                   <td className="px-4 py-3">
                     {entry.unit_price == null ? "—" : formatGHS(entry.unit_price)}
                   </td>
-                  <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
+                  <td
+                    className={`px-4 py-3${isReturn ? " text-amber-900" : ""}`}
+                  >
+                    {formatGHS(entry.amount)}
+                  </td>
                   <td className="px-4 py-3">
                     {formatGHS(entry.amount_received)}
                   </td>
                   <td className="px-4 py-3">{formatGHS(outstanding)}</td>
                   <td className="px-4 py-3">{entry.payment_status}</td>
                   <td className="px-4 py-3">
-                    {voided ? (
+                    {isReturn ? (
+                      <ProductSaleReturnBadge />
+                    ) : voided ? (
                       <span className="inline-flex rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700">
                         Voided
                       </span>
@@ -1061,22 +1179,36 @@ export default function ProductSales({
                     )}
                   </td>
                   <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
-                  <RegisterRowActions
-                    onPrint={() =>
-                      setReceipt(
-                        buildProductSaleReceiptData(entry, initialClients),
-                      )
-                    }
-                    onRecordPayment={
-                      canRecordPayment
-                        ? () => setRecordPaymentEntry(entry)
-                        : undefined
-                    }
-                    onVoid={() => void handleVoidSale(entry)}
-                    disableVoid={voided}
-                    voiding={voidingId === entry.id}
-                    recordingPayment={recordingPaymentId === entry.id}
-                  />
+                  {isReturn ? (
+                    <td className="px-4 py-3 text-sm text-slate-400">—</td>
+                  ) : (
+                    <RegisterRowActions
+                      onPrint={() =>
+                        setReceipt(
+                          buildProductSaleReceiptData(entry, initialClients),
+                        )
+                      }
+                      onRecordPayment={
+                        canRecordPayment
+                          ? () => setRecordPaymentEntry(entry)
+                          : undefined
+                      }
+                      onReturn={
+                        !voided
+                          ? () => setReturnInvoiceNo(entry.invoice_no.trim())
+                          : undefined
+                      }
+                      onVoid={() => void handleVoidSale(entry)}
+                      disableVoid={voided || hasReturns}
+                      voidDisabledTitle={
+                        hasReturns
+                          ? "This sale has returns. Use Return instead."
+                          : undefined
+                      }
+                      voiding={voidingId === entry.id}
+                      recordingPayment={recordingPaymentId === entry.id}
+                    />
+                  )}
                 </tr>
                 );
               })
@@ -1084,13 +1216,18 @@ export default function ProductSales({
           </tbody>
         </table>
       </ScrollableTable>
+      ) : null}
 
+      {!embeddedInSalesRegister ? (
       <RegisterFilteredTotal
         label="Amount total"
         total={visibleAmountTotal}
         visibleCount={visibleEntries.length}
         totalCount={entries.length}
       />
+      ) : null}
     </div>
   );
 }
+
+export type { ProductSalesProps };

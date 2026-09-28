@@ -1,9 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DashboardPageData } from "@/app/dashboard/dashboard-page-data";
+import { buildCustomerCreditsBalanceSheetOptions } from "@/app/dashboard/finance/balance-sheet-page-data";
 import {
   toSpendingAnalysisExpenseRows,
   toSpendingAnalysisIncomeRows,
 } from "@/app/dashboard/dashboard-spending-analysis-utils";
+import { shouldIncludeExpenseInNonCashTotals } from "@/app/dashboard/finance/customer-refund-expense-utils";
 import { buildDashboardViewModel, type DashboardViewModel } from "@/app/dashboard/dashboard-utils";
 import { buildDashboardBudgetStatusByMonthKey } from "@/app/dashboard/dashboard-budget-status-utils";
 import {
@@ -74,6 +76,7 @@ export async function buildOwnerDashboardViewModel(
       options.buScope.mode === "all"
         ? dashboardPageData.initialRawManualEntries
         : undefined,
+    ...buildCustomerCreditsBalanceSheetOptions(dashboardPageData),
   };
 
   const dashboardData = buildDashboardViewModel({
@@ -108,11 +111,16 @@ export async function buildOwnerDashboardViewModel(
       }) ?? [],
     balanceSheetIncomeEntries: incomeEntries ?? [],
     expenseEntries:
-      expenseEntries?.map((entry) => ({
-        date: entry.date,
-        amount: entry.amount,
-      })) ?? [],
-    profitLossExpenseEntries: expenseEntries ?? [],
+      expenseEntries
+        ?.filter((entry) => shouldIncludeExpenseInNonCashTotals(entry))
+        .map((entry) => ({
+          date: entry.date,
+          amount: entry.amount,
+        })) ?? [],
+    profitLossExpenseEntries:
+      expenseEntries?.filter((entry) =>
+        shouldIncludeExpenseInNonCashTotals(entry),
+      ) ?? [],
     fixedAssets: fixedAssets ?? [],
     payableEntries: payableEntries ?? [],
     capitalContributions: capitalContributions ?? [],

@@ -6,6 +6,7 @@ import {
   formatReportDate,
 } from "../reports/report-ui";
 import { formatGHS } from "../finance/income-register-utils";
+import { reversalActionButtonClassName } from "../finance/register-row-actions";
 import type { PosCartLine } from "./pos-utils";
 import { POS_PRINT_AREA_ID, lineSubtotal } from "./pos-utils";
 
@@ -66,12 +67,14 @@ export function PosReceiptPanel({
   onNewSale,
   onClose,
   onRequestPayment,
+  onReturn,
 }: {
   receipt: PosReceiptData;
   onPrint: () => void;
   onNewSale?: () => void;
   onClose?: () => void;
   onRequestPayment?: () => void;
+  onReturn?: () => void;
 }) {
   return (
     <div className="space-y-4">
@@ -92,6 +95,28 @@ export function PosReceiptPanel({
             className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 transition-colors hover:bg-emerald-100"
           >
             Request Payment
+          </button>
+        ) : null}
+        {onReturn && !receipt.pendingSync ? (
+          <button
+            type="button"
+            onClick={onReturn}
+            className={reversalActionButtonClassName}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <svg
+                aria-hidden
+                className="h-4 w-4 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+              </svg>
+              Return
+            </span>
           </button>
         ) : null}
         <button

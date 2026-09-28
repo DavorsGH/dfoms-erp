@@ -10,6 +10,10 @@ import {
 } from "./income-register-utils";
 import { STATUTORY_REMITTANCE_EXPENSE_CATEGORY } from "./tax-ledger-remit";
 import { STAFF_WELFARE_DISBURSEMENT_CATEGORY } from "./staff-welfare-fund-utils";
+import {
+  isCustomerRefundCashOutflowExpense,
+  type CustomerRefundExpenseMarker,
+} from "./customer-refund-expense-utils";
 
 export const MONTH_LABELS = [
   "Jan",
@@ -47,6 +51,7 @@ export type ProfitLossExpenseEntry = {
   /** Prefer for P&L when set — expense is net of reclaimable input VAT. */
   net_of_tax_amount?: number | null;
   input_vat_amount?: number | null;
+  is_customer_refund?: boolean | null;
 };
 
 /**
@@ -228,7 +233,12 @@ export function resolveProfitLossExpenseSectionCategory(
  */
 export function shouldIncludeExpenseInProfitLoss(
   expenseCategory: string | null | undefined,
+  entry?: CustomerRefundExpenseMarker | null,
 ): boolean {
+  if (entry && isCustomerRefundCashOutflowExpense(entry)) {
+    return false;
+  }
+
   const normalized = normalizeCategoryName(expenseCategory ?? "");
   if (!normalized) {
     return true;
@@ -369,7 +379,7 @@ function groupExpensesBySubCategory(
   const grouped = new Map<string, MonthlyTotals>();
 
   for (const entry of entries) {
-    if (!shouldIncludeExpenseInProfitLoss(entry.expense_category)) {
+    if (!shouldIncludeExpenseInProfitLoss(entry.expense_category, entry)) {
       continue;
     }
 
@@ -418,7 +428,7 @@ function divideMonthlyTotals(
   });
 }
 
-function subtractMonthlyTotals(
+export function subtractMonthlyTotals(
   minuend: MonthlyTotals,
   subtrahend: MonthlyTotals,
 ): MonthlyTotals {

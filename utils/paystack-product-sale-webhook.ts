@@ -153,7 +153,9 @@ export async function processProductSalePaystackEvent(
   }
 
   const activeLines = ((incomeRows as ProductSaleIncomeLine[] | null) ?? []).filter(
-    (row) => (row.sale_status ?? "active") !== "voided",
+    (row) =>
+      (row.sale_status ?? "active") !== "voided" &&
+      (row as { is_sale_return?: boolean }).is_sale_return !== true,
   );
 
   if (activeLines.length === 0) {

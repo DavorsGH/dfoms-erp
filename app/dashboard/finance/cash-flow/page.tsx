@@ -35,6 +35,7 @@ import {
   type ManualFinancialEntryRecord,
 } from "../manual-financial-entries-utils";
 import type { ManualFinancialEntry } from "../cash-flow-utils";
+import { filterCreditNoteChildRowsForScopedNotes } from "../customer-credits-liability-utils";
 import FinanceNav from "../finance-nav";
 import CashFlow from "../cash-flow";
 
@@ -101,6 +102,8 @@ export default async function CashFlowPage() {
     { data: monthEndCloseRecords, error: monthEndCloseError },
     inventoryPurchases,
     livePayrollBundle,
+    { data: scopedCreditNotesRows, error: scopedCreditNotesError },
+    { data: creditApplicationsRows, error: creditApplicationsError },
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase
@@ -113,7 +116,7 @@ export default async function CashFlowPage() {
       supabase
         .from("expense_register")
         .select(
-          "date, sub_category, amount, payment_status, expense_category, description, receipt_no, notes",
+          "date, sub_category, amount, payment_status, expense_category, description, receipt_no, notes, is_customer_refund",
         )
         .eq("tenant_id", tenantId),
       buScope,
@@ -184,7 +187,25 @@ export default async function CashFlowPage() {
     monthEndCloseQuery,
     fetchCashFlowInventoryPurchaseInput(supabase, tenantId, buScope),
     fetchPayrollLiveRecalcBundle(supabase, { tenantId, buScope }),
+    applyBusinessUnitScope(
+      supabase.from("credit_notes").select("id").eq("tenant_id", tenantId),
+      buScope,
+    ),
+    supabase
+      .from("credit_note_applications")
+      .select("credit_note_id, applied_date, amount")
+      .eq("tenant_id", tenantId)
+      .order("applied_date", { ascending: true }),
   ]);
+
+  const initialCreditNoteApplications = filterCreditNoteChildRowsForScopedNotes(
+    creditApplicationsRows ?? [],
+    new Set((scopedCreditNotesRows ?? []).map((row) => String(row.id))),
+  ).map((row) => ({
+    credit_note_id: String(row.credit_note_id),
+    applied_date: String(row.applied_date),
+    amount: Number(row.amount) || 0,
+  }));
 
   const rawManualEntries =
     (manualEntries as ManualFinancialEntryRecord[] | null) ?? [];
@@ -210,6 +231,8 @@ export default async function CashFlowPage() {
     payrollProcessingError?.message ??
     monthEndCloseError?.message ??
     livePayrollBundle.error ??
+    scopedCreditNotesError?.message ??
+    creditApplicationsError?.message ??
     null;
 
   const availableYears = buildAvailableYears(
@@ -257,6 +280,7 @@ export default async function CashFlowPage() {
         initialMonthEndCloseNetPay={
           (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? []
         }
+        initialCreditNoteApplications={initialCreditNoteApplications}
         availableYears={availableYears}
         fetchError={fetchError}
       />

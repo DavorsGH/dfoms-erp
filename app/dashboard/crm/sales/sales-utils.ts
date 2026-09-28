@@ -3,6 +3,7 @@ import {
   formatGHS,
   getIncomeCustomerDisplayName,
 } from "../../finance/income-register-utils";
+import { getCreditNoteNumberFromEntry } from "../product-return-utils";
 import {
   getProductSaleProductLabel,
   normalizeProductSaleEntry,
@@ -25,6 +26,9 @@ export type CrmSaleEntry = {
   customer_name: string;
   product_name: string;
   source: CrmSaleSource;
+  is_sale_return?: boolean;
+  credit_note_number?: string | null;
+  business_unit_id?: string | null;
 };
 
 type WebhookSaleRelation = { client_name?: string | null; name?: string | null };
@@ -96,6 +100,9 @@ export function normalizeProductSaleForLog(
     customer_name: getIncomeCustomerDisplayName(entry),
     product_name: getProductSaleProductLabel(entry),
     source: "product_sale",
+    is_sale_return: entry.is_sale_return === true,
+    credit_note_number: getCreditNoteNumberFromEntry(entry),
+    business_unit_id: entry.business_unit_id ?? null,
   };
 }
 

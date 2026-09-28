@@ -31,6 +31,12 @@ import type {
   ProfitLossIncomeEntry,
 } from "./profit-loss-utils";
 import type { CashMovementManualEntry } from "./cash-movement-utils";
+import type {
+  CustomerCreditsApplicationRow,
+  CustomerCreditsCreditNoteRow,
+  CustomerCreditsRefundRow,
+} from "./customer-credits-liability-utils";
+import { buildCustomerCreditsBalanceSheetOptions } from "./balance-sheet-page-data";
 import {
   FinancialStatementScrollableTable,
   scrollableTableFinancialStatementClassName,
@@ -61,6 +67,9 @@ type BalanceSheetProps = {
   viewAllBusinessUnits?: boolean;
   initialTaxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
   initialWelfareFundEntries?: BalanceSheetWelfareFundEntry[];
+  initialCreditNotesForCustomerCredits?: CustomerCreditsCreditNoteRow[];
+  initialRefundsForCustomerCredits?: CustomerCreditsRefundRow[];
+  initialCreditNoteApplications?: CustomerCreditsApplicationRow[];
   availableYears: number[];
   fetchError: string | null;
   initialFocusMonth?: number | null;
@@ -173,6 +182,9 @@ export default function BalanceSheet({
   initialFocusYear = null,
   initialRawManualEntries = [],
   viewAllBusinessUnits = false,
+  initialCreditNotesForCustomerCredits = [],
+  initialRefundsForCustomerCredits = [],
+  initialCreditNoteApplications = [],
 }: BalanceSheetProps) {
   const [selectedYear, setSelectedYear] = useState(() => {
     if (
@@ -211,6 +223,11 @@ export default function BalanceSheet({
           rawManualFinancialEntries: viewAllBusinessUnits
             ? initialRawManualEntries
             : undefined,
+          ...buildCustomerCreditsBalanceSheetOptions({
+            initialCreditNotesForCustomerCredits,
+            initialRefundsForCustomerCredits,
+            initialCreditNoteApplications,
+          }),
         },
       ),
     [

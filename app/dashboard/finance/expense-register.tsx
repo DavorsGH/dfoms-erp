@@ -21,10 +21,12 @@ import {
   canMarkAutoPostedExpenseAsPaid,
   getRegisterRowClassName,
   isAutoPostedExpenseRegisterEntry,
+  customerRefundExpenseLockMessage,
   isInventoryGoLiveTrueUpExpense,
   isPayrollEssnitExpense,
   markAutoPostedExpensePaid,
 } from "./register-auto-posted-utils";
+import { isCustomerRefundCashOutflowExpense } from "./customer-refund-expense-utils";
 import {
   fetchLinkedProductSaleCogsByExpenseId,
   formatLinkedProductSaleCogsDeleteMessage,
@@ -777,12 +779,12 @@ export default function ExpenseRegister({
             setError(formatLinkedProductSaleCogsDeleteMessage(fallbackLink));
           } else {
             setError(
-              "This expense is linked to a product sale and cannot be deleted directly. Void the original sale from Sales & CRM → Sales Log instead.",
+              "This expense is linked to a product sale and cannot be deleted directly. Void the original sale from Sales & CRM → Sales instead.",
             );
           }
         } catch {
           setError(
-            "This expense is linked to a product sale and cannot be deleted directly. Void the original sale from Sales & CRM → Sales Log instead.",
+            "This expense is linked to a product sale and cannot be deleted directly. Void the original sale from Sales & CRM → Sales instead.",
           );
         }
       } else {
@@ -1604,16 +1606,20 @@ export default function ExpenseRegister({
               ) : (
                 visibleEntries.map((entry, index) => {
                   const gross = getExpenseGrossBeforeWht(entry);
+                  const customerRefund = isCustomerRefundCashOutflowExpense(entry);
                   const autoPosted = isAutoPostedExpenseRegisterEntry(entry);
                   const linkedProductSaleCogs =
                     linkedProductSaleCogsByExpenseId.get(entry.id) ?? null;
-                  const systemLinked = autoPosted || linkedProductSaleCogs != null;
+                  const systemLinked =
+                    customerRefund || autoPosted || linkedProductSaleCogs != null;
                   const showMarkPaid = canMarkAutoPostedExpenseAsPaid(entry);
-                  const deleteBlockedMessage = linkedProductSaleCogs
-                    ? formatLinkedProductSaleCogsDeleteMessage(
-                        linkedProductSaleCogs,
-                      )
-                    : undefined;
+                  const deleteBlockedMessage = customerRefund
+                    ? customerRefundExpenseLockMessage()
+                    : linkedProductSaleCogs
+                      ? formatLinkedProductSaleCogsDeleteMessage(
+                          linkedProductSaleCogs,
+                        )
+                      : undefined;
 
                   return (
                     <tr
@@ -1654,7 +1660,11 @@ export default function ExpenseRegister({
                               : "Pending sync"}
                           </span>
                         ) : null}
-                        {autoPosted ? (
+                        {customerRefund ? (
+                          <span className="ml-2 text-xs font-medium opacity-80">
+                            (customer refund)
+                          </span>
+                        ) : autoPosted ? (
                           <span className="ml-2 text-xs font-medium opacity-80">
                             (auto-posted)
                           </span>

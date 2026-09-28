@@ -51,6 +51,7 @@ import {
   type Customer360ServiceContract,
 } from "../customer-360-utils";
 import type { CustomerEntry } from "../customers-utils";
+import { computeCustomerStoreCreditBalance } from "../../../finance/credit-notes-utils";
 
 type CustomerDetailPageProps = {
   params: Promise<{ clientId: string }>;
@@ -152,6 +153,40 @@ export default async function CustomerDetailPage({
     notFound();
   }
 
+  const normalizedProductSales =
+    ((productSales as Customer360ProductSale[] | null) ?? []).map((row) =>
+      normalizeCustomer360ProductSale(row),
+    );
+
+  const saleIds = normalizedProductSales.map((row) => row.id);
+  let creditAppliedToProductSales = 0;
+  if (saleIds.length > 0) {
+    const { data: creditApplications } = await supabase
+      .from("credit_note_applications")
+      .select("amount, target_income_register_id")
+      .in("target_income_register_id", saleIds);
+    creditAppliedToProductSales = (creditApplications ?? []).reduce(
+      (sum, row) => sum + (Number(row.amount) || 0),
+      0,
+    );
+  }
+
+  const { data: storeCreditNotes } = await applyBusinessUnitScope(
+    supabase
+      .from("credit_notes")
+      .select("return_mode, total_amount, refunded_amount, applied_amount")
+      .eq("client_id", clientId),
+    buScope,
+  );
+  const storeCreditBalance = computeCustomerStoreCreditBalance(
+    (storeCreditNotes ?? []) as Array<{
+      return_mode: string | null;
+      total_amount: number;
+      refunded_amount: number;
+      applied_amount: number;
+    }>,
+  );
+
   const customerEntry = customer as CustomerEntry;
   const supervisorName = customerEntry.assigned_supervisor
     ? getEmployeeDisplayName(
@@ -216,11 +251,9 @@ export default async function CustomerDetailPage({
             normalizeCustomer360Invoice(row),
           )
         }
-        productSales={
-          ((productSales as Customer360ProductSale[] | null) ?? []).map((row) =>
-            normalizeCustomer360ProductSale(row),
-          )
-        }
+        productSales={normalizedProductSales}
+        storeCreditBalance={storeCreditBalance}
+        creditAppliedToProductSales={creditAppliedToProductSales}
         activities={
           ((activities as SalesActivity[] | null) ?? []).map((row) =>
             normalizeSalesActivity(row),

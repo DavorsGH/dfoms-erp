@@ -34,12 +34,14 @@ import type {
   IncomeEntryType,
   ProductSaleStatus,
 } from "./income-register-utils";
+import type { CustomerCreditsApplicationRow } from "./customer-credits-liability-utils";
 
 export type CashFlowReportOptions = {
   tenantId: string;
   accountsPayablePayments?: AccountsPayablePaymentRow[];
   directorsLoanRepayments?: DirectorsLoanRepaymentRow[];
   directorsLoanLedgerEntries?: DirectorsLoanLedgerEntry[];
+  creditNoteApplications?: CustomerCreditsApplicationRow[];
 };
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
@@ -223,6 +225,9 @@ export function buildCashFlowReport(
       description: entry.description ?? null,
       receipt_no: entry.receipt_no ?? null,
       notes: entry.notes ?? null,
+      is_customer_refund:
+        (entry as { is_customer_refund?: boolean | null }).is_customer_refund ??
+        false,
     }),
   );
 
@@ -242,6 +247,7 @@ export function buildCashFlowReport(
       directorsLoanRepayments: options.directorsLoanRepayments,
       directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
       staffSalaryNetByPayrollMonth,
+      creditNoteApplications: options.creditNoteApplications,
     },
     financialYear,
   );

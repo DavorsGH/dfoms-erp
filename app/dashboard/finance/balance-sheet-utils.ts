@@ -70,6 +70,12 @@ import {
   calculateStaffWelfarePayableByMonth,
   type BalanceSheetWelfareFundEntry,
 } from "./staff-welfare-fund-utils";
+import {
+  calculateCustomerCreditsPayableByMonth,
+  type CustomerCreditsApplicationRow,
+  type CustomerCreditsCreditNoteRow,
+  type CustomerCreditsRefundRow,
+} from "./customer-credits-liability-utils";
 
 export type { BalanceSheetWelfareFundEntry } from "./staff-welfare-fund-utils";
 export { calculateStaffWelfarePayableByMonth } from "./staff-welfare-fund-utils";
@@ -82,6 +88,9 @@ export type BalanceSheetReportOptions = {
   /** Sum director's loan net per business unit (All Businesses view). */
   allBusinessUnitsDirectorsLoan?: boolean;
   rawManualFinancialEntries?: CashMovementManualEntry[];
+  creditNotesForCustomerCredits?: CustomerCreditsCreditNoteRow[];
+  refundsForCustomerCredits?: CustomerCreditsRefundRow[];
+  creditNoteApplicationsForCash?: CustomerCreditsApplicationRow[];
 };
 
 export type {
@@ -505,6 +514,7 @@ function calculateCashAndCashEquivalentsByMonth(
       directorsLoanRepayments: options.directorsLoanRepayments,
       directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
       staffSalaryNetByPayrollMonth,
+      creditNoteApplications: options.creditNoteApplicationsForCash,
     },
     financialYear,
   );
@@ -694,6 +704,14 @@ export function buildBalanceSheetReport(
     "other_long_term_liabilities",
     financialYear,
   );
+  const customerCredits = roundMonthlyTotals(
+    calculateCustomerCreditsPayableByMonth(
+      options.creditNotesForCustomerCredits ?? [],
+      options.refundsForCustomerCredits ?? [],
+      options.creditNoteApplicationsForCash ?? [],
+      financialYear,
+    ),
+  );
   const totalLiabilities = roundMonthlyTotals(
     sumMonthlyTotals([
       accountsPayable,
@@ -703,6 +721,7 @@ export function buildBalanceSheetReport(
       openTax.payePayable,
       openTax.ssnitPayable,
       staffWelfarePayable,
+      customerCredits,
       bankLoans,
       otherLongTermLiabilities,
       directorsLoan,
@@ -735,6 +754,7 @@ export function buildBalanceSheetReport(
       openTax.payePayable,
       openTax.ssnitPayable,
       staffWelfarePayable,
+      customerCredits,
       bankLoans,
       otherLongTermLiabilities,
       directorsLoan,
@@ -861,6 +881,13 @@ export function buildBalanceSheetReport(
       key: "staff-welfare-payable",
       label: "Staff Welfare Payable",
       amounts: staffWelfarePayable,
+      kind: "data",
+      side: "liabilities",
+    },
+    {
+      key: "customer-credits",
+      label: "Customer credits",
+      amounts: customerCredits,
       kind: "data",
       side: "liabilities",
     },

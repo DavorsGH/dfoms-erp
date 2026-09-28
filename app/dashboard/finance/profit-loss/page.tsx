@@ -41,7 +41,7 @@ export default async function ProfitLossPage() {
       supabase
         .from("expense_register")
         .select(
-          "date, expense_category, sub_category, amount, net_of_tax_amount, input_vat_amount",
+          "date, expense_category, sub_category, amount, net_of_tax_amount, input_vat_amount, is_customer_refund",
         ),
       buScope,
     ).order("date", { ascending: true }),

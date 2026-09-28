@@ -4,6 +4,10 @@ import {
   isSettledNoCashImpactStatus,
 } from "./accrued-wages-utils";
 import {
+  isCustomerRefundCashOutflowExpense,
+  isProductReturnCogsReversalExpense,
+} from "./customer-refund-expense-utils";
+import {
   appendRemittedNote,
   REMITTED_STATUS,
   todayIsoDate,
@@ -84,11 +88,28 @@ export function isInventoryGoLiveTrueUpExpense(entry: {
 export function isAutoPostedExpenseRegisterEntry(entry: {
   description?: string | null;
   receipt_no?: string | null;
+  expense_category?: string | null;
+  sub_category?: string | null;
+  is_customer_refund?: boolean | null;
 }): boolean {
+  if (isCustomerRefundCashOutflowExpense(entry)) {
+    return true;
+  }
+  if (isProductReturnCogsReversalExpense(entry)) {
+    return true;
+  }
   if (isInventoryGoLiveTrueUpExpense(entry)) {
     return true;
   }
   return isPayrollAutoPostedExpense(entry);
+}
+
+export function customerRefundExpenseLockMessage(): string {
+  return "Customer refund (auto-posted). Manage refunds from Finance → Credit Notes — do not edit or delete here.";
+}
+
+export function productSaleReturnIncomeLockMessage(): string {
+  return "Sale return (auto-posted). Process adjustments from CRM → Sales → Return — do not edit or delete here.";
 }
 
 function isPlatformBillingIncomeCategory(category: string | null | undefined) {
@@ -110,7 +131,16 @@ export function detectAutoPostedIncomeRegisterEntry(entry: {
   client_invoice_id?: string | null;
   service_category?: string | null;
   entry_type?: string | null;
+  is_sale_return?: boolean | null;
 }): AutoPostedIncomeDetection {
+  if (entry.is_sale_return === true) {
+    return {
+      autoPosted: true,
+      kind: "product_sale",
+      lockMessage: productSaleReturnIncomeLockMessage(),
+    };
+  }
+
   if (entry.is_system_adjustment) {
     return {
       autoPosted: true,
@@ -176,7 +206,7 @@ export function detectAutoPostedIncomeRegisterEntry(entry: {
       autoPosted: true,
       kind: "product_sale",
       lockMessage:
-        "Product sale (POS). Void or adjust the sale from Product Sales / POS — do not edit or delete here.",
+        "Product sale (POS). Void or adjust the sale from Sales / POS — do not edit or delete here.",
     };
   }
 

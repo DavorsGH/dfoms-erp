@@ -409,6 +409,6 @@ export async function notifyProductSalePaymentReceived(
     options.tenantId,
     "Payment received",
     adminBody,
-    "/dashboard/crm/product-sales",
+    "/dashboard/crm/sales",
   );
 }

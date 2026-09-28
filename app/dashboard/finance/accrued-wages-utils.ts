@@ -43,6 +43,7 @@ export type StaffSalariesExpenseEntry = {
   receipt_no?: string | null;
   /** Optional; may carry cash_paid=<amount> and wages_forfeited=<amount>. */
   notes?: string | null;
+  is_customer_refund?: boolean | null;
 };
 
 export type BalanceSheetCashExpenseEntry = StaffSalariesExpenseEntry;

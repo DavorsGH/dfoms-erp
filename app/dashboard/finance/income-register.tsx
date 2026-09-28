@@ -916,7 +916,11 @@ export default function IncomeRegister({
                     <td className="px-4 py-3">{entry.invoice_no}</td>
                     <td className="px-4 py-3">
                       {entry.service_category ?? "—"}
-                      {autoPosted ? (
+                      {entry.is_sale_return ? (
+                        <span className="ml-2 text-xs font-medium opacity-80">
+                          (sale return)
+                        </span>
+                      ) : autoPosted ? (
                         <span className="ml-2 text-xs font-medium opacity-80">
                           (auto-posted)
                         </span>

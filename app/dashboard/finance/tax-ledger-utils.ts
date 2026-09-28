@@ -189,7 +189,7 @@ export function getSourceHref(
         ? `/dashboard/finance/client-invoices/${sourceId}`
         : "/dashboard/finance/client-invoices";
     case "product_sale":
-      return "/dashboard/finance/product-sales";
+      return "/dashboard/crm/sales";
     case "payroll_period":
       return "/dashboard/hr-payroll/payroll-processing";
     case "fixed_asset":

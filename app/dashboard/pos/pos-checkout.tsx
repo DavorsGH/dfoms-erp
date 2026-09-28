@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import PromoCodeField from "@/components/promo-code-field";
 import FinishedProductPhoto from "@/components/finished-product-photo";
@@ -61,6 +62,7 @@ import {
   type PosCheckoutRunSummary,
 } from "./pos-utils";
 import { PosReceiptPanel, type PosReceiptData } from "./pos-receipt";
+import ProductReturnModal from "../crm/product-return-modal";
 import RequestPaymentModal from "./request-payment-modal";
 import {
   extractPaystackInlineReference,
@@ -187,6 +189,7 @@ export default function PosCheckout({
   tenantId = null,
 }: PosCheckoutProps) {
   const supabase = createClient();
+  const router = useRouter();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
 
@@ -229,6 +232,7 @@ export default function PosCheckout({
    * settlement account — shows a link to Payment Settings. */
   const [paymentSettingsRequired, setPaymentSettingsRequired] = useState(false);
   const [receipt, setReceipt] = useState<PosReceiptData | null>(null);
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [showRequestPayment, setShowRequestPayment] = useState(false);
   /** Snapshot of cart + customer when opening Request Payment (charge-first). */
   const [requestPaymentDraft, setRequestPaymentDraft] = useState<{
@@ -261,7 +265,12 @@ export default function PosCheckout({
     customerDisplaySessionIdRef.current = getOrCreatePosCustomerDisplaySessionId();
   }
 
-  void initialPaymentMethods;
+  const returnRefundPaymentMethods = useMemo(() => {
+    if (initialPaymentMethods.length > 0) {
+      return initialPaymentMethods;
+    }
+    return [...POS_CHECKOUT_PAYMENT_METHODS];
+  }, [initialPaymentMethods]);
 
   useEffect(() => {
     setProducts(initialProducts.map(normalizeFinishedProduct));
@@ -1134,7 +1143,7 @@ export default function PosCheckout({
             if (!confirmResponse.ok || !confirmPayload.ok) {
               setError(
                 confirmPayload.error ??
-                  "Payment succeeded but sale confirmation failed. Retry or check Product Sales.",
+                  "Payment succeeded but sale confirmation failed. Retry or check Sales.",
               );
               setMomoWaiting(false);
               setLoading(false);
@@ -1777,11 +1786,28 @@ export default function PosCheckout({
 
   if (receipt) {
     return (
-      <PosReceiptPanel
-        receipt={receipt}
-        onPrint={() => window.print()}
-        onNewSale={resetCheckoutForm}
-      />
+      <>
+        {returnModalOpen && tenantId ? (
+          <ProductReturnModal
+            invoiceNo={receipt.invoiceNo}
+            tenantId={tenantId}
+            paymentMethods={returnRefundPaymentMethods}
+            onClose={() => setReturnModalOpen(false)}
+            onSuccess={() => {
+              setReturnModalOpen(false);
+              router.refresh();
+            }}
+          />
+        ) : null}
+        <PosReceiptPanel
+          receipt={receipt}
+          onPrint={() => window.print()}
+          onNewSale={resetCheckoutForm}
+          onReturn={
+            tenantId ? () => setReturnModalOpen(true) : undefined
+          }
+        />
+      </>
     );
   }
 

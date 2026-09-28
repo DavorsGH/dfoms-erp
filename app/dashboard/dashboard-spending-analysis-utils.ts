@@ -1,4 +1,5 @@
 import { isActiveIncomeForReporting } from "./finance/income-register-utils";
+import { shouldIncludeExpenseInNonCashTotals } from "./finance/customer-refund-expense-utils";
 
 export type SpendingAnalysisIncomeRow = {
   date: string;
@@ -197,9 +198,17 @@ export function toSpendingAnalysisExpenseRows(
     amount: number;
     expense_category?: string | null;
     description?: string | null;
+    is_customer_refund?: boolean | null;
   }>,
 ): SpendingAnalysisExpenseRow[] {
-  return rows.map((entry) => ({
+  return rows
+    .filter((entry) =>
+      shouldIncludeExpenseInNonCashTotals({
+        expense_category: entry.expense_category ?? "",
+        is_customer_refund: entry.is_customer_refund,
+      }),
+    )
+    .map((entry) => ({
     date: entry.date,
     amount: Number(entry.amount) || 0,
     expense_category: entry.expense_category ?? "",

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
+import { ProductSaleReturnBadge } from "../product-return-badge";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -35,8 +36,10 @@ import {
   getCustomerStatusLabel,
   getCustomerTypeLabel,
   getOpportunityStageLabel,
+  getCustomer360CreditNoteNumber,
   getProductSaleLabel,
   isActivityComplete,
+  isCustomer360ProductSaleReturn,
   isProductSaleVoided,
   loyaltyTransactionBadgeClassName,
   quoteStatusBadgeClassName,
@@ -63,6 +66,8 @@ type Customer360Props = {
   activities: SalesActivity[];
   loyaltyAccount: Customer360LoyaltyAccount | null;
   loyaltyTransactions: Customer360LoyaltyTransaction[];
+  storeCreditBalance?: number;
+  creditAppliedToProductSales?: number;
   fetchError: string | null;
 };
 
@@ -81,10 +86,14 @@ export default function Customer360({
   activities,
   loyaltyAccount,
   loyaltyTransactions,
+  storeCreditBalance = 0,
+  creditAppliedToProductSales = 0,
   fetchError,
 }: Customer360Props) {
   const [activeTab, setActiveTab] = useState<Customer360TabId>("opportunities");
-  const summary = computeCustomer360Summary(productSales, invoices, activities);
+  const summary = computeCustomer360Summary(productSales, invoices, activities, {
+    creditAppliedToProductSales,
+  });
   const activeServiceContracts = serviceContracts.filter(
     (contract) => contract.status === "active",
   );
@@ -160,7 +169,7 @@ export default function Customer360({
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Total Product Sales
@@ -183,6 +192,14 @@ export default function Customer360({
           </p>
           <p className="mt-2 text-xl font-semibold text-[#0f2744]">
             {formatGHS(summary.totalReceived)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Store credit available
+          </p>
+          <p className="mt-2 text-xl font-semibold text-[#0f2744]">
+            {formatGHS(storeCreditBalance)}
           </p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -481,24 +498,45 @@ function ProductSalesSection({
           {productSales.length === 0 ? (
             <EmptyRow colSpan={6} message="No product sales for this customer." />
           ) : (
-            productSales.map((entry, index) => (
-              <tr key={entry.id} className={getStripedRowClassName(index)}>
+            productSales.map((entry, index) => {
+              const isReturn = isCustomer360ProductSaleReturn(entry);
+              const creditNoteNo = getCustomer360CreditNoteNumber(entry);
+
+              return (
+              <tr
+                key={entry.id}
+                className={`${getStripedRowClassName(index)}${isReturn ? " opacity-60" : ""}`}
+              >
                 <td className="px-4 py-3 font-medium text-[#0f2744]">
                   {entry.invoice_no}
+                  {isReturn && creditNoteNo ? (
+                    <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                      {creditNoteNo}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3">{formatInvoiceDate(entry.date)}</td>
                 <td className="px-4 py-3">{getProductSaleLabel(entry)}</td>
                 <td className="px-4 py-3">
                   {formatInventoryQuantity(entry.sale_quantity ?? 0)}
                 </td>
-                <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
+                <td
+                  className={`px-4 py-3${isReturn ? " text-amber-900" : ""}`}
+                >
+                  {formatGHS(entry.amount)}
+                </td>
                 <td className="px-4 py-3">
-                  {isProductSaleVoided(entry)
-                    ? "Voided"
-                    : entry.payment_status}
+                  {isReturn ? (
+                    <ProductSaleReturnBadge />
+                  ) : isProductSaleVoided(entry) ? (
+                    "Voided"
+                  ) : (
+                    entry.payment_status
+                  )}
                 </td>
               </tr>
-            ))
+              );
+            })
           )}
         </tbody>
       </table>

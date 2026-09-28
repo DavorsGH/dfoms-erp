@@ -130,7 +130,7 @@ export async function notifyAdminsDirectorsLargeProductSaleForSession(
     tenantId,
     saleAmount,
     recordedBy,
-    actionUrl ?? "/dashboard/crm/product-sales",
+    actionUrl ?? "/dashboard/crm/sales",
   );
 }
 
@@ -144,7 +144,7 @@ export async function notifyAdminsDirectorsLargeProductSaleWithLabel(
     tenantId,
     saleAmount,
     recordedBy,
-    actionUrl ?? "/dashboard/crm/product-sales",
+    actionUrl ?? "/dashboard/crm/sales",
   );
 }
 

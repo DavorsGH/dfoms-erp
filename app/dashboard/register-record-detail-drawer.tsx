@@ -24,6 +24,7 @@ type RegisterRecordDetailDrawerProps = {
   onEdit?: () => void;
   disableEdit?: boolean;
   editDisabledTitle?: string;
+  footer?: ReactNode;
 };
 
 function RegisterDetailFieldRow({ label, value }: RegisterDetailField) {
@@ -48,6 +49,7 @@ export default function RegisterRecordDetailDrawer({
   onEdit,
   disableEdit = false,
   editDisabledTitle,
+  footer,
 }: RegisterRecordDetailDrawerProps) {
   useEffect(() => {
     if (!open) {
@@ -118,7 +120,7 @@ export default function RegisterRecordDetailDrawer({
           ) : error ? (
             <p className="text-sm text-red-700">{error}</p>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {sections.map((section) => (
                 <section key={section.title} className="space-y-3">
                   <h3 className="text-sm font-semibold text-[#0f2744]">
@@ -138,7 +140,11 @@ export default function RegisterRecordDetailDrawer({
           )}
         </div>
 
-        {onEdit ? (
+        {footer ? (
+          <footer className="shrink-0 border-t border-slate-200 px-4 py-4 sm:px-6">
+            {footer}
+          </footer>
+        ) : onEdit ? (
           <footer className="flex shrink-0 justify-end gap-2 border-t border-slate-200 px-4 py-4 sm:px-6">
             <button
               type="button"

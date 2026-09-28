@@ -20,19 +20,34 @@ type RegisterRowActionsProps = {
   deleteDisabledTitle?: string;
   disableArchive?: boolean;
   disableVoid?: boolean;
+  voidDisabledTitle?: string;
+  onReturn?: () => void;
+  disableReturn?: boolean;
+  returnDisabledTitle?: string;
+  returning?: boolean;
   voidLabel?: string;
+  returnLabel?: string;
   archiveLabel?: string;
   restoreLabel?: string;
   printLabel?: string;
   markPaidLabel?: string;
   recordPaymentLabel?: string;
+  compact?: boolean;
+  disableRecordPayment?: boolean;
+  recordPaymentDisabledTitle?: string;
 };
 
 const editButtonClassName =
   "rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+const editButtonCompactClassName =
+  "rounded border border-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
+
 const markPaidButtonClassName =
   "rounded-md border border-emerald-200 px-3 py-1.5 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const markPaidButtonCompactClassName =
+  "rounded border border-emerald-200 px-1.5 py-0.5 text-xs font-medium text-emerald-800 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 const deleteButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -79,8 +94,13 @@ export function confirmProductPurchaseEdit(): boolean {
   );
 }
 
-const voidButtonClassName =
+export const reversalActionButtonClassName =
   "rounded-md border border-amber-200 px-3 py-1.5 text-sm font-medium text-amber-800 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const voidButtonCompactClassName =
+  "rounded border border-amber-200 px-1.5 py-0.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const voidButtonClassName = reversalActionButtonClassName;
 
 const archiveButtonClassName =
   "rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -110,34 +130,56 @@ export default function RegisterRowActions({
   deleteDisabledTitle,
   disableArchive = false,
   disableVoid = false,
+  voidDisabledTitle,
+  onReturn,
+  disableReturn = false,
+  returnDisabledTitle,
+  returning = false,
   voidLabel = "Void Sale",
+  returnLabel = "Return",
   archiveLabel = "Archive",
   restoreLabel = "Reactivate",
   printLabel = "Print Receipt",
   markPaidLabel = "Mark as Paid",
   recordPaymentLabel = "Record Payment",
+  compact = false,
+  disableRecordPayment = false,
+  recordPaymentDisabledTitle,
 }: RegisterRowActionsProps) {
+  const printClass = compact ? editButtonCompactClassName : editButtonClassName;
+  const payClass = compact ? markPaidButtonCompactClassName : markPaidButtonClassName;
+  const voidClass = compact ? voidButtonCompactClassName : voidButtonClassName;
+  const resolvedPrintLabel = compact ? "Print" : printLabel;
+  const resolvedPayLabel = compact ? "Pay" : recordPaymentLabel;
+  const resolvedVoidLabel = compact ? "Void" : voidLabel;
+  const resolvedReturnLabel = compact ? "Return" : returnLabel;
+
   return (
-    <td className="px-4 py-3 whitespace-nowrap">
-      <div className="inline-flex flex-nowrap items-center gap-2">
+    <td className={compact ? "px-2 py-2 whitespace-nowrap" : "px-4 py-3 whitespace-nowrap"}>
+      <div className={`inline-flex flex-nowrap items-center ${compact ? "gap-1" : "gap-2"}`}>
         {onPrint ? (
           <button
             type="button"
             onClick={onPrint}
             disabled={printing}
-            className={editButtonClassName}
+            className={printClass}
           >
-            {printing ? "Loading…" : printLabel}
+            {printing ? "…" : resolvedPrintLabel}
           </button>
         ) : null}
         {onRecordPayment ? (
           <button
             type="button"
             onClick={onRecordPayment}
-            disabled={recordingPayment}
-            className={markPaidButtonClassName}
+            disabled={recordingPayment || disableRecordPayment}
+            title={
+              disableRecordPayment
+                ? (recordPaymentDisabledTitle ?? "Record payment is not available")
+                : undefined
+            }
+            className={payClass}
           >
-            {recordingPayment ? "Recording…" : recordPaymentLabel}
+            {recordingPayment ? "…" : resolvedPayLabel}
           </button>
         ) : null}
         {onMarkPaid ? (
@@ -165,15 +207,49 @@ export default function RegisterRowActions({
             Edit
           </button>
         ) : null}
+        {onReturn ? (
+          <button
+            type="button"
+            onClick={onReturn}
+            disabled={returning || disableReturn}
+            title={
+              disableReturn
+                ? (returnDisabledTitle ?? "Return is not available for this row")
+                : undefined
+            }
+            className={voidClass}
+          >
+            <span className={`inline-flex items-center ${compact ? "gap-0.5" : "gap-1.5"}`}>
+              {!compact ? (
+                <svg
+                  aria-hidden
+                  className="h-4 w-4 shrink-0"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M9 14 4 9l5-5" />
+                  <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+                </svg>
+              ) : null}
+              {returning ? "…" : resolvedReturnLabel}
+            </span>
+          </button>
+        ) : null}
         {onVoid ? (
           <button
             type="button"
             onClick={onVoid}
             disabled={voiding || disableVoid}
-            title={disableVoid ? "This sale has already been voided" : undefined}
-            className={voidButtonClassName}
+            title={
+              disableVoid
+                ? (voidDisabledTitle ?? "This sale has already been voided")
+                : undefined
+            }
+            className={voidClass}
           >
-            {voiding ? "Voiding…" : voidLabel}
+            {voiding ? "…" : resolvedVoidLabel}
           </button>
         ) : onRestore ? (
           <button
