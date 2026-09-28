@@ -12,11 +12,18 @@ import {
   formatDate,
   formatGHS,
   formatPercent,
+  formatUsefulLifeYears,
   getAssetCalculations,
   getMonthEndForDate,
   isReducingBalanceMethod,
   type FixedAssetEntry,
 } from "./fixed-assets-utils";
+import { buildFixedAssetDetailSections } from "./register-detail-sections";
+import RegisterRecordDetailDrawer from "../register-record-detail-drawer";
+import { RegisterRecordNameLink } from "../register-record-name-link";
+import TruncatedCell, {
+  registerTruncatedCellHostClassName,
+} from "../register-truncated-cell";
 import { isCreditPaymentMethod } from "../inventory/inventory-balance-sheet-utils";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import { allocateAssetId } from "./asset-id-api";
@@ -28,6 +35,15 @@ import RegisterRowActions, {
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableNoTruncateCellClassName,
+  scrollableTableRegisterDateCellClassName,
+  scrollableTableRegisterIdCellClassName,
+  scrollableTableRegisterUsefulLifeCellClassName,
+  scrollableTableRegisterCategoryCellClassName,
+  scrollableTableRegisterCategoryThClassName,
+  scrollableTableRegisterStickyNameThClassName,
+  scrollableTableRegisterStickyNameWrapTdClassName,
+  scrollableTableRegisterUsefulLifeThClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
@@ -50,7 +66,11 @@ import {
   resolveVendorNameFromSelect,
   VENDOR_OTHER_VALUE,
 } from "./vendor-select-utils";
-import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitView,
+  useStampBusinessUnitId,
+  useBusinessUnitReadScope,
+} from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
   assertCanModifyBusinessUnitRow,
@@ -146,6 +166,7 @@ export default function FixedAssets({
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
+  const { units: businessUnits } = useBusinessUnitView();
   const [assets, setAssets] = useState(initialAssets);
   const [assetCategories, setAssetCategories] = useState(initialAssetCategories);
   const [depreciationMethods, setDepreciationMethods] = useState(
@@ -161,6 +182,10 @@ export default function FixedAssets({
   const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [detailAssetId, setDetailAssetId] = useState<string | null>(null);
+  const [detailAsset, setDetailAsset] = useState<FixedAssetEntry | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
   const whtRateOptions = useMemo(() => {
@@ -251,6 +276,40 @@ export default function FixedAssets({
 
     loadLookups();
   }, [showForm]);
+
+  function closeAssetDetail() {
+    setDetailAssetId(null);
+    setDetailAsset(null);
+    setDetailError(null);
+    setDetailLoading(false);
+  }
+
+  async function openAssetDetail(assetId: string) {
+    setDetailAssetId(assetId);
+    setDetailError(null);
+    const cached = assets.find((asset) => asset.asset_id === assetId) ?? null;
+    setDetailAsset(cached);
+    setDetailLoading(true);
+
+    const { data, error: fetchError } = await applyBusinessUnitScope(
+      supabase.from("fixed_assets").select("*").eq("asset_id", assetId),
+      buReadScope,
+    ).maybeSingle();
+
+    setDetailLoading(false);
+
+    if (fetchError) {
+      setDetailError(fetchError.message);
+      return;
+    }
+
+    if (!data) {
+      setDetailError("Record not found or not accessible in this business view.");
+      return;
+    }
+
+    setDetailAsset(data as FixedAssetEntry);
+  }
 
   async function refreshAssets() {
     const { data, error: refreshError } = await applyBusinessUnitScope(
@@ -1099,18 +1158,32 @@ export default function FixedAssets({
         itemSingular="asset"
       />
 
-      <ScrollableTable>
+      <ScrollableTable stickyEdgeLayout="nameCategory">
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Asset ID</th>
-                <th className={scrollableTableThClassName}>Asset Name</th>
-                <th className={scrollableTableThClassName}>Category</th>
-                <th className={scrollableTableThClassName}>Purchase Date</th>
+                <th
+                  className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-id`}
+                >
+                  Asset ID
+                </th>
+                <th className={scrollableTableRegisterStickyNameThClassName}>
+                  Asset Name
+                </th>
+                <th className={scrollableTableRegisterCategoryThClassName}>
+                  Category
+                </th>
+                <th
+                  className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`}
+                >
+                  Purchase Date
+                </th>
                 <th className={scrollableTableThClassName}>Original Cost</th>
                 <th className={scrollableTableThClassName}>Quantity</th>
                 <th className={scrollableTableThClassName}>Total Cost</th>
-                <th className={scrollableTableThClassName}>Useful Life (Yrs)</th>
+                <th className={scrollableTableRegisterUsefulLifeThClassName}>
+                  Useful Life (Yrs)
+                </th>
                 <th className={scrollableTableThClassName}>Depreciation Method</th>
                 <th className={scrollableTableThClassName}>Annual Depreciation</th>
                 <th className={scrollableTableThClassName}>
@@ -1151,27 +1224,73 @@ export default function FixedAssets({
                       key={asset.asset_id}
                       className={getStripedRowClassName(index)}
                     >
-                      <td className="px-4 py-3">{asset.asset_id}</td>
-                      <td className="px-4 py-3">{asset.asset_name}</td>
-                      <td className="px-4 py-3">{asset.asset_category}</td>
-                      <td className="px-4 py-3">
+                      <td className={scrollableTableRegisterIdCellClassName}>
+                        {asset.asset_id}
+                      </td>
+                      <td
+                        className={`${scrollableTableRegisterStickyNameWrapTdClassName({
+                          striped: index % 2 === 1,
+                        })} ${registerTruncatedCellHostClassName}`}
+                      >
+                        <RegisterRecordNameLink
+                          onOpen={() => void openAssetDetail(asset.asset_id)}
+                        >
+                          <TruncatedCell>{asset.asset_name}</TruncatedCell>
+                        </RegisterRecordNameLink>
+                      </td>
+                      <td
+                        className={`${scrollableTableRegisterCategoryCellClassName} ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{asset.asset_category}</TruncatedCell>
+                      </td>
+                      <td className={scrollableTableRegisterDateCellClassName}>
                         {formatDate(asset.purchase_date)}
                       </td>
-                      <td className="px-4 py-3">
-                        {formatGHS(asset.original_cost)}
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{formatGHS(asset.original_cost)}</TruncatedCell>
                       </td>
-                      <td className="px-4 py-3">{asset.quantity}</td>
-                      <td className="px-4 py-3">{formatGHS(totalCost)}</td>
-                      <td className="px-4 py-3">{asset.useful_life_years}</td>
-                      <td className="px-4 py-3">{asset.depreciation_method}</td>
-                      <td className="px-4 py-3">
-                        {formatGHS(annualDepreciation)}
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{asset.quantity}</TruncatedCell>
                       </td>
-                      <td className="px-4 py-3">
-                        {formatGHS(accumulatedDepreciation)}
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{formatGHS(totalCost)}</TruncatedCell>
                       </td>
-                      <td className="px-4 py-3">{formatGHS(netBookValue)}</td>
-                      <td className="px-4 py-3">{asset.location}</td>
+                      <td className={scrollableTableRegisterUsefulLifeCellClassName}>
+                        {formatUsefulLifeYears(asset.useful_life_years)}
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{asset.depreciation_method}</TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{formatGHS(annualDepreciation)}</TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>
+                          {formatGHS(accumulatedDepreciation)}
+                        </TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{formatGHS(netBookValue)}</TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{asset.location}</TruncatedCell>
+                      </td>
                       <RegisterRowActions
                         onEdit={() => openEditForm(asset)}
                         onDelete={() => handleDelete(asset.asset_id)}
@@ -1184,6 +1303,28 @@ export default function FixedAssets({
             </tbody>
         </table>
       </ScrollableTable>
+
+      <RegisterRecordDetailDrawer
+        open={detailAssetId != null}
+        title="Fixed asset"
+        subtitle={detailAsset?.asset_name ?? detailAssetId}
+        sections={
+          detailAsset
+            ? buildFixedAssetDetailSections(detailAsset, businessUnits, {
+                paymentMethods,
+                depreciationMethods,
+              })
+            : []
+        }
+        loading={detailLoading}
+        error={detailError}
+        onClose={closeAssetDetail}
+        onEdit={
+          detailAsset
+            ? () => openEditForm(detailAsset)
+            : undefined
+        }
+      />
     </div>
   );
 }

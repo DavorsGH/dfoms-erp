@@ -12,6 +12,7 @@ import {
 import AssistantMarkdown from "@/components/ai-assistant/assistant-markdown";
 import { useFloatingUiAvoidanceInsets } from "@/components/floating-ui-avoidance";
 import { useAssistantBubblePosition } from "@/components/ai-assistant/use-assistant-bubble-position";
+import { subscribeRegisterDetailDrawerOpen } from "@/app/dashboard/register-detail-drawer-visibility";
 
 type ChatRole = "user" | "assistant";
 
@@ -87,6 +88,12 @@ export default function AssistantChatWidget() {
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [registerDetailDrawerOpen, setRegisterDetailDrawerOpen] = useState(false);
+
+  useEffect(
+    () => subscribeRegisterDetailDrawerOpen(setRegisterDetailDrawerOpen),
+    [],
+  );
 
   const avoidanceInsets = useFloatingUiAvoidanceInsets();
   const {
@@ -198,6 +205,10 @@ export default function AssistantChatWidget() {
       event.preventDefault();
       void handleSend();
     }
+  }
+
+  if (registerDetailDrawerOpen) {
+    return null;
   }
 
   return (

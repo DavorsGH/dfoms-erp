@@ -43,6 +43,71 @@ export function formatDate(value: string): string {
   });
 }
 
+/** Table/detail display for useful_life_years (null-safe; does not alter depreciation math). */
+export function formatUsefulLifeYears(
+  value: number | string | null | undefined,
+): string {
+  if (value == null || value === "") return "—";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "—";
+  return Number.isInteger(numeric)
+    ? String(numeric)
+    : numeric.toLocaleString("en-GH", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1,
+      });
+}
+
+export function getLiveAssetValuesFromEntry(
+  asset: Pick<
+    FixedAssetEntry,
+    | "original_cost"
+    | "quantity"
+    | "useful_life_years"
+    | "purchase_date"
+    | "depreciation_method"
+  >,
+  asOfMonthEnd = getMonthEndForDate(),
+) {
+  const referenceDate = new Date(`${asOfMonthEnd}T12:00:00`);
+  const totalCost = calculateTotalCost(asset.original_cost, asset.quantity);
+  const { annualDepreciation } = getAssetCalculations(
+    totalCost,
+    1,
+    Number(asset.useful_life_years) || 0,
+    asset.purchase_date,
+    asset.depreciation_method,
+    referenceDate,
+  );
+  const accumulatedDepreciation = calculateAssetAccumulatedDepreciationAsOf(
+    {
+      original_cost: asset.original_cost,
+      quantity: asset.quantity,
+      useful_life_years: Number(asset.useful_life_years) || 0,
+      purchase_date: asset.purchase_date,
+      depreciation_method: asset.depreciation_method,
+    },
+    asOfMonthEnd,
+  );
+  const netBookValue = calculateAssetNetBookValueAsOf(
+    {
+      original_cost: asset.original_cost,
+      quantity: asset.quantity,
+      useful_life_years: Number(asset.useful_life_years) || 0,
+      purchase_date: asset.purchase_date,
+      depreciation_method: asset.depreciation_method,
+    },
+    asOfMonthEnd,
+  );
+
+  return {
+    totalCost,
+    annualDepreciation,
+    accumulatedDepreciation,
+    netBookValue,
+  };
+}
+
 export function formatPercent(value: number): string {
   return `${(value * 100).toLocaleString("en-GH", {
     minimumFractionDigits: 2,

@@ -5,6 +5,8 @@ import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-act
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableNoTruncateCellClassName,
+  scrollableTableRegisterDateCellClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
 import {
@@ -43,7 +45,11 @@ export default function ClientReceiptsList({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Date</th>
+              <th
+                className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`}
+              >
+                Date
+              </th>
               <th className={scrollableTableThClassName}>Customer</th>
               <th className={scrollableTableThClassName}>Receipt #</th>
               <th className={scrollableTableThClassName}>Invoice #</th>
@@ -67,7 +73,9 @@ export default function ClientReceiptsList({
 
                 return (
                   <tr key={receipt.id} className={getStripedRowClassName(index)}>
-                    <td className="px-4 py-3">{formatInvoiceDate(receipt.receipt_date)}</td>
+                    <td className={scrollableTableRegisterDateCellClassName}>
+                      {formatInvoiceDate(receipt.receipt_date)}
+                    </td>
                     <td className="px-4 py-3">{customerName}</td>
                     <td className="px-4 py-3 font-medium text-[#0f2744]">
                       {receipt.receipt_number}

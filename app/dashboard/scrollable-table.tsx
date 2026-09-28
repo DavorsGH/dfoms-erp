@@ -20,10 +20,29 @@ type ScrollableTableProps = {
    * in globals.css). Prefer Date col 1 + Name col 2. Last/Actions never pinned.
    */
   stickyEdgeColumns?: boolean;
+  /** Wider sticky name (col 2) and category (col 3) — Expense Register, Fixed Assets. */
+  stickyEdgeLayout?: "default" | "nameCategory";
 };
+
+/** Host modifier for {@link ScrollableTableProps.stickyEdgeLayout}. */
+export const scrollableTableHostRegisterNameCategoryClassName =
+  "scrollable-table-host--register-name-category";
 
 /** Marks cells that should wrap instead of single-line truncation. */
 export const scrollableTableWrapCellClassName = "scrollable-table-cell--wrap";
+
+/** Opt out of register table body ellipsis (IDs, dates, numeric codes). */
+export const scrollableTableNoTruncateCellClassName =
+  "scrollable-table-cell--no-truncate";
+
+export const scrollableTableRegisterDateCellClassName =
+  `px-4 py-3 whitespace-nowrap tabular-nums ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`;
+
+export const scrollableTableRegisterIdCellClassName =
+  `px-4 py-3 whitespace-nowrap tabular-nums ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-id`;
+
+export const scrollableTableRegisterUsefulLifeCellClassName =
+  `px-4 py-3 whitespace-nowrap tabular-nums text-right ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-useful-life`;
 
 /**
  * Shared responsive table container for wide register/list screens.
@@ -46,6 +65,9 @@ export const scrollableTableHeadClassName = "bg-[#0f2744] text-white";
 
 export const scrollableTableThClassName =
   "sticky top-0 z-10 bg-[#0f2744] px-4 py-3 font-medium text-white";
+
+export const scrollableTableRegisterUsefulLifeThClassName =
+  `${scrollableTableThClassName} whitespace-normal ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-useful-life`;
 
 /** Financial statements — sticky layout is entirely in `.scrollable-table-host--financial-statement`. */
 export const scrollableTableFinancialStatementHeadClassName =
@@ -104,6 +126,28 @@ export const scrollableTableWrapTdClassName =
 /** Width hint for column-2 name cells (globals.css caps sticky edge columns). */
 export const scrollableTableStickyFirstColumnWidthClassName =
   "min-w-0 max-w-[10rem]";
+
+/** Sticky col 2 on finance registers with {@link scrollableTableHostRegisterNameCategoryClassName}. */
+export const scrollableTableRegisterStickyNameWidthClassName = "min-w-0";
+
+export const scrollableTableRegisterStickyNameThClassName =
+  `${scrollableTableWrapThClassName} ${scrollableTableRegisterStickyNameWidthClassName}`;
+
+export function scrollableTableRegisterStickyNameWrapTdClassName(
+  options?: ScrollableTableStickyFirstCellOptions,
+): string {
+  return [
+    "px-4 py-3 truncate align-top",
+    scrollableTableRegisterStickyNameWidthClassName,
+    scrollableTableStickyFirstCellBackground(options),
+  ].join(" ");
+}
+
+export const scrollableTableRegisterCategoryCellClassName =
+  "px-4 py-3 scrollable-table-register-col-category";
+
+export const scrollableTableRegisterCategoryThClassName =
+  `${scrollableTableThClassName} scrollable-table-register-col-category`;
 
 /** Second-column header (name/label). Sticky position comes from globals.css edge rules. */
 export const scrollableTableStickyFirstThClassName =
@@ -175,6 +219,19 @@ function syncScrollableTableOverflowTitles(host: HTMLElement) {
     .querySelectorAll<HTMLElement>("table tbody td:not([colspan]), table thead th")
     .forEach((cell) => {
       if (cell.classList.contains(scrollableTableWrapCellClassName)) {
+        cell.removeAttribute("title");
+        return;
+      }
+
+      if (
+        cell.classList.contains("register-truncated-cell-host") ||
+        cell.querySelector(".register-truncated-cell")
+      ) {
+        cell.removeAttribute("title");
+        return;
+      }
+
+      if (cell.classList.contains(scrollableTableNoTruncateCellClassName)) {
         cell.removeAttribute("title");
         return;
       }
@@ -306,6 +363,96 @@ function useScrollableTableSingleStickyEdge(
   return singleStickyEdge;
 }
 
+function queryFirstCol1BodyCell(table: Element): HTMLElement | null {
+  return table.querySelector(
+    "tbody td:nth-child(1):not([colspan])",
+  ) as HTMLElement | null;
+}
+
+/**
+ * Sets `--st-edge-col-1-offset` from measured column 1 width so sticky column 2
+ * `left` matches the real column 1 edge (including max-content date/id cells).
+ */
+function useScrollableTableStickyEdgeColumnOffsets(
+  hostRef: RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+  singleStickyEdge: boolean,
+) {
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) {
+      return;
+    }
+
+    if (!enabled || singleStickyEdge) {
+      host.style.removeProperty("--st-edge-col-1-offset");
+      return;
+    }
+
+    let observedFirstCol1Body: Element | null = null;
+
+    const sync = () => {
+      const table = host.querySelector("table");
+      const col1Header = table?.querySelector(
+        "thead th:nth-child(1)",
+      ) as HTMLElement | null;
+
+      if (!col1Header) {
+        host.style.removeProperty("--st-edge-col-1-offset");
+        return;
+      }
+
+      let width = col1Header.getBoundingClientRect().width;
+      const firstCol1Body = table ? queryFirstCol1BodyCell(table) : null;
+      if (firstCol1Body) {
+        width = Math.max(width, firstCol1Body.getBoundingClientRect().width);
+      }
+
+      host.style.setProperty("--st-edge-col-1-offset", `${Math.ceil(width)}px`);
+
+      if (table) {
+        const nextFirstCol1Body = queryFirstCol1BodyCell(table);
+        if (nextFirstCol1Body !== observedFirstCol1Body) {
+          if (observedFirstCol1Body) {
+            resizeObserver.unobserve(observedFirstCol1Body);
+          }
+          observedFirstCol1Body = nextFirstCol1Body;
+          if (nextFirstCol1Body) {
+            resizeObserver.observe(nextFirstCol1Body);
+          }
+        }
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(sync);
+    resizeObserver.observe(host);
+    const table = host.querySelector("table");
+    if (table) {
+      resizeObserver.observe(table);
+      table
+        .querySelectorAll("thead th:nth-child(1), thead th:nth-child(2)")
+        .forEach((cell) => resizeObserver.observe(cell));
+    }
+
+    sync();
+
+    const mutationObserver = new MutationObserver(sync);
+    if (table) {
+      mutationObserver.observe(table, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      host.style.removeProperty("--st-edge-col-1-offset");
+    };
+  }, [enabled, singleStickyEdge, hostRef]);
+}
+
 function ScrollableTableFrame({
   hostRef,
   hostClassName,
@@ -347,6 +494,7 @@ const scrollableTableHostBaseClassName =
 export default function ScrollableTable({
   children,
   stickyEdgeColumns = true,
+  stickyEdgeLayout = "default",
 }: ScrollableTableProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   useScrollableTableOverflowTitles(hostRef, true);
@@ -354,6 +502,11 @@ export default function ScrollableTable({
   const singleStickyEdge = useScrollableTableSingleStickyEdge(
     hostRef,
     stickyEdgeColumns,
+  );
+  useScrollableTableStickyEdgeColumnOffsets(
+    hostRef,
+    stickyEdgeColumns,
+    singleStickyEdge,
   );
 
   return (
@@ -366,6 +519,9 @@ export default function ScrollableTable({
         stickyEdgeColumns ? "scrollable-table-host--sticky-edges" : "",
         stickyEdgeColumns && singleStickyEdge
           ? "scrollable-table-host--single-sticky-edge"
+          : "",
+        stickyEdgeColumns && stickyEdgeLayout === "nameCategory"
+          ? scrollableTableHostRegisterNameCategoryClassName
           : "",
       ]
         .filter(Boolean)

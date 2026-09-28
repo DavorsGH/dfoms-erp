@@ -15,6 +15,10 @@ type FilteredListCountLabelOptions = {
   hasActiveFilters?: boolean;
 };
 
+const FILTERED_LIST_IRREGULAR_PLURALS: Record<string, string> = {
+  entry: "entries",
+};
+
 export function formatFilteredListCountLabel({
   filteredCount,
   totalCount,
@@ -22,7 +26,10 @@ export function formatFilteredListCountLabel({
   itemPlural,
   hasActiveFilters = false,
 }: FilteredListCountLabelOptions): string {
-  const plural = itemPlural ?? `${itemSingular}s`;
+  const plural =
+    itemPlural ??
+    FILTERED_LIST_IRREGULAR_PLURALS[itemSingular] ??
+    `${itemSingular}s`;
   const filteredNoun = filteredCount === 1 ? itemSingular : plural;
   const totalNoun = totalCount === 1 ? itemSingular : plural;
 

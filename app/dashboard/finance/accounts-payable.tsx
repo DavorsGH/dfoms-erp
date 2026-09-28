@@ -37,6 +37,8 @@ import RegisterRowActions, {
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableNoTruncateCellClassName,
+  scrollableTableRegisterDateCellClassName,
   scrollableTableStickyFirstTdClassName,
   scrollableTableStickyFirstThClassName,
   scrollableTableThClassName,
@@ -1015,7 +1017,11 @@ export default function AccountsPayable({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Invoice Date</th>
+                <th
+                  className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`}
+                >
+                  Invoice Date
+                </th>
                 <th className={scrollableTableStickyFirstThClassName}>Supplier Name</th>
                 <th className={scrollableTableThClassName}>Invoice Number</th>
                 <th className={scrollableTableThClassName}>Expense Category</th>
@@ -1060,7 +1066,7 @@ export default function AccountsPayable({
                       id={`ap-${entry.id}`}
                       className={getStripedRowClassName(index)}
                     >
-                      <td className="px-4 py-3">
+                      <td className={scrollableTableRegisterDateCellClassName}>
                         {formatDate(entry.invoice_date)}
                       </td>
                       <td

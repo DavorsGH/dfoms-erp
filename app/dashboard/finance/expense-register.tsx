@@ -67,10 +67,21 @@ import {
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
-  scrollableTableStickyFirstWrapTdClassName,
-  scrollableTableStickyFirstWrapThClassName,
+  scrollableTableNoTruncateCellClassName,
+  scrollableTableRegisterCategoryCellClassName,
+  scrollableTableRegisterCategoryThClassName,
+  scrollableTableRegisterDateCellClassName,
+  scrollableTableRegisterStickyNameThClassName,
+  scrollableTableRegisterStickyNameWrapTdClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import { buildExpenseRegisterDetailSections } from "./register-detail-sections";
+import { resolveRegisterPaymentMethodLabel } from "./register-detail-labels";
+import RegisterRecordDetailDrawer from "../register-record-detail-drawer";
+import { RegisterRecordNameLink } from "../register-record-name-link";
+import TruncatedCell, {
+  registerTruncatedCellHostClassName,
+} from "../register-truncated-cell";
 import FilteredListCount, {
   anyRegisterColumnFiltersActive,
 } from "../filtered-list-count";
@@ -81,7 +92,11 @@ import {
   VENDOR_OTHER_VALUE,
 } from "./vendor-select-utils";
 import { useOnlineStatus } from "@/hooks/use-online-status";
-import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitView,
+  useStampBusinessUnitId,
+  useBusinessUnitReadScope,
+} from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
   assertCanModifyBusinessUnitRow,
@@ -197,6 +212,7 @@ export default function ExpenseRegister({
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
+  const { units: businessUnits } = useBusinessUnitView();
   const isOnline = useOnlineStatus();
   const writeQueue = useWriteQueueOptional();
   const [entries, setEntries] = useState(
@@ -230,6 +246,12 @@ export default function ExpenseRegister({
   const [error, setError] = useState<string | null>(fetchError);
   const [linkedProductSaleCogsByExpenseId, setLinkedProductSaleCogsByExpenseId] =
     useState<Map<string, LinkedProductSaleCogs>>(() => new Map());
+  const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
+  const [detailExpense, setDetailExpense] = useState<ExpenseRegisterEntry | null>(
+    null,
+  );
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
 
@@ -505,6 +527,40 @@ export default function ExpenseRegister({
           : "Could not refresh linked product sale COGS entries.",
       );
     }
+  }
+
+  function closeExpenseDetail() {
+    setDetailExpenseId(null);
+    setDetailExpense(null);
+    setDetailError(null);
+    setDetailLoading(false);
+  }
+
+  async function openExpenseDetail(expenseId: string) {
+    setDetailExpenseId(expenseId);
+    setDetailError(null);
+    const cached = entries.find((entry) => entry.id === expenseId) ?? null;
+    setDetailExpense(cached);
+    setDetailLoading(true);
+
+    const { data, error: fetchError } = await applyBusinessUnitScope(
+      supabase.from("expense_register").select("*").eq("id", expenseId),
+      buReadScope,
+    ).maybeSingle();
+
+    setDetailLoading(false);
+
+    if (fetchError) {
+      setDetailError(fetchError.message);
+      return;
+    }
+
+    if (!data) {
+      setDetailError("Record not found or not accessible in this business view.");
+      return;
+    }
+
+    setDetailExpense(normalizeExpenseRegisterEntry(data as ExpenseRegisterEntry));
   }
 
   function openAddForm() {
@@ -1480,18 +1536,20 @@ export default function ExpenseRegister({
         )}
       />
 
-      <ScrollableTable>
+      <ScrollableTable stickyEdgeLayout="nameCategory">
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>
+                <th
+                  className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`}
+                >
                   <RegisterDateRangeFilterHeader
                     label="Date"
                     applied={dateFilter}
                     onApply={setDateFilter}
                   />
                 </th>
-                <th className={scrollableTableStickyFirstWrapThClassName}>
+                <th className={scrollableTableRegisterStickyNameThClassName}>
                   <RegisterColumnFilterHeader
                     label="Expense Name"
                     options={descriptionOptions}
@@ -1499,7 +1557,7 @@ export default function ExpenseRegister({
                     onApply={setDescriptionFilter}
                   />
                 </th>
-                <th className={scrollableTableThClassName}>
+                <th className={scrollableTableRegisterCategoryThClassName}>
                   <RegisterColumnFilterHeader
                     label="Expense Category"
                     options={categoryOptions}
@@ -1562,13 +1620,21 @@ export default function ExpenseRegister({
                       key={entry.id}
                       className={getRegisterRowClassName(index, systemLinked)}
                     >
-                      <td className="px-4 py-3">{formatDate(entry.date)}</td>
+                      <td className={scrollableTableRegisterDateCellClassName}>
+                        {formatDate(entry.date)}
+                      </td>
                       <td
-                        className={scrollableTableStickyFirstWrapTdClassName({
+                        className={`${scrollableTableRegisterStickyNameWrapTdClassName({
                           striped: index % 2 === 1,
-                        })}
+                        })} ${registerTruncatedCellHostClassName}`}
                       >
-                        {entry.description ?? "—"}
+                        <RegisterRecordNameLink
+                          onOpen={() => void openExpenseDetail(entry.id)}
+                        >
+                          <TruncatedCell>
+                            {entry.description ?? "—"}
+                          </TruncatedCell>
+                        </RegisterRecordNameLink>
                         {"pendingSync" in entry && entry.pendingSync ? (
                           <span
                             className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
@@ -1609,16 +1675,53 @@ export default function ExpenseRegister({
                           </button>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3">{entry.expense_category}</td>
-                      <td className="px-4 py-3">{entry.sub_category}</td>
-                      <td className="px-4 py-3">{entry.vendor}</td>
-                      <td className="px-4 py-3">{formatGHS(gross)}</td>
-                      <td className="px-4 py-3">
-                        {formatGHS(entry.wht_amount ?? 0)}
+                      <td
+                        className={`${scrollableTableRegisterCategoryCellClassName} ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{entry.expense_category}</TruncatedCell>
                       </td>
-                      <td className="px-4 py-3">{formatGHS(entry.amount)}</td>
-                      <td className="px-4 py-3">{entry.payment_method}</td>
-                      <td className="px-4 py-3">{entry.payment_status}</td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{entry.sub_category}</TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{entry.vendor}</TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{formatGHS(gross)}</TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>
+                          {formatGHS(entry.wht_amount ?? 0)}
+                        </TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{formatGHS(entry.amount)}</TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>
+                          {resolveRegisterPaymentMethodLabel(
+                            entry.payment_method,
+                            paymentMethods,
+                          )}
+                        </TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>{entry.payment_status}</TruncatedCell>
+                      </td>
                       <RegisterRowActions
                         onEdit={() => openEditForm(entry)}
                         onDelete={
@@ -1652,6 +1755,46 @@ export default function ExpenseRegister({
         total={visibleNetPaidTotal}
         visibleCount={visibleEntries.length}
         totalCount={entries.length}
+      />
+
+      <RegisterRecordDetailDrawer
+        open={detailExpenseId != null}
+        title="Expense entry"
+        subtitle={detailExpense?.description ?? detailExpenseId}
+        sections={
+          detailExpense
+            ? buildExpenseRegisterDetailSections(detailExpense, businessUnits, {
+                paymentMethods,
+                projects: initialProjects,
+              })
+            : []
+        }
+        loading={detailLoading}
+        error={detailError}
+        onClose={closeExpenseDetail}
+        onEdit={
+          detailExpense
+            ? () => openEditForm(detailExpense)
+            : undefined
+        }
+        disableEdit={
+          detailExpense
+            ? isAutoPostedExpenseRegisterEntry(detailExpense) ||
+              linkedProductSaleCogsByExpenseId.has(detailExpense.id)
+            : false
+        }
+        editDisabledTitle={
+          detailExpense &&
+          linkedProductSaleCogsByExpenseId.has(detailExpense.id)
+            ? formatLinkedProductSaleCogsDeleteMessage(
+                linkedProductSaleCogsByExpenseId.get(detailExpense.id)!,
+              )
+            : detailExpense && isAutoPostedExpenseRegisterEntry(detailExpense)
+              ? isInventoryGoLiveTrueUpExpense(detailExpense)
+                ? "Inventory go-live true-up entries cannot be edited here."
+                : "Payroll auto-posted expenses cannot be edited here."
+              : undefined
+        }
       />
     </div>
   );

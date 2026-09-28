@@ -7,6 +7,8 @@ import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-act
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableNoTruncateCellClassName,
+  scrollableTableRegisterDateCellClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
 import FilteredListCount from "@/app/dashboard/filtered-list-count";
@@ -249,7 +251,11 @@ export default function ClientInvoicesList({
           <table className={scrollableTableClassName}>
             <thead className={scrollableTableHeadClassName}>
               <tr>
-                <th className={scrollableTableThClassName}>Date</th>
+                <th
+                  className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`}
+                >
+                  Date
+                </th>
                 <th className={scrollableTableThClassName}>Customer</th>
                 <th className={scrollableTableThClassName}>Invoice #</th>
                 <th className={scrollableTableThClassName}>Bill To</th>
@@ -277,7 +283,9 @@ export default function ClientInvoicesList({
 
                   return (
                     <tr key={invoice.id} className={getStripedRowClassName(index)}>
-                      <td className="px-4 py-3">{formatInvoiceDate(invoice.invoice_date)}</td>
+                      <td className={scrollableTableRegisterDateCellClassName}>
+                        {formatInvoiceDate(invoice.invoice_date)}
+                      </td>
                       <td className="px-4 py-3">{clientName ?? invoice.client_id}</td>
                       <td className="px-4 py-3 font-medium text-[#0f2744]">
                         {invoice.invoice_number}

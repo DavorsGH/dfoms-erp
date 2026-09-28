@@ -48,6 +48,8 @@ import {
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableNoTruncateCellClassName,
+  scrollableTableRegisterDateCellClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount, {
@@ -844,7 +846,11 @@ export default function IncomeRegister({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Date</th>
+                <th
+                  className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`}
+                >
+                  Date
+                </th>
               <th className={scrollableTableThClassName}>
                 <RegisterColumnFilterHeader
                   label="Customer Name"
@@ -901,7 +907,9 @@ export default function IncomeRegister({
                     key={entry.id}
                     className={getRegisterRowClassName(index, autoPosted)}
                   >
-                    <td className="px-4 py-3">{formatDate(entry.date)}</td>
+                    <td className={scrollableTableRegisterDateCellClassName}>
+                      {formatDate(entry.date)}
+                    </td>
                     <td className="px-4 py-3">
                       {getIncomeCustomerDisplayName(entry, initialClients)}
                     </td>
