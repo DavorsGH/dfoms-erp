@@ -4,6 +4,7 @@ export type CreditNoteListRow = {
   id: string;
   credit_note_number: string;
   credit_note_date: string;
+  business_unit_id: string | null;
   client_id: string | null;
   pos_invoice_no: string | null;
   total_amount: number;
@@ -15,7 +16,7 @@ export type CreditNoteListRow = {
 };
 
 export const CREDIT_NOTES_LIST_SELECT =
-  "id, credit_note_number, credit_note_date, client_id, pos_invoice_no, total_amount, refunded_amount, applied_amount, return_mode, status, customer:customers!credit_notes_client_fkey(client_name)";
+  "id, credit_note_number, credit_note_date, business_unit_id, client_id, pos_invoice_no, total_amount, refunded_amount, applied_amount, return_mode, status, customer:customers!credit_notes_client_fkey(client_name)";
 
 export function creditNoteAvailableBalance(row: {
   total_amount: number;

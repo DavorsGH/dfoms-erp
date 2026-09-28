@@ -10,11 +10,13 @@ import {
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import { formatDate, formatGHS } from "../income-register-utils";
+import { evaluateReturnBusinessUnitGate } from "../../crm/product-return-utils";
 import { SALES_REGISTER_VIEW_ONLY_TOOLTIP } from "../../crm/sales/sales-register-drawer-data";
 import {
   creditNoteAvailableBalance,
   formatCreditNoteCustomerLabel,
   formatCreditNoteOutcome,
+  CREDIT_NOTES_LIST_SELECT,
   type CreditNoteListRow,
 } from "../credit-notes-utils";
 
@@ -31,7 +33,8 @@ export default function CreditNotes({
 }: CreditNotesProps) {
   const router = useRouter();
   const supabase = createClient();
-  const { viewAllBusinessUnits } = useBusinessUnitView();
+  const { viewAllBusinessUnits, activeBusinessUnitId, units } =
+    useBusinessUnitView();
   const buReadScope = useBusinessUnitReadScope();
   const [rows, setRows] = useState(initialRows);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -68,9 +71,7 @@ export default function CreditNotes({
 
   async function refreshRows() {
     const { data, error: loadError } = await applyBusinessUnitScope(
-      supabase.from("credit_notes").select(
-        "id, credit_note_number, credit_note_date, client_id, pos_invoice_no, total_amount, refunded_amount, applied_amount, return_mode, status, customer:customers!credit_notes_client_fkey(client_name)",
-      ),
+      supabase.from("credit_notes").select(CREDIT_NOTES_LIST_SELECT),
       buReadScope,
     ).order("credit_note_date", { ascending: false });
     if (loadError) {
@@ -83,6 +84,16 @@ export default function CreditNotes({
 
   async function handleRecordRefund() {
     if (!refundTarget) {
+      return;
+    }
+    const refundBuGate = evaluateReturnBusinessUnitGate({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+      saleBusinessUnitId: refundTarget.business_unit_id,
+      units,
+    });
+    if (!refundBuGate.ok) {
+      setError(refundBuGate.message);
       return;
     }
     setSubmitting(true);
@@ -227,6 +238,17 @@ export default function CreditNotes({
                               : undefined
                         }
                         onClick={() => {
+                          const gate = evaluateReturnBusinessUnitGate({
+                            viewAllBusinessUnits,
+                            activeBusinessUnitId,
+                            saleBusinessUnitId: row.business_unit_id,
+                            units,
+                          });
+                          if (!gate.ok) {
+                            setError(gate.message);
+                            return;
+                          }
+                          setError(null);
                           setRefundNoteId(row.id);
                           setRefundAmount(String(available));
                         }}

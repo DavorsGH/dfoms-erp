@@ -55,6 +55,16 @@ export function productReturnRequiresScopedBuMessage(unitLabel: string): string 
   return `Select ${unitLabel} in the business unit switcher before processing this return. All Businesses is view-only and cannot post returns.`;
 }
 
+export function saleMissingBusinessUnitTagMessage(): string {
+  return "This sale has no business unit tag. Select the business unit where it was sold, then try again.";
+}
+
+export function tenantHasConfiguredBusinessUnits(
+  units: { id: string; name: string }[],
+): boolean {
+  return units.length > 0;
+}
+
 export function resolveBusinessUnitLabel(
   businessUnitId: string | null,
   units: { id: string; name: string }[],
@@ -74,6 +84,8 @@ export function evaluateReturnBusinessUnitGate(args: {
 }):
   | { ok: true }
   | { ok: false; message: string } {
+  const tenantUsesBusinessUnits = tenantHasConfiguredBusinessUnits(args.units);
+
   if (args.viewAllBusinessUnits) {
     return {
       ok: false,
@@ -85,6 +97,10 @@ export function evaluateReturnBusinessUnitGate(args: {
 
   const saleBu = args.saleBusinessUnitId?.trim() || null;
   const activeBu = args.activeBusinessUnitId?.trim() || null;
+
+  if (tenantUsesBusinessUnits && !saleBu) {
+    return { ok: false, message: saleMissingBusinessUnitTagMessage() };
+  }
 
   if (saleBu && activeBu && saleBu !== activeBu) {
     return {
@@ -105,6 +121,21 @@ export function evaluateReturnBusinessUnitGate(args: {
   }
 
   return { ok: true };
+}
+
+export function resolveProductReturnRpcBusinessUnitId(args: {
+  saleBusinessUnitId: string | null;
+  activeBusinessUnitId: string | null;
+  units: { id: string; name: string }[];
+}): string | null {
+  const saleBu = args.saleBusinessUnitId?.trim() || null;
+  if (saleBu) {
+    return saleBu;
+  }
+  if (!tenantHasConfiguredBusinessUnits(args.units)) {
+    return null;
+  }
+  return args.activeBusinessUnitId?.trim() || null;
 }
 
 export function formatProductReturnRpcError(raw: string | undefined | null): string {

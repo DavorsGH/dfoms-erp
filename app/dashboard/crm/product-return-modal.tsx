@@ -11,6 +11,7 @@ import {
   defaultProductReturnDate,
   evaluateReturnBusinessUnitGate,
   formatProductReturnRpcError,
+  resolveProductReturnRpcBusinessUnitId,
   loadProductReturnReceiptContext,
   productReturnOutcomeCustomerMessage,
   PRODUCT_RETURN_EXPLAINER,
@@ -176,14 +177,11 @@ export default function ProductReturnModal({
       return;
     }
 
-    const pBusinessUnitId = saleBusinessUnitId ?? activeBusinessUnitId;
-    if (!pBusinessUnitId) {
-      setSubmitError(
-        "This sale has no business unit tag. Select the business unit where it was sold, then try again.",
-      );
-      setSubmitting(false);
-      return;
-    }
+    const pBusinessUnitId = resolveProductReturnRpcBusinessUnitId({
+      saleBusinessUnitId,
+      activeBusinessUnitId,
+      units,
+    });
 
     let rpcError: { message: string } | null = null;
     let data: ProductReturnRpcResult | null = null;
@@ -364,7 +362,7 @@ export default function ProductReturnModal({
                 <span>
                   <span className="font-medium">Exchange (credit held for the next sale)</span>
                   <span className="block text-slate-500">
-                    Credit stays available until applied at checkout (Step D).
+                    Credit is held for the customer&apos;s next purchase.
                   </span>
                 </span>
               </label>
