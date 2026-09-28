@@ -48,13 +48,17 @@ export const scrollableTableThClassName =
   "sticky top-0 z-10 bg-[#0f2744] px-4 py-3 font-medium text-white";
 
 /** Financial statements — sticky layout is entirely in `.scrollable-table-host--financial-statement`. */
-export const scrollableTableFinancialStatementHeadClassName = "text-white";
+export const scrollableTableFinancialStatementHeadClassName =
+  "bg-[#0f2744] text-white";
 
 export const scrollableTableFinancialStatementThClassName =
-  "px-4 py-3 font-medium text-white";
+  "bg-[#0f2744] px-4 py-3 font-medium text-white";
+
+const scrollableTableFinancialStatementLineItemWidthClassName =
+  "min-w-[15rem] w-[15rem] max-w-[15rem] shrink-0";
 
 export const scrollableTableFinancialStatementLineItemThClassName =
-  `${scrollableTableFinancialStatementThClassName} ${scrollableTableWrapCellClassName} whitespace-normal align-top break-normal`;
+  `${scrollableTableFinancialStatementThClassName} ${scrollableTableFinancialStatementLineItemWidthClassName} ${scrollableTableWrapCellClassName} whitespace-normal align-top break-normal`;
 
 export const scrollableTableLineItemThClassName =
   `${scrollableTableThClassName} ${scrollableTableWrapCellClassName} whitespace-normal align-top`;
@@ -63,7 +67,7 @@ export const scrollableTableLineItemTdClassName =
   `px-4 py-3 align-top whitespace-normal break-words ${scrollableTableWrapCellClassName}`;
 
 export const scrollableTableFinancialStatementLineItemTdClassNameBase =
-  `px-4 py-3 align-top whitespace-normal break-words ${scrollableTableWrapCellClassName}`;
+  `px-4 py-3 align-top whitespace-normal break-words ${scrollableTableFinancialStatementLineItemWidthClassName} ${scrollableTableWrapCellClassName}`;
 
 export type ScrollableTableFinancialStatementLineItemKind =
   | "section"
@@ -374,7 +378,7 @@ export default function ScrollableTable({
 
 /**
  * Balance Sheet / Cash Flow / P&L / statement reports — not register sticky-edges.
- * See `.scrollable-table-host--financial-statement` in globals.css.
+ * See `app/financial-statement-table.css`.
  */
 export function FinancialStatementScrollableTable({
   children,
