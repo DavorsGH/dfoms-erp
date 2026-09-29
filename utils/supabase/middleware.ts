@@ -10,7 +10,29 @@ import { noStoreFetch } from "@/utils/supabase/no-store-fetch";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-export const createClient = (request: NextRequest) => {
+function resolveFetchUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.href;
+  }
+  return input.url;
+}
+
+function isSupabaseAuthHttpUrl(url: string): boolean {
+  return url.includes("/auth/v1/");
+}
+
+export type MiddlewareSupabaseClientOptions = {
+  /** Invoked once per outbound Supabase Auth HTTP request (JWKS, refresh, etc.). */
+  onSupabaseAuthHttp?: () => void;
+};
+
+export const createClient = (
+  request: NextRequest,
+  options?: MiddlewareSupabaseClientOptions,
+) => {
   // Create an unmodified response
   let supabaseResponse = NextResponse.next({
     request: {
@@ -18,12 +40,26 @@ export const createClient = (request: NextRequest) => {
     },
   });
 
+  const onAuthHttp = options?.onSupabaseAuthHttp;
+  const middlewareFetch: typeof fetch = (input, init) => {
+    if (onAuthHttp) {
+      try {
+        if (isSupabaseAuthHttpUrl(resolveFetchUrl(input))) {
+          onAuthHttp();
+        }
+      } catch {
+        // ignore URL parse failures
+      }
+    }
+    return noStoreFetch(input, init);
+  };
+
   const supabase = createServerClient(
     supabaseUrl!,
     supabaseKey!,
     {
       global: {
-        fetch: noStoreFetch,
+        fetch: middlewareFetch,
       },
       cookies: {
         getAll() {

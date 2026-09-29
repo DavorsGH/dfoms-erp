@@ -15,7 +15,12 @@ import {
   resolveMiddlewarePersona,
   type MiddlewareAccountRow,
 } from "@/lib/middleware-persona";
-import { resolveMiddlewareAuthUser } from "@/lib/auth/middleware-resolve-user";
+import {
+  isAuthRejectionError,
+  isNetworkAuthError,
+} from "@/lib/auth/middleware-resolve-user";
+import type { User } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildBadgeAuthContextPayload,
   signBadgeAuthContext,
@@ -81,6 +86,90 @@ const ACCEPT_INVITE_PATHS = new Set([
 
 function isAcceptInvitePath(pathname: string): boolean {
   return ACCEPT_INVITE_PATHS.has(pathname);
+}
+
+/** Minimal User for proxy persona/MFA/signing; identity from verified JWT claims only. */
+function middlewareUserFromClaims(
+  claims: Record<string, unknown> & { sub: string },
+): User {
+  const userMetadata =
+    claims.user_metadata && typeof claims.user_metadata === "object"
+      ? (claims.user_metadata as User["user_metadata"])
+      : {};
+  const appMetadata =
+    claims.app_metadata && typeof claims.app_metadata === "object"
+      ? (claims.app_metadata as User["app_metadata"])
+      : {};
+
+  return {
+    id: claims.sub,
+    aud: typeof claims.aud === "string" ? claims.aud : "authenticated",
+    role: typeof claims.role === "string" ? claims.role : "authenticated",
+    email:
+      typeof claims.email === "string"
+        ? claims.email
+        : typeof userMetadata?.email === "string"
+          ? userMetadata.email
+          : undefined,
+    phone: typeof claims.phone === "string" ? claims.phone : "",
+    app_metadata: appMetadata,
+    user_metadata: userMetadata,
+    created_at: typeof claims.created_at === "string" ? claims.created_at : "",
+  };
+}
+
+/**
+ * Local JWT verify via getClaims() (JWKS for ES256). getSession() inside getClaims
+ * refreshes expired access tokens and writes cookies on the middleware response.
+ */
+async function resolveProxyAuthUser(supabase: SupabaseClient): Promise<{
+  user: User | null;
+  trustedLocalSession: boolean;
+}> {
+  try {
+    const { data, error } = await supabase.auth.getClaims();
+    if (data?.claims?.sub) {
+      return {
+        user: middlewareUserFromClaims(
+          data.claims as Record<string, unknown> & { sub: string },
+        ),
+        trustedLocalSession: false,
+      };
+    }
+    if (error) {
+      if (isAuthRejectionError(error)) {
+        return { user: null, trustedLocalSession: false };
+      }
+      if (isNetworkAuthError(error)) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user) {
+          return { user: session.user, trustedLocalSession: true };
+        }
+      }
+      return { user: null, trustedLocalSession: false };
+    }
+    return { user: null, trustedLocalSession: false };
+  } catch (error) {
+    if (isAuthRejectionError(error)) {
+      return { user: null, trustedLocalSession: false };
+    }
+    if (isNetworkAuthError(error)) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        return { user: session.user, trustedLocalSession: true };
+      }
+      return { user: null, trustedLocalSession: false };
+    }
+    console.error(
+      "[proxy-auth] unexpected getClaims error",
+      error instanceof Error ? error.message : error,
+    );
+    return { user: null, trustedLocalSession: false };
+  }
 }
 
 const ACCOUNT_SETTINGS_ALIASES: Record<string, string> = {
@@ -195,13 +284,14 @@ export async function proxy(request: NextRequest) {
   let mwDbMs = 0;
   let mwSignMs = 0;
 
-  const { supabase, response } = createClient(request);
   const perf = createPerfProbe();
+  const { supabase, response } = createClient(request, {
+    onSupabaseAuthHttp: () => perf.countAuth(),
+  });
 
   const authStartedAt = Date.now();
-  const { user, trustedLocalSession } = await resolveMiddlewareAuthUser(supabase);
+  const { user, trustedLocalSession } = await resolveProxyAuthUser(supabase);
   mwAuthMs = Date.now() - authStartedAt;
-  perf.countAuth();
   if (trustedLocalSession) {
     // Cookie JWT accepted without Auth network verify (offline / Auth unreachable).
     response.headers.set("x-dfoms-auth-local-session", "1");
@@ -320,8 +410,10 @@ export async function proxy(request: NextRequest) {
       pathname.startsWith("/pos-customer-display"));
 
   let accountRow: MiddlewareAccountRow | null = null;
+  let accountGate = false;
 
   if (user && (needsAccountGate || needsPersonaCheck)) {
+    accountGate = true;
     const accountDbStartedAt = Date.now();
     const { data: account } = await supabase
       .from("user_accounts")
@@ -593,7 +685,7 @@ export async function proxy(request: NextRequest) {
   const badgeApiRequest = badgeApiRequestEarly;
   let badgeSignReason = badgeApiRequest ? "not-attempted" : "n/a";
 
-  if (user && badgeApiRequest) {
+  if (user && badgeApiRequest && !trustedLocalSession) {
     if (!isMiddlewareContextSigningConfigured()) {
       badgeSignReason = "no-signing-secret";
     }
@@ -624,12 +716,15 @@ export async function proxy(request: NextRequest) {
         badgeSignReason = "sign-returned-null";
       }
     }
+  } else if (badgeApiRequest && user && trustedLocalSession) {
+    badgeSignReason = "unverified-session";
   } else if (badgeApiRequest && !user) {
     badgeSignReason = "no-user";
   }
 
   if (
     user &&
+    !trustedLocalSession &&
     accountRow &&
     accountRow.is_active !== false &&
     (pathname.startsWith("/dashboard") ||
@@ -729,6 +824,7 @@ export async function proxy(request: NextRequest) {
         dbCalls: perf.dbCalls,
         skippedAuthCalls: perf.skippedAuthCalls,
         skippedDbCalls: perf.skippedDbCalls,
+        accountGate,
       }),
     );
   }
@@ -740,10 +836,5 @@ export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
-  /**
-   * Target Stockholm (Supabase eu-north-1 / Vercel arn1).
-   * Next build copies runtime nodejs to functions-config-manifest but not regions;
-   * scripts/patch-middleware-function-regions.mjs adds regions after `next build`.
-   */
   regions: ["arn1"],
 };

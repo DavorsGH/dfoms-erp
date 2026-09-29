@@ -8,14 +8,21 @@ export type PerfProbeSnapshot = {
   skippedDbCalls: number;
 };
 
-export function createPerfProbe(): PerfProbeSnapshot & {
+export type PerfProbe = {
+  readonly startedAtMs: number;
+  readonly authCalls: number;
+  readonly dbCalls: number;
+  readonly skippedAuthCalls: number;
+  readonly skippedDbCalls: number;
   countAuth: (n?: number) => void;
   countDb: (n?: number) => void;
   countSkippedAuth: (n?: number) => void;
   countSkippedDb: (n?: number) => void;
   elapsedMs: () => number;
   toHeaderValues: () => Record<string, string>;
-} {
+};
+
+export function createPerfProbe(): PerfProbe {
   const probe: PerfProbeSnapshot = {
     startedAtMs: Date.now(),
     authCalls: 0,
@@ -25,7 +32,6 @@ export function createPerfProbe(): PerfProbeSnapshot & {
   };
 
   return {
-    ...probe,
     countAuth(n = 1) {
       probe.authCalls += n;
     },
@@ -37,6 +43,21 @@ export function createPerfProbe(): PerfProbeSnapshot & {
     },
     countSkippedDb(n = 1) {
       probe.skippedDbCalls += n;
+    },
+    get authCalls() {
+      return probe.authCalls;
+    },
+    get dbCalls() {
+      return probe.dbCalls;
+    },
+    get skippedAuthCalls() {
+      return probe.skippedAuthCalls;
+    },
+    get skippedDbCalls() {
+      return probe.skippedDbCalls;
+    },
+    get startedAtMs() {
+      return probe.startedAtMs;
     },
     elapsedMs() {
       return Date.now() - probe.startedAtMs;
