@@ -244,8 +244,8 @@ by your workspace administrator under Administration → User Accounts.
                                            limited HR
 
   Sales Rep          Sales / till staff    Sales & CRM (Customer List,
-                                           Point of Sale, Product Sales,
-                                           Quotations, Sales Log); own
+                                           Point of Sale, Sales register,
+                                           Credit Notes, Quotations); own
                                            sales and assigned quotations
                                            only on the Dashboard
 
@@ -375,7 +375,7 @@ cards instead of tenant-wide totals:
 
 -   **POS** --- your own point-of-sale revenue for the selected period.
 
--   **Product Sales** --- product sales credited to you.
+-   **Sales** --- product sales credited to you.
 
 -   **Quotations** --- client quotations assigned to you.
 
@@ -392,8 +392,13 @@ Reports.
 ## **6.1 Income Register**
 
 Records all income, whether service-based (e.g. contract billing to a
-client) or product sales made through Product Sales or POS. Entries made
-through either automatically appear here.
+client) or product sales made through the Sales register (Add Sale) or
+POS. Entries made through either path automatically appear here.
+
+Rows created by the system for a **customer refund** or a **sale return**
+show as locked --- you cannot edit or delete them here. Refunding cash to
+a customer reduces your cash balance but is **not** treated as an
+operating expense.
 
 Click the filter icon on the Service Category or Description column
 header to search and select one or more values, narrowing the list to
@@ -430,6 +435,11 @@ Click the filter icon on the Expense Category, Sub-Category, or
 Description column header to search and select one or more values ---
 combine filters across columns to narrow further. The total shown below
 the table always reflects only the rows currently visible.
+
+Rows tied to a **sale return** or **customer refund** are system-created
+and locked --- adjust returns from the Sales register or Credit Notes,
+not by editing here. Cash refunds reduce cash; they are **not** posted as
+a new operating expense.
 
 ## **6.3 Accounts Payable**
 
@@ -634,6 +644,13 @@ balance for **every business** on the platform and **each business
 unit** separately. Out-of-balance results are logged (Administration →
 System Event Log); alert email may be sent when configured.
 
+**Balance Sheet --- Customer credits.** The **Customer credits** line is
+the liability for **store credit** you owe customers --- credit notes kept
+as store credit that have not yet been used at POS or refunded in cash.
+It increases when you choose **Keep as store credit** on a return and
+decreases when credit is applied at checkout or when you **Record
+Refund**.
+
 Under Finance → Balance Sheet you can also open **Capital
 Contributions**, which tracks owner or investor capital injected into
 the business (separate from day-to-day income). The Capital Contributions
@@ -764,7 +781,7 @@ setting applies to new documents, and to any existing one you re-save.
 
 ## **6.10 Product Sales Tax Rate**
 
-Choose whether Product Sales and Point of Sale transactions charge VAT
+Choose whether Sales register (Add Sale) and Point of Sale transactions charge VAT
 (VFRS) or not.
 
 -   **0% --- No VAT (default):** no VAT is added; the price you set is
@@ -857,10 +874,10 @@ whether it is a credit sale to a contract client or a walk-in cash sale
 rung up at the till.
 
 The tabs are ordered with the most-used screens first: Customer List,
-Point of Sale, Product Sales, Quotations, Sales Pipeline, and Sales Log
+Point of Sale, Sales, Credit Notes, Quotations, and Sales Pipeline
 appear before catalog, settings, and administration tabs. Sales Reps see
-a shorter subset of those tabs (Customer List, POS, Product Sales,
-Quotations, and Sales Log).
+a shorter subset (Customer List, POS, Sales, Credit Notes, and
+Quotations).
 
 ## **7.1 Customer List**
 
@@ -886,19 +903,53 @@ On the Davors Technologies platform tenant only, Sales & CRM includes a
 **Product Catalog** tab for platform product listings used in billing
 and related flows. Other customer workspaces do not see this tab.
 
-## **7.2 Product Sales Register**
+## **7.2 Sales register**
 
-A record of every product sale, whether entered directly here or created
-through Point of Sale.
+**Sales & CRM → Sales** is the single place to review and manage product
+sales activity --- POS receipts, manual sales, returns, and (when you
+are on **All Businesses**) digital webhook sales.
 
-Use the filter icon on the Customer, Product, Payment Status, or Status
-column header to search and select one or more values; the total shown
-below the table reflects only the rows currently visible.
+  **What you see**
+  ---------------
+  One row per receipt or sale event. Use the filter icon on **Source**,
+  **Type**, **Status**, **Payment status**, date columns, **Customer**,
+  or **Sales rep** to narrow the list. The footer shows **Gross**,
+  **Returns**, and **Net** for whatever is currently visible.
+
+  **Detail drawer**
+  -----------------
+  Click a row to open the drawer: line items, payments, linked returns,
+  and related actions.
+
+  **Row actions**
+  ---------------
+  **Print**, **Pay** (when money is still owed), **Return**, and **Void**
+  (when the sale was entered by mistake --- see Section 7.10).
+
+  **Add Sale**
+  ------------
+  Opens the manual sale form for credit or partial-payment sales (one
+  product line at a time). **Bulk Import** loads many historical sales
+  from a spreadsheet --- see Section 2.4.
+
+  **Digital (webhook) sales**
+  ---------------------------
+  Shown only when the business switcher is on **All Businesses**. They
+  are hidden while a specific business unit is selected.
+
+  **All Businesses is view-only**
+  -------------------------------
+  You cannot add, void, return, or import while **All Businesses** is
+  selected --- switch to your workspace default or a named business unit
+  first.
+
+Completed POS checkouts and Add Sale entries both flow into the Income
+Register automatically.
 
 ## **7.3 Point of Sale (POS)**
 
 POS provides a cart-based checkout for in-person product sales, and
-lives as a tab within Sales & CRM alongside Product Sales.
+lives as a tab within Sales & CRM alongside Sales.
 
   **Step**   **What happens**
   ---------- ----------------------------------------------------------------
@@ -911,8 +962,8 @@ lives as a tab within Sales & CRM alongside Product Sales.
 
   4          A printable receipt is produced automatically.
 
-Each line in the cart is recorded as its own entry in the Income
-Register and Product Sales Register. If any line fails (for example,
+Each line in the cart is recorded against one shared receipt number in
+the Sales register and Income Register. If any line fails (for example,
 insufficient stock), the checkout stops and reports the issue before
 completing the rest of the sale.
 
@@ -940,25 +991,49 @@ lines, totals, and --- for cash sales --- Amount Tendered and Change Due
 updating live as you type. **Served by** shows the sales rep selected on
 the checkout.
 
-## **Product Sales vs. Point of Sale --- which do I use?**
+**Store credit at checkout.** Enter a credit note number in the Store
+credit box, or open POS from **Credit Notes** using **Apply at POS** or
+**Load returned items**. The system applies available balance to the cart;
+any remainder can be paid in **Cash** with **Amount Tendered** and
+**Change Due** calculated as usual. **Mobile Money cannot be combined**
+with store credit --- use Cash (or pay the full balance on MoMo without
+store credit). Store credit checkout requires an **online** connection;
+it is blocked offline.
+
+**Hold and Held carts.** **Hold** saves the current cart (optional label,
+for example a customer name) and clears the till --- requires online.
+**Held carts** lists parked carts for your business unit; **Recall**
+restores a cart after re-checking **price and stock** (you must accept
+any warnings). **Store credit on a held cart is re-validated** on recall.
+Stock is **not reserved** while a cart is held. Held carts older than
+seven days show as **Old** in the list.
+
+**Button colours (POS).** **Complete Sale** is green; **Add to Cart** is
+navy; **Hold**, **Return**, and **Void** are amber; **Remove line** and
+**Clear cart** are red-outline; **Held carts**, **Print**, **Open
+Customer Display**, and **Apply** (promo or store credit) are grey
+secondary. **Request Payment (link)** keeps the emerald payment-link
+style.
+
+## **Sales register (Add Sale) vs. Point of Sale --- which do I use?**
 
 These record the same kind of transaction --- a sale of stock --- but
 suit different situations:
 
-               **Product Sales**            **Point of Sale (POS)**
-  ------------ ---------------------------- -----------------------------
-  Style        Form-based, one product at a Cart-based, several products
-               time                         at once
+               **Add Sale (Sales register)** **Point of Sale (POS)**
+  ------------ ----------------------------- -----------------------------
+  Style        Form-based, one product at a  Cart-based, several products
+               time                          at once
 
-  Payment      Supports credit --- Paid,    Paid immediately --- cash,
-               Partial, Pending, Overdue    MoMo, card
-               with due dates               
+  Payment      Supports credit --- Paid,     Paid immediately --- cash,
+               Partial, Pending, Overdue     MoMo (store credit + cash
+               with due dates                when using store credit)
 
-  Best for     Contract or institutional    Walk-in customers buying
-               clients who pay later        several things at once
+  Best for     Contract or institutional     Walk-in customers buying
+               clients who pay later         several things at once
 
-  Receipt      Not always needed on the     Printed immediately at
-               spot                         checkout
+  Receipt      Not always needed on the      Printed immediately at
+               spot                          checkout
 
 *Fig. 3 --- Both paths reduce the same stock and calculate your cost of
 goods sold automatically.*
@@ -967,20 +1042,11 @@ goods sold automatically.*
 | **Tip**                                                               |
 |                                                                       |
 | You are not choosing one or the other for your whole business --- use |
-| each for what it suits. Log a monthly client invoice through Product  |
-| Sales, and ring up a walk-in customer through POS, on the same day.   |
+| each for what it suits. Log a credit sale with **Add Sale**, and ring |
+| up a walk-in customer through POS, on the same day.                   |
 +-----------------------------------------------------------------------+
 
-## **7.4 Sales Log**
-
-A read-only combined view of all sales activity for quick review.
-
-Like Product Sales, use the filter icon on the Customer, Product,
-Payment Status, Payment Method, Source, or Status column header to
-search and select one or more values; the total below updates to match
-what is visible.
-
-## **7.4a Offline Sale Conflicts**
+## **7.4 Offline Sale Conflicts**
 
 When POS or related sales were recorded while a device was offline,
 Sales & CRM → Offline sale conflicts is where you review and resolve
@@ -1250,35 +1316,80 @@ profile in one place.
 Handle a customer return or an adjustment to an invoice without
 rewriting the original sale record.
 
--   **Product returns:** from the Sales Log, use Return on a completed
-    sale. Choose the quantity being returned and, for each item, whether
-    it is going back on the shelf or being written off.
+**Return vs. Void**
 
-  **Disposition**     **What happens to stock**   **What happens to
-                                                  cost**
+-   **Void** --- the sale was **entered by mistake** and should never
+    have happened. Use **Void** on the Sales register row (or the
+    equivalent flow for a manual sale). This is not a customer bringing
+    goods back.
+
+-   **Return** --- the customer **brings goods back** after a real sale.
+    Use **Return** on a completed sale in the **Sales register**, or
+    **Return** on the **POS receipt** after checkout.
+
+**Starting a return**
+
+  **Step**   **What to do**
+  ---------- ----------------------------------------------------------------
+  1          Open the original sale from **Sales & CRM → Sales**, or use
+             **Return** on the POS receipt.
+
+  2          Enter the **quantity** returned for each line and choose
+             **Restock** or **Damaged / write-off** per line.
+
+  3          Choose the outcome (below). The return is **dated on the
+             return date**, not the original sale date.
+
+  **Disposition**     **Stock**                   **Cost**
   ------------------- --------------------------- -----------------------
-  Restock             Added back to sellable      The original cost of
-                      stock immediately.          those units is reversed
-                                                  --- no net cost, since
-                                                  the goods are sellable
-                                                  again.
+  Restock             Back on sellable stock      Original COGS reversed
+                      immediately.                for those units.
 
-  Damaged / Write-Off Not added back --- stays    The original cost stays
-                      out of sellable stock.      as-is, since the goods
-                                                  are gone for good.
+  Damaged / Write-off Stays out of sellable stock. Original cost remains
+                                                  (goods are gone).
 
--   **Invoice credit notes:** from a Client Invoice, use Issue Credit
-    Note to offset what is owed, without changing the original invoice.
+**Three outcomes after a product return**
 
--   **Refunds:** every credit note is listed under Finance → Credit
-    Notes with its own number. Use Record Refund only when cash actually
-    goes back to the customer.
+  **Outcome**              **What it means**
+  ------------------------ ---------------------------------------------------
+  Refund now               Cash (or chosen payment method) goes back to the
+                           customer now.
+
+  Keep as store credit     Balance stays on a **credit note** for use at POS
+                           or a future sale.
+
+  Exchange                 Store credit toward replacement goods (same idea
+                           as store credit with exchange intent).
+
+**Walk-in customers (no client record)** still receive a **credit note
+number** --- that number is their voucher at POS (enter it under Store
+credit or use **Apply at POS** from Credit Notes).
+
+**Credit Notes page (Sales & CRM → Credit Notes)**
+
+-   Lists store-credit and exchange-hold notes with usage status:
+    **Available**, **Partly used**, **Used**, or **Refunded**.
+
+-   **Apply at POS** opens checkout with that note selected.
+
+-   **Load returned items** opens POS and loads the returned product
+    lines into the cart (for exchanges or re-sale of credited goods).
+
+-   **Record Refund** (cash actually returned) is limited to **finance
+    roles** --- Sales Reps can apply credit at POS but not record refunds.
+
+**Invoice credit notes:** from a Client Invoice, use **Issue Credit
+Note** to offset what is owed, without changing the original invoice.
+
+**Commissions and loyalty** tied to the original sale **adjust
+automatically** when you process a return (including points earned or
+redeemed on that sale, where applicable).
 
 +-----------------------------------------------------------------------+
 | **Tip**                                                               |
 |                                                                       |
-| A credit note by itself does not mean cash left the till. Recording   |
-| the refund as a separate step keeps your cash position accurate.      |
+| A credit note by itself does not mean cash left the till. Use Record  |
+| Refund only when cash (or bank) actually goes back to the customer.   |
 +-----------------------------------------------------------------------+
 
 ## **7.11 Discounts & Loyalty Points**
@@ -1307,10 +1418,10 @@ their Customer 360 profile, under the Loyalty tab.
 Every sale can be credited to a Sales Rep, which is what targets,
 commissions, and forecasting are built on.
 
--   **Sales Rep:** shown at checkout on Point of Sale, on Product Sales,
-    and on Client Invoices, defaulting to whoever is logged in, but
-    changeable to any employee. Client Quotations have an **Assigned to**
-    field (Section 7.8) for the same purpose.
+-   **Sales Rep:** shown at checkout on Point of Sale, on **Add Sale**
+    in the Sales register, and on Client Invoices, defaulting to whoever
+    is logged in, but changeable to any employee. Client Quotations have
+    an **Assigned to** field (Section 7.8) for the same purpose.
 
 -   **Sales Targets:** set a revenue target, a unit or deal-count
     target, or both, for an employee over a monthly, quarterly, or
@@ -1611,7 +1722,8 @@ Your master list of sellable items. Each product is tagged with a
 Sourcing type:
 
 Each product can also have a photo, shown as a thumbnail here and
-wherever staff select the product at Point of Sale or Product Sales ---
+wherever staff select the product at Point of Sale or Add Sale in the
+Sales register ---
 useful when a name alone is not enough to recognize what is being sold.
 
 -   Manufactured --- produced in-house through a Production Batch
@@ -1847,8 +1959,8 @@ dropdown lists.
 
   **Screen**                          **What a scan does**
   ----------------------------------- -----------------------------------
-  Point of Sale / Product Sales       Adds the scanned product (or batch
-  checkout                            label) to the cart
+  Point of Sale checkout / Add Sale   Adds the scanned product (or batch
+  (Sales register)                    label) to the cart
 
   Raw Materials → Record Purchase     Selects the material in the purchase
                                       form (matches material code)
@@ -1981,7 +2093,7 @@ role and whether Real Estate is available:
 4.  Inventory --- Stock on Hand; Production History; Internal
     Consumption
 
-5.  Sales --- Product Catalog; Product Sales
+5.  Sales --- Product Catalog; Sales register
 
 6.  Customer-Facing --- Monthly Customer Service Report
 
@@ -2153,7 +2265,7 @@ Verified against the live tier entitlement map (`tier_features`):
                    Actions, Complaint & Incident registers, Operations
                    and Incidents and Customer-Facing reports);\
                    Sales & CRM core (Customer List, Services, Product
-                   Sales, Sales Log, pipeline/quotes/targets as
+                   Sales register, Credit Notes, pipeline/quotes/targets as
                    available, Sales reports).
 
   Business\        Everything in Professional, plus:\
@@ -2297,9 +2409,16 @@ too.
 
 ## **Step 4 --- Selling at the end of the day**
 
-Sales & CRM → POS: add items to a cart, checkout, print a receipt. Stock
-and Cost of Goods Sold are calculated automatically using the real price
-you paid at the warehouse.
+**Walk-in retail:** Sales & CRM → POS: add items to a cart, checkout,
+print a receipt.
+
+**Credit client (pays later):** Sales & CRM → Sales → **Add Sale**, set
+Payment status and due date.
+
+Stock and Cost of Goods Sold are calculated automatically using the real
+price you paid at the warehouse. If a customer returns goods, use
+**Return** on the Sales register (Section 7.10) --- commissions and
+loyalty adjust automatically.
 
 ## **Step 5 --- Seeing your actual profit**
 
@@ -2410,6 +2529,18 @@ you paid at the warehouse.
 
   Customer Portal    The login area for your Client-role customers to see
                      their invoices, receipts, and related documents
+
+  Credit note        A numbered document created when you refund, keep
+                     store credit, or exchange after a return (or issue
+                     credit on a Client Invoice). Tracked under Sales &
+                     CRM → Credit Notes
+
+  Store credit       Customer balance from a return outcome **Keep as
+                     store credit** (or exchange), applied at POS checkout
+                     until used or refunded
+
+  Customer credits   Balance Sheet liability for unused store credit owed
+                     to customers (see Section 6.6)
 
 # **Section 19 --- AI Assistant**
 
