@@ -15,6 +15,7 @@ import {
   type LandlordNotificationRow,
 } from "@/utils/landlord-notifications-types";
 import { createClient } from "@/utils/supabase/server";
+import { attachBadgeRoutePerfProbeHeaders } from "@/utils/badge-route-perf-probe";
 import { jsonWithRouteTiming } from "@/utils/route-timing-headers";
 
 const DEFAULT_LIMIT = 20;
@@ -62,11 +63,13 @@ export async function GET(request: Request) {
     const dbMs = Date.now() - dbStartedAt;
     const badgeSegments = { setupMs, trustMs, dbMs };
     if (unreadResult.error) {
-      return jsonWithRouteTiming(
-        { error: unreadResult.error.message },
-        routeStartedAt,
-        { status: 500 },
-        badgeSegments,
+      return attachBadgeRoutePerfProbeHeaders(
+        jsonWithRouteTiming(
+          { error: unreadResult.error.message },
+          routeStartedAt,
+          { status: 500 },
+          badgeSegments,
+        ),
       );
     }
     const response = jsonWithRouteTiming(
@@ -80,7 +83,7 @@ export async function GET(request: Request) {
     if (badgeTrustDiag) {
       attachBadgeRouteTrustDiagnosticHeaders(response, badgeTrustDiag);
     }
-    return response;
+    return attachBadgeRoutePerfProbeHeaders(response);
   }
 
   const rawLimit = Number(searchParams.get("limit") ?? DEFAULT_LIMIT);

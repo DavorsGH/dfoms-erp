@@ -34,6 +34,16 @@ import {
   buildSanitizedRequestHeaders,
   proxyPassthrough,
 } from "@/lib/middleware-proxy-headers";
+import {
+  DFOMS_MW_REGION_HEADER,
+  DFOMS_MW_RTT1_HEADER,
+  DFOMS_MW_RTT2_HEADER,
+  getVercelRegion,
+} from "@/lib/perf-probe-headers";
+import {
+  DFOMS_PERF_LAYOUT_PROBE_HEADER,
+  measureSupabaseHealthRttTwice,
+} from "@/lib/supabase-http-perf";
 import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
 import { PRODUCTION_PORTAL_SITE_URL } from "@/utils/public-site-url";
 
@@ -576,6 +586,9 @@ export async function proxy(request: NextRequest) {
 
   const requestHeaders = buildSanitizedRequestHeaders(request.headers);
   requestHeaders.set("x-pathname", pathname);
+  if (isPerfProbeEnabled() && pathname.startsWith("/dashboard")) {
+    requestHeaders.set(DFOMS_PERF_LAYOUT_PROBE_HEADER, "1");
+  }
 
   const badgeApiRequest = badgeApiRequestEarly;
   let badgeSignReason = badgeApiRequest ? "not-attempted" : "n/a";
@@ -690,11 +703,22 @@ export async function proxy(request: NextRequest) {
         isMiddlewareContextSigningConfigured() ? "yes" : "no",
       );
     }
+    if (isPerfProbeEnabled()) {
+      nextResponse.headers.set(DFOMS_MW_REGION_HEADER, getVercelRegion());
+      const { rtt1Ms, rtt2Ms } = await measureSupabaseHealthRttTwice();
+      nextResponse.headers.set(DFOMS_MW_RTT1_HEADER, String(rtt1Ms));
+      nextResponse.headers.set(DFOMS_MW_RTT2_HEADER, String(rtt2Ms));
+    }
   }
 
   if (isPerfProbeEnabled()) {
     for (const [key, value] of Object.entries(perf.toHeaderValues())) {
       nextResponse.headers.set(key, value);
+    }
+    if (pathname.startsWith("/dashboard")) {
+      nextResponse.headers.set(DFOMS_MW_REGION_HEADER, getVercelRegion());
+      nextResponse.headers.set(DFOMS_MW_AUTH_TIMING_HEADER, String(mwAuthMs));
+      nextResponse.headers.set(DFOMS_MW_DB_TIMING_HEADER, String(mwDbMs));
     }
     console.info(
       "[perf] middleware",

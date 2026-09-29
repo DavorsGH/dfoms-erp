@@ -5,6 +5,7 @@ import {
   readAuthPersistEnabled,
 } from "@/lib/auth/session-persistence";
 import { applyAuthCookiePersistence } from "@/utils/supabase/auth-cookie-options";
+import { getSupabaseInstrumentedFetch } from "@/lib/supabase-http-perf";
 import { noStoreFetch } from "@/utils/supabase/no-store-fetch";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -21,7 +22,7 @@ export const createClient = (
 ) => {
   return createServerClient(supabaseUrl!, supabaseKey!, {
     global: {
-      fetch: noStoreFetch,
+      fetch: getSupabaseInstrumentedFetch(noStoreFetch),
     },
     cookies: {
       getAll() {
