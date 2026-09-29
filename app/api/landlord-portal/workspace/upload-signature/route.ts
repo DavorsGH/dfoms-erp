@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
@@ -11,7 +12,7 @@ import { uploadLandlordSignature } from "@/utils/landlord-signature";
  * platform_only landlord: upload authorized signature for Real Estate PDFs.
  */
 export async function POST(request: Request) {
-  const session = await getLandlordPortalSession();
+  const session = await getLandlordPortalSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

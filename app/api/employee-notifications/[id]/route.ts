@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireAuthenticated } from "@/utils/admin-auth";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   EMPLOYEE_NOTIFICATION_SELECT,
   EMPLOYEE_NOTIFICATION_SELECT_LEGACY,
@@ -23,7 +24,7 @@ export async function PATCH(_request: Request, context: RouteContext) {
     return auth.response;
   }
 
-  const tenantId = await getCurrentUserTenantId();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
   if (!tenantId || !auth.userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -126,7 +127,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return auth.response;
   }
 
-  const tenantId = await getCurrentUserTenantId();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
   if (!tenantId || !auth.userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

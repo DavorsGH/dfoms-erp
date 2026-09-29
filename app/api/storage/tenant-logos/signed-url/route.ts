@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   requireAuthenticated,
   requireDavorsPlatformSuperAdmin,
@@ -44,10 +45,10 @@ export async function GET(request: Request) {
 
   const [portalSession, landlordSession, staffAuth, staffTenantId, davorsStaff] =
     await Promise.all([
-      getPortalLesseeSession(),
-      getLandlordPortalSession(),
+      getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS),
+      getLandlordPortalSession(ROUTE_HANDLER_AUTH_OPTS),
       requireAuthenticated(),
-      getCurrentUserTenantId(),
+      getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS),
       requireDavorsPlatformSuperAdmin(),
     ]);
 

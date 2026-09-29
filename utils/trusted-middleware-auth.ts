@@ -8,10 +8,22 @@ import {
   type MiddlewareAuthContext,
 } from "@/lib/middleware-auth-context";
 
+import type { MiddlewareAuthLoadOptions } from "@/lib/middleware-trust-policy";
+
+export async function resolveTrustedMiddlewareAuthContext(
+  options?: MiddlewareAuthLoadOptions,
+): Promise<MiddlewareAuthContext | null> {
+  if (options?.skipMiddlewareTrust) {
+    return null;
+  }
+  const headerStore = await headers();
+  return verifyAuthContext(headerStore.get(AUTH_CONTEXT_HEADER));
+}
+
 /** Verified signed context from proxy (same request only). */
 export const readTrustedMiddlewareAuthContext = cache(
-  async (): Promise<MiddlewareAuthContext | null> => {
-    const headerStore = await headers();
-    return verifyAuthContext(headerStore.get(AUTH_CONTEXT_HEADER));
-  },
+  async (
+    options?: MiddlewareAuthLoadOptions,
+  ): Promise<MiddlewareAuthContext | null> =>
+    resolveTrustedMiddlewareAuthContext(options),
 );

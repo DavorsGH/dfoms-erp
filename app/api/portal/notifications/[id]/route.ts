@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   LESSEE_NOTIFICATION_SELECT,
   LESSEE_NOTIFICATION_SELECT_LEGACY,
@@ -17,7 +18,7 @@ type RouteContext = {
 
 /** Mark a single portal notification as read. */
 export async function PATCH(_request: Request, context: RouteContext) {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -119,7 +120,7 @@ export async function PATCH(_request: Request, context: RouteContext) {
 
 /** Delete a single tenant portal notification (self-delete RLS). */
 export async function DELETE(_request: Request, context: RouteContext) {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

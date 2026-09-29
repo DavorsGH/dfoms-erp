@@ -8,6 +8,7 @@ import {
 import { MFA_CHALLENGE_ROUTES } from "@/lib/mfa/types";
 import {
   AUTH_CONTEXT_HEADER,
+  isMiddlewareContextSigningConfigured,
   signAuthContext,
 } from "@/lib/middleware-auth-context";
 import {
@@ -20,9 +21,19 @@ import {
   signBadgeAuthContext,
 } from "@/lib/middleware-badge-auth-context";
 import {
+  DFOMS_MW_AUTH_TIMING_HEADER,
+  DFOMS_MW_DB_TIMING_HEADER,
+  DFOMS_MW_SECRET_CONFIGURED_HEADER,
+  DFOMS_MW_SIGN_REASON_HEADER,
+  DFOMS_MW_SIGNED_HEADER,
+  DFOMS_MW_SIGN_TIMING_HEADER,
   DFOMS_MW_TIMING_HEADER,
   isNotificationBadgeApiRequest,
 } from "@/lib/notification-badge-api";
+import {
+  buildSanitizedRequestHeaders,
+  proxyPassthrough,
+} from "@/lib/middleware-proxy-headers";
 import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
 import { PRODUCTION_PORTAL_SITE_URL } from "@/utils/public-site-url";
 
@@ -93,27 +104,27 @@ export async function proxy(request: NextRequest) {
 
   // External cron keepalive — must stay reachable without a session.
   if (pathname === "/api/heartbeat") {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // Web Push VAPID public key — no auth; used before subscribe permission prompt.
   if (pathname === "/api/push/vapid-public-key") {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // Vercel Cron jobs — authenticated inside each route via CRON_SECRET.
   if (pathname.startsWith("/api/cron/")) {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // External webhooks — public POST; signature verified inside each route.
   if (pathname.startsWith("/api/webhooks/")) {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // Product-sale Paystack callback — public thank-you / verify page for payers.
   if (pathname.startsWith("/pay/product-sale")) {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // Public email/SMS unsubscribe links (no auth).
@@ -121,12 +132,12 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/unsubscribe") ||
     pathname.startsWith("/api/unsubscribe")
   ) {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // Internal SMS short-link redirects (no auth; route 302s to destination).
   if (pathname.startsWith("/s/")) {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // OAuth start/callback — public; flow validated via signed cookie in-route.
@@ -135,7 +146,7 @@ export async function proxy(request: NextRequest) {
     pathname === "/auth/callback" ||
     pathname === "/auth/error"
   ) {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // Portal invite acceptance / landlord self-signup APIs — public; validate in-route.
@@ -146,18 +157,18 @@ export async function proxy(request: NextRequest) {
     pathname === "/api/landlord-portal/signup" ||
     pathname === "/api/staff/accept-invite"
   ) {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // Public rental application form (token in path); APIs validate hashed token.
   if (pathname.startsWith("/apply/") || pathname.startsWith("/api/apply/")) {
-    return NextResponse.next();
+    return proxyPassthrough(request);
   }
 
   // Maintenance mode — blocks all access except heartbeat and the maintenance page itself.
   if (process.env.MAINTENANCE_MODE === "true") {
     if (pathname === "/maintenance") {
-      return NextResponse.next();
+      return proxyPassthrough(request);
     }
     const url = request.nextUrl.clone();
     url.pathname = "/maintenance";
@@ -166,10 +177,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  const badgeApiRequestEarly = isNotificationBadgeApiRequest(
+    pathname,
+    request.nextUrl.searchParams,
+  );
+  let mwAuthMs = 0;
+  let mwDbMs = 0;
+  let mwSignMs = 0;
+
   const { supabase, response } = createClient(request);
   const perf = createPerfProbe();
 
+  const authStartedAt = Date.now();
   const { user, trustedLocalSession } = await resolveMiddlewareAuthUser(supabase);
+  mwAuthMs = Date.now() - authStartedAt;
   perf.countAuth();
   if (trustedLocalSession) {
     // Cookie JWT accepted without Auth network verify (offline / Auth unreachable).
@@ -291,6 +312,7 @@ export async function proxy(request: NextRequest) {
   let accountRow: MiddlewareAccountRow | null = null;
 
   if (user && (needsAccountGate || needsPersonaCheck)) {
+    const accountDbStartedAt = Date.now();
     const { data: account } = await supabase
       .from("user_accounts")
       .select(
@@ -298,6 +320,7 @@ export async function proxy(request: NextRequest) {
       )
       .eq("auth_uid", user.id)
       .maybeSingle();
+    mwDbMs += Date.now() - accountDbStartedAt;
     perf.countDb();
 
     accountRow = account ?? null;
@@ -551,15 +574,17 @@ export async function proxy(request: NextRequest) {
   // Trial / suspension enforcement runs in app/dashboard/layout.tsx only — not on
   // /trial-expired, /account-suspended, /login, /signup, or /api/signup.
 
-  const requestHeaders = new Headers(request.headers);
+  const requestHeaders = buildSanitizedRequestHeaders(request.headers);
   requestHeaders.set("x-pathname", pathname);
 
-  const badgeApiRequest = isNotificationBadgeApiRequest(
-    pathname,
-    request.nextUrl.searchParams,
-  );
+  const badgeApiRequest = badgeApiRequestEarly;
+  let badgeSignReason = badgeApiRequest ? "not-attempted" : "n/a";
 
   if (user && badgeApiRequest) {
+    if (!isMiddlewareContextSigningConfigured()) {
+      badgeSignReason = "no-signing-secret";
+    }
+    const badgeDbStartedAt = Date.now();
     const badgePayload = await buildBadgeAuthContextPayload({
       supabase,
       user,
@@ -568,13 +593,29 @@ export async function proxy(request: NextRequest) {
       accountRow,
       onDbCall: (count = 1) => perf.countDb(count),
     });
-    if (badgePayload) {
+    mwDbMs += Date.now() - badgeDbStartedAt;
+    if (!badgePayload) {
+      if (badgeSignReason === "not-attempted") {
+        badgeSignReason = "no-badge-payload";
+      }
+    } else if (!isMiddlewareContextSigningConfigured()) {
+      badgeSignReason = "no-signing-secret";
+    } else {
+      const signStartedAt = Date.now();
       const signedBadge = await signBadgeAuthContext(badgePayload);
+      mwSignMs = Date.now() - signStartedAt;
       if (signedBadge) {
         requestHeaders.set(AUTH_CONTEXT_HEADER, signedBadge);
+        badgeSignReason = "signed";
+      } else {
+        badgeSignReason = "sign-returned-null";
       }
     }
-  } else if (
+  } else if (badgeApiRequest && !user) {
+    badgeSignReason = "no-user";
+  }
+
+  if (
     user &&
     accountRow &&
     accountRow.is_active !== false &&
@@ -608,10 +649,20 @@ export async function proxy(request: NextRequest) {
     nextResponse.cookies.set(cookie);
   });
 
+  // Supabase SSR may rebuild NextResponse.next({ request }) without proxy overrides;
+  // never copy x-middleware-* or auth context from that object onto our final response.
   response.headers.forEach((value, key) => {
-    if (key.toLowerCase() !== "set-cookie") {
-      nextResponse.headers.set(key, value);
+    const lower = key.toLowerCase();
+    if (lower === "set-cookie") {
+      return;
     }
+    if (lower.startsWith("x-middleware")) {
+      return;
+    }
+    if (lower === AUTH_CONTEXT_HEADER) {
+      return;
+    }
+    nextResponse.headers.set(key, value);
   });
 
   nextResponse.headers.set(
@@ -624,6 +675,21 @@ export async function proxy(request: NextRequest) {
       DFOMS_MW_TIMING_HEADER,
       String(perf.elapsedMs()),
     );
+    nextResponse.headers.set(DFOMS_MW_AUTH_TIMING_HEADER, String(mwAuthMs));
+    nextResponse.headers.set(DFOMS_MW_DB_TIMING_HEADER, String(mwDbMs));
+    nextResponse.headers.set(DFOMS_MW_SIGN_TIMING_HEADER, String(mwSignMs));
+    // TEMP Phase 2A — remove after trust path verified in dev + prod-local
+    if (process.env.DFOMS_TRUST_DIAG === "true") {
+      nextResponse.headers.set(
+        DFOMS_MW_SIGNED_HEADER,
+        badgeSignReason === "signed" ? "yes" : "no",
+      );
+      nextResponse.headers.set(DFOMS_MW_SIGN_REASON_HEADER, badgeSignReason);
+      nextResponse.headers.set(
+        DFOMS_MW_SECRET_CONFIGURED_HEADER,
+        isMiddlewareContextSigningConfigured() ? "yes" : "no",
+      );
+    }
   }
 
   if (isPerfProbeEnabled()) {

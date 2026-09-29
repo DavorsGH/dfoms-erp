@@ -1,6 +1,15 @@
 import { cookies } from "next/headers";
 import { getLandlordPortalSession } from "@/utils/landlord-portal-auth";
 import {
+  BADGE_POLL_AUTH_OPTS,
+  ROUTE_HANDLER_AUTH_OPTS,
+} from "@/lib/middleware-trust-policy";
+import {
+  attachBadgeRouteTrustDiagnosticHeaders,
+  isTrustDiagEnabled,
+  loadBadgeRouteTrustDiagnostics,
+} from "@/utils/badge-route-trust-diagnostics";
+import {
   LANDLORD_NOTIFICATION_SELECT,
   normalizeLandlordNotificationRow,
   type LandlordNotificationRow,
@@ -18,18 +27,27 @@ function isCountOnlyRequest(searchParams: URLSearchParams): boolean {
 
 export async function GET(request: Request) {
   const routeStartedAt = Date.now();
-  const session = await getLandlordPortalSession();
+  const { searchParams } = new URL(request.url);
+  const countOnly = isCountOnlyRequest(searchParams);
+  const authOpts = countOnly ? BADGE_POLL_AUTH_OPTS : ROUTE_HANDLER_AUTH_OPTS;
+
+  const trustStartedAt = Date.now();
+  const badgeTrustDiag =
+    countOnly && isTrustDiagEnabled()
+      ? await loadBadgeRouteTrustDiagnostics()
+      : null;
+  const session = await getLandlordPortalSession(authOpts);
+  const trustMs = Date.now() - trustStartedAt;
   if (!session) {
     return jsonWithRouteTiming({ error: "Unauthorized" }, routeStartedAt, {
       status: 401,
     });
   }
 
-  const { searchParams } = new URL(request.url);
-  const countOnly = isCountOnlyRequest(searchParams);
-
+  const setupStartedAt = Date.now();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const setupMs = Date.now() - setupStartedAt;
 
   const unreadQuery = supabase
     .from("landlord_notifications")
@@ -39,20 +57,30 @@ export async function GET(request: Request) {
     .is("read_at", null);
 
   if (countOnly) {
+    const dbStartedAt = Date.now();
     const unreadResult = await unreadQuery;
+    const dbMs = Date.now() - dbStartedAt;
+    const badgeSegments = { setupMs, trustMs, dbMs };
     if (unreadResult.error) {
       return jsonWithRouteTiming(
         { error: unreadResult.error.message },
         routeStartedAt,
         { status: 500 },
+        badgeSegments,
       );
     }
-    return jsonWithRouteTiming(
+    const response = jsonWithRouteTiming(
       {
         unreadCount: unreadResult.count ?? 0,
       },
       routeStartedAt,
+      undefined,
+      badgeSegments,
     );
+    if (badgeTrustDiag) {
+      attachBadgeRouteTrustDiagnosticHeaders(response, badgeTrustDiag);
+    }
+    return response;
   }
 
   const rawLimit = Number(searchParams.get("limit") ?? DEFAULT_LIMIT);

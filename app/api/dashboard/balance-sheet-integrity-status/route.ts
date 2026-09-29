@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getCurrentAuthUid,
   getCurrentUserTenantId,
@@ -33,8 +34,8 @@ function isLiveCheckRateLimited(authUid: string): boolean {
 export async function GET(): Promise<
   NextResponse<TenantBalanceSheetIntegrityStatus | { error: string }>
 > {
-  const tenantId = await getCurrentUserTenantId();
-  const authUid = await getCurrentAuthUid();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
+  const authUid = await getCurrentAuthUid(ROUTE_HANDLER_AUTH_OPTS);
 
   if (!tenantId || !authUid) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -57,8 +58,8 @@ export async function GET(): Promise<
 export async function POST(): Promise<
   NextResponse<TenantBalanceSheetIntegrityStatus | { error: string }>
 > {
-  const tenantId = await getCurrentUserTenantId();
-  const authUid = await getCurrentAuthUid();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
+  const authUid = await getCurrentAuthUid(ROUTE_HANDLER_AUTH_OPTS);
 
   if (!tenantId || !authUid) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

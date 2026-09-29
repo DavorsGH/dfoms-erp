@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { buildOwnerDashboardViewModel } from "@/app/dashboard/owner-dashboard-view-model";
 import { fetchDashboardPageData } from "@/app/dashboard/dashboard-page-data";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getActiveBusinessUnitId,
   getCurrentAuthUid,
@@ -22,8 +23,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const [tenantId, authUid, activeBusinessUnitId, viewAllBusinessUnits] =
     await Promise.all([
-      getCurrentUserTenantId(),
-      getCurrentAuthUid(),
+      getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS),
+      getCurrentAuthUid(ROUTE_HANDLER_AUTH_OPTS),
       getActiveBusinessUnitId(),
       getViewAllBusinessUnits(),
     ]);

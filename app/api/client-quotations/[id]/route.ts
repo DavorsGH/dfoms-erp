@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireRoleIn, requireTenantRoleIn } from "@/utils/admin-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   assertServerRowWriteAccess,
   getServerAuthUid,
@@ -54,7 +55,7 @@ async function authorizeQuotationAccess() {
     return { ok: false as const, response: clientAuth.response };
   }
 
-  const tenantId = await getCurrentUserTenantId();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
   if (!tenantId) {
     return {
       ok: false as const,

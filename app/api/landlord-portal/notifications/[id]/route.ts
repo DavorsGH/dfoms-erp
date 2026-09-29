@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getLandlordPortalSession } from "@/utils/landlord-portal-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   LANDLORD_NOTIFICATION_SELECT,
   normalizeLandlordNotificationRow,
@@ -15,7 +16,7 @@ type RouteContext = {
 
 /** Mark a single landlord portal notification as read. */
 export async function PATCH(_request: Request, context: RouteContext) {
-  const session = await getLandlordPortalSession();
+  const session = await getLandlordPortalSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -88,7 +89,7 @@ export async function PATCH(_request: Request, context: RouteContext) {
 
 /** Delete a single landlord portal notification (self-delete RLS). */
 export async function DELETE(_request: Request, context: RouteContext) {
-  const session = await getLandlordPortalSession();
+  const session = await getLandlordPortalSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

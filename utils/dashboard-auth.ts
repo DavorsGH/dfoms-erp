@@ -15,6 +15,7 @@ import {
   verifyAuthContext,
   type MiddlewareAuthContext,
 } from "@/lib/middleware-auth-context";
+import type { MiddlewareAuthLoadOptions } from "@/lib/middleware-trust-policy";
 
 type UserAccountRow = {
   role: string | null;
@@ -51,7 +52,12 @@ export function getLayoutPerfCounters(): LayoutPerfCounters {
 }
 
 const getTrustedAuthContext = cache(
-  async (): Promise<MiddlewareAuthContext | null> => {
+  async (
+    options?: MiddlewareAuthLoadOptions,
+  ): Promise<MiddlewareAuthContext | null> => {
+    if (options?.skipMiddlewareTrust) {
+      return null;
+    }
     const headerStore = await headers();
     return verifyAuthContext(headerStore.get(AUTH_CONTEXT_HEADER));
   },
@@ -69,11 +75,14 @@ function userFromTrustedContext(ctx: MiddlewareAuthContext): User {
 }
 
 /** One auth.getUser() per request unless middleware passed a signed context. */
-export const getCurrentAuthUser = cache(async (): Promise<User | null> => {
-  const trusted = await getTrustedAuthContext();
-  if (trusted) {
-    layoutPerf.skippedAuthCalls += 1;
-    return userFromTrustedContext(trusted);
+export const getCurrentAuthUser = cache(
+  async (options?: MiddlewareAuthLoadOptions): Promise<User | null> => {
+  if (!options?.skipMiddlewareTrust) {
+    const trusted = await getTrustedAuthContext(options);
+    if (trusted) {
+      layoutPerf.skippedAuthCalls += 1;
+      return userFromTrustedContext(trusted);
+    }
   }
 
   const cookieStore = await cookies();
@@ -89,21 +98,23 @@ export const getCurrentAuthUser = cache(async (): Promise<User | null> => {
 
 /** One user_accounts row load per request unless middleware passed a signed context. */
 export const getCurrentUserAccount = cache(
-  async (): Promise<UserAccountRow | null> => {
-    const trusted = await getTrustedAuthContext();
-    if (trusted) {
-      layoutPerf.skippedDbCalls += 1;
-      return {
-        role: trusted.role,
-        employee_id: trusted.employeeId,
-        client_id: trusted.clientId,
-        tenant_id: trusted.tenantId,
-        active_business_unit_id: trusted.activeBusinessUnitId ?? null,
-        view_all_business_units: trusted.viewAllBusinessUnits === true,
-      };
+  async (options?: MiddlewareAuthLoadOptions): Promise<UserAccountRow | null> => {
+    if (!options?.skipMiddlewareTrust) {
+      const trusted = await getTrustedAuthContext(options);
+      if (trusted) {
+        layoutPerf.skippedDbCalls += 1;
+        return {
+          role: trusted.role,
+          employee_id: trusted.employeeId,
+          client_id: trusted.clientId,
+          tenant_id: trusted.tenantId,
+          active_business_unit_id: trusted.activeBusinessUnitId ?? null,
+          view_all_business_units: trusted.viewAllBusinessUnits === true,
+        };
+      }
     }
 
-    const user = await getCurrentAuthUser();
+    const user = await getCurrentAuthUser(options);
     if (!user) {
       return null;
     }
@@ -128,28 +139,38 @@ export const getCurrentUserAccount = cache(
   },
 );
 
-export async function getCurrentUserRole(): Promise<string | null> {
-  const account = await getCurrentUserAccount();
+export async function getCurrentUserRole(
+  options?: MiddlewareAuthLoadOptions,
+): Promise<string | null> {
+  const account = await getCurrentUserAccount(options);
   return account?.role ?? null;
 }
 
-export async function getCurrentUserEmployeeId(): Promise<string | null> {
-  const account = await getCurrentUserAccount();
+export async function getCurrentUserEmployeeId(
+  options?: MiddlewareAuthLoadOptions,
+): Promise<string | null> {
+  const account = await getCurrentUserAccount(options);
   return account?.employee_id ?? null;
 }
 
-export async function getCurrentAuthUid(): Promise<string | null> {
-  const user = await getCurrentAuthUser();
+export async function getCurrentAuthUid(
+  options?: MiddlewareAuthLoadOptions,
+): Promise<string | null> {
+  const user = await getCurrentAuthUser(options);
   return user?.id ?? null;
 }
 
-export async function getCurrentUserClientId(): Promise<string | null> {
-  const account = await getCurrentUserAccount();
+export async function getCurrentUserClientId(
+  options?: MiddlewareAuthLoadOptions,
+): Promise<string | null> {
+  const account = await getCurrentUserAccount(options);
   return account?.client_id ?? null;
 }
 
-export async function getCurrentUserTenantId(): Promise<string | null> {
-  const account = await getCurrentUserAccount();
+export async function getCurrentUserTenantId(
+  options?: MiddlewareAuthLoadOptions,
+): Promise<string | null> {
+  const account = await getCurrentUserAccount(options);
   return account?.tenant_id ?? null;
 }
 

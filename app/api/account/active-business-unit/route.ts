@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { STAFF_BUSINESS_UNIT_SWITCHER_ROLES } from "@/app/dashboard/user-account-role-utils";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getCurrentAuthUid,
   getCurrentUserAllowedBusinessUnits,
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
     return auth.response;
   }
 
-  const authUid = await getCurrentAuthUid();
+  const authUid = await getCurrentAuthUid(ROUTE_HANDLER_AUTH_OPTS);
   if (!authUid) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

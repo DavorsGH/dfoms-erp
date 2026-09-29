@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   ghsToPesewas,
   initializePaystackOneOffTransaction,
@@ -49,7 +50,7 @@ type LedgerPayRow = {
  * outstanding one-time charges on the lease (one bundled transaction).
  */
 export async function POST(request: Request) {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

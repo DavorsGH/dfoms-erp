@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuthenticated } from "@/utils/admin-auth";
 import { getCurrentUserNotificationLabel } from "@/utils/current-user";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   loadProductSaleNotificationThreshold,
   notifyTenantAdminsAndDirectors,
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     return auth.response;
   }
 
-  const tenantId = await getCurrentUserTenantId();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
   if (!tenantId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

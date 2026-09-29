@@ -45,6 +45,7 @@ import {
 } from "@/app/dashboard/real-estate/complaints-utils";
 import { isTerminationRequestStatus } from "@/app/dashboard/real-estate/leases-utils";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
+import type { MiddlewareAuthLoadOptions } from "@/lib/middleware-trust-policy";
 import { readTrustedMiddlewareAuthContext } from "@/utils/trusted-middleware-auth";
 import {
   buildLandlordPortalFinancialSummary,
@@ -302,22 +303,26 @@ export async function fetchLandlordPortalNotificationContacts(
  * landlordPortalHasDataAccess / requirePlatformOnlyLandlordSession).
  */
 export const getLandlordPortalSession = cache(
-  async (): Promise<LandlordPortalSession | null> => {
-  const trusted = await readTrustedMiddlewareAuthContext();
-  if (
-    trusted &&
-    trusted.portal === "landlord" &&
-    trusted.tenantId
-  ) {
-    return {
-      authUserId: trusted.authUid,
-      email: trusted.email,
-      tenantId: trusted.tenantId,
-      fullName: "Landlord",
-      logoUrl: null,
-      landlordType: null,
-      approvalStatus: null,
-    };
+  async (
+    options?: MiddlewareAuthLoadOptions,
+  ): Promise<LandlordPortalSession | null> => {
+  if (!options?.skipMiddlewareTrust) {
+    const trusted = await readTrustedMiddlewareAuthContext();
+    if (
+      trusted &&
+      trusted.portal === "landlord" &&
+      trusted.tenantId
+    ) {
+      return {
+        authUserId: trusted.authUid,
+        email: trusted.email,
+        tenantId: trusted.tenantId,
+        fullName: "Landlord",
+        logoUrl: null,
+        landlordType: null,
+        approvalStatus: null,
+      };
+    }
   }
 
   const cookieStore = await cookies();

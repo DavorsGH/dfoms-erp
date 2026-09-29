@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getLandlordPortalSession,
   landlordPortalHasDataAccess,
@@ -21,7 +22,7 @@ type UpdateBody = {
  * and Notification phone stay equal (same dual-column sync as staff update).
  */
 export async function POST(request: Request) {
-  const session = await getLandlordPortalSession();
+  const session = await getLandlordPortalSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

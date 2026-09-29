@@ -3,6 +3,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { notifyStaffEarlyTerminationRequest } from "@/utils/real-estate-staff-notifications";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 type RequestBody = {
   reason?: string | null;
 };
@@ -12,7 +13,7 @@ type RequestBody = {
  * Does not terminate the lease.
  */
 export async function POST(request: Request) {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

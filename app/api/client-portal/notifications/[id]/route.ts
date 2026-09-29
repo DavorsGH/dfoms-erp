@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getClientPortalSession } from "@/utils/client-portal-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   CLIENT_NOTIFICATION_SELECT,
   normalizeClientNotificationRow,
@@ -13,7 +14,7 @@ type RouteContext = {
 };
 
 export async function PATCH(_request: Request, context: RouteContext) {
-  const session = await getClientPortalSession();
+  const session = await getClientPortalSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -86,7 +87,7 @@ export async function PATCH(_request: Request, context: RouteContext) {
 }
 
 export async function DELETE(_request: Request, context: RouteContext) {
-  const session = await getClientPortalSession();
+  const session = await getClientPortalSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

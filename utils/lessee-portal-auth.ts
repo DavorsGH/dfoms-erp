@@ -11,6 +11,7 @@ import { composePropertyStreetAddress } from "@/app/dashboard/real-estate/leases
 import { normalizePhotoUrls } from "@/app/dashboard/real-estate/properties-utils";
 import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
+import type { MiddlewareAuthLoadOptions } from "@/lib/middleware-trust-policy";
 import { readTrustedMiddlewareAuthContext } from "@/utils/trusted-middleware-auth";
 import {
   fetchPortalPaymentHistory,
@@ -136,10 +137,14 @@ async function lesseeSessionFromTrustedContext(): Promise<PortalLesseeSession | 
 }
 
 export const getPortalLesseeSession = cache(
-  async (): Promise<PortalLesseeSession | null> => {
-  const fromTrusted = await lesseeSessionFromTrustedContext();
-  if (fromTrusted) {
-    return fromTrusted;
+  async (
+    options?: MiddlewareAuthLoadOptions,
+  ): Promise<PortalLesseeSession | null> => {
+  if (!options?.skipMiddlewareTrust) {
+    const fromTrusted = await lesseeSessionFromTrustedContext();
+    if (fromTrusted) {
+      return fromTrusted;
+    }
   }
 
   const cookieStore = await cookies();

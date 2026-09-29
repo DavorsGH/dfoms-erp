@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 import { getLandlordPortalSession } from "@/utils/landlord-portal-auth";
 import { createClient } from "@/utils/supabase/server";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 /** Delete all read landlord portal notifications for the current user. */
 export async function DELETE() {
-  const session = await getLandlordPortalSession();
+  const session = await getLandlordPortalSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

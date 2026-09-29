@@ -4,6 +4,7 @@ import { requireAuthenticated } from "@/utils/admin-auth";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { createClient } from "@/utils/supabase/server";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 /** Mark all of the current user's unread notifications as read. */
 export async function PATCH() {
   const auth = await requireAuthenticated();
@@ -11,7 +12,7 @@ export async function PATCH() {
     return auth.response;
   }
 
-  const tenantId = await getCurrentUserTenantId();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
   if (!tenantId || !auth.userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

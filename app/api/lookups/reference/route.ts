@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { ReferenceLookupsPayload } from "@/lib/client-cache/types";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getActiveBusinessUnitId,
   getCurrentAuthUid,
@@ -17,8 +18,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const tenantId = await getCurrentUserTenantId();
-  const authUid = await getCurrentAuthUid();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
+  const authUid = await getCurrentAuthUid(ROUTE_HANDLER_AUTH_OPTS);
 
   if (!tenantId || !authUid) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

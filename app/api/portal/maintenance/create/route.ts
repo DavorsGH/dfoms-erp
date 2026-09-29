@@ -4,6 +4,7 @@ import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { assertDavorsManagedLandlord } from "@/utils/maintenance-management";
 import { notifyStaffNewRepairRequest } from "@/utils/real-estate-staff-notifications";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 type CreateBody = {
   description?: string;
   tenant_self_fix?: boolean;
@@ -14,7 +15,7 @@ type CreateBody = {
  * Tenant Portal: submit a repair / maintenance request for the active lease.
  */
 export async function POST(request: Request) {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

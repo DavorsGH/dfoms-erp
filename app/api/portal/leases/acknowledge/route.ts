@@ -4,6 +4,7 @@ import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { acknowledgeLeaseParty } from "@/utils/lease-signature";
 import { voidNotifyLeaseFullySigned } from "@/utils/real-estate-document-notifications";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 export const runtime = "nodejs";
 
 type AcknowledgeBody = {
@@ -14,7 +15,7 @@ type AcknowledgeBody = {
  * Tenant portal: acknowledge the active lease as tenant.
  */
 export async function POST(request: Request) {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

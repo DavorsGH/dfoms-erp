@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { getClientPortalSession } from "@/utils/client-portal-auth";
 import { createClient } from "@/utils/supabase/server";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 export async function DELETE() {
-  const session = await getClientPortalSession();
+  const session = await getClientPortalSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

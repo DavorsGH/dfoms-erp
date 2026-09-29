@@ -3,12 +3,13 @@ import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { acknowledgeLesseeComplaint } from "@/utils/complaint-management";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 type AcknowledgeBody = {
   complaint_id?: string;
 };
 
 export async function POST(request: Request) {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

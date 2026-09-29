@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireRoleIn, requireTenantRoleIn } from "@/utils/admin-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   assertServerRowWriteAccess,
   getServerAuthUid,
@@ -64,8 +65,8 @@ async function authorizeInvoiceReadAccess() {
     return { ok: false as const, response: clientAuth.response };
   }
 
-  const tenantId = await getCurrentUserTenantId();
-  const clientId = await getCurrentUserClientId();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
+  const clientId = await getCurrentUserClientId(ROUTE_HANDLER_AUTH_OPTS);
   if (!tenantId || !clientId) {
     return {
       ok: false as const,

@@ -6,6 +6,8 @@ import {
   getCurrentUserRole,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
+import type { MiddlewareAuthLoadOptions } from "@/lib/middleware-trust-policy";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import { readTrustedMiddlewareAuthContext } from "@/utils/trusted-middleware-auth";
 
 export type ClientPortalSession = {
@@ -14,20 +16,24 @@ export type ClientPortalSession = {
   authUserId: string;
 };
 
-export async function getClientPortalSession(): Promise<ClientPortalSession | null> {
-  const trusted = await readTrustedMiddlewareAuthContext();
-  if (
-    trusted &&
-    trusted.isActive !== false &&
-    trusted.role === "client" &&
-    trusted.clientId &&
-    trusted.tenantId
-  ) {
-    return {
-      tenantId: trusted.tenantId.trim(),
-      clientId: trusted.clientId.trim(),
-      authUserId: trusted.authUid,
-    };
+export async function getClientPortalSession(
+  options?: MiddlewareAuthLoadOptions,
+): Promise<ClientPortalSession | null> {
+  if (!options?.skipMiddlewareTrust) {
+    const trusted = await readTrustedMiddlewareAuthContext();
+    if (
+      trusted &&
+      trusted.isActive !== false &&
+      trusted.role === "client" &&
+      trusted.clientId &&
+      trusted.tenantId
+    ) {
+      return {
+        tenantId: trusted.tenantId.trim(),
+        clientId: trusted.clientId.trim(),
+        authUserId: trusted.authUid,
+      };
+    }
   }
 
   const auth = await requireAuthenticated();
@@ -35,14 +41,17 @@ export async function getClientPortalSession(): Promise<ClientPortalSession | nu
     return null;
   }
 
-  const role = await getCurrentUserRole();
+  const authOpts = options?.skipMiddlewareTrust
+    ? ROUTE_HANDLER_AUTH_OPTS
+    : options;
+  const role = await getCurrentUserRole(authOpts);
   if (role !== "client") {
     return null;
   }
 
   const [tenantId, clientId] = await Promise.all([
-    getCurrentUserTenantId(),
-    getCurrentUserClientId(),
+    getCurrentUserTenantId(authOpts),
+    getCurrentUserClientId(authOpts),
   ]);
 
   if (!tenantId?.trim() || !clientId?.trim()) {

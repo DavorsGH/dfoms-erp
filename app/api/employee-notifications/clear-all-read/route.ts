@@ -4,6 +4,7 @@ import { requireAuthenticated } from "@/utils/admin-auth";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { createClient } from "@/utils/supabase/server";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 /** Delete all read notifications for the current user (self-delete RLS). */
 export async function DELETE() {
   const auth = await requireAuthenticated();
@@ -11,7 +12,7 @@ export async function DELETE() {
     return auth.response;
   }
 
-  const tenantId = await getCurrentUserTenantId();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
   if (!tenantId || !auth.userId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

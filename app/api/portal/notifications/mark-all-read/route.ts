@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import { createClient } from "@/utils/supabase/server";
 
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 /** Mark all of the current portal lessee's unread notifications as read. */
 export async function PATCH() {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

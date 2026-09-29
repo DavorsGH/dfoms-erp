@@ -1,5 +1,14 @@
 import { cookies } from "next/headers";
+import {
+  BADGE_POLL_AUTH_OPTS,
+  ROUTE_HANDLER_AUTH_OPTS,
+} from "@/lib/middleware-trust-policy";
 import { getCurrentAuthUid, getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  attachBadgeRouteTrustDiagnosticHeaders,
+  isTrustDiagEnabled,
+  loadBadgeRouteTrustDiagnostics,
+} from "@/utils/badge-route-trust-diagnostics";
 import {
   EMPLOYEE_NOTIFICATION_SELECT,
   EMPLOYEE_NOTIFICATION_SELECT_LEGACY,
@@ -9,7 +18,6 @@ import {
 } from "@/utils/employee-notifications-types";
 import { createClient } from "@/utils/supabase/server";
 import { jsonWithRouteTiming } from "@/utils/route-timing-headers";
-
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 
@@ -20,19 +28,28 @@ function isCountOnlyRequest(searchParams: URLSearchParams): boolean {
 
 export async function GET(request: Request) {
   const routeStartedAt = Date.now();
-  const userId = await getCurrentAuthUid();
-  const tenantId = await getCurrentUserTenantId();
+  const { searchParams } = new URL(request.url);
+  const countOnly = isCountOnlyRequest(searchParams);
+  const authOpts = countOnly ? BADGE_POLL_AUTH_OPTS : ROUTE_HANDLER_AUTH_OPTS;
+
+  const trustStartedAt = Date.now();
+  const badgeTrustDiag =
+    countOnly && isTrustDiagEnabled()
+      ? await loadBadgeRouteTrustDiagnostics()
+      : null;
+  const userId = await getCurrentAuthUid(authOpts);
+  const tenantId = await getCurrentUserTenantId(authOpts);
+  const trustMs = Date.now() - trustStartedAt;
   if (!userId || !tenantId) {
     return jsonWithRouteTiming({ error: "Forbidden" }, routeStartedAt, {
       status: 403,
     });
   }
 
-  const { searchParams } = new URL(request.url);
-  const countOnly = isCountOnlyRequest(searchParams);
-
+  const setupStartedAt = Date.now();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const setupMs = Date.now() - setupStartedAt;
 
   const unreadQuery = supabase
     .from("employee_notifications")
@@ -42,20 +59,30 @@ export async function GET(request: Request) {
     .is("read_at", null);
 
   if (countOnly) {
+    const dbStartedAt = Date.now();
     const unreadResult = await unreadQuery;
+    const dbMs = Date.now() - dbStartedAt;
+    const badgeSegments = { setupMs, trustMs, dbMs };
     if (unreadResult.error) {
       return jsonWithRouteTiming(
         { error: unreadResult.error.message },
         routeStartedAt,
         { status: 500 },
+        badgeSegments,
       );
     }
-    return jsonWithRouteTiming(
+    const response = jsonWithRouteTiming(
       {
         unreadCount: unreadResult.count ?? 0,
       },
       routeStartedAt,
+      undefined,
+      badgeSegments,
     );
+    if (badgeTrustDiag) {
+      attachBadgeRouteTrustDiagnosticHeaders(response, badgeTrustDiag);
+    }
+    return response;
   }
 
   const rawLimit = Number(searchParams.get("limit") ?? DEFAULT_LIMIT);

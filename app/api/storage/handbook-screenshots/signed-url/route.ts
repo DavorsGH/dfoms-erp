@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentAuthUser } from "@/utils/dashboard-auth";
 import { getLandlordPortalSession } from "@/utils/landlord-portal-auth";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   createHandbookScreenshotSignedUrl,
   extractHandbookScreenshotStoragePath,
@@ -32,8 +33,8 @@ export async function GET(request: Request) {
 
   const [user, portalSession, landlordSession] = await Promise.all([
     getCurrentAuthUser(),
-    getPortalLesseeSession(),
-    getLandlordPortalSession(),
+    getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS),
+    getLandlordPortalSession(ROUTE_HANDLER_AUTH_OPTS),
   ]);
 
   if (!user && !portalSession && !landlordSession) {

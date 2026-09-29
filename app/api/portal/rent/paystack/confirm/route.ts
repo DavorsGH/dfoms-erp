@@ -3,6 +3,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 import { verifyPaystackTransaction } from "@/utils/paystack";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   canInitiatePortalRentPayment,
   portalRentPaymentBlockedMessage,
@@ -27,7 +28,7 @@ type ConfirmBody = {
  * one-time entries bundled at initialize. Webhook is the durable path.
  */
 export async function POST(request: Request) {
-  const session = await getPortalLesseeSession();
+  const session = await getPortalLesseeSession(ROUTE_HANDLER_AUTH_OPTS);
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
