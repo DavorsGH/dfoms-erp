@@ -740,6 +740,10 @@ export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
-  /** Run proxy in Stockholm (same metro as Supabase eu-north-1 / Vercel arn1). */
+  /**
+   * Target Stockholm (Supabase eu-north-1 / Vercel arn1).
+   * Next build copies runtime nodejs to functions-config-manifest but not regions;
+   * scripts/patch-middleware-function-regions.mjs adds regions after `next build`.
+   */
   regions: ["arn1"],
 };

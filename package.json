@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/patch-middleware-function-regions.mjs",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
     "start": "next start",
     "lint": "eslint",
