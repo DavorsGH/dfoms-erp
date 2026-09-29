@@ -13,7 +13,7 @@ import FinanceNav from "../finance-nav";
 import {
   SUPPLIER_CONTRACT_LIST_SELECT,
   normalizeSupplierContractListRow,
-  type SupplierContractListRow,
+  type SupplierContractListDbRow,
 } from "@/utils/supplier-contracts-types";
 import SupplierContractsList from "./supplier-contracts-list";
 
@@ -50,7 +50,7 @@ export default async function SupplierContractsPage() {
     .order("start_date", { ascending: false })
     .order("contract_sequence", { ascending: false });
 
-  const contracts = ((data as SupplierContractListRow[] | null) ?? []).map(
+  const contracts = ((data as SupplierContractListDbRow[] | null) ?? []).map(
     normalizeSupplierContractListRow,
   );
 

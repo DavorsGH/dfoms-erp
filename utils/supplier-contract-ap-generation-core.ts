@@ -8,7 +8,7 @@ import {
   roundMoney,
   toNumber,
   type SupplierContractAmendmentRow,
-  type SupplierContractListRow,
+  type SupplierContractApContractRow,
 } from "@/utils/supplier-contracts-types";
 import {
   computePurchaseTaxAmounts,
@@ -21,8 +21,11 @@ export type GenerateSupplierContractApCoreOptions = {
   asOf?: Date | string;
   admin: SupabaseClient;
   tenantId?: string;
-  onApCreated?: (contract: SupplierContractListRow, billingMonthStart: string) => Promise<void>;
-  onMidMonthReminder?: (contract: SupplierContractListRow) => Promise<void>;
+  onApCreated?: (
+    contract: SupplierContractApContractRow,
+    billingMonthStart: string,
+  ) => Promise<void>;
+  onMidMonthReminder?: (contract: SupplierContractApContractRow) => Promise<void>;
 };
 
 export type GenerateSupplierContractApResult = {
@@ -86,7 +89,7 @@ async function loadAmendments(
 
 async function createSupplierContractAp(
   admin: SupabaseClient,
-  contract: SupplierContractListRow & { notes?: string | null },
+  contract: SupplierContractApContractRow,
   billingMonthStart: string,
   grossBeforeWht: number,
 ): Promise<{ apId: string | null; skipped: boolean; error?: string }> {
@@ -196,9 +199,7 @@ export async function generateSupplierContractAccountsPayableCore(
     throw new Error(contractsError.message);
   }
 
-  for (const raw of (contracts ?? []) as Array<
-    SupplierContractListRow & { notes?: string | null }
-  >) {
+  for (const raw of (contracts ?? []) as SupplierContractApContractRow[]) {
     const contract = raw;
     const billingAnchor = contract.next_billing_date ?? asOfDate;
     const billingMonthStart = billingMonthStartFromDate(billingAnchor);

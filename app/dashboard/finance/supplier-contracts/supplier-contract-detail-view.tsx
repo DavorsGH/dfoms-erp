@@ -21,11 +21,10 @@ import {
 } from "@/utils/supplier-contract-document";
 import { createClient } from "@/utils/supabase/client";
 import {
-  billingMonthStartFromDate,
   formatInvoiceDate,
   formatInvoiceMoney,
   normalizeSupplierContractStatus,
-  resolveMonthlyAmountForBillingMonth,
+  resolveSupplierContractCurrentMonthlyAmount,
   resolveSupplierContractDisplayStatus,
   supplierContractDisplayStatusBadgeClassName,
   type SupplierContractStatus,
@@ -119,6 +118,21 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
   }, [loadDetail]);
 
   useEffect(() => {
+    if (loading || !detail) {
+      return;
+    }
+    const terminated =
+      normalizeSupplierContractStatus(String(detail.contract.status)) ===
+      "terminated";
+    if (terminated) {
+      return;
+    }
+    if (window.location.hash === "#supplier-contract-edit") {
+      setEditOpen(true);
+    }
+  }, [loading, detail]);
+
+  useEffect(() => {
     const client = createClient();
     void client
       .from("payment_methods")
@@ -147,17 +161,19 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
 
   const currentMonthlyAmount = useMemo(() => {
     if (!detail) return 0;
-    const nextBilling = detail.contract.next_billing_date;
-    const refDate =
-      typeof nextBilling === "string" && nextBilling.trim()
-        ? nextBilling
-        : new Date().toISOString();
-    const billingMonth = billingMonthStartFromDate(refDate);
     const amendments = detail.amendments.map((row) => ({
       effective_date: String(row.effective_date),
       new_monthly_amount: Number(row.new_monthly_amount),
     }));
-    return resolveMonthlyAmountForBillingMonth(amendments, billingMonth);
+    return resolveSupplierContractCurrentMonthlyAmount(
+      {
+        next_billing_date:
+          typeof detail.contract.next_billing_date === "string"
+            ? detail.contract.next_billing_date
+            : null,
+      },
+      amendments,
+    );
   }, [detail]);
 
   async function uploadDocument(
@@ -489,7 +505,10 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
       </section>
 
       {editOpen && canEdit ? (
-        <section className="rounded-lg border border-slate-200 p-4">
+        <section
+          id="supplier-contract-edit"
+          className="rounded-lg border border-slate-200 p-4"
+        >
           <h4 className="mb-3 font-medium">Edit contract settings</h4>
           <p className="mb-3 text-sm text-slate-600">
             Monthly amount changes use Change amount below. Terminated contracts cannot be edited.

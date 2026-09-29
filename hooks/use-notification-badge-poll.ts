@@ -15,6 +15,7 @@ type EndpointPollState = {
 };
 
 let pollTimer: number | null = null;
+let documentHidden = false;
 const endpointStates = new Map<string, EndpointPollState>();
 
 function getEndpointState(endpoint: string): EndpointPollState {
@@ -75,17 +76,24 @@ async function fetchUnreadCount(endpoint: string): Promise<number> {
   return state.inFlight;
 }
 
+function pollAllEndpoints() {
+  if (documentHidden) {
+    return;
+  }
+  for (const [endpoint, state] of endpointStates) {
+    if (state.subscriberCount > 0) {
+      void fetchUnreadCount(endpoint);
+    }
+  }
+}
+
 function ensurePolling() {
   if (pollTimer) {
     return;
   }
 
   pollTimer = window.setInterval(() => {
-    for (const [endpoint, state] of endpointStates) {
-      if (state.subscriberCount > 0) {
-        void fetchUnreadCount(endpoint);
-      }
-    }
+    pollAllEndpoints();
   }, BADGE_POLL_MS);
 }
 
@@ -100,6 +108,24 @@ function stopPollingIfIdle() {
   }
 }
 
+let visibilityListenerAttached = false;
+
+function ensureVisibilityListener() {
+  if (visibilityListenerAttached || typeof document === "undefined") {
+    return;
+  }
+  visibilityListenerAttached = true;
+  documentHidden = document.visibilityState === "hidden";
+
+  document.addEventListener("visibilitychange", () => {
+    const wasHidden = documentHidden;
+    documentHidden = document.visibilityState === "hidden";
+    if (wasHidden && !documentHidden) {
+      pollAllEndpoints();
+    }
+  });
+}
+
 /** Shared 60s badge poll — survives bell remounts and dedupes rapid re-subscribes. */
 export function useNotificationBadgePoll(endpoint: string): number {
   const [unreadCount, setUnreadCount] = useState(
@@ -107,13 +133,16 @@ export function useNotificationBadgePoll(endpoint: string): number {
   );
 
   useEffect(() => {
+    ensureVisibilityListener();
     const state = getEndpointState(endpoint);
     state.subscriberCount += 1;
 
     const onCount = (count: number) => setUnreadCount(count);
     state.listeners.add(onCount);
     ensurePolling();
-    void fetchUnreadCount(endpoint).then(onCount);
+    if (!documentHidden) {
+      void fetchUnreadCount(endpoint).then(onCount);
+    }
 
     return () => {
       state.listeners.delete(onCount);

@@ -16,8 +16,23 @@ export type SupplierContractStatus = (typeof SUPPLIER_CONTRACT_STATUSES)[number]
 export const SUPPLIER_AGREEMENT_TYPES = ["written", "verbal"] as const;
 export type SupplierAgreementType = (typeof SUPPLIER_AGREEMENT_TYPES)[number];
 
+export const SUPPLIER_CONTRACT_LIST_AMENDMENT_EMBED =
+  "supplier_contract_amendments(effective_date, new_monthly_amount)" as const;
+
 export const SUPPLIER_CONTRACT_LIST_SELECT =
-  "id, tenant_id, business_unit_id, supplier_id, supplier_name, contract_number, contract_sequence, agreement_type, start_date, end_date, auto_renew, status, expense_category, sub_category, wht_rate, next_billing_date, mid_month_reminder_enabled, mid_month_reminder_day, credit_balance, created_at" as const;
+  `id, tenant_id, business_unit_id, supplier_id, supplier_name, contract_number, contract_sequence, agreement_type, start_date, end_date, auto_renew, status, expense_category, sub_category, wht_rate, next_billing_date, mid_month_reminder_enabled, mid_month_reminder_day, credit_balance, created_at, ${SUPPLIER_CONTRACT_LIST_AMENDMENT_EMBED}` as const;
+
+export type SupplierContractListAmendmentEmbed = Pick<
+  SupplierContractAmendmentRow,
+  "effective_date" | "new_monthly_amount"
+>;
+
+export type SupplierContractListDbRow = Omit<
+  SupplierContractListRow,
+  "current_monthly_amount"
+> & {
+  supplier_contract_amendments?: SupplierContractListAmendmentEmbed[] | null;
+};
 
 export const SUPPLIER_CONTRACT_HEADER_SELECT =
   "id, tenant_id, business_unit_id, supplier_id, supplier_name, contract_number, contract_sequence, agreement_type, document_url, start_date, end_date, auto_renew, status, expense_category, sub_category, wht_rate, next_billing_date, mid_month_reminder_enabled, mid_month_reminder_day, credit_balance, notes, created_at, updated_at" as const;
@@ -71,7 +86,15 @@ export type SupplierContractListRow = {
   mid_month_reminder_day: number;
   credit_balance: number;
   created_at: string;
+  /** Current billing month amount from amendments; null when none exist. */
+  current_monthly_amount: number | null;
 };
+
+/** Active contract row from header select (cron/AP — no list amount). */
+export type SupplierContractApContractRow = Omit<
+  SupplierContractListRow,
+  "current_monthly_amount"
+> & { notes?: string | null };
 
 export type SupplierContractWriteBody = {
   supplier_id: string;
@@ -198,6 +221,21 @@ export function billingMonthStartFromDate(dateStr: string): string {
   return `${d.slice(0, 7)}-01`;
 }
 
+/** Same billing-month reference as supplier contract detail view. */
+export function resolveSupplierContractCurrentMonthlyAmount(
+  contract: Pick<SupplierContractListRow, "next_billing_date">,
+  amendments: SupplierContractListAmendmentEmbed[],
+  referenceIso?: string,
+): number {
+  const nextBilling = contract.next_billing_date;
+  const refDate =
+    typeof nextBilling === "string" && nextBilling.trim()
+      ? nextBilling
+      : (referenceIso ?? new Date().toISOString());
+  const billingMonth = billingMonthStartFromDate(refDate);
+  return resolveMonthlyAmountForBillingMonth(amendments, billingMonth);
+}
+
 export function resolveMonthlyAmountForBillingMonth(
   amendments: Array<Pick<SupplierContractAmendmentRow, "effective_date" | "new_monthly_amount">>,
   billingMonthStart: string,
@@ -249,12 +287,27 @@ export function validateSupplierContractBody(
 }
 
 export function normalizeSupplierContractListRow(
-  row: SupplierContractListRow,
+  row: SupplierContractListDbRow,
 ): SupplierContractListRow {
+  const amendments = row.supplier_contract_amendments ?? [];
+  const current_monthly_amount =
+    amendments.length === 0
+      ? null
+      : resolveSupplierContractCurrentMonthlyAmount(row, amendments);
+
+  const {
+    supplier_contract_amendments: _amendments,
+    wht_rate,
+    credit_balance,
+    contract_sequence,
+    ...rest
+  } = row;
+
   return {
-    ...row,
-    wht_rate: toNumber(row.wht_rate),
-    credit_balance: roundMoney(toNumber(row.credit_balance)),
-    contract_sequence: toNumber(row.contract_sequence),
+    ...rest,
+    wht_rate: toNumber(wht_rate),
+    credit_balance: roundMoney(toNumber(credit_balance)),
+    contract_sequence: toNumber(contract_sequence),
+    current_monthly_amount,
   };
 }

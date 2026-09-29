@@ -111,11 +111,31 @@ export default function ClientNotificationBell() {
   }, []);
 
   useEffect(() => {
-    void refreshUnread();
-    const interval = window.setInterval(() => {
+    let interval: number | null = null;
+
+    const runIfVisible = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
       void refreshUnread();
-    }, 60_000);
-    return () => window.clearInterval(interval);
+    };
+
+    runIfVisible();
+    interval = window.setInterval(runIfVisible, 60_000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshUnread();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+      }
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [refreshUnread]);
 
   useEffect(() => {

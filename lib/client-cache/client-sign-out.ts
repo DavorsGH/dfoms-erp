@@ -2,7 +2,7 @@
 
 import { purgeAllClientCache } from "@/lib/client-cache/purge";
 
-/** Call before server sign-out to prevent cross-tenant IndexedDB leakage. */
+/** Purge IndexedDB client cache (non-blocking after POST /api/auth/sign-out). */
 export async function purgeClientCacheBeforeSignOut(): Promise<void> {
   await purgeAllClientCache();
 }

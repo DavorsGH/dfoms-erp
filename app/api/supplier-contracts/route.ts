@@ -16,7 +16,7 @@ import {
   SUPPLIER_CONTRACT_LIST_SELECT,
   normalizeSupplierContractListRow,
   validateSupplierContractBody,
-  type SupplierContractListRow,
+  type SupplierContractListDbRow,
   type SupplierContractWriteBody,
 } from "@/utils/supplier-contracts-types";
 import { createClient } from "@/utils/supabase/server";
@@ -57,7 +57,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    contracts: ((data as SupplierContractListRow[] | null) ?? []).map(
+    contracts: ((data as SupplierContractListDbRow[] | null) ?? []).map(
       normalizeSupplierContractListRow,
     ),
   });

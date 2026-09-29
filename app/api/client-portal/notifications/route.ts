@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
 import { getClientPortalSession } from "@/utils/client-portal-auth";
 import {
   CLIENT_NOTIFICATION_SELECT,
@@ -7,17 +6,26 @@ import {
   type ClientNotificationRow,
 } from "@/utils/client-notifications-types";
 import { createClient } from "@/utils/supabase/server";
+import { jsonWithRouteTiming } from "@/utils/route-timing-headers";
+import { isNotificationBadgeApiRequest } from "@/lib/notification-badge-api";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 
 export async function GET(request: Request) {
+  const routeStartedAt = Date.now();
   const session = await getClientPortalSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonWithRouteTiming({ error: "Unauthorized" }, routeStartedAt, {
+      status: 401,
+    });
   }
 
   const { searchParams } = new URL(request.url);
+  const isBadgePoll = isNotificationBadgeApiRequest(
+    new URL(request.url).pathname,
+    searchParams,
+  );
   const rawLimit = Number(searchParams.get("limit") ?? DEFAULT_LIMIT);
   const limit = Math.min(
     MAX_LIMIT,
@@ -29,6 +37,35 @@ export async function GET(request: Request) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  const unreadQuery = supabase
+    .from("client_notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", session.tenantId)
+    .eq("recipient_user_id", session.authUserId)
+    .eq("client_id", session.clientId)
+    .is("read_at", null);
+
+  if (isBadgePoll) {
+    const unreadResult = await unreadQuery;
+    if (unreadResult.error) {
+      return jsonWithRouteTiming(
+        { error: unreadResult.error.message },
+        routeStartedAt,
+        { status: 500 },
+      );
+    }
+    return jsonWithRouteTiming(
+      {
+        notifications: [],
+        unreadCount: unreadResult.count ?? 0,
+        hasMore: false,
+        limit,
+        offset,
+      },
+      routeStartedAt,
+    );
+  }
+
   const [listResult, unreadResult] = await Promise.all([
     supabase
       .from("client_notifications")
@@ -38,21 +75,20 @@ export async function GET(request: Request) {
       .eq("client_id", session.clientId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1),
-    supabase
-      .from("client_notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", session.tenantId)
-      .eq("recipient_user_id", session.authUserId)
-      .eq("client_id", session.clientId)
-      .is("read_at", null),
+    unreadQuery,
   ]);
 
   if (listResult.error) {
-    return NextResponse.json({ error: listResult.error.message }, { status: 500 });
+    return jsonWithRouteTiming(
+      { error: listResult.error.message },
+      routeStartedAt,
+      { status: 500 },
+    );
   }
   if (unreadResult.error) {
-    return NextResponse.json(
+    return jsonWithRouteTiming(
       { error: unreadResult.error.message },
+      routeStartedAt,
       { status: 500 },
     );
   }
@@ -61,11 +97,14 @@ export async function GET(request: Request) {
     (listResult.data as ClientNotificationRow[] | null) ?? []
   ).map(normalizeClientNotificationRow);
 
-  return NextResponse.json({
-    notifications,
-    unreadCount: unreadResult.count ?? 0,
-    hasMore: notifications.length === limit,
-    limit,
-    offset,
-  });
+  return jsonWithRouteTiming(
+    {
+      notifications,
+      unreadCount: unreadResult.count ?? 0,
+      hasMore: notifications.length === limit,
+      limit,
+      offset,
+    },
+    routeStartedAt,
+  );
 }

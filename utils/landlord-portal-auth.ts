@@ -45,6 +45,7 @@ import {
 } from "@/app/dashboard/real-estate/complaints-utils";
 import { isTerminationRequestStatus } from "@/app/dashboard/real-estate/leases-utils";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
+import { readTrustedMiddlewareAuthContext } from "@/utils/trusted-middleware-auth";
 import {
   buildLandlordPortalFinancialSummary,
   type LandlordPortalFinancialSummaryViewModel,
@@ -302,6 +303,23 @@ export async function fetchLandlordPortalNotificationContacts(
  */
 export const getLandlordPortalSession = cache(
   async (): Promise<LandlordPortalSession | null> => {
+  const trusted = await readTrustedMiddlewareAuthContext();
+  if (
+    trusted &&
+    trusted.portal === "landlord" &&
+    trusted.tenantId
+  ) {
+    return {
+      authUserId: trusted.authUid,
+      email: trusted.email,
+      tenantId: trusted.tenantId,
+      fullName: "Landlord",
+      logoUrl: null,
+      landlordType: null,
+      approvalStatus: null,
+    };
+  }
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const {

@@ -46,22 +46,20 @@ function CloseIcon() {
 function useSidebarExpandableSection(isActive: boolean) {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const isExpanded = isActive || isOpen;
 
   useEffect(() => {
-    if (!isActive) {
+    if (isActive) {
+      setIsOpen(true);
+    } else {
       setIsOpen(false);
     }
   }, [pathname, isActive]);
 
   function handleToggle() {
-    if (isActive) {
-      return;
-    }
     setIsOpen((current) => !current);
   }
 
-  return { isExpanded, handleToggle };
+  return { isExpanded: isOpen, handleToggle };
 }
 
 type ExpandableSectionProps = {

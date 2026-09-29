@@ -10,6 +10,8 @@ export type MiddlewareAuthContext = {
   role: string | null;
   employeeId: string | null;
   clientId: string | null;
+  /** Tenant portal lessee scope (badge / portal APIs). */
+  lesseeId?: string | null;
   activeBusinessUnitId: string | null;
   /** Aggregate All Businesses view (not a stamp target). */
   viewAllBusinessUnits: boolean;

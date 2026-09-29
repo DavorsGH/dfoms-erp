@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
 import { getPortalLesseeSession } from "@/utils/lessee-portal-auth";
 import {
   LESSEE_NOTIFICATION_SELECT,
@@ -9,6 +8,7 @@ import {
   type LesseeNotificationRow,
 } from "@/utils/lessee-notifications-types";
 import { createClient } from "@/utils/supabase/server";
+import { jsonWithRouteTiming } from "@/utils/route-timing-headers";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -19,9 +19,12 @@ function isCountOnlyRequest(searchParams: URLSearchParams): boolean {
 }
 
 export async function GET(request: Request) {
+  const routeStartedAt = Date.now();
   const session = await getPortalLesseeSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonWithRouteTiming({ error: "Unauthorized" }, routeStartedAt, {
+      status: 401,
+    });
   }
 
   const { searchParams } = new URL(request.url);
@@ -41,11 +44,18 @@ export async function GET(request: Request) {
   if (countOnly) {
     const unreadResult = await unreadQuery;
     if (unreadResult.error) {
-      return NextResponse.json({ error: unreadResult.error.message }, { status: 500 });
+      return jsonWithRouteTiming(
+        { error: unreadResult.error.message },
+        routeStartedAt,
+        { status: 500 },
+      );
     }
-    return NextResponse.json({
-      unreadCount: unreadResult.count ?? 0,
-    });
+    return jsonWithRouteTiming(
+      {
+        unreadCount: unreadResult.count ?? 0,
+      },
+      routeStartedAt,
+    );
   }
 
   const rawLimit = Number(searchParams.get("limit") ?? DEFAULT_LIMIT);
@@ -93,23 +103,32 @@ export async function GET(request: Request) {
   ]);
 
   if (unreadResult.error) {
-    return NextResponse.json({ error: unreadResult.error.message }, { status: 500 });
+    return jsonWithRouteTiming(
+      { error: unreadResult.error.message },
+      routeStartedAt,
+      { status: 500 },
+    );
   }
 
   const { listData, listError } = listOutcome;
   if (listError) {
-    return NextResponse.json({ error: listError.message }, { status: 500 });
+    return jsonWithRouteTiming({ error: listError.message }, routeStartedAt, {
+      status: 500,
+    });
   }
 
   const notifications = (
     (listData as LesseeNotificationRow[] | null) ?? []
   ).map(normalizeLesseeNotificationRow);
 
-  return NextResponse.json({
-    notifications,
-    unreadCount: unreadResult.count ?? 0,
-    hasMore: notifications.length === limit,
-    limit,
-    offset,
-  });
+  return jsonWithRouteTiming(
+    {
+      notifications,
+      unreadCount: unreadResult.count ?? 0,
+      hasMore: notifications.length === limit,
+      limit,
+      offset,
+    },
+    routeStartedAt,
+  );
 }

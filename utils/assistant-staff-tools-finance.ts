@@ -54,7 +54,7 @@ import {
   normalizeSupplierContractListRow,
   resolveMonthlyAmountForBillingMonth,
   type SupplierContractAmendmentRow,
-  type SupplierContractListRow,
+  type SupplierContractListDbRow,
 } from "@/utils/supplier-contracts-types";
 import {
   LIST_LIMIT,
@@ -447,7 +447,7 @@ export async function getSupplierContractsStatus(): Promise<unknown> {
       return { error: STAFF_DATA_UNAVAILABLE_MESSAGE };
     }
 
-    const contracts = ((data ?? []) as SupplierContractListRow[]).map(
+    const contracts = ((data ?? []) as SupplierContractListDbRow[]).map(
       normalizeSupplierContractListRow,
     );
 

@@ -2,6 +2,28 @@ import { CLIENT_CACHE_PURGE_MESSAGE } from "@/lib/client-cache/constants";
 import { deleteClientCacheDatabase } from "@/lib/client-cache/idb-store";
 import { clearRememberedClientCacheSession } from "@/lib/client-cache/session-context";
 
+const SERVICE_WORKER_READY_TIMEOUT_MS = 2_000;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 /** Purge all IndexedDB client cache entries (main thread). */
 export async function purgeClientCacheMainThread(): Promise<void> {
   await deleteClientCacheDatabase();
@@ -15,7 +37,13 @@ export async function requestServiceWorkerCachePurge(): Promise<void> {
   }
 
   try {
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await withTimeout(
+      navigator.serviceWorker.ready,
+      SERVICE_WORKER_READY_TIMEOUT_MS,
+    );
+    if (!registration) {
+      return;
+    }
     registration.active?.postMessage({ type: CLIENT_CACHE_PURGE_MESSAGE });
   } catch {
     // Non-fatal — main-thread purge already ran.

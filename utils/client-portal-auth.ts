@@ -6,6 +6,7 @@ import {
   getCurrentUserRole,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
+import { readTrustedMiddlewareAuthContext } from "@/utils/trusted-middleware-auth";
 
 export type ClientPortalSession = {
   tenantId: string;
@@ -14,6 +15,21 @@ export type ClientPortalSession = {
 };
 
 export async function getClientPortalSession(): Promise<ClientPortalSession | null> {
+  const trusted = await readTrustedMiddlewareAuthContext();
+  if (
+    trusted &&
+    trusted.isActive !== false &&
+    trusted.role === "client" &&
+    trusted.clientId &&
+    trusted.tenantId
+  ) {
+    return {
+      tenantId: trusted.tenantId.trim(),
+      clientId: trusted.clientId.trim(),
+      authUserId: trusted.authUid,
+    };
+  }
+
   const auth = await requireAuthenticated();
   if (!auth.ok || !auth.userId) {
     return null;

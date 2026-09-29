@@ -11,6 +11,7 @@ import { composePropertyStreetAddress } from "@/app/dashboard/real-estate/leases
 import { normalizePhotoUrls } from "@/app/dashboard/real-estate/properties-utils";
 import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
 import { isAuthUserBanned } from "@/utils/lessee-portal-account-management";
+import { readTrustedMiddlewareAuthContext } from "@/utils/trusted-middleware-auth";
 import {
   fetchPortalPaymentHistory,
   fetchRentPaymentReceipt,
@@ -102,8 +103,45 @@ export type PortalDashboardData = {
  * Resolves the signed-in Supabase user to a lessees row via auth_user_id.
  * Portal auth is separate from user_accounts / staff RBAC.
  */
+async function lesseeSessionFromTrustedContext(): Promise<PortalLesseeSession | null> {
+  const trusted = await readTrustedMiddlewareAuthContext();
+  if (
+    !trusted ||
+    trusted.portal !== "lessee" ||
+    !trusted.lesseeId ||
+    !trusted.tenantId
+  ) {
+    return null;
+  }
+
+  const admin = createAdminClient();
+  const { data: authUserData } = await admin.auth.admin.getUserById(
+    trusted.authUid,
+  );
+  const bannedUntil =
+    (authUserData?.user as { banned_until?: string | null } | undefined)
+      ?.banned_until ?? null;
+  if (isAuthUserBanned(bannedUntil)) {
+    return null;
+  }
+
+  return {
+    authUserId: trusted.authUid,
+    email: trusted.email,
+    tenantId: trusted.tenantId,
+    lesseeId: trusted.lesseeId,
+    fullName: "",
+    photoUrl: null,
+  };
+}
+
 export const getPortalLesseeSession = cache(
   async (): Promise<PortalLesseeSession | null> => {
+  const fromTrusted = await lesseeSessionFromTrustedContext();
+  if (fromTrusted) {
+    return fromTrusted;
+  }
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
   const {

@@ -15,6 +15,14 @@ import {
   type MiddlewareAccountRow,
 } from "@/lib/middleware-persona";
 import { resolveMiddlewareAuthUser } from "@/lib/auth/middleware-resolve-user";
+import {
+  buildBadgeAuthContextPayload,
+  signBadgeAuthContext,
+} from "@/lib/middleware-badge-auth-context";
+import {
+  DFOMS_MW_TIMING_HEADER,
+  isNotificationBadgeApiRequest,
+} from "@/lib/notification-badge-api";
 import { createPerfProbe, isPerfProbeEnabled } from "@/utils/perf-probe";
 import { PRODUCTION_PORTAL_SITE_URL } from "@/utils/public-site-url";
 
@@ -62,7 +70,7 @@ const ACCOUNT_SETTINGS_ALIASES: Record<string, string> = {
     "/landlord-portal/account/mfa",
 };
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (process.env.LEGACY_DOMAIN_REDIRECT === "on" && !pathname.startsWith("/api/")) {
@@ -546,7 +554,27 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
 
-  if (
+  const badgeApiRequest = isNotificationBadgeApiRequest(
+    pathname,
+    request.nextUrl.searchParams,
+  );
+
+  if (user && badgeApiRequest) {
+    const badgePayload = await buildBadgeAuthContextPayload({
+      supabase,
+      user,
+      pathname,
+      searchParams: request.nextUrl.searchParams,
+      accountRow,
+      onDbCall: (count = 1) => perf.countDb(count),
+    });
+    if (badgePayload) {
+      const signedBadge = await signBadgeAuthContext(badgePayload);
+      if (signedBadge) {
+        requestHeaders.set(AUTH_CONTEXT_HEADER, signedBadge);
+      }
+    }
+  } else if (
     user &&
     accountRow &&
     accountRow.is_active !== false &&
@@ -591,6 +619,13 @@ export async function middleware(request: NextRequest) {
     "private, no-store, no-cache, must-revalidate",
   );
 
+  if (badgeApiRequest) {
+    nextResponse.headers.set(
+      DFOMS_MW_TIMING_HEADER,
+      String(perf.elapsedMs()),
+    );
+  }
+
   if (isPerfProbeEnabled()) {
     for (const [key, value] of Object.entries(perf.toHeaderValues())) {
       nextResponse.headers.set(key, value);
@@ -615,4 +650,6 @@ export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
+  /** Run proxy in Stockholm (same metro as Supabase eu-north-1 / Vercel arn1). */
+  regions: ["arn1"],
 };
