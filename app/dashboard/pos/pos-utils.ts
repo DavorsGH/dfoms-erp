@@ -32,6 +32,13 @@ export type PosCheckoutInput = {
 export type PosCheckoutRunSummary = {
   invoiceNo: string | null;
   incomeIds: string[];
+  creditApplied?: number;
+  cashRecorded?: number;
+  cashTendered?: number;
+  changeDue?: number;
+  creditNoteId?: string | null;
+  creditNoteNumber?: string | null;
+  creditRemainingBalance?: number;
 };
 
 export const POS_PAYMENT_STATUS_OPTIONS = ["Pending", "Partial", "Paid", "Overdue"] as const;
@@ -107,7 +114,95 @@ export function buildPosCartLinesFromQuote(
     });
   }
 
-  return lines;
+  return mergePosCartLines(lines);
+}
+
+export function cartUnitPricesMatch(a: number, b: number): boolean {
+  return Math.abs(roundMoney(a) - roundMoney(b)) < 0.0001;
+}
+
+export function mergePosCartLines(lines: PosCartLine[]): PosCartLine[] {
+  const merged: PosCartLine[] = [];
+  for (const line of lines) {
+    const index = merged.findIndex(
+      (entry) =>
+        entry.productId === line.productId &&
+        cartUnitPricesMatch(entry.unitPrice, line.unitPrice),
+    );
+    if (index >= 0) {
+      const existing = merged[index]!;
+      merged[index] = {
+        ...existing,
+        quantity: roundMoney(existing.quantity + line.quantity),
+      };
+    } else {
+      merged.push({ ...line });
+    }
+  }
+  return merged;
+}
+
+export type AddProductToPosCartResult =
+  | { ok: true; lines: PosCartLine[] }
+  | { ok: false; error: string };
+
+export function tryAddProductToPosCart(
+  current: PosCartLine[],
+  product: FinishedProductRecord,
+  quantityToAdd: number,
+  unitPrice?: number,
+  createLineId: () => string = () => crypto.randomUUID(),
+): AddProductToPosCartResult {
+  const price = roundMoney(unitPrice ?? product.standard_selling_price ?? 0);
+  const qty = quantityToAdd;
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return { ok: false, error: "Invalid quantity." };
+  }
+
+  const matchIndex = current.findIndex(
+    (line) =>
+      line.productId === product.id && cartUnitPricesMatch(line.unitPrice, price),
+  );
+
+  if (matchIndex >= 0) {
+    const existing = current[matchIndex]!;
+    const nextQty = roundMoney(existing.quantity + qty);
+    const available = getAvailableStockForProduct(product, current, existing.id);
+    if (nextQty > available + 0.0001) {
+      return {
+        ok: false,
+        error: `Only ${formatInventoryQuantity(available)} ${product.unit_of_measure} of ${product.product_name} available (including items already in cart).`,
+      };
+    }
+    const lines = [...current];
+    lines[matchIndex] = { ...existing, quantity: nextQty };
+    return { ok: true, lines };
+  }
+
+  const available = getAvailableStockForProduct(product, current);
+  if (qty > available + 0.0001) {
+    return {
+      ok: false,
+      error: `No stock available for ${product.product_name}. Current stock: ${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure}.`,
+    };
+  }
+
+  return {
+    ok: true,
+    lines: [
+      ...current,
+      {
+        id: createLineId(),
+        productId: product.id,
+        productCode: product.product_code,
+        productName: product.product_name,
+        unitOfMeasure: product.unit_of_measure,
+        quantity: qty,
+        unitPrice: price,
+        availableStock: product.current_stock,
+      },
+    ],
+  };
 }
 
 export function cartQuantityForProduct(
@@ -215,6 +310,57 @@ export function buildCheckoutPosCartLinesPayload(cartLines: PosCartLine[]) {
 /** True when checkout_pos_cart failed on a specific cart line (atomic rollback). */
 export function isPosCheckoutLineFailureMessage(message: string): boolean {
   return /^Checkout failed on line \d+ of \d+ /i.test(message.trim());
+}
+
+export type PosCheckoutWithStoreCreditInput = PosCheckoutInput & {
+  creditNoteId: string;
+  creditApplyAmount: number;
+  /** Physical cash tendered (may exceed cash due; change returned by RPC). */
+  cashTendered: number;
+};
+
+export async function runPosCheckoutWithStoreCredit(
+  supabase: SupabaseClient,
+  input: PosCheckoutWithStoreCreditInput,
+): Promise<PosCheckoutRunSummary> {
+  const { data, error } = await supabase.rpc("pos_checkout_with_store_credit", {
+    p_tenant_id: input.tenantId,
+    p_business_unit_id: input.businessUnitId ?? null,
+    p_sale_date: input.saleDate,
+    p_invoice_no: null,
+    p_client_id: input.clientId,
+    p_customer_name: input.clientId ? null : input.customerName,
+    p_payment_status: input.paymentStatus,
+    p_due_date: input.dueDate,
+    p_notes: input.notes,
+    p_payment_method: input.paymentMethod,
+    p_sales_rep_id: input.salesRepId?.trim() || null,
+    p_amount_received: input.cashTendered,
+    p_lines: buildCheckoutPosCartLinesPayload(input.cartLines),
+    p_payment_request_id: null,
+    p_paid_amount: null,
+    p_paystack_reference: null,
+    p_paid_at: null,
+    p_credit_note_id: input.creditNoteId,
+    p_credit_apply_amount: input.creditApplyAmount,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const result = data as Record<string, unknown> | null;
+  return {
+    invoiceNo: String(result?.invoice_no ?? "").trim() || null,
+    incomeIds: ((result?.income_ids as string[] | null) ?? []).filter(Boolean),
+    creditApplied: Number(result?.credit_applied) || 0,
+    cashRecorded: Number(result?.cash_recorded) || 0,
+    cashTendered: Number(result?.cash_tendered) || 0,
+    changeDue: Number(result?.change_due) || 0,
+    creditNoteId: String(result?.credit_note_id ?? input.creditNoteId),
+    creditNoteNumber: String(result?.credit_note_number ?? "").trim() || null,
+    creditRemainingBalance: Number(result?.credit_remaining_balance) || 0,
+  };
 }
 
 export async function runPosCheckout(

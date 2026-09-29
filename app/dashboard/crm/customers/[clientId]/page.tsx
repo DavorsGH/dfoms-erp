@@ -33,6 +33,7 @@ import {
   CUSTOMER_360_QUOTATION_SELECT,
   CUSTOMER_360_SERVICE_CONTRACT_SELECT,
   CUSTOMER_360_QUOTE_SELECT,
+  CUSTOMER_360_STORE_CREDIT_NOTE_SELECT,
   normalizeCustomer360Invoice,
   normalizeCustomer360Opportunity,
   normalizeCustomer360ProductSale,
@@ -49,6 +50,7 @@ import {
   type Customer360Quotation,
   type Customer360Quote,
   type Customer360ServiceContract,
+  type Customer360StoreCreditNote,
 } from "../customer-360-utils";
 import type { CustomerEntry } from "../customers-utils";
 import { computeCustomerStoreCreditBalance } from "../../../finance/credit-notes-utils";
@@ -174,8 +176,10 @@ export default async function CustomerDetailPage({
   const { data: storeCreditNotes } = await applyBusinessUnitScope(
     supabase
       .from("credit_notes")
-      .select("return_mode, total_amount, refunded_amount, applied_amount")
-      .eq("client_id", clientId),
+      .select(CUSTOMER_360_STORE_CREDIT_NOTE_SELECT)
+      .eq("client_id", clientId)
+      .in("return_mode", ["store_credit", "exchange_hold"])
+      .order("credit_note_date", { ascending: false }),
     buScope,
   );
   const storeCreditBalance = computeCustomerStoreCreditBalance(
@@ -253,6 +257,9 @@ export default async function CustomerDetailPage({
         }
         productSales={normalizedProductSales}
         storeCreditBalance={storeCreditBalance}
+        storeCreditNotes={
+          (storeCreditNotes ?? []) as Customer360StoreCreditNote[]
+        }
         creditAppliedToProductSales={creditAppliedToProductSales}
         activities={
           ((activities as SalesActivity[] | null) ?? []).map((row) =>

@@ -47,18 +47,32 @@ import { buildCustomerBalancesPayload } from "@/lib/client-cache/pos-cache-mappe
 import { LOYALTY_ACCOUNT_SELECT } from "@/utils/loyalty-types";
 
 type PosPageProps = {
-  searchParams: Promise<{ quoteId?: string | string[] }>;
+  searchParams: Promise<{
+    quoteId?: string | string[];
+    creditNoteId?: string | string[];
+    loadLines?: string | string[];
+  }>;
 };
+
+function firstSearchParam(
+  value: string | string[] | undefined,
+): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    return value[0]?.trim() ?? "";
+  }
+  return "";
+}
 
 export default async function PosPage({ searchParams }: PosPageProps) {
   const params = await searchParams;
-  const quoteIdParam = params.quoteId;
-  const quoteId =
-    typeof quoteIdParam === "string"
-      ? quoteIdParam.trim()
-      : Array.isArray(quoteIdParam)
-        ? quoteIdParam[0]?.trim() ?? ""
-        : "";
+  const quoteId = firstSearchParam(params.quoteId);
+  const creditNoteId = firstSearchParam(params.creditNoteId);
+  const loadCreditNoteLines =
+    firstSearchParam(params.loadLines) === "1" ||
+    firstSearchParam(params.loadLines).toLowerCase() === "true";
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -254,6 +268,8 @@ export default async function PosPage({ searchParams }: PosPageProps) {
       initialCartLines={quoteCartLines}
       initialClientId={quote?.client_id ?? ""}
       initialNotes={quote?.notes ?? ""}
+      initialCreditNoteId={creditNoteId}
+      initialLoadCreditNoteLines={loadCreditNoteLines}
       fetchError={fetchError}
       initialCachedAt={new Date().toISOString()}
       activeBusinessUnitId={activeBusinessUnitId}

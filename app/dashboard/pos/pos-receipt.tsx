@@ -6,7 +6,7 @@ import {
   formatReportDate,
 } from "../reports/report-ui";
 import { formatGHS } from "../finance/income-register-utils";
-import { reversalActionButtonClassName } from "../finance/register-row-actions";
+import DashboardButton from "@/components/dashboard-button";
 import type { PosCartLine } from "./pos-utils";
 import { POS_PRINT_AREA_ID, lineSubtotal } from "./pos-utils";
 
@@ -22,6 +22,12 @@ export type PosReceiptData = {
   /** Cash-only: physical tender and change (display only, not ledger). */
   amountTendered?: number | null;
   changeDue?: number | null;
+  /** Store credit checkout (display only). */
+  storeCreditApplied?: number | null;
+  storeCreditNoteNumber?: string | null;
+  storeCreditRemainingBalance?: number | null;
+  /** Subtotal before store credit (same as cart line total). */
+  subtotal?: number | null;
   /** Queued offline cash sale — provisional token, not a tax invoice. */
   pendingSync?: boolean;
 };
@@ -81,32 +87,26 @@ export function PosReceiptPanel({
       <PosReceiptPrintStyles />
 
       <div className="no-print flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={onPrint}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
+        <DashboardButton type="button" variant="secondary" onClick={onPrint}>
           Print Receipt
-        </button>
+        </DashboardButton>
         {onRequestPayment ? (
-          <button
+          <DashboardButton
             type="button"
+            variant="paymentLink"
             onClick={onRequestPayment}
-            className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 transition-colors hover:bg-emerald-100"
           >
             Request Payment
-          </button>
+          </DashboardButton>
         ) : null}
         {onReturn && !receipt.pendingSync ? (
-          <button
+          <DashboardButton
             type="button"
+            variant="warning"
             onClick={onReturn}
-            className={reversalActionButtonClassName}
-          >
-            <span className="inline-flex items-center gap-1.5">
+            icon={
               <svg
                 aria-hidden
-                className="h-4 w-4 shrink-0"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -115,17 +115,18 @@ export function PosReceiptPanel({
                 <path d="M9 14 4 9l5-5" />
                 <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
               </svg>
-              Return
-            </span>
-          </button>
+            }
+          >
+            Return
+          </DashboardButton>
         ) : null}
-        <button
+        <DashboardButton
           type="button"
+          variant="secondary"
           onClick={onClose ?? onNewSale}
-          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
         >
           {onClose ? "Close" : "New Sale"}
-        </button>
+        </DashboardButton>
       </div>
 
       <div
@@ -205,20 +206,50 @@ export function PosReceiptPanel({
 
         <div className="mt-6 space-y-2 border-t border-slate-200 pt-4 text-sm">
           <div className="flex justify-between">
-            <span className="font-medium text-slate-700">Cart total</span>
+            <span className="font-medium text-slate-700">Subtotal</span>
             <span className="font-semibold text-[#0f2744]">
-              {formatGHS(receipt.cartTotal)}
+              {formatGHS(receipt.subtotal ?? receipt.cartTotal)}
             </span>
           </div>
+          {(receipt.storeCreditApplied ?? 0) > 0 ? (
+            <div className="flex justify-between">
+              <span className="font-medium text-slate-700">
+                Store credit applied
+                {receipt.storeCreditNoteNumber
+                  ? ` (${receipt.storeCreditNoteNumber})`
+                  : ""}
+              </span>
+              <span className="font-semibold text-[#0f2744]">
+                {formatGHS(receipt.storeCreditApplied ?? 0)}
+              </span>
+            </div>
+          ) : null}
           <div className="flex justify-between">
             <span className="font-medium text-slate-700">Amount received</span>
             <span className="font-semibold text-[#0f2744]">
               {formatGHS(receipt.amountReceived)}
             </span>
           </div>
-          {receipt.paymentMethod === "Cash" &&
-          receipt.amountTendered != null &&
-          receipt.amountTendered > 0 ? (
+          {receipt.amountTendered != null &&
+          (receipt.amountTendered > 0 ||
+            (receipt.storeCreditApplied ?? 0) > 0) ? (
+            <>
+              <div className="flex justify-between">
+                <span className="font-medium text-slate-700">Cash tendered</span>
+                <span className="font-semibold text-[#0f2744]">
+                  {formatGHS(receipt.amountTendered)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium text-slate-700">Change</span>
+                <span className="font-semibold text-emerald-800">
+                  {formatGHS(receipt.changeDue ?? 0)}
+                </span>
+              </div>
+            </>
+          ) : receipt.paymentMethod === "Cash" &&
+            receipt.amountTendered != null &&
+            receipt.amountTendered > 0 ? (
             <>
               <div className="flex justify-between">
                 <span className="font-medium text-slate-700">Amount Tendered</span>
@@ -233,6 +264,17 @@ export function PosReceiptPanel({
                 </span>
               </div>
             </>
+          ) : null}
+          {receipt.storeCreditNoteNumber &&
+          receipt.storeCreditRemainingBalance != null ? (
+            <div className="flex justify-between border-t border-slate-100 pt-2">
+              <span className="font-medium text-slate-700">
+                Credit remaining on {receipt.storeCreditNoteNumber}
+              </span>
+              <span className="font-semibold text-[#0f2744]">
+                {formatGHS(receipt.storeCreditRemainingBalance)}
+              </span>
+            </div>
           ) : null}
         </div>
       </div>

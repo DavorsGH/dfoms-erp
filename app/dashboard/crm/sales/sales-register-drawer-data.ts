@@ -13,6 +13,7 @@ import {
   formatCreditNoteOutcomeLabel,
   type ReturnRefundSummary,
 } from "./sales-register-return-display";
+import { formatCreditNoteUsageStatus } from "../../finance/credit-note-display-utils";
 
 export type SalesRegisterDrawerPayment = {
   key: string;
@@ -35,6 +36,7 @@ export type SalesRegisterDrawerReturn = {
   totalAmount: number;
   refundedAmount: number;
   appliedAmount: number;
+  usageStatus: string;
   refundMethod: string | null;
   lines: SalesRegisterDrawerReturnLine[];
 };
@@ -223,6 +225,11 @@ function mapCreditNoteToDrawerReturn(
     totalAmount: Number(note.total_amount) || 0,
     refundedAmount: Number(note.refunded_amount) || 0,
     appliedAmount: Number(note.applied_amount) || 0,
+    usageStatus: formatCreditNoteUsageStatus({
+      total_amount: Number(note.total_amount) || 0,
+      refunded_amount: Number(note.refunded_amount) || 0,
+      applied_amount: Number(note.applied_amount) || 0,
+    }),
     refundMethod: refunds[0]?.method?.trim() || null,
     lines: lineItems,
   };

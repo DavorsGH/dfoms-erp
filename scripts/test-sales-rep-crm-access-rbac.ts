@@ -10,9 +10,13 @@ import {
   CRM_QUOTATIONS_EDIT_ROLES,
   CRM_SECTION_ROLES,
   CRM_SALES_REP_NAV_HREFS,
+  CREDIT_NOTES_PAGE_ROLES,
+  CREDIT_NOTES_RECORD_REFUND_ROLES,
   INVENTORY_SECTION_ROLES,
   POS_SECTION_ROLES,
+  canAccessCreditNotesPage,
   canAccessCrmSection,
+  canRecordCreditNoteRefund,
   canAccessInventorySection,
   canAccessPosSection,
   getAccessibleReportCategoryIds,
@@ -62,6 +66,7 @@ const allowedPaths = [
   "/dashboard/crm/customers/abc",
   "/dashboard/crm/product-sales",
   "/dashboard/crm/sales",
+  "/dashboard/crm/credit-notes",
 ];
 for (const path of allowedPaths) {
   expect(isCrmPathAllowedForSalesRep(path), `allowed prefix list: ${path}`);
@@ -96,6 +101,27 @@ expect(
 expect(
   isCrmNavItemVisibleForRole("/dashboard/crm/sales", "sales_rep"),
   "Sales register nav visible",
+);
+expect(
+  isCrmNavItemVisibleForRole("/dashboard/crm/credit-notes", "sales_rep"),
+  "Credit Notes nav visible",
+);
+expect(canAccessCreditNotesPage("sales_rep"), "sales_rep can open Credit Notes page");
+expect(
+  !canRecordCreditNoteRefund("sales_rep"),
+  "sales_rep cannot record refunds on credit notes",
+);
+expect(
+  canRecordCreditNoteRefund("finance"),
+  "finance retains record refund",
+);
+expect(
+  CREDIT_NOTES_PAGE_ROLES.includes("sales_rep"),
+  "sales_rep in CREDIT_NOTES_PAGE_ROLES",
+);
+expect(
+  !CREDIT_NOTES_RECORD_REFUND_ROLES.includes("sales_rep"),
+  "sales_rep excluded from refund roles",
 );
 
 /** Regression: layout guard must not depend on x-pathname (often empty on RSC fetches). */

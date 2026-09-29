@@ -9,6 +9,7 @@ const navItems = [
   { label: "Customer List", href: "/dashboard/crm/customers" },
   { label: "POS", href: "/dashboard/pos" },
   { label: "Sales", href: "/dashboard/crm/sales" },
+  { label: "Credit Notes", href: "/dashboard/crm/credit-notes" },
   { label: "Quotations", href: "/dashboard/sales-crm/quotations" },
   { label: "Sales Pipeline", href: "/dashboard/crm/sales-pipeline" },
   {

@@ -15,6 +15,7 @@ export type ProductSaleCreditNoteRelation = {
   return_mode?: string | null;
   status?: string | null;
   refunded_amount?: number | null;
+  applied_amount?: number | null;
   total_amount?: number | null;
   credit_note_date?: string | null;
 };
@@ -52,7 +53,7 @@ export type ProductSaleEntry = {
 };
 
 export const PRODUCT_SALES_SELECT =
-  "*, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price), credit_note:credit_notes!income_register_credit_note_fkey(credit_note_number, return_mode, status, refunded_amount, total_amount, credit_note_date)";
+  "*, client:customers!income_register_client_id_fkey(client_id, client_name), product:finished_products!product_id(product_code, product_name, unit_of_measure, standard_selling_price), credit_note:credit_notes!income_register_credit_note_fkey(credit_note_number, return_mode, status, refunded_amount, applied_amount, total_amount, credit_note_date)";
 
 export function normalizeProductSaleEntry(raw: ProductSaleEntry): ProductSaleEntry {
   const product = Array.isArray(raw.product)

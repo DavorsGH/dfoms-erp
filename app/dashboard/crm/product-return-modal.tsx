@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
+import { buildPosStoreCreditCheckoutUrl } from "@/app/dashboard/pos/pos-store-credit-utils";
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
 import { formatInventoryQuantity } from "@/app/dashboard/inventory/inventory-utils";
 import { useBusinessUnitView } from "@/app/dashboard/business-unit-view-context";
@@ -27,6 +29,7 @@ type ProductReturnModalProps = {
   paymentMethods: string[];
   onClose: () => void;
   onSuccess: (result: {
+    creditNoteId: string | null;
     creditNoteNumber: string;
     outcome: ProductReturnOutcome;
     refundMethod?: string;
@@ -62,6 +65,7 @@ export default function ProductReturnModal({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<{
+    creditNoteId: string | null;
     creditNoteNumber: string;
     outcome: ProductReturnOutcome;
     refundMethod?: string;
@@ -233,6 +237,7 @@ export default function ProductReturnModal({
       data?.credit_note_number?.trim() || "Credit note issued";
 
     const successPayload = {
+      creditNoteId: data?.credit_note_id?.trim() || null,
       creditNoteNumber,
       outcome,
       refundMethod: outcome === "refund_now" ? refundMethod.trim() : undefined,
@@ -540,6 +545,7 @@ function ReturnSuccessPanel({
   onClose,
 }: {
   success: {
+    creditNoteId: string | null;
     creditNoteNumber: string;
     outcome: ProductReturnOutcome;
     refundMethod?: string;
@@ -585,13 +591,38 @@ function ReturnSuccessPanel({
           </div>
         ) : null}
       </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c]"
-      >
-        Done
-      </button>
+      <div className="flex flex-wrap gap-3">
+        {success.creditNoteId &&
+        (success.outcome === "store_credit" ||
+          success.outcome === "exchange_hold") ? (
+          <>
+            <Link
+              href={buildPosStoreCreditCheckoutUrl({
+                creditNoteId: success.creditNoteId,
+              })}
+              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c]"
+            >
+              Continue to POS
+            </Link>
+            <Link
+              href={buildPosStoreCreditCheckoutUrl({
+                creditNoteId: success.creditNoteId,
+                loadLines: true,
+              })}
+              className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50"
+            >
+              Load returned items into cart
+            </Link>
+          </>
+        ) : null}
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Done
+        </button>
+      </div>
     </div>
   );
 }

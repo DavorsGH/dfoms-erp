@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import DashboardButton from "@/components/dashboard-button";
 import PromoCodeField from "@/components/promo-code-field";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import SalesRepSelect from "@/components/sales-rep-select";
@@ -38,12 +39,6 @@ import {
 } from "../inventory/inventory-utils";
 import type { ClientEntry } from "../operations/clients-utils";
 import { formatGHS } from "../finance/income-register-utils";
-import { getStripedRowClassName } from "../finance/register-row-actions";
-import ScrollableTable, {
-  scrollableTableClassName,
-  scrollableTableHeadClassName,
-  scrollableTableThClassName,
-} from "../scrollable-table";
 import {
   POS_CHECKOUT_PAYMENT_METHODS,
   POS_CUSTOMER_OTHER_VALUE,
@@ -52,15 +47,29 @@ import {
   effectiveCartTotal,
   getAvailableStockForProduct,
   getCustomerDisplayName,
-  lineSubtotal,
   resolvePosCustomerDisplayLabel,
   resolvePosCustomerSelection,
   isPosCheckoutLineFailureMessage,
   roundMoney,
   runPosCheckout,
+  runPosCheckoutWithStoreCredit,
+  tryAddProductToPosCart,
   type PosCartLine,
   type PosCheckoutRunSummary,
 } from "./pos-utils";
+
+const STORE_CREDIT_URL_BOOTSTRAP_TIMEOUT_MS = 25_000;
+import {
+  STORE_CREDIT_MOMO_BLOCK_MESSAGE,
+  STORE_CREDIT_OFFLINE_BLOCK_MESSAGE,
+  fetchAvailableCreditNotesForPos,
+  fetchCreditNoteCartLines,
+  lookupCreditNoteByNumberForPos,
+  posIncomePaymentMethodLabel,
+  readPosStoreCreditUrlParams,
+  resolveCreditNoteForPosCheckout,
+  type PosSelectedStoreCredit,
+} from "./pos-store-credit-utils";
 import { PosReceiptPanel, type PosReceiptData } from "./pos-receipt";
 import ProductReturnModal from "../crm/product-return-modal";
 import RequestPaymentModal from "./request-payment-modal";
@@ -85,7 +94,26 @@ import type { PosCashSaleQueuePayload } from "@/lib/offline-write-queue/types";
 import {
   useStampBusinessUnitId,
   useBusinessUnitReadScope,
+  useBusinessUnitView,
 } from "@/app/dashboard/business-unit-view-context";
+import { STAMP_REFUSED_VIEW_ALL_MESSAGE } from "@/utils/business-unit-view";
+import { SALES_REGISTER_VIEW_ONLY_TOOLTIP } from "../crm/sales/sales-register-drawer-data";
+import PosCartLines from "./pos-cart-lines";
+import PosHeldCartsPanel, {
+  PosHoldLabelDialog,
+  PosRecallWarningsDialog,
+} from "./pos-held-carts-panel";
+import {
+  buildHeldCartSnapshot,
+  deletePosHeldCart,
+  fetchPosHeldCarts,
+  insertPosHeldCart,
+  POS_HELD_CART_OFFLINE_MESSAGE,
+  revalidateRecalledStoreCredit,
+  validatePosHeldCartRecall,
+  type PosHeldCartRow,
+  type PosRecallValidation,
+} from "./pos-held-cart-utils";
 import {
   loadWriteBusinessUnitContext,
   resolveWriteBusinessUnitIdForCreate,
@@ -129,6 +157,8 @@ type PosCheckoutProps = {
   initialNotes?: string;
   quoteConversionId?: string;
   quoteNumber?: string;
+  initialCreditNoteId?: string;
+  initialLoadCreditNoteLines?: boolean;
   fetchError: string | null;
   /** Persist refreshed stock after an online sale (Phase 3 cache). */
   onStockLevelsChanged?: (
@@ -182,16 +212,25 @@ export default function PosCheckout({
   initialNotes = "",
   quoteConversionId,
   quoteNumber,
+  initialCreditNoteId = "",
+  initialLoadCreditNoteLines = false,
   fetchError,
   onStockLevelsChanged,
   onStockCacheChanged,
   activeBusinessUnitId = null,
   tenantId = null,
 }: PosCheckoutProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const pendingSsrStoreCreditRef = useRef({
+    creditNoteId: initialCreditNoteId.trim(),
+    loadLines: initialLoadCreditNoteLines,
+  });
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
+  const { viewAllBusinessUnits } = useBusinessUnitView();
 
   async function resolveCheckoutBusinessUnitId(): Promise<
     { ok: true; businessUnitId: string | null } | { ok: false; error: string }
@@ -253,8 +292,41 @@ export default function PosCheckout({
   const [loyaltyRedeemInput, setLoyaltyRedeemInput] = useState("");
   const [loyaltyRedeemError, setLoyaltyRedeemError] = useState<string | null>(null);
   const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
+  const [selectedStoreCredit, setSelectedStoreCredit] =
+    useState<PosSelectedStoreCredit | null>(null);
+  const [creditNoteNumberLookup, setCreditNoteNumberLookup] = useState("");
+  const [storeCreditLookupError, setStoreCreditLookupError] = useState<
+    string | null
+  >(null);
+  const [storeCreditPickerNotes, setStoreCreditPickerNotes] = useState<
+    PosSelectedStoreCredit[]
+  >([]);
+  const [storeCreditUrlBootstrapError, setStoreCreditUrlBootstrapError] =
+    useState<string | null>(null);
+  const [storeCreditUrlBootstrapLoading, setStoreCreditUrlBootstrapLoading] =
+    useState(false);
+  const storeCreditBootstrapGenerationRef = useRef(0);
+  const productsRef = useRef(products);
+  productsRef.current = products;
   const [openArBalance, setOpenArBalance] = useState<number | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [heldCartCount, setHeldCartCount] = useState(0);
+  const [heldCartsPanelOpen, setHeldCartsPanelOpen] = useState(false);
+  const [holdLabelDialogOpen, setHoldLabelDialogOpen] = useState(false);
+  const [holdSaving, setHoldSaving] = useState(false);
+  const [recallDialogOpen, setRecallDialogOpen] = useState(false);
+  const [recallBusy, setRecallBusy] = useState(false);
+  const [pendingRecallRow, setPendingRecallRow] = useState<PosHeldCartRow | null>(
+    null,
+  );
+  const [pendingRecallValidation, setPendingRecallValidation] =
+    useState<PosRecallValidation | null>(null);
+  const [recallStoreCreditError, setRecallStoreCreditError] = useState<
+    string | null
+  >(null);
+  const [activeRecalledHeldCartId, setActiveRecalledHeldCartId] = useState<
+    string | null
+  >(null);
   const skipFirstEmployeeScopeRefresh = useRef(true);
   const customerDisplaySessionIdRef = useRef("");
   const customerDisplayBroadcasterRef = useRef<ReturnType<
@@ -283,6 +355,26 @@ export default function PosCheckout({
   useEffect(() => {
     setError(fetchError);
   }, [fetchError]);
+
+  const posHeldCartViewOnly = viewAllBusinessUnits;
+  const posHeldCartViewOnlyTooltip = SALES_REGISTER_VIEW_ONLY_TOOLTIP;
+
+  async function refreshHeldCartCount() {
+    if (!tenantId || isOffline || posHeldCartViewOnly) {
+      setHeldCartCount(0);
+      return;
+    }
+    try {
+      const rows = await fetchPosHeldCarts(supabase, tenantId);
+      setHeldCartCount(rows.length);
+    } catch {
+      setHeldCartCount(0);
+    }
+  }
+
+  useEffect(() => {
+    void refreshHeldCartCount();
+  }, [tenantId, isOffline, posHeldCartViewOnly, buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : ""]);
 
   async function refreshEmployees() {
     if (!tenantId) {
@@ -384,15 +476,47 @@ export default function PosCheckout({
     }
     return roundMoney(value);
   }, [amountTendered]);
+  const storeCreditApplyAmount = useMemo(() => {
+    if (!selectedStoreCredit) {
+      return 0;
+    }
+    return roundMoney(
+      Math.min(selectedStoreCredit.availableBalance, total),
+    );
+  }, [selectedStoreCredit, total]);
+  const cashDueAfterCredit = useMemo(() => {
+    if (!selectedStoreCredit) {
+      return payableTotal;
+    }
+    return roundMoney(Math.max(0, total - storeCreditApplyAmount));
+  }, [selectedStoreCredit, payableTotal, total, storeCreditApplyAmount]);
+  const customerLockedByStoreCredit = Boolean(
+    selectedStoreCredit?.clientId?.trim(),
+  );
+
   const changeDue = useMemo(() => {
     if (!isCash || parsedAmountTendered == null) {
       return null;
     }
-    return roundMoney(Math.max(0, parsedAmountTendered - payableTotal));
-  }, [isCash, parsedAmountTendered, payableTotal]);
+    const cashDue = selectedStoreCredit ? cashDueAfterCredit : payableTotal;
+    const cashRecorded = roundMoney(
+      Math.min(parsedAmountTendered, Math.max(0, cashDue)),
+    );
+    return roundMoney(Math.max(0, parsedAmountTendered - cashRecorded));
+  }, [
+    isCash,
+    parsedAmountTendered,
+    payableTotal,
+    selectedStoreCredit,
+    cashDueAfterCredit,
+  ]);
   const amountTenderBlocked =
     isCash &&
-    (parsedAmountTendered == null || parsedAmountTendered < payableTotal);
+    (selectedStoreCredit
+      ? cashDueAfterCredit > 0 &&
+        (parsedAmountTendered == null ||
+          parsedAmountTendered < cashDueAfterCredit)
+      : parsedAmountTendered == null || parsedAmountTendered < payableTotal);
   const busy = loading || momoWaiting;
 
   const customerDisplayLabel = useMemo(
@@ -539,6 +663,239 @@ export default function PosCheckout({
     };
   }, [clientId, isOffline, initialCustomerBalances]);
 
+  useEffect(() => {
+    const noteClientId = selectedStoreCredit?.clientId?.trim() ?? "";
+    if (!noteClientId) {
+      return;
+    }
+    setClientId(noteClientId);
+    setCustomerName("");
+    const selected = initialClients.find(
+      (client) => client.client_id === noteClientId,
+    );
+    setPayerEmail(selected?.email?.trim() ?? "");
+    setPayerPhone(selected?.phone?.trim() ?? "");
+  }, [selectedStoreCredit?.clientId, initialClients]);
+
+  useEffect(() => {
+    pendingSsrStoreCreditRef.current = {
+      creditNoteId: initialCreditNoteId.trim(),
+      loadLines: initialLoadCreditNoteLines,
+    };
+  }, [initialCreditNoteId, initialLoadCreditNoteLines]);
+
+  useEffect(() => {
+    const fromNext = readPosStoreCreditUrlParams(
+      searchParams.toString() ? `?${searchParams.toString()}` : "",
+    );
+    const fromWindow =
+      typeof window !== "undefined"
+        ? readPosStoreCreditUrlParams(window.location.search)
+        : { creditNoteId: "", loadLines: false };
+
+    let creditNoteId = fromNext.creditNoteId || fromWindow.creditNoteId;
+    let loadCreditLinesFromUrl =
+      fromNext.creditNoteId.length > 0
+        ? fromNext.loadLines
+        : fromWindow.loadLines;
+
+    if (!creditNoteId && pendingSsrStoreCreditRef.current.creditNoteId) {
+      creditNoteId = pendingSsrStoreCreditRef.current.creditNoteId;
+      loadCreditLinesFromUrl = pendingSsrStoreCreditRef.current.loadLines;
+    }
+
+    if (!creditNoteId) {
+      setStoreCreditUrlBootstrapLoading(false);
+      return;
+    }
+
+    if (!tenantId?.trim()) {
+      setStoreCreditUrlBootstrapLoading(true);
+      setStoreCreditUrlBootstrapError(null);
+      return;
+    }
+
+    if (isOffline) {
+      setStoreCreditUrlBootstrapError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
+      setStoreCreditUrlBootstrapLoading(false);
+      return;
+    }
+
+    if (loadCreditLinesFromUrl && productsRef.current.length === 0) {
+      setStoreCreditUrlBootstrapLoading(true);
+      setStoreCreditUrlBootstrapError(null);
+      return;
+    }
+
+    const generation = ++storeCreditBootstrapGenerationRef.current;
+    setStoreCreditUrlBootstrapLoading(true);
+    setStoreCreditUrlBootstrapError(null);
+
+    const timeoutId = window.setTimeout(() => {
+      if (storeCreditBootstrapGenerationRef.current !== generation) {
+        return;
+      }
+      setStoreCreditUrlBootstrapLoading(false);
+      setStoreCreditUrlBootstrapError(
+        "Timed out loading store credit from the link. Check your connection and business unit, then try again from Credit Notes.",
+      );
+      pendingSsrStoreCreditRef.current = { creditNoteId: "", loadLines: false };
+      router.replace("/dashboard/pos", { scroll: false });
+    }, STORE_CREDIT_URL_BOOTSTRAP_TIMEOUT_MS);
+
+    void (async () => {
+      const clearSsrPending = () => {
+        pendingSsrStoreCreditRef.current = { creditNoteId: "", loadLines: false };
+      };
+
+      const finish = () => {
+        window.clearTimeout(timeoutId);
+        if (storeCreditBootstrapGenerationRef.current === generation) {
+          setStoreCreditUrlBootstrapLoading(false);
+        }
+      };
+
+      try {
+        const result = await resolveCreditNoteForPosCheckout(
+          supabase,
+          tenantId,
+          buReadScope,
+          creditNoteId,
+        );
+        if (storeCreditBootstrapGenerationRef.current !== generation) {
+          return;
+        }
+
+        if (!result.ok) {
+          setStoreCreditUrlBootstrapError(result.message);
+          clearSsrPending();
+          router.replace("/dashboard/pos", { scroll: false });
+          return;
+        }
+
+        setSelectedStoreCredit(result.note);
+        setCreditNoteNumberLookup(result.note.creditNoteNumber);
+        setStoreCreditLookupError(null);
+
+        if (loadCreditLinesFromUrl) {
+          const lines = await fetchCreditNoteCartLines(
+            supabase,
+            result.note.id,
+            productsRef.current,
+          );
+          if (storeCreditBootstrapGenerationRef.current !== generation) {
+            return;
+          }
+          if (lines.length > 0) {
+            setCartLines(lines);
+          } else {
+            setStoreCreditUrlBootstrapError(
+              "Could not load cart lines from this credit note (products may be missing or inactive in this business unit).",
+            );
+          }
+        }
+
+        clearSsrPending();
+        router.replace("/dashboard/pos", { scroll: false });
+      } catch (bootstrapError) {
+        if (storeCreditBootstrapGenerationRef.current === generation) {
+          setStoreCreditUrlBootstrapError(
+            bootstrapError instanceof Error
+              ? bootstrapError.message
+              : "Could not load store credit from the link.",
+          );
+          clearSsrPending();
+          router.replace("/dashboard/pos", { scroll: false });
+        }
+      } finally {
+        finish();
+      }
+    })();
+
+    return () => {
+      storeCreditBootstrapGenerationRef.current += 1;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    searchParams,
+    pathname,
+    tenantId,
+    isOffline,
+    buReadScope,
+    products.length,
+    router,
+    initialCreditNoteId,
+    initialLoadCreditNoteLines,
+    supabase,
+  ]);
+
+  useEffect(() => {
+    if (!tenantId?.trim() || isOffline || !clientId.trim()) {
+      setStoreCreditPickerNotes([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchAvailableCreditNotesForPos(
+      supabase,
+      tenantId,
+      buReadScope,
+      clientId.trim(),
+    )
+      .then((notes) => {
+        if (!cancelled) {
+          setStoreCreditPickerNotes(notes);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStoreCreditPickerNotes([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, tenantId, isOffline, supabase, buReadScope]);
+
+  function clearStoreCredit() {
+    setSelectedStoreCredit(null);
+    setCreditNoteNumberLookup("");
+    setStoreCreditLookupError(null);
+    setStoreCreditUrlBootstrapError(null);
+  }
+
+  async function handleLookupStoreCreditByNumber() {
+    if (!tenantId?.trim()) {
+      setStoreCreditLookupError("Workspace session unavailable.");
+      return;
+    }
+    if (isOffline) {
+      setStoreCreditLookupError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
+      return;
+    }
+    setStoreCreditLookupError(null);
+    try {
+      const note = await lookupCreditNoteByNumberForPos(
+        supabase,
+        tenantId,
+        buReadScope,
+        creditNoteNumberLookup,
+      );
+      if (!note) {
+        setStoreCreditLookupError(
+          "Credit note not found or has no available balance.",
+        );
+        return;
+      }
+      setSelectedStoreCredit(note);
+    } catch (lookupError) {
+      setStoreCreditLookupError(
+        lookupError instanceof Error
+          ? lookupError.message
+          : "Could not look up credit note.",
+      );
+    }
+  }
+
   function clearCheckoutAdjustments() {
     setAppliedPromoCode(null);
     setPromoDiscount(0);
@@ -607,30 +964,23 @@ export default function PosCheckout({
   });
 
   function addProductToCart(product: FinishedProductRecord) {
-    const available = getAvailableStockForProduct(product, cartLines);
-    if (available <= 0) {
-      setError(
-        `No stock available for ${product.product_name}. Current stock: ${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure}.`,
-      );
-      return;
-    }
-
     setError(null);
     clearCheckoutAdjustments();
 
-    setCartLines((current) => [
-      ...current,
-      {
-        id: createCartLineId(),
-        productId: product.id,
-        productCode: product.product_code,
-        productName: product.product_name,
-        unitOfMeasure: product.unit_of_measure,
-        quantity: 1,
-        unitPrice: product.standard_selling_price ?? 0,
-        availableStock: product.current_stock,
-      },
-    ]);
+    setCartLines((current) => {
+      const result = tryAddProductToPosCart(
+        current,
+        product,
+        1,
+        product.standard_selling_price ?? 0,
+        createCartLineId,
+      );
+      if (!result.ok) {
+        setError(result.error);
+        return current;
+      }
+      return result.lines;
+    });
   }
 
   function updateCartLine(
@@ -683,6 +1033,227 @@ export default function PosCheckout({
   function removeCartLine(lineId: string) {
     clearCheckoutAdjustments();
     setCartLines((current) => current.filter((line) => line.id !== lineId));
+  }
+
+  function stepCartLineQuantity(lineId: string, delta: number) {
+    setCartLines((current) => {
+      const line = current.find((entry) => entry.id === lineId);
+      if (!line) {
+        return current;
+      }
+      const product = products.find((item) => item.id === line.productId);
+      if (!product) {
+        return current;
+      }
+      const available = getAvailableStockForProduct(product, current, lineId);
+      const nextQuantity = roundMoney(Math.max(0.0001, line.quantity + delta));
+      if (nextQuantity > available) {
+        setError(
+          `Only ${formatInventoryQuantity(available)} ${product.unit_of_measure} of ${product.product_name} available (including items already in cart).`,
+        );
+        return current;
+      }
+      setError(null);
+      clearCheckoutAdjustments();
+      return current.map((entry) =>
+        entry.id === lineId ? { ...entry, quantity: nextQuantity } : entry,
+      );
+    });
+  }
+
+  function clearEntireCart() {
+    if (cartLines.length === 0) {
+      return;
+    }
+    clearCheckoutAdjustments();
+    clearStoreCredit();
+    setCartLines([]);
+    setActiveRecalledHeldCartId(null);
+    setError(null);
+  }
+
+  function openHoldCartDialog() {
+    if (isOffline) {
+      setError(POS_HELD_CART_OFFLINE_MESSAGE);
+      return;
+    }
+    if (posHeldCartViewOnly) {
+      setError(STAMP_REFUSED_VIEW_ALL_MESSAGE);
+      return;
+    }
+    if (cartLines.length === 0) {
+      setError("Add at least one product before holding the cart.");
+      return;
+    }
+    setError(null);
+    setHoldLabelDialogOpen(true);
+  }
+
+  async function confirmHoldCart(label: string) {
+    if (!tenantId) {
+      setError("Unable to resolve your workspace.");
+      return;
+    }
+    if (isOffline) {
+      setError(POS_HELD_CART_OFFLINE_MESSAGE);
+      return;
+    }
+
+    const stampResult = await resolveCheckoutBusinessUnitId();
+    if (!stampResult.ok) {
+      setError(stampResult.error);
+      return;
+    }
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user?.id) {
+      setError("You must be signed in to hold a cart.");
+      return;
+    }
+
+    const { clientId: trimmedClientId } = resolvePosCustomerSelection(
+      clientId,
+      customerName,
+    );
+
+    setHoldSaving(true);
+    setError(null);
+    try {
+      await insertPosHeldCart(supabase, {
+        tenantId,
+        businessUnitId: stampResult.businessUnitId,
+        label,
+        clientId: trimmedClientId,
+        cart: buildHeldCartSnapshot({
+          cartLines,
+          appliedPromoCode,
+          promoDiscount,
+          selectedStoreCreditId: selectedStoreCredit?.id ?? null,
+          customerName,
+        }),
+        salesRepId: salesRepId.trim() || null,
+        notes: notes.trim() || null,
+        heldBy: user.id,
+      });
+      setHoldLabelDialogOpen(false);
+      clearCheckoutAdjustments();
+      clearStoreCredit();
+      setCartLines([]);
+      setClientId("");
+      setCustomerName("");
+      setPaymentMethod("");
+      setAmountTendered("");
+      setNotes("");
+      setActiveRecalledHeldCartId(null);
+      await refreshHeldCartCount();
+    } catch (holdError) {
+      setError(
+        holdError instanceof Error ? holdError.message : "Could not hold cart.",
+      );
+    } finally {
+      setHoldSaving(false);
+    }
+  }
+
+  async function beginRecallHeldCart(row: PosHeldCartRow) {
+    setHeldCartsPanelOpen(false);
+    setPendingRecallRow(row);
+    const validation = validatePosHeldCartRecall(row, products);
+    setPendingRecallValidation(validation);
+    setRecallStoreCreditError(null);
+    setRecallDialogOpen(true);
+    setRecallBusy(true);
+    try {
+      if (!tenantId) {
+        setRecallStoreCreditError("Unable to resolve your workspace.");
+        return;
+      }
+      const credit = await revalidateRecalledStoreCredit(
+        supabase,
+        tenantId,
+        buReadScope,
+        validation.storeCreditNoteId,
+      );
+      if (!credit.ok) {
+        setRecallStoreCreditError(credit.message);
+      } else if (credit.note && validation.storeCreditNoteId) {
+        setRecallStoreCreditError(null);
+      }
+    } catch (recallError) {
+      setRecallStoreCreditError(
+        recallError instanceof Error
+          ? recallError.message
+          : "Could not validate store credit.",
+      );
+    } finally {
+      setRecallBusy(false);
+    }
+  }
+
+  async function acceptRecalledHeldCart() {
+    if (!pendingRecallValidation || !pendingRecallRow) {
+      return;
+    }
+
+    setRecallBusy(true);
+    try {
+      let storeCredit: PosSelectedStoreCredit | null = null;
+      if (
+        pendingRecallValidation.storeCreditNoteId &&
+        tenantId &&
+        !recallStoreCreditError
+      ) {
+        const credit = await revalidateRecalledStoreCredit(
+          supabase,
+          tenantId,
+          buReadScope,
+          pendingRecallValidation.storeCreditNoteId,
+        );
+        if (!credit.ok) {
+          setRecallStoreCreditError(credit.message);
+        } else {
+          storeCredit = credit.note;
+        }
+      }
+
+      setCartLines(pendingRecallValidation.lines);
+      setClientId(pendingRecallValidation.clientId ?? "");
+      setCustomerName(pendingRecallValidation.customerName ?? "");
+      setSalesRepId(pendingRecallValidation.salesRepId ?? defaultSalesRepId);
+      setNotes(pendingRecallValidation.notes ?? "");
+      setAppliedPromoCode(pendingRecallValidation.promoCode);
+      setPromoDiscount(pendingRecallValidation.promoDiscount);
+      setLoyaltyDiscount(0);
+      setLoyaltyPointsRedeemed(0);
+      clearStoreCredit();
+      if (storeCredit) {
+        setSelectedStoreCredit(storeCredit);
+      }
+      setActiveRecalledHeldCartId(pendingRecallRow.id);
+      setRecallDialogOpen(false);
+      setPendingRecallRow(null);
+      setPendingRecallValidation(null);
+      setError(null);
+    } finally {
+      setRecallBusy(false);
+    }
+  }
+
+  async function deleteActiveHeldCartIfAny() {
+    if (!activeRecalledHeldCartId) {
+      return;
+    }
+    const id = activeRecalledHeldCartId;
+    setActiveRecalledHeldCartId(null);
+    try {
+      await deletePosHeldCart(supabase, id);
+      await refreshHeldCartCount();
+    } catch {
+      // Sale already succeeded; ignore delete failure.
+    }
   }
 
   async function handleRedeemLoyaltyPoints() {
@@ -769,6 +1340,7 @@ export default function PosCheckout({
     setError(null);
     setPaymentSettingsRequired(false);
     clearCheckoutAdjustments();
+    clearStoreCredit();
   }
 
   function validateCheckoutBasics(): {
@@ -790,12 +1362,35 @@ export default function PosCheckout({
       return null;
     }
 
+    if (selectedStoreCredit && isMobileMoney) {
+      setError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
+      return null;
+    }
+
+    if (selectedStoreCredit && !isCash) {
+      setError("Select Cash to pay any remainder when using store credit.");
+      return null;
+    }
+
+    if (
+      selectedStoreCredit &&
+      (promoDiscount > 0 || loyaltyDiscount > 0 || loyaltyPointsRedeemed > 0)
+    ) {
+      setError(
+        "Remove promo or loyalty redemption before applying store credit.",
+      );
+      return null;
+    }
+
     if (isCash && amountTenderBlocked) {
       if (parsedAmountTendered == null) {
         setError("Enter the amount tendered by the customer.");
       } else {
+        const dueLabel = selectedStoreCredit
+          ? formatGHS(cashDueAfterCredit)
+          : formatGHS(payableTotal);
         setError(
-          `Amount tendered (${formatGHS(parsedAmountTendered)}) is less than the amount due (${formatGHS(payableTotal)}).`,
+          `Amount tendered (${formatGHS(parsedAmountTendered)}) is less than the cash due (${dueLabel}).`,
         );
       }
       return null;
@@ -838,6 +1433,9 @@ export default function PosCheckout({
     amountReceived: number;
     amountTendered?: number | null;
     changeDue?: number | null;
+    storeCreditApplied?: number | null;
+    storeCreditNoteNumber?: string | null;
+    storeCreditRemainingBalance?: number | null;
     pendingSync?: boolean;
   }) {
     const receiptTotal = cartTotal(input.lines);
@@ -849,14 +1447,19 @@ export default function PosCheckout({
       paymentStatus: input.pendingSync ? "Pending sync" : "Paid",
       amountReceived: input.amountReceived,
       cartTotal: receiptTotal,
+      subtotal: receiptTotal,
       amountTendered: input.amountTendered ?? null,
       changeDue: input.changeDue ?? null,
+      storeCreditApplied: input.storeCreditApplied ?? null,
+      storeCreditNoteNumber: input.storeCreditNoteNumber ?? null,
+      storeCreditRemainingBalance: input.storeCreditRemainingBalance ?? null,
       lines: input.lines,
       pendingSync: input.pendingSync,
     });
     setCartLines([]);
     setShowRequestPayment(false);
     setRequestPaymentDraft(null);
+    void deleteActiveHeldCartIfAny();
   }
 
   async function queueOfflineCashSale(
@@ -866,6 +1469,11 @@ export default function PosCheckout({
     const stampResult = await resolveCheckoutBusinessUnitId();
     if (!stampResult.ok) {
       setError(stampResult.error);
+      return;
+    }
+
+    if (selectedStoreCredit) {
+      setError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
       return;
     }
 
@@ -969,21 +1577,39 @@ export default function PosCheckout({
       return;
     }
 
-    const amountReceived = payableTotal;
-    const summary = await runPosCheckout(supabase, {
-      tenantId,
-      saleDate: todayIsoDate(),
-      clientId: trimmedClientId,
-      customerName: trimmedClientId ? null : trimmedCustomerName,
-      salesRepId: salesRepId.trim() || null,
-      paymentMethod: paymentMethod.trim(),
-      amountReceived,
-      paymentStatus: "Paid",
-      dueDate,
-      notes: notes.trim() || null,
-      cartLines,
-      businessUnitId: stampResult.businessUnitId,
-    });
+    const receiptLines = [...cartLines];
+    const summary = selectedStoreCredit
+      ? await runPosCheckoutWithStoreCredit(supabase, {
+          tenantId,
+          saleDate: todayIsoDate(),
+          clientId: trimmedClientId,
+          customerName: trimmedClientId ? null : trimmedCustomerName,
+          salesRepId: salesRepId.trim() || null,
+          paymentMethod: paymentMethod.trim() || "Cash",
+          amountReceived: cashDueAfterCredit,
+          paymentStatus: "Paid",
+          dueDate,
+          notes: notes.trim() || null,
+          cartLines,
+          businessUnitId: stampResult.businessUnitId,
+          creditNoteId: selectedStoreCredit.id,
+          creditApplyAmount: storeCreditApplyAmount,
+          cashTendered: isCash ? parsedAmountTendered ?? 0 : 0,
+        })
+      : await runPosCheckout(supabase, {
+          tenantId,
+          saleDate: todayIsoDate(),
+          clientId: trimmedClientId,
+          customerName: trimmedClientId ? null : trimmedCustomerName,
+          salesRepId: salesRepId.trim() || null,
+          paymentMethod: paymentMethod.trim(),
+          amountReceived: payableTotal,
+          paymentStatus: "Paid",
+          dueDate,
+          notes: notes.trim() || null,
+          cartLines,
+          businessUnitId: stampResult.businessUnitId,
+        });
 
     await refreshProducts();
 
@@ -994,7 +1620,16 @@ export default function PosCheckout({
       return;
     }
 
-    const receiptLines = [...cartLines];
+    const creditApplied = summary.creditApplied ?? 0;
+    const cashRecorded = summary.cashRecorded ?? 0;
+    const amountReceived = roundMoney(creditApplied + cashRecorded);
+    const receiptPaymentMethod = selectedStoreCredit
+      ? posIncomePaymentMethodLabel(
+          paymentMethod.trim() || "Cash",
+          cashRecorded,
+        )
+      : paymentMethod.trim();
+
     showPaidReceipt({
       invoiceNo: summary.invoiceNo,
       customerLabel: getCustomerDisplayName(
@@ -1002,16 +1637,25 @@ export default function PosCheckout({
         trimmedCustomerName,
         initialClients,
       ),
-      paymentMethod: paymentMethod.trim(),
+      paymentMethod: receiptPaymentMethod,
       lines: receiptLines,
       amountReceived,
-      amountTendered: isCash ? parsedAmountTendered : null,
-      changeDue: isCash ? changeDue : null,
+      amountTendered: isCash ? parsedAmountTendered ?? 0 : null,
+      changeDue: selectedStoreCredit
+        ? (summary.changeDue ?? changeDue)
+        : isCash
+          ? changeDue
+          : null,
+      storeCreditApplied: creditApplied > 0 ? creditApplied : null,
+      storeCreditNoteNumber: summary.creditNoteNumber ?? null,
+      storeCreditRemainingBalance: summary.creditRemainingBalance ?? null,
     });
+
+    clearStoreCredit();
 
     const loyaltyEarnWarning = await recordLoyaltyEarnAfterSale(
       trimmedClientId,
-      amountReceived,
+      selectedStoreCredit ? amountReceived : payableTotal,
       summary.invoiceNo,
     );
 
@@ -1065,6 +1709,12 @@ export default function PosCheckout({
     trimmedClientId: string | null,
     trimmedCustomerName: string | null,
   ) {
+    if (selectedStoreCredit) {
+      setError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
+      setLoading(false);
+      return;
+    }
+
     setMomoWaiting(true);
 
     try {
@@ -1239,6 +1889,12 @@ export default function PosCheckout({
 
     const offlineNow = isOffline || !navigator.onLine;
     if (offlineNow) {
+      if (selectedStoreCredit) {
+        setError(STORE_CREDIT_OFFLINE_BLOCK_MESSAGE);
+        setLoading(false);
+        return;
+      }
+
       if (isMobileMoney) {
         setError(
           "Mobile Money cannot be queued offline. Use Cash, or reconnect to pay with MoMo.",
@@ -1339,105 +1995,42 @@ export default function PosCheckout({
 
   function renderCartSection() {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">Cart</h2>
-        {cartLines.length === 0 ? (
-          <p className="text-sm text-slate-500">No items in cart yet.</p>
-        ) : (
-          <ScrollableTable>
-            <table className={scrollableTableClassName}>
-              <thead className={scrollableTableHeadClassName}>
-                <tr>
-                  <th className={scrollableTableThClassName}>Product</th>
-                  <th className={scrollableTableThClassName}>Qty</th>
-                  <th className={scrollableTableThClassName}>Unit Price</th>
-                  <th className={scrollableTableThClassName}>Subtotal</th>
-                  <th className={scrollableTableThClassName}>Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {cartLines.map((line, index) => (
-                  <tr key={line.id} className={getStripedRowClassName(index)}>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-[#0f2744]">
-                        {line.productCode} — {line.productName}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Max qty for this line:{" "}
-                        {formatInventoryQuantity(
-                          getAvailableStockForProduct(
-                            products.find((item) => item.id === line.productId)!,
-                            cartLines,
-                            line.id,
-                          ),
-                        )}{" "}
-                        {line.unitOfMeasure}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min={0.0001}
-                        step="0.0001"
-                        value={line.quantity}
-                        onChange={(event) =>
-                          updateCartLine(line.id, "quantity", event.target.value)
-                        }
-                        className={`${inputClassName} min-w-[100px]`}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={line.unitPrice}
-                        onChange={(event) =>
-                          updateCartLine(line.id, "unitPrice", event.target.value)
-                        }
-                        className={`${inputClassName} min-w-[120px]`}
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium text-[#0f2744]">
-                      {formatGHS(lineSubtotal(line))}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => removeCartLine(line.id)}
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollableTable>
-        )}
-        <p className="mt-4 text-sm text-slate-700">
-          Cart subtotal:{" "}
-          <span className="font-semibold text-[#0f2744]">{formatGHS(total)}</span>
-        </p>
-        {promoDiscount > 0 ? (
-          <p className="mt-1 text-sm text-emerald-800">
-            Promo discount ({appliedPromoCode}): -{formatGHS(promoDiscount)}
-          </p>
-        ) : null}
-        {loyaltyDiscount > 0 ? (
-          <p className="mt-1 text-sm text-emerald-800">
-            Loyalty redemption ({formatLoyaltyPoints(loyaltyPointsRedeemed)} pts): -
-            {formatGHS(loyaltyDiscount)}
-          </p>
-        ) : null}
-        <p className="mt-2 text-sm text-slate-700">
-          Amount due:{" "}
-          <span className="text-lg font-semibold text-[#0f2744]">
-            {formatGHS(payableTotal)}
-          </span>
-        </p>
-      </section>
+      <PosCartLines
+        cartLines={cartLines}
+        products={products}
+        busy={busy}
+        onUpdateQuantity={(lineId, value) =>
+          updateCartLine(lineId, "quantity", value)
+        }
+        onUpdateUnitPrice={(lineId, value) =>
+          updateCartLine(lineId, "unitPrice", value)
+        }
+        onStepQuantity={stepCartLineQuantity}
+        onRemoveLine={removeCartLine}
+        onClearCart={clearEntireCart}
+        onHold={openHoldCartDialog}
+        onOpenHeldCarts={() => setHeldCartsPanelOpen(true)}
+        heldCartCount={heldCartCount}
+        holdDisabled={posHeldCartViewOnly || isOffline}
+        holdTooltip={
+          isOffline
+            ? POS_HELD_CART_OFFLINE_MESSAGE
+            : posHeldCartViewOnly
+              ? posHeldCartViewOnlyTooltip
+              : undefined
+        }
+        heldListDisabled={posHeldCartViewOnly}
+        heldListTooltip={
+          posHeldCartViewOnly ? posHeldCartViewOnlyTooltip : undefined
+        }
+        subtotal={total}
+        promoDiscount={promoDiscount}
+        appliedPromoCode={appliedPromoCode}
+        loyaltyDiscount={loyaltyDiscount}
+        loyaltyPointsRedeemed={loyaltyPointsRedeemed}
+        payableTotal={payableTotal}
+        formatLoyaltyPoints={formatLoyaltyPoints}
+      />
     );
   }
 
@@ -1449,8 +2042,8 @@ export default function PosCheckout({
       >
         <h2 className="text-lg font-semibold text-[#0f2744]">Checkout</h2>
 
-        <div className="flex flex-wrap items-start gap-4">
-          <div className="min-w-0 flex-1">
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
+          <div className="min-w-0">
             <PromoCodeField
               supabase={supabase}
               clientId={clientId || null}
@@ -1470,7 +2063,7 @@ export default function PosCheckout({
               disabled={busy || cartLines.length === 0 || isOffline}
             />
           </div>
-          <div className="w-full shrink-0 sm:w-44 lg:w-48">
+          <div className="min-w-0">
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Due Date
             </label>
@@ -1557,6 +2150,116 @@ export default function PosCheckout({
           </div>
         ) : null}
 
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-4">
+          <p className="text-sm font-medium text-[#0f2744]">Store credit</p>
+          {storeCreditUrlBootstrapLoading ? (
+            <p className="mt-2 text-sm text-slate-600">
+              Loading store credit from link…
+            </p>
+          ) : null}
+          {storeCreditUrlBootstrapError ? (
+            <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {storeCreditUrlBootstrapError}
+            </p>
+          ) : null}
+          {selectedStoreCredit ? (
+            <div className="mt-2 space-y-2 text-sm text-slate-700">
+              <p>
+                Applying{" "}
+                <span className="font-semibold">
+                  {formatGHS(storeCreditApplyAmount)}
+                </span>{" "}
+                from{" "}
+                <span className="font-semibold">
+                  {selectedStoreCredit.creditNoteNumber}
+                </span>{" "}
+                (available {formatGHS(selectedStoreCredit.availableBalance)}).
+              </p>
+              {cartLines.length === 0 ? (
+                <p>Add items to the cart to use this credit.</p>
+              ) : cashDueAfterCredit > 0 ? (
+                <p>Cash due after credit: {formatGHS(cashDueAfterCredit)}.</p>
+              ) : payableTotal > 0 ? (
+                <p>No cash required — store credit covers this cart.</p>
+              ) : null}
+              <button
+                type="button"
+                onClick={clearStoreCredit}
+                disabled={busy}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white disabled:opacity-50"
+              >
+                Remove store credit
+              </button>
+            </div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={creditNoteNumberLookup}
+                  onChange={(event) =>
+                    setCreditNoteNumberLookup(event.target.value)
+                  }
+                  placeholder="Credit note number"
+                  disabled={busy || isOffline}
+                  className={`${inputClassName} min-w-[200px] flex-1`}
+                />
+                <DashboardButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void handleLookupStoreCreditByNumber()}
+                  disabled={
+                    busy || isOffline || !creditNoteNumberLookup.trim()
+                  }
+                >
+                  Apply
+                </DashboardButton>
+              </div>
+              {storeCreditPickerNotes.length > 0 ? (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Customer credit notes
+                  </label>
+                  <select
+                    value=""
+                    disabled={busy || isOffline}
+                    onChange={(event) => {
+                      const id = event.target.value;
+                      if (!id) {
+                        return;
+                      }
+                      const note = storeCreditPickerNotes.find(
+                        (entry) => entry.id === id,
+                      );
+                      if (note) {
+                        setSelectedStoreCredit(note);
+                        setStoreCreditLookupError(null);
+                      }
+                    }}
+                    className={inputClassName}
+                  >
+                    <option value="">Select available credit…</option>
+                    {storeCreditPickerNotes.map((note) => (
+                      <option key={note.id} value={note.id}>
+                        {note.creditNoteNumber} —{" "}
+                        {formatGHS(note.availableBalance)} available
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {isOffline ? (
+                <p className="text-sm text-amber-900">
+                  {STORE_CREDIT_OFFLINE_BLOCK_MESSAGE}
+                </p>
+              ) : null}
+              {storeCreditLookupError ? (
+                <p className="text-sm text-red-700">{storeCreditLookupError}</p>
+              ) : null}
+            </div>
+          )}
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -1564,8 +2267,15 @@ export default function PosCheckout({
             </label>
             <select
               value={clientId}
+              disabled={customerLockedByStoreCredit}
               onChange={(event) => {
                 const nextClientId = event.target.value;
+                if (
+                  selectedStoreCredit?.clientId &&
+                  nextClientId !== selectedStoreCredit.clientId
+                ) {
+                  clearStoreCredit();
+                }
                 setClientId(nextClientId);
                 clearCheckoutAdjustments();
                 if (nextClientId === POS_CUSTOMER_OTHER_VALUE) {
@@ -1596,6 +2306,11 @@ export default function PosCheckout({
               ))}
               <option value={POS_CUSTOMER_OTHER_VALUE}>Other / Walk-in</option>
             </select>
+            {customerLockedByStoreCredit ? (
+              <p className="mt-1 text-xs text-slate-600">
+                Customer is fixed to match the selected store credit note.
+              </p>
+            ) : null}
           </div>
           {clientId === POS_CUSTOMER_OTHER_VALUE ? (
             <div>
@@ -1649,7 +2364,18 @@ export default function PosCheckout({
             <select
               required
               value={paymentMethod}
-              onChange={(event) => setPaymentMethod(event.target.value)}
+              onChange={(event) => {
+                const nextMethod = event.target.value;
+                if (
+                  nextMethod === POS_MOMO_PAYMENT_METHOD &&
+                  selectedStoreCredit
+                ) {
+                  setError(STORE_CREDIT_MOMO_BLOCK_MESSAGE);
+                  return;
+                }
+                setError(null);
+                setPaymentMethod(nextMethod);
+              }}
               className={inputClassName}
             >
               <option value="">Select payment method</option>
@@ -1674,7 +2400,13 @@ export default function PosCheckout({
                     inputMode="decimal"
                     value={amountTendered}
                     onChange={(event) => setAmountTendered(event.target.value)}
-                    placeholder={`At least ${formatGHS(payableTotal)}`}
+                    placeholder={
+                      selectedStoreCredit
+                        ? cashDueAfterCredit > 0
+                          ? `At least ${formatGHS(cashDueAfterCredit)}`
+                          : "0 if credit covers total"
+                        : `At least ${formatGHS(payableTotal)}`
+                    }
                     className={inputClassName}
                   />
                 </div>
@@ -1699,7 +2431,9 @@ export default function PosCheckout({
                 <p className="mt-1 text-sm text-red-700">
                   {parsedAmountTendered == null
                     ? "Enter amount tendered to complete this sale."
-                    : `Amount tendered must be at least ${formatGHS(payableTotal)}.`}
+                    : selectedStoreCredit
+                      ? `Amount tendered must be at least ${formatGHS(cashDueAfterCredit)}.`
+                      : `Amount tendered must be at least ${formatGHS(payableTotal)}.`}
                 </p>
               ) : null}
             </div>
@@ -1738,15 +2472,15 @@ export default function PosCheckout({
         ) : null}
 
         <div className="flex flex-wrap gap-3">
-          <button
+          <DashboardButton
             type="submit"
+            variant="success"
             disabled={
               busy ||
               cartLines.length === 0 ||
               (isOffline && isMobileMoney) ||
               amountTenderBlocked
             }
-            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {momoWaiting
               ? "Waiting for MoMo…"
@@ -1761,15 +2495,15 @@ export default function PosCheckout({
                   : isOffline
                     ? "Queue Cash Sale"
                     : "Complete Sale"}
-          </button>
-          <button
+          </DashboardButton>
+          <DashboardButton
             type="button"
+            variant="paymentLink"
             disabled={busy || cartLines.length === 0 || isOffline}
             onClick={() => handleRequestPaymentLink()}
-            className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Request Payment (link)
-          </button>
+          </DashboardButton>
         </div>
       </form>
     );
@@ -1824,13 +2558,14 @@ export default function PosCheckout({
               with one shared invoice number.
             </p>
           </div>
-          <button
+          <DashboardButton
             type="button"
+            variant="secondary"
             onClick={handleOpenCustomerDisplay}
-            className="shrink-0 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+            className="shrink-0"
           >
             Open Customer Display
-          </button>
+          </DashboardButton>
         </div>
         {quoteConversionId && quoteNumber ? (
           <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
@@ -1939,14 +2674,15 @@ export default function PosCheckout({
                         </p>
                       </div>
                     </div>
-                    <button
+                    <DashboardButton
                       type="button"
+                      variant="primary"
                       disabled={outOfStock || busy}
                       onClick={() => addProductToCart(product)}
-                      className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="px-3 py-1.5 text-sm"
                     >
                       Add to Cart
-                    </button>
+                    </DashboardButton>
                   </div>
                 );
               })
@@ -2003,6 +2739,42 @@ export default function PosCheckout({
             <span className="text-base font-semibold">{formatGHS(payableTotal)}</span>
           </button>
         </StickyBottomBar>
+      ) : null}
+
+      <PosHoldLabelDialog
+        open={holdLabelDialogOpen}
+        defaultLabel={`Hold ${new Date().toLocaleString("en-GB", {
+          dateStyle: "short",
+          timeStyle: "short",
+        })}`}
+        busy={holdSaving}
+        onCancel={() => setHoldLabelDialogOpen(false)}
+        onConfirm={(label) => void confirmHoldCart(label)}
+      />
+
+      <PosRecallWarningsDialog
+        open={recallDialogOpen}
+        warnings={pendingRecallValidation?.warnings ?? []}
+        storeCreditError={recallStoreCreditError}
+        busy={recallBusy}
+        onCancel={() => {
+          setRecallDialogOpen(false);
+          setPendingRecallRow(null);
+          setPendingRecallValidation(null);
+          setRecallStoreCreditError(null);
+        }}
+        onAccept={() => void acceptRecalledHeldCart()}
+      />
+
+      {tenantId ? (
+        <PosHeldCartsPanel
+          supabase={supabase}
+          tenantId={tenantId}
+          open={heldCartsPanelOpen}
+          onClose={() => setHeldCartsPanelOpen(false)}
+          onRecall={(row) => void beginRecallHeldCart(row)}
+          onCountChange={setHeldCartCount}
+        />
       ) : null}
 
       {showRequestPayment && requestPaymentDraft ? (

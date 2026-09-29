@@ -25,6 +25,7 @@ import {
   columnValuePassesFilter,
   type RegisterColumnFilterValue,
 } from "@/app/dashboard/finance/register-column-filter";
+import DashboardButton from "@/components/dashboard-button";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -522,26 +523,26 @@ export default function SalesRegister(props: SalesRegisterProps) {
           reminders.
         </p>
         <div className="flex gap-2">
-          <button
+          <DashboardButton
             type="button"
+            variant="secondary"
             disabled={registerViewOnly}
-            title={registerViewOnly ? SALES_REGISTER_VIEW_ONLY_TOOLTIP : undefined}
+            tooltip={registerViewOnly ? SALES_REGISTER_VIEW_ONLY_TOOLTIP : undefined}
             onClick={() =>
               showBulkImport ? setShowBulkImport(false) : setShowBulkImport(true)
             }
-            className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {showBulkImport ? "Cancel Import" : "Bulk Import"}
-          </button>
-          <button
+          </DashboardButton>
+          <DashboardButton
             type="button"
+            variant="primary"
             disabled={registerViewOnly}
-            title={registerViewOnly ? SALES_REGISTER_VIEW_ONLY_TOOLTIP : undefined}
+            tooltip={registerViewOnly ? SALES_REGISTER_VIEW_ONLY_TOOLTIP : undefined}
             onClick={() => (showForm ? setShowForm(false) : setShowForm(true))}
-            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {showForm ? "Cancel" : "Add Sale"}
-          </button>
+          </DashboardButton>
         </div>
       </div>
 
@@ -1129,6 +1130,10 @@ function SalesRegisterDetailDrawer({
         {
           label: "Applied",
           value: formatGHS(note?.appliedAmount ?? 0),
+        },
+        {
+          label: "Credit status",
+          value: note?.usageStatus ?? "—",
         },
         {
           label: "Original receipt",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CacheStaleIndicator from "@/components/cache-stale-indicator";
 import { useOnlineStatus } from "@/hooks/use-online-status";
@@ -40,6 +40,8 @@ type PosCacheShellProps = {
   initialNotes?: string;
   quoteConversionId?: string;
   quoteNumber?: string;
+  initialCreditNoteId?: string;
+  initialLoadCreditNoteLines?: boolean;
   fetchError: string | null;
   initialCachedAt: string;
   /** Create-only stamp for product sales; null = All Businesses. */
@@ -62,6 +64,8 @@ export default function PosCacheShell({
   initialNotes = "",
   quoteConversionId,
   quoteNumber,
+  initialCreditNoteId = "",
+  initialLoadCreditNoteLines = false,
   fetchError,
   initialCachedAt,
   activeBusinessUnitId = null,
@@ -193,35 +197,45 @@ export default function PosCacheShell({
           refreshing={refreshing}
         />
       </div>
-      <PosCheckout
-        showTitle={showTitle}
-        initialClients={initialClients}
-        initialProducts={products}
-        initialCustomerBalances={balancesByClientId}
-        initialEmployees={initialEmployees}
-        defaultSalesRepId={defaultSalesRepId}
-        initialPaymentMethods={initialPaymentMethods}
-        initialCartLines={initialCartLines}
-        initialClientId={initialClientId}
-        initialNotes={initialNotes}
-        quoteConversionId={quoteConversionId}
-        quoteNumber={quoteNumber}
-        fetchError={error}
-        activeBusinessUnitId={activeBusinessUnitId}
-        tenantId={tenantId}
-        onStockLevelsChanged={async (nextProducts) => {
-          setProducts(nextProducts);
-          if (!isOnline) {
-            return;
-          }
-          const nextCachedAt = await setCachedStockLevels(
-            session,
-            finishedProductsToStockCachePayload(nextProducts),
-          );
-          setCachedAt(nextCachedAt);
-        }}
-        onStockCacheChanged={reloadStockFromCache}
-      />
+      <Suspense
+        fallback={
+          <p className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600">
+            Loading checkout…
+          </p>
+        }
+      >
+        <PosCheckout
+          showTitle={showTitle}
+          initialClients={initialClients}
+          initialProducts={products}
+          initialCustomerBalances={balancesByClientId}
+          initialEmployees={initialEmployees}
+          defaultSalesRepId={defaultSalesRepId}
+          initialPaymentMethods={initialPaymentMethods}
+          initialCartLines={initialCartLines}
+          initialClientId={initialClientId}
+          initialNotes={initialNotes}
+          quoteConversionId={quoteConversionId}
+          quoteNumber={quoteNumber}
+          initialCreditNoteId={initialCreditNoteId}
+          initialLoadCreditNoteLines={initialLoadCreditNoteLines}
+          fetchError={error}
+          activeBusinessUnitId={activeBusinessUnitId}
+          tenantId={tenantId}
+          onStockLevelsChanged={async (nextProducts) => {
+            setProducts(nextProducts);
+            if (!isOnline) {
+              return;
+            }
+            const nextCachedAt = await setCachedStockLevels(
+              session,
+              finishedProductsToStockCachePayload(nextProducts),
+            );
+            setCachedAt(nextCachedAt);
+          }}
+          onStockCacheChanged={reloadStockFromCache}
+        />
+      </Suspense>
     </div>
   );
 }

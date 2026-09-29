@@ -97,6 +97,7 @@ export const CRM_SALES_REP_NAV_HREFS: readonly string[] = [
   "/dashboard/sales-crm/quotations",
   "/dashboard/pos",
   "/dashboard/crm/sales",
+  "/dashboard/crm/credit-notes",
 ];
 
 /** /dashboard/crm/* paths sales_rep may open (layout + defense in depth). */
@@ -104,6 +105,7 @@ export const CRM_SALES_REP_ALLOWED_PATH_PREFIXES: readonly string[] = [
   "/dashboard/crm/customers",
   "/dashboard/crm/product-sales",
   "/dashboard/crm/sales",
+  "/dashboard/crm/credit-notes",
 ];
 
 export const POS_SECTION_ROLES: readonly AppRole[] = [
@@ -112,6 +114,17 @@ export const POS_SECTION_ROLES: readonly AppRole[] = [
   "hr",
   "director",
   "sales_rep",
+];
+
+/** Credit Notes register (Finance tab + Sales & CRM tab — same page). */
+export const CREDIT_NOTES_PAGE_ROLES: readonly AppRole[] = [
+  ...FINANCE_SECTION_ROLES,
+  "sales_rep",
+];
+
+/** Record Refund on a credit note (finance roles only). */
+export const CREDIT_NOTES_RECORD_REFUND_ROLES: readonly AppRole[] = [
+  ...FINANCE_SECTION_ROLES,
 ];
 
 export const PAYROLL_PERIOD_MANAGE_ROLES: readonly AppRole[] = [
@@ -277,6 +290,14 @@ export function canAccessCrmCustomerList(role: AppRole | null): boolean {
 
 export function canAccessPosSection(role: AppRole | null): boolean {
   return roleIn(role, POS_SECTION_ROLES);
+}
+
+export function canAccessCreditNotesPage(role: AppRole | null): boolean {
+  return roleIn(role, CREDIT_NOTES_PAGE_ROLES);
+}
+
+export function canRecordCreditNoteRefund(role: AppRole | null): boolean {
+  return roleIn(role, CREDIT_NOTES_RECORD_REFUND_ROLES);
 }
 
 export function canEditInventory(role: AppRole | null): boolean {

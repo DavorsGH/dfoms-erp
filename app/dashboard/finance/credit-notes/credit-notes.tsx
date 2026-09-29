@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import DashboardButton from "@/components/dashboard-button";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -19,17 +20,33 @@ import {
   CREDIT_NOTES_LIST_SELECT,
   type CreditNoteListRow,
 } from "../credit-notes-utils";
+import {
+  CREDIT_NOTE_USAGE_FILTER_VALUES,
+  formatCreditNoteUsageStatus,
+} from "../credit-note-display-utils";
+import { buildPosStoreCreditCheckoutUrl } from "../../pos/pos-store-credit-utils";
 
 type CreditNotesProps = {
   initialRows: CreditNoteListRow[];
   paymentMethods: string[];
   fetchError: string | null;
+  allowRecordRefund?: boolean;
 };
+
+function canShowPosStoreCreditActions(row: CreditNoteListRow): boolean {
+  const available = creditNoteAvailableBalance(row);
+  if (available <= 0) {
+    return false;
+  }
+  const mode = String(row.return_mode ?? "").toLowerCase();
+  return mode === "store_credit" || mode === "exchange_hold";
+}
 
 export default function CreditNotes({
   initialRows,
   paymentMethods,
   fetchError,
+  allowRecordRefund = true,
 }: CreditNotesProps) {
   const router = useRouter();
   const supabase = createClient();
@@ -37,7 +54,7 @@ export default function CreditNotes({
     useBusinessUnitView();
   const buReadScope = useBusinessUnitReadScope();
   const [rows, setRows] = useState(initialRows);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [usageFilter, setUsageFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [availableOnly, setAvailableOnly] = useState(false);
@@ -50,8 +67,10 @@ export default function CreditNotes({
 
   const visibleRows = useMemo(() => {
     return rows.filter((row) => {
-      if (statusFilter !== "all" && row.status !== statusFilter) {
-        return false;
+      if (usageFilter !== "all") {
+        if (formatCreditNoteUsageStatus(row) !== usageFilter) {
+          return false;
+        }
       }
       const date = row.credit_note_date?.slice(0, 10) ?? "";
       if (dateFrom && date < dateFrom) {
@@ -65,7 +84,7 @@ export default function CreditNotes({
       }
       return true;
     });
-  }, [rows, statusFilter, dateFrom, dateTo, availableOnly]);
+  }, [rows, usageFilter, dateFrom, dateTo, availableOnly]);
 
   const refundTarget = rows.find((row) => row.id === refundNoteId) ?? null;
 
@@ -131,17 +150,19 @@ export default function CreditNotes({
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600">
-            Status
+            Usage
           </label>
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            value={usageFilter}
+            onChange={(e) => setUsageFilter(e.target.value)}
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
           >
             <option value="all">All</option>
-            <option value="issued">Issued</option>
-            <option value="partially_refunded">Partially refunded</option>
-            <option value="refunded">Refunded</option>
+            {CREDIT_NOTE_USAGE_FILTER_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
         </div>
         <div>
@@ -189,7 +210,7 @@ export default function CreditNotes({
               <th className="px-4 py-3 text-right font-medium">Applied</th>
               <th className="px-4 py-3 text-right font-medium">Available</th>
               <th className="px-4 py-3 text-left font-medium">Outcome</th>
-              <th className="px-4 py-3 text-left font-medium">Status</th>
+              <th className="px-4 py-3 text-left font-medium">Usage</th>
               <th className="px-4 py-3 text-left font-medium">Actions</th>
             </tr>
           </thead>
@@ -225,37 +246,81 @@ export default function CreditNotes({
                     <td className="px-4 py-3 text-right">{formatGHS(row.applied_amount)}</td>
                     <td className="px-4 py-3 text-right">{formatGHS(available)}</td>
                     <td className="px-4 py-3">{formatCreditNoteOutcome(row)}</td>
-                    <td className="px-4 py-3">{row.status ?? "—"}</td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        disabled={viewAllBusinessUnits || available <= 0}
-                        title={
-                          viewAllBusinessUnits
-                            ? SALES_REGISTER_VIEW_ONLY_TOOLTIP
-                            : available <= 0
-                              ? "No balance available to refund"
-                              : undefined
-                        }
-                        onClick={() => {
-                          const gate = evaluateReturnBusinessUnitGate({
-                            viewAllBusinessUnits,
-                            activeBusinessUnitId,
-                            saleBusinessUnitId: row.business_unit_id,
-                            units,
-                          });
-                          if (!gate.ok) {
-                            setError(gate.message);
-                            return;
-                          }
-                          setError(null);
-                          setRefundNoteId(row.id);
-                          setRefundAmount(String(available));
-                        }}
-                        className="rounded border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
-                      >
-                        Record Refund
-                      </button>
+                      {formatCreditNoteUsageStatus(row)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {canShowPosStoreCreditActions(row) ? (
+                          viewAllBusinessUnits ? (
+                            <>
+                              <span
+                                title={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
+                                className="cursor-not-allowed rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-400"
+                              >
+                                Apply at POS
+                              </span>
+                              <span
+                                title={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
+                                className="cursor-not-allowed rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-400"
+                              >
+                                Load returned items
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <Link
+                                href={buildPosStoreCreditCheckoutUrl({
+                                  creditNoteId: row.id,
+                                })}
+                                className="rounded border border-[#0f2744] px-2 py-1 text-xs font-medium text-[#0f2744] hover:bg-slate-50"
+                              >
+                                Apply at POS
+                              </Link>
+                              <Link
+                                href={buildPosStoreCreditCheckoutUrl({
+                                  creditNoteId: row.id,
+                                  loadLines: true,
+                                })}
+                                className="rounded border border-[#0f2744] px-2 py-1 text-xs font-medium text-[#0f2744] hover:bg-slate-50"
+                              >
+                                Load returned items
+                              </Link>
+                            </>
+                          )
+                        ) : null}
+                        {allowRecordRefund ? (
+                          <button
+                            type="button"
+                            disabled={viewAllBusinessUnits || available <= 0}
+                            title={
+                              viewAllBusinessUnits
+                                ? SALES_REGISTER_VIEW_ONLY_TOOLTIP
+                                : available <= 0
+                                  ? "No balance available to refund"
+                                  : undefined
+                            }
+                            onClick={() => {
+                              const gate = evaluateReturnBusinessUnitGate({
+                                viewAllBusinessUnits,
+                                activeBusinessUnitId,
+                                saleBusinessUnitId: row.business_unit_id,
+                                units,
+                              });
+                              if (!gate.ok) {
+                                setError(gate.message);
+                                return;
+                              }
+                              setError(null);
+                              setRefundNoteId(row.id);
+                              setRefundAmount(String(available));
+                            }}
+                            className="rounded border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                          >
+                            Record Refund
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -317,21 +382,21 @@ export default function CreditNotes({
               </div>
             </div>
             <div className="mt-6 flex justify-end gap-2">
-              <button
+              <DashboardButton
                 type="button"
+                variant="secondary"
                 onClick={() => setRefundNoteId(null)}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm"
               >
                 Cancel
-              </button>
-              <button
+              </DashboardButton>
+              <DashboardButton
                 type="button"
+                variant="primary"
                 disabled={submitting}
                 onClick={() => void handleRecordRefund()}
-                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 {submitting ? "Saving…" : "Record Refund"}
-              </button>
+              </DashboardButton>
             </div>
           </div>
         </div>

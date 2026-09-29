@@ -1,4 +1,5 @@
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
+import { formatCreditNoteUsageStatus } from "@/app/dashboard/finance/credit-note-display-utils";
 import {
   formatQuotationDocumentType,
   formatQuotationStatus,
@@ -121,8 +122,18 @@ export type Customer360ProductSale = {
   sale_status: string | null;
   is_sale_return?: boolean;
   credit_note?:
-    | { credit_note_number: string }
-    | { credit_note_number: string }[]
+    | {
+        credit_note_number: string;
+        total_amount?: number | null;
+        refunded_amount?: number | null;
+        applied_amount?: number | null;
+      }
+    | {
+        credit_note_number: string;
+        total_amount?: number | null;
+        refunded_amount?: number | null;
+        applied_amount?: number | null;
+      }[]
     | null;
   product?:
     | { product_code: string; product_name: string }
@@ -163,7 +174,20 @@ export const CUSTOMER_360_SERVICE_CONTRACT_SELECT =
   "id, contract_number, start_date, end_date, status, next_billing_date, total_amount_due";
 
 export const CUSTOMER_360_PRODUCT_SALE_SELECT =
-  "id, date, invoice_no, amount, amount_received, payment_status, sale_quantity, sale_status, is_sale_return, credit_note:credit_notes!income_register_credit_note_fkey(credit_note_number), product:finished_products(product_code, product_name)";
+  "id, date, invoice_no, amount, amount_received, payment_status, sale_quantity, sale_status, is_sale_return, credit_note:credit_notes!income_register_credit_note_fkey(credit_note_number, total_amount, refunded_amount, applied_amount), product:finished_products(product_code, product_name)";
+
+export type Customer360StoreCreditNote = {
+  id: string;
+  credit_note_number: string;
+  credit_note_date: string;
+  return_mode: string | null;
+  total_amount: number;
+  refunded_amount: number;
+  applied_amount: number;
+};
+
+export const CUSTOMER_360_STORE_CREDIT_NOTE_SELECT =
+  "id, credit_note_number, credit_note_date, return_mode, total_amount, refunded_amount, applied_amount";
 
 export const CUSTOMER_360_TABS = [
   { id: "opportunities", label: "Opportunities" },
@@ -196,6 +220,25 @@ export function getCustomer360CreditNoteNumber(
     : entry.credit_note;
   const num = note?.credit_note_number?.trim();
   return num || null;
+}
+
+export function getCustomer360ReturnCreditUsageLabel(
+  entry: Customer360ProductSale,
+): string | null {
+  if (!isCustomer360ProductSaleReturn(entry)) {
+    return null;
+  }
+  const note = Array.isArray(entry.credit_note)
+    ? entry.credit_note[0]
+    : entry.credit_note;
+  if (!note) {
+    return null;
+  }
+  return formatCreditNoteUsageStatus({
+    total_amount: Number(note.total_amount) || 0,
+    refunded_amount: Number(note.refunded_amount) || 0,
+    applied_amount: Number(note.applied_amount) || 0,
+  });
 }
 
 export function normalizeCustomer360Opportunity(

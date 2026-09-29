@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import DashboardButton from "@/components/dashboard-button";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
@@ -723,20 +724,20 @@ export default function ProductSales({
             auto-posted COGS. Remaining balances use the due date for reminders.
           </p>
           <div className="flex gap-2">
-            <button
+            <DashboardButton
               type="button"
+              variant="secondary"
               onClick={() => (showBulkImport ? closeBulkImport() : openBulkImport())}
-              className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
             >
               {showBulkImport ? "Cancel Import" : "Bulk Import"}
-            </button>
-            <button
+            </DashboardButton>
+            <DashboardButton
               type="button"
+              variant="primary"
               onClick={() => (showForm ? closeForm() : openAddForm())}
-              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
             >
               {showForm ? "Cancel" : "Add Sale"}
-            </button>
+            </DashboardButton>
           </div>
         </div>
       ) : null}
@@ -1012,21 +1013,21 @@ export default function ProductSales({
             </p>
 
             <div className="flex gap-3">
-              <button
+              <DashboardButton
                 type="submit"
+                variant="success"
                 disabled={loading}
-                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? "Saving…" : "Save Sale"}
-              </button>
-              <button
+              </DashboardButton>
+              <DashboardButton
                 type="button"
+                variant="secondary"
                 onClick={closeForm}
                 disabled={loading}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
-              </button>
+              </DashboardButton>
             </div>
           </form>
         </section>

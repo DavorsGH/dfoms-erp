@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { formatCreditNoteUsageStatus } from "@/app/dashboard/finance/credit-note-display-utils";
+import { creditNoteAvailableBalance } from "@/app/dashboard/finance/credit-notes-utils";
+import { buildPosStoreCreditCheckoutUrl } from "@/app/dashboard/pos/pos-store-credit-utils";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import { ProductSaleReturnBadge } from "../product-return-badge";
 import ScrollableTable, {
@@ -37,7 +40,9 @@ import {
   getCustomerTypeLabel,
   getOpportunityStageLabel,
   getCustomer360CreditNoteNumber,
+  getCustomer360ReturnCreditUsageLabel,
   getProductSaleLabel,
+  type Customer360StoreCreditNote,
   isActivityComplete,
   isCustomer360ProductSaleReturn,
   isProductSaleVoided,
@@ -67,6 +72,7 @@ type Customer360Props = {
   loyaltyAccount: Customer360LoyaltyAccount | null;
   loyaltyTransactions: Customer360LoyaltyTransaction[];
   storeCreditBalance?: number;
+  storeCreditNotes?: Customer360StoreCreditNote[];
   creditAppliedToProductSales?: number;
   fetchError: string | null;
 };
@@ -87,6 +93,7 @@ export default function Customer360({
   loyaltyAccount,
   loyaltyTransactions,
   storeCreditBalance = 0,
+  storeCreditNotes = [],
   creditAppliedToProductSales = 0,
   fetchError,
 }: Customer360Props) {
@@ -211,6 +218,61 @@ export default function Customer360({
           </p>
         </div>
       </section>
+
+      {storeCreditNotes.length > 0 ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h4 className="mb-4 text-sm font-medium text-slate-700">
+            Store credit notes
+          </h4>
+          <ScrollableTable>
+            <table className={scrollableTableClassName}>
+              <thead className={scrollableTableHeadClassName}>
+                <tr>
+                  <th className={scrollableTableThClassName}>Number</th>
+                  <th className={scrollableTableThClassName}>Date</th>
+                  <th className={scrollableTableThClassName}>Available</th>
+                  <th className={scrollableTableThClassName}>Usage</th>
+                  <th className={scrollableTableThClassName} />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {storeCreditNotes.map((note, index) => {
+                  const available = creditNoteAvailableBalance(note);
+                  return (
+                    <tr
+                      key={note.id}
+                      className={getStripedRowClassName(index)}
+                    >
+                      <td className="px-4 py-3 font-medium text-[#0f2744]">
+                        {note.credit_note_number}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatInvoiceDate(note.credit_note_date)}
+                      </td>
+                      <td className="px-4 py-3">{formatGHS(available)}</td>
+                      <td className="px-4 py-3">
+                        {formatCreditNoteUsageStatus(note)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {available > 0 ? (
+                          <Link
+                            href={buildPosStoreCreditCheckoutUrl({
+                              creditNoteId: note.id,
+                            })}
+                            className={secondaryButtonClassName}
+                          >
+                            Apply at POS
+                          </Link>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </ScrollableTable>
+        </section>
+      ) : null}
 
       {activeServiceContracts.length > 0 ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -501,6 +563,8 @@ function ProductSalesSection({
             productSales.map((entry, index) => {
               const isReturn = isCustomer360ProductSaleReturn(entry);
               const creditNoteNo = getCustomer360CreditNoteNumber(entry);
+              const creditUsageLabel =
+                getCustomer360ReturnCreditUsageLabel(entry);
 
               return (
               <tr
@@ -512,6 +576,7 @@ function ProductSalesSection({
                   {isReturn && creditNoteNo ? (
                     <span className="mt-0.5 block text-xs font-normal text-slate-500">
                       {creditNoteNo}
+                      {creditUsageLabel ? ` · ${creditUsageLabel}` : ""}
                     </span>
                   ) : null}
                 </td>

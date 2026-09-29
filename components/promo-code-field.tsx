@@ -153,7 +153,7 @@ export default function PromoCodeField({
     <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4">
       <p className="text-sm font-medium text-[#0f2744]">Promo Code</p>
       <div className="flex flex-wrap gap-2">
-        <div className="relative min-w-[220px] flex-1">
+        <div className="relative min-w-0 flex-1">
           <input
             type="text"
             role="combobox"
