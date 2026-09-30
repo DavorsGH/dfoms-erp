@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadPaymentAccountsForTenant } from "@/utils/payment-accounts-server";
+import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import {
-  PAYMENT_ACCOUNT_SELECT,
-  type PaymentAccountRow,
-} from "@/utils/payment-accounts-types";
+  BUSINESS_UNIT_SELECT,
+  type BusinessUnitRow,
+} from "@/utils/business-units-types";
 import PaymentAccountsSettings from "../payment-accounts-settings";
 
 export default async function PaymentAccountsPage() {
@@ -26,11 +28,23 @@ export default async function PaymentAccountsPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const { data, error } = await supabase
-    .from("payment_accounts")
-    .select(PAYMENT_ACCOUNT_SELECT)
+  let initialAccounts: PaymentAccountRow[] = [];
+  let accountsError: string | null = null;
+
+  try {
+    initialAccounts = await loadPaymentAccountsForTenant(supabase, tenantId);
+  } catch (error) {
+    accountsError =
+      error instanceof Error ? error.message : "Unable to load payment accounts.";
+  }
+
+  const { data: businessUnits, error: businessUnitsError } = await supabase
+    .from("business_units")
+    .select(BUSINESS_UNIT_SELECT)
     .eq("tenant_id", tenantId)
-    .order("account_name", { ascending: true });
+    .order("name", { ascending: true });
+
+  const fetchError = accountsError ?? businessUnitsError?.message ?? null;
 
   return (
     <>
@@ -38,8 +52,9 @@ export default async function PaymentAccountsPage() {
         Payment Accounts
       </h2>
       <PaymentAccountsSettings
-        initialAccounts={(data as PaymentAccountRow[] | null) ?? []}
-        fetchError={error?.message ?? null}
+        initialAccounts={initialAccounts}
+        businessUnits={(businessUnits as BusinessUnitRow[] | null) ?? []}
+        fetchError={fetchError}
       />
     </>
   );

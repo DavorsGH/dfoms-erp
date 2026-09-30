@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import ClientReceiptPdfDocument from "@/app/dashboard/finance/client-receipts/client-receipt-pdf-document";
 import { normalizeClientReceiptDetail } from "@/app/dashboard/finance/client-receipts/client-receipt-display-utils";
 import { loadTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
-import { loadTenantGraTin } from "@/app/dashboard/finance/tax-utils";
+import { loadDocumentGraTin } from "@/app/dashboard/finance/tax-utils";
 import { loadClientReceiptDetail } from "@/utils/client-invoice-payments-api";
 import { resolvePdfBrandingImages } from "@/utils/pdf-branding-images";
 import { renderPdfBuffer } from "@/utils/render-pdf-buffer";
@@ -37,7 +37,11 @@ export async function renderClientReceiptPdfBuffer(options: {
     await Promise.all([
       getTenantBrandingById(options.tenantId),
       loadTenantBillingSettingsHeader(options.supabase, options.tenantId),
-      loadTenantGraTin(options.supabase, options.tenantId),
+      loadDocumentGraTin(
+        options.supabase,
+        options.tenantId,
+        detail.receipt.business_unit_id,
+      ),
       loadBusinessUnitDocumentContact(
         options.supabase,
         options.tenantId,

@@ -49,6 +49,7 @@ export type ClientQuotationDetailPayload = {
   payment_account_ids: string[];
   payment_accounts: PaymentAccountRow[];
   business_unit_contact?: BusinessUnitDocumentContact | null;
+  gra_tin?: string | null;
   email_delivery?: QuotationEmailDeliverySummary | null;
 };
 

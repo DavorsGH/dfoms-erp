@@ -2,8 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import PaymentAccountFormFields from "@/components/payment-account-form-fields";
+import type { BusinessUnitRow } from "@/utils/business-units-types";
 import {
   emptyPaymentAccountForm,
+  formatPaymentAccountAvailabilityLabel,
   paymentAccountContactWarning,
   paymentAccountToForm,
   validatePaymentAccountInput,
@@ -12,13 +15,11 @@ import {
 
 type PaymentAccountsSettingsProps = {
   initialAccounts: PaymentAccountRow[];
+  businessUnits: BusinessUnitRow[];
   fetchError: string | null;
 };
 
 type FormState = ReturnType<typeof emptyPaymentAccountForm>;
-
-const inputClassName =
-  "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 const cardClassName =
   "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm";
@@ -46,6 +47,7 @@ function formatDetail(label: string, value: string | null | undefined) {
 
 export default function PaymentAccountsSettings({
   initialAccounts,
+  businessUnits,
   fetchError,
 }: PaymentAccountsSettingsProps) {
   const router = useRouter();
@@ -57,6 +59,11 @@ export default function PaymentAccountsSettings({
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const unitNameById = useMemo(
+    () => new Map(businessUnits.map((unit) => [unit.id, unit.name])),
+    [businessUnits],
+  );
 
   const editingAccount = useMemo(
     () =>
@@ -120,6 +127,12 @@ export default function PaymentAccountsSettings({
     setWarning(contactWarning);
 
     const isEditing = formOpen !== null && formOpen !== "new";
+    const payloadBody = {
+      ...form,
+      business_unit_ids:
+        form.availability === "selected" ? form.business_unit_ids : [],
+    };
+
     const response = await fetch("/api/payment-accounts", {
       method: isEditing ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -127,9 +140,9 @@ export default function PaymentAccountsSettings({
         isEditing
           ? {
               id: formOpen,
-              ...form,
+              ...payloadBody,
             }
-          : form,
+          : payloadBody,
       ),
     });
 
@@ -261,6 +274,13 @@ export default function PaymentAccountsSettings({
                     <p className="mt-1 text-xs text-slate-500">
                       {account.is_active ? "Active" : "Inactive"}
                     </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Available to:{" "}
+                      {formatPaymentAccountAvailabilityLabel(
+                        account,
+                        unitNameById,
+                      )}
+                    </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <button
@@ -316,149 +336,13 @@ export default function PaymentAccountsSettings({
           ) : null}
 
           <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Account Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={form.account_name}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    account_name: event.target.value,
-                  }))
-                }
-                placeholder="Davors Technologies Ltd"
-                className={inputClassName}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Bank Name
-              </label>
-              <input
-                type="text"
-                value={form.bank_name}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    bank_name: event.target.value,
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Bank Account Number
-              </label>
-              <input
-                type="text"
-                value={form.bank_account_number}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    bank_account_number: event.target.value,
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                MoMo Merchant Name
-              </label>
-              <input
-                type="text"
-                value={form.momo_merchant_name}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    momo_merchant_name: event.target.value,
-                  }))
-                }
-                placeholder="Davors Enterprise"
-                className={inputClassName}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                MoMo Provider
-              </label>
-              <input
-                type="text"
-                value={form.momo_provider}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    momo_provider: event.target.value,
-                  }))
-                }
-                placeholder="MTN, Vodafone, AirtelTigo"
-                className={inputClassName}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Merchant Number
-              </label>
-              <input
-                type="text"
-                value={form.momo_number}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    momo_number: event.target.value,
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Merchant ID
-              </label>
-              <input
-                type="text"
-                value={form.momo_merchant_id}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    momo_merchant_id: event.target.value,
-                  }))
-                }
-                className={inputClassName}
-              />
-            </div>
-
-            <div className="flex items-center gap-2 md:col-span-2">
-              <input
-                id="payment-account-active"
-                type="checkbox"
-                checked={form.is_active}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    is_active: event.target.checked,
-                  }))
-                }
-                className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
-              />
-              <label
-                htmlFor="payment-account-active"
-                className="text-sm text-slate-700"
-              >
-                Active (available for invoice use)
-              </label>
-            </div>
+            <PaymentAccountFormFields
+              form={form}
+              setForm={setForm}
+              businessUnits={businessUnits}
+              showAvailabilityFields
+              disabled={saving}
+            />
 
             <div className="flex flex-wrap gap-2 md:col-span-2">
               <button

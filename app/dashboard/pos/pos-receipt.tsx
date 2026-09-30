@@ -13,6 +13,8 @@ import { POS_PRINT_AREA_ID, lineSubtotal } from "./pos-utils";
 export type PosReceiptData = {
   invoiceNo: string;
   saleDate: string;
+  /** Stamped checkout business unit for letterhead (null = tenant). */
+  businessUnitId?: string | null;
   customerLabel: string;
   paymentMethod: string;
   paymentStatus: string;
@@ -136,6 +138,8 @@ export function PosReceiptPanel({
         <ReportCompanyHeader
           title="Point of Sale Receipt"
           periodLabel={formatReportDate(receipt.saleDate)}
+          brandingSource="stamp"
+          stampedBusinessUnitId={receipt.businessUnitId ?? null}
         />
 
         {receipt.pendingSync ? (

@@ -1,6 +1,6 @@
 import FinanceNav from "../../finance-nav";
 import ClientReceiptView from "../client-receipt-view";
-import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
+import { getCurrentTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
 
 type ViewClientReceiptPageProps = {
   params: Promise<{ id: string }>;
@@ -10,10 +10,7 @@ export default async function ViewClientReceiptPage({
   params,
 }: ViewClientReceiptPageProps) {
   const { id } = await params;
-  const [billingSettings, graTin] = await Promise.all([
-    getCurrentTenantBillingSettingsHeader(),
-    getCurrentTenantGraTin(),
-  ]);
+  const billingSettings = await getCurrentTenantBillingSettingsHeader();
 
   return (
     <div>
@@ -24,7 +21,7 @@ export default async function ViewClientReceiptPage({
       <h2 className="no-print mb-6 text-xl font-semibold text-[#0f2744]">
         Customer Receipt
       </h2>
-      <ClientReceiptView receiptId={id} billingSettings={billingSettings} graTin={graTin} />
+      <ClientReceiptView receiptId={id} billingSettings={billingSettings} />
     </div>
   );
 }

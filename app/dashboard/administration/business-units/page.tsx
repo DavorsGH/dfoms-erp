@@ -5,6 +5,8 @@ import {
   BUSINESS_UNIT_SELECT,
   type BusinessUnitRow,
 } from "@/utils/business-units-types";
+import { loadPaymentAccountsForTenant } from "@/utils/payment-accounts-server";
+import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
 import BusinessUnitsSettings from "../business-units-settings";
 
 export default async function BusinessUnitsPage() {
@@ -32,6 +34,23 @@ export default async function BusinessUnitsPage() {
     .eq("tenant_id", tenantId)
     .order("name", { ascending: true });
 
+  let initialPaymentAccounts: PaymentAccountRow[] = [];
+  let paymentAccountsError: string | null = null;
+
+  try {
+    initialPaymentAccounts = await loadPaymentAccountsForTenant(
+      supabase,
+      tenantId,
+    );
+  } catch (loadError) {
+    paymentAccountsError =
+      loadError instanceof Error
+        ? loadError.message
+        : "Unable to load payment accounts.";
+  }
+
+  const fetchError = error?.message ?? paymentAccountsError ?? null;
+
   return (
     <>
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
@@ -40,7 +59,8 @@ export default async function BusinessUnitsPage() {
       <BusinessUnitsSettings
         tenantId={tenantId}
         initialUnits={(data as BusinessUnitRow[] | null) ?? []}
-        fetchError={error?.message ?? null}
+        initialPaymentAccounts={initialPaymentAccounts}
+        fetchError={fetchError}
       />
     </>
   );

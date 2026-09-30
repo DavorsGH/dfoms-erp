@@ -34,7 +34,10 @@ import {
   type ClientInvoiceStatus,
   type ClientInvoiceWriteBody,
 } from "@/utils/client-invoices-types";
-import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
+import {
+  paymentAccountsForDocumentPicker,
+  type PaymentAccountRow,
+} from "@/utils/payment-accounts-types";
 import type { ServiceContractOption } from "@/utils/service-contracts-types";
 import { buildClientInvoicePreviewDisplay } from "./client-invoice-display-utils";
 import ClientInvoicePreviewDialog from "./client-invoice-preview-dialog";
@@ -149,13 +152,28 @@ export default function ClientInvoiceForm({
     return nextInvoiceNumberPreview?.trim() || "Assigned on save";
   }, [mode, existingInvoiceNumber, nextInvoiceNumberPreview]);
 
+  const documentBusinessUnitId = useMemo(() => {
+    if (mode === "edit") {
+      return initialBusinessUnitId?.trim() || null;
+    }
+    if (stampBusinessUnit.ok) {
+      return stampBusinessUnit.businessUnitId;
+    }
+    return null;
+  }, [mode, initialBusinessUnitId, stampBusinessUnit]);
+
+  const selectablePaymentAccounts = useMemo(
+    () =>
+      paymentAccountsForDocumentPicker(
+        initialPaymentAccounts,
+        documentBusinessUnitId,
+        form.payment_account_ids,
+      ),
+    [initialPaymentAccounts, documentBusinessUnitId, form.payment_account_ids],
+  );
+
   const previewBusinessUnitContact = useMemo(() => {
-    const stampId =
-      mode === "edit"
-        ? initialBusinessUnitId?.trim() || null
-        : stampBusinessUnit.ok
-          ? stampBusinessUnit.businessUnitId
-          : null;
+    const stampId = documentBusinessUnitId;
     if (!stampId) {
       return null;
     }
@@ -164,7 +182,7 @@ export default function ClientInvoiceForm({
       return null;
     }
     return businessUnitDocumentContactFromSwitcher(unit);
-  }, [mode, initialBusinessUnitId, stampBusinessUnit, units]);
+  }, [documentBusinessUnitId, units]);
 
   const previewDisplay = useMemo(() => {
     if (!previewOpen) {
@@ -637,13 +655,13 @@ export default function ClientInvoiceForm({
             Choose one or more active payment profiles to show on this invoice.
           </p>
         </div>
-        {initialPaymentAccounts.length === 0 ? (
+        {selectablePaymentAccounts.length === 0 ? (
           <p className="text-sm text-slate-500">
             No active payment accounts configured yet.
           </p>
         ) : (
           <div className="space-y-3">
-            {initialPaymentAccounts.map((account) => (
+            {selectablePaymentAccounts.map((account) => (
               <label
                 key={account.id}
                 className="flex items-start gap-3 rounded-md border border-slate-200 px-4 py-3"

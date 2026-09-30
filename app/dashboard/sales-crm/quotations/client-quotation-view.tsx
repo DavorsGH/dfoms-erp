@@ -35,7 +35,6 @@ import { ClientQuotationPrintStyles } from "./client-quotation-print-styles";
 type ClientQuotationViewProps = {
   quotationId: string;
   billingSettings: BillingSettingsHeaderFields | null;
-  graTin: string | null;
   canConvertToInvoice?: boolean;
   backHref?: string;
   backLabel?: string;
@@ -63,7 +62,6 @@ function ClientQuotationPrintStylesLegacy() {
 export default function ClientQuotationView({
   quotationId,
   billingSettings,
-  graTin,
   canConvertToInvoice = false,
   backHref = "/dashboard/sales-crm/quotations",
   backLabel = "Back to list",
@@ -115,6 +113,7 @@ export default function ClientQuotationView({
         payment_account_ids: body.payment_account_ids ?? [],
         payment_accounts: body.payment_accounts ?? [],
         business_unit_contact: body.business_unit_contact ?? null,
+        gra_tin: body.gra_tin ?? null,
         email_delivery: body.email_delivery ?? null,
       });
       setEmailDelivery(body.email_delivery ?? null);
@@ -138,10 +137,10 @@ export default function ClientQuotationView({
       ...normalized,
       branding,
       billingSettings,
-      graTin,
+      graTin: payload.gra_tin ?? null,
       businessUnitContact: payload.business_unit_contact ?? null,
     };
-  }, [payload, branding, billingSettings, graTin]);
+  }, [payload, branding, billingSettings]);
 
   const convertedInvoice = display
     ? resolveConvertedInvoiceLink(display.quotation)

@@ -21,6 +21,7 @@ import {
 import { PAYMENT_ACCOUNT_SELECT, type PaymentAccountRow } from "@/utils/payment-accounts-types";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadDocumentGraTin } from "@/app/dashboard/finance/tax-utils";
 import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 import { loadQuotationEmailDeliverySummary } from "@/utils/email-delivery-status";
 
@@ -110,6 +111,18 @@ export async function GET(_request: Request, context: RouteContext) {
     ? null
     : await loadQuotationEmailDeliverySummary(supabase, auth.tenantId, id);
 
+  const business_unit_contact = await loadBusinessUnitDocumentContact(
+    supabase,
+    auth.tenantId,
+    detail.quotation.business_unit_id,
+  );
+
+  const gra_tin = await loadDocumentGraTin(
+    supabase,
+    auth.tenantId,
+    detail.quotation.business_unit_id,
+  );
+
   return NextResponse.json({
     client_quotation: auth.isClientPortal
       ? (({ internal_notes: _internalNotes, ...clientSafeQuotation }) =>
@@ -118,11 +131,8 @@ export async function GET(_request: Request, context: RouteContext) {
     line_items: detail.line_items,
     payment_account_ids: detail.payment_account_ids,
     payment_accounts: paymentAccounts,
-    business_unit_contact: await loadBusinessUnitDocumentContact(
-      supabase,
-      auth.tenantId,
-      detail.quotation.business_unit_id,
-    ),
+    business_unit_contact,
+    gra_tin,
     email_delivery: emailDelivery,
   });
 }

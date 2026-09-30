@@ -27,6 +27,7 @@ import {
   getCurrentUserClientId,
   getCurrentUserTenantId,
 } from "@/utils/dashboard-auth";
+import { loadDocumentGraTin } from "@/app/dashboard/finance/tax-utils";
 import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 
 type RouteContext = {
@@ -143,6 +144,12 @@ export async function GET(_request: Request, context: RouteContext) {
     detail.invoice.business_unit_id,
   );
 
+  const gra_tin = await loadDocumentGraTin(
+    supabase,
+    auth.tenantId,
+    detail.invoice.business_unit_id,
+  );
+
   return NextResponse.json({
     client_invoice: detail.invoice,
     line_items: detail.line_items,
@@ -150,6 +157,7 @@ export async function GET(_request: Request, context: RouteContext) {
     payment_accounts: paymentAccounts,
     receipts: receiptsResult.receipts,
     business_unit_contact: businessUnitContact,
+    gra_tin,
   });
 }
 

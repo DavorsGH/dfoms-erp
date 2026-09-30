@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserRole, getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { canAccessFinanceSection } from "@/utils/rbac-access";
-import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
+import { getCurrentTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
 import { findActiveServiceContractForClient } from "@/utils/service-contracts-api";
 import ClientQuotationView from "../client-quotation-view";
 
@@ -17,9 +17,8 @@ export default async function ViewClientQuotationPage({
 }: ViewClientQuotationPageProps) {
   const { id } = await params;
   const tenantId = await getCurrentUserTenantId();
-  const [billingSettings, graTin, role] = await Promise.all([
+  const [billingSettings, role] = await Promise.all([
     getCurrentTenantBillingSettingsHeader(),
-    getCurrentTenantGraTin(),
     getCurrentUserRole(),
   ]);
 
@@ -50,7 +49,6 @@ export default async function ViewClientQuotationPage({
       <ClientQuotationView
         quotationId={id}
         billingSettings={billingSettings}
-        graTin={graTin}
         canConvertToInvoice={canConvertToInvoice}
         customerActiveContract={customerActiveContract}
       />

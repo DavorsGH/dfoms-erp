@@ -7,7 +7,7 @@ import {
   type ClientInvoiceDetailPayload,
 } from "@/app/dashboard/finance/client-invoices/client-invoice-display-utils";
 import { loadTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
-import { loadTenantGraTin } from "@/app/dashboard/finance/tax-utils";
+import { loadDocumentGraTin } from "@/app/dashboard/finance/tax-utils";
 import { loadClientInvoiceDetail } from "@/utils/client-invoices-api";
 import { resolvePdfBrandingImages } from "@/utils/pdf-branding-images";
 import { renderPdfBuffer } from "@/utils/render-pdf-buffer";
@@ -60,7 +60,11 @@ export async function renderClientInvoicePdfBuffer(options: {
     await Promise.all([
       getTenantBrandingById(options.tenantId),
       loadTenantBillingSettingsHeader(options.supabase, options.tenantId),
-      loadTenantGraTin(options.supabase, options.tenantId),
+      loadDocumentGraTin(
+        options.supabase,
+        options.tenantId,
+        detail.invoice.business_unit_id,
+      ),
       loadBusinessUnitDocumentContact(
         options.supabase,
         options.tenantId,

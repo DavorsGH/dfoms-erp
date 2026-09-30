@@ -358,6 +358,51 @@ export async function loadTenantGraTin(
   return data.gra_tin.trim();
 }
 
+async function loadBusinessUnitColumnGraTin(
+  supabase: SupabaseClient,
+  tenantId: string,
+  businessUnitId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("business_units")
+    .select("gra_tin")
+    .eq("tenant_id", tenantId)
+    .eq("id", businessUnitId)
+    .maybeSingle();
+
+  if (error || !data?.gra_tin?.trim()) {
+    return null;
+  }
+
+  return data.gra_tin.trim();
+}
+
+/** TIN for a stamped document: business_units.gra_tin → BU tax_settings → default tax_settings. */
+export async function loadDocumentGraTin(
+  supabase: SupabaseClient,
+  tenantId: string,
+  stampedBusinessUnitId: string | null | undefined,
+): Promise<string | null> {
+  const buId = stampedBusinessUnitId?.trim() || null;
+  if (buId) {
+    const fromBuColumn = await loadBusinessUnitColumnGraTin(
+      supabase,
+      tenantId,
+      buId,
+    );
+    if (fromBuColumn) {
+      return fromBuColumn;
+    }
+
+    const fromUnitTaxSettings = await loadTenantGraTin(supabase, tenantId, buId);
+    if (fromUnitTaxSettings) {
+      return fromUnitTaxSettings;
+    }
+  }
+
+  return loadTenantGraTin(supabase, tenantId, null);
+}
+
 export async function loadTenantSalesTaxBasis(
   supabase: SupabaseClient,
   tenantId: string,

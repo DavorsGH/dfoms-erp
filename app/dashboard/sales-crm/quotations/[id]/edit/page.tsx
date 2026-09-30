@@ -32,7 +32,7 @@ import {
   type ClientQuotationLineItemRow,
   type ClientQuotationSiteOption,
 } from "@/utils/client-quotations-types";
-import { PAYMENT_ACCOUNT_SELECT } from "@/utils/payment-accounts-types";
+import { loadActivePaymentAccountsForTenant } from "@/utils/payment-accounts-server";
 import CrmShell from "@/app/dashboard/crm/crm-shell";
 import ClientQuotationForm from "../../client-quotation-form";
 
@@ -73,7 +73,7 @@ export default async function EditClientQuotationPage({
     detail,
     { data: customers, error: customersError },
     { data: sites, error: sitesError },
-    { data: paymentAccounts, error: paymentAccountsError },
+    paymentAccounts,
     { data: opportunities, error: opportunitiesError },
     { data: products, error: productsError },
     { data: employees, error: employeesError },
@@ -88,12 +88,7 @@ export default async function EditClientQuotationPage({
       .select("site_code, site_name, client_id")
       .eq("tenant_id", tenantId)
       .order("site_name", { ascending: true }),
-    supabase
-      .from("payment_accounts")
-      .select(PAYMENT_ACCOUNT_SELECT)
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .order("account_name", { ascending: true }),
+    loadActivePaymentAccountsForTenant(supabase, tenantId),
     applyBusinessUnitScope(
       supabase
         .from("sales_opportunities")
@@ -125,7 +120,6 @@ export default async function EditClientQuotationPage({
     detail.error ??
     customersError?.message ??
     sitesError?.message ??
-    paymentAccountsError?.message ??
     opportunitiesError?.message ??
     productsError?.message ??
     employeesError?.message ??

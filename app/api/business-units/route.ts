@@ -21,6 +21,23 @@ async function getTenantSupabase() {
   return createClient(cookieStore);
 }
 
+function businessUnitWriteFields(
+  trimmed: ReturnType<typeof trimBusinessUnitInput>,
+) {
+  return {
+    name: trimmed.name,
+    invoice_address: trimmed.invoice_address,
+    business_email: trimmed.business_email,
+    phone: trimmed.phone,
+    phone_alt: trimmed.phone_alt,
+    website: trimmed.website,
+    business_registration_number: trimmed.business_registration_number,
+    gra_tin: trimmed.gra_tin,
+    is_active: trimmed.is_active,
+    ...(trimmed.logo_url !== undefined ? { logo_url: trimmed.logo_url } : {}),
+  };
+}
+
 function rejectClientTenantId(body: unknown): NextResponse | null {
   if (body !== null && typeof body === "object" && "tenant_id" in body) {
     return NextResponse.json(
@@ -109,12 +126,8 @@ export async function POST(request: Request) {
     .from("business_units")
     .insert({
       tenant_id: auth.tenantId,
-      name: trimmed.name,
-      invoice_address: trimmed.invoice_address,
-      business_email: trimmed.business_email,
-      is_active: trimmed.is_active,
+      ...businessUnitWriteFields(trimmed),
       is_primary: shouldBePrimary,
-      ...(trimmed.logo_url !== undefined ? { logo_url: trimmed.logo_url } : {}),
       updated_at: new Date().toISOString(),
     })
     .select(BUSINESS_UNIT_SELECT)
@@ -191,11 +204,7 @@ export async function PUT(request: Request) {
   const { data, error } = await supabase
     .from("business_units")
     .update({
-      name: trimmed.name,
-      invoice_address: trimmed.invoice_address,
-      business_email: trimmed.business_email,
-      is_active: trimmed.is_active,
-      ...(trimmed.logo_url !== undefined ? { logo_url: trimmed.logo_url } : {}),
+      ...businessUnitWriteFields(trimmed),
       updated_at: new Date().toISOString(),
     })
     .eq("id", body.id)

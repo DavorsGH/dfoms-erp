@@ -1427,6 +1427,7 @@ export default function PosCheckout({
 
   function showPaidReceipt(input: {
     invoiceNo: string;
+    businessUnitId?: string | null;
     customerLabel: string;
     paymentMethod: string;
     lines: PosCartLine[];
@@ -1441,6 +1442,7 @@ export default function PosCheckout({
     const receiptTotal = cartTotal(input.lines);
     setReceipt({
       invoiceNo: input.invoiceNo,
+      businessUnitId: input.businessUnitId ?? null,
       saleDate: todayIsoDate(),
       customerLabel: input.customerLabel,
       paymentMethod: input.paymentMethod,
@@ -1546,6 +1548,7 @@ export default function PosCheckout({
 
     showPaidReceipt({
       invoiceNo: provisionalToken,
+      businessUnitId: stampResult.businessUnitId,
       customerLabel: getCustomerDisplayName(
         trimmedClientId,
         trimmedCustomerName,
@@ -1632,6 +1635,7 @@ export default function PosCheckout({
 
     showPaidReceipt({
       invoiceNo: summary.invoiceNo,
+      businessUnitId: stampResult.businessUnitId,
       customerLabel: getCustomerDisplayName(
         trimmedClientId,
         trimmedCustomerName,
@@ -1764,6 +1768,7 @@ export default function PosCheckout({
       }
 
       const cartSnapshotForReceipt = [...cartLines];
+      const checkoutBusinessUnitId = stampResult.businessUnitId;
       const customerLabel = getCustomerDisplayName(
         trimmedClientId,
         trimmedCustomerName,
@@ -1815,6 +1820,7 @@ export default function PosCheckout({
 
             showPaidReceipt({
               invoiceNo: confirmPayload.invoice_no,
+              businessUnitId: checkoutBusinessUnitId,
               customerLabel,
               paymentMethod: POS_MOMO_PAYMENT_METHOD,
               lines: cartSnapshotForReceipt,

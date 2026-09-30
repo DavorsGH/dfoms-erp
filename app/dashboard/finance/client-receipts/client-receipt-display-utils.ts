@@ -33,6 +33,7 @@ export type ClientReceiptDetailPayload = {
     client_id: string;
   };
   business_unit_contact?: BusinessUnitDocumentContact | null;
+  gra_tin?: string | null;
 };
 
 export type ClientReceiptDisplayProps = {

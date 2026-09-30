@@ -14,7 +14,10 @@ import type { BillingSettingsHeaderFields } from "@/utils/billing-settings-types
 import type { ClientEntry } from "@/app/dashboard/operations/clients-utils";
 import type { FinishedProductRecord } from "@/app/dashboard/inventory/finished-products-utils";
 import { formatAuthorizedSignerLabel } from "@/utils/client-invoices-types";
-import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
+import {
+  paymentAccountsForDocumentPicker,
+  type PaymentAccountRow,
+} from "@/utils/payment-accounts-types";
 import {
   AUTHORIZED_BY_OTHER,
   CLIENT_QUOTATION_PAYMENT_TERMS_OPTIONS,
@@ -276,13 +279,28 @@ export default function ClientQuotationForm({
     return nextQuotationNumberPreview?.trim() || "Assigned on save";
   }, [mode, existingQuotationNumber, nextQuotationNumberPreview]);
 
+  const documentBusinessUnitId = useMemo(() => {
+    if (mode === "edit") {
+      return initialBusinessUnitId?.trim() || null;
+    }
+    if (stampBusinessUnit.ok) {
+      return stampBusinessUnit.businessUnitId;
+    }
+    return null;
+  }, [mode, initialBusinessUnitId, stampBusinessUnit]);
+
+  const selectablePaymentAccounts = useMemo(
+    () =>
+      paymentAccountsForDocumentPicker(
+        initialPaymentAccounts,
+        documentBusinessUnitId,
+        form.payment_account_ids,
+      ),
+    [initialPaymentAccounts, documentBusinessUnitId, form.payment_account_ids],
+  );
+
   const previewBusinessUnitContact = useMemo(() => {
-    const stampId =
-      mode === "edit"
-        ? initialBusinessUnitId?.trim() || null
-        : stampBusinessUnit.ok
-          ? stampBusinessUnit.businessUnitId
-          : null;
+    const stampId = documentBusinessUnitId;
     if (!stampId) {
       return null;
     }
@@ -291,7 +309,7 @@ export default function ClientQuotationForm({
       return null;
     }
     return businessUnitDocumentContactFromSwitcher(unit);
-  }, [mode, initialBusinessUnitId, stampBusinessUnit, units]);
+  }, [documentBusinessUnitId, units]);
 
   const previewDisplay = useMemo(() => {
     if (!previewOpen) {
@@ -1027,13 +1045,13 @@ export default function ClientQuotationForm({
             Choose one or more active payment profiles to show on this quotation.
           </p>
         </div>
-        {initialPaymentAccounts.length === 0 ? (
+        {selectablePaymentAccounts.length === 0 ? (
           <p className="text-sm text-slate-500">
             No active payment accounts configured yet.
           </p>
         ) : (
           <div className="space-y-3">
-            {initialPaymentAccounts.map((account) => (
+            {selectablePaymentAccounts.map((account) => (
               <label
                 key={account.id}
                 className="flex items-start gap-3 rounded-md border border-slate-200 px-4 py-3"

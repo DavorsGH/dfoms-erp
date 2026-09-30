@@ -13,7 +13,7 @@ import {
   type ClientInvoiceLineItemRow,
   type ClientInvoiceSiteOption,
 } from "@/utils/client-invoices-types";
-import { PAYMENT_ACCOUNT_SELECT } from "@/utils/payment-accounts-types";
+import { loadActivePaymentAccountsForTenant } from "@/utils/payment-accounts-server";
 import FinanceNav from "../../../finance-nav";
 import ClientInvoiceForm from "../../client-invoice-form";
 
@@ -47,7 +47,7 @@ export default async function EditClientInvoicePage({
     detail,
     { data: customers, error: customersError },
     { data: sites, error: sitesError },
-    { data: paymentAccounts, error: paymentAccountsError },
+    paymentAccounts,
     authorizedSignersResult,
     salesTaxBasisResult,
     serviceContractsResult,
@@ -60,12 +60,7 @@ export default async function EditClientInvoicePage({
       .from("sites")
       .select("site_code, site_name, client_id")
       .order("site_name", { ascending: true }),
-    supabase
-      .from("payment_accounts")
-      .select(PAYMENT_ACCOUNT_SELECT)
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .order("account_name", { ascending: true }),
+    loadActivePaymentAccountsForTenant(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
     loadTenantSalesTaxBasis(supabase, tenantId, activeBusinessUnitId),
     loadActiveServiceContractsForTenant(supabase, tenantId),
@@ -99,7 +94,6 @@ export default async function EditClientInvoicePage({
     detail.error ??
     customersError?.message ??
     sitesError?.message ??
-    paymentAccountsError?.message ??
     authorizedSignersResult.error ??
     salesTaxBasisResult.error ??
     serviceContractsResult.error ??

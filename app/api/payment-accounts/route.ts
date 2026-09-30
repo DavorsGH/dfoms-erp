@@ -2,12 +2,19 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireTenantSuperAdmin } from "@/utils/admin-auth";
 import {
+  linkPaymentAccountToBusinessUnit,
+  loadPaymentAccountById,
+  loadPaymentAccountsForTenant,
+  replacePaymentAccountBusinessUnits,
+  unlinkPaymentAccountFromBusinessUnit,
+} from "@/utils/payment-accounts-server";
+import {
   PAYMENT_ACCOUNT_SELECT,
+  normalizePaymentAccountBusinessUnitIds,
   trimPaymentAccountInput,
   validatePaymentAccountInput,
   type PaymentAccountDeleteBody,
   type PaymentAccountInput,
-  type PaymentAccountRow,
   type PaymentAccountUpdateBody,
 } from "@/utils/payment-accounts-types";
 import { createClient } from "@/utils/supabase/server";
@@ -35,19 +42,24 @@ export async function GET() {
   }
 
   const supabase = await getTenantSupabase();
-  const { data, error } = await supabase
-    .from("payment_accounts")
-    .select(PAYMENT_ACCOUNT_SELECT)
-    .eq("tenant_id", auth.tenantId)
-    .order("account_name", { ascending: true });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const payment_accounts = await loadPaymentAccountsForTenant(
+      supabase,
+      auth.tenantId,
+    );
+    return NextResponse.json({ payment_accounts });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load payment accounts.",
+      },
+      { status: 500 },
+    );
   }
-
-  return NextResponse.json({
-    payment_accounts: (data as PaymentAccountRow[] | null) ?? [],
-  });
 }
 
 export async function POST(request: Request) {
@@ -75,6 +87,11 @@ export async function POST(request: Request) {
   }
 
   const trimmed = trimPaymentAccountInput(body);
+  const availability = body.availability ?? "all";
+  const businessUnitIds = normalizePaymentAccountBusinessUnitIds(
+    body.business_unit_ids,
+  );
+
   const supabase = await getTenantSupabase();
 
   const { data, error } = await supabase
@@ -87,11 +104,31 @@ export async function POST(request: Request) {
     .select(PAYMENT_ACCOUNT_SELECT)
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error || !data) {
+    return NextResponse.json(
+      { error: error?.message ?? "Unable to create payment account." },
+      { status: 400 },
+    );
   }
 
-  return NextResponse.json({ payment_account: data as PaymentAccountRow });
+  const linkError = await replacePaymentAccountBusinessUnits(
+    supabase,
+    auth.tenantId,
+    data.id as string,
+    availability,
+    businessUnitIds,
+  );
+  if (linkError) {
+    return NextResponse.json({ error: linkError }, { status: 400 });
+  }
+
+  const payment_account = await loadPaymentAccountById(
+    supabase,
+    auth.tenantId,
+    data.id as string,
+  );
+
+  return NextResponse.json({ payment_account });
 }
 
 export async function PUT(request: Request) {
@@ -117,28 +154,61 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
 
+  const supabase = await getTenantSupabase();
+
+  const existing = await loadPaymentAccountById(
+    supabase,
+    auth.tenantId,
+    body.id.trim(),
+  );
+  if (!existing) {
+    return NextResponse.json({ error: "Payment account not found" }, { status: 404 });
+  }
+
+  const linkId = body.link_business_unit_id?.trim();
+  if (linkId) {
+    const linkError = await linkPaymentAccountToBusinessUnit(
+      supabase,
+      auth.tenantId,
+      existing.id,
+      linkId,
+    );
+    if (linkError) {
+      return NextResponse.json({ error: linkError }, { status: 400 });
+    }
+    const payment_account = await loadPaymentAccountById(
+      supabase,
+      auth.tenantId,
+      existing.id,
+    );
+    return NextResponse.json({ payment_account });
+  }
+
+  const unlinkId = body.unlink_business_unit_id?.trim();
+  if (unlinkId) {
+    const unlinkError = await unlinkPaymentAccountFromBusinessUnit(
+      supabase,
+      auth.tenantId,
+      existing.id,
+      unlinkId,
+    );
+    if (unlinkError) {
+      return NextResponse.json({ error: unlinkError }, { status: 400 });
+    }
+    const payment_account = await loadPaymentAccountById(
+      supabase,
+      auth.tenantId,
+      existing.id,
+    );
+    return NextResponse.json({ payment_account });
+  }
+
   const validationError = validatePaymentAccountInput(body);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
   const trimmed = trimPaymentAccountInput(body);
-  const supabase = await getTenantSupabase();
-
-  const { data: existing, error: fetchError } = await supabase
-    .from("payment_accounts")
-    .select("id")
-    .eq("id", body.id)
-    .eq("tenant_id", auth.tenantId)
-    .maybeSingle();
-
-  if (fetchError) {
-    return NextResponse.json({ error: fetchError.message }, { status: 400 });
-  }
-
-  if (!existing) {
-    return NextResponse.json({ error: "Payment account not found" }, { status: 404 });
-  }
 
   const { data, error } = await supabase
     .from("payment_accounts")
@@ -151,11 +221,37 @@ export async function PUT(request: Request) {
     .select(PAYMENT_ACCOUNT_SELECT)
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error || !data) {
+    return NextResponse.json(
+      { error: error?.message ?? "Unable to update payment account." },
+      { status: 400 },
+    );
   }
 
-  return NextResponse.json({ payment_account: data as PaymentAccountRow });
+  if (body.availability !== undefined) {
+    const availability = body.availability;
+    const businessUnitIds = normalizePaymentAccountBusinessUnitIds(
+      body.business_unit_ids,
+    );
+    const linkError = await replacePaymentAccountBusinessUnits(
+      supabase,
+      auth.tenantId,
+      existing.id,
+      availability,
+      businessUnitIds,
+    );
+    if (linkError) {
+      return NextResponse.json({ error: linkError }, { status: 400 });
+    }
+  }
+
+  const payment_account = await loadPaymentAccountById(
+    supabase,
+    auth.tenantId,
+    existing.id,
+  );
+
+  return NextResponse.json({ payment_account });
 }
 
 export async function DELETE(request: Request) {

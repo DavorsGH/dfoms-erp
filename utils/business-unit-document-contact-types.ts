@@ -10,6 +10,10 @@ export type BusinessUnitDocumentContact = {
   logoUrl: string | null;
   invoice_address: string | null;
   business_email: string | null;
+  phone: string | null;
+  phone_alt: string | null;
+  website: string | null;
+  business_registration_number: string | null;
 };
 
 export type BusinessUnitSwitcherBrandingFields = {
@@ -19,6 +23,10 @@ export type BusinessUnitSwitcherBrandingFields = {
   logoUrl: string | null;
   invoice_address?: string | null;
   business_email?: string | null;
+  phone?: string | null;
+  phone_alt?: string | null;
+  website?: string | null;
+  business_registration_number?: string | null;
 };
 
 /** Build contact from switcher option fields (create-form preview before save). */
@@ -32,6 +40,11 @@ export function businessUnitDocumentContactFromSwitcher(
     logoUrl: unit.logoUrl?.trim() || null,
     invoice_address: unit.invoice_address?.trim() || null,
     business_email: unit.business_email?.trim() || null,
+    phone: unit.phone?.trim() || null,
+    phone_alt: unit.phone_alt?.trim() || null,
+    website: unit.website?.trim() || null,
+    business_registration_number:
+      unit.business_registration_number?.trim() || null,
   };
 }
 

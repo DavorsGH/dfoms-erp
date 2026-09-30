@@ -48,7 +48,9 @@ async function loadBusinessUnitSwitcherOptions(
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("business_units")
-    .select("id, name, logo_url, invoice_address, business_email")
+    .select(
+      "id, name, logo_url, invoice_address, business_email, phone, phone_alt, website, business_registration_number",
+    )
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .order("name", { ascending: true });
@@ -67,6 +69,10 @@ async function loadBusinessUnitSwitcherOptions(
     logo_url: string | null;
     invoice_address: string | null;
     business_email: string | null;
+    phone: string | null;
+    phone_alt: string | null;
+    website: string | null;
+    business_registration_number: string | null;
   }>;
 
   const logoRefs = rows
@@ -86,6 +92,11 @@ async function loadBusinessUnitSwitcherOptions(
       logoUrl: logo_url ? (signedByRef.get(logo_url) ?? null) : null,
       invoice_address: row.invoice_address?.trim() || null,
       business_email: row.business_email?.trim() || null,
+      phone: row.phone?.trim() || null,
+      phone_alt: row.phone_alt?.trim() || null,
+      website: row.website?.trim() || null,
+      business_registration_number:
+        row.business_registration_number?.trim() || null,
     };
   });
 }

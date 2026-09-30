@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import ImageFileUploadButton from "@/components/image-file-upload-button";
 import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
 import { uploadBusinessUnitLogo } from "@/utils/business-unit-logo";
 import {
@@ -12,17 +11,17 @@ import {
   type BusinessUnitRow,
 } from "@/utils/business-units-types";
 import { createClient } from "@/utils/supabase/client";
+import type { PaymentAccountRow } from "@/utils/payment-accounts-types";
+import BusinessUnitFormDrawer from "./business-unit-form-drawer";
 
 type BusinessUnitsSettingsProps = {
   tenantId: string;
   initialUnits: BusinessUnitRow[];
+  initialPaymentAccounts: PaymentAccountRow[];
   fetchError: string | null;
 };
 
 type FormState = ReturnType<typeof emptyBusinessUnitForm>;
-
-const inputClassName =
-  "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 const cardClassName =
   "space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm";
@@ -36,14 +35,37 @@ const secondaryButtonClassName =
 const dangerButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
 
+function websiteHref(website: string): string {
+  const trimmed = website.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+function linkedPaymentAccountCount(
+  unitId: string,
+  accounts: PaymentAccountRow[],
+): number {
+  return accounts.filter((account) =>
+    account.business_unit_ids.includes(unitId),
+  ).length;
+}
+
+function paymentAccountCountLabel(count: number): string {
+  return count === 1 ? "1 payment account" : `${count} payment accounts`;
+}
+
 export default function BusinessUnitsSettings({
   tenantId,
   initialUnits,
+  initialPaymentAccounts,
   fetchError,
 }: BusinessUnitsSettingsProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [units, setUnits] = useState(initialUnits);
+  const [paymentAccounts, setPaymentAccounts] = useState(initialPaymentAccounts);
   const [formOpen, setFormOpen] = useState<"new" | string | null>(null);
   const [form, setForm] = useState<FormState>(() => emptyBusinessUnitForm());
   const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
@@ -352,7 +374,13 @@ export default function BusinessUnitsSettings({
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
-            {units.map((unit) => (
+            {units.map((unit) => {
+              const linkedPaymentCount = linkedPaymentAccountCount(
+                unit.id,
+                paymentAccounts,
+              );
+
+              return (
               <article
                 key={unit.id}
                 className="space-y-3 rounded-md border border-slate-200 p-4"
@@ -414,6 +442,43 @@ export default function BusinessUnitsSettings({
                   <p className="text-sm text-slate-500">No business email set.</p>
                 )}
 
+                {unit.phone ? (
+                  <p className="text-sm text-slate-700">{unit.phone}</p>
+                ) : null}
+
+                {unit.phone_alt ? (
+                  <p className="text-sm text-slate-700">{unit.phone_alt}</p>
+                ) : null}
+
+                {unit.website ? (
+                  <p className="text-sm">
+                    <a
+                      href={websiteHref(unit.website)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#0f2744] underline hover:text-[#1a3a5c]"
+                    >
+                      {unit.website}
+                    </a>
+                  </p>
+                ) : null}
+
+                {unit.business_registration_number ? (
+                  <p className="text-sm text-slate-700">
+                    Reg. No.: {unit.business_registration_number}
+                  </p>
+                ) : null}
+
+                {unit.gra_tin ? (
+                  <p className="text-sm text-slate-700">TIN: {unit.gra_tin}</p>
+                ) : null}
+
+                {linkedPaymentCount > 0 ? (
+                  <p className="text-sm text-slate-600">
+                    {paymentAccountCountLabel(linkedPaymentCount)}
+                  </p>
+                ) : null}
+
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -473,162 +538,28 @@ export default function BusinessUnitsSettings({
                   ) : null}
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
 
-      {formOpen ? (
-        <section className={cardClassName}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-medium text-slate-700">
-                {formOpen === "new" ? "New Business Unit" : "Edit Business Unit"}
-              </h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Name is required. Logo and invoice address are optional.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={closeForm}
-              className={secondaryButtonClassName}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="business-unit-name"
-                className="mb-1 block text-sm font-medium text-slate-700"
-              >
-                Name <span className="text-red-600">*</span>
-              </label>
-              <input
-                id="business-unit-name"
-                type="text"
-                value={form.name}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                className={inputClassName}
-                required
-                disabled={saving}
-              />
-            </div>
-
-            <div>
-              <p className="mb-1 text-sm font-medium text-slate-700">Logo</p>
-              {editingUnit?.logo_url && !pendingLogoFile ? (
-                <TenantLogosMediaImage
-                  reference={editingUnit.logo_url}
-                  tenantId={tenantId}
-                  alt={`${editingUnit.name} logo preview`}
-                  className="mb-3 h-16 w-16 rounded-md border border-slate-200 object-contain bg-white"
-                />
-              ) : null}
-              {pendingLogoFile ? (
-                <p className="mb-2 text-sm text-slate-600">
-                  Selected: {pendingLogoFile.name}
-                </p>
-              ) : null}
-              <ImageFileUploadButton
-                files={pendingLogoFile ? [pendingLogoFile] : []}
-                multiple={false}
-                disabled={saving}
-                addLabel="Upload logo"
-                changeLabel="Change logo"
-                resetInputAfterSelect
-                onChange={(next) => {
-                  setPendingLogoFile(next[0] ?? null);
-                }}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="business-unit-invoice-address"
-                className="mb-1 block text-sm font-medium text-slate-700"
-              >
-                Invoice address
-              </label>
-              <textarea
-                id="business-unit-invoice-address"
-                value={form.invoice_address}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    invoice_address: event.target.value,
-                  }))
-                }
-                rows={4}
-                className={inputClassName}
-                disabled={saving}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="business-unit-business-email"
-                className="mb-1 block text-sm font-medium text-slate-700"
-              >
-                Business email
-              </label>
-              <input
-                id="business-unit-business-email"
-                type="email"
-                value={form.business_email}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    business_email: event.target.value,
-                  }))
-                }
-                className={inputClassName}
-                disabled={saving}
-                placeholder="billing@example.com"
-                autoComplete="email"
-              />
-            </div>
-
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={form.is_active}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    is_active: event.target.checked,
-                  }))
-                }
-                disabled={saving}
-                className="h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
-              />
-              Active
-            </label>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="submit"
-                className={primaryButtonClassName}
-                disabled={saving}
-              >
-                {saving
-                  ? "Saving…"
-                  : formOpen === "new"
-                    ? "Create Business Unit"
-                    : "Save Changes"}
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : null}
+      <BusinessUnitFormDrawer
+        open={formOpen !== null}
+        mode={formOpen === "new" ? "new" : "edit"}
+        tenantId={tenantId}
+        businessUnits={units}
+        form={form}
+        onFormChange={setForm}
+        editingUnit={editingUnit}
+        pendingLogoFile={pendingLogoFile}
+        onPendingLogoFileChange={setPendingLogoFile}
+        paymentAccounts={paymentAccounts}
+        onPaymentAccountsChange={setPaymentAccounts}
+        saving={saving}
+        onClose={closeForm}
+        onSubmit={handleSubmit}
+      />
     </div>
   );
 }

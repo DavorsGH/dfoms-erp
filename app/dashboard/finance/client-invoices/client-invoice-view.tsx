@@ -27,7 +27,6 @@ import { toNumber, resolveSourceContractLink, resolveSourceQuotationLink } from 
 type ClientInvoiceViewProps = {
   invoiceId: string;
   billingSettings: BillingSettingsHeaderFields | null;
-  graTin: string | null;
   paymentMethods?: string[];
   backHref?: string;
   backLabel?: string;
@@ -53,7 +52,6 @@ function ClientInvoicePrintStylesLegacy() {
 export default function ClientInvoiceView({
   invoiceId,
   billingSettings,
-  graTin,
   paymentMethods = [],
   backHref = "/dashboard/finance/client-invoices",
   backLabel = "Back to list",
@@ -91,6 +89,7 @@ export default function ClientInvoiceView({
       payment_accounts: body.payment_accounts ?? [],
       receipts: body.receipts ?? [],
       business_unit_contact: body.business_unit_contact ?? null,
+      gra_tin: body.gra_tin ?? null,
     });
     setReceipts(body.receipts ?? []);
     setLoading(false);
@@ -110,10 +109,10 @@ export default function ClientInvoiceView({
       ...normalized,
       branding,
       billingSettings,
-      graTin,
+      graTin: payload.gra_tin ?? null,
       businessUnitContact: payload.business_unit_contact ?? null,
     };
-  }, [payload, branding, billingSettings, graTin]);
+  }, [payload, branding, billingSettings]);
 
   const handlePrint = useCallback(() => {
     window.print();

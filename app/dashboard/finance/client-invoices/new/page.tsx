@@ -13,7 +13,7 @@ import {
   todayIsoDate,
   type ClientInvoiceSiteOption,
 } from "@/utils/client-invoices-types";
-import { PAYMENT_ACCOUNT_SELECT } from "@/utils/payment-accounts-types";
+import { loadActivePaymentAccountsForTenant } from "@/utils/payment-accounts-server";
 import FinanceNav from "../../finance-nav";
 import ClientInvoiceForm from "../client-invoice-form";
 
@@ -39,7 +39,7 @@ export default async function NewClientInvoicePage() {
   const [
     { data: customers, error: customersError },
     { data: sites, error: sitesError },
-    { data: paymentAccounts, error: paymentAccountsError },
+    paymentAccounts,
     nextInvoiceNumberResult,
     authorizedSignersResult,
     salesTaxBasisResult,
@@ -52,12 +52,7 @@ export default async function NewClientInvoicePage() {
       .from("sites")
       .select("site_code, site_name, client_id")
       .order("site_name", { ascending: true }),
-    supabase
-      .from("payment_accounts")
-      .select(PAYMENT_ACCOUNT_SELECT)
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .order("account_name", { ascending: true }),
+    loadActivePaymentAccountsForTenant(supabase, tenantId),
     peekNextInvoiceNumber(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
     loadTenantSalesTaxBasis(supabase, tenantId, activeBusinessUnitId),
@@ -69,7 +64,6 @@ export default async function NewClientInvoicePage() {
   const fetchError =
     customersError?.message ??
     sitesError?.message ??
-    paymentAccountsError?.message ??
     nextInvoiceNumberResult.error ??
     authorizedSignersResult.error ??
     salesTaxBasisResult.error ??
@@ -97,7 +91,7 @@ export default async function NewClientInvoicePage() {
         graTin={graTin}
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
         initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
-        initialPaymentAccounts={paymentAccounts ?? []}
+        initialPaymentAccounts={paymentAccounts}
         initialAuthorizedSigners={authorizedSignersResult.signers}
         initialServiceContracts={serviceContractsResult.contracts}
         salesTaxBasis={salesTaxBasisResult.salesTaxBasis}

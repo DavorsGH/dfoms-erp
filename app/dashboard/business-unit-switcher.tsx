@@ -23,6 +23,10 @@ export type BusinessUnitSwitcherOption = {
   logoUrl: string | null;
   invoice_address: string | null;
   business_email: string | null;
+  phone?: string | null;
+  phone_alt?: string | null;
+  website?: string | null;
+  business_registration_number?: string | null;
 };
 
 type Props = {

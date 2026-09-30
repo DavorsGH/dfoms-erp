@@ -9,6 +9,7 @@ import {
 } from "@/utils/rbac-access";
 import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import { loadDocumentGraTin } from "@/app/dashboard/finance/tax-utils";
 import { loadBusinessUnitDocumentContact } from "@/utils/business-unit-document-contact";
 
 type RouteContext = {
@@ -59,13 +60,22 @@ export async function GET(_request: Request, context: RouteContext) {
     );
   }
 
+  const business_unit_contact = await loadBusinessUnitDocumentContact(
+    supabase,
+    auth.tenantId,
+    detail.receipt.business_unit_id,
+  );
+
+  const gra_tin = await loadDocumentGraTin(
+    supabase,
+    auth.tenantId,
+    detail.receipt.business_unit_id,
+  );
+
   return NextResponse.json({
     receipt: detail.receipt,
     invoice: detail.invoice,
-    business_unit_contact: await loadBusinessUnitDocumentContact(
-      supabase,
-      auth.tenantId,
-      detail.receipt.business_unit_id,
-    ),
+    business_unit_contact,
+    gra_tin,
   });
 }

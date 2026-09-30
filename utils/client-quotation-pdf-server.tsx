@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import ClientQuotationPdfDocument from "@/app/dashboard/sales-crm/quotations/client-quotation-pdf-document";
 import { normalizeClientQuotationDetail } from "@/app/dashboard/sales-crm/quotations/client-quotation-display-utils";
 import { loadTenantBillingSettingsHeader } from "@/utils/billing-settings-load";
-import { loadTenantGraTin } from "@/app/dashboard/finance/tax-utils";
+import { loadDocumentGraTin } from "@/app/dashboard/finance/tax-utils";
 import { loadClientQuotationDetail } from "@/utils/client-quotations-api";
 import { resolvePdfBrandingImages } from "@/utils/pdf-branding-images";
 import { renderPdfBuffer } from "@/utils/render-pdf-buffer";
@@ -53,7 +53,11 @@ export async function renderClientQuotationPdfBuffer(options: {
     await Promise.all([
       getTenantBrandingById(options.tenantId),
       loadTenantBillingSettingsHeader(options.supabase, options.tenantId),
-      loadTenantGraTin(options.supabase, options.tenantId),
+      loadDocumentGraTin(
+        options.supabase,
+        options.tenantId,
+        detail.quotation.business_unit_id,
+      ),
       loadBusinessUnitDocumentContact(
         options.supabase,
         options.tenantId,

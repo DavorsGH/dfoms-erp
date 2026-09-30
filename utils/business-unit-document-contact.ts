@@ -30,7 +30,9 @@ export async function loadBusinessUnitDocumentContact(
 
   const { data, error } = await supabase
     .from("business_units")
-    .select("id, name, logo_url, invoice_address, business_email")
+    .select(
+      "id, name, logo_url, invoice_address, business_email, phone, phone_alt, website, business_registration_number",
+    )
     .eq("tenant_id", tenantId)
     .eq("id", id)
     .maybeSingle();
@@ -70,6 +72,11 @@ export async function loadBusinessUnitDocumentContact(
     logoUrl,
     invoice_address: (data.invoice_address as string | null)?.trim() || null,
     business_email: (data.business_email as string | null)?.trim() || null,
+    phone: (data.phone as string | null)?.trim() || null,
+    phone_alt: (data.phone_alt as string | null)?.trim() || null,
+    website: (data.website as string | null)?.trim() || null,
+    business_registration_number:
+      (data.business_registration_number as string | null)?.trim() || null,
   };
 }
 

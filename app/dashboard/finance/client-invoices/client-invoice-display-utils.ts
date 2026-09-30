@@ -25,6 +25,7 @@ export type ClientInvoiceDetailPayload = {
   payment_accounts: PaymentAccountRow[];
   receipts?: ClientReceiptHeaderRow[];
   business_unit_contact?: BusinessUnitDocumentContact | null;
+  gra_tin?: string | null;
 };
 
 export type ClientInvoiceDisplayProps = {
@@ -110,6 +111,13 @@ export function formatTenantTinLine(graTin: string | null | undefined): string |
   return trimmed ? `TIN: ${trimmed}` : null;
 }
 
+export function formatBusinessRegistrationLine(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? `Reg. No.: ${trimmed}` : null;
+}
+
 export function tenantHeaderContactLines(
   branding: TenantBranding,
   billingSettings: BillingSettingsHeaderFields | null | undefined = null,
@@ -122,14 +130,33 @@ export function tenantHeaderContactLines(
     businessUnitContact,
   );
 
-  if (branding.phone?.trim()) {
-    lines.push(branding.phone.trim());
+  const buPhone = businessUnitContact?.phone?.trim();
+  const phoneLine = buPhone || branding.phone?.trim() || "";
+  if (phoneLine) {
+    lines.push(phoneLine);
+  }
+
+  const phoneAlt = businessUnitContact?.phone_alt?.trim();
+  if (phoneAlt) {
+    lines.push(phoneAlt);
   }
 
   const buEmail = businessUnitContact?.business_email?.trim();
   const email = buEmail || branding.email?.trim() || "";
   if (email) {
     lines.push(email);
+  }
+
+  const website = businessUnitContact?.website?.trim();
+  if (website) {
+    lines.push(website);
+  }
+
+  const regLine = formatBusinessRegistrationLine(
+    businessUnitContact?.business_registration_number,
+  );
+  if (regLine) {
+    lines.push(regLine);
   }
 
   const tinLine = formatTenantTinLine(graTin);
