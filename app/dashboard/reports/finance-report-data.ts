@@ -56,6 +56,14 @@ import type {
   BudgetActualInventoryPurchaseEntry,
   BudgetActualPayrollRow,
 } from "./budget-vs-actual-utils";
+import type { DashboardSharedRegisterFetch } from "../dashboard-shared-register-fetch";
+import {
+  mapSharedExpensesForBudget,
+  mapSharedPayrollRowsForBudget,
+  mapSharedProductPurchasesForBudget,
+  mapSharedRawMaterialPurchasesForBudget,
+} from "../dashboard-shared-register-fetch";
+import type { ScopedEmployeeIdsResult } from "../hr-payroll/payroll-bu-scope-utils";
 import {
   aggregateManualEntriesByPeriodMonth,
   type ManualFinancialEntryRecord,
@@ -496,13 +504,33 @@ export async function fetchExpenseReportData(supabase: SupabaseClient) {
   };
 }
 
-export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
-  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+export type FetchBudgetVsActualReportDataOptions = {
+  tenantId?: string;
+  activeBusinessUnitId?: string | null;
+  viewAllBusinessUnits?: boolean;
+  buScope?: ReturnType<typeof resolveBusinessUnitReadScope>;
+  scopedEmployees?: ScopedEmployeeIdsResult;
+  sharedRegisters?: DashboardSharedRegisterFetch;
+  requestCounter?: { count: number };
+};
+
+export async function fetchBudgetVsActualReportData(
+  supabase: SupabaseClient,
+  loaderOptions: FetchBudgetVsActualReportDataOptions = {},
+) {
+  const [resolvedTenantId, activeBusinessUnitId, viewAllBusinessUnits] =
     await Promise.all([
-      getCurrentUserTenantId(),
-      getActiveBusinessUnitId(),
-      getViewAllBusinessUnits(),
+      loaderOptions.tenantId !== undefined
+        ? Promise.resolve(loaderOptions.tenantId)
+        : getCurrentUserTenantId(),
+      loaderOptions.activeBusinessUnitId !== undefined
+        ? Promise.resolve(loaderOptions.activeBusinessUnitId)
+        : getActiveBusinessUnitId(),
+      loaderOptions.viewAllBusinessUnits !== undefined
+        ? Promise.resolve(loaderOptions.viewAllBusinessUnits)
+        : getViewAllBusinessUnits(),
     ]);
+  const tenantId = resolvedTenantId;
   if (!tenantId) {
     return {
       initialBudgets: [] as BudgetRecord[],
@@ -516,67 +544,95 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
     };
   }
 
-  const buScope = resolveBusinessUnitReadScope({
-    viewAllBusinessUnits,
-    activeBusinessUnitId,
-  });
+  const buScope =
+    loaderOptions.buScope ??
+    resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
 
-  const scopedEmployees = await fetchScopedEmployeeIds(
-    supabase,
-    tenantId,
-    buScope,
-  );
+  const scopedEmployees =
+    loaderOptions.scopedEmployees ??
+    (await fetchScopedEmployeeIds(supabase, tenantId, buScope));
+
+  const sharedRegisters = loaderOptions.sharedRegisters;
+  const useSharedRegisters = Boolean(sharedRegisters);
 
   const [
     { data: budgets, error: budgetsError },
-    { data: expenses, error: expensesError },
-    { data: rawMaterialPurchases, error: rawMaterialPurchasesError },
-    { data: productPurchases, error: productPurchasesError },
-    { data: payrollHistory, error: payrollHistoryError },
-    { data: payrollProcessing, error: payrollProcessingError },
+    expensesResult,
+    rawMaterialPurchasesResult,
+    productPurchasesResult,
+    payrollHistoryResult,
+    payrollProcessingResult,
     { data: projects, error: projectsError },
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase.from("budgets").select("*").eq("tenant_id", tenantId),
       buScope,
     ).order("period_month", { ascending: true }),
-    applyBusinessUnitScope(
-      supabase
-        .from("expense_register")
-        .select(
-          "date, expense_category, sub_category, amount, project_id, is_customer_refund",
-        )
-        .eq("tenant_id", tenantId),
-      buScope,
-    ).order("date", { ascending: true }),
-    applyBusinessUnitScope(
-      supabase
-        .from("raw_material_purchases")
-        .select("purchase_date, total_cost, project_id"),
-      buScope,
-    ).order("purchase_date", { ascending: true }),
-    applyBusinessUnitScope(
-      supabase
-        .from("product_purchases")
-        .select("purchase_date, total_cost, project_id")
-        .eq("tenant_id", tenantId),
-      buScope,
-    ).order("purchase_date", { ascending: true }),
-    // §5 (b): filter payroll gross via employees.business_unit_id.
-    applyEmployeeIdScope(
-      supabase
-        .from("payroll_history")
-        .select("payroll_month, gross_pay, project_contract")
-        .eq("tenant_id", tenantId),
-      scopedEmployees.employeeIds,
-    ).order("payroll_month", { ascending: true }),
-    applyEmployeeIdScope(
-      supabase
-        .from("payroll_processing")
-        .select("payroll_month, gross_pay, project_contract")
-        .eq("tenant_id", tenantId),
-      scopedEmployees.employeeIds,
-    ).order("payroll_month", { ascending: true }),
+    useSharedRegisters
+      ? Promise.resolve({
+          data: mapSharedExpensesForBudget(sharedRegisters!.expenseRegisterRows),
+          error: null,
+        })
+      : applyBusinessUnitScope(
+          supabase
+            .from("expense_register")
+            .select(
+              "date, expense_category, sub_category, amount, project_id, is_customer_refund",
+            )
+            .eq("tenant_id", tenantId),
+          buScope,
+        ).order("date", { ascending: true }),
+    useSharedRegisters
+      ? Promise.resolve({
+          data: mapSharedRawMaterialPurchasesForBudget(
+            sharedRegisters!.rawMaterialPurchaseRows,
+          ),
+          error: null,
+        })
+      : applyBusinessUnitScope(
+          supabase
+            .from("raw_material_purchases")
+            .select("purchase_date, total_cost, project_id"),
+          buScope,
+        ).order("purchase_date", { ascending: true }),
+    useSharedRegisters
+      ? Promise.resolve({
+          data: mapSharedProductPurchasesForBudget(
+            sharedRegisters!.productPurchaseRows,
+          ),
+          error: null,
+        })
+      : applyBusinessUnitScope(
+          supabase
+            .from("product_purchases")
+            .select("purchase_date, total_cost, project_id")
+            .eq("tenant_id", tenantId),
+          buScope,
+        ).order("purchase_date", { ascending: true }),
+    useSharedRegisters
+      ? Promise.resolve({ data: sharedRegisters!.payrollHistoryRows, error: null })
+      : applyEmployeeIdScope(
+          supabase
+            .from("payroll_history")
+            .select("payroll_month, gross_pay, project_contract")
+            .eq("tenant_id", tenantId),
+          scopedEmployees.employeeIds,
+        ).order("payroll_month", { ascending: true }),
+    useSharedRegisters
+      ? Promise.resolve({
+          data: sharedRegisters!.payrollProcessingRows,
+          error: null,
+        })
+      : applyEmployeeIdScope(
+          supabase
+            .from("payroll_processing")
+            .select("payroll_month, gross_pay, project_contract")
+            .eq("tenant_id", tenantId),
+          scopedEmployees.employeeIds,
+        ).order("payroll_month", { ascending: true }),
     supabase
       .from("projects")
       .select(CONTRACT_PROJECT_SELECT)
@@ -584,17 +640,37 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
       .order("project_name", { ascending: true }),
   ]);
 
-  const payrollRows: BudgetActualPayrollRow[] = [
-    ...((payrollHistory as BudgetActualPayrollRow[] | null) ?? []),
-    ...((payrollProcessing as BudgetActualPayrollRow[] | null) ?? []),
-  ].map((row) => ({
-    payroll_month: row.payroll_month,
-    gross_pay: Number(row.gross_pay) || 0,
-    project_contract: row.project_contract,
-  }));
+  const expenses = expensesResult.data;
+  const expensesError = expensesResult.error;
+  const rawMaterialPurchases = rawMaterialPurchasesResult.data;
+  const rawMaterialPurchasesError = rawMaterialPurchasesResult.error;
+  const productPurchases = productPurchasesResult.data;
+  const productPurchasesError = productPurchasesResult.error;
+  const payrollHistory = payrollHistoryResult.data;
+  const payrollHistoryError = payrollHistoryResult.error;
+  const payrollProcessing = payrollProcessingResult.data;
+  const payrollProcessingError = payrollProcessingResult.error;
+
+  const payrollRows: BudgetActualPayrollRow[] = useSharedRegisters
+    ? mapSharedPayrollRowsForBudget(
+        sharedRegisters!.payrollHistoryRows,
+        sharedRegisters!.payrollProcessingRows,
+      )
+    : [
+        ...((payrollHistory as BudgetActualPayrollRow[] | null) ?? []),
+        ...((payrollProcessing as BudgetActualPayrollRow[] | null) ?? []),
+      ].map((row) => ({
+        payroll_month: row.payroll_month,
+        gross_pay: Number(row.gross_pay) || 0,
+        project_contract: row.project_contract,
+      }));
 
   const normalizedBudgets =
     ((budgets as BudgetRecord[] | null) ?? []).map(normalizeBudgetRecord);
+
+  if (loaderOptions.requestCounter) {
+    loaderOptions.requestCounter.count += useSharedRegisters ? 2 : 7;
+  }
 
   return {
     initialBudgets: normalizedBudgets,
@@ -618,6 +694,7 @@ export async function fetchBudgetVsActualReportData(supabase: SupabaseClient) {
     ),
     fetchError:
       scopedEmployees.error ??
+      sharedRegisters?.fetchError ??
       budgetsError?.message ??
       expensesError?.message ??
       rawMaterialPurchasesError?.message ??

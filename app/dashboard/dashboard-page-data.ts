@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   fetchBalanceSheetPageData,
+  fetchInventoryBalanceSheetInput,
   type BalanceSheetPageData,
   type FetchBalanceSheetPageDataOptions,
 } from "./finance/balance-sheet-page-data";
@@ -16,6 +17,9 @@ import type { SalesAnalysisRow } from "./dashboard-sales-analysis-utils";
 import type { BudgetVsActualReportData } from "./dashboard-budget-status-utils";
 import { fetchBudgetVsActualReportData } from "./reports/finance-report-data";
 import type { BalanceSheetIncomeEntry } from "./finance/balance-sheet-utils";
+import { fetchScopedEmployeeIds } from "./hr-payroll/payroll-bu-scope-utils";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { fetchDashboardSharedRegisterRows } from "./dashboard-shared-register-fetch";
 
 export type DashboardPageData = BalanceSheetPageData & {
   salesAnalysisEntries: SalesAnalysisRow[];
@@ -87,6 +91,9 @@ function buildSalesAnalysisFromIncomeAndCrm(
  * Dashboard homepage loader: shared balance-sheet inputs (BS Check parity with
  * Finance → Balance Sheet) plus CRM webhook sales for Sales Analysis.
  * Product sales come from income_register rows already fetched by the shared loader.
+ *
+ * Owner /dashboard path dedupes register tables via {@link fetchDashboardSharedRegisterRows}
+ * (explicit pass-through — not React cache() — so snapshot + page share one orchestrator).
  */
 export async function fetchDashboardPageData(
   supabase: SupabaseClient,
@@ -94,25 +101,66 @@ export async function fetchDashboardPageData(
   options: FetchDashboardPageDataOptions = {},
 ): Promise<DashboardPageData> {
   const requestCounter = options.requestCounter ?? { count: 0 };
+  const activeBusinessUnitId = options.activeBusinessUnitId ?? null;
+  const viewAllBusinessUnits = options.viewAllBusinessUnits === true;
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
-  const [balanceSheetData, budgetVsActualReportData, { data: webhookSaleRows, error: webhookSaleError }] =
+  const scopedEmployeesPromise = fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+  const webhookSalesPromise = supabase
+    .from("crm_sales")
+    .select(CRM_WEBHOOK_SALE_SELECT)
+    .order("sale_date", { ascending: false });
+
+  const scopedEmployees = await scopedEmployeesPromise;
+  requestCounter.count += 1;
+
+  const sharedRegisters = await fetchDashboardSharedRegisterRows(
+    supabase,
+    tenantId,
+    buScope,
+    scopedEmployees,
+    requestCounter,
+  );
+
+  const inventoryPromise = fetchInventoryBalanceSheetInput(supabase, tenantId, {
+    requestCounter,
+    buScope,
+    sharedRegisterFetch: sharedRegisters,
+  });
+
+  const [balanceSheetData, budgetVsActualReportData, webhookSalesResult] =
     await Promise.all([
       fetchBalanceSheetPageData(supabase, tenantId, {
         ...options,
         requestCounter,
+        scopedEmployees,
+        sharedRegisters,
+        preloadedInventoryBalanceSheetPromise: inventoryPromise,
       }),
-      fetchBudgetVsActualReportData(supabase),
-      supabase
-        .from("crm_sales")
-        .select(CRM_WEBHOOK_SALE_SELECT)
-        .order("sale_date", { ascending: false }),
+      fetchBudgetVsActualReportData(supabase, {
+        tenantId,
+        activeBusinessUnitId,
+        viewAllBusinessUnits,
+        buScope,
+        scopedEmployees,
+        sharedRegisters,
+        requestCounter,
+      }),
+      webhookSalesPromise,
     ]);
 
   requestCounter.count += 1;
 
   const salesAnalysisEntries = buildSalesAnalysisFromIncomeAndCrm(
     balanceSheetData.initialIncomeEntries,
-    webhookSaleRows as Parameters<typeof normalizeWebhookSale>[0][] | null,
+    webhookSalesResult.data as Parameters<typeof normalizeWebhookSale>[0][] | null,
   );
 
   return {
@@ -123,7 +171,7 @@ export async function fetchDashboardPageData(
     fetchError:
       balanceSheetData.fetchError ??
       budgetVsActualReportData.fetchError ??
-      webhookSaleError?.message ??
+      webhookSalesResult.error?.message ??
       null,
   };
 }

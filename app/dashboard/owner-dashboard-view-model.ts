@@ -19,6 +19,10 @@ export type BuildOwnerDashboardViewModelOptions = {
   /** Required to overlay BU-scoped RM stock onto the low-stock alert count. */
   supabase: SupabaseClient;
   buScope: BusinessUnitReadScope;
+  /** When started in parallel with {@link fetchDashboardPageData} (owner /dashboard). */
+  preloadedRawMaterialStock?: Awaited<
+    ReturnType<typeof fetchScopedRawMaterialStock>
+  >;
 };
 
 /**
@@ -53,11 +57,14 @@ export async function buildOwnerDashboardViewModel(
     budgetVsActualReportData,
   } = dashboardPageData;
 
-  const { stockMap: rawMaterialStockMap } = await fetchScopedRawMaterialStock(
-    options.supabase,
-    tenantId,
-    options.buScope,
-  );
+  const rawMaterialStockResult =
+    options.preloadedRawMaterialStock ??
+    (await fetchScopedRawMaterialStock(
+      options.supabase,
+      tenantId,
+      options.buScope,
+    ));
+  const { stockMap: rawMaterialStockMap } = rawMaterialStockResult;
   const lowStockRawMaterialCount = countLowStockRawMaterials(
     mergeScopedStockOntoMaterials(
       inventoryBalanceSheetInput.rawMaterials,

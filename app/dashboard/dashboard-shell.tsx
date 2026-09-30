@@ -7,10 +7,11 @@ import {
   buildOfflineWarmSessionKey,
   hasOfflineRouteWarmCompleted,
   markOfflineRouteWarmCompleted,
-  requestOfflineRouteWarm,
   requestOfflineShellImageWarm,
+  scheduleOfflineRouteWarm,
   stableAvatarWarmKey,
 } from "@/lib/offline-nav-warm";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import type { TenantBranding } from "@/utils/tenant-branding-types";
@@ -56,6 +57,7 @@ export default function DashboardShell({
   businessUnitSwitcher = null,
 }: DashboardShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const pathname = usePathname();
   const avatarWarmKey = stableAvatarWarmKey(userPhotoUrl);
   const logoWarmKey = tenantBranding.workspaceLogoReference;
 
@@ -69,10 +71,11 @@ export default function DashboardShell({
       return;
     }
 
-    void requestOfflineRouteWarm().then(() => {
-      markOfflineRouteWarmCompleted(sessionKey);
+    return scheduleOfflineRouteWarm({
+      currentPathname: pathname,
+      onWarmFinished: () => markOfflineRouteWarmCompleted(sessionKey),
     });
-  }, [authUid, tenantId]);
+  }, [authUid, tenantId, pathname]);
 
   useEffect(() => {
     if (!authUid) {

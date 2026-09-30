@@ -15,6 +15,9 @@ export const OFFLINE_NAV_ROUTES = [
   "/dashboard/pos",
 ] as const;
 
+const ROUTE_WARM_IFRAME_TIMEOUT_MS = 20_000;
+const ROUTE_WARM_START_DELAY_MS = 20_000;
+
 export function buildOfflineWarmSessionKey(
   tenantId: string,
   authUid: string,
@@ -86,13 +89,25 @@ async function postWarmOfflineNavMessage(): Promise<void> {
  * Warm authenticated HTML shells + JS chunks (SW message + hidden iframes).
  * Idempotent per browser tab session when sessionKey gate is used by the caller.
  */
-export async function requestOfflineRouteWarm(): Promise<void> {
+export type RequestOfflineRouteWarmOptions = {
+  currentPathname?: string;
+};
+
+export async function requestOfflineRouteWarm(
+  options: RequestOfflineRouteWarmOptions = {},
+): Promise<void> {
   if (typeof navigator.onLine === "boolean" && !navigator.onLine) {
     return;
   }
 
   await postWarmOfflineNavMessage();
-  await warmRoutesViaHiddenIframes([...OFFLINE_NAV_ROUTES]);
+
+  const current = normalizeWarmPath(options.currentPathname);
+  const routes = OFFLINE_NAV_ROUTES.filter(
+    (route) => normalizeWarmPath(route) !== current,
+  );
+
+  await warmRoutesViaHiddenIframesSequential(routes);
 }
 
 /** Warm remote avatar/logo into same-origin Cache API entries for offline display. */
@@ -116,33 +131,55 @@ export async function requestOfflineShellImageWarm(options?: {
 export async function requestOfflineNavWarm(options?: {
   avatarUrl?: string | null;
   workspaceLogoUrl?: string | null;
+  currentPathname?: string;
 }): Promise<void> {
   await Promise.all([
-    requestOfflineRouteWarm(),
+    requestOfflineRouteWarm({ currentPathname: options?.currentPathname }),
     requestOfflineShellImageWarm(options),
   ]);
 }
 
-function warmRoutesViaHiddenIframes(routes: string[]): Promise<void> {
+function normalizeWarmPath(pathname?: string | null): string {
+  if (!pathname?.trim()) {
+    return "";
+  }
+  const path = pathname.trim();
+  if (path.length > 1 && path.endsWith("/")) {
+    return path.slice(0, -1);
+  }
+  return path;
+}
+
+function warmRoutesViaHiddenIframesSequential(routes: string[]): Promise<void> {
   if (typeof document === "undefined") {
     return Promise.resolve();
   }
 
   return new Promise((resolve) => {
-    let remaining = routes.length;
-    if (remaining === 0) {
-      resolve();
-      return;
-    }
+    let routeIndex = 0;
+    let paused = document.hidden;
+    let visibilityResumeTimer: undefined | number;
 
-    const done = () => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        resolve();
+    const cleanup = () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (visibilityResumeTimer !== undefined) {
+        window.clearTimeout(visibilityResumeTimer);
       }
     };
 
-    for (const route of routes) {
+    const warmNext = () => {
+      if (routeIndex >= routes.length) {
+        cleanup();
+        resolve();
+        return;
+      }
+      if (paused) {
+        return;
+      }
+
+      const route = routes[routeIndex];
+      routeIndex += 1;
+
       const iframe = document.createElement("iframe");
       iframe.setAttribute("aria-hidden", "true");
       iframe.tabIndex = -1;
@@ -150,17 +187,89 @@ function warmRoutesViaHiddenIframes(routes: string[]): Promise<void> {
         "position:absolute;width:0;height:0;border:0;visibility:hidden";
       iframe.src = route;
 
-      const finish = () => {
+      let settled = false;
+      const finishOne = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
         iframe.onload = null;
         iframe.onerror = null;
         iframe.remove();
-        done();
+        warmNext();
       };
 
-      iframe.onload = finish;
-      iframe.onerror = finish;
-      window.setTimeout(finish, 20000);
+      iframe.onload = finishOne;
+      iframe.onerror = finishOne;
+      window.setTimeout(finishOne, ROUTE_WARM_IFRAME_TIMEOUT_MS);
       document.body.appendChild(iframe);
-    }
+    };
+
+    const onVisibilityChange = () => {
+      paused = document.hidden;
+      if (paused) {
+        return;
+      }
+      if (visibilityResumeTimer !== undefined) {
+        window.clearTimeout(visibilityResumeTimer);
+      }
+      visibilityResumeTimer = window.setTimeout(warmNext, 300);
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    warmNext();
   });
+}
+
+export function scheduleOfflineRouteWarm(
+  options: RequestOfflineRouteWarmOptions & { onWarmFinished?: () => void } = {},
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  let cancelled = false;
+  let delayTimer: undefined | number;
+  let idleId: number | undefined;
+
+  const startDelayedWarm = () => {
+    if (cancelled) {
+      return;
+    }
+    delayTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        void requestOfflineRouteWarm(options).finally(() => {
+          options.onWarmFinished?.();
+        });
+      }
+    }, ROUTE_WARM_START_DELAY_MS);
+  };
+
+  const onLoad = () => {
+    if (cancelled) {
+      return;
+    }
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(startDelayedWarm, { timeout: 5000 });
+    } else {
+      delayTimer = window.setTimeout(startDelayedWarm, 500);
+    }
+  };
+
+  if (document.readyState === "complete") {
+    onLoad();
+  } else {
+    window.addEventListener("load", onLoad, { once: true });
+  }
+
+  return () => {
+    cancelled = true;
+    window.removeEventListener("load", onLoad);
+    if (delayTimer !== undefined) {
+      window.clearTimeout(delayTimer);
+    }
+    if (idleId !== undefined && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(idleId);
+    }
+  };
 }

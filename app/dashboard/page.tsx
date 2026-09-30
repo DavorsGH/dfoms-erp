@@ -25,6 +25,7 @@ import { fetchDashboardPageData } from "./dashboard-page-data";
 import { buildSalesRepDashboardSummary } from "./sales-rep-dashboard-utils";
 import SalesRepDashboard from "./sales-rep-dashboard";
 import { fetchTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
+import { fetchScopedRawMaterialStock } from "@/app/dashboard/inventory/raw-material-bu-stock-utils";
 
 export default async function DashboardPage() {
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -288,17 +289,30 @@ export default async function DashboardPage() {
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
-  const dashboardPageData = await fetchDashboardPageData(supabase, tenantId, {
+  const rawMaterialStockPromise = fetchScopedRawMaterialStock(
+    supabase,
+    tenantId,
+    buScope,
+  );
+  const dashboardPageDataPromise = fetchDashboardPageData(supabase, tenantId, {
     activeBusinessUnitId,
     viewAllBusinessUnits,
   });
-  const [dashboardDataBase, balanceSheetIntegrity] = await Promise.all([
-    buildOwnerDashboardViewModel(dashboardPageData, tenantId, {
+  const [dashboardPageData, preloadedRawMaterialStock, balanceSheetIntegrity] =
+    await Promise.all([
+      dashboardPageDataPromise,
+      rawMaterialStockPromise,
+      fetchTenantBalanceSheetIntegrityStatus(tenantId),
+    ]);
+  const dashboardDataBase = await buildOwnerDashboardViewModel(
+    dashboardPageData,
+    tenantId,
+    {
       supabase,
       buScope,
-    }),
-    fetchTenantBalanceSheetIntegrityStatus(tenantId),
-  ]);
+      preloadedRawMaterialStock,
+    },
+  );
   const dashboardData = {
     ...dashboardDataBase,
     balanceSheetIntegrity,

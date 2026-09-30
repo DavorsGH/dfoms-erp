@@ -77,6 +77,15 @@ import {
   type CustomerCreditsCreditNoteRow,
   type CustomerCreditsRefundRow,
 } from "./customer-credits-liability-utils";
+import type { DashboardSharedRegisterFetch } from "../dashboard-shared-register-fetch";
+import {
+  mapSharedProductPurchasesForInventoryCash,
+  mapSharedRawMaterialPurchasesForInventoryCash,
+  sliceSharedExpenseRowsForBalanceSheet,
+  sliceSharedPayrollHistoryForBalanceSheet,
+  sliceSharedPayrollProcessingForBalanceSheet,
+} from "../dashboard-shared-register-fetch";
+import type { ScopedEmployeeIdsResult } from "../hr-payroll/payroll-bu-scope-utils";
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
@@ -112,6 +121,13 @@ export type FetchBalanceSheetPageDataOptions = {
    */
   activeBusinessUnitId?: string | null;
   viewAllBusinessUnits?: boolean;
+  /** Owner /dashboard orchestration — skip duplicate employees lookup. */
+  scopedEmployees?: ScopedEmployeeIdsResult;
+  /** Shared register rows fetched once for BS + budget (owner /dashboard). */
+  sharedRegisters?: DashboardSharedRegisterFetch;
+  /** Inventory loader started in parallel with the main BS batch (owner /dashboard). */
+  preloadedInventoryBalanceSheet?: InventoryBalanceSheetInput;
+  preloadedInventoryBalanceSheetPromise?: Promise<InventoryBalanceSheetInput>;
 };
 
 export function buildCustomerCreditsBalanceSheetOptions(
@@ -209,18 +225,22 @@ export async function fetchInventoryBalanceSheetInput(
   options?: {
     requestCounter?: { count: number };
     buScope?: BusinessUnitReadScope;
+    /** Cash purchase legs already loaded via dashboard shared register fetch. */
+    sharedRegisterFetch?: DashboardSharedRegisterFetch;
   },
 ): Promise<InventoryBalanceSheetInput> {
   const counter = options?.requestCounter;
   const buScope = options?.buScope ?? ({ mode: "all" } as BusinessUnitReadScope);
+  const shared = options?.sharedRegisterFetch;
+  const skipCashPurchaseQueries = Boolean(shared);
 
   const [
     { data: configRows },
     { data: rawMaterials },
     { data: finishedProducts },
     { data: averageCostRows },
-    { data: cashPurchases },
-    { data: productCashPurchases },
+    cashPurchasesResult,
+    productCashPurchasesResult,
     { data: productionBatches },
     { data: productPurchasesFull },
     { data: productSaleCogs },
@@ -246,20 +266,34 @@ export async function fetchInventoryBalanceSheetInput(
     supabase.rpc("get_finished_product_average_costs", {
       p_tenant_id: tenantId,
     }),
-    applyBusinessUnitScope(
-      supabase
-        .from("raw_material_purchases")
-        .select("purchase_date, total_cost, payment_method, created_at")
-        .eq("tenant_id", tenantId),
-      buScope,
-    ),
-    applyBusinessUnitScope(
-      supabase
-        .from("product_purchases")
-        .select("purchase_date, total_cost, payment_method, created_at")
-        .eq("tenant_id", tenantId),
-      buScope,
-    ),
+    skipCashPurchaseQueries
+      ? Promise.resolve({
+          data: mapSharedRawMaterialPurchasesForInventoryCash(
+            shared!.rawMaterialPurchaseRows,
+          ),
+          error: null,
+        })
+      : applyBusinessUnitScope(
+          supabase
+            .from("raw_material_purchases")
+            .select("purchase_date, total_cost, payment_method, created_at")
+            .eq("tenant_id", tenantId),
+          buScope,
+        ),
+    skipCashPurchaseQueries
+      ? Promise.resolve({
+          data: mapSharedProductPurchasesForInventoryCash(
+            shared!.productPurchaseRows,
+          ),
+          error: null,
+        })
+      : applyBusinessUnitScope(
+          supabase
+            .from("product_purchases")
+            .select("purchase_date, total_cost, payment_method, created_at")
+            .eq("tenant_id", tenantId),
+          buScope,
+        ),
     // 6c.5: scope production batches the same way purchases already are.
     applyBusinessUnitScope(
       supabase
@@ -309,8 +343,11 @@ export async function fetchInventoryBalanceSheetInput(
     ),
   ]);
 
+  const cashPurchases = cashPurchasesResult.data;
+  const productCashPurchases = productCashPurchasesResult.data;
+
   if (counter) {
-    tickRequestCounter(counter, 11);
+    tickRequestCounter(counter, skipCashPurchaseQueries ? 9 : 11);
   }
 
   const batchIds = (productionBatches ?? []).map((b) => String(b.id));
@@ -536,11 +573,13 @@ export async function fetchBalanceSheetPageData(
   });
 
   // §5 option (b): scope payroll cost via employees.business_unit_id (read-path only).
-  const scopedEmployees = await fetchScopedEmployeeIds(
-    supabase,
-    tenantId,
-    buScope,
-  );
+  const scopedEmployees =
+    options.scopedEmployees ??
+    (await fetchScopedEmployeeIds(supabase, tenantId, buScope));
+  const sharedRegisters = options.sharedRegisters;
+  const useSharedRegisters = Boolean(sharedRegisters);
+  const preloadedInventory = options.preloadedInventoryBalanceSheet;
+  const preloadedInventoryPromise = options.preloadedInventoryBalanceSheetPromise;
 
   let incomeQuery = applyBusinessUnitScope(
     supabase
@@ -681,6 +720,42 @@ export async function fetchBalanceSheetPageData(
     );
   }
 
+  const expenseFetch = useSharedRegisters
+    ? Promise.resolve({
+        data: sliceSharedExpenseRowsForBalanceSheet(
+          sharedRegisters!.expenseRegisterRows,
+          dateRange,
+        ),
+        error: null,
+      })
+    : expenseQuery;
+  const payrollHistoryFetch = useSharedRegisters
+    ? Promise.resolve({
+        data: sliceSharedPayrollHistoryForBalanceSheet(
+          sharedRegisters!.payrollHistoryRows,
+          dateRange,
+        ),
+        error: null,
+      })
+    : payrollHistoryQuery;
+  const payrollProcessingFetch = useSharedRegisters
+    ? Promise.resolve({
+        data: sliceSharedPayrollProcessingForBalanceSheet(
+          sharedRegisters!.payrollProcessingRows,
+          dateRange,
+        ),
+        error: null,
+      })
+    : payrollProcessingQuery;
+  const inventoryFetch = preloadedInventory
+    ? Promise.resolve(preloadedInventory)
+    : preloadedInventoryPromise ??
+      fetchInventoryBalanceSheetInput(supabase, tenantId, {
+        requestCounter,
+        buScope,
+        sharedRegisterFetch: sharedRegisters,
+      });
+
   const [
     { data: incomeEntries, error: incomeError },
     { data: expenseEntries, error: expenseError },
@@ -702,7 +777,7 @@ export async function fetchBalanceSheetPageData(
     inventoryBalanceSheet,
   ] = await Promise.all([
     incomeQuery,
-    expenseQuery,
+    expenseFetch,
     fixedAssetsQuery,
     payableQuery,
     apPaymentsQuery,
@@ -716,22 +791,26 @@ export async function fetchBalanceSheetPageData(
       buScope,
     ).order("date", { ascending: true }),
     manualEntriesQuery,
-    payrollHistoryQuery,
-    payrollProcessingQuery,
+    payrollHistoryFetch,
+    payrollProcessingFetch,
     monthEndCloseQuery,
     taxLedgerQuery,
     welfareFundQuery,
     creditNotesQuery,
     refundsQuery,
     creditApplicationsQuery,
-    fetchInventoryBalanceSheetInput(supabase, tenantId, {
-      requestCounter,
-      buScope,
-    }),
+    inventoryFetch,
   ]);
 
   if (requestCounter) {
-    tickRequestCounter(requestCounter, 16);
+    let parallelBatchCount = 16;
+    if (useSharedRegisters) {
+      parallelBatchCount -= 3;
+    }
+    if (preloadedInventory || preloadedInventoryPromise) {
+      parallelBatchCount -= 1;
+    }
+    tickRequestCounter(requestCounter, parallelBatchCount);
   }
 
   const payrollHistoryRows =
@@ -897,6 +976,7 @@ export async function fetchBalanceSheetPageData(
     ),
     fetchError:
       scopedEmployees.error ??
+      sharedRegisters?.fetchError ??
       incomeError?.message ??
       expenseError?.message ??
       fixedAssetsError?.message ??
