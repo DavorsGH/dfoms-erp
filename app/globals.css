@@ -273,3 +273,26 @@ body {
 .scrollable-table-register-col-useful-life {
   min-width: 6.75rem;
 }
+
+html.pos-layout-fullscreen [data-dashboard-chrome] {
+  display: none !important;
+}
+
+html.pos-layout-fullscreen [data-dashboard-main] {
+  padding: 0 !important;
+}
+
+html.pos-layout-fullscreen [data-pos-fullscreen-surface] {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow-y: auto;
+  background-color: rgb(248 250 252);
+  padding: 1rem;
+}
+
+@media (min-width: 768px) {
+  html.pos-layout-fullscreen [data-pos-fullscreen-surface] {
+    padding: 1.5rem;
+  }
+}

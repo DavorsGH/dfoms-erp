@@ -155,7 +155,10 @@ export default function RegisterRowActions({
   const resolvedReturnLabel = compact ? "Return" : returnLabel;
 
   return (
-    <td className={compact ? "px-2 py-2 whitespace-nowrap" : "px-4 py-3 whitespace-nowrap"}>
+    <td
+      className={compact ? "px-2 py-2 whitespace-nowrap" : "px-4 py-3 whitespace-nowrap"}
+      onClick={(event) => event.stopPropagation()}
+    >
       <div className={`inline-flex flex-nowrap items-center ${compact ? "gap-1" : "gap-2"}`}>
         {onPrint ? (
           <button

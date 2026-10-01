@@ -34,6 +34,21 @@ export function buildGraPenaltyApInvoiceNumber(
   return `GRA-${kind.toUpperCase()}-PEN-${periodKey}`;
 }
 
+/** Parses YYYY-MM from a GRA penalty AP invoice number, if present. */
+export function parseGraPenaltyPeriodMonthFromApInvoice(
+  invoiceNumber: string | null | undefined,
+): string | null {
+  const trimmed = invoiceNumber?.trim() ?? "";
+  if (!trimmed) {
+    return null;
+  }
+  const match = /^GRA-(VAT|WHT|PAYE)-PEN-(\d{4})(\d{2})$/i.exec(trimmed);
+  if (!match) {
+    return null;
+  }
+  return `${match[2]}-${match[3]}`;
+}
+
 export async function createGraPenaltyViaAccountsPayable(
   input: CreateGraPenaltyViaApInput,
 ): Promise<CreateGraPenaltyViaApResult> {

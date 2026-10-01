@@ -1,16 +1,16 @@
 export type AccountsPayableEntry = {
   id: string;
-  vendor_name: string;
-  invoice_number: string;
-  expense_category: string;
-  sub_category: string;
+  vendor_name: string | null;
+  invoice_number: string | null;
+  expense_category: string | null;
+  sub_category: string | null;
   description: string | null;
-  invoice_date: string;
-  due_date: string;
+  invoice_date: string | null;
+  due_date: string | null;
   amount: number;
   amount_paid: number;
   balance_due: number | null;
-  status: string;
+  status: string | null;
   notes: string | null;
   net_of_tax_amount?: number | null;
   input_vat_amount?: number | null;
@@ -31,18 +31,39 @@ export type AccountsPayablePaymentRecord = {
   id: string;
   tenant_id: string;
   accounts_payable_id: string;
-  payment_date: string;
+  payment_date: string | null;
   amount: number;
-  payment_source: AccountsPayablePaymentSource;
+  payment_source: AccountsPayablePaymentSource | null;
   notes: string | null;
 };
 
 export function formatPaymentSourceLabel(
-  source: AccountsPayablePaymentSource,
+  source: AccountsPayablePaymentSource | null | undefined,
 ): string {
-  return source === "directors_loan"
-    ? "Director (personal)"
-    : "Company cash";
+  if (source === "directors_loan") {
+    return "Director (personal)";
+  }
+  if (source === "company_cash") {
+    return "Company cash";
+  }
+  return "—";
+}
+
+export function formatAccountsPayableDrawerSubtitle(
+  entry: Pick<AccountsPayableEntry, "vendor_name" | "invoice_number">,
+): string {
+  const vendor = entry.vendor_name?.trim() || "—";
+  const invoice = entry.invoice_number?.trim();
+  return invoice ? `${vendor} — ${invoice}` : vendor;
+}
+
+export function formatPayableDateDisplay(
+  value: string | null | undefined,
+): string {
+  if (!value?.trim()) {
+    return "—";
+  }
+  return formatDate(value);
 }
 
 export function getRemainingPayableBalance(entry: {
@@ -128,6 +149,51 @@ export function calculateDaysOutstanding(
   const diffMs = today.getTime() - dueDay.getTime();
 
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+export function calculateDaysOutstandingOptional(
+  dueDate: string | null | undefined,
+  referenceDate = new Date(),
+): number | null {
+  if (!dueDate?.trim()) {
+    return null;
+  }
+  return calculateDaysOutstanding(dueDate, referenceDate);
+}
+
+export function resolvePayableStatusLabel(
+  entry: Pick<AccountsPayableEntry, "due_date">,
+  balanceDue: number,
+): PayableStatus | "—" {
+  const daysOutstanding = calculateDaysOutstandingOptional(entry.due_date);
+  if (daysOutstanding == null) {
+    if (balanceDue === 0) {
+      return "Paid";
+    }
+    return "—";
+  }
+  return calculateStatus(balanceDue, daysOutstanding);
+}
+
+export function normalizeAccountsPayablePaymentRecord(
+  raw: AccountsPayablePaymentRecord,
+): AccountsPayablePaymentRecord {
+  const paymentDate = raw.payment_date?.trim()
+    ? raw.payment_date.slice(0, 10)
+    : null;
+  const source =
+    raw.payment_source === "directors_loan" ||
+    raw.payment_source === "company_cash"
+      ? raw.payment_source
+      : null;
+
+  return {
+    ...raw,
+    payment_date: paymentDate,
+    amount: Number(raw.amount) || 0,
+    payment_source: source,
+    notes: raw.notes ?? null,
+  };
 }
 
 export function calculateStatus(

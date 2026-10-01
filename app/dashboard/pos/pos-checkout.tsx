@@ -103,6 +103,7 @@ import PosHeldCartsPanel, {
   PosHoldLabelDialog,
   PosRecallWarningsDialog,
 } from "./pos-held-carts-panel";
+import { usePosFullscreen } from "./use-pos-fullscreen";
 import {
   buildHeldCartSnapshot,
   deletePosHeldCart,
@@ -315,6 +316,7 @@ export default function PosCheckout({
   const [holdLabelDialogOpen, setHoldLabelDialogOpen] = useState(false);
   const [holdSaving, setHoldSaving] = useState(false);
   const [recallDialogOpen, setRecallDialogOpen] = useState(false);
+  const posFullscreenBlockEscRef = useRef(false);
   const [recallBusy, setRecallBusy] = useState(false);
   const [pendingRecallRow, setPendingRecallRow] = useState<PosHeldCartRow | null>(
     null,
@@ -336,6 +338,17 @@ export default function PosCheckout({
   if (!customerDisplaySessionIdRef.current) {
     customerDisplaySessionIdRef.current = getOrCreatePosCustomerDisplaySessionId();
   }
+
+  posFullscreenBlockEscRef.current =
+    returnModalOpen ||
+    holdLabelDialogOpen ||
+    recallDialogOpen ||
+    heldCartsPanelOpen ||
+    showRequestPayment ||
+    mobileCartOpen;
+
+  const { layoutFullscreen, enterFullscreen, exitFullscreen } =
+    usePosFullscreen(posFullscreenBlockEscRef);
 
   const returnRefundPaymentMethods = useMemo(() => {
     if (initialPaymentMethods.length > 0) {
@@ -2524,9 +2537,13 @@ export default function PosCheckout({
     );
   }
 
+  const posSurfaceClassName = layoutFullscreen
+    ? "min-w-0 space-y-6"
+    : "min-w-0 space-y-6 pb-24 lg:pb-6";
+
   if (receipt) {
     return (
-      <>
+      <div data-pos-fullscreen-surface className={posSurfaceClassName}>
         {returnModalOpen && tenantId ? (
           <ProductReturnModal
             invoiceNo={receipt.invoiceNo}
@@ -2547,31 +2564,66 @@ export default function PosCheckout({
             tenantId ? () => setReturnModalOpen(true) : undefined
           }
         />
-      </>
+        {layoutFullscreen ? (
+          <div className="mt-4 flex justify-end">
+            <DashboardButton
+              type="button"
+              variant="secondary"
+              onClick={() => void exitFullscreen()}
+            >
+              Exit full screen
+            </DashboardButton>
+          </div>
+        ) : null}
+      </div>
     );
   }
 
   return (
-    <div className="min-w-0 space-y-6 pb-24 lg:pb-6">
+    <div data-pos-fullscreen-surface className={posSurfaceClassName}>
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            {showTitle ? (
-              <h1 className="text-2xl font-semibold text-[#0f2744]">POS</h1>
-            ) : null}
-            <p className={`text-sm text-slate-600 ${showTitle ? "mt-2" : ""}`}>
-              Search products, build a cart, and complete a multi-line product sale
-              with one shared invoice number.
-            </p>
+          {!layoutFullscreen ? (
+            <div className="min-w-0">
+              {showTitle ? (
+                <h1 className="text-2xl font-semibold text-[#0f2744]">POS</h1>
+              ) : null}
+              <p
+                className={`text-sm text-slate-600 ${showTitle ? "mt-2" : ""}`}
+              >
+                Search products, build a cart, and complete a multi-line product
+                sale with one shared invoice number.
+              </p>
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1" aria-hidden />
+          )}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <DashboardButton
+              type="button"
+              variant="secondary"
+              onClick={handleOpenCustomerDisplay}
+            >
+              Open Customer Display
+            </DashboardButton>
+            {layoutFullscreen ? (
+              <DashboardButton
+                type="button"
+                variant="secondary"
+                onClick={() => void exitFullscreen()}
+              >
+                Exit full screen
+              </DashboardButton>
+            ) : (
+              <DashboardButton
+                type="button"
+                variant="secondary"
+                onClick={() => void enterFullscreen()}
+              >
+                Full screen
+              </DashboardButton>
+            )}
           </div>
-          <DashboardButton
-            type="button"
-            variant="secondary"
-            onClick={handleOpenCustomerDisplay}
-            className="shrink-0"
-          >
-            Open Customer Display
-          </DashboardButton>
         </div>
         {quoteConversionId && quoteNumber ? (
           <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">

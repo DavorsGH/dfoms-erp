@@ -18,15 +18,23 @@ import {
 import {
   calculateBalanceDue,
   calculateDaysOutstanding,
+  calculateDaysOutstandingOptional,
   calculateStatus,
+  resolvePayableStatusLabel,
+  formatAccountsPayableDrawerSubtitle,
   formatDate,
   formatGHS,
+  formatPayableDateDisplay,
   getPayableGrossBeforeWht,
   getRemainingPayableBalance,
   normalizeAccountsPayableEntry,
+  normalizeAccountsPayablePaymentRecord,
   type AccountsPayableEntry,
+  type AccountsPayablePaymentRecord,
   type AccountsPayablePaymentSource,
 } from "./accounts-payable-utils";
+import { buildAccountsPayableDetailSections } from "./register-detail-sections";
+import RegisterRecordDetailDrawer from "../register-record-detail-drawer";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import {
@@ -55,7 +63,11 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
-import { useStampBusinessUnitId, useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
+import {
+  useBusinessUnitView,
+  useStampBusinessUnitId,
+  useBusinessUnitReadScope,
+} from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
   assertCanModifyBusinessUnitRow,
@@ -138,6 +150,7 @@ export default function AccountsPayable({
   const apIdFromQueryHandled = useRef<string | null>(null);
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
+  const { units: businessUnits } = useBusinessUnitView();
   const [entries, setEntries] = useState(
     initialEntries.map(normalizeAccountsPayableEntry),
   );
@@ -164,6 +177,15 @@ export default function AccountsPayable({
     notes: "",
   });
   const [recordingPayment, setRecordingPayment] = useState(false);
+  const [detailPayableId, setDetailPayableId] = useState<string | null>(null);
+  const [detailPayable, setDetailPayable] = useState<AccountsPayableEntry | null>(
+    null,
+  );
+  const [detailPayments, setDetailPayments] = useState<
+    AccountsPayablePaymentRecord[]
+  >([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
 
@@ -210,6 +232,66 @@ export default function AccountsPayable({
     setEntries(initialEntries.map(normalizeAccountsPayableEntry));
   }, [initialEntries]);
 
+  function closePayableDetail() {
+    setDetailPayableId(null);
+    setDetailPayable(null);
+    setDetailPayments([]);
+    setDetailError(null);
+    setDetailLoading(false);
+  }
+
+  async function openPayableDetail(payableId: string) {
+    setDetailPayableId(payableId);
+    setDetailError(null);
+    const cached =
+      entries.find((entry) => entry.id === payableId) ?? null;
+    setDetailPayable(cached);
+    setDetailPayments([]);
+    setDetailLoading(true);
+
+    const [entryResult, paymentsResult] = await Promise.all([
+      applyBusinessUnitScope(
+        supabase.from("accounts_payable").select("*").eq("id", payableId),
+        buReadScope,
+      ).maybeSingle(),
+      applyBusinessUnitScope(
+        supabase
+          .from("accounts_payable_payments")
+          .select("*")
+          .eq("accounts_payable_id", payableId)
+          .order("payment_date", { ascending: true }),
+        buReadScope,
+      ),
+    ]);
+
+    setDetailLoading(false);
+
+    if (entryResult.error) {
+      setDetailError(entryResult.error.message);
+      return;
+    }
+
+    if (!entryResult.data) {
+      setDetailError("Record not found or not accessible in this business view.");
+      return;
+    }
+
+    setDetailPayable(
+      normalizeAccountsPayableEntry(entryResult.data as AccountsPayableEntry),
+    );
+
+    setDetailPayments(
+      paymentsResult.error
+        ? []
+        : ((paymentsResult.data ?? []) as AccountsPayablePaymentRecord[]).map(
+            (row) =>
+              normalizeAccountsPayablePaymentRecord(
+                row as AccountsPayablePaymentRecord,
+              ),
+          ),
+    );
+  }
+
   useEffect(() => {
     function highlightPayableRow(apId: string): boolean {
       const row = document.getElementById(`ap-${apId}`);
@@ -226,7 +308,9 @@ export default function AccountsPayable({
 
     const hash = window.location.hash.replace(/^#/, "");
     if (hash.startsWith("ap-")) {
-      highlightPayableRow(hash.slice("ap-".length));
+      const apIdFromHash = hash.slice("ap-".length);
+      highlightPayableRow(apIdFromHash);
+      void openPayableDetail(apIdFromHash);
       return;
     }
 
@@ -237,6 +321,7 @@ export default function AccountsPayable({
 
     if (highlightPayableRow(apId)) {
       apIdFromQueryHandled.current = apId;
+      void openPayableDetail(apId);
       router.replace("/dashboard/finance/accounts-payable", { scroll: false });
     }
   }, [entries, router, searchParams]);
@@ -316,13 +401,15 @@ export default function AccountsPayable({
     setEditingId(entry.id);
     setWhtAmountEdited(false);
     setForm({
-      vendor_name: entry.vendor_name,
-      invoice_number: entry.invoice_number,
-      expense_category: entry.expense_category,
-      sub_category: entry.sub_category,
+      vendor_name: entry.vendor_name ?? "",
+      invoice_number: entry.invoice_number ?? "",
+      expense_category: entry.expense_category ?? "",
+      sub_category: entry.sub_category ?? "",
       description: entry.description ?? "",
-      invoice_date: toDateInputValue(entry.invoice_date),
-      due_date: toDateInputValue(entry.due_date),
+      invoice_date: entry.invoice_date
+        ? toDateInputValue(entry.invoice_date)
+        : "",
+      due_date: entry.due_date ? toDateInputValue(entry.due_date) : "",
       // Form amount is invoice gross before WHT.
       amount: String(getPayableGrossBeforeWht(entry)),
       wht_rate: formatRateValue(entry.wht_rate ?? 0),
@@ -959,8 +1046,8 @@ export default function AccountsPayable({
       {paymentEntry ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
-            Record Payment — {paymentEntry.vendor_name} (
-            {paymentEntry.invoice_number})
+            Record Payment — {paymentEntry.vendor_name?.trim() || "—"} (
+            {paymentEntry.invoice_number?.trim() || "—"})
           </h2>
           <p className="mb-4 text-sm text-slate-600">
             Balance due:{" "}
@@ -1113,10 +1200,10 @@ export default function AccountsPayable({
                     entry.amount,
                     entry.amount_paid,
                   );
-                  const daysOutstanding = calculateDaysOutstanding(
+                  const daysOutstanding = calculateDaysOutstandingOptional(
                     entry.due_date,
                   );
-                  const status = calculateStatus(balanceDue, daysOutstanding);
+                  const status = resolvePayableStatusLabel(entry, balanceDue);
                   const isOverdue = status === "Overdue";
                   const gross = getPayableGrossBeforeWht(entry);
 
@@ -1124,30 +1211,38 @@ export default function AccountsPayable({
                     <tr
                       key={entry.id}
                       id={`ap-${entry.id}`}
-                      className={getStripedRowClassName(index)}
+                      className={`${getStripedRowClassName(index)} cursor-pointer hover:bg-slate-100/80`}
+                      onClick={() => void openPayableDetail(entry.id)}
                     >
                       <td className={scrollableTableRegisterDateCellClassName}>
-                        {formatDate(entry.invoice_date)}
+                        {formatPayableDateDisplay(entry.invoice_date)}
                       </td>
                       <td
                         className={scrollableTableStickyFirstTdClassName({
                           striped: index % 2 === 1,
                         })}
                       >
-                        {entry.vendor_name}
+                        {entry.vendor_name?.trim() || "—"}
                       </td>
                       <td className="px-4 py-3">
-                        <div>{entry.invoice_number}</div>
-                        {entry.source_type === "supplier_contract" ? (
+                        <div>{entry.invoice_number?.trim() || "—"}</div>
+                        {entry.source_type === "supplier_contract" &&
+                        entry.invoice_number?.trim() ? (
                           <span className="mt-1 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-800">
                             From Contract{" "}
                             {entry.invoice_number.replace(/-\d{4}-\d{2}$/, "")}
                           </span>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3">{entry.expense_category}</td>
-                      <td className="px-4 py-3">{entry.sub_category}</td>
-                      <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
+                      <td className="px-4 py-3">
+                        {entry.expense_category?.trim() || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {entry.sub_category?.trim() || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatPayableDateDisplay(entry.due_date)}
+                      </td>
                       <td className="px-4 py-3">{formatGHS(gross)}</td>
                       <td className="px-4 py-3">
                         {formatGHS(entry.wht_amount ?? 0)}
@@ -1160,7 +1255,7 @@ export default function AccountsPayable({
                       <td
                         className={`px-4 py-3 ${isOverdue ? overdueClassName : ""}`}
                       >
-                        {daysOutstanding}
+                        {daysOutstanding ?? "—"}
                       </td>
                       <td
                         className={`px-4 py-3 ${isOverdue ? overdueClassName : ""}`}
@@ -1185,6 +1280,29 @@ export default function AccountsPayable({
             </tbody>
         </table>
       </ScrollableTable>
+
+      <RegisterRecordDetailDrawer
+        open={detailPayableId != null}
+        title="Accounts payable"
+        subtitle={
+          detailPayable
+            ? formatAccountsPayableDrawerSubtitle(detailPayable)
+            : detailPayableId
+        }
+        sections={
+          detailPayable
+            ? buildAccountsPayableDetailSections(detailPayable, businessUnits, {
+                payments: detailPayments,
+              })
+            : []
+        }
+        loading={detailLoading}
+        error={detailError}
+        onClose={closePayableDetail}
+        onEdit={
+          detailPayable ? () => openEditForm(detailPayable) : undefined
+        }
+      />
     </div>
   );
 }

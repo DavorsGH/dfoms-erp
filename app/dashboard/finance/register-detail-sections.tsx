@@ -25,6 +25,18 @@ import {
 } from "./fixed-assets-utils";
 import { parseAccountsPayableIdFromAccrualReceiptNo } from "./accounts-payable-accrual-utils";
 import {
+  calculateDaysOutstandingOptional,
+  formatDate as formatPayableDate,
+  formatGHS as formatPayableGHS,
+  formatPaymentSourceLabel,
+  getPayableGrossBeforeWht,
+  getRemainingPayableBalance,
+  resolvePayableStatusLabel,
+  type AccountsPayableEntry,
+  type AccountsPayablePaymentRecord,
+} from "./accounts-payable-utils";
+import { parseGraPenaltyPeriodMonthFromApInvoice } from "./gra-penalty-via-accounts-payable";
+import {
   isAutoPostedExpenseRegisterEntry,
 } from "./register-auto-posted-utils";
 
@@ -179,6 +191,185 @@ export function buildExpenseRegisterDetailSections(
             : "—",
         },
         { label: "Created by", value: formatDetailText(entry.created_by) },
+      ],
+    },
+  ];
+}
+
+function resolveAccountsPayableLinks(entry: AccountsPayableEntry): ReactNode {
+  const links: ReactNode[] = [];
+
+  const sourceId = entry.source_id?.trim();
+  if (entry.source_type === "supplier_contract" && sourceId) {
+    const invoiceNumber = entry.invoice_number?.trim() ?? "";
+    const contractCode = invoiceNumber
+      ? invoiceNumber.replace(/-\d{4}-\d{2}$/, "")
+      : "";
+    links.push(
+      <span key="contract">
+        From Contract{" "}
+        <Link
+          href={`/dashboard/finance/supplier-contracts/${encodeURIComponent(sourceId)}`}
+          className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+        >
+          {contractCode || sourceId}
+        </Link>
+      </span>,
+    );
+  }
+
+  if (entry.source_type === "fixed_asset" && sourceId) {
+    links.push(
+      <span key="asset">
+        Linked fixed asset{" "}
+        <Link
+          href={`/dashboard/finance/fixed-assets?assetId=${encodeURIComponent(sourceId)}`}
+          className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+        >
+          {sourceId}
+        </Link>
+      </span>,
+    );
+  }
+
+  const graPeriod = parseGraPenaltyPeriodMonthFromApInvoice(entry.invoice_number);
+  if (graPeriod) {
+    links.push(
+      <span key="gra">
+        GRA penalty —{" "}
+        <Link
+          href={`/dashboard/finance/tax-ledger?periodMonth=${encodeURIComponent(graPeriod)}`}
+          className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+        >
+          Statutory Ledger ({graPeriod})
+        </Link>
+      </span>,
+    );
+  }
+
+  if (links.length === 0) {
+    return "—";
+  }
+
+  return <div className="space-y-2">{links}</div>;
+}
+
+export function buildAccountsPayableDetailSections(
+  entry: AccountsPayableEntry,
+  units: BusinessUnitSwitcherOption[],
+  context: { payments: AccountsPayablePaymentRecord[] },
+): RegisterDetailSection[] {
+  const gross = getPayableGrossBeforeWht(entry);
+  const balanceDue = getRemainingPayableBalance(entry);
+  const daysOutstanding = calculateDaysOutstandingOptional(entry.due_date);
+  const status = resolvePayableStatusLabel(entry, balanceDue);
+
+  const paymentFields =
+    context.payments.length === 0
+      ? [{ label: "Payments", value: "No payments recorded" }]
+      : context.payments.map((payment, index) => ({
+          label: `Payment ${index + 1}`,
+          value: (
+            <div className="space-y-0.5 text-sm">
+              <div>
+                <span className="text-slate-500">Date:</span>{" "}
+                {formatOptionalDate(payment.payment_date, formatPayableDate)}
+              </div>
+              <div>
+                <span className="text-slate-500">Amount:</span>{" "}
+                {formatPayableGHS(Number(payment.amount) || 0)}
+              </div>
+              <div>
+                <span className="text-slate-500">Payment source:</span>{" "}
+                {formatPaymentSourceLabel(payment.payment_source)}
+              </div>
+              {payment.notes?.trim() ? (
+                <div>
+                  <span className="text-slate-500">Notes:</span>{" "}
+                  {payment.notes.trim()}
+                </div>
+              ) : null}
+            </div>
+          ),
+        }));
+
+  return [
+    {
+      title: "Invoice",
+      fields: [
+        {
+          label: "Invoice date",
+          value: formatOptionalDate(entry.invoice_date, formatPayableDate),
+        },
+        { label: "Supplier", value: formatDetailText(entry.vendor_name) },
+        {
+          label: "Invoice number",
+          value: formatDetailText(entry.invoice_number),
+        },
+        {
+          label: "Expense category",
+          value: formatDetailText(entry.expense_category),
+        },
+        { label: "Sub-category", value: formatDetailText(entry.sub_category) },
+        {
+          label: "Due date",
+          value: formatOptionalDate(entry.due_date, formatPayableDate),
+        },
+        {
+          label: "Description",
+          value: formatDetailText(entry.description),
+        },
+      ],
+    },
+    {
+      title: "Amounts & status",
+      fields: [
+        { label: "Gross (before WHT)", value: formatPayableGHS(gross) },
+        {
+          label: "WHT",
+          value: formatPayableGHS(entry.wht_amount ?? 0),
+        },
+        { label: "Net amount", value: formatPayableGHS(entry.amount) },
+        { label: "Amount paid", value: formatPayableGHS(entry.amount_paid) },
+        { label: "Balance due", value: formatPayableGHS(balanceDue) },
+        {
+          label: "Days outstanding",
+          value:
+            daysOutstanding == null ? "—" : String(daysOutstanding),
+        },
+        {
+          label: "Status",
+          value: (
+            <span
+              className={
+                status === "Overdue" ? "font-medium text-red-700" : undefined
+              }
+            >
+              {status}
+            </span>
+          ),
+        },
+      ],
+    },
+    {
+      title: "Links",
+      fields: [{ label: "Related records", value: resolveAccountsPayableLinks(entry) }],
+    },
+    {
+      title: "Notes",
+      fields: [{ label: "Notes", value: formatDetailText(entry.notes) }],
+    },
+    {
+      title: "Payment history",
+      fields: paymentFields,
+    },
+    {
+      title: "Organisation",
+      fields: [
+        {
+          label: "Business unit",
+          value: resolveBusinessUnitLabel(entry.business_unit_id, units),
+        },
       ],
     },
   ];

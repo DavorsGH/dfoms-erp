@@ -122,7 +122,7 @@ export default function DashboardShell({
       >
       <WriteQueueProvider tenantId={tenantId} authUid={authUid}>
         <div className="flex min-h-screen min-w-0">
-          <div className="hidden shrink-0 md:flex">
+          <div className="hidden shrink-0 md:flex" data-dashboard-chrome>
             <Sidebar
               userRole={userRole}
               showLeaveApprovals={showLeaveApprovals}
@@ -140,7 +140,7 @@ export default function DashboardShell({
                 className="fixed inset-0 z-40 bg-black/50 md:hidden"
                 onClick={closeMobileNav}
               />
-              <div className="fixed inset-y-0 left-0 z-50 md:hidden">
+              <div className="fixed inset-y-0 left-0 z-50 md:hidden" data-dashboard-chrome>
                 <Sidebar
                   userRole={userRole}
                   showLeaveApprovals={showLeaveApprovals}
@@ -156,6 +156,7 @@ export default function DashboardShell({
           ) : null}
 
           <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+            <div data-dashboard-chrome>
             <TopBar
               userRole={userRole}
               userLabel={userLabel}
@@ -165,8 +166,12 @@ export default function DashboardShell({
               mobileNavOpen={mobileNavOpen}
               businessUnitSwitcher={businessUnitSwitcher}
             />
-            <main className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6">
-              <div className="mb-3">
+            </div>
+            <main
+              data-dashboard-main
+              className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6"
+            >
+              <div className="mb-3" data-dashboard-chrome>
                 <SessionOfflineBanner />
                 <OfflineWriteQueueIndicator />
               </div>

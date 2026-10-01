@@ -10,26 +10,26 @@ import {
 const navItems = [
   { label: "Income Register", href: "/dashboard/finance" },
   { label: "Customer Invoices", href: "/dashboard/finance/client-invoices" },
-  { label: "Service Contracts", href: "/dashboard/finance/service-contracts" },
-  { label: "Supplier Contracts", href: "/dashboard/finance/supplier-contracts" },
   { label: "Customer Receipts", href: "/dashboard/finance/client-receipts" },
-  { label: "Expense Register", href: "/dashboard/finance/expenses" },
   { label: "Credit Notes", href: "/dashboard/crm/credit-notes" },
-  { label: "Budget", href: "/dashboard/finance/budget" },
+  { label: "Service Contracts", href: "/dashboard/finance/service-contracts" },
+  { label: "Expense Register", href: "/dashboard/finance/expenses" },
   { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
+  { label: "Supplier Contracts", href: "/dashboard/finance/supplier-contracts" },
   { label: "Fixed Assets", href: "/dashboard/finance/fixed-assets" },
+  { label: "Statutory Ledger", href: "/dashboard/finance/tax-ledger" },
+  { label: "Staff Welfare Fund", href: "/dashboard/finance/staff-welfare-fund" },
   {
     label: "Manual Financial Entries",
     href: "/dashboard/finance/manual-financial-entries",
   },
-  { label: "Statutory Ledger", href: "/dashboard/finance/tax-ledger" },
-  { label: "Staff Welfare Fund", href: "/dashboard/finance/staff-welfare-fund" },
+  { label: "Budget", href: "/dashboard/finance/budget" },
   { label: "Profit & Loss", href: "/dashboard/finance/profit-loss" },
-  { label: "Cash Flow", href: "/dashboard/finance/cash-flow" },
   {
     label: "Balance Sheet",
     href: "/dashboard/finance/balance-sheet",
   },
+  { label: "Cash Flow", href: "/dashboard/finance/cash-flow" },
 ];
 
 export default function FinanceNav() {

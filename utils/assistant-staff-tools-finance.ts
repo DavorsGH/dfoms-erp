@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   calculateDaysOutstanding,
+  calculateDaysOutstandingOptional,
   getRemainingPayableBalance,
   normalizeAccountsPayableEntry,
 } from "@/app/dashboard/finance/accounts-payable-utils";
@@ -221,7 +222,7 @@ export async function getOutstandingPayables(): Promise<unknown> {
         dueDate: row.due_date,
         balanceDueGhs: balance,
         daysOverdue: Math.max(
-          calculateDaysOutstanding(row.due_date, referenceDate),
+          calculateDaysOutstandingOptional(row.due_date, referenceDate) ?? 0,
           0,
         ),
         status: row.status,

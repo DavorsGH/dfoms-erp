@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { getStripedRowClassName } from "./register-row-actions";
 import ScrollableTable, {
@@ -415,6 +415,7 @@ export default function TaxLedger({
   activeBusinessUnitId = null,
 }: TaxLedgerProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
@@ -431,6 +432,19 @@ export default function TaxLedger({
     direction: "",
     status: "open",
   });
+
+  useEffect(() => {
+    const periodMonth = searchParams.get("periodMonth")?.trim();
+    if (!periodMonth || !/^\d{4}-\d{2}$/.test(periodMonth)) {
+      return;
+    }
+    setFilters((current) =>
+      current.periodMonth === periodMonth
+        ? current
+        : { ...current, periodMonth },
+    );
+  }, [searchParams]);
+
   const [savingSettings, setSavingSettings] = useState(false);
   const [remittingKind, setRemittingKind] = useState<RemitTaxKind | null>(null);
   const [undoingKind, setUndoingKind] = useState<RemitTaxKind | null>(null);

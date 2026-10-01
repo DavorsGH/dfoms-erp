@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { mapApproverRows } from "../approver-utils";
 import type { Approver, NamedLookup } from "../lookup-types";
@@ -50,7 +51,18 @@ import ScrollableTable, {
   scrollableTableRegisterUsefulLifeThClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
-import FilteredListCount from "../filtered-list-count";
+import FilteredListCount, {
+  anyRegisterColumnFiltersActive,
+} from "../filtered-list-count";
+import {
+  RegisterColumnFilterHeader,
+  RegisterDateRangeFilterHeader,
+  collectDistinctColumnValues,
+  columnValuePassesFilter,
+  dateValuePassesRangeFilter,
+  type RegisterColumnFilterValue,
+  type RegisterDateRangeFilterValue,
+} from "./register-column-filter";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
 import {
   computePurchaseTaxAmounts,
@@ -155,6 +167,12 @@ function formatWhtAmount(gross: string, ratePct: string): string {
   return String(computeWhtAmount(Number(gross) || 0, rate));
 }
 
+function fixedAssetPurchaseDateInput(asset: FixedAssetEntry): string {
+  return asset.purchase_date?.trim()
+    ? toDateInputValue(asset.purchase_date)
+    : "";
+}
+
 export default function FixedAssets({
   initialAssets,
   initialAssetCategories,
@@ -168,6 +186,9 @@ export default function FixedAssets({
   activeBusinessUnitId = null,
 }: FixedAssetsProps) {
   const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const assetIdFromQueryHandled = useRef<string | null>(null);
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const { units: businessUnits } = useBusinessUnitView();
@@ -190,6 +211,16 @@ export default function FixedAssets({
   const [detailAsset, setDetailAsset] = useState<FixedAssetEntry | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [purchaseDateFilter, setPurchaseDateFilter] =
+    useState<RegisterDateRangeFilterValue>(null);
+  const [assetNameFilter, setAssetNameFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [categoryFilter, setCategoryFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [depreciationMethodFilter, setDepreciationMethodFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [locationFilter, setLocationFilter] =
+    useState<RegisterColumnFilterValue>(null);
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
   const whtRateOptions = useMemo(() => {
@@ -324,6 +355,145 @@ export default function FixedAssets({
 
     setDetailAsset(data as FixedAssetEntry);
   }
+
+  useEffect(() => {
+    const assetId = searchParams.get("assetId")?.trim();
+    if (!assetId || assetIdFromQueryHandled.current === assetId) {
+      return;
+    }
+    assetIdFromQueryHandled.current = assetId;
+    void openAssetDetail(assetId);
+    router.replace("/dashboard/finance/fixed-assets", { scroll: false });
+  }, [router, searchParams]);
+
+  const assetNameOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        assets
+          .filter(
+            (asset) =>
+              dateValuePassesRangeFilter(
+                fixedAssetPurchaseDateInput(asset),
+                purchaseDateFilter,
+              ) &&
+              columnValuePassesFilter(asset.asset_category, categoryFilter) &&
+              columnValuePassesFilter(
+                asset.depreciation_method,
+                depreciationMethodFilter,
+              ) &&
+              columnValuePassesFilter(asset.location, locationFilter),
+          )
+          .map((asset) => asset.asset_name),
+      ),
+    [
+      assets,
+      purchaseDateFilter,
+      categoryFilter,
+      depreciationMethodFilter,
+      locationFilter,
+    ],
+  );
+
+  const categoryOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        assets
+          .filter(
+            (asset) =>
+              dateValuePassesRangeFilter(
+                fixedAssetPurchaseDateInput(asset),
+                purchaseDateFilter,
+              ) &&
+              columnValuePassesFilter(asset.asset_name, assetNameFilter) &&
+              columnValuePassesFilter(
+                asset.depreciation_method,
+                depreciationMethodFilter,
+              ) &&
+              columnValuePassesFilter(asset.location, locationFilter),
+          )
+          .map((asset) => asset.asset_category),
+      ),
+    [
+      assets,
+      purchaseDateFilter,
+      assetNameFilter,
+      depreciationMethodFilter,
+      locationFilter,
+    ],
+  );
+
+  const depreciationMethodOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        assets
+          .filter(
+            (asset) =>
+              dateValuePassesRangeFilter(
+                fixedAssetPurchaseDateInput(asset),
+                purchaseDateFilter,
+              ) &&
+              columnValuePassesFilter(asset.asset_name, assetNameFilter) &&
+              columnValuePassesFilter(asset.asset_category, categoryFilter) &&
+              columnValuePassesFilter(asset.location, locationFilter),
+          )
+          .map((asset) => asset.depreciation_method),
+      ),
+    [assets, purchaseDateFilter, assetNameFilter, categoryFilter, locationFilter],
+  );
+
+  const locationOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        assets
+          .filter(
+            (asset) =>
+              dateValuePassesRangeFilter(
+                fixedAssetPurchaseDateInput(asset),
+                purchaseDateFilter,
+              ) &&
+              columnValuePassesFilter(asset.asset_name, assetNameFilter) &&
+              columnValuePassesFilter(asset.asset_category, categoryFilter) &&
+              columnValuePassesFilter(
+                asset.depreciation_method,
+                depreciationMethodFilter,
+              ),
+          )
+          .map((asset) => asset.location),
+      ),
+    [
+      assets,
+      purchaseDateFilter,
+      assetNameFilter,
+      categoryFilter,
+      depreciationMethodFilter,
+    ],
+  );
+
+  const visibleAssets = useMemo(
+    () =>
+      assets.filter(
+        (asset) =>
+          dateValuePassesRangeFilter(
+            fixedAssetPurchaseDateInput(asset),
+            purchaseDateFilter,
+          ) &&
+          columnValuePassesFilter(asset.asset_name, assetNameFilter) &&
+          columnValuePassesFilter(asset.asset_category, categoryFilter) &&
+          columnValuePassesFilter(
+            asset.depreciation_method,
+            depreciationMethodFilter,
+          ) &&
+          columnValuePassesFilter(asset.location, locationFilter),
+      ),
+    [
+      assets,
+      purchaseDateFilter,
+      assetNameFilter,
+      categoryFilter,
+      depreciationMethodFilter,
+      locationFilter,
+    ],
+  );
 
   async function refreshAssets() {
     const { data, error: refreshError } = await applyBusinessUnitScope(
@@ -1167,9 +1337,16 @@ export default function FixedAssets({
       )}
 
       <FilteredListCount
-        filteredCount={assets.length}
+        filteredCount={visibleAssets.length}
         totalCount={assets.length}
         itemSingular="asset"
+        hasActiveFilters={anyRegisterColumnFiltersActive(
+          purchaseDateFilter,
+          assetNameFilter,
+          categoryFilter,
+          depreciationMethodFilter,
+          locationFilter,
+        )}
       />
 
       <ScrollableTable stickyEdgeLayout="nameCategory">
@@ -1182,15 +1359,29 @@ export default function FixedAssets({
                   Asset ID
                 </th>
                 <th className={scrollableTableRegisterStickyNameThClassName}>
-                  Asset Name
+                  <RegisterColumnFilterHeader
+                    label="Asset Name"
+                    options={assetNameOptions}
+                    applied={assetNameFilter}
+                    onApply={setAssetNameFilter}
+                  />
                 </th>
                 <th className={scrollableTableRegisterCategoryThClassName}>
-                  Category
+                  <RegisterColumnFilterHeader
+                    label="Category"
+                    options={categoryOptions}
+                    applied={categoryFilter}
+                    onApply={setCategoryFilter}
+                  />
                 </th>
                 <th
                   className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`}
                 >
-                  Purchase Date
+                  <RegisterDateRangeFilterHeader
+                    label="Purchase Date"
+                    applied={purchaseDateFilter}
+                    onApply={setPurchaseDateFilter}
+                  />
                 </th>
                 <th className={scrollableTableThClassName}>Original Cost</th>
                 <th className={scrollableTableThClassName}>Quantity</th>
@@ -1198,13 +1389,27 @@ export default function FixedAssets({
                 <th className={scrollableTableRegisterUsefulLifeThClassName}>
                   Useful Life (Yrs)
                 </th>
-                <th className={scrollableTableThClassName}>Depreciation Method</th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Depreciation Method"
+                    options={depreciationMethodOptions}
+                    applied={depreciationMethodFilter}
+                    onApply={setDepreciationMethodFilter}
+                  />
+                </th>
                 <th className={scrollableTableThClassName}>Annual Depreciation</th>
                 <th className={scrollableTableThClassName}>
                   Accumulated Depreciation
                 </th>
                 <th className={scrollableTableThClassName}>Net Book Value</th>
-                <th className={scrollableTableThClassName}>Location</th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Location"
+                    options={locationOptions}
+                    applied={locationFilter}
+                    onApply={setLocationFilter}
+                  />
+                </th>
                 <th className={scrollableTableThClassName}>Actions</th>
               </tr>
             </thead>
@@ -1218,8 +1423,17 @@ export default function FixedAssets({
                     No fixed assets yet.
                   </td>
                 </tr>
+              ) : visibleAssets.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={14}
+                    className="px-4 py-8 text-center text-slate-500"
+                  >
+                    No assets match the current filters.
+                  </td>
+                </tr>
               ) : (
-                assets.map((asset, index) => {
+                visibleAssets.map((asset, index) => {
                   const {
                     totalCost,
                     annualDepreciation,
