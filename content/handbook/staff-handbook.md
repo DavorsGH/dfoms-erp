@@ -441,6 +441,21 @@ and locked --- adjust returns from the Sales register or Credit Notes,
 not by editing here. Cash refunds reduce cash; they are **not** posted as
 a new operating expense.
 
+When you **add** or **edit** an expense, choose an **Expense Category**
+first; the **Sub-Category** list then shows only sub-categories that
+belong to that category. Categories or sub-categories you have **hidden
+from new entries** (Section 13.2a) do not appear when creating a new
+expense, but they still display on older rows that already used them.
+
++-----------------------------------------------------------------------+
+| **Tip --- reclassifying an expense**                                  |
+|                                                                       |
+| To move a cost to a different category, **edit** the expense and      |
+| change its category and sub-category. Do **not** delete the expense   |
+| and re-enter it --- that loses the audit trail and can distort        |
+| month-end totals.                                                     |
++-----------------------------------------------------------------------+
+
 ## **6.3 Accounts Payable**
 
 Tracks amounts your business owes to suppliers or vendors, and their
@@ -744,23 +759,73 @@ The Statutory Ledger keeps a running record of everything you owe to, or
 are owed by, GRA and SSNIT --- so filing season is never a guessing
 game.
 
--   GRA Tax --- tracks Withholding Tax (WHT) your clients withhold on
+-   **GRA Tax** --- tracks Withholding Tax (WHT) your clients withhold on
     your invoices (an amount owed to you by GRA), and VAT/NHIL/GETFund
     or VFRS you collect and owe to GRA.
 
--   PAYE and SSNIT --- automatically posted here each time you lock a
-    payroll period, split into Employee SSNIT, Employer SSNIT (Tier 1),
+-   **PAYE and SSNIT** --- automatically posted here each time you lock
+    a payroll period, split into Employee SSNIT, Employer SSNIT (Tier 1),
     and Tier 2 pension contributions, so each obligation is tracked
     separately.
 
--   Due-date reminders --- set your filing day for each obligation once
-    under Statutory Ledger → Settings. Overdue items are shown clearly
-    in red on your dashboard.
+-   **Due-date rules (per tax type)** --- under Finance → Statutory
+    Ledger → **Settings**, configure how each obligation's due date is
+    calculated **for every period month**, not just a single calendar
+    day on the calendar:
 
--   Mark Period as Remitted --- once you have actually paid GRA or
-    SSNIT, mark the period as remitted; the ledger clears that balance
-    and automatically rolls the due date forward to the next filing
-    period.
+    -   **Which month:** same month as the period, or the **following**
+        month.
+
+    -   **Which day:** a specific day number (for example 15), the
+        **last day** of that month, or the **last working day**
+        (Monday--Friday).
+
+    -   A **preview** shows how a sample period translates to a due
+        date so you can confirm the rule before saving.
+
+    **Defaults** when you first open Settings:
+
+  -----------------------------------------------------------------------
+  **Tax type**              **Month rule**          **Day rule**
+  ------------------------- ----------------------- ---------------------
+  VAT                       Same month as period    Last day of month
+
+  WHT                       Following month         Day 15
+
+  PAYE                      Following month         Day 15
+
+  SSNIT Tier 1              Following month         Day 14
+
+  Tier 2 pension            Following month         Day 14
+  -----------------------------------------------------------------------
+
+-   **Overdue by tax and period** --- for each tax type and each period
+    month that still has **unremitted** open ledger amounts, the ledger
+    shows the calculated due date and highlights when that due date has
+    passed. This matches what you see on the Statutory Ledger overview
+    and on your Dashboard reminders.
+
+-   **Mark Period as Remitted** --- once you have actually paid GRA or
+    SSNIT for a period, mark it as remitted; the ledger clears that
+    balance for that period. If you need to reverse a remittance, use
+    **Undo Remit**; any **penalty or interest expenses** you already
+    recorded for that period **stay in the Expense Register** --- undo
+    does not delete them (the app explains this before you confirm).
+
+-   **GRA portal reconciliation (VAT, WHT, PAYE)** --- for each period
+    month, enter the **amount shown on the GRA portal** for that tax.
+    The screen compares your **ledger total**, the **GRA figure**, and
+    the **difference**, and shows whether the period is already marked
+    remitted.
+
+    -   **Record difference as expense** --- when the difference is a
+        penalty or interest you accept, record it as an operating
+        expense (defaults: **remittance date** and **Paid** if the
+        period is already remitted; otherwise **the day after the due
+        date** and **Pending**). If a penalty expense was already
+        recorded for that period, the app warns you about a duplicate.
+        You can record **more than one** penalty for the same period and
+        use **Record remaining** until the full difference is covered.
 
 ## **6.9 VAT/WHT Calculation Basis**
 
@@ -1690,7 +1755,9 @@ Some workspaces run more than one business under the same company login
 Enterprise. Each of those is a **Business Unit**.
 
 -   Admins create and name business units under Administration →
-    Workspace Settings → Business Units (Section 13).
+    Workspace Settings → Business Units (Section 13). Each unit has its
+    own contact details, GRA TIN, logo, invoice address, and linked
+    payment accounts (Section 13.2).
 
 -   Use the **Business Unit switcher** at the top of the app to choose
     which business you are working in.
@@ -2188,9 +2255,61 @@ client invoices. Your login and signup pages remain generically branded
 as Davors Technologies.
 
 **Business Units** --- create and manage the named businesses under your
-workspace (Section 10.0). Each unit can be selected from the Business
-Unit switcher. Removing or renaming a unit does not delete historical
-stock or finance rows already stamped to it.
+workspace (Section 10.0). Open a unit from the list to edit it in a
+**drawer** where you can set:
+
+-   **Contact and registration** --- business phone, alternative phone,
+    website, business registration number, and **GRA TIN** for that unit.
+
+-   **Payment accounts** --- link one or more saved payment profiles so
+    they are available on Client Invoices for this unit. Payment accounts
+    can be shared with **all** business units or restricted to **selected**
+    units only (configure availability under Administration → Finance
+    Settings → Payment Accounts).
+
+-   **Documents** --- when a business unit is active, printed and PDF
+    documents (for example client invoices) use that unit's phone and
+    TIN where you have filled them in; otherwise the workspace defaults
+    from Workspace Settings apply.
+
+Each unit can be selected from the Business Unit switcher. Removing or
+renaming a unit does not delete historical stock or finance rows already
+stamped to it.
+
+## **13.2a Finance Settings --- Expense and Asset Categories**
+
+Under **Administration → Finance Settings**:
+
+**Expense Categories and Sub-Categories**
+
+-   Every **sub-category belongs to one expense category**. When you add
+    or edit a sub-category, you choose its parent category.
+
+-   For each category or sub-category you can **Edit** the name, **Delete**
+    it, **Hide from new entries**, or **Show again** so it reappears in
+    pickers for new records.
+
+-   **Delete** is refused when the item is already used on expenses (or
+    related records). In that case, **Hide from new entries** instead ---
+    past rows keep the name for history.
+
+-   **Unlinked sub-categories** --- if sub-categories exist without a
+    parent category, they appear in a separate list where you can **Link**
+    each one to the correct category, or remove **duplicates** when the
+    same name already exists under that category.
+
+**Asset Categories**
+
+-   The same **Edit**, **Delete**, **Hide from new entries**, and **Show
+    again** rules apply. Delete is blocked when a category is in use on
+    fixed assets; hide it instead.
+
++-----------------------------------------------------------------------+
+| **Note**                                                              |
+|                                                                       |
+| Editing a category name does not rename categories stored on old      |
+| expense or asset rows --- those keep the label they had when posted.  |
++-----------------------------------------------------------------------+
 
 **Billing Settings** --- also listed under Workspace Settings in the
 sidebar; see Section 14.1 for what you can change there.

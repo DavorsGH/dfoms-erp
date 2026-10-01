@@ -11,15 +11,31 @@ import {
 import {
   AGING_BUCKET_LABELS,
   buildFixedAssetDepreciationSchedule,
-  buildStatutoryLiabilitiesReport,
   getAgingBucket,
   getDefaultReportMonthYear,
 } from "@/app/dashboard/reports/finance-reports-utils";
 import {
   fetchFixedAssetScheduleReportData,
-  fetchStatutoryLiabilitiesReportData,
   fetchBudgetVsActualReportData,
 } from "@/app/dashboard/reports/finance-report-data";
+import {
+  listStatutoryPeriodObligations,
+  OBLIGATION_KIND_LABELS,
+} from "@/app/dashboard/finance/statutory-due-rules";
+import {
+  TAX_LEDGER_SELECT,
+  normalizeTaxLedgerEntry,
+  summarizeOpenTaxBalances,
+  formatPeriodMonthLabel,
+  type TaxLedgerEntry,
+} from "@/app/dashboard/finance/tax-ledger-utils";
+import {
+  TAX_SETTINGS_FULL_SELECT,
+  emptyTaxSettings,
+  normalizeTaxSettings,
+  type TaxSettings,
+} from "@/app/dashboard/finance/tax-utils";
+import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 import {
   ALL_PROJECTS_FILTER,
   buildBudgetVsActualReport,
@@ -240,26 +256,79 @@ export async function getTaxLedgerStatus(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
-    const data = await fetchStatutoryLiabilitiesReportData(supabase);
-    const report = buildStatutoryLiabilitiesReport(
-      data.initialTaxLedgerEntries,
-      data.initialDueDates,
-    );
+    const tenantId = sessionResult.session.tenantId;
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
 
-    if (data.fetchError) {
-      return {
-        fetchWarning: data.fetchError,
-        groupTotals: report.groupTotals,
-        grandTotalGhs: report.grandTotal,
-        liabilities: report.rows.slice(0, LIST_LIMIT),
-      };
-    }
+    const [
+      { data: entriesData, error: entriesError },
+      { data: settingsData, error: settingsError },
+    ] = await Promise.all([
+      applyBusinessUnitScope(
+        supabase
+          .from("tax_ledger_entries")
+          .select(TAX_LEDGER_SELECT)
+          .eq("tenant_id", tenantId),
+        buScope,
+      ).order("entry_date", { ascending: false }),
+      scopeTaxSettingsRead(
+        supabase
+          .from("tax_settings")
+          .select(TAX_SETTINGS_FULL_SELECT)
+          .eq("tenant_id", tenantId),
+        activeBusinessUnitId,
+      ).maybeSingle(),
+    ]);
+
+    const fetchWarning =
+      entriesError?.message ?? settingsError?.message ?? null;
+    const entries = ((entriesData as TaxLedgerEntry[] | null) ?? []).map(
+      normalizeTaxLedgerEntry,
+    );
+    const settings =
+      normalizeTaxSettings(settingsData as TaxSettings | null) ??
+      emptyTaxSettings(tenantId);
+
+    const openSummary = summarizeOpenTaxBalances(entries);
+    const obligations = listStatutoryPeriodObligations({
+      entries,
+      settings,
+    });
+
+    const obligationRows = obligations.slice(0, LIST_LIMIT).map((row) => ({
+      taxKind: row.kind,
+      taxLabel: OBLIGATION_KIND_LABELS[row.kind],
+      periodMonth: row.periodMonth,
+      periodLabel: formatPeriodMonthLabel(row.periodMonth),
+      dueDate: row.dueDate,
+      daysUntilDue: row.daysUntil,
+      isOverdue: row.isOverdue,
+      openAmountGhs: row.openAmount,
+    }));
+
+    const overdueObligations = obligationRows.filter((row) => row.isOverdue);
 
     return {
       currency: "GHS" as const,
-      groupTotals: report.groupTotals,
-      grandTotalGhs: report.grandTotal,
-      liabilities: report.rows.slice(0, LIST_LIMIT),
+      openBalanceSummaryGhs: {
+        netVatPosition: openSummary.netVatPosition,
+        whtPayable: openSummary.whtPayable,
+        payePayable: openSummary.payePayable,
+        ssnitEmployee: openSummary.ssnitEmployee,
+        ssnitEmployerTier1: openSummary.ssnitEmployerTier1,
+        ssnitTier2: openSummary.ssnitTier2,
+      },
+      periodObligations: obligationRows,
+      overdueCount: overdueObligations.length,
+      overdueObligations: overdueObligations.slice(0, LIST_LIMIT),
+      fetchWarning,
+      note: "Due dates and overdue flags use the same per-period due rules as Finance → Statutory Ledger (not legacy next_*_due_date fields).",
     };
   } catch (error) {
     console.error("[assistant] get_tax_ledger_status threw:", error);

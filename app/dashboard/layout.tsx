@@ -2,6 +2,7 @@ import DashboardShell from "./dashboard-shell";
 import { getMiddlewareTrustDiagnostics } from "@/utils/middleware-trust-diagnostics";
 import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
 import { StickyBottomBarProvider } from "@/components/sticky-bottom-bar";
+import { FeedbackShell } from "@/components/feedback";
 import { loadDashboardShellData } from "@/utils/dashboard-shell-data";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import {
@@ -58,6 +59,7 @@ async function DashboardLayoutInner({
 
   return (
     <StickyBottomBarProvider>
+      <FeedbackShell>
       {trustDiag ? (
         <meta
           name="dfoms-trust-source"
@@ -83,6 +85,7 @@ async function DashboardLayoutInner({
         {children}
       </DashboardShell>
       <AssistantChatWidget />
+      </FeedbackShell>
     </StickyBottomBarProvider>
   );
 }

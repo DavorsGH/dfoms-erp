@@ -22,6 +22,7 @@ import {
   fetchExpenseCategoryDeleteUsage,
   formatExpenseCategoryDeleteBlockedMessage,
 } from "./lookup-settings-usage";
+import { useLookupSettingsFeedback } from "./lookup-settings-feedback";
 import { adminDeleteExpenseSubcategory } from "./lookup-settings-subcategory-delete";
 import {
   confirmRemoveUnlinkedDuplicateMessage,
@@ -48,6 +49,8 @@ export default function ExpenseCategorySettings({
 }: ExpenseCategorySettingsProps) {
   const supabase = createClient();
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
+  const { showActionError, showActionSuccess, preserveScroll } =
+    useLookupSettingsFeedback(fetchError);
   const [categories, setCategories] = useState(initialCategories);
   const [subcategories, setSubcategories] =
     useState<ExpenseSubcategoryLookup[]>(initialSubcategories);
@@ -56,7 +59,6 @@ export default function ExpenseCategorySettings({
     Record<string, string>
   >({});
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
   const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
   const [categoryRenameDraft, setCategoryRenameDraft] = useState("");
   const [renamingSubId, setRenamingSubId] = useState<string | null>(null);
@@ -142,6 +144,7 @@ export default function ExpenseCategorySettings({
   }
 
   async function refreshAll() {
+    await preserveScroll(async () => {
     const [categoriesResult, subcategoriesResult] = await Promise.all([
       supabase
         .from("expense_categories")
@@ -155,7 +158,7 @@ export default function ExpenseCategorySettings({
     ]);
 
     if (categoriesResult.error || subcategoriesResult.error) {
-      setError(
+      showActionError(
         categoriesResult.error?.message ??
           subcategoriesResult.error?.message ??
           "Failed to refresh.",
@@ -174,13 +177,13 @@ export default function ExpenseCategorySettings({
         }),
       ),
     );
-    setError(null);
+    });
   }
 
   async function handleAddCategory(event: React.FormEvent) {
     event.preventDefault();
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
     const trimmed = newCategoryName.trim();
@@ -188,19 +191,17 @@ export default function ExpenseCategorySettings({
       return;
     }
     if (expenseCategoryNameTaken(categories, trimmed)) {
-      setError(`An expense category named "${trimmed}" already exists.`);
+      showActionError(`An expense category named "${trimmed}" already exists.`);
       return;
     }
 
     setLoading(true);
-    setError(null);
-
     const { error: insertError } = await supabase
       .from("expense_categories")
       .insert({ name: trimmed, is_active: true });
 
     if (insertError) {
-      setError(insertError.message);
+      showActionError(insertError);
       setLoading(false);
       return;
     }
@@ -209,6 +210,7 @@ export default function ExpenseCategorySettings({
     await refreshAll();
     await invalidateReferenceCache();
     setLoading(false);
+    showActionSuccess("Category added.");
   }
 
   type LinkSubcategoryResult =
@@ -232,12 +234,11 @@ export default function ExpenseCategorySettings({
     }
 
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return { outcome: "failed", message: offlineWriteMessage };
     }
 
     setBusyKey(options.busyKey);
-    setError(null);
     setDuplicateRemoveOffer(null);
 
     const existingLinked = findLinkedExpenseSubcategoryInCategory(
@@ -251,7 +252,7 @@ export default function ExpenseCategorySettings({
         return { outcome: "duplicate", categoryName };
       }
       const message = `"${trimmed}" already exists under ${categoryName}.`;
-      setError(message);
+      showActionError(message);
       setBusyKey(null);
       return { outcome: "failed", message };
     }
@@ -279,7 +280,7 @@ export default function ExpenseCategorySettings({
         .maybeSingle();
 
       if (updateError) {
-        setError(updateError.message);
+        showActionError(updateError);
         setBusyKey(null);
         return { outcome: "failed", message: updateError.message };
       }
@@ -287,7 +288,7 @@ export default function ExpenseCategorySettings({
       if (!data) {
         const message =
           "Could not link sub-category — it may have been updated elsewhere. Refresh and try again.";
-        setError(message);
+        showActionError(message);
         setBusyKey(null);
         await refreshAll();
         return { outcome: "failed", message };
@@ -300,6 +301,7 @@ export default function ExpenseCategorySettings({
       );
       await invalidateReferenceCache();
       setBusyKey(null);
+      showActionSuccess("Sub-category linked.");
       return { outcome: "linked" };
     }
 
@@ -312,7 +314,7 @@ export default function ExpenseCategorySettings({
       });
 
     if (insertError) {
-      setError(insertError.message);
+      showActionError(insertError);
       setBusyKey(null);
       return { outcome: "failed", message: insertError.message };
     }
@@ -337,6 +339,7 @@ export default function ExpenseCategorySettings({
 
     if (linked.outcome === "linked") {
       setNewSubNameByCategory((prev) => ({ ...prev, [categoryName]: "" }));
+      showActionSuccess("Sub-category added.");
     }
   }
 
@@ -344,10 +347,9 @@ export default function ExpenseCategorySettings({
     sub: ExpenseSubcategoryLookup,
   ): Promise<boolean> {
     setBusyKey(`delete-sub:${sub.id}`);
-    setError(null);
     const result = await adminDeleteExpenseSubcategory(supabase, sub.id);
     if (!result.ok) {
-      setError(result.error);
+      showActionError(result.error);
       setBusyKey(null);
       return false;
     }
@@ -362,13 +364,13 @@ export default function ExpenseCategorySettings({
     sub: ExpenseSubcategoryLookup,
   ) {
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
     const linkedCategories =
       unlinkedDuplicateCategoriesBySubId.get(sub.id) ?? [];
     if (linkedCategories.length === 0) {
-      setError("This row is not an unlinked duplicate of a linked sub-category.");
+      showActionError("This row is not an unlinked duplicate of a linked sub-category.");
       return;
     }
     const message = confirmRemoveUnlinkedDuplicateMessage(
@@ -376,16 +378,18 @@ export default function ExpenseCategorySettings({
       linkedCategories,
     );
     if (!window.confirm(message)) {
-      setError(message);
+      showActionError(message);
       return;
     }
-    await executeAdminDeleteSubcategory(sub);
+    if (await executeAdminDeleteSubcategory(sub)) {
+      showActionSuccess("Unlinked duplicate removed.");
+    }
   }
 
   async function handleLinkUnlinkedSubcategory(sub: ExpenseSubcategoryLookup) {
     const categoryName = (linkCategoryBySubId[sub.id] ?? "").trim();
     if (!categoryName) {
-      setError("Choose a category before linking.");
+      showActionError("Choose a category before linking.");
       return;
     }
 
@@ -403,6 +407,7 @@ export default function ExpenseCategorySettings({
         return next;
       });
       setDuplicateRemoveOffer(null);
+      showActionSuccess("Sub-category linked.");
       return;
     }
 
@@ -413,7 +418,7 @@ export default function ExpenseCategorySettings({
         sub.name,
         linkedCategories,
       );
-      setError(message);
+      showActionError(message);
       setDuplicateRemoveOffer({
         subId: sub.id,
         subName: sub.name,
@@ -423,7 +428,7 @@ export default function ExpenseCategorySettings({
     }
 
     if (result.outcome === "failed" && result.message) {
-      setError(result.message);
+      showActionError(result.message);
     }
   }
 
@@ -434,24 +439,22 @@ export default function ExpenseCategorySettings({
       return;
     }
     if (expenseCategoryNameTaken(categories, trimmed, previousName)) {
-      setError(`An expense category named "${trimmed}" already exists.`);
+      showActionError(`An expense category named "${trimmed}" already exists.`);
       return;
     }
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
 
     setBusyKey(`rename-cat:${previousName}`);
-    setError(null);
-
     const { error: updateError } = await supabase
       .from("expense_categories")
       .update({ name: trimmed })
       .eq("name", previousName);
 
     if (updateError) {
-      setError(updateError.message);
+      showActionError(updateError);
       setBusyKey(null);
       return;
     }
@@ -462,7 +465,7 @@ export default function ExpenseCategorySettings({
       .eq("expense_category", previousName);
 
     if (relinkError) {
-      setError(relinkError.message);
+      showActionError(relinkError);
       setBusyKey(null);
       return;
     }
@@ -471,6 +474,7 @@ export default function ExpenseCategorySettings({
     await refreshAll();
     await invalidateReferenceCache();
     setBusyKey(null);
+    showActionSuccess("Changes saved.");
   }
 
   async function saveSubRename(sub: ExpenseSubcategoryLookup) {
@@ -480,20 +484,18 @@ export default function ExpenseCategorySettings({
       return;
     }
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
 
     setBusyKey(`rename-sub:${sub.id}`);
-    setError(null);
-
     const { error: updateError } = await supabase
       .from("expense_subcategories")
       .update({ name: trimmed })
       .eq("id", sub.id);
 
     if (updateError) {
-      setError(updateError.message);
+      showActionError(updateError);
       setBusyKey(null);
       return;
     }
@@ -502,35 +504,39 @@ export default function ExpenseCategorySettings({
     await refreshAll();
     await invalidateReferenceCache();
     setBusyKey(null);
+    showActionSuccess("Changes saved.");
   }
 
   async function toggleCategoryHidden(categoryName: string, hide: boolean) {
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
     setBusyKey(`hide-cat:${categoryName}`);
-    setError(null);
     const { error: updateError } = await supabase
       .from("expense_categories")
       .update({ is_active: !hide })
       .eq("name", categoryName);
     if (updateError) {
-      setError(updateError.message);
+      showActionError(updateError);
     } else {
       await refreshAll();
       await invalidateReferenceCache();
+      showActionSuccess(
+        hide
+          ? "Hidden from new entries."
+          : "Shown in new entry lists again.",
+      );
     }
     setBusyKey(null);
   }
 
   async function deleteCategory(categoryName: string) {
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
     setBusyKey(`delete-cat:${categoryName}`);
-    setError(null);
     try {
       const { usageLines, linkedSubcategoryCount } =
         await fetchExpenseCategoryDeleteUsage(supabase, categoryName);
@@ -540,7 +546,7 @@ export default function ExpenseCategorySettings({
         linkedSubcategoryCount,
       );
       if (blockMessage) {
-        setError(blockMessage);
+        showActionError(blockMessage);
         setBusyKey(null);
         return;
       }
@@ -557,42 +563,45 @@ export default function ExpenseCategorySettings({
         .delete()
         .eq("name", categoryName);
       if (deleteError) {
-        setError(deleteError.message);
+        showActionError(deleteError);
       } else {
         await refreshAll();
         await invalidateReferenceCache();
+        showActionSuccess("Category deleted.");
       }
     } catch (usageError) {
-      setError(
-        usageError instanceof Error ? usageError.message : "Could not delete.",
-      );
+      showActionError(usageError);
     }
     setBusyKey(null);
   }
 
   async function toggleSubcategoryHidden(sub: ExpenseSubcategoryLookup, hide: boolean) {
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
     setBusyKey(`hide-sub:${sub.id}`);
-    setError(null);
     const { error: updateError } = await supabase
       .from("expense_subcategories")
       .update({ is_active: !hide })
       .eq("id", sub.id);
     if (updateError) {
-      setError(updateError.message);
+      showActionError(updateError);
     } else {
       await refreshAll();
       await invalidateReferenceCache();
+      showActionSuccess(
+        hide
+          ? "Hidden from new entries."
+          : "Shown in new entry lists again.",
+      );
     }
     setBusyKey(null);
   }
 
   async function deleteSubcategory(sub: ExpenseSubcategoryLookup) {
     if (isOffline) {
-      setError(offlineWriteMessage);
+      showActionError(offlineWriteMessage);
       return;
     }
 
@@ -608,10 +617,12 @@ export default function ExpenseCategorySettings({
         linkedCategories,
       );
       if (!window.confirm(message)) {
-        setError(message);
+        showActionError(message);
         return;
       }
-      await executeAdminDeleteSubcategory(sub);
+      if (await executeAdminDeleteSubcategory(sub)) {
+        showActionSuccess("Unlinked duplicate removed.");
+      }
       return;
     }
 
@@ -622,7 +633,9 @@ export default function ExpenseCategorySettings({
     ) {
       return;
     }
-    await executeAdminDeleteSubcategory(sub);
+    if (await executeAdminDeleteSubcategory(sub)) {
+      showActionSuccess("Sub-category deleted.");
+    }
   }
 
   return (
@@ -630,12 +643,6 @@ export default function ExpenseCategorySettings({
       {isOffline && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {offlineWriteMessage}
-        </p>
-      )}
-
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
         </p>
       )}
 

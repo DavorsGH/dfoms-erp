@@ -1,5 +1,6 @@
 import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
 import { StickyBottomBarProvider } from "@/components/sticky-bottom-bar";
+import { FeedbackShell } from "@/components/feedback";
 import { ensureSecurityNotifications } from "@/utils/security-notifications";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +24,10 @@ export default async function PortalLayout({
 
   return (
     <StickyBottomBarProvider>
-      {children}
-      {session ? <AssistantChatWidget /> : null}
+      <FeedbackShell>
+        {children}
+        {session ? <AssistantChatWidget /> : null}
+      </FeedbackShell>
     </StickyBottomBarProvider>
   );
 }

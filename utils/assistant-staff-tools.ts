@@ -214,7 +214,7 @@ export function getStaffAssistantTools(
       ),
       tool(
         GET_TAX_LEDGER_STATUS_TOOL_NAME,
-        "Open WHT/VAT/PAYE/SSNIT statutory position — same aggregation as Statutory Liabilities report.",
+        "Open WHT/VAT/PAYE/SSNIT balances and per-period due dates/overdue items — same due-rule engine as Finance → Statutory Ledger.",
       ),
       tool(
         GET_EXPENSE_BREAKDOWN_TOOL_NAME,
@@ -573,7 +573,7 @@ export function staffAccountToolsSystemPromptAddition(
       "- Director's Loan how-to (handbook §6.5): ledger on Manual Financial Entries; personal company-paid expenses → ledger type 'Company paid for my personal expense', not Expense Register; correct via Edit/Reverse, never delete",
       "- get_budget_status: Budget vs Actual (Monthly Pro-rated) — budgeted/actual/variance/status per category (optional month, year, project_id); use for budget status, budget vs actual, over/under budget, and category spend vs budget questions instead of handbook RAG",
       "- get_outstanding_invoices / get_outstanding_payables: unpaid client invoices and supplier payables with aging",
-      "- get_tax_ledger_status: open WHT/VAT/PAYE/SSNIT statutory balances",
+      "- get_tax_ledger_status: open statutory balances plus per-tax per-period due dates and overdue (Statutory Ledger rules)",
       "- get_expense_breakdown: top expense categories (optional period: this_month, last_month, ytd)",
       "- get_fixed_assets_summary / get_service_contracts_status / get_supplier_contracts_status: fixed assets schedule, service contracts due for renewal, and supplier contract billing/AP status",
     );
