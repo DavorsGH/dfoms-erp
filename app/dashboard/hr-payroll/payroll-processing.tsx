@@ -59,7 +59,12 @@ import {
   assessStatutoryPayrollForPeriodMonth,
   validateStatutoryPayrollBeforeLock,
 } from "./statutory-payroll-config-utils";
-import { syncProcessingAllowanceLines } from "./payroll-allowance-lines-utils";
+import {
+  fetchProcessingAllowanceLinesForMonth,
+  groupProcessingAllowanceLinesByEmployee,
+  syncProcessingAllowanceLines,
+  type ProcessingAllowanceLineRow,
+} from "./payroll-allowance-lines-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 import {
   useBusinessUnitReadScope,
@@ -69,6 +74,7 @@ import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
   loadWriteBusinessUnitContext,
   resolveWriteBusinessUnitIdForCreate,
+  type AllowedBusinessUnits,
 } from "@/utils/business-unit-access";
 
 type PayrollProcessingProps = {
@@ -91,6 +97,13 @@ type WorkspaceRow = PayrollProcessingRow & {
   staff_id: string;
   full_name: string;
   employment_type: string | null;
+};
+
+/** Hoisted once per open-period sync (loadWorkspace → syncOpenPeriod). */
+type AllowanceWriteContext = {
+  tenantId: string | null;
+  allowedUnits: AllowedBusinessUnits;
+  businessUnitId: string | null;
 };
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => ({
@@ -411,25 +424,36 @@ export default function PayrollProcessing({
   async function persistAllowanceLines(
     period: SelectedPayrollPeriod,
     employee: PayrollEmployeeSource,
+    writeContext?: AllowanceWriteContext | null,
+    prefetchedExisting?: ProcessingAllowanceLineRow[],
   ) {
     const policy = policyForEmployee(employee, period);
     if (!policy) {
       return;
     }
 
-    const buContext = await loadWriteBusinessUnitContext(supabase);
-    if (!buContext.ok) {
-      setError(buContext.error);
-      return;
-    }
+    let ctx = writeContext ?? null;
+    if (!ctx) {
+      const buContext = await loadWriteBusinessUnitContext(supabase);
+      if (!buContext.ok) {
+        setError(buContext.error);
+        return;
+      }
 
-    const stampResult = resolveWriteBusinessUnitIdForCreate({
-      allowedUnits: buContext.allowedUnits,
-      stamp: stampBusinessUnit,
-    });
-    if (!stampResult.ok) {
-      setError(stampResult.error);
-      return;
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        return;
+      }
+
+      ctx = {
+        tenantId,
+        allowedUnits: buContext.allowedUnits,
+        businessUnitId: stampResult.businessUnitId,
+      };
     }
 
     const result = await syncProcessingAllowanceLines(
@@ -438,9 +462,10 @@ export default function PayrollProcessing({
       employee.employee_id,
       policy.allowance_lines,
       {
-        tenantId,
-        allowedUnits: buContext.allowedUnits,
-        businessUnitId: stampResult.businessUnitId,
+        tenantId: ctx.tenantId,
+        allowedUnits: ctx.allowedUnits,
+        businessUnitId: ctx.businessUnitId,
+        prefetchedExisting,
       },
     );
     if (result.error) {
@@ -691,12 +716,61 @@ export default function PayrollProcessing({
       }
     }
 
+    let allowanceWriteContext: AllowanceWriteContext | null = null;
+    let allowanceLinesByEmployee = new Map<string, ProcessingAllowanceLineRow[]>();
+
+    if (employeesForPeriod.length > 0) {
+      const buContext = await loadWriteBusinessUnitContext(supabase);
+      if (!buContext.ok) {
+        setError(buContext.error);
+        return;
+      }
+
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        return;
+      }
+
+      allowanceWriteContext = {
+        tenantId,
+        allowedUnits: buContext.allowedUnits,
+        businessUnitId: stampResult.businessUnitId,
+      };
+
+      if (tenantId) {
+        const batch = await fetchProcessingAllowanceLinesForMonth(
+          supabase,
+          tenantId,
+          period.payrollMonth,
+        );
+        if (batch.error) {
+          throw new Error(batch.error);
+        }
+        allowanceLinesByEmployee = groupProcessingAllowanceLinesByEmployee(
+          batch.data,
+        );
+      }
+    }
+
     // Refresh processing allowance lines for all employees in this open period.
     for (const employee of employeesForPeriod) {
       if (isCancelled()) {
         return;
       }
-      await persistAllowanceLines(period, employee);
+      const prefetchedLines = tenantId
+        ? (allowanceLinesByEmployee.get(employee.employee_id) ?? [])
+        : undefined;
+
+      await persistAllowanceLines(
+        period,
+        employee,
+        allowanceWriteContext,
+        prefetchedLines,
+      );
     }
 
     if (isCancelled()) {
@@ -722,6 +796,7 @@ export default function PayrollProcessing({
     setLoading(true);
     setError(null);
     setExpandedEmployeeId(null);
+    setRows([]);
     // Clear immediately so a BU switch never leaves the previous unit's lock banner visible.
     if (!isStaleLoad()) {
       setMonthEndClose(null);
@@ -905,7 +980,7 @@ export default function PayrollProcessing({
       other_deductions: number;
     }>,
   ) {
-    if (!currentPeriod || isPeriodClosed) {
+    if (!currentPeriod || isPeriodClosed || loading) {
       return;
     }
 
@@ -1712,6 +1787,13 @@ export default function PayrollProcessing({
         />
       ) : null}
 
+      <div
+        className={
+          loading
+            ? "pointer-events-none opacity-50 transition-opacity"
+            : undefined
+        }
+      >
       <ScrollableTable>
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
@@ -1764,6 +1846,7 @@ export default function PayrollProcessing({
                           type="number"
                           min="0"
                           step="0.01"
+                          disabled={loading}
                           value={daysToPayInputValue(row)}
                           onChange={(event) => {
                             const next = event.target.value;
@@ -1820,6 +1903,7 @@ export default function PayrollProcessing({
                       <td className="px-4 py-3">
                         <button
                           type="button"
+                          disabled={loading}
                           onClick={() =>
                             setExpandedEmployeeId((current) =>
                               current === row.employee_id
@@ -1827,7 +1911,7 @@ export default function PayrollProcessing({
                                 : row.employee_id,
                             )
                           }
-                          className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                          className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {expandedEmployeeId === row.employee_id
                             ? "Hide"
@@ -1867,6 +1951,7 @@ export default function PayrollProcessing({
                               type="number"
                               min="0"
                               step="0.01"
+                              disabled={loading}
                               value={Number(row[field]) || 0}
                               onChange={(event) =>
                                 void updateRowField(row, {
@@ -1886,8 +1971,9 @@ export default function PayrollProcessing({
           </tbody>
         </table>
       </ScrollableTable>
+      </div>
 
-      {rows.length > 0 ? (
+      {rows.length > 0 && !loading ? (
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
             Period Totals

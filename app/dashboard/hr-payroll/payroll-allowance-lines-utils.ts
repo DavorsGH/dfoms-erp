@@ -21,13 +21,123 @@ export type SyncProcessingAllowanceLinesOptions = {
   refuseNewInsertsError?: string | null;
   /** When set, validate row access before update/delete and stamp on insert. */
   allowedUnits?: AllowedBusinessUnits;
+  /** When set, skip per-employee SELECT (Batch load for open-period sync). */
+  prefetchedExisting?: ProcessingAllowanceLineRow[];
 };
 
-type ExistingProcessingAllowanceRow = {
+export type ProcessingAllowanceLineRow = {
   id: string;
+  employee_id: string;
   allowance_code: string;
+  allowance_type_id: string | null;
+  allowance_name: string;
+  amount: number;
   business_unit_id: string | null;
 };
+
+type ExistingProcessingAllowanceRow = ProcessingAllowanceLineRow;
+
+function roundAllowanceAmount(amount: number): number {
+  return Math.round((Number(amount) || 0) * 100) / 100;
+}
+
+function normalizeAllowanceTypeId(
+  value: string | null | undefined,
+): string | null {
+  return value || null;
+}
+
+/** True when DB rows already match what sync would write (no UPDATE/INSERT/DELETE). */
+export function processingAllowanceLinesNeedSync(
+  existing: ProcessingAllowanceLineRow[],
+  allowances: ResolvedAllowanceLine[],
+): boolean {
+  const dedupedByCode = new Map<string, ResolvedAllowanceLine>();
+  for (const line of allowances) {
+    dedupedByCode.set(line.allowance_code, line);
+  }
+  const dedupedAllowances = [...dedupedByCode.values()];
+
+  if (dedupedAllowances.length === 0) {
+    return existing.length > 0;
+  }
+
+  const existingByCode = new Map(
+    existing.map((row) => [row.allowance_code, row]),
+  );
+  const currentCodes = new Set(
+    dedupedAllowances.map((line) => line.allowance_code),
+  );
+
+  for (const row of existing) {
+    if (!currentCodes.has(row.allowance_code)) {
+      return true;
+    }
+  }
+
+  for (const line of dedupedAllowances) {
+    const amount = roundAllowanceAmount(line.amount);
+    const row = existingByCode.get(line.allowance_code);
+    if (!row) {
+      return true;
+    }
+    if (roundAllowanceAmount(row.amount) !== amount) {
+      return true;
+    }
+    if (row.allowance_name !== line.allowance_name) {
+      return true;
+    }
+    if (
+      normalizeAllowanceTypeId(row.allowance_type_id) !==
+      normalizeAllowanceTypeId(line.allowance_type_id)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function groupProcessingAllowanceLinesByEmployee(
+  rows: ProcessingAllowanceLineRow[],
+): Map<string, ProcessingAllowanceLineRow[]> {
+  const byEmployee = new Map<string, ProcessingAllowanceLineRow[]>();
+  for (const row of rows) {
+    const bucket = byEmployee.get(row.employee_id) ?? [];
+    bucket.push(row);
+    byEmployee.set(row.employee_id, bucket);
+  }
+  return byEmployee;
+}
+
+export async function fetchProcessingAllowanceLinesForMonth(
+  supabase: SupabaseClient,
+  tenantId: string,
+  payrollMonth: string,
+): Promise<{ data: ProcessingAllowanceLineRow[]; error: string | null }> {
+  const month = payrollMonth.slice(0, 10);
+  const { data, error } = await supabase
+    .from("payroll_allowance_lines")
+    .select(
+      "id, employee_id, allowance_code, allowance_type_id, allowance_name, amount, business_unit_id",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("stage", "processing")
+    .eq("payroll_month", month);
+
+  if (error) {
+    return { data: [], error: error.message };
+  }
+
+  const rows = ((data as ProcessingAllowanceLineRow[] | null) ?? []).map(
+    (row) => ({
+      ...row,
+      amount: roundAllowanceAmount(Number(row.amount) || 0),
+    }),
+  );
+
+  return { data: rows, error: null };
+}
 
 function assertAllowanceLineWriteAccess(
   allowedUnits: AllowedBusinessUnits | undefined,
@@ -55,20 +165,48 @@ export async function syncProcessingAllowanceLines(
 ): Promise<{ error: string | null }> {
   const month = payrollMonth.slice(0, 10);
 
-  if (allowances.length === 0) {
-    const { data: rowsToDelete, error: fetchDeleteError } = await supabase
+  const loadExistingForEmployee = async (): Promise<
+    ExistingProcessingAllowanceRow[]
+  > => {
+    if (options.prefetchedExisting !== undefined) {
+      return options.prefetchedExisting;
+    }
+    const { data: existingRows, error: fetchError } = await supabase
       .from("payroll_allowance_lines")
-      .select("id, business_unit_id")
+      .select(
+        "id, employee_id, allowance_code, allowance_type_id, allowance_name, amount, business_unit_id",
+      )
       .eq("stage", "processing")
       .eq("payroll_month", month)
       .eq("employee_id", employeeId);
 
-    if (fetchDeleteError) {
-      return { error: fetchDeleteError.message };
+    if (fetchError) {
+      throw new Error(fetchError.message);
     }
 
-    for (const row of (rowsToDelete as ExistingProcessingAllowanceRow[] | null) ??
-      []) {
+    return ((existingRows as ExistingProcessingAllowanceRow[] | null) ?? []).map(
+      (row) => ({
+        ...row,
+        amount: roundAllowanceAmount(Number(row.amount) || 0),
+      }),
+    );
+  };
+
+  if (allowances.length === 0) {
+    let rowsToDelete: ExistingProcessingAllowanceRow[];
+    try {
+      rowsToDelete = await loadExistingForEmployee();
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Failed to load lines.",
+      };
+    }
+
+    if (rowsToDelete.length === 0) {
+      return { error: null };
+    }
+
+    for (const row of rowsToDelete) {
       try {
         assertAllowanceLineWriteAccess(
           options.allowedUnits,
@@ -101,15 +239,17 @@ export async function syncProcessingAllowanceLines(
   }
   const dedupedAllowances = [...dedupedByCode.values()];
 
-  const { data: existingRows, error: fetchError } = await supabase
-    .from("payroll_allowance_lines")
-    .select("id, allowance_code, business_unit_id")
-    .eq("stage", "processing")
-    .eq("payroll_month", month)
-    .eq("employee_id", employeeId);
+  let existingRows: ExistingProcessingAllowanceRow[];
+  try {
+    existingRows = await loadExistingForEmployee();
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Failed to load lines.",
+    };
+  }
 
-  if (fetchError) {
-    return { error: fetchError.message };
+  if (!processingAllowanceLinesNeedSync(existingRows, dedupedAllowances)) {
+    return { error: null };
   }
 
   const existingByCode = new Map(
@@ -122,10 +262,21 @@ export async function syncProcessingAllowanceLines(
   );
 
   for (const line of dedupedAllowances) {
-    const amount = Math.round((Number(line.amount) || 0) * 100) / 100;
+    const amount = roundAllowanceAmount(line.amount);
     const existing = existingByCode.get(line.allowance_code);
+    const nextTypeId = normalizeAllowanceTypeId(line.allowance_type_id);
+    const nextName = line.allowance_name;
 
     if (existing) {
+      const updateNeeded =
+        roundAllowanceAmount(existing.amount) !== amount ||
+        existing.allowance_name !== nextName ||
+        normalizeAllowanceTypeId(existing.allowance_type_id) !== nextTypeId;
+
+      if (!updateNeeded) {
+        continue;
+      }
+
       try {
         assertAllowanceLineWriteAccess(
           options.allowedUnits,
@@ -143,8 +294,8 @@ export async function syncProcessingAllowanceLines(
       const { error: updateError } = await supabase
         .from("payroll_allowance_lines")
         .update({
-          allowance_type_id: line.allowance_type_id || null,
-          allowance_name: line.allowance_name,
+          allowance_type_id: nextTypeId,
+          allowance_name: nextName,
           amount,
         })
         .eq("id", existing.id);
