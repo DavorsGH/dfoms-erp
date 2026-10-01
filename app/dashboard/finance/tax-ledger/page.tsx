@@ -24,7 +24,6 @@ import {
 } from "../tax-utils";
 import {
   TAX_LEDGER_SELECT,
-  buildAutoAdvancedDueDatePatch,
   normalizeTaxLedgerEntry,
   type TaxLedgerEntry,
 } from "../tax-ledger-utils";
@@ -103,33 +102,10 @@ export default async function TaxLedgerPage() {
   // Auto-advance stale next_*_due_date values when the obligation is gone
   // (no open ledger rows for that due kind). Keeps overdue dates when open
   // remittance obligations remain.
-  const dueDatePatch = buildAutoAdvancedDueDatePatch(settings, entries);
-  let autoAdvanceError: string | null = null;
-
-  if (Object.keys(dueDatePatch).length > 0) {
-    const { data: advancedRow, error: advanceError } = await scopeTaxSettingsRead(
-      supabase
-        .from("tax_settings")
-        .update(dueDatePatch)
-        .eq("tenant_id", tenantId),
-      activeBusinessUnitId,
-    )
-      .select(TAX_SETTINGS_FULL_SELECT)
-      .single();
-
-    if (advanceError) {
-      autoAdvanceError = advanceError.message;
-    } else if (advancedRow) {
-      settings =
-        normalizeTaxSettings(advancedRow as TaxSettings) ?? settings;
-    }
-  }
-
   const fetchError =
     ensureError?.message ??
     settingsError?.message ??
     entriesError?.message ??
-    autoAdvanceError ??
     null;
 
   return (

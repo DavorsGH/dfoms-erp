@@ -31,7 +31,6 @@ import {
   PAYE_COMPONENTS,
   REMINDER_WINDOW_DAYS,
   SSNIT_COMPONENTS,
-  daysUntilDate,
   filterEntriesByComponents,
   filterTaxLedgerEntries,
   formatGHS,
@@ -53,6 +52,18 @@ import {
   type TaxLedgerEntry,
   type TaxLedgerFilters,
 } from "./tax-ledger-utils";
+import {
+  listStatutoryPeriodObligations,
+  type StatutoryDueRuleKind,
+} from "./statutory-due-rules";
+import { StatutoryObligationList } from "./statutory-obligation-list";
+import {
+  StatutoryDueRuleFields,
+  dueRuleFormToRule,
+  settingsToDueRuleForm,
+  type DueRuleFormValue,
+} from "./statutory-due-rule-fields";
+import { StatutoryGraReconciliationPanel } from "./statutory-gra-reconciliation-panel";
 import {
   REMIT_TAX_KIND_LABEL,
   buildRemitExpenseReceiptNo,
@@ -83,16 +94,11 @@ type SettingsForm = {
   default_vat_bundle_rate: string;
   default_wht_rate: string;
   vat_return_period: VatReturnPeriod;
-  vat_return_due_day: string;
-  wht_return_due_day: string;
-  next_vat_due_date: string;
-  next_wht_due_date: string;
-  paye_return_due_day: string;
-  ssnit_return_due_day: string;
-  tier2_return_due_day: string;
-  next_paye_due_date: string;
-  next_ssnit_due_date: string;
-  next_tier2_due_date: string;
+  vatDue: DueRuleFormValue;
+  whtDue: DueRuleFormValue;
+  payeDue: DueRuleFormValue;
+  ssnitDue: DueRuleFormValue;
+  tier2Due: DueRuleFormValue;
   reminder_enabled: boolean;
 };
 
@@ -127,46 +133,33 @@ function settingsToForm(settings: TaxSettings): SettingsForm {
     default_vat_bundle_rate: String(settings.default_vat_bundle_rate),
     default_wht_rate: String(settings.default_wht_rate),
     vat_return_period: settings.vat_return_period,
-    vat_return_due_day:
-      settings.vat_return_due_day == null
-        ? ""
-        : String(settings.vat_return_due_day),
-    wht_return_due_day:
-      settings.wht_return_due_day == null
-        ? ""
-        : String(settings.wht_return_due_day),
-    next_vat_due_date: settings.next_vat_due_date ?? "",
-    next_wht_due_date: settings.next_wht_due_date ?? "",
-    paye_return_due_day: String(settings.paye_return_due_day),
-    ssnit_return_due_day: String(settings.ssnit_return_due_day),
-    tier2_return_due_day: String(settings.tier2_return_due_day),
-    next_paye_due_date: settings.next_paye_due_date ?? "",
-    next_ssnit_due_date: settings.next_ssnit_due_date ?? "",
-    next_tier2_due_date: settings.next_tier2_due_date ?? "",
+    vatDue: settingsToDueRuleForm({
+      monthsAfter: settings.vat_due_months_after_period,
+      dayRule: settings.vat_due_day_rule,
+      dayNumber: settings.vat_due_day_number,
+    }),
+    whtDue: settingsToDueRuleForm({
+      monthsAfter: settings.wht_due_months_after_period,
+      dayRule: settings.wht_due_day_rule,
+      dayNumber: settings.wht_due_day_number,
+    }),
+    payeDue: settingsToDueRuleForm({
+      monthsAfter: settings.paye_due_months_after_period,
+      dayRule: settings.paye_due_day_rule,
+      dayNumber: settings.paye_due_day_number,
+    }),
+    ssnitDue: settingsToDueRuleForm({
+      monthsAfter: settings.ssnit_due_months_after_period,
+      dayRule: settings.ssnit_due_day_rule,
+      dayNumber: settings.ssnit_due_day_number,
+    }),
+    tier2Due: settingsToDueRuleForm({
+      monthsAfter: settings.tier2_due_months_after_period,
+      dayRule: settings.tier2_due_day_rule,
+      dayNumber: settings.tier2_due_day_number,
+    }),
     reminder_enabled: settings.reminder_enabled,
   };
-}
-
-function parseOptionalDay(value: string): number | null {
-  if (!value.trim()) {
-    return null;
-  }
-
-  const day = Number(value);
-  if (!Number.isFinite(day) || day < 1 || day > 31) {
-    return null;
-  }
-
-  return Math.trunc(day);
-}
-
-function parseRequiredDay(value: string, label: string): number | null {
-  const day = parseOptionalDay(value);
-  if (day == null) {
-    return null;
-  }
-  void label;
-  return day;
 }
 
 function BalanceCard({
@@ -187,75 +180,21 @@ function BalanceCard({
   );
 }
 
-function DueDateCard({
-  label,
-  dueDay,
-  nextDue,
-  onGoToSettings,
-}: {
-  label: string;
-  dueDay: number | null;
-  nextDue: string | null;
-  onGoToSettings: () => void;
-}) {
-  const daysUntil = daysUntilDate(nextDue);
-
-  let nextDueContent: React.ReactNode;
-  if (!nextDue || daysUntil == null) {
-    nextDueContent = (
-      <span className="text-sm">
-        <span className="text-slate-600">Next due: not set — </span>
-        <button
-          type="button"
-          onClick={onGoToSettings}
-          className="font-medium text-[#0f2744] underline underline-offset-2 hover:text-[#18365c]"
-        >
-          Set a due date in Settings
-        </button>
-      </span>
-    );
-  } else if (daysUntil < 0) {
-    const overdue = Math.abs(daysUntil);
-    nextDueContent = (
-      <span className="text-sm font-medium text-red-600">
-        Next due: {formatDate(nextDue)} — {overdue} day
-        {overdue === 1 ? "" : "s"} overdue
-      </span>
-    );
-  } else if (daysUntil === 0) {
-    nextDueContent = (
-      <span className="text-sm font-medium text-amber-700">
-        Next due: {formatDate(nextDue)} — due today
-      </span>
-    );
-  } else if (daysUntil <= REMINDER_WINDOW_DAYS) {
-    nextDueContent = (
-      <span className="text-sm font-medium text-amber-700">
-        Next due: {formatDate(nextDue)} — due in {daysUntil} day
-        {daysUntil === 1 ? "" : "s"}
-      </span>
-    );
-  } else {
-    nextDueContent = (
-      <span className="text-sm text-slate-600">
-        Next due: {formatDate(nextDue)}
-      </span>
-    );
-  }
-
-  return (
-    <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
-      <p className="text-sm font-medium text-slate-700">{label}</p>
-      <p className="mt-1 text-sm text-slate-600">
-        Due day: {dueDay == null ? "—" : dayOfMonthLabel(dueDay)}
-      </p>
-      <p>{nextDueContent}</p>
-    </div>
-  );
-}
-
-function dayOfMonthLabel(day: number): string {
-  return `${day}`;
+function filterObligationsForTab(
+  obligations: ReturnType<typeof listStatutoryPeriodObligations>,
+  kinds: StatutoryDueRuleKind[],
+  periodMonth: string,
+): ReturnType<typeof listStatutoryPeriodObligations> {
+  const kindSet = new Set(kinds);
+  return obligations.filter((row) => {
+    if (!kindSet.has(row.kind)) {
+      return false;
+    }
+    if (periodMonth && row.periodMonth !== periodMonth) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function EntriesTable({
@@ -550,9 +489,26 @@ export default function TaxLedger({
     ? `Selected period: ${formatPeriodMonthLabel(filters.periodMonth)}`
     : "All open periods (select Period Month to scope)";
 
+  const statutoryObligations = useMemo(
+    () =>
+      listStatutoryPeriodObligations({
+        entries,
+        settings,
+      }),
+    [entries, settings],
+  );
+
   const reminders = useMemo(
-    () => getUpcomingTaxReminders(settings),
-    [settings],
+    () => getUpcomingTaxReminders(settings, entries),
+    [entries, settings],
+  );
+
+  const overviewActionObligations = useMemo(
+    () =>
+      statutoryObligations.filter(
+        (row) => row.isOverdue || row.daysUntil <= REMINDER_WINDOW_DAYS,
+      ),
+    [statutoryObligations],
   );
 
   const graTinMissing = !isGraTinConfigured(settings);
@@ -653,40 +609,27 @@ export default function TaxLedger({
       return;
     }
 
-    const vatDueDay = parseOptionalDay(form.vat_return_due_day);
-    const whtDueDay = parseOptionalDay(form.wht_return_due_day);
-    const payeDueDay = parseRequiredDay(form.paye_return_due_day, "PAYE");
-    const ssnitDueDay = parseRequiredDay(form.ssnit_return_due_day, "SSNIT");
-    const tier2DueDay = parseRequiredDay(form.tier2_return_due_day, "Tier 2");
+    const vatRule = dueRuleFormToRule(form.vatDue);
+    const whtRule = dueRuleFormToRule(form.whtDue);
+    const payeRule = dueRuleFormToRule(form.payeDue);
+    const ssnitRule = dueRuleFormToRule(form.ssnitDue);
+    const tier2Rule = dueRuleFormToRule(form.tier2Due);
 
-    if (form.vat_return_due_day.trim() && vatDueDay == null) {
-      setError("VAT Return Due Day must be between 1 and 31.");
-      setSavingSettings(false);
-      return;
-    }
-
-    if (form.wht_return_due_day.trim() && whtDueDay == null) {
-      setError("WHT Return Due Day must be between 1 and 31.");
-      setSavingSettings(false);
-      return;
-    }
-
-    if (payeDueDay == null) {
-      setError("PAYE Return Due Day must be between 1 and 31.");
-      setSavingSettings(false);
-      return;
-    }
-
-    if (ssnitDueDay == null) {
-      setError("SSNIT Return Due Day must be between 1 and 31.");
-      setSavingSettings(false);
-      return;
-    }
-
-    if (tier2DueDay == null) {
-      setError("Tier 2 Return Due Day must be between 1 and 31.");
-      setSavingSettings(false);
-      return;
+    for (const [label, rule] of [
+      ["VAT", vatRule],
+      ["WHT", whtRule],
+      ["PAYE", payeRule],
+      ["SSNIT Tier 1", ssnitRule],
+      ["Tier 2", tier2Rule],
+    ] as const) {
+      if (
+        rule.dayRule === "day" &&
+        (rule.dayNumber == null || rule.dayNumber < 1 || rule.dayNumber > 31)
+      ) {
+        setError(`${label} due day must be between 1 and 31.`);
+        setSavingSettings(false);
+        return;
+      }
     }
 
     const payload = {
@@ -697,16 +640,24 @@ export default function TaxLedger({
       default_vat_bundle_rate: Number(form.default_vat_bundle_rate) || 0,
       default_wht_rate: Number(form.default_wht_rate) || 0,
       vat_return_period: form.vat_return_period,
-      vat_return_due_day: vatDueDay,
-      wht_return_due_day: whtDueDay,
-      next_vat_due_date: form.next_vat_due_date || null,
-      next_wht_due_date: form.next_wht_due_date || null,
-      paye_return_due_day: payeDueDay,
-      ssnit_return_due_day: ssnitDueDay,
-      tier2_return_due_day: tier2DueDay,
-      next_paye_due_date: form.next_paye_due_date || null,
-      next_ssnit_due_date: form.next_ssnit_due_date || null,
-      next_tier2_due_date: form.next_tier2_due_date || null,
+      vat_due_months_after_period: vatRule.monthsAfterPeriod,
+      vat_due_day_rule: vatRule.dayRule,
+      vat_due_day_number: vatRule.dayRule === "day" ? vatRule.dayNumber : null,
+      wht_due_months_after_period: whtRule.monthsAfterPeriod,
+      wht_due_day_rule: whtRule.dayRule,
+      wht_due_day_number: whtRule.dayRule === "day" ? whtRule.dayNumber : null,
+      paye_due_months_after_period: payeRule.monthsAfterPeriod,
+      paye_due_day_rule: payeRule.dayRule,
+      paye_due_day_number:
+        payeRule.dayRule === "day" ? payeRule.dayNumber : null,
+      ssnit_due_months_after_period: ssnitRule.monthsAfterPeriod,
+      ssnit_due_day_rule: ssnitRule.dayRule,
+      ssnit_due_day_number:
+        ssnitRule.dayRule === "day" ? ssnitRule.dayNumber : null,
+      tier2_due_months_after_period: tier2Rule.monthsAfterPeriod,
+      tier2_due_day_rule: tier2Rule.dayRule,
+      tier2_due_day_number:
+        tier2Rule.dayRule === "day" ? tier2Rule.dayNumber : null,
       reminder_enabled: form.reminder_enabled,
       updated_at: new Date().toISOString(),
     };
@@ -964,10 +915,11 @@ export default function TaxLedger({
     title: string,
     subtitle: string,
     balanceCards: React.ReactNode,
-    dueCards: React.ReactNode,
+    obligationKinds: StatutoryDueRuleKind[],
     componentOptions: Array<{ value: string; label: string }>,
     directionOptions: Array<{ value: string; label: string }>,
     remitKinds: RemitTaxKind[],
+    reconciliation?: React.ReactNode,
   ) {
     return (
       <div className="space-y-4">
@@ -984,9 +936,25 @@ export default function TaxLedger({
           <p className="mb-1 text-sm text-slate-600">{subtitle}</p>
           <p className="mb-4 text-xs text-slate-500">{periodScopeHint}</p>
           {balanceCards}
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {dueCards}
+          <div className="mt-4">
+            <h4 className="mb-2 text-sm font-semibold text-[#0f2744]">
+              Due obligations
+            </h4>
+            <StatutoryObligationList
+              obligations={filterObligationsForTab(
+                statutoryObligations,
+                obligationKinds,
+                filters.periodMonth,
+              )}
+              kinds={obligationKinds}
+              emptyMessage={
+                filters.periodMonth
+                  ? "No open obligations for this period and tax kind."
+                  : "Select a period month to focus due obligations, or remit from open periods below."
+              }
+            />
           </div>
+          {reconciliation}
         </section>
 
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -1030,7 +998,9 @@ export default function TaxLedger({
           <p className="font-medium">Upcoming statutory filings</p>
           <ul className="list-disc space-y-1 pl-5">
             {reminders.map((reminder) => (
-              <li key={`${reminder.kind}-${reminder.dueDate}`}>
+              <li
+                key={`${reminder.kind}-${reminder.periodMonth ?? ""}-${reminder.dueDate}`}
+              >
                 {formatReminderMessage(reminder)}
               </li>
             ))}
@@ -1107,6 +1077,15 @@ export default function TaxLedger({
             </p>
             <OverviewCards summary={allTimeSummary} />
           </section>
+
+          {overviewActionObligations.length > 0 ? (
+            <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 shadow-sm">
+              <h3 className="mb-3 text-lg font-semibold text-[#0f2744]">
+                Action required
+              </h3>
+              <StatutoryObligationList obligations={overviewActionObligations} />
+            </section>
+          ) : null}
         </>
       )}
 
@@ -1135,20 +1114,7 @@ export default function TaxLedger({
             />
             <BalanceCard label="Input Tax" value={periodScopedSummary.inputTax} />
           </div>,
-          <>
-            <DueDateCard
-              label="VAT"
-              dueDay={settings.vat_return_due_day}
-              nextDue={settings.next_vat_due_date}
-              onGoToSettings={() => setActiveTab("settings")}
-            />
-            <DueDateCard
-              label="WHT"
-              dueDay={settings.wht_return_due_day}
-              nextDue={settings.next_wht_due_date}
-              onGoToSettings={() => setActiveTab("settings")}
-            />
-          </>,
+          ["vat", "wht"],
           [
             { value: "vat_bundle", label: "VAT/NHIL/GETFund" },
             { value: "vfrs", label: "VFRS" },
@@ -1162,6 +1128,25 @@ export default function TaxLedger({
             { value: "settlement", label: "Settlement" },
           ],
           ["vat", "wht"],
+          stampBusinessUnit.ok ? (
+            <StatutoryGraReconciliationPanel
+              tenantId={tenantId}
+              businessUnitId={stampBusinessUnit.businessUnitId}
+              periodMonth={filters.periodMonth || null}
+              rows={[
+                {
+                  kind: "vat",
+                  label: "VAT (net open)",
+                  ledgerAmount: periodScopedSummary.netVatPosition,
+                },
+                {
+                  kind: "wht",
+                  label: "WHT payable",
+                  ledgerAmount: periodScopedSummary.whtPayable,
+                },
+              ]}
+            />
+          ) : null,
         )}
 
       {activeTab === "paye" &&
@@ -1174,15 +1159,24 @@ export default function TaxLedger({
               value={periodScopedSummary.payePayable}
             />
           </div>,
-          <DueDateCard
-            label="PAYE"
-            dueDay={settings.paye_return_due_day}
-            nextDue={settings.next_paye_due_date}
-            onGoToSettings={() => setActiveTab("settings")}
-          />,
+          ["paye"],
           [{ value: "paye", label: "PAYE" }],
           [{ value: "statutory_payable", label: "Statutory Payable" }],
           ["paye"],
+          stampBusinessUnit.ok ? (
+            <StatutoryGraReconciliationPanel
+              tenantId={tenantId}
+              businessUnitId={stampBusinessUnit.businessUnitId}
+              periodMonth={filters.periodMonth || null}
+              rows={[
+                {
+                  kind: "paye",
+                  label: "PAYE payable",
+                  ledgerAmount: periodScopedSummary.payePayable,
+                },
+              ]}
+            />
+          ) : null,
         )}
 
       {activeTab === "ssnit" &&
@@ -1200,20 +1194,7 @@ export default function TaxLedger({
             />
             <BalanceCard label="Tier 2" value={periodScopedSummary.ssnitTier2} />
           </div>,
-          <>
-            <DueDateCard
-              label="SSNIT Tier 1"
-              dueDay={settings.ssnit_return_due_day}
-              nextDue={settings.next_ssnit_due_date}
-              onGoToSettings={() => setActiveTab("settings")}
-            />
-            <DueDateCard
-              label="Tier 2"
-              dueDay={settings.tier2_return_due_day}
-              nextDue={settings.next_tier2_due_date}
-              onGoToSettings={() => setActiveTab("settings")}
-            />
-          </>,
+          ["ssnit", "tier2"],
           [
             { value: "ssnit_employee", label: "SSNIT Employee" },
             { value: "ssnit_employer_tier1", label: "SSNIT Employer Tier 1" },
@@ -1343,160 +1324,31 @@ export default function TaxLedger({
                 </select>
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  VAT Return Due Day
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={form.vat_return_due_day}
-                  onChange={(event) =>
-                    updateFormField("vat_return_due_day", event.target.value)
-                  }
-                  className={inputClassName}
-                  placeholder="1–31"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  WHT Return Due Day
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={form.wht_return_due_day}
-                  onChange={(event) =>
-                    updateFormField("wht_return_due_day", event.target.value)
-                  }
-                  className={inputClassName}
-                  placeholder="1–31"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  PAYE Return Due Day
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  required
-                  value={form.paye_return_due_day}
-                  onChange={(event) =>
-                    updateFormField("paye_return_due_day", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  SSNIT Return Due Day
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  required
-                  value={form.ssnit_return_due_day}
-                  onChange={(event) =>
-                    updateFormField("ssnit_return_due_day", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Tier 2 Return Due Day
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  required
-                  value={form.tier2_return_due_day}
-                  onChange={(event) =>
-                    updateFormField("tier2_return_due_day", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Next VAT Due Date
-                </label>
-                <input
-                  type="date"
-                  value={form.next_vat_due_date}
-                  onChange={(event) =>
-                    updateFormField("next_vat_due_date", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Next WHT Due Date
-                </label>
-                <input
-                  type="date"
-                  value={form.next_wht_due_date}
-                  onChange={(event) =>
-                    updateFormField("next_wht_due_date", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Next PAYE Due Date
-                </label>
-                <input
-                  type="date"
-                  value={form.next_paye_due_date}
-                  onChange={(event) =>
-                    updateFormField("next_paye_due_date", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Next SSNIT Due Date
-                </label>
-                <input
-                  type="date"
-                  value={form.next_ssnit_due_date}
-                  onChange={(event) =>
-                    updateFormField("next_ssnit_due_date", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Next Tier 2 Due Date
-                </label>
-                <input
-                  type="date"
-                  value={form.next_tier2_due_date}
-                  onChange={(event) =>
-                    updateFormField("next_tier2_due_date", event.target.value)
-                  }
-                  className={inputClassName}
-                />
-              </div>
+              <StatutoryDueRuleFields
+                label="VAT due rule"
+                value={form.vatDue}
+                onChange={(value) => updateFormField("vatDue", value)}
+              />
+              <StatutoryDueRuleFields
+                label="WHT due rule"
+                value={form.whtDue}
+                onChange={(value) => updateFormField("whtDue", value)}
+              />
+              <StatutoryDueRuleFields
+                label="PAYE due rule"
+                value={form.payeDue}
+                onChange={(value) => updateFormField("payeDue", value)}
+              />
+              <StatutoryDueRuleFields
+                label="SSNIT Tier 1 due rule"
+                value={form.ssnitDue}
+                onChange={(value) => updateFormField("ssnitDue", value)}
+              />
+              <StatutoryDueRuleFields
+                label="Tier 2 due rule"
+                value={form.tier2Due}
+                onChange={(value) => updateFormField("tier2Due", value)}
+              />
 
               <div className="flex items-center gap-2 md:col-span-2 xl:col-span-3">
                 <input

@@ -3,6 +3,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
 
 import type { IncomeEntryType } from "./income-register-utils";
+import {
+  DEFAULT_WHT_DUE_RULE,
+  defaultDueRulesPartial,
+  normalizeMonthsAfterPeriod,
+  normalizeOptionalDayNumber,
+  normalizeStatutoryDayRule,
+  type StatutoryDayRule,
+} from "./statutory-due-rules";
 
 export type TaxKind = "wht" | "vat_bundle" | "vfrs";
 
@@ -63,7 +71,7 @@ export const TAX_SETTINGS_SELECT =
 
 /** Full select for the Statutory Ledger settings editor. */
 export const TAX_SETTINGS_FULL_SELECT =
-  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, product_sales_tax_rate, product_sale_notification_threshold, sales_tax_basis_reviewed_at, product_sales_tax_rate_reviewed_at, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled";
+  "tenant_id, vat_registered, gra_tin, default_vat_bundle_rate, default_vfrs_rate, default_wht_rate, sales_tax_basis, product_sales_tax_rate, product_sale_notification_threshold, sales_tax_basis_reviewed_at, product_sales_tax_rate_reviewed_at, vat_return_period, vat_return_due_day, wht_return_due_day, next_vat_due_date, next_wht_due_date, paye_return_due_day, ssnit_return_due_day, tier2_return_due_day, next_paye_due_date, next_ssnit_due_date, next_tier2_due_date, reminder_enabled, vat_due_months_after_period, vat_due_day_rule, vat_due_day_number, wht_due_months_after_period, wht_due_day_rule, wht_due_day_number, paye_due_months_after_period, paye_due_day_rule, paye_due_day_number, ssnit_due_months_after_period, ssnit_due_day_rule, ssnit_due_day_number, tier2_due_months_after_period, tier2_due_day_rule, tier2_due_day_number";
 
 export const TAX_RATE_CATALOG_SELECT =
   "id, tenant_id, tax_kind, code, label, rate_pct, is_active, sort_order";
@@ -92,6 +100,21 @@ export type TaxSettings = {
   next_ssnit_due_date: string | null;
   next_tier2_due_date: string | null;
   reminder_enabled: boolean;
+  vat_due_months_after_period: 0 | 1;
+  vat_due_day_rule: StatutoryDayRule;
+  vat_due_day_number: number | null;
+  wht_due_months_after_period: 0 | 1;
+  wht_due_day_rule: StatutoryDayRule;
+  wht_due_day_number: number | null;
+  paye_due_months_after_period: 0 | 1;
+  paye_due_day_rule: StatutoryDayRule;
+  paye_due_day_number: number | null;
+  ssnit_due_months_after_period: 0 | 1;
+  ssnit_due_day_rule: StatutoryDayRule;
+  ssnit_due_day_number: number | null;
+  tier2_due_months_after_period: 0 | 1;
+  tier2_due_day_rule: StatutoryDayRule;
+  tier2_due_day_number: number | null;
   sales_tax_basis_reviewed_at: string | null;
   product_sales_tax_rate_reviewed_at: string | null;
 };
@@ -196,6 +219,7 @@ export function emptyTaxSettings(tenantId: string): TaxSettings {
     next_ssnit_due_date: null,
     next_tier2_due_date: null,
     reminder_enabled: true,
+    ...defaultDueRulesPartial(),
     sales_tax_basis_reviewed_at: null,
     product_sales_tax_rate_reviewed_at: null,
   };
@@ -283,6 +307,52 @@ export function normalizeTaxSettings(
     next_ssnit_due_date: normalizeOptionalDate(raw.next_ssnit_due_date),
     next_tier2_due_date: normalizeOptionalDate(raw.next_tier2_due_date),
     reminder_enabled: raw.reminder_enabled ?? true,
+    vat_due_months_after_period:
+      raw.vat_due_months_after_period !== undefined
+        ? normalizeMonthsAfterPeriod(raw.vat_due_months_after_period)
+        : defaultDueRulesPartial().vat_due_months_after_period,
+    vat_due_day_rule:
+      raw.vat_due_day_rule !== undefined
+        ? normalizeStatutoryDayRule(raw.vat_due_day_rule)
+        : defaultDueRulesPartial().vat_due_day_rule,
+    vat_due_day_number:
+      raw.vat_due_day_number !== undefined
+        ? normalizeOptionalDayNumber(raw.vat_due_day_number)
+        : defaultDueRulesPartial().vat_due_day_number,
+    wht_due_months_after_period:
+      raw.wht_due_months_after_period !== undefined
+        ? normalizeMonthsAfterPeriod(raw.wht_due_months_after_period)
+        : defaultDueRulesPartial().wht_due_months_after_period,
+    wht_due_day_rule:
+      raw.wht_due_day_rule !== undefined
+        ? normalizeStatutoryDayRule(raw.wht_due_day_rule)
+        : defaultDueRulesPartial().wht_due_day_rule,
+    wht_due_day_number:
+      raw.wht_due_day_number !== undefined
+        ? normalizeOptionalDayNumber(raw.wht_due_day_number)
+        : normalizeOptionalDayNumber(raw.wht_return_due_day) ??
+          DEFAULT_WHT_DUE_RULE.dayNumber,
+    paye_due_months_after_period: normalizeMonthsAfterPeriod(
+      raw.paye_due_months_after_period ?? 1,
+    ),
+    paye_due_day_rule: normalizeStatutoryDayRule(raw.paye_due_day_rule),
+    paye_due_day_number:
+      normalizeOptionalDayNumber(raw.paye_due_day_number) ??
+      normalizeRequiredDay(raw.paye_return_due_day, DEFAULT_PAYE_RETURN_DUE_DAY),
+    ssnit_due_months_after_period: normalizeMonthsAfterPeriod(
+      raw.ssnit_due_months_after_period ?? 1,
+    ),
+    ssnit_due_day_rule: normalizeStatutoryDayRule(raw.ssnit_due_day_rule),
+    ssnit_due_day_number:
+      normalizeOptionalDayNumber(raw.ssnit_due_day_number) ??
+      normalizeRequiredDay(raw.ssnit_return_due_day, DEFAULT_SSNIT_RETURN_DUE_DAY),
+    tier2_due_months_after_period: normalizeMonthsAfterPeriod(
+      raw.tier2_due_months_after_period ?? 1,
+    ),
+    tier2_due_day_rule: normalizeStatutoryDayRule(raw.tier2_due_day_rule),
+    tier2_due_day_number:
+      normalizeOptionalDayNumber(raw.tier2_due_day_number) ??
+      normalizeRequiredDay(raw.tier2_return_due_day, DEFAULT_TIER2_RETURN_DUE_DAY),
     sales_tax_basis_reviewed_at: normalizeOptionalTimestamp(
       raw.sales_tax_basis_reviewed_at,
     ),

@@ -1,5 +1,6 @@
 import { formatGHS, formatDate } from "./income-register-utils";
 import type { TaxLedgerSourceType } from "./tax-ledger-sync";
+import { listStatutoryPeriodObligations } from "./statutory-due-rules";
 
 export { formatGHS, formatDate };
 
@@ -397,44 +398,55 @@ export type TaxDueReminder = {
   kind: TaxDueReminderKind;
   dueDate: string;
   daysUntil: number;
+  periodMonth?: string;
+  openAmount?: number;
 };
 
 export function getUpcomingTaxReminders(
   settings: {
     reminder_enabled: boolean;
-    next_vat_due_date: string | null;
-    next_wht_due_date: string | null;
-    next_paye_due_date?: string | null;
-    next_ssnit_due_date?: string | null;
-    next_tier2_due_date?: string | null;
+    vat_return_period?: "monthly" | "quarterly";
+    vat_due_months_after_period: 0 | 1;
+    vat_due_day_rule: import("./statutory-due-rules").StatutoryDayRule;
+    vat_due_day_number: number | null;
+    wht_due_months_after_period: 0 | 1;
+    wht_due_day_rule: import("./statutory-due-rules").StatutoryDayRule;
+    wht_due_day_number: number | null;
+    paye_due_months_after_period: 0 | 1;
+    paye_due_day_rule: import("./statutory-due-rules").StatutoryDayRule;
+    paye_due_day_number: number | null;
+    ssnit_due_months_after_period: 0 | 1;
+    ssnit_due_day_rule: import("./statutory-due-rules").StatutoryDayRule;
+    ssnit_due_day_number: number | null;
+    tier2_due_months_after_period: 0 | 1;
+    tier2_due_day_rule: import("./statutory-due-rules").StatutoryDayRule;
+    tier2_due_day_number: number | null;
   } | null,
-  today = new Date(),
+  entries: TaxLedgerBalanceSource[],
   windowDays = REMINDER_WINDOW_DAYS,
 ): TaxDueReminder[] {
   if (!settings?.reminder_enabled) {
     return [];
   }
 
+  const obligations = listStatutoryPeriodObligations({
+    entries,
+    settings: {
+      ...settings,
+      vat_return_period: settings.vat_return_period ?? "monthly",
+    },
+  });
+
   const reminders: TaxDueReminder[] = [];
 
-  const candidates: Array<{
-    kind: TaxDueReminderKind;
-    dueDate: string | null | undefined;
-  }> = [
-    { kind: "vat", dueDate: settings.next_vat_due_date },
-    { kind: "wht", dueDate: settings.next_wht_due_date },
-    { kind: "paye", dueDate: settings.next_paye_due_date },
-    { kind: "ssnit", dueDate: settings.next_ssnit_due_date },
-    { kind: "tier2", dueDate: settings.next_tier2_due_date },
-  ];
-
-  for (const candidate of candidates) {
-    const days = daysUntilDate(candidate.dueDate, today);
-    if (candidate.dueDate && days !== null && days <= windowDays) {
+  for (const obligation of obligations) {
+    if (obligation.daysUntil <= windowDays) {
       reminders.push({
-        kind: candidate.kind,
-        dueDate: candidate.dueDate.slice(0, 10),
-        daysUntil: days,
+        kind: obligation.kind,
+        dueDate: obligation.dueDate,
+        daysUntil: obligation.daysUntil,
+        periodMonth: obligation.periodMonth,
+        openAmount: obligation.openAmount,
       });
     }
   }
@@ -453,17 +465,20 @@ const REMINDER_LABELS: Record<TaxDueReminderKind, string> = {
 export function formatReminderMessage(reminder: TaxDueReminder): string {
   const label = REMINDER_LABELS[reminder.kind] ?? reminder.kind;
   const dueLabel = formatDate(reminder.dueDate);
+  const periodSuffix = reminder.periodMonth
+    ? ` for ${formatPeriodMonthLabel(reminder.periodMonth)}`
+    : "";
 
   if (reminder.daysUntil < 0) {
     const overdue = Math.abs(reminder.daysUntil);
-    return `${label} was due ${dueLabel} (${overdue} day${overdue === 1 ? "" : "s"} overdue).`;
+    return `${label}${periodSuffix} was due ${dueLabel} (${overdue} day${overdue === 1 ? "" : "s"} overdue).`;
   }
 
   if (reminder.daysUntil === 0) {
-    return `${label} is due today (${dueLabel}).`;
+    return `${label}${periodSuffix} is due today (${dueLabel}).`;
   }
 
-  return `${label} is due in ${reminder.daysUntil} day${reminder.daysUntil === 1 ? "" : "s"} (${dueLabel}).`;
+  return `${label}${periodSuffix} is due in ${reminder.daysUntil} day${reminder.daysUntil === 1 ? "" : "s"} (${dueLabel}).`;
 }
 
 /** Append a remittance stamp to notes when marking status='paid'. */
