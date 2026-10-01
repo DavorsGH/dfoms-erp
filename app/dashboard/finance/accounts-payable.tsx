@@ -53,6 +53,10 @@ import RegisterRowActions, {
   getStripedRowClassName,
   toDateInputValue,
 } from "./register-row-actions";
+import { RegisterRecordNameLink } from "../register-record-name-link";
+import TruncatedCell, {
+  registerTruncatedCellHostClassName,
+} from "../register-truncated-cell";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -1211,18 +1215,23 @@ export default function AccountsPayable({
                     <tr
                       key={entry.id}
                       id={`ap-${entry.id}`}
-                      className={`${getStripedRowClassName(index)} cursor-pointer hover:bg-slate-100/80`}
-                      onClick={() => void openPayableDetail(entry.id)}
+                      className={getStripedRowClassName(index)}
                     >
                       <td className={scrollableTableRegisterDateCellClassName}>
                         {formatPayableDateDisplay(entry.invoice_date)}
                       </td>
                       <td
-                        className={scrollableTableStickyFirstTdClassName({
+                        className={`${scrollableTableStickyFirstTdClassName({
                           striped: index % 2 === 1,
-                        })}
+                        })} ${registerTruncatedCellHostClassName}`}
                       >
-                        {entry.vendor_name?.trim() || "—"}
+                        <RegisterRecordNameLink
+                          onOpen={() => void openPayableDetail(entry.id)}
+                        >
+                          <TruncatedCell>
+                            {entry.vendor_name?.trim() || "—"}
+                          </TruncatedCell>
+                        </RegisterRecordNameLink>
                       </td>
                       <td className="px-4 py-3">
                         <div>{entry.invoice_number?.trim() || "—"}</div>
