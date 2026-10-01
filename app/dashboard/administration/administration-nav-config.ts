@@ -34,10 +34,6 @@ export const ADMINISTRATION_GROUPS: readonly AdministrationNavGroup[] = [
         href: "/dashboard/administration/expense-categories",
       },
       {
-        label: "Expense Sub-Categories",
-        href: "/dashboard/administration/expense-subcategories",
-      },
-      {
         label: "Payment Methods",
         href: "/dashboard/administration/payment-methods",
       },

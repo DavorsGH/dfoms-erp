@@ -21,11 +21,80 @@ import {
   EXPENSE_REGISTER_FIXED_ASSETS_REJECTION_MESSAGE,
   isFixedAssetsExpenseCategory,
 } from "@/utils/expense-register-category-guard";
+import { validateExpenseSubcategoryForCategoryLookup } from "@/app/dashboard/finance/expense-register-utils";
 import {
   normalizeTenantLookupKey,
   validateTenantNameLookup,
   validateTenantNameLookupRequireMatch,
 } from "@/lib/bulk-import/tenant-name-lookup";
+
+function hiddenExpenseCategoryImportError(
+  value: unknown,
+  rows: Array<{ name: string; is_active?: boolean }>,
+): string | null {
+  const key = normalizeTenantLookupKey(String(value ?? ""));
+  if (!key) {
+    return null;
+  }
+  const row = rows.find(
+    (entry) => normalizeTenantLookupKey(entry.name) === key,
+  );
+  if (row?.is_active === false) {
+    return `expense_category "${String(value).trim()}" is hidden from new entries. Show it again under Administration → Finance Settings → Expense Categories, or choose another category.`;
+  }
+  return null;
+}
+
+function hiddenExpenseSubcategoryImportError(
+  expenseCategory: unknown,
+  subCategory: unknown,
+  subRows: Array<{
+    name: string;
+    expense_category: string | null;
+    is_active?: boolean;
+  }>,
+  categoryRows: Array<{ name: string; is_active?: boolean }>,
+): string | null {
+  const categoryKey = normalizeTenantLookupKey(String(expenseCategory ?? ""));
+  const subKey = normalizeTenantLookupKey(String(subCategory ?? ""));
+  if (!subKey) {
+    return null;
+  }
+  if (categoryKey) {
+    const categoryRow = categoryRows.find(
+      (entry) => normalizeTenantLookupKey(entry.name) === categoryKey,
+    );
+    if (categoryRow?.is_active === false) {
+      return hiddenExpenseCategoryImportError(expenseCategory, categoryRows);
+    }
+  }
+  const row = subRows.find(
+    (entry) =>
+      normalizeTenantLookupKey(entry.name) === subKey &&
+      normalizeTenantLookupKey(entry.expense_category ?? "") === categoryKey,
+  );
+  if (row?.is_active === false) {
+    return `sub_category "${String(subCategory).trim()}" is hidden from new entries. Show it again under Administration → Finance Settings → Expense Categories, or choose another sub-category.`;
+  }
+  return null;
+}
+
+function hiddenAssetCategoryImportError(
+  value: unknown,
+  rows: Array<{ name: string; is_active?: boolean }>,
+): string | null {
+  const key = normalizeTenantLookupKey(String(value ?? ""));
+  if (!key) {
+    return null;
+  }
+  const row = rows.find(
+    (entry) => normalizeTenantLookupKey(entry.name) === key,
+  );
+  if (row?.is_active === false) {
+    return `asset_category "${String(value).trim()}" is hidden from new entries. Show it again under Administration → Asset Categories, or choose another category.`;
+  }
+  return null;
+}
 import {
   CUSTOMER_RECORD_TYPE_VALUES,
   CUSTOMER_STATUS_OPTIONS,
@@ -188,6 +257,13 @@ export type CustomerImportLookupContext = {
 export type ExpenseImportLookupContext = {
   expenseCategoryMatchCounts: Map<string, number>;
   expenseSubcategoryMatchCounts: Map<string, number>;
+  expenseSubcategoryKeysByCategory: Map<string, Set<string>>;
+  expenseCategoryRows: Array<{ name: string; is_active?: boolean }>;
+  expenseSubcategoryRows: Array<{
+    name: string;
+    expense_category: string | null;
+    is_active?: boolean;
+  }>;
   paymentMethodMatchCounts: Map<string, number>;
   approverNameMatchCounts: Map<string, number>;
   existingExpenseDuplicateKeys: Set<string>;
@@ -195,6 +271,7 @@ export type ExpenseImportLookupContext = {
 
 export type FixedAssetImportLookupContext = {
   assetCategoryMatchCounts: Map<string, number>;
+  assetCategoryRows: Array<{ name: string; is_active?: boolean }>;
   depreciationMethodMatchCounts: Map<string, number>;
   paymentMethodMatchCounts: Map<string, number>;
   existingFixedAssetDuplicateKeys: Set<string>;
@@ -1141,17 +1218,23 @@ function collectFieldErrors(
         expenseLookups.expenseCategoryMatchCounts,
         "expense categories",
       ],
-      [
-        "sub_category",
-        expenseLookups.expenseSubcategoryMatchCounts,
-        "expense subcategories",
-      ],
       ["approved_by", expenseLookups.approverNameMatchCounts, "approvers"],
     ];
 
     for (const [fieldKey, matchCounts, entityLabel] of categoryLookups) {
       if (!(fieldKey in mappedData)) {
         continue;
+      }
+
+      if (fieldKey === "expense_category") {
+        const hiddenError = hiddenExpenseCategoryImportError(
+          mappedData[fieldKey],
+          expenseLookups.expenseCategoryRows,
+        );
+        if (hiddenError) {
+          errors.push(hiddenError);
+          continue;
+        }
       }
 
       const lookupError = validateTenantNameLookup(
@@ -1162,6 +1245,36 @@ function collectFieldErrors(
       );
       if (lookupError) {
         errors.push(lookupError);
+      }
+    }
+
+    if ("sub_category" in mappedData) {
+      const hiddenSubError = hiddenExpenseSubcategoryImportError(
+        mappedData.expense_category,
+        mappedData.sub_category,
+        expenseLookups.expenseSubcategoryRows,
+        expenseLookups.expenseCategoryRows,
+      );
+      if (hiddenSubError) {
+        errors.push(hiddenSubError);
+      }
+      const subLookupError = validateTenantNameLookup(
+        mappedData.sub_category,
+        expenseLookups.expenseSubcategoryMatchCounts,
+        "sub_category",
+        "expense subcategories",
+      );
+      if (subLookupError) {
+        errors.push(subLookupError);
+      }
+
+      const pairError = validateExpenseSubcategoryForCategoryLookup(
+        mappedData.expense_category,
+        mappedData.sub_category,
+        expenseLookups.expenseSubcategoryKeysByCategory,
+      );
+      if (pairError) {
+        errors.push(pairError);
       }
     }
 
@@ -1243,6 +1356,17 @@ function collectFieldErrors(
     for (const [fieldKey, matchCounts, entityLabel] of categoryLookups) {
       if (!(fieldKey in mappedData)) {
         continue;
+      }
+
+      if (fieldKey === "asset_category") {
+        const hiddenError = hiddenAssetCategoryImportError(
+          mappedData[fieldKey],
+          fixedAssetLookups.assetCategoryRows,
+        );
+        if (hiddenError) {
+          errors.push(hiddenError);
+          continue;
+        }
       }
 
       const lookupError = validateTenantNameLookup(

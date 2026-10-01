@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { NamedLookup } from "../lookup-types";
-import { queryExpenseSubcategoryLookups } from "./expense-register-utils";
+import {
+  LOOKUP_HIDDEN_LABEL_SUFFIX,
+  lookupOptionLabel,
+  namedLookupSelectOptionsForCreate,
+} from "../administration/lookup-settings-shared";
+import {
+  expenseSubcategoryOptionsForCategory,
+  normalizeExpenseSubcategoryLookup,
+  queryExpenseSubcategoryLookups,
+  type ExpenseSubcategoryLookup,
+} from "./expense-register-utils";
 import {
   calculateBalanceDue,
   calculateDaysOutstanding,
@@ -55,8 +65,8 @@ import {
 
 type AccountsPayableProps = {
   initialEntries: AccountsPayableEntry[];
-  initialExpenseCategories: NamedLookup[];
-  initialExpenseSubcategories: NamedLookup[];
+  initialExpenseCategories: Array<NamedLookup & { is_active?: boolean }>;
+  initialExpenseSubcategories: ExpenseSubcategoryLookup[];
   taxSettings: TaxSettings | null;
   taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
@@ -171,6 +181,27 @@ export default function AccountsPayable({
       .sort((left, right) => Number(left.value) - Number(right.value));
   }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
 
+  const payableCategorySelectOptions = useMemo(
+    () =>
+      namedLookupSelectOptionsForCreate(
+        expenseCategories,
+        Boolean(editingId),
+        form.expense_category,
+      ),
+    [expenseCategories, editingId, form.expense_category],
+  );
+
+  const payableSubcategoryOptions = useMemo(
+    () =>
+      expenseSubcategoryOptionsForCategory(
+        form.expense_category,
+        expenseSubcategories,
+        form.sub_category,
+        expenseCategories,
+      ),
+    [expenseCategories, expenseSubcategories, form.expense_category, form.sub_category],
+  );
+
   useEffect(() => {
     setEntries(initialEntries.map(normalizeAccountsPayableEntry));
   }, [initialEntries]);
@@ -202,7 +233,7 @@ export default function AccountsPayable({
       ] = await Promise.all([
         client
           .from("expense_categories")
-          .select("name")
+          .select("name, is_active")
           .order("name", { ascending: true }),
         queryExpenseSubcategoryLookups(client),
       ]);
@@ -216,7 +247,11 @@ export default function AccountsPayable({
       }
 
       setExpenseCategories(categories ?? []);
-      setExpenseSubcategories(subcategories ?? []);
+      setExpenseSubcategories(
+        (subcategories ?? []).map((row) =>
+          normalizeExpenseSubcategoryLookup(row as ExpenseSubcategoryLookup),
+        ),
+      );
     }
 
     loadLookups();
@@ -680,15 +715,16 @@ export default function AccountsPayable({
                 <select
                   required
                   value={form.expense_category}
-                  onChange={(e) =>
-                    updateField("expense_category", e.target.value)
-                  }
+                  onChange={(e) => {
+                    updateField("expense_category", e.target.value);
+                    updateField("sub_category", "");
+                  }}
                   className={inputClassName}
                 >
                   <option value="">Select category</option>
-                  {expenseCategories.map((category) => (
+                  {payableCategorySelectOptions.map((category) => (
                     <option key={category.name} value={category.name}>
-                      {category.name}
+                      {lookupOptionLabel(category.name, category.is_active)}
                     </option>
                   ))}
                 </select>
@@ -704,9 +740,11 @@ export default function AccountsPayable({
                   className={inputClassName}
                 >
                   <option value="">Select sub-category</option>
-                  {expenseSubcategories.map((subcategory) => (
+                  {payableSubcategoryOptions.map((subcategory) => (
                     <option key={subcategory.name} value={subcategory.name}>
-                      {subcategory.name}
+                      {subcategory.isHidden
+                        ? `${subcategory.name}${LOOKUP_HIDDEN_LABEL_SUFFIX}`
+                        : subcategory.name}
                     </option>
                   ))}
                 </select>

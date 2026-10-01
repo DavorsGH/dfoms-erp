@@ -53,9 +53,12 @@ import {
   type TaxLedgerFilters,
 } from "./tax-ledger-utils";
 import {
+  computeStatutoryDueDate,
   listStatutoryPeriodObligations,
+  pickDueRuleFromSettings,
   type StatutoryDueRuleKind,
 } from "./statutory-due-rules";
+import { summarizeGraReconciliationLedger } from "./gra-reconciliation-ledger";
 import { StatutoryObligationList } from "./statutory-obligation-list";
 import {
   StatutoryDueRuleFields,
@@ -76,6 +79,12 @@ import { isPaidStatus } from "./accrued-wages-utils";
 import ProductSalesTaxRateSettings from "./product-sales-tax-rate-settings";
 import ProductSaleNotificationThresholdSettings from "./product-sale-notification-threshold-settings";
 import TaxSettingReviewBanner from "./tax-setting-review-banner";
+import {
+  fetchLinkedGraPenaltyExpenseForPeriod,
+  type LinkedGraPenaltyExpense,
+} from "./gra-penalty-expense-utils";
+import type { GraReconciliationKind } from "./statutory-due-rules";
+import { UndoRemitPenaltyNoticeDialog } from "./undo-remit-penalty-notice-dialog";
 
 type TaxLedgerProps = {
   tenantId: string;
@@ -430,6 +439,17 @@ export default function TaxLedger({
   >({});
   const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [undoRemitPenaltyNotice, setUndoRemitPenaltyNotice] =
+    useState<LinkedGraPenaltyExpense | null>(null);
+
+  function remitKindToGraReconciliationKind(
+    kind: RemitTaxKind,
+  ): GraReconciliationKind | null {
+    if (kind === "vat" || kind === "wht" || kind === "paye") {
+      return kind;
+    }
+    return null;
+  }
 
   useEffect(() => {
     setSettings(initialSettings);
@@ -484,6 +504,54 @@ export default function TaxLedger({
       ),
     [scopedEntries, filters.periodMonth],
   );
+
+  const graReconciliationLedgerByKind = useMemo(() => {
+    if (!filters.periodMonth) {
+      return null;
+    }
+    const periodMonth = filters.periodMonth;
+    return {
+      vat: summarizeGraReconciliationLedger(
+        entries,
+        "vat",
+        periodMonth,
+        settings.vat_return_period,
+      ),
+      wht: summarizeGraReconciliationLedger(
+        entries,
+        "wht",
+        periodMonth,
+        settings.vat_return_period,
+      ),
+      paye: summarizeGraReconciliationLedger(
+        entries,
+        "paye",
+        periodMonth,
+        settings.vat_return_period,
+      ),
+    };
+  }, [entries, filters.periodMonth, settings.vat_return_period]);
+
+  const graReconciliationDueDateByKind = useMemo(() => {
+    if (!filters.periodMonth) {
+      return null;
+    }
+    const periodMonth = filters.periodMonth;
+    return {
+      vat: computeStatutoryDueDate(
+        periodMonth,
+        pickDueRuleFromSettings(settings, "vat"),
+      ),
+      wht: computeStatutoryDueDate(
+        periodMonth,
+        pickDueRuleFromSettings(settings, "wht"),
+      ),
+      paye: computeStatutoryDueDate(
+        periodMonth,
+        pickDueRuleFromSettings(settings, "paye"),
+      ),
+    };
+  }, [filters.periodMonth, settings]);
 
   const periodScopeHint = filters.periodMonth
     ? `Selected period: ${formatPeriodMonthLabel(filters.periodMonth)}`
@@ -805,9 +873,27 @@ export default function TaxLedger({
         ? `This deletes Cash Position outflow ${formatGHS(paid.amount)} (${paid.receiptNo}), reopens remitted SSNIT Tax Ledger legs for the period, and restores Employer SSNIT from Settled → Accrued only when Remit had set Settled. Mark-as-Paid Employer SSNIT cash is NOT reversed.`
         : `This deletes Cash Position outflow ${formatGHS(paid.amount)} (${paid.receiptNo}) and reopens remitted ${label} Tax Ledger legs for the period.`;
 
+    let linkedPenalty: LinkedGraPenaltyExpense | null = null;
+    const graKind = remitKindToGraReconciliationKind(kind);
+    if (graKind && stampBusinessUnit.ok) {
+      linkedPenalty = await fetchLinkedGraPenaltyExpenseForPeriod({
+        supabase,
+        tenantId,
+        businessUnitId: stampBusinessUnit.businessUnitId,
+        periodMonth: filters.periodMonth,
+        kind: graKind,
+      });
+    }
+
+    const penaltyConfirmLine = linkedPenalty
+      ? linkedPenalty.expenses.length > 1
+        ? `\n\nLinked penalty expenses totaling ${formatGHS(linkedPenalty.amount)} are linked to this period. Undoing the remittance does not remove them.`
+        : `\n\nA penalty expense of ${formatGHS(linkedPenalty.amount)} (${linkedPenalty.date ? formatDate(linkedPenalty.date) : "unknown date"}) is linked to this period. Undoing the remittance does not remove it.`
+      : "";
+
     if (
       !window.confirm(
-        `Undo Remit ${label} for ${periodLabel}?\n\nWARNING: Undo assumes the real-world payment has NOT been sent to ${kind === "ssnit" ? "SSNIT" : "GRA"} yet.\n\n${confirmDetail}`,
+        `Undo Remit ${label} for ${periodLabel}?\n\nWARNING: Undo assumes the real-world payment has NOT been sent to ${kind === "ssnit" ? "SSNIT" : "GRA"} yet.\n\n${confirmDetail}${penaltyConfirmLine}`,
       )
     ) {
       return;
@@ -832,8 +918,13 @@ export default function TaxLedger({
 
     if (!response.ok || result.error) {
       setError(result.error ?? "Failed to undo remittance.");
-    } else if (result.message) {
-      setInfoMessage(result.message);
+    } else {
+      if (result.message) {
+        setInfoMessage(result.message);
+      }
+      if (linkedPenalty) {
+        setUndoRemitPenaltyNotice(linkedPenalty);
+      }
     }
 
     await refreshEntries();
@@ -1133,18 +1224,25 @@ export default function TaxLedger({
               tenantId={tenantId}
               businessUnitId={stampBusinessUnit.businessUnitId}
               periodMonth={filters.periodMonth || null}
-              rows={[
-                {
-                  kind: "vat",
-                  label: "VAT (net open)",
-                  ledgerAmount: periodScopedSummary.netVatPosition,
-                },
-                {
-                  kind: "wht",
-                  label: "WHT payable",
-                  ledgerAmount: periodScopedSummary.whtPayable,
-                },
-              ]}
+              vatReturnPeriod={settings.vat_return_period}
+              rows={
+                graReconciliationLedgerByKind && graReconciliationDueDateByKind
+                  ? [
+                      {
+                        kind: "vat" as const,
+                        label: "VAT (net)",
+                        ledger: graReconciliationLedgerByKind.vat,
+                        dueDateIso: graReconciliationDueDateByKind.vat,
+                      },
+                      {
+                        kind: "wht" as const,
+                        label: "WHT payable",
+                        ledger: graReconciliationLedgerByKind.wht,
+                        dueDateIso: graReconciliationDueDateByKind.wht,
+                      },
+                    ]
+                  : []
+              }
             />
           ) : null,
         )}
@@ -1168,13 +1266,19 @@ export default function TaxLedger({
               tenantId={tenantId}
               businessUnitId={stampBusinessUnit.businessUnitId}
               periodMonth={filters.periodMonth || null}
-              rows={[
-                {
-                  kind: "paye",
-                  label: "PAYE payable",
-                  ledgerAmount: periodScopedSummary.payePayable,
-                },
-              ]}
+              vatReturnPeriod={settings.vat_return_period}
+              rows={
+                graReconciliationLedgerByKind && graReconciliationDueDateByKind
+                  ? [
+                      {
+                        kind: "paye" as const,
+                        label: "PAYE payable",
+                        ledger: graReconciliationLedgerByKind.paye,
+                        dueDateIso: graReconciliationDueDateByKind.paye,
+                      },
+                    ]
+                  : []
+              }
             />
           ) : null,
         )}
@@ -1392,6 +1496,13 @@ export default function TaxLedger({
         />
         </div>
       )}
+
+      {undoRemitPenaltyNotice ? (
+        <UndoRemitPenaltyNoticeDialog
+          penalty={undoRemitPenaltyNotice}
+          onClose={() => setUndoRemitPenaltyNotice(null)}
+        />
+      ) : null}
     </div>
   );
 }

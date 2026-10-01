@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  ModuleNavTabStrip,
+  moduleNavActiveTabProps,
+} from "@/app/dashboard/module-nav-tab-strip";
 
 const navItems = [
   { label: "My Invoices", href: "/dashboard/client-portal/invoices" },
@@ -23,7 +27,7 @@ export default function ClientPortalNav() {
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <ModuleNavTabStrip scrollKey={pathname}>
         {navItems.map((item) => {
           const active =
             pathname === item.href ||
@@ -38,6 +42,7 @@ export default function ClientPortalNav() {
             <Link
               key={item.href}
               href={item.href}
+              {...moduleNavActiveTabProps(active)}
               className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                 active
                   ? "bg-[#0f2744] text-white"
@@ -48,7 +53,7 @@ export default function ClientPortalNav() {
             </Link>
           );
         })}
-      </div>
+      </ModuleNavTabStrip>
     </nav>
   );
 }

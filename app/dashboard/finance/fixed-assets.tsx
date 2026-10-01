@@ -6,6 +6,10 @@ import { createClient } from "@/utils/supabase/client";
 import { mapApproverRows } from "../approver-utils";
 import type { Approver, NamedLookup } from "../lookup-types";
 import {
+  lookupOptionLabel,
+  namedLookupSelectOptionsForCreate,
+} from "../administration/lookup-settings-shared";
+import {
   calculateAssetAccumulatedDepreciationAsOf,
   calculateAssetNetBookValueAsOf,
   calculateYearsElapsed,
@@ -81,7 +85,7 @@ import {
 
 type FixedAssetsProps = {
   initialAssets: FixedAssetEntry[];
-  initialAssetCategories: NamedLookup[];
+  initialAssetCategories: Array<NamedLookup & { is_active?: boolean }>;
   initialDepreciationMethods: NamedLookup[];
   initialPaymentMethods: NamedLookup[];
   initialApprovers: Approver[];
@@ -206,6 +210,16 @@ export default function FixedAssets({
       .sort((left, right) => Number(left.value) - Number(right.value));
   }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
 
+  const assetCategorySelectOptions = useMemo(
+    () =>
+      namedLookupSelectOptionsForCreate(
+        assetCategories,
+        Boolean(editingId),
+        form.asset_category,
+      ),
+    [assetCategories, editingId, form.asset_category],
+  );
+
   useEffect(() => {
     setAssets(initialAssets);
   }, [initialAssets]);
@@ -228,7 +242,7 @@ export default function FixedAssets({
       ] = await Promise.all([
         client
           .from("asset_categories")
-          .select("name")
+          .select("name, is_active")
           .order("name", { ascending: true }),
         client
           .from("depreciation_methods")
@@ -829,9 +843,9 @@ export default function FixedAssets({
                   className={inputClassName}
                 >
                   <option value="">Select category</option>
-                  {assetCategories.map((category) => (
+                  {assetCategorySelectOptions.map((category) => (
                     <option key={category.name} value={category.name}>
-                      {category.name}
+                      {lookupOptionLabel(category.name, category.is_active)}
                     </option>
                   ))}
                 </select>

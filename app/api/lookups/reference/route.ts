@@ -67,7 +67,8 @@ export async function GET() {
     supabase.from("shifts").select("name").order("name", { ascending: true }),
     supabase
       .from("expense_categories")
-      .select("name")
+      .select("name, is_active")
+      .eq("is_active", true)
       .order("name", { ascending: true }),
     supabase
       .from("payment_methods")

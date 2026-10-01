@@ -17,7 +17,10 @@ import Budget from "../budget";
 import FinanceNav from "../finance-nav";
 import type { BudgetRecord } from "../budget-utils";
 import type { NamedLookup } from "../../lookup-types";
-import { queryExpenseSubcategoryLookups } from "../expense-register-utils";
+import {
+  normalizeExpenseSubcategoryLookup,
+  queryExpenseSubcategoryLookups,
+} from "../expense-register-utils";
 
 export default async function BudgetPage() {
   const cookieStore = await cookies();
@@ -52,7 +55,7 @@ export default async function BudgetPage() {
       .order("category", { ascending: true }),
     supabase
       .from("expense_categories")
-      .select("name")
+      .select("name, is_active")
       .order("name", { ascending: true }),
     queryExpenseSubcategoryLookups(supabase),
     applyBusinessUnitScope(
@@ -80,9 +83,9 @@ export default async function BudgetPage() {
         tenantId={tenantId}
         initialEntries={(budgets as BudgetRecord[] | null) ?? []}
         expenseCategories={(expenseCategories as NamedLookup[] | null) ?? []}
-        expenseSubcategories={
-          (expenseSubcategories as NamedLookup[] | null) ?? []
-        }
+        expenseSubcategories={(expenseSubcategories ?? []).map((row) =>
+          normalizeExpenseSubcategoryLookup(row),
+        )}
         projects={(projects as ContractProjectOption[] | null) ?? []}
         fetchError={fetchError}
       />

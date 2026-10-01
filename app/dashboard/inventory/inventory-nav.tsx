@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ModuleNavTabStrip,
+  moduleNavActiveTabProps,
+} from "@/app/dashboard/module-nav-tab-strip";
+import {
   getActiveInventoryGroup,
   isInventoryItemActive,
 } from "./inventory-nav-config";
@@ -25,7 +29,7 @@ export default function InventoryNav() {
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <ModuleNavTabStrip scrollKey={pathname}>
         {activeGroup.items.map((item) => {
           const active = isInventoryItemActive(pathname, item.href);
 
@@ -34,13 +38,14 @@ export default function InventoryNav() {
               key={item.href}
               href={item.href}
               scroll
+              {...moduleNavActiveTabProps(active)}
               className={tabClassName(active)}
             >
               {item.label}
             </Link>
           );
         })}
-      </div>
+      </ModuleNavTabStrip>
     </nav>
   );
 }

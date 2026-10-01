@@ -2,10 +2,23 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import type { NamedLookup } from "../lookup-types";
+import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
+import { invalidateReferenceLookupsAfterWrite } from "@/lib/client-cache/dashboard-summary-cache";
+import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
+import {
+  expenseCategoryNameTaken,
+  LOOKUP_HIDDEN_LABEL_SUFFIX,
+  LOOKUP_SETTINGS_NOTE,
+} from "./lookup-settings-shared";
+import {
+  fetchAssetCategoryDeleteUsage,
+  formatAssetCategoryDeleteBlockedMessage,
+} from "./lookup-settings-usage";
+
+type AssetCategoryRow = { name: string; is_active?: boolean };
 
 type AssetCategoriesProps = {
-  initialCategories: NamedLookup[];
+  initialCategories: AssetCategoryRow[];
   fetchError: string | null;
 };
 
@@ -17,16 +30,26 @@ export default function AssetCategories({
   fetchError,
 }: AssetCategoriesProps) {
   const supabase = createClient();
+  const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
   const [categories, setCategories] = useState(initialCategories);
-  const [name, setName] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [deletingName, setDeletingName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+
+  async function invalidateReferenceCache() {
+    const session = await resolveClientCacheSession();
+    if (session) {
+      await invalidateReferenceLookupsAfterWrite(session);
+    }
+  }
 
   async function refreshCategories() {
     const { data, error: refreshError } = await supabase
       .from("asset_categories")
-      .select("name")
+      .select("name, is_active")
       .order("name", { ascending: true });
 
     if (refreshError) {
@@ -34,18 +57,30 @@ export default function AssetCategories({
       return;
     }
 
-    setCategories(data ?? []);
+    setCategories((data as AssetCategoryRow[] | null) ?? []);
     setError(null);
   }
 
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleAdd(event: React.FormEvent) {
+    event.preventDefault();
+    if (isOffline) {
+      setError(offlineWriteMessage);
+      return;
+    }
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      return;
+    }
+    if (expenseCategoryNameTaken(categories, trimmed)) {
+      setError(`An asset category named "${trimmed}" already exists.`);
+      return;
+    }
+
     setLoading(true);
     setError(null);
-
     const { error: insertError } = await supabase
       .from("asset_categories")
-      .insert({ name: name.trim() });
+      .insert({ name: trimmed, is_active: true });
 
     if (insertError) {
       setError(insertError.message);
@@ -53,35 +88,125 @@ export default function AssetCategories({
       return;
     }
 
-    setName("");
+    setNewCategoryName("");
     await refreshCategories();
+    await invalidateReferenceCache();
     setLoading(false);
   }
 
-  async function handleDelete(categoryName: string) {
-    setDeletingName(categoryName);
-    setError(null);
-
-    const { error: deleteError } = await supabase
-      .from("asset_categories")
-      .delete()
-      .eq("name", categoryName);
-
-    if (deleteError) {
-      setError(deleteError.message);
-      setDeletingName(null);
+  async function saveEdit(previousName: string) {
+    const trimmed = editDraft.trim();
+    if (!trimmed || trimmed === previousName) {
+      setEditingName(null);
+      return;
+    }
+    if (expenseCategoryNameTaken(categories, trimmed, previousName)) {
+      setError(`An asset category named "${trimmed}" already exists.`);
+      return;
+    }
+    if (isOffline) {
+      setError(offlineWriteMessage);
       return;
     }
 
+    setBusyKey(`edit-asset-cat:${previousName}`);
+    setError(null);
+    const { error: updateError } = await supabase
+      .from("asset_categories")
+      .update({ name: trimmed })
+      .eq("name", previousName);
+
+    if (updateError) {
+      setError(updateError.message);
+      setBusyKey(null);
+      return;
+    }
+
+    setEditingName(null);
     await refreshCategories();
-    setDeletingName(null);
+    await invalidateReferenceCache();
+    setBusyKey(null);
+  }
+
+  async function toggleHidden(categoryName: string, hide: boolean) {
+    if (isOffline) {
+      setError(offlineWriteMessage);
+      return;
+    }
+    setBusyKey(`hide-asset-cat:${categoryName}`);
+    setError(null);
+    const { error: updateError } = await supabase
+      .from("asset_categories")
+      .update({ is_active: !hide })
+      .eq("name", categoryName);
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      await refreshCategories();
+      await invalidateReferenceCache();
+    }
+    setBusyKey(null);
+  }
+
+  async function deleteCategory(categoryName: string) {
+    if (isOffline) {
+      setError(offlineWriteMessage);
+      return;
+    }
+    setBusyKey(`delete-asset-cat:${categoryName}`);
+    setError(null);
+    try {
+      const usageLines = await fetchAssetCategoryDeleteUsage(
+        supabase,
+        categoryName,
+      );
+      const blockMessage = formatAssetCategoryDeleteBlockedMessage(
+        categoryName,
+        usageLines,
+      );
+      if (blockMessage) {
+        setError(blockMessage);
+        setBusyKey(null);
+        return;
+      }
+      if (
+        !window.confirm(
+          `Delete asset category "${categoryName}"? This cannot be undone.`,
+        )
+      ) {
+        setBusyKey(null);
+        return;
+      }
+      const { error: deleteError } = await supabase
+        .from("asset_categories")
+        .delete()
+        .eq("name", categoryName);
+      if (deleteError) {
+        setError(deleteError.message);
+      } else {
+        await refreshCategories();
+        await invalidateReferenceCache();
+      }
+    } catch (usageError) {
+      setError(
+        usageError instanceof Error ? usageError.message : "Could not delete.",
+      );
+    }
+    setBusyKey(null);
   }
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
-        Asset Categories
+      <h2 className="mb-2 text-lg font-semibold text-[#0f2744]">
+        Asset categories
       </h2>
+      <p className="mb-4 text-sm text-slate-600">{LOOKUP_SETTINGS_NOTE}</p>
+
+      {isOffline && (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {offlineWriteMessage}
+        </p>
+      )}
 
       {error && (
         <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -89,21 +214,24 @@ export default function AssetCategories({
         </p>
       )}
 
-      <form onSubmit={handleAdd} className="mb-6 flex flex-col gap-3 sm:flex-row">
+      <form
+        onSubmit={handleAdd}
+        className="mb-6 flex flex-col gap-3 sm:flex-row"
+      >
         <input
           type="text"
           required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Category name"
+          value={newCategoryName}
+          onChange={(event) => setNewCategoryName(event.target.value)}
+          placeholder="New category name"
           className={inputClassName}
         />
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || isOffline}
           className="shrink-0 rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? "Adding…" : "Add"}
+          {loading ? "Adding…" : "Add category"}
         </button>
       </form>
 
@@ -114,17 +242,84 @@ export default function AssetCategories({
           {categories.map((category) => (
             <li
               key={category.name}
-              className="flex items-center justify-between px-4 py-3 text-sm text-slate-700"
+              className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm text-slate-700"
             >
-              <span>{category.name}</span>
-              <button
-                type="button"
-                onClick={() => handleDelete(category.name)}
-                disabled={deletingName === category.name}
-                className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {deletingName === category.name ? "Deleting…" : "Delete"}
-              </button>
+              {editingName === category.name ? (
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={editDraft}
+                    onChange={(event) => setEditDraft(event.target.value)}
+                    className={`${inputClassName} max-w-xs`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveEdit(category.name)}
+                    disabled={busyKey === `edit-asset-cat:${category.name}`}
+                    className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingName(null)}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span>
+                    {category.name}
+                    {category.is_active === false
+                      ? LOOKUP_HIDDEN_LABEL_SUFFIX
+                      : ""}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingName(category.name);
+                        setEditDraft(category.name);
+                      }}
+                      disabled={isOffline}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteCategory(category.name)}
+                      disabled={
+                        isOffline ||
+                        busyKey === `delete-asset-cat:${category.name}`
+                      }
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void toggleHidden(
+                          category.name,
+                          category.is_active !== false,
+                        )
+                      }
+                      disabled={
+                        isOffline ||
+                        busyKey === `hide-asset-cat:${category.name}`
+                      }
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      {category.is_active === false
+                        ? "Show again"
+                        : "Hide from new entries"}
+                    </button>
+                  </div>
+                </>
+              )}
             </li>
           ))}
         </ul>

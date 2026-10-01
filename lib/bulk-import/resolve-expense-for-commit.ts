@@ -120,18 +120,62 @@ export async function resolveExpenseCategoryForCommit(input: {
 export async function resolveExpenseSubcategoryForCommit(input: {
   client: Client;
   tenantId: string;
+  expenseCategoryName: string;
   subcategoryName: string;
   cache: ExpenseNameResolverCache;
 }): Promise<string> {
-  return resolveTenantNamedLookupForCommit({
-    client: input.client,
-    tenantId: input.tenantId,
-    tableName: "expense_subcategories",
-    suppliedName: input.subcategoryName,
-    cache: input.cache,
-    entityLabel: "expense subcategories",
-    fieldKey: "sub_category",
-  });
+  const categoryTrimmed = input.expenseCategoryName.trim();
+  const trimmed = input.subcategoryName.trim();
+  if (!categoryTrimmed) {
+    throw new Error("expense_category is required before sub_category.");
+  }
+  if (!trimmed) {
+    throw new Error("sub_category is required.");
+  }
+
+  const key = `${normalizeTenantLookupKey(categoryTrimmed)}\0${normalizeTenantLookupKey(trimmed)}`;
+  const cached = input.cache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const existing = await input.client.query(
+    `
+      SELECT name
+      FROM public.expense_subcategories
+      WHERE tenant_id = $1
+        AND expense_category IS NOT DISTINCT FROM $2
+        AND lower(trim(name)) = $3
+        AND is_active = true
+      ORDER BY name
+    `,
+    [input.tenantId, categoryTrimmed, normalizeTenantLookupKey(trimmed)],
+  );
+
+  if (existing.rows.length > 1) {
+    throw new Error(
+      `sub_category "${trimmed}" matches multiple expense subcategories for category "${categoryTrimmed}"`,
+    );
+  }
+
+  if (existing.rows.length === 1) {
+    const canonicalName = String(existing.rows[0].name);
+    input.cache.set(key, canonicalName);
+    return canonicalName;
+  }
+
+  const created = await input.client.query(
+    `
+      INSERT INTO public.expense_subcategories (tenant_id, name, expense_category, is_active)
+      VALUES ($1, $2, $3, true)
+      RETURNING name
+    `,
+    [input.tenantId, trimmed, categoryTrimmed],
+  );
+
+  const canonicalName = String(created.rows[0].name);
+  input.cache.set(key, canonicalName);
+  return canonicalName;
 }
 
 export async function resolveExpensePaymentMethodForCommit(input: {

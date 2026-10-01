@@ -11,6 +11,7 @@ import {
   buildFixedAssetDuplicateKey,
 } from "@/lib/bulk-import/expense-duplicate-key";
 import { buildTenantNameMatchCounts } from "@/lib/bulk-import/tenant-name-lookup";
+import { buildExpenseSubcategoryKeysByCategory } from "@/app/dashboard/finance/expense-register-utils";
 import { validateImportRows } from "@/lib/bulk-import/validate-import-rows";
 import type {
   BulkImportColumnMapping,
@@ -273,11 +274,11 @@ export async function POST(
     ] = await Promise.all([
       supabase
         .from("expense_categories")
-        .select("name")
+        .select("name, is_active")
         .eq("tenant_id", sectionAuth.tenantId),
       supabase
         .from("expense_subcategories")
-        .select("name")
+        .select("name, expense_category, is_active")
         .eq("tenant_id", sectionAuth.tenantId),
       supabase
         .from("payment_methods")
@@ -322,17 +323,31 @@ export async function POST(
       }
     }
 
+    const expenseCategoryRows = (expenseCategoriesResult.data ?? []).map((row) => ({
+      name: String(row.name ?? ""),
+      is_active: (row as { is_active?: boolean | null }).is_active ?? true,
+    }));
+    const expenseSubcategoryRows = (expenseSubcategoriesResult.data ?? []).map(
+      (row) => ({
+        name: String(row.name ?? ""),
+        expense_category:
+          (row as { expense_category?: string | null }).expense_category ?? null,
+        is_active: (row as { is_active?: boolean | null }).is_active ?? true,
+      }),
+    );
+
     expenseLookups = {
       expenseCategoryMatchCounts: buildTenantNameMatchCounts(
-        (expenseCategoriesResult.data ?? []).map((row) => ({
-          name: String(row.name ?? ""),
-        })),
+        expenseCategoryRows.filter((row) => row.is_active !== false),
       ),
       expenseSubcategoryMatchCounts: buildTenantNameMatchCounts(
-        (expenseSubcategoriesResult.data ?? []).map((row) => ({
-          name: String(row.name ?? ""),
-        })),
+        expenseSubcategoryRows.filter((row) => row.is_active !== false),
       ),
+      expenseSubcategoryKeysByCategory: buildExpenseSubcategoryKeysByCategory(
+        expenseSubcategoryRows.filter((row) => row.is_active !== false),
+      ),
+      expenseCategoryRows,
+      expenseSubcategoryRows,
       paymentMethodMatchCounts: buildTenantNameMatchCounts(
         (paymentMethodsResult.data ?? []).map((row) => ({
           name: String(row.name ?? ""),
@@ -363,7 +378,7 @@ export async function POST(
     ] = await Promise.all([
       supabase
         .from("asset_categories")
-        .select("name")
+        .select("name, is_active")
         .eq("tenant_id", sectionAuth.tenantId),
       supabase
         .from("depreciation_methods")
@@ -409,11 +424,15 @@ export async function POST(
       }
     }
 
+    const assetCategoryRows = (assetCategoriesResult.data ?? []).map((row) => ({
+      name: String(row.name ?? ""),
+      is_active: (row as { is_active?: boolean | null }).is_active ?? true,
+    }));
+
     fixedAssetLookups = {
+      assetCategoryRows,
       assetCategoryMatchCounts: buildTenantNameMatchCounts(
-        (assetCategoriesResult.data ?? []).map((row) => ({
-          name: String(row.name ?? ""),
-        })),
+        assetCategoryRows.filter((row) => row.is_active !== false),
       ),
       depreciationMethodMatchCounts: buildTenantNameMatchCounts(
         (depreciationMethodsResult.data ?? []).map((row) => ({

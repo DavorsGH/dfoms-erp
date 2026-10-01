@@ -15,6 +15,7 @@ import type { Approver, NamedLookup } from "../../lookup-types";
 import ExpenseRegister from "../expense-register";
 import {
   normalizeExpenseRegisterEntry,
+  normalizeExpenseSubcategoryLookup,
   queryExpenseSubcategoryLookups,
   type ExpenseRegisterEntry,
 } from "../expense-register-utils";
@@ -126,7 +127,9 @@ export default async function ExpensesPage() {
         }
         initialExpenseCategories={(expenseCategories as NamedLookup[] | null) ?? []}
         initialExpenseSubcategories={
-          (expenseSubcategories as NamedLookup[] | null) ?? []
+          (expenseSubcategories ?? []).map((row) =>
+            normalizeExpenseSubcategoryLookup(row),
+          )
         }
         initialPaymentMethods={(paymentMethods as NamedLookup[] | null) ?? []}
         initialApprovers={mapApproverRows(approvers ?? []) as Approver[]}

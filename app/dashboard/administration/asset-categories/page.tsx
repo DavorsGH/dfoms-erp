@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import type { NamedLookup } from "../../lookup-types";
 import AssetCategories from "../asset-categories";
 
 export default async function AssetCategoriesPage() {
@@ -9,16 +8,15 @@ export default async function AssetCategoriesPage() {
 
   const { data, error } = await supabase
     .from("asset_categories")
-    .select("name")
+    .select("name, is_active")
     .order("name", { ascending: true });
 
   return (
     <>
-      <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
-        Asset Categories
-      </h2>
       <AssetCategories
-        initialCategories={(data as NamedLookup[] | null) ?? []}
+        initialCategories={
+          (data as Array<{ name: string; is_active?: boolean }> | null) ?? []
+        }
         fetchError={error?.message ?? null}
       />
     </>

@@ -16,7 +16,10 @@ import {
   type AccountsPayableEntry,
 } from "../accounts-payable-utils";
 import FinanceNav from "../finance-nav";
-import { queryExpenseSubcategoryLookups } from "../expense-register-utils";
+import {
+  normalizeExpenseSubcategoryLookup,
+  queryExpenseSubcategoryLookups,
+} from "../expense-register-utils";
 import {
   normalizeTaxRateCatalogEntry,
   normalizeTaxSettings,
@@ -51,7 +54,7 @@ export default async function AccountsPayablePage() {
     ).order("due_date", { ascending: true }),
     supabase
       .from("expense_categories")
-      .select("name")
+      .select("name, is_active")
       .order("name", { ascending: true }),
     queryExpenseSubcategoryLookups(supabase),
     scopeTaxSettingsRead(
@@ -87,9 +90,9 @@ export default async function AccountsPayablePage() {
           ) ?? []
         }
         initialExpenseCategories={(expenseCategories as NamedLookup[] | null) ?? []}
-        initialExpenseSubcategories={
-          (expenseSubcategories as NamedLookup[] | null) ?? []
-        }
+        initialExpenseSubcategories={(expenseSubcategories ?? []).map((row) =>
+          normalizeExpenseSubcategoryLookup(row),
+        )}
         taxSettings={normalizeTaxSettings(taxSettings as TaxSettings | null)}
         taxRateCatalog={
           (taxRateCatalog as TaxRateCatalogEntry[] | null)?.map((entry) =>

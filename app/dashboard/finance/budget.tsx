@@ -17,6 +17,14 @@ import {
 } from "@/utils/business-unit-access";
 import type { ContractProjectOption } from "../administration/projects-utils";
 import type { NamedLookup } from "../lookup-types";
+import {
+  lookupOptionLabel,
+  namedLookupSelectOptionsForCreate,
+} from "../administration/lookup-settings-shared";
+import {
+  expenseSubcategoryOptionsForCategory,
+  type ExpenseSubcategoryLookup,
+} from "./expense-register-utils";
 import FilteredListCount from "../filtered-list-count";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -57,8 +65,8 @@ import { getDefaultPeriodSelection } from "./manual-financial-entries-utils";
 type BudgetProps = {
   tenantId: string;
   initialEntries: BudgetRecord[];
-  expenseCategories: NamedLookup[];
-  expenseSubcategories: NamedLookup[];
+  expenseCategories: Array<NamedLookup & { is_active?: boolean }>;
+  expenseSubcategories: ExpenseSubcategoryLookup[];
   projects: ContractProjectOption[];
   fetchError: string | null;
 };
@@ -146,17 +154,28 @@ export default function Budget({
     [entries, selectedYear, selectedMonth, listPeriodTypeFilter],
   );
 
-  const subcategoryOptionsForCategory = useMemo(() => {
-    const names = new Set(
-      expenseSubcategories.map((entry) => entry.name.trim()).filter(Boolean),
-    );
-    const current = form.subcategory.trim();
-    if (current && current !== WHOLE_CATEGORY_SUBCATEGORY_VALUE) {
-      names.add(current);
-    }
+  const categorySelectOptions = useMemo(
+    () =>
+      namedLookupSelectOptionsForCreate(
+        expenseCategories,
+        Boolean(editingId),
+        form.category,
+      ),
+    [expenseCategories, editingId, form.category],
+  );
 
-    return Array.from(names).sort((left, right) => left.localeCompare(right));
-  }, [expenseSubcategories, form.subcategory]);
+  const subcategoryOptionsForCategory = useMemo(() => {
+    const current =
+      form.subcategory.trim() === WHOLE_CATEGORY_SUBCATEGORY_VALUE
+        ? ""
+        : form.subcategory.trim();
+    return expenseSubcategoryOptionsForCategory(
+      form.category,
+      expenseSubcategories,
+      current,
+      expenseCategories,
+    ).map((row) => row.name);
+  }, [expenseCategories, expenseSubcategories, form.category, form.subcategory]);
 
   const showSubcategoryField =
     form.category.trim() !== "" && subcategoryOptionsForCategory.length > 0;
@@ -602,9 +621,9 @@ export default function Budget({
                 className={inputClassName}
               >
                 <option value="">Select category…</option>
-                {expenseCategories.map((category) => (
+                {categorySelectOptions.map((category) => (
                   <option key={category.name} value={category.name}>
-                    {category.name}
+                    {lookupOptionLabel(category.name, category.is_active)}
                   </option>
                 ))}
               </select>

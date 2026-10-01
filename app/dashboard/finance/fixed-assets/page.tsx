@@ -52,7 +52,10 @@ export default async function FixedAssetsPage() {
       supabase.from("fixed_assets").select("*"),
       buScope,
     ).order("asset_id", { ascending: true }),
-    supabase.from("asset_categories").select("name").order("name", { ascending: true }),
+    supabase
+      .from("asset_categories")
+      .select("name, is_active")
+      .order("name", { ascending: true }),
     supabase
       .from("depreciation_methods")
       .select("name")

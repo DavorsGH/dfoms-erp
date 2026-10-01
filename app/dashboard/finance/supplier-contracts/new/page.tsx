@@ -4,7 +4,10 @@ import { createClient } from "@/utils/supabase/server";
 import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import type { NamedLookup } from "@/app/dashboard/lookup-types";
 import FinanceNav from "../../finance-nav";
-import { queryExpenseSubcategoryLookups } from "../../expense-register-utils";
+import {
+  normalizeExpenseSubcategoryLookup,
+  queryExpenseSubcategoryLookups,
+} from "../../expense-register-utils";
 import SupplierContractCreateForm from "../supplier-contract-create-form";
 
 export default async function NewSupplierContractPage() {
@@ -23,7 +26,10 @@ export default async function NewSupplierContractPage() {
   const supabase = createClient(cookieStore);
   const [{ data: expenseCategories }, { data: expenseSubcategories }] =
     await Promise.all([
-      supabase.from("expense_categories").select("name").order("name"),
+      supabase
+        .from("expense_categories")
+        .select("name, is_active")
+        .order("name"),
       queryExpenseSubcategoryLookups(supabase),
     ]);
 
@@ -42,7 +48,9 @@ export default async function NewSupplierContractPage() {
       </div>
       <SupplierContractCreateForm
         expenseCategories={(expenseCategories as NamedLookup[] | null) ?? []}
-        expenseSubcategories={(expenseSubcategories as NamedLookup[] | null) ?? []}
+        expenseSubcategories={(expenseSubcategories ?? []).map((row) =>
+          normalizeExpenseSubcategoryLookup(row),
+        )}
       />
     </div>
   );

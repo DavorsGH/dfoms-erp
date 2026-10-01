@@ -603,6 +603,7 @@ async function insertExpenseRow(
   const subCategory = await resolveExpenseSubcategoryForCommit({
     client,
     tenantId,
+    expenseCategoryName: expenseCategory,
     subcategoryName: String(mappedData.sub_category ?? ""),
     cache: caches.expenseSubcategoryCache,
   });

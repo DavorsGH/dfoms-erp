@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ModuleNavTabStrip,
+  moduleNavActiveTabProps,
+} from "@/app/dashboard/module-nav-tab-strip";
+import {
   getActiveAdministrationGroup,
   MONITORING_SUPPORT_GROUP_ID,
   PLATFORM_SETTINGS_GROUP_ID,
@@ -41,7 +45,7 @@ function AdministrationTabGroup({
           {group.label}
         </p>
       ) : null}
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <ModuleNavTabStrip scrollKey={pathname}>
         {group.items.map((item) => {
           const active = pathname === item.href;
 
@@ -50,13 +54,14 @@ function AdministrationTabGroup({
               key={item.href}
               href={item.href}
               scroll
+              {...moduleNavActiveTabProps(active)}
               className={tabClassName(active)}
             >
               {item.label}
             </Link>
           );
         })}
-      </div>
+      </ModuleNavTabStrip>
     </div>
   );
 }

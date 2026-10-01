@@ -11,6 +11,9 @@ import { useEffect, useState } from "react";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 
 import type { NamedLookup } from "@/app/dashboard/lookup-types";
+import { filterActiveNamedLookups } from "@/app/dashboard/administration/lookup-settings-shared";
+import { ExpenseRegisterSubCategorySelect } from "../expense-register-form-fields";
+import type { ExpenseSubcategoryLookup } from "../expense-register-utils";
 
 import {
 
@@ -45,9 +48,9 @@ const secondaryBtn =
 
 type Props = {
 
-  expenseCategories: NamedLookup[];
+  expenseCategories: Array<NamedLookup & { is_active?: boolean }>;
 
-  expenseSubcategories: NamedLookup[];
+  expenseSubcategories: ExpenseSubcategoryLookup[];
 
 };
 
@@ -593,7 +596,7 @@ export default function SupplierContractCreateForm({
 
               <option value="">Select</option>
 
-              {expenseCategories.map((c) => (
+              {filterActiveNamedLookups(expenseCategories).map((c) => (
 
                 <option key={c.name} value={c.name}>
 
@@ -611,31 +614,13 @@ export default function SupplierContractCreateForm({
 
             Sub-category
 
-            <select
-
-              className={`${inputClassName} mt-1 w-full`}
-
+            <ExpenseRegisterSubCategorySelect
+              expenseCategory={form.expense_category}
               value={form.sub_category}
-
-              onChange={(e) => setForm({ ...form, sub_category: e.target.value })}
-
-              required
-
-            >
-
-              <option value="">Select</option>
-
-              {expenseSubcategories.map((c) => (
-
-                <option key={c.name} value={c.name}>
-
-                  {c.name}
-
-                </option>
-
-              ))}
-
-            </select>
+              onChange={(value) => setForm({ ...form, sub_category: value })}
+              allSubcategories={expenseSubcategories}
+              expenseCategories={expenseCategories}
+            />
 
           </label>
 

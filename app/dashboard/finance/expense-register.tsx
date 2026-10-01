@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { mapApproverRows } from "../approver-utils";
 import type { Approver, NamedLookup } from "../lookup-types";
 import {
   calculateAmount,
@@ -11,11 +11,18 @@ import {
   formatGHS,
   getExpenseGrossBeforeWht,
   normalizeExpenseRegisterEntry,
-  queryExpenseSubcategoryLookups,
   type ExpenseRegisterEntry,
+  type ExpenseSubcategoryLookup,
 } from "./expense-register-utils";
+import {
+  ExpenseRegisterReceiptNoField,
+  ExpenseRegisterSubCategorySelect,
+  ExpenseRegisterSupplierFields,
+  expenseCategorySelectOptionsForCreate,
+  toVendorSupplierOptions,
+} from "./expense-register-form-fields";
+import { useExpenseRegisterCreateLookups } from "./use-expense-register-create-lookups";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
-import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import { resolveManualExpenseReceiptNo } from "./expense-register-api";
 import {
   canMarkAutoPostedExpenseAsPaid,
@@ -35,9 +42,10 @@ import {
   type LinkedProductSaleCogs,
 } from "./product-sale-cogs-expense-utils";
 import {
-  isFixedAssetsExpenseCategory,
   validateNewExpenseRegisterCategory,
+  validateNewExpenseRegisterSubcategory,
 } from "@/utils/expense-register-category-guard";
+import { lookupOptionLabel } from "../administration/lookup-settings-shared";
 import {
   computePurchaseTaxAmounts,
   computeWhtAmount,
@@ -118,7 +126,7 @@ import {
 type ExpenseRegisterProps = {
   initialEntries: ExpenseRegisterEntry[];
   initialExpenseCategories: NamedLookup[];
-  initialExpenseSubcategories: NamedLookup[];
+  initialExpenseSubcategories: ExpenseSubcategoryLookup[];
   initialPaymentMethods: NamedLookup[];
   initialApprovers: Approver[];
   initialSuppliers: SupplierRow[];
@@ -212,6 +220,9 @@ export default function ExpenseRegister({
   activeBusinessUnitId = null,
 }: ExpenseRegisterProps) {
   const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const expenseIdFromQueryHandled = useRef<string | null>(null);
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const { units: businessUnits } = useBusinessUnitView();
@@ -228,16 +239,21 @@ export default function ExpenseRegister({
     useState<RegisterColumnFilterValue>(null);
   const [dateFilter, setDateFilter] =
     useState<RegisterDateRangeFilterValue>(null);
-  const [expenseCategories, setExpenseCategories] = useState(
-    initialExpenseCategories,
-  );
-  const [expenseSubcategories, setExpenseSubcategories] = useState(
-    initialExpenseSubcategories,
-  );
-  const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
-  const [approvers, setApprovers] = useState(initialApprovers);
-  const [suppliers, setSuppliers] = useState(initialSuppliers);
   const [showForm, setShowForm] = useState(false);
+  const createLookups = useExpenseRegisterCreateLookups({
+    enabled: showForm,
+  });
+  const expenseCategories = showForm
+    ? createLookups.expenseCategories
+    : initialExpenseCategories;
+  const expenseSubcategories = showForm
+    ? createLookups.expenseSubcategories
+    : initialExpenseSubcategories;
+  const paymentMethods = showForm
+    ? createLookups.paymentMethods
+    : initialPaymentMethods;
+  const approvers = showForm ? createLookups.approvers : initialApprovers;
+  const suppliers = showForm ? createLookups.suppliers : initialSuppliers;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
@@ -275,16 +291,15 @@ export default function ExpenseRegister({
       .sort((left, right) => Number(left.value) - Number(right.value));
   }, [taxRateCatalog, defaultWhtRate, form.wht_rate]);
 
-  const expenseCategorySelectOptions = useMemo(() => {
-    const keepFixedAssetsForEdit =
-      Boolean(editingId) && isFixedAssetsExpenseCategory(form.expense_category);
-    return expenseCategories.filter((category) => {
-      if (!isFixedAssetsExpenseCategory(category.name)) {
-        return true;
-      }
-      return keepFixedAssetsForEdit;
-    });
-  }, [expenseCategories, editingId, form.expense_category]);
+  const expenseCategorySelectOptions = useMemo(
+    () =>
+      expenseCategorySelectOptionsForCreate(
+        expenseCategories,
+        Boolean(editingId),
+        form.expense_category,
+      ),
+    [expenseCategories, editingId, form.expense_category],
+  );
 
   const categoryOptions = useMemo(
     () =>
@@ -412,69 +427,10 @@ export default function ExpenseRegister({
   }, [visibleEntries]);
 
   useEffect(() => {
-    if (!showForm) {
-      return;
+    if (createLookups.error) {
+      setError(createLookups.error);
     }
-
-    const client = createClient();
-
-    async function loadLookups() {
-      const { tenantId } = await resolveSessionTenantId(client);
-
-      const supplierQuery = tenantId
-        ? client
-            .from("suppliers")
-            .select("id, tenant_id, name, contact_person, phone, email, address, payment_terms_days, is_active, created_at, updated_at")
-            .eq("tenant_id", tenantId)
-            .eq("is_active", true)
-            .order("name", { ascending: true })
-        : Promise.resolve({ data: [], error: null });
-
-      const [
-        { data: categories, error: categoriesError },
-        { data: subcategories, error: subcategoriesError },
-        { data: methods, error: methodsError },
-        { data: approverRows, error: approversError },
-        { data: supplierRows, error: suppliersError },
-      ] = await Promise.all([
-        client
-          .from("expense_categories")
-          .select("name")
-          .order("name", { ascending: true }),
-        queryExpenseSubcategoryLookups(client),
-        client
-          .from("payment_methods")
-          .select("name")
-          .order("name", { ascending: true }),
-        client
-          .from("approvers")
-          .select("employee_id, employees!approvers_employee_id_fkey(full_name)")
-          .order("employee_id", { ascending: true }),
-        supplierQuery,
-      ]);
-
-      const lookupError =
-        categoriesError?.message ??
-        subcategoriesError?.message ??
-        methodsError?.message ??
-        approversError?.message ??
-        suppliersError?.message ??
-        null;
-
-      if (lookupError) {
-        setError(lookupError);
-        return;
-      }
-
-      setExpenseCategories(categories ?? []);
-      setExpenseSubcategories(subcategories ?? []);
-      setPaymentMethods(methods ?? []);
-      setApprovers(mapApproverRows(approverRows ?? []));
-      setSuppliers((supplierRows as SupplierRow[] | null) ?? []);
-    }
-
-    loadLookups();
-  }, [showForm]);
+  }, [createLookups.error]);
 
   useEffect(() => {
     setEntries(initialEntries.map(normalizeExpenseRegisterEntry));
@@ -564,6 +520,16 @@ export default function ExpenseRegister({
 
     setDetailExpense(normalizeExpenseRegisterEntry(data as ExpenseRegisterEntry));
   }
+
+  useEffect(() => {
+    const expenseId = searchParams.get("expenseId")?.trim();
+    if (!expenseId || expenseIdFromQueryHandled.current === expenseId) {
+      return;
+    }
+    expenseIdFromQueryHandled.current = expenseId;
+    void openExpenseDetail(expenseId);
+    router.replace("/dashboard/finance/expenses", { scroll: false });
+  }, [searchParams, router]);
 
   function openAddForm() {
     setEditingId(null);
@@ -856,9 +822,21 @@ export default function ExpenseRegister({
     if (!editingId) {
       const categoryError = validateNewExpenseRegisterCategory(
         form.expense_category,
+        { categoryRows: expenseCategories },
       );
       if (categoryError) {
         setError(categoryError);
+        setLoading(false);
+        return;
+      }
+      const subcategoryError = validateNewExpenseRegisterSubcategory(
+        form.expense_category,
+        form.sub_category,
+        expenseSubcategories,
+        expenseCategories,
+      );
+      if (subcategoryError) {
+        setError(subcategoryError);
         setLoading(false);
         return;
       }
@@ -1206,14 +1184,19 @@ export default function ExpenseRegister({
                   required
                   value={form.expense_category}
                   onChange={(e) =>
-                    updateField("expense_category", e.target.value)
+                    setForm((current) => ({
+                      ...current,
+                      expense_category: e.target.value,
+                      sub_category: "",
+                    }))
                   }
                   className={inputClassName}
+                  disabled={createLookups.loading}
                 >
                   <option value="">Select category</option>
                   {expenseCategorySelectOptions.map((category) => (
                     <option key={category.name} value={category.name}>
-                      {category.name}
+                      {lookupOptionLabel(category.name, category.is_active)}
                     </option>
                   ))}
                 </select>
@@ -1245,53 +1228,27 @@ export default function ExpenseRegister({
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Sub-Category
                 </label>
-                <select
-                  required
+                <ExpenseRegisterSubCategorySelect
+                  expenseCategory={form.expense_category}
                   value={form.sub_category}
-                  onChange={(e) => updateField("sub_category", e.target.value)}
-                  className={inputClassName}
-                >
-                  <option value="">Select sub-category</option>
-                  {expenseSubcategories.map((subcategory) => (
-                    <option key={subcategory.name} value={subcategory.name}>
-                      {subcategory.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => updateField("sub_category", value)}
+                  allSubcategories={expenseSubcategories}
+                  expenseCategories={expenseCategories}
+                  disabled={createLookups.loading}
+                />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Supplier
-                </label>
-                <select
-                  required
-                  value={form.vendor_select}
-                  onChange={(e) => updateField("vendor_select", e.target.value)}
-                  className={inputClassName}
-                >
-                  <option value="">Select supplier</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-                  <option value={VENDOR_OTHER_VALUE}>Other (one-time supplier)</option>
-                </select>
-              </div>
-              {form.vendor_select === VENDOR_OTHER_VALUE ? (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    One-time supplier name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={form.vendor_other}
-                    onChange={(e) => updateField("vendor_other", e.target.value)}
-                    className={inputClassName}
-                  />
-                </div>
-              ) : null}
+              <ExpenseRegisterSupplierFields
+                vendorSelect={form.vendor_select}
+                vendorOther={form.vendor_other}
+                onVendorSelectChange={(value) =>
+                  updateField("vendor_select", value)
+                }
+                onVendorOtherChange={(value) =>
+                  updateField("vendor_other", value)
+                }
+                suppliers={toVendorSupplierOptions(suppliers)}
+                disabled={createLookups.loading}
+              />
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Price
@@ -1426,28 +1383,12 @@ export default function ExpenseRegister({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Receipt No.
-                </label>
-                <input
-                  type="text"
-                  value={form.receipt_no}
-                  onChange={(e) => updateField("receipt_no", e.target.value)}
-                  placeholder={
-                    editingId
-                      ? undefined
-                      : "Leave blank to auto-assign, or enter supplier receipt #"
-                  }
-                  className={inputClassName}
-                />
-                {!editingId ? (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Leave blank for an internal code (e.g. DF-EXP-0001), or type
-                    the number printed on the supplier&apos;s paper receipt.
-                  </p>
-                ) : null}
-              </div>
+              <ExpenseRegisterReceiptNoField
+                value={form.receipt_no}
+                onChange={(value) => updateField("receipt_no", value)}
+                isCreate={!editingId}
+                disabled={createLookups.loading}
+              />
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Payment Status
