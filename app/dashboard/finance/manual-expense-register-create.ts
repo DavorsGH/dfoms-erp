@@ -11,6 +11,7 @@ import {
   roundTaxAmount,
 } from "./tax-utils";
 import { syncPurchaseTaxLedger } from "./tax-ledger-sync";
+import { validateManualExpenseRegisterPaymentStatusForWrite } from "@/utils/manual-expense-payment-status";
 
 export type ManualExpenseRegisterCreateInput = {
   date: string;
@@ -43,6 +44,13 @@ export async function createManualExpenseRegisterEntry(
   const categoryError = validateNewExpenseRegisterCategory(input.expense_category);
   if (categoryError) {
     return { ok: false, error: categoryError };
+  }
+
+  const paymentStatusError = validateManualExpenseRegisterPaymentStatusForWrite(
+    input.payment_status,
+  );
+  if (paymentStatusError) {
+    return { ok: false, error: paymentStatusError };
   }
 
   const vendor = input.vendor.trim();

@@ -429,7 +429,15 @@ category Fixed Assets, you can **edit** it to reclassify to an operating
 category such as Direct Operational.
 
 You can bulk import existing expenses from a spreadsheet using the Bulk
-Import button on this page --- see Section 2.4.
+Import button on this page --- see Section 2.4. Bulk import accepts
+**Paid** only for payment status --- use **Accounts Payable** for
+amounts still owed.
+
+Manual expenses can only be recorded as **Paid** (money has already left
+the business). Unpaid bills must be recorded in **Accounts Payable**
+(Section 6.3) so the amount owed is tracked. Older entries that still
+show another payment status can be edited, but you can only change that
+status to **Paid**.
 
 Click the filter icon on the Expense Category, Sub-Category, or
 Description column header to search and select one or more values ---
@@ -459,8 +467,10 @@ expense, but they still display on older rows that already used them.
 ## **6.3 Accounts Payable**
 
 Tracks amounts your business owes to suppliers or vendors, and their
-payment status. Whether a purchase creates an Accounts Payable entry at
-all depends on how it was paid --- see Section 10.3 for Cash vs. Credit
+payment status. **Unpaid supplier bills and unpaid GRA penalties** belong
+here; when you pay, record the payment **against the payable** (Record
+Payment). Whether a purchase creates an Accounts Payable entry at all
+depends on how it was paid --- see Section 10.3 for Cash vs. Credit
 purchases.
 
 ## **6.4 Fixed Assets**
@@ -819,13 +829,22 @@ game.
     remitted.
 
     -   **Record difference as expense** --- when the difference is a
-        penalty or interest you accept, record it as an operating
-        expense (defaults: **remittance date** and **Paid** if the
-        period is already remitted; otherwise **the day after the due
-        date** and **Pending**). If a penalty expense was already
-        recorded for that period, the app warns you about a duplicate.
-        You can record **more than one** penalty for the same period and
-        use **Record remaining** until the full difference is covered.
+        penalty or interest you accept, the dialog first asks **Has this
+        penalty been paid?** (**Yes, paid** / **Not yet**). The default
+        is **Yes, paid** when that period and tax type already has
+        remitted ledger activity; otherwise **Not yet**. **Yes, paid**
+        records a **Paid** expense (payment date, payment method,
+        approved by) --- default date is the **remittance date** when
+        remitted, otherwise **today**. **Not yet** records a **payable
+        to GRA** in **Accounts Payable** (default date **the day after
+        the due date**), which posts both the cost and the amount owed;
+        pay later from **Accounts Payable → Record Payment**. You can
+        switch the choice before saving; the app only resets field
+        defaults you have not edited yourself. Pending is never offered.
+        If a penalty expense was already recorded for that period, the
+        app warns you about a duplicate. You can record **more than one**
+        penalty for the same period and use **Record remaining** until
+        the full difference is covered.
 
 ## **6.9 VAT/WHT Calculation Basis**
 

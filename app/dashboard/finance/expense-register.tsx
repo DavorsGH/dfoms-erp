@@ -122,6 +122,13 @@ import {
   resolveOptionalProjectId,
   type ContractProjectOption,
 } from "../administration/projects-utils";
+import {
+  isApAccrualExpenseRegisterRow,
+  isSystemManagedExpenseRegisterRow,
+  MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS,
+  manualExpensePaymentStatusSelectOptions,
+  validateManualExpenseRegisterPaymentStatusForWrite,
+} from "@/utils/manual-expense-payment-status";
 
 type ExpenseRegisterProps = {
   initialEntries: ExpenseRegisterEntry[];
@@ -171,7 +178,7 @@ const emptyForm: ExpenseFormState = {
   payment_method: "",
   approved_by: "",
   receipt_no: "",
-  payment_status: "",
+  payment_status: MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS,
   has_wht_vat: false,
   wht_rate: "0",
   wht_amount: "",
@@ -179,16 +186,6 @@ const emptyForm: ExpenseFormState = {
   notes: "",
   project_id: "",
 };
-
-const PAYMENT_STATUS_OPTIONS = [
-  "Pending",
-  "Partial",
-  "Paid",
-  "Overdue",
-  "Accrued",
-  "Accrued - Not Yet Paid",
-  "Settled (No Cash Impact)",
-];
 
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
@@ -299,6 +296,19 @@ export default function ExpenseRegister({
         form.expense_category,
       ),
     [expenseCategories, editingId, form.expense_category],
+  );
+
+  const manualPaymentStatusOptions = useMemo(
+    () => {
+      const current = editingId
+        ? entries.find((entry) => entry.id === editingId)?.payment_status
+        : null;
+      return manualExpensePaymentStatusSelectOptions(
+        Boolean(editingId),
+        current,
+      );
+    },
+    [editingId, entries],
   );
 
   const categoryOptions = useMemo(
@@ -534,7 +544,10 @@ export default function ExpenseRegister({
   function openAddForm() {
     setEditingId(null);
     setWhtAmountEdited(false);
-    setForm({ ...emptyForm });
+    setForm({
+      ...emptyForm,
+      payment_status: MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS,
+    });
     setShowForm(true);
   }
 
@@ -563,6 +576,13 @@ export default function ExpenseRegister({
     );
     if (linkedProductSaleCogs) {
       setError(formatLinkedProductSaleCogsDeleteMessage(linkedProductSaleCogs));
+      return;
+    }
+
+    if (isApAccrualExpenseRegisterRow(entry)) {
+      setError(
+        "Auto-posted from Accounts Payable (AP-ACCRUAL-*). Manage the bill in Finance → Accounts Payable — do not edit this accrual row here.",
+      );
       return;
     }
 
@@ -837,6 +857,24 @@ export default function ExpenseRegister({
       );
       if (subcategoryError) {
         setError(subcategoryError);
+        setLoading(false);
+        return;
+      }
+    }
+
+    const editingEntry = editingId
+      ? entries.find((entry) => entry.id === editingId)
+      : null;
+    if (
+      !editingEntry ||
+      !isSystemManagedExpenseRegisterRow(editingEntry)
+    ) {
+      const paymentStatusError =
+        validateManualExpenseRegisterPaymentStatusForWrite(
+          form.payment_status,
+        );
+      if (paymentStatusError) {
+        setError(paymentStatusError);
         setLoading(false);
         return;
       }
@@ -1395,19 +1433,33 @@ export default function ExpenseRegister({
                 </label>
                 <select
                   required
-                  value={form.payment_status}
+                  value={
+                    form.payment_status ||
+                    MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS
+                  }
                   onChange={(e) =>
                     updateField("payment_status", e.target.value)
                   }
                   className={inputClassName}
                 >
-                  <option value="">Select status</option>
-                  {PAYMENT_STATUS_OPTIONS.map((status) => (
+                  {manualPaymentStatusOptions.map((status) => (
                     <option key={status} value={status}>
                       {status}
                     </option>
                   ))}
                 </select>
+                {!editingId ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Not paid yet? Record it in{" "}
+                    <Link
+                      href="/dashboard/finance/accounts-payable"
+                      className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+                    >
+                      Finance → Accounts Payable
+                    </Link>{" "}
+                    so the amount owed is tracked.
+                  </p>
+                ) : null}
               </div>
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -1552,7 +1604,8 @@ export default function ExpenseRegister({
                   const linkedProductSaleCogs =
                     linkedProductSaleCogsByExpenseId.get(entry.id) ?? null;
                   const systemLinked =
-                    customerRefund || autoPosted || linkedProductSaleCogs != null;
+                    isSystemManagedExpenseRegisterRow(entry) ||
+                    linkedProductSaleCogs != null;
                   const showMarkPaid = canMarkAutoPostedExpenseAsPaid(entry);
                   const deleteBlockedMessage = customerRefund
                     ? customerRefundExpenseLockMessage()
@@ -1730,7 +1783,7 @@ export default function ExpenseRegister({
         }
         disableEdit={
           detailExpense
-            ? isAutoPostedExpenseRegisterEntry(detailExpense) ||
+            ? isSystemManagedExpenseRegisterRow(detailExpense) ||
               linkedProductSaleCogsByExpenseId.has(detailExpense.id)
             : false
         }

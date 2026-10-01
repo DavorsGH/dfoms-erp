@@ -1,3 +1,5 @@
+import Link from "next/link";
+import type { ReactNode } from "react";
 import type { ContractProjectOption } from "../administration/projects-utils";
 import type { BusinessUnitSwitcherOption } from "../business-unit-switcher";
 import type { NamedLookup } from "../lookup-types";
@@ -21,6 +23,7 @@ import {
   getLiveAssetValuesFromEntry,
   type FixedAssetEntry,
 } from "./fixed-assets-utils";
+import { parseAccountsPayableIdFromAccrualReceiptNo } from "./accounts-payable-accrual-utils";
 import {
   isAutoPostedExpenseRegisterEntry,
 } from "./register-auto-posted-utils";
@@ -67,6 +70,30 @@ export type RegisterDetailLabelContext = {
   projects?: ContractProjectOption[];
 };
 
+function resolveExpenseRegisterSourceLabel(
+  entry: ExpenseRegisterDetailRow,
+): ReactNode {
+  const apId = parseAccountsPayableIdFromAccrualReceiptNo(entry.receipt_no);
+  if (apId) {
+    return (
+      <>
+        Auto-posted from Accounts Payable (
+        <Link
+          href={`/dashboard/finance/accounts-payable?apId=${encodeURIComponent(apId)}`}
+          className="font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+        >
+          open payable
+        </Link>
+        )
+      </>
+    );
+  }
+  if (isAutoPostedExpenseRegisterEntry(entry)) {
+    return "System auto-posted";
+  }
+  return "Manual entry";
+}
+
 export function buildExpenseRegisterDetailSections(
   entry: ExpenseRegisterDetailRow,
   units: BusinessUnitSwitcherOption[],
@@ -89,9 +116,7 @@ export function buildExpenseRegisterDetailSections(
         { label: "Supplier", value: formatDetailText(normalized.vendor) },
         {
           label: "Source",
-          value: isAutoPostedExpenseRegisterEntry(normalized)
-            ? "System auto-posted"
-            : "Manual entry",
+          value: resolveExpenseRegisterSourceLabel(entry),
         },
       ],
     },

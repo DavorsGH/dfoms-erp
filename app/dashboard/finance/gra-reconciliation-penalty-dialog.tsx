@@ -14,8 +14,13 @@ import {
   type SimilarPenaltyExpense,
 } from "./gra-penalty-expense-utils";
 import { createManualExpenseRegisterEntry } from "./manual-expense-register-create";
+import { createGraPenaltyViaAccountsPayable } from "./gra-penalty-via-accounts-payable";
+import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import type { GraReconciliationKind } from "./statutory-due-rules";
-import { resolveGraPenaltyDialogDefaults } from "./gra-penalty-dialog-defaults";
+import {
+  resolveGraPenaltyDialogDefaults,
+  type GraPenaltyRecordingMode,
+} from "./gra-penalty-dialog-defaults";
 import { formatGHS } from "./tax-ledger-utils";
 import type { VatReturnPeriod } from "./tax-utils";
 import {
@@ -31,16 +36,6 @@ import {
   resolveVendorNameFromSelect,
   VENDOR_OTHER_VALUE,
 } from "./vendor-select-utils";
-
-const PAYMENT_STATUS_OPTIONS = [
-  "Pending",
-  "Partial",
-  "Paid",
-  "Overdue",
-  "Accrued",
-  "Accrued - Not Yet Paid",
-  "Settled (No Cash Impact)",
-];
 
 const DEFAULT_GRA_VENDOR_NAME = "Ghana Revenue Authority (GRA)";
 
@@ -65,7 +60,12 @@ export function GraReconciliationPenaltyDialog({
   hasRemittedLedgerActivity: boolean;
   vatReturnPeriod: VatReturnPeriod;
   onClose: () => void;
-  onSaved: (expenseId: string, expenseDate: string, amount: number) => void;
+  onSaved: (
+    expenseId: string,
+    expenseDate: string,
+    amount: number,
+    accountsPayableId?: string | null,
+  ) => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const createLookups = useExpenseRegisterCreateLookups({ enabled: true });
@@ -82,13 +82,15 @@ export function GraReconciliationPenaltyDialog({
   const [vendorOther, setVendorOther] = useState(DEFAULT_GRA_VENDOR_NAME);
   const [receiptNo, setReceiptNo] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("");
   const [approvedBy, setApprovedBy] = useState("");
+  const [penaltyPaymentChoice, setPenaltyPaymentChoice] =
+    useState<GraPenaltyRecordingMode>(() =>
+      hasRemittedLedgerActivity ? "paid" : "unpaid",
+    );
   const [dateDefaultNote, setDateDefaultNote] = useState<string | null>(null);
   const [defaultsLoading, setDefaultsLoading] = useState(true);
   const [vendorDefaultsApplied, setVendorDefaultsApplied] = useState(false);
   const dateEditedRef = useRef(false);
-  const paymentStatusEditedRef = useRef(false);
   const paymentMethodEditedRef = useRef(false);
   const [similarExpense, setSimilarExpense] =
     useState<SimilarPenaltyExpense | null>(null);
@@ -96,6 +98,8 @@ export function GraReconciliationPenaltyDialog({
   const [checkingDuplicate, setCheckingDuplicate] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const recordViaAccountsPayable = penaltyPaymentChoice === "unpaid";
 
   const expenseCategoryOptions = useMemo(
     () =>
@@ -127,6 +131,7 @@ export function GraReconciliationPenaltyDialog({
         dueDateIso,
         hasRemittedLedgerActivity,
         vatReturnPeriod,
+        recordingMode: penaltyPaymentChoice,
       });
 
       if (cancelled) {
@@ -135,9 +140,6 @@ export function GraReconciliationPenaltyDialog({
 
       if (!dateEditedRef.current) {
         setDate(resolved.date);
-      }
-      if (!paymentStatusEditedRef.current) {
-        setPaymentStatus(resolved.paymentStatus);
       }
       if (!paymentMethodEditedRef.current && resolved.paymentMethod) {
         setPaymentMethod(resolved.paymentMethod);
@@ -160,6 +162,7 @@ export function GraReconciliationPenaltyDialog({
     supabase,
     tenantId,
     vatReturnPeriod,
+    penaltyPaymentChoice,
   ]);
 
   useEffect(() => {
@@ -291,17 +294,53 @@ export function GraReconciliationPenaltyDialog({
       return;
     }
 
+    setSubmitting(true);
+
+    if (recordViaAccountsPayable) {
+      const { tenantId, error: tenantError } =
+        await resolveSessionTenantId(supabase);
+      if (tenantError || !tenantId) {
+        setError(tenantError ?? "Unable to resolve workspace.");
+        setSubmitting(false);
+        return;
+      }
+
+      const apResult = await createGraPenaltyViaAccountsPayable({
+        supabase,
+        tenantId,
+        businessUnitId,
+        kind,
+        periodMonth,
+        invoiceDate: date,
+        vendorName,
+        expenseCategory,
+        subCategory,
+        description,
+        penaltyAmount,
+      });
+
+      if (!apResult.ok) {
+        setError(apResult.error);
+        setSubmitting(false);
+        return;
+      }
+
+      onSaved(apResult.expenseId, date, penaltyAmount, apResult.apId);
+      onClose();
+      return;
+    }
+
     if (!paymentMethod.trim()) {
       setError("Payment method is required.");
+      setSubmitting(false);
       return;
     }
 
     if (!approvedBy.trim()) {
       setError("Approved by is required.");
+      setSubmitting(false);
       return;
     }
-
-    setSubmitting(true);
 
     const result = await createManualExpenseRegisterEntry(supabase, {
       date,
@@ -314,7 +353,7 @@ export function GraReconciliationPenaltyDialog({
       payment_method: paymentMethod,
       approved_by: approvedBy,
       receipt_no: receiptNo.trim() || undefined,
-      payment_status: paymentStatus,
+      payment_status: "Paid",
       business_unit_id: businessUnitId,
     });
 
@@ -332,7 +371,7 @@ export function GraReconciliationPenaltyDialog({
       return;
     }
 
-    onSaved(result.expenseId, date, penaltyAmount);
+    onSaved(result.expenseId, date, penaltyAmount, null);
     onClose();
   }
 
@@ -385,9 +424,37 @@ export function GraReconciliationPenaltyDialog({
         ) : null}
 
         <form onSubmit={(event) => void handleSubmit(event)} className="mt-4 space-y-3">
+          <fieldset>
+            <legend className="mb-2 block text-sm font-medium text-slate-700">
+              Has this penalty been paid?
+            </legend>
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+                <input
+                  type="radio"
+                  name="gra-penalty-paid"
+                  required
+                  checked={penaltyPaymentChoice === "paid"}
+                  onChange={() => setPenaltyPaymentChoice("paid")}
+                  disabled={defaultsLoading}
+                />
+                Yes, paid
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+                <input
+                  type="radio"
+                  name="gra-penalty-paid"
+                  checked={penaltyPaymentChoice === "unpaid"}
+                  onChange={() => setPenaltyPaymentChoice("unpaid")}
+                  disabled={defaultsLoading}
+                />
+                Not yet
+              </label>
+            </div>
+          </fieldset>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">
-              Date
+              {recordViaAccountsPayable ? "Invoice date" : "Date"}
             </label>
             <input
               type="date"
@@ -465,69 +532,61 @@ export function GraReconciliationPenaltyDialog({
             isCreate
             disabled={lookupsLoading}
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Payment Method
-              </label>
-              <select
-                required
-                value={paymentMethod}
-                onChange={(event) => {
-                  paymentMethodEditedRef.current = true;
-                  setPaymentMethod(event.target.value);
-                }}
-                className={expenseRegisterInputClassName}
-                disabled={lookupsLoading}
-              >
-                <option value="">Select payment method</option>
-                {createLookups.paymentMethods.map((method) => (
-                  <option key={method.name} value={method.name}>
-                    {method.name}
-                  </option>
-                ))}
-              </select>
+          {recordViaAccountsPayable ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <p className="font-medium text-slate-800">Record as payable</p>
+              <p className="mt-1 text-slate-600">
+                Pay it later from Finance → Accounts Payable → Record Payment.
+              </p>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Payment Status
-              </label>
-              <select
-                required
-                value={paymentStatus}
-                onChange={(event) => {
-                  paymentStatusEditedRef.current = true;
-                  setPaymentStatus(event.target.value);
-                }}
-                className={expenseRegisterInputClassName}
-              >
-                {PAYMENT_STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Approved By
-            </label>
-            <select
-              required
-              value={approvedBy}
-              onChange={(event) => setApprovedBy(event.target.value)}
-              className={expenseRegisterInputClassName}
-              disabled={lookupsLoading}
-            >
-              <option value="">Select approver</option>
-              {createLookups.approvers.map((approver) => (
-                <option key={approver.employee_id} value={approver.full_name}>
-                  {approver.full_name}
-                </option>
-              ))}
-            </select>
-          </div>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Payment Method
+                </label>
+                <select
+                  required
+                  value={paymentMethod}
+                  onChange={(event) => {
+                    paymentMethodEditedRef.current = true;
+                    setPaymentMethod(event.target.value);
+                  }}
+                  className={expenseRegisterInputClassName}
+                  disabled={lookupsLoading}
+                >
+                  <option value="">Select payment method</option>
+                  {createLookups.paymentMethods.map((method) => (
+                    <option key={method.name} value={method.name}>
+                      {method.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Approved By
+                </label>
+                <select
+                  required
+                  value={approvedBy}
+                  onChange={(event) => setApprovedBy(event.target.value)}
+                  className={expenseRegisterInputClassName}
+                  disabled={lookupsLoading}
+                >
+                  <option value="">Select approver</option>
+                  {createLookups.approvers.map((approver) => (
+                    <option
+                      key={approver.employee_id}
+                      value={approver.full_name}
+                    >
+                      {approver.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <button
               type="button"
@@ -541,7 +600,11 @@ export function GraReconciliationPenaltyDialog({
               disabled={submitting || lookupsLoading}
               className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:opacity-50"
             >
-              {submitting ? "Saving…" : "Save expense"}
+              {submitting
+                ? "Saving…"
+                : recordViaAccountsPayable
+                  ? "Save as payable"
+                  : "Save expense"}
             </button>
           </div>
         </form>

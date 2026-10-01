@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import type { NamedLookup } from "../lookup-types";
 import {
@@ -132,6 +133,9 @@ export default function AccountsPayable({
   activeBusinessUnitId = null,
 }: AccountsPayableProps) {
   const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const apIdFromQueryHandled = useRef<string | null>(null);
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const [entries, setEntries] = useState(
@@ -207,17 +211,35 @@ export default function AccountsPayable({
   }, [initialEntries]);
 
   useEffect(() => {
-    const hash = window.location.hash.replace(/^#/, "");
-    if (!hash.startsWith("ap-")) return;
-    const row = document.getElementById(hash);
-    if (row) {
+    function highlightPayableRow(apId: string): boolean {
+      const row = document.getElementById(`ap-${apId}`);
+      if (!row) {
+        return false;
+      }
       row.scrollIntoView({ behavior: "smooth", block: "center" });
       row.classList.add("ring-2", "ring-[#0f2744]");
       window.setTimeout(() => {
         row.classList.remove("ring-2", "ring-[#0f2744]");
       }, 2500);
+      return true;
     }
-  }, [entries]);
+
+    const hash = window.location.hash.replace(/^#/, "");
+    if (hash.startsWith("ap-")) {
+      highlightPayableRow(hash.slice("ap-".length));
+      return;
+    }
+
+    const apId = searchParams.get("apId")?.trim();
+    if (!apId || apIdFromQueryHandled.current === apId) {
+      return;
+    }
+
+    if (highlightPayableRow(apId)) {
+      apIdFromQueryHandled.current = apId;
+      router.replace("/dashboard/finance/accounts-payable", { scroll: false });
+    }
+  }, [entries, router, searchParams]);
 
   useEffect(() => {
     if (!showForm) {

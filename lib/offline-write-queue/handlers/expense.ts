@@ -9,6 +9,7 @@ import {
 } from "@/utils/business-unit-access";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
 import { validateNewExpenseRegisterCategory } from "@/utils/expense-register-category-guard";
+import { validateManualExpenseRegisterPaymentStatusForWrite } from "@/utils/manual-expense-payment-status";
 
 function isUniqueViolation(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
@@ -86,6 +87,13 @@ export async function syncExpenseQueueItem(
     );
     if (categoryError) {
       return { ok: false, error: categoryError };
+    }
+
+    const paymentStatusError = validateManualExpenseRegisterPaymentStatusForWrite(
+      payload.payment_status,
+    );
+    if (paymentStatusError) {
+      return { ok: false, error: paymentStatusError };
     }
 
     const insertRow = {

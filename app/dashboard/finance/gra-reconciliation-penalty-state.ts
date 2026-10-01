@@ -1,9 +1,14 @@
+import { parseAccountsPayableIdFromAccrualReceiptNo } from "./accounts-payable-accrual-utils";
 import { GRA_RECONCILIATION_TOLERANCE } from "./statutory-due-rules";
+
+export type GraPenaltyRecordingKind = "paid" | "payable";
 
 export type GraPenaltyExpenseLink = {
   expenseId: string;
   date: string;
   amount: number;
+  recordingKind: GraPenaltyRecordingKind;
+  accountsPayableId: string | null;
 };
 
 export type GraReconciliationPenaltyRowState = {
@@ -13,8 +18,18 @@ export type GraReconciliationPenaltyRowState = {
 
 export function parseGraPenaltyExpenseJoin(
   join:
-    | { id: string; date: string; amount: number }
-    | { id: string; date: string; amount: number }[]
+    | {
+        id: string;
+        date: string;
+        amount: number;
+        receipt_no?: string | null;
+      }
+    | {
+        id: string;
+        date: string;
+        amount: number;
+        receipt_no?: string | null;
+      }[]
     | null
     | undefined,
   fallbackExpenseId: string,
@@ -25,10 +40,16 @@ export function parseGraPenaltyExpenseJoin(
     return null;
   }
 
+  const accountsPayableId = parseAccountsPayableIdFromAccrualReceiptNo(
+    expenseRow?.receipt_no,
+  );
+
   return {
     expenseId,
     date: expenseRow?.date ? String(expenseRow.date).slice(0, 10) : "",
     amount: expenseRow ? Number(expenseRow.amount) || 0 : 0,
+    recordingKind: accountsPayableId ? "payable" : "paid",
+    accountsPayableId,
   };
 }
 

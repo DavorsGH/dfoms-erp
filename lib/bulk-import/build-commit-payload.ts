@@ -17,6 +17,10 @@ import {
   roundTaxAmount,
 } from "@/app/dashboard/finance/tax-utils";
 import {
+  MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS,
+  validateManualExpenseRegisterPaymentStatusForWrite,
+} from "@/utils/manual-expense-payment-status";
+import {
   DEFAULT_EMPLOYMENT_STATUS,
   EMPLOYMENT_STATUS_OPTIONS,
   EMPLOYMENT_TYPE_OPTIONS,
@@ -120,16 +124,6 @@ export type EmployeeCommitInsert = {
   assigned_site_id: string | null;
   data_notes: string | null;
 };
-
-const EXPENSE_PAYMENT_STATUS_OPTIONS = [
-  "Pending",
-  "Partial",
-  "Paid",
-  "Overdue",
-  "Accrued",
-  "Accrued - Not Yet Paid",
-  "Settled (No Cash Impact)",
-] as const;
 
 export type ExpenseCommitInsert = {
   tenant_id: string;
@@ -403,8 +397,14 @@ export function buildExpenseCommitInsert(input: {
   const paymentStatus =
     resolveCanonicalEnumValue(
       input.mappedData.payment_status,
-      EXPENSE_PAYMENT_STATUS_OPTIONS,
-    ) ?? "Unpaid";
+      [MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS] as const,
+    ) ?? MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS;
+
+  const paymentStatusError =
+    validateManualExpenseRegisterPaymentStatusForWrite(paymentStatus);
+  if (paymentStatusError) {
+    throw new Error(paymentStatusError);
+  }
 
   return {
     tenant_id: input.tenantId,

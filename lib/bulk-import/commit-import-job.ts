@@ -594,6 +594,16 @@ async function insertExpenseRow(
     throw new Error(blocked);
   }
 
+  const { validateManualExpenseRegisterPaymentStatusForWrite } = await import(
+    "@/utils/manual-expense-payment-status"
+  );
+  const paymentStatusError = validateManualExpenseRegisterPaymentStatusForWrite(
+    String(mappedData.payment_status ?? "Paid"),
+  );
+  if (paymentStatusError) {
+    throw new Error(paymentStatusError);
+  }
+
   const expenseCategory = await resolveExpenseCategoryForCommit({
     client,
     tenantId,

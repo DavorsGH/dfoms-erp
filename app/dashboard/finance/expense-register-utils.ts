@@ -206,11 +206,16 @@ export function expenseSubcategoryOptionsForCategory(
           (row.expense_category ?? "").trim().toLowerCase() === categoryKey &&
           row.name.trim().toLowerCase() === currentKey,
       );
-      const subHidden = linked?.is_active === false || categoryHidden;
-      names.set(currentKey, {
-        name: current,
-        isHidden: subHidden || undefined,
-      });
+      // Keep legacy / inactive rows on edit only — never inject a sub-category
+      // that belongs to another category (stale state + invalid <select> value
+      // makes the browser show one label while form state keeps another).
+      if (linked) {
+        const subHidden = linked.is_active === false || categoryHidden;
+        names.set(currentKey, {
+          name: current,
+          isHidden: subHidden || undefined,
+        });
+      }
     }
   }
 
@@ -290,6 +295,20 @@ export function validateExpenseSubcategoryForCategoryLookup(
   }
 
   return null;
+}
+
+/** Value safe to bind to Sub-Category <select> (must match an option or be empty). */
+export function expenseSubcategorySelectValueForOptions(
+  value: string,
+  options: Array<{ name: string }>,
+): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const key = trimmed.toLowerCase();
+  const match = options.find((row) => row.name.trim().toLowerCase() === key);
+  return match ? match.name : "";
 }
 
 export function expenseSubcategoryAllowedForCategory(

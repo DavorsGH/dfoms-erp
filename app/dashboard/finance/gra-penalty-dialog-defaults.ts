@@ -22,9 +22,10 @@ import {
   type GraReconciliationKind,
 } from "./statutory-due-rules";
 
+export type GraPenaltyRecordingMode = "paid" | "unpaid";
+
 export type GraPenaltyDialogDefaults = {
   date: string;
-  paymentStatus: string;
   paymentMethod: string | null;
   dateDefaultNote: string;
   /** Where the remitted-path date came from (for reporting). */
@@ -73,19 +74,28 @@ export async function resolveGraPenaltyDialogDefaults(options: {
   dueDateIso: string;
   hasRemittedLedgerActivity: boolean;
   vatReturnPeriod: VatReturnPeriod;
+  recordingMode: GraPenaltyRecordingMode;
   todayIso?: string;
 }): Promise<GraPenaltyDialogDefaults> {
   const kindLabel = OBLIGATION_KIND_LABELS[options.kind];
   const todayIso = options.todayIso ?? todayAccraIsoDate();
 
-  if (!options.hasRemittedLedgerActivity) {
+  if (options.recordingMode === "unpaid") {
     const date = addCalendarDay(options.dueDateIso);
     return {
       date,
-      paymentStatus: "Pending",
       paymentMethod: null,
-      dateDefaultNote: `Defaulted to the day after the due date (${formatDate(date)})`,
+      dateDefaultNote: `Defaulted to the day after the due date (${formatDate(date)}). Creates Accounts Payable to GRA plus a matching accrual expense.`,
       remittanceDateSource: "due_date_plus_one",
+    };
+  }
+
+  if (!options.hasRemittedLedgerActivity) {
+    return {
+      date: todayIso,
+      paymentMethod: null,
+      dateDefaultNote: `Defaulted to today (${formatDate(todayIso)}) as the payment date.`,
+      remittanceDateSource: "fallback_today",
     };
   }
 
@@ -178,7 +188,6 @@ export async function resolveGraPenaltyDialogDefaults(options: {
 
   return {
     date: remittanceDate,
-    paymentStatus: "Paid",
     paymentMethod: paymentMethodFromRemit,
     dateDefaultNote: `Defaulted to the ${kindLabel} remittance date (${formatDate(remittanceDate)})`,
     remittanceDateSource,

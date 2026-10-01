@@ -76,9 +76,19 @@ type PenaltyLinkRow = {
 
   expense_register:
 
-    | { id: string; date: string; amount: number }
+    | {
+        id: string;
+        date: string;
+        amount: number;
+        receipt_no?: string | null;
+      }
 
-    | { id: string; date: string; amount: number }[]
+    | {
+        id: string;
+        date: string;
+        amount: number;
+        receipt_no?: string | null;
+      }[]
 
     | null;
 
@@ -140,27 +150,71 @@ function PenaltyExpenseList({ penalties }: { penalties: GraPenaltyExpenseLink[] 
 
     <ul className="space-y-1 text-xs text-slate-700">
 
-      {penalties.map((penalty) => (
+      {penalties.map((penalty) => {
 
-        <li key={penalty.expenseId}>
+        if (
 
-          {formatGHS(penalty.amount)}{" "}
+          penalty.recordingKind === "payable" &&
 
-          <Link
+          penalty.accountsPayableId
 
-            href={`/dashboard/finance/expenses?expenseId=${encodeURIComponent(penalty.expenseId)}`}
+        ) {
 
-            className="font-medium text-[#0f2744] underline"
+          return (
 
-          >
+            <li key={penalty.expenseId}>
 
-            {penalty.date || "view"}
+              Recorded as payable{" "}
 
-          </Link>
+              <Link
 
-        </li>
+                href={`/dashboard/finance/accounts-payable?apId=${encodeURIComponent(penalty.accountsPayableId)}`}
 
-      ))}
+                className="font-medium text-[#0f2744] underline"
+
+              >
+
+                {penalty.date || "view"}
+
+              </Link>
+
+              {" · "}
+
+              {formatGHS(penalty.amount)}
+
+            </li>
+
+          );
+
+        }
+
+        return (
+
+          <li key={penalty.expenseId}>
+
+            Recorded as paid{" "}
+
+            <Link
+
+              href={`/dashboard/finance/expenses?expenseId=${encodeURIComponent(penalty.expenseId)}`}
+
+              className="font-medium text-[#0f2744] underline"
+
+            >
+
+              {penalty.date || "view"}
+
+            </Link>
+
+            {" · "}
+
+            {formatGHS(penalty.amount)}
+
+          </li>
+
+        );
+
+      })}
 
     </ul>
 
@@ -250,7 +304,7 @@ export function StatutoryGraReconciliationPanel({
 
       .select(
 
-        "id, reconciliation_kind, gra_portal_amount, statutory_gra_reconciliation_penalty_expenses ( penalty_expense_id, expense_register:penalty_expense_id ( id, date, amount ) )",
+        "id, reconciliation_kind, gra_portal_amount, statutory_gra_reconciliation_penalty_expenses ( penalty_expense_id, expense_register:penalty_expense_id ( id, date, amount, receipt_no ) )",
 
       )
 
@@ -472,6 +526,8 @@ export function StatutoryGraReconciliationPanel({
 
     amount: number,
 
+    accountsPayableId: string | null,
+
   ) {
 
     if (!periodMonth) {
@@ -556,7 +612,19 @@ export function StatutoryGraReconciliationPanel({
 
       if (!penalties.some((row) => row.expenseId === expenseId)) {
 
-        penalties.push({ expenseId, date: expenseDate, amount });
+        penalties.push({
+
+          expenseId,
+
+          date: expenseDate,
+
+          amount,
+
+          recordingKind: accountsPayableId ? "payable" : "paid",
+
+          accountsPayableId,
+
+        });
 
         penalties.sort((left, right) => left.date.localeCompare(right.date));
 
@@ -968,7 +1036,7 @@ export function StatutoryGraReconciliationPanel({
 
           onClose={closePenaltyDialog}
 
-          onSaved={(expenseId, expenseDate, amount) => {
+          onSaved={(expenseId, expenseDate, amount, accountsPayableId) => {
 
             void addPenaltyExpenseLink(
 
@@ -979,6 +1047,8 @@ export function StatutoryGraReconciliationPanel({
               expenseDate,
 
               amount,
+
+              accountsPayableId ?? null,
 
             );
 

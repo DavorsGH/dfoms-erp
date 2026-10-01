@@ -22,6 +22,7 @@ import {
   isFixedAssetsExpenseCategory,
 } from "@/utils/expense-register-category-guard";
 import { validateExpenseSubcategoryForCategoryLookup } from "@/app/dashboard/finance/expense-register-utils";
+import { validateManualExpenseRegisterPaymentStatusForWrite } from "@/utils/manual-expense-payment-status";
 import {
   normalizeTenantLookupKey,
   validateTenantNameLookup,
@@ -220,16 +221,6 @@ const EXPENSE_DATE_FIELDS = new Set(["date"]);
 const FIXED_ASSET_DATE_FIELDS = new Set(["purchase_date"]);
 
 const FIXED_ASSET_ORIGINAL_COST_CONSTRAINT = { precision: 12, scale: 2 } as const;
-
-const EXPENSE_PAYMENT_STATUS_OPTIONS = [
-  "Pending",
-  "Partial",
-  "Paid",
-  "Overdue",
-  "Accrued",
-  "Accrued - Not Yet Paid",
-  "Settled (No Cash Impact)",
-] as const;
 
 const EXPENSE_AUTO_POST_CATEGORY_PATTERNS = [
   "staff salaries",
@@ -1203,13 +1194,16 @@ function collectFieldErrors(
       }
     }
 
-    const paymentStatusError = validateEnumField(
-      "payment_status",
-      mappedData.payment_status,
-      EXPENSE_PAYMENT_STATUS_OPTIONS,
-    );
-    if (paymentStatusError) {
-      errors.push(paymentStatusError);
+    if ("payment_status" in mappedData) {
+      const rawStatus = mappedData.payment_status;
+      if (rawStatus != null && String(rawStatus).trim() !== "") {
+        const manualPaymentError = validateManualExpenseRegisterPaymentStatusForWrite(
+          String(rawStatus),
+        );
+        if (manualPaymentError) {
+          errors.push(`${fieldLabel("payment_status")}: ${manualPaymentError}`);
+        }
+      }
     }
 
     const categoryLookups: Array<[string, Map<string, number>, string]> = [

@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import type { NamedLookup } from "../lookup-types";
 import { LOOKUP_HIDDEN_LABEL_SUFFIX } from "../administration/lookup-settings-shared";
 import {
   expenseCategorySelectOptionsForCreate as filterExpenseCategoryRowsForSelect,
   expenseSubcategoryOptionsForCategory,
+  expenseSubcategorySelectValueForOptions,
   type ExpenseCategoryLookupRow,
   type ExpenseSubcategoryLookup,
 } from "./expense-register-utils";
@@ -67,10 +68,21 @@ export function ExpenseRegisterSubCategorySelect({
     [allSubcategories, expenseCategories, expenseCategory, value],
   );
 
+  const selectValue = useMemo(
+    () => expenseSubcategorySelectValueForOptions(value, options),
+    [options, value],
+  );
+
+  useLayoutEffect(() => {
+    if (value !== selectValue) {
+      onChange(selectValue);
+    }
+  }, [onChange, selectValue, value]);
+
   return (
     <select
       required
-      value={value}
+      value={selectValue}
       onChange={(event) => onChange(event.target.value)}
       className={expenseRegisterInputClassName}
       disabled={disabled || !expenseCategory.trim()}

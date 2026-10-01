@@ -60,6 +60,21 @@ export function buildAccountsPayableAccrualReceiptNo(
   return `${AP_ACCRUAL_RECEIPT_PREFIX}${accountsPayableId}`;
 }
 
+export function parseAccountsPayableIdFromAccrualReceiptNo(
+  receiptNo: string | null | undefined,
+): string | null {
+  const trimmed = (receiptNo ?? "").trim();
+  if (
+    !trimmed
+      .toUpperCase()
+      .startsWith(AP_ACCRUAL_RECEIPT_PREFIX.toUpperCase())
+  ) {
+    return null;
+  }
+  const id = trimmed.slice(AP_ACCRUAL_RECEIPT_PREFIX.length).trim();
+  return id || null;
+}
+
 export function buildAccountsPayableAccrualDescription(input: {
   vendorName: string;
   invoiceNumber?: string | null;
