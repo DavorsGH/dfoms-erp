@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { formatDate } from "../finance/income-register-utils";
 import { inputClassName } from "../employees/employee-record-utils";
 import {
   confirmProductPurchaseEdit,
   getStripedRowClassName,
+  highlightRegisterTableRow,
 } from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableActionsTdClassName,
@@ -71,6 +72,8 @@ export default function ProductPurchases({
   readOnly = false,
 }: ProductPurchasesProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const productPurchaseIdFromQueryHandled = useRef<string | null>(null);
   const [purchases, setPurchases] = useState(initialPurchases);
   const [products] = useState(initialProducts);
   const [suppliers] = useState(initialSuppliers);
@@ -93,6 +96,20 @@ export default function ProductPurchases({
   useEffect(() => {
     setPurchases(initialPurchases);
   }, [initialPurchases]);
+
+  useEffect(() => {
+    const purchaseId = searchParams.get("productPurchaseId")?.trim();
+    if (!purchaseId || productPurchaseIdFromQueryHandled.current === purchaseId) {
+      return;
+    }
+    const purchase = purchases.find((row) => row.id === purchaseId);
+    if (!purchase) {
+      return;
+    }
+    productPurchaseIdFromQueryHandled.current = purchaseId;
+    highlightRegisterTableRow(`product-purchase-${purchaseId}`);
+    router.replace("/dashboard/inventory/product-purchases", { scroll: false });
+  }, [purchases, router, searchParams]);
 
   const calculatedTotal = useMemo(
     () => calculateProductPurchaseTotal(form.quantity, form.cost_per_unit),
@@ -367,7 +384,11 @@ export default function ProductPurchases({
               </tr>
             ) : (
               purchases.map((purchase, index) => (
-                <tr key={purchase.id} className={getStripedRowClassName(index)}>
+                <tr
+                  key={purchase.id}
+                  id={`product-purchase-${purchase.id}`}
+                  className={getStripedRowClassName(index)}
+                >
                   <td className="px-4 py-3">{formatDate(purchase.purchase_date)}</td>
                   <td className="px-4 py-3">
                     {getProductPurchaseProductLabel(purchase)}

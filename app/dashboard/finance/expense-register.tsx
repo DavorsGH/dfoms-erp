@@ -62,6 +62,7 @@ import {
 } from "./tax-ledger-sync";
 import RegisterRowActions, {
   confirmDeleteEntry,
+  highlightRegisterTableRow,
   toDateInputValue,
 } from "./register-row-actions";
 import {
@@ -537,6 +538,7 @@ export default function ExpenseRegister({
       return;
     }
     expenseIdFromQueryHandled.current = expenseId;
+    highlightRegisterTableRow(`expense-${expenseId}`);
     void openExpenseDetail(expenseId);
     router.replace("/dashboard/finance/expenses", { scroll: false });
   }, [searchParams, router]);
@@ -1618,6 +1620,7 @@ export default function ExpenseRegister({
                   return (
                     <tr
                       key={entry.id}
+                      id={`expense-${entry.id}`}
                       className={getRegisterRowClassName(index, systemLinked)}
                     >
                       <td className={scrollableTableRegisterDateCellClassName}>

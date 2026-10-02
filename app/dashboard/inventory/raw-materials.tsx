@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
 import RegisterRowActions, {
   confirmRawMaterialPurchaseDelete,
   confirmRawMaterialPurchaseEdit,
   getStripedRowClassName,
+  highlightRegisterTableRow,
 } from "../finance/register-row-actions";
 import {
   buildRawMaterialDeleteMessage,
@@ -138,6 +140,12 @@ export default function RawMaterials({
   tenantId = null,
 }: RawMaterialsProps) {
   const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawMaterialPurchaseIdFromQueryHandled = useRef<string | null>(null);
+  const expandPurchasesOnLoad = Boolean(
+    searchParams.get("rawMaterialPurchaseId")?.trim(),
+  );
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const { viewAllBusinessUnits } = useBusinessUnitView();
@@ -473,6 +481,23 @@ export default function RawMaterials({
     setEditingPurchaseId(null);
     setPurchaseEditForm(emptyPurchaseForm);
   }
+
+  useEffect(() => {
+    const purchaseId = searchParams.get("rawMaterialPurchaseId")?.trim();
+    if (
+      !purchaseId ||
+      rawMaterialPurchaseIdFromQueryHandled.current === purchaseId
+    ) {
+      return;
+    }
+    const purchase = purchases.find((row) => row.id === purchaseId);
+    if (!purchase) {
+      return;
+    }
+    rawMaterialPurchaseIdFromQueryHandled.current = purchaseId;
+    highlightRegisterTableRow(`raw-material-purchase-${purchaseId}`);
+    router.replace("/dashboard/inventory/raw-materials", { scroll: false });
+  }, [purchases, router, searchParams]);
 
   async function handlePurchaseEditSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -1487,6 +1512,7 @@ export default function RawMaterials({
         <InventoryCollapsibleHistorySection
           title="Purchases"
           count={purchases.length}
+          defaultExpanded={expandPurchasesOnLoad}
         >
           <FilteredListCount
             filteredCount={purchases.length}
@@ -1522,6 +1548,7 @@ export default function RawMaterials({
                   purchases.map((purchase, index) => (
                     <tr
                       key={purchase.id}
+                      id={`raw-material-purchase-${purchase.id}`}
                       className={getStripedRowClassName(index)}
                     >
                       <td className="px-4 py-3">{purchase.purchase_date}</td>

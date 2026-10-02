@@ -35,6 +35,7 @@ import { allocateAssetId } from "./asset-id-api";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
+  highlightRegisterTableRow,
   toDateInputValue,
 } from "./register-row-actions";
 import ScrollableTable, {
@@ -364,6 +365,7 @@ export default function FixedAssets({
       return;
     }
     assetIdFromQueryHandled.current = assetId;
+    highlightRegisterTableRow(`fixed-asset-${assetId}`);
     void openAssetDetail(assetId);
     router.replace("/dashboard/finance/fixed-assets", { scroll: false });
   }, [router, searchParams]);
@@ -1431,6 +1433,7 @@ export default function FixedAssets({
                   return (
                     <tr
                       key={asset.asset_id}
+                      id={`fixed-asset-${asset.asset_id}`}
                       className={getStripedRowClassName(index)}
                     >
                       <td className={scrollableTableRegisterIdCellClassName}>

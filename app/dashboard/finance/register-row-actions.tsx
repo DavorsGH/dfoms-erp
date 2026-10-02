@@ -6,6 +6,20 @@ import {
 export const registerTableActionsInnerClassName =
   "inline-flex flex-nowrap items-center gap-2";
 
+/** Scroll to a register row and briefly ring-highlight (deep links from 360 views). */
+export function highlightRegisterTableRow(rowElementId: string): boolean {
+  const row = document.getElementById(rowElementId);
+  if (!row) {
+    return false;
+  }
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  row.classList.add("ring-2", "ring-[#0f2744]");
+  window.setTimeout(() => {
+    row.classList.remove("ring-2", "ring-[#0f2744]");
+  }, 2500);
+  return true;
+}
+
 type RegisterRowActionsProps = {
   onEdit?: () => void;
   onDelete?: () => void;

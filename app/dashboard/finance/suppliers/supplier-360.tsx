@@ -1,19 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "@/app/dashboard/scrollable-table";
+import { WarningHint } from "@/components/feedback/warning-hint";
 import { formatSupplierStatus } from "@/utils/suppliers-types";
 import {
   getSupplier360Tabs,
   formatDate,
   formatDaysSinceLastActivity,
   formatGHS,
+  supplier360AccountsPayableViewHref,
+  supplier360ExpenseViewHref,
+  supplier360FixedAssetViewHref,
+  supplier360ProductPurchaseViewHref,
+  supplier360PurchaseOrderViewHref,
+  supplier360RawMaterialPurchaseViewHref,
+  supplier360SupplierContractViewHref,
   supplierStatusBadgeClassName,
   type Supplier360Data,
   type Supplier360SectionErrors,
@@ -83,6 +91,8 @@ export default function Supplier360({
   const combinedPurchases = useMemo(() => {
     const productRows = productPurchases.map((row) => ({
       key: `product-${row.id}`,
+      recordId: row.id,
+      purchaseKind: "product" as const,
       sortDate: row.purchase_date,
       kind: "Product" as const,
       label: row.product_label,
@@ -91,6 +101,8 @@ export default function Supplier360({
     }));
     const rawRows = rawMaterialPurchases.map((row) => ({
       key: `raw-${row.id}`,
+      recordId: row.id,
+      purchaseKind: "raw" as const,
       sortDate: row.purchase_date,
       kind: "Raw material" as const,
       label: row.material_label,
@@ -160,23 +172,50 @@ export default function Supplier360({
       </section>
 
       <section
-        className={`grid gap-4 sm:grid-cols-2 ${showFinanceDetails ? "xl:grid-cols-5" : "xl:grid-cols-2"}`}
+        className={`grid gap-4 sm:grid-cols-2 ${showFinanceDetails ? "xl:grid-cols-4" : "xl:grid-cols-2"}`}
       >
-        <SummaryCard label="Total Purchased" value={formatGHS(summary.totalPurchased)} />
-        {showFinanceDetails ? (
+        {showFinanceDetails && summary.kind === "finance" ? (
           <>
-            <SummaryCard label="Total Billed" value={formatGHS(summary.totalBilled)} />
-            <SummaryCard label="Total Paid" value={formatGHS(summary.totalPaid)} />
             <SummaryCard
-              label="Outstanding Payable"
-              value={formatGHS(summary.outstandingPayable)}
+              label={`Total Spent (${new Date().getFullYear()})`}
+              value={formatGHS(summary.totalSpentYtd)}
+              subline={`All time: ${formatGHS(summary.totalSpentAllTime)}`}
+            />
+            <SummaryCard
+              label="Outstanding"
+              value={formatGHS(summary.outstanding)}
+            />
+            <SummaryCard
+              label="Overdue"
+              value={formatGHS(summary.overdue)}
+              hint={
+                summary.overdue > 0 ? (
+                  <WarningHint
+                    tone="amber"
+                    title="Overdue payables"
+                    description="This is the unpaid balance on this supplier's bills whose due date has passed. Settle or reschedule in Accounts Payable."
+                    ariaLabel="Overdue supplier payables"
+                  />
+                ) : null
+              }
+            />
+            <SummaryCard
+              label="Last Activity"
+              value={formatDaysSinceLastActivity(summary.daysSinceLastActivity)}
+            />
+          </>
+        ) : summary.kind === "purchasing" ? (
+          <>
+            <SummaryCard
+              label="Total Purchased"
+              value={formatGHS(summary.totalPurchased)}
+            />
+            <SummaryCard
+              label="Last Activity"
+              value={formatDaysSinceLastActivity(summary.daysSinceLastActivity)}
             />
           </>
         ) : null}
-        <SummaryCard
-          label="Days Since Last Activity"
-          value={formatDaysSinceLastActivity(summary.daysSinceLastActivity)}
-        />
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -211,13 +250,14 @@ export default function Supplier360({
                     <th className={scrollableTableThClassName}>Item</th>
                     <th className={scrollableTableThClassName}>Reference</th>
                     <th className={scrollableTableThClassName}>Amount</th>
+                    <th className={scrollableTableThClassName} />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {combinedPurchases.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-4 py-6 text-center text-sm text-slate-500"
                       >
                         No purchases for this supplier yet.
@@ -231,6 +271,20 @@ export default function Supplier360({
                         <td className="px-4 py-3">{row.label}</td>
                         <td className="px-4 py-3">{row.detail}</td>
                         <td className="px-4 py-3">{formatGHS(row.amount)}</td>
+                        <td className="px-4 py-3">
+                          <Link
+                            href={
+                              row.purchaseKind === "product"
+                                ? supplier360ProductPurchaseViewHref(row.recordId)
+                                : supplier360RawMaterialPurchaseViewHref(
+                                    row.recordId,
+                                  )
+                            }
+                            className={recordLinkClassName}
+                          >
+                            View
+                          </Link>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -272,7 +326,7 @@ export default function Supplier360({
                         <td className="px-4 py-3">{formatGHS(row.total)}</td>
                         <td className="px-4 py-3">
                           <Link
-                            href={`/dashboard/inventory/purchase-orders/${row.id}`}
+                            href={supplier360PurchaseOrderViewHref(row.id)}
                             className={recordLinkClassName}
                           >
                             View
@@ -319,7 +373,7 @@ export default function Supplier360({
                         <td className="px-4 py-3">{formatGHS(row.balance_due)}</td>
                         <td className="px-4 py-3">
                           <Link
-                            href={`/dashboard/finance/accounts-payable?apId=${encodeURIComponent(row.id)}`}
+                            href={supplier360AccountsPayableViewHref(row.id)}
                             className={recordLinkClassName}
                           >
                             View
@@ -364,7 +418,7 @@ export default function Supplier360({
                         <td className="px-4 py-3">{formatGHS(row.amount)}</td>
                         <td className="px-4 py-3">
                           <Link
-                            href={`/dashboard/finance/expense-register?expenseId=${encodeURIComponent(row.id)}`}
+                            href={supplier360ExpenseViewHref(row.id)}
                             className={recordLinkClassName}
                           >
                             View
@@ -413,7 +467,7 @@ export default function Supplier360({
                         </td>
                         <td className="px-4 py-3">
                           <Link
-                            href={`/dashboard/finance/supplier-contracts/${row.id}`}
+                            href={supplier360SupplierContractViewHref(row.id)}
                             className={recordLinkClassName}
                           >
                             View
@@ -458,7 +512,7 @@ export default function Supplier360({
                         <td className="px-4 py-3">{formatGHS(row.total_cost)}</td>
                         <td className="px-4 py-3">
                           <Link
-                            href={`/dashboard/finance/fixed-assets?assetId=${encodeURIComponent(row.asset_id)}`}
+                            href={supplier360FixedAssetViewHref(row.asset_id)}
                             className={recordLinkClassName}
                           >
                             View
@@ -477,13 +531,29 @@ export default function Supplier360({
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({
+  label,
+  value,
+  subline,
+  hint,
+}: {
+  label: string;
+  value: string;
+  subline?: string;
+  hint?: ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
         {label}
       </p>
-      <p className="mt-2 text-xl font-semibold text-[#0f2744]">{value}</p>
+      <p className="mt-2 inline-flex items-center gap-2 text-xl font-semibold text-[#0f2744]">
+        {value}
+        {hint}
+      </p>
+      {subline ? (
+        <p className="mt-1 text-sm text-slate-600">{subline}</p>
+      ) : null}
     </div>
   );
 }

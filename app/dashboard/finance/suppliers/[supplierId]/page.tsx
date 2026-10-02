@@ -27,11 +27,14 @@ import {
   SUPPLIER_360_CONTRACT_SELECT,
   SUPPLIER_360_EXPENSE_SELECT,
   SUPPLIER_360_FIXED_ASSET_SELECT,
+  SUPPLIER_360_AP_PAYMENT_SELECT,
   SUPPLIER_360_PAYABLE_SELECT,
   SUPPLIER_360_PRODUCT_PURCHASE_SELECT,
   SUPPLIER_360_PURCHASE_ORDER_SELECT,
   SUPPLIER_360_RAW_MATERIAL_PURCHASE_SELECT,
-  computeSupplier360Summary,
+  computeSupplier360FinanceSummary,
+  computeSupplier360PurchasingSummary,
+  normalizeSupplier360ApPayment,
   normalizeSupplier360Contract,
   normalizeSupplier360Expense,
   normalizeSupplier360FixedAsset,
@@ -44,8 +47,10 @@ import {
   type Supplier360Contract,
   type Supplier360Expense,
   type Supplier360FixedAsset,
+  type Supplier360ApPayment,
   type Supplier360Payable,
   type Supplier360SectionErrors,
+  type Supplier360Summary,
 } from "../supplier-360-utils";
 
 type SupplierDetailPageProps = {
@@ -196,6 +201,24 @@ export default async function SupplierDetailPage({
     fixedAssetsError = financeResults[3].error;
   }
 
+  let apPayments: Supplier360ApPayment[] = [];
+  if (showFinanceDetails && payables.length > 0) {
+    const payableIds = payables.map((row) => row.id);
+    const { data: apPaymentRows, error: apPaymentsError } = await supabase
+      .from("accounts_payable_payments")
+      .select(SUPPLIER_360_AP_PAYMENT_SELECT)
+      .eq("tenant_id", tenantId)
+      .in("accounts_payable_id", payableIds);
+
+    apPayments = (
+      (apPaymentRows as Record<string, unknown>[] | null) ?? []
+    ).map((row) => normalizeSupplier360ApPayment(row));
+
+    if (apPaymentsError?.message) {
+      payablesError = payablesError ?? apPaymentsError;
+    }
+  }
+
   const normalizedProductPurchases = (
     (productPurchases as Record<string, unknown>[] | null) ?? []
   ).map((row) => normalizeSupplier360ProductPurchase(row));
@@ -210,11 +233,10 @@ export default async function SupplierDetailPage({
     (purchaseOrders as Record<string, unknown>[] | null) ?? []
   ).map((row) => normalizeSupplier360PurchaseOrder(row));
 
-  const summary = computeSupplier360Summary({
-    productPurchases: normalizedProductPurchases,
-    rawMaterialPurchases: normalizedRawMaterialPurchases,
-    payables: showFinanceDetails ? payables : [],
-    productPurchaseDates: normalizedProductPurchases.map((row) => row.purchase_date),
+  const activityDates = {
+    productPurchaseDates: normalizedProductPurchases.map(
+      (row) => row.purchase_date,
+    ),
     rawMaterialPurchaseDates: normalizedRawMaterialPurchases.map(
       (row) => row.purchase_date,
     ),
@@ -230,7 +252,31 @@ export default async function SupplierDetailPage({
           .map((row) => row.purchase_date)
           .filter((value): value is string => Boolean(value))
       : [],
-  });
+  };
+
+  const summary: Supplier360Summary = showFinanceDetails
+    ? {
+        kind: "finance",
+        ...computeSupplier360FinanceSummary({
+          productPurchases: normalizedProductPurchases,
+          rawMaterialPurchases: normalizedRawMaterialPurchases,
+          fixedAssets,
+          payables,
+          apPayments,
+          expenses,
+          ...activityDates,
+        }),
+      }
+    : {
+        kind: "purchasing",
+        ...computeSupplier360PurchasingSummary({
+          productPurchases: normalizedProductPurchases,
+          rawMaterialPurchases: normalizedRawMaterialPurchases,
+          productPurchaseDates: activityDates.productPurchaseDates,
+          rawMaterialPurchaseDates: activityDates.rawMaterialPurchaseDates,
+          purchaseOrderDates: activityDates.purchaseOrderDates,
+        }),
+      };
 
   const purchasesQueryError =
     productPurchasesError?.message ?? rawMaterialPurchasesError?.message ?? null;
