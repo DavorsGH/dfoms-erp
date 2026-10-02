@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRefetchOnWindowFocus } from "@/hooks/use-refetch-on-window-focus";
 import ScrollableTable, {
@@ -13,7 +13,14 @@ import {
   buildLeaveEmployeeNameLookup,
   formatLeaveEmployeeLabel,
 } from "../self-service/leave-employee-display";
-import type { LeaveRequest } from "../self-service/leave-request-utils";
+import {
+  buildLeaveBalanceLookup,
+  LeaveExceedsBalanceHint,
+} from "../self-service/leave-exceeds-balance-hint";
+import type {
+  EmployeeLeaveBalance,
+  LeaveRequest,
+} from "../self-service/leave-request-utils";
 
 type LeaveApprovalsProps = {
   approverAuthUid: string | null;
@@ -38,6 +45,49 @@ export default function LeaveApprovals({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
+  const [balanceLookup, setBalanceLookup] = useState(
+    () => new Map<string, EmployeeLeaveBalance>(),
+  );
+
+  const loadBalancesForRequests = useCallback(
+    async (requestList: LeaveRequest[]) => {
+      const employeeIds = [
+        ...new Set(requestList.map((request) => request.employee_id)),
+      ];
+      if (employeeIds.length === 0) {
+        setBalanceLookup(new Map());
+        return;
+      }
+
+      const years = [
+        ...new Set(
+          requestList.map((request) =>
+            new Date(request.start_date).getFullYear(),
+          ),
+        ),
+      ];
+
+      const { data: balanceRows, error: balancesError } = await supabase
+        .from("employee_leave_balances")
+        .select("*, leave_types(type_name)")
+        .in("employee_id", employeeIds)
+        .in("year", years);
+
+      if (balancesError) {
+        setError(balancesError.message);
+        return;
+      }
+
+      setBalanceLookup(
+        buildLeaveBalanceLookup((balanceRows as EmployeeLeaveBalance[] | null) ?? []),
+      );
+    },
+    [supabase],
+  );
+
+  useEffect(() => {
+    void loadBalancesForRequests(initialRequests);
+  }, [initialRequests, loadBalancesForRequests]);
 
   const refreshRequests = useCallback(async () => {
     let query = supabase
@@ -84,7 +134,8 @@ export default function LeaveApprovals({
     }
 
     setEmployeeNames(buildLeaveEmployeeNameLookup(employeeRows ?? []));
-  }, [approverAuthUid, supabase, tenantId]);
+    await loadBalancesForRequests(nextRequests);
+  }, [approverAuthUid, loadBalancesForRequests, supabase, tenantId]);
 
   useRefetchOnWindowFocus(refreshRequests);
 
@@ -187,8 +238,19 @@ export default function LeaveApprovals({
                     {formatDate(request.end_date)}
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">
-                    {request.days_requested}
-                    {request.exceeds_balance ? " ⚠" : ""}
+                    <span className="inline-flex items-center">
+                      {request.days_requested}
+                      {request.exceeds_balance ? (
+                        <LeaveExceedsBalanceHint
+                          request={request}
+                          employeeLabel={
+                            employeeNames[request.employee_id]?.trim() ||
+                            request.employee_id
+                          }
+                          balanceLookup={balanceLookup}
+                        />
+                      ) : null}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">
                     {request.reason ?? "—"}

@@ -13,9 +13,11 @@ import RegisterRowActions, {
   toDateInputValue,
 } from "../finance/register-row-actions";
 import ScrollableTable, {
+  scrollableTableBodyCellClassNameForHeading,
   scrollableTableClassName,
   scrollableTableHeadClassName,
-  scrollableTableThClassName,
+  scrollableTableHeadingClassName,
+  scrollableTableRegisterDateCellClassName,
 } from "../scrollable-table";
 import {
   SALARY_RATE_EMPLOYMENT_TYPES,
@@ -348,12 +350,24 @@ export default function SalaryRates({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Position</th>
-              <th className={scrollableTableThClassName}>Employment Type</th>
-              <th className={scrollableTableThClassName}>Shift</th>
-              <th className={scrollableTableThClassName}>Basic Salary</th>
-              <th className={scrollableTableThClassName}>Effective Date</th>
-              <th className={scrollableTableThClassName}>Actions</th>
+              <th className={scrollableTableHeadingClassName("Position")}>
+                Position
+              </th>
+              <th className={scrollableTableHeadingClassName("Employment Type")}>
+                Employment Type
+              </th>
+              <th className={scrollableTableHeadingClassName("Shift")}>
+                Shift
+              </th>
+              <th className={scrollableTableHeadingClassName("Basic Salary")}>
+                Basic Salary
+              </th>
+              <th className={scrollableTableRegisterDateCellClassName}>
+                Effective Date
+              </th>
+              <th className={scrollableTableHeadingClassName("Actions")}>
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -369,11 +383,29 @@ export default function SalaryRates({
             ) : (
               rates.map((rate, index) => (
                 <tr key={rate.id} className={getStripedRowClassName(index)}>
-                  <td className="px-4 py-3">{rate.position}</td>
-                  <td className="px-4 py-3">{rate.employment_type}</td>
-                  <td className="px-4 py-3">{rate.shift}</td>
-                  <td className="px-4 py-3">{formatGHS(rate.basic_salary)}</td>
-                  <td className="px-4 py-3">{formatDate(rate.effective_date)}</td>
+                  <td className={scrollableTableBodyCellClassNameForHeading("Position")}>
+                    {rate.position}
+                  </td>
+                  <td
+                    className={scrollableTableBodyCellClassNameForHeading(
+                      "Employment Type",
+                    )}
+                  >
+                    {rate.employment_type}
+                  </td>
+                  <td className={scrollableTableBodyCellClassNameForHeading("Shift")}>
+                    {rate.shift}
+                  </td>
+                  <td
+                    className={scrollableTableBodyCellClassNameForHeading(
+                      "Basic Salary",
+                    )}
+                  >
+                    {formatGHS(rate.basic_salary)}
+                  </td>
+                  <td className={scrollableTableRegisterDateCellClassName}>
+                    {formatDate(rate.effective_date)}
+                  </td>
                   <RegisterRowActions
                     onEdit={() => openEditForm(rate)}
                     onDelete={() => handleDelete(rate.id)}

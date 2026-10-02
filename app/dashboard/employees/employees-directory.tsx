@@ -17,6 +17,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
   scrollableTableStickyFirstTdClassName,
   scrollableTableStickyFirstThClassName,
+  scrollableTableWrapTdClassName,
 } from "../scrollable-table";
 import EmployeeRowActions from "./employee-row-actions";
 import {
@@ -2022,10 +2023,10 @@ export default function EmployeesDirectory({
                               <td className="px-4 py-3">
                                 {entry.employee_status}
                               </td>
-                              <td className="max-w-[12rem] truncate px-4 py-3">
+                              <td className={scrollableTableWrapTdClassName}>
                                 {entry.change_reason ?? "—"}
                               </td>
-                              <td className="max-w-[10rem] truncate px-4 py-3">
+                              <td className={scrollableTableWrapTdClassName}>
                                 {entry.changed_by ?? "—"}
                               </td>
                             </tr>

@@ -13,6 +13,10 @@ import {
   formatDate,
   inputClassName,
 } from "../hr-payroll/hr-register-utils";
+import {
+  buildLeaveBalanceLookup,
+  LeaveExceedsBalanceHint,
+} from "./leave-exceeds-balance-hint";
 import type {
   EmployeeLeaveBalance,
   LeaveRequest,
@@ -64,6 +68,11 @@ export default function MyLeave({
     selectedBalance != null &&
     calculatedDays > 0 &&
     calculatedDays > Number(selectedBalance.days_remaining);
+
+  const balanceLookup = useMemo(
+    () => buildLeaveBalanceLookup(balances),
+    [balances],
+  );
 
   const refreshData = useCallback(async () => {
     const [{ data: balanceRows }, { data: requestRows }] = await Promise.all([
@@ -374,8 +383,16 @@ export default function MyLeave({
                       {formatDate(request.end_date)}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">
-                      {request.days_requested}
-                      {request.exceeds_balance ? " ⚠" : ""}
+                      <span className="inline-flex items-center">
+                        {request.days_requested}
+                        {request.exceeds_balance ? (
+                          <LeaveExceedsBalanceHint
+                            request={request}
+                            employeeLabel="You"
+                            balanceLookup={balanceLookup}
+                          />
+                        ) : null}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {request.status}

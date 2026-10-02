@@ -23,7 +23,7 @@ export function RegisterRecordNameLink({
     <button
       type="button"
       onClick={handleClick}
-      className={`min-w-0 max-w-full cursor-pointer text-left font-medium text-sky-800 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${className}`}
+      className={`min-w-0 max-w-full cursor-pointer whitespace-normal text-left font-medium text-sky-800 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${className}`}
     >
       {children}
     </button>

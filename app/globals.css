@@ -43,6 +43,10 @@ body {
   --st-edge-col-2-width: 9.5rem;
   /* Set from ScrollableTable ResizeObserver (actual column 1 header width). */
   --st-edge-col-1-offset: var(--st-edge-col-1-width);
+  --st-edge-identifying-min: 11.25rem;
+  --st-edge-identifying-max: 14rem;
+  --st-edge-identifying-line-height: 1.375rem;
+  --st-edge-identifying-max-height: 2.75rem;
 }
 
 /* All register headers pin to the top of the scroll host (vertical scroll). */
@@ -111,9 +115,9 @@ body {
   position: sticky;
   left: 0;
   z-index: 12;
-  width: var(--st-edge-col-2-width) !important;
-  min-width: var(--st-edge-col-2-width) !important;
-  max-width: var(--st-edge-col-2-width) !important;
+  width: auto !important;
+  min-width: var(--st-edge-identifying-min) !important;
+  max-width: var(--st-edge-identifying-max) !important;
   box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
   background-color: #ffffff;
 }
@@ -148,9 +152,6 @@ body {
   position: sticky;
   left: 0;
   z-index: 12;
-  width: var(--st-edge-col-1-width);
-  min-width: var(--st-edge-col-1-width);
-  max-width: var(--st-edge-col-1-width);
   background-color: #ffffff;
   box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
 }
@@ -167,20 +168,18 @@ body {
   position: sticky;
   left: var(--st-edge-col-1-offset, var(--st-edge-col-1-width));
   z-index: 11;
-  width: var(--st-edge-col-2-width);
-  min-width: var(--st-edge-col-2-width);
-  max-width: var(--st-edge-col-2-width);
   background-color: #ffffff;
   box-shadow: 2px 0 4px -2px rgba(15, 39, 68, 0.12);
 }
 
 .scrollable-table-host--register-name-category {
-  --st-edge-col-2-width: 14rem;
+  --st-edge-identifying-max: 16rem;
 }
 
 .scrollable-table-host--register-name-category table thead th:nth-child(3):not([colspan]),
 .scrollable-table-host--register-name-category table tbody td:nth-child(3):not([colspan]) {
-  min-width: 13rem;
+  min-width: 10rem;
+  max-width: 14rem;
 }
 
 .scrollable-table-host--sticky-edges table thead th:nth-child(1),
@@ -199,38 +198,96 @@ body {
 }
 
 /**
- * ScrollableTable text overflow — sticky edge columns have fixed max-widths but
- * previously allowed visible overflow into the next column (whitespace-nowrap on
- * the table). Truncate with ellipsis; full value is surfaced via title in
- * ScrollableTable when clipped.
+ * Identifying columns (position, name, company, employee, vendor on date-first
+ * registers): min ~180px, grow to content up to ~224px, wrap up to two lines;
+ * overflow clipped with full value via ScrollableTable title sync.
  */
-.scrollable-table-host--sticky-edges table thead th:nth-child(1):not(.scrollable-table-cell--wrap):not(.scrollable-table-cell--no-truncate),
-.scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]):not(.scrollable-table-cell--wrap):not(.scrollable-table-cell--no-truncate),
-.scrollable-table-host--sticky-edges table thead th:nth-child(2),
-.scrollable-table-host--sticky-edges table tbody td:nth-child(2):not([colspan]) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.scrollable-table-cell--identifying,
+.scrollable-table-host--sticky-edges table thead th:nth-child(1):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--wrap),
+.scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--wrap),
+.scrollable-table-host--sticky-edges
+  table:has(thead th:nth-child(1).scrollable-table-cell--no-truncate)
+  thead
+  th:nth-child(2),
+.scrollable-table-host--sticky-edges
+  table:has(thead th:nth-child(1).scrollable-table-cell--no-truncate)
+  tbody
+  td:nth-child(2):not([colspan]),
+.scrollable-table-host--sticky-edges
+  table:has(
+    thead
+      th:nth-child(1):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--wrap)
+  )
+  thead
+  th:nth-child(2),
+.scrollable-table-host--sticky-edges
+  table:has(
+    thead
+      th:nth-child(1):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--wrap)
+  )
+  tbody
+  td:nth-child(2):not([colspan]) {
+  width: auto !important;
+  min-width: var(--st-edge-identifying-min) !important;
+  max-width: var(--st-edge-identifying-max) !important;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow: hidden !important;
+  vertical-align: top;
+  line-height: var(--st-edge-identifying-line-height);
+  max-height: var(--st-edge-identifying-max-height);
 }
 
-/* Clip block/flex children inside sticky edge cells (e.g. Customer Name link row). */
-.scrollable-table-host--sticky-edges table tbody td:nth-child(1):not(.scrollable-table-cell--wrap):not(.scrollable-table-cell--no-truncate) > *,
-.scrollable-table-host--sticky-edges table tbody td:nth-child(2):not(.scrollable-table-cell--wrap) > * {
+.scrollable-table-host--sticky-edges table tbody td.scrollable-table-cell--identifying > *,
+.scrollable-table-host--sticky-edges
+  table
+  tbody
+  td:nth-child(1):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--wrap)
+  > *,
+.scrollable-table-host--sticky-edges
+  table:has(thead th:nth-child(1).scrollable-table-cell--no-truncate)
+  tbody
+  td:nth-child(2):not([colspan])
+  > *,
+.scrollable-table-host--sticky-edges
+  table:has(
+    thead
+      th:nth-child(1):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--wrap)
+  )
+  tbody
+  td:nth-child(2):not([colspan])
+  > * {
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
 }
 
 /*
- * Long free-text body cells (cols 3+ on sticky tables, all non-edge cols elsewhere).
- * Exclude sticky edge cols 1–2 so their width caps are never overridden by 18rem.
+ * Long free-text body cells (cols 3+). Edge cols 1–2 use identifying rules above.
  */
-.scrollable-table-host--sticky-edges table tbody td:not([colspan]):not(.scrollable-table-cell--wrap):not(.scrollable-table-cell--no-truncate):not(:last-child):not(:nth-child(1)):not(:nth-child(2)) {
-  max-width: 18rem;
+.scrollable-table-host--sticky-edges table tbody td:not([colspan]):not(.scrollable-table-cell--wrap):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--compact):not(:last-child):not(:nth-child(1)):not(:nth-child(2)) {
+  max-width: 14rem;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scrollable-table-host--sticky-edges table thead th.scrollable-table-cell--compact,
+.scrollable-table-host--sticky-edges table tbody td.scrollable-table-cell--compact:not([colspan]) {
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.scrollable-table-host--sticky-edges table thead th:last-child,
+.scrollable-table-host--sticky-edges table tbody td:last-child:not([colspan]) {
+  width: 1%;
+  max-width: none;
   white-space: nowrap;
 }
 

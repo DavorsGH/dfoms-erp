@@ -7,9 +7,11 @@ import { parseApiErrorResponse } from "@/utils/parse-api-error";
 import type { Employee } from "../lookup-types";
 import { getRoleLabel } from "../role-labels";
 import ScrollableTable, {
+  scrollableTableBodyCellClassNameForHeading,
   scrollableTableClassName,
+  scrollableTableCompactCellClassName,
   scrollableTableHeadClassName,
-  scrollableTableThClassName,
+  scrollableTableHeadingClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
 import type {
@@ -671,12 +673,16 @@ export default function UserAccounts({
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
-              <th className={scrollableTableThClassName}>Name</th>
-              <th className={scrollableTableThClassName}>Email</th>
-              <th className={scrollableTableThClassName}>Role</th>
-              <th className={scrollableTableThClassName}>Role Links</th>
-              <th className={scrollableTableThClassName}>Active</th>
-              <th className={`${scrollableTableThClassName} w-[1%] whitespace-nowrap`}>
+              <th className={scrollableTableHeadingClassName("Name")}>Name</th>
+              <th className={scrollableTableHeadingClassName("Email")}>Email</th>
+              <th className={scrollableTableHeadingClassName("Role")}>Role</th>
+              <th className={scrollableTableHeadingClassName("Role Links")}>
+                Role Links
+              </th>
+              <th className={scrollableTableHeadingClassName("Active")}>
+                Active
+              </th>
+              <th className={scrollableTableHeadingClassName("Actions")}>
                 Actions
               </th>
             </tr>
@@ -701,18 +707,30 @@ export default function UserAccounts({
                         : "text-slate-700"
                     }
                   >
-                    <td className="px-4 py-3">{account.full_name}</td>
-                    <td className="px-4 py-3">{account.email}</td>
-                    <td className="px-4 py-3">
+                    <td className={scrollableTableBodyCellClassNameForHeading("Name")}>
+                      {account.full_name}
+                    </td>
+                    <td className={scrollableTableBodyCellClassNameForHeading("Email")}>
+                      {account.email}
+                    </td>
+                    <td
+                      className={scrollableTableBodyCellClassNameForHeading("Role")}
+                    >
                       {getRoleLabel(account.role)}
                     </td>
-                    <td className="px-4 py-3 text-sm">
+                    <td
+                      className={`${scrollableTableBodyCellClassNameForHeading("Role Links")} text-sm`}
+                    >
                       {formatRoleLinks(account, initialSites)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td
+                      className={`${scrollableTableBodyCellClassNameForHeading("Active")} ${scrollableTableCompactCellClassName}`}
+                    >
                       {account.is_active ? "Yes" : "No"}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td
+                      className={`${scrollableTableBodyCellClassNameForHeading("Actions")} whitespace-nowrap ${scrollableTableCompactCellClassName}`}
+                    >
                       <div className="inline-flex flex-nowrap items-center gap-1.5">
                         <button
                           type="button"

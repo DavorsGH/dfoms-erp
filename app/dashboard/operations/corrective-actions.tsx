@@ -31,6 +31,7 @@ import {
   type HrEmployee,
 } from "../hr-payroll/employee-utils";
 import { formatDate, inputClassName } from "../hr-payroll/hr-register-utils";
+import { WarningHint } from "@/components/feedback/warning-hint";
 import type { ClientEntry } from "./clients-utils";
 import {
   CORRECTIVE_ACTION_SELECT,
@@ -638,9 +639,12 @@ export default function CorrectiveActions({
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-2">
                         {overdue ? (
-                          <span aria-hidden className="text-red-600" title="Overdue">
-                            ⚠
-                          </span>
+                          <WarningHint
+                            tone="red"
+                            title="Overdue corrective action"
+                            description={`This action is not completed and the target date (${entry.target_date ? formatDate(entry.target_date) : "—"}) has passed. Update the status or adjust the target date.`}
+                            ariaLabel="Overdue corrective action"
+                          />
                         ) : null}
                         {formatDate(entry.date_raised)}
                       </span>

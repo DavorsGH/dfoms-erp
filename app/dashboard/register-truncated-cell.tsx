@@ -18,7 +18,7 @@ type TruncatedCellProps = {
 };
 
 /**
- * Single-line ellipsis with full text on hover (desktop) or tap (mobile) only when clipped.
+ * Up to two lines, then ellipsis; full text on hover (desktop) or tap (mobile) when clipped.
  */
 export default function TruncatedCell({
   children,
@@ -34,7 +34,10 @@ export default function TruncatedCell({
       setIsTruncated(false);
       return;
     }
-    setIsTruncated(el.scrollWidth > el.clientWidth + 1);
+    setIsTruncated(
+      el.scrollWidth > el.clientWidth + 1 ||
+        el.scrollHeight > el.clientHeight + 1,
+    );
   }, []);
 
   useLayoutEffect(() => {
@@ -76,7 +79,7 @@ export default function TruncatedCell({
     >
       <span
         ref={textRef}
-        className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+        className="block min-w-0 overflow-hidden text-ellipsis whitespace-normal [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [line-clamp:2]"
         title={isTruncated && plainText ? plainText : undefined}
         onClick={() => {
           if (isTruncated) {

@@ -31,6 +31,14 @@ export const scrollableTableHostRegisterNameCategoryClassName =
 /** Marks cells that should wrap instead of single-line truncation. */
 export const scrollableTableWrapCellClassName = "scrollable-table-cell--wrap";
 
+/** Primary label column — pairs with globals.css identifying rules (wrap / 2-line cap). */
+export const scrollableTableIdentifyingCellClassName =
+  "scrollable-table-cell--identifying";
+
+/** Dates, amounts, status codes, short enums — stay on one line, shrink to content. */
+export const scrollableTableCompactCellClassName =
+  "scrollable-table-cell--compact";
+
 /** Opt out of register table body ellipsis (IDs, dates, numeric codes). */
 export const scrollableTableNoTruncateCellClassName =
   "scrollable-table-cell--no-truncate";
@@ -123,22 +131,21 @@ export const scrollableTableWrapThClassName =
 export const scrollableTableWrapTdClassName =
   `max-w-md px-4 py-3 whitespace-normal break-words align-top ${scrollableTableWrapCellClassName}`;
 
-/** Width hint for column-2 name cells (globals.css caps sticky edge columns). */
-export const scrollableTableStickyFirstColumnWidthClassName =
-  "min-w-0 max-w-[10rem]";
+export const scrollableTableIdentifyingThClassName =
+  `${scrollableTableThClassName} ${scrollableTableIdentifyingCellClassName}`;
+
+export const scrollableTableIdentifyingTdClassName =
+  `px-4 py-3 align-top ${scrollableTableIdentifyingCellClassName}`;
 
 /** Sticky col 2 on finance registers with {@link scrollableTableHostRegisterNameCategoryClassName}. */
-export const scrollableTableRegisterStickyNameWidthClassName = "min-w-0";
-
 export const scrollableTableRegisterStickyNameThClassName =
-  `${scrollableTableWrapThClassName} ${scrollableTableRegisterStickyNameWidthClassName}`;
+  `${scrollableTableWrapThClassName} ${scrollableTableIdentifyingCellClassName}`;
 
 export function scrollableTableRegisterStickyNameWrapTdClassName(
   options?: ScrollableTableStickyFirstCellOptions,
 ): string {
   return [
-    "px-4 py-3 truncate align-top",
-    scrollableTableRegisterStickyNameWidthClassName,
+    scrollableTableIdentifyingTdClassName,
     scrollableTableStickyFirstCellBackground(options),
   ].join(" ");
 }
@@ -151,11 +158,11 @@ export const scrollableTableRegisterCategoryThClassName =
 
 /** Second-column header (name/label). Sticky position comes from globals.css edge rules. */
 export const scrollableTableStickyFirstThClassName =
-  `${scrollableTableThClassName} ${scrollableTableStickyFirstColumnWidthClassName}`;
+  scrollableTableIdentifyingThClassName;
 
 /** Second-column header when the column wraps long text. */
 export const scrollableTableStickyFirstWrapThClassName =
-  `${scrollableTableWrapThClassName} ${scrollableTableStickyFirstColumnWidthClassName}`;
+  `${scrollableTableWrapThClassName} ${scrollableTableIdentifyingCellClassName}`;
 
 type ScrollableTableStickyFirstCellOptions = {
   /** Match alternating row shading (odd index = slate-50). */
@@ -168,13 +175,12 @@ function scrollableTableStickyFirstCellBackground(
   return options?.striped ? "bg-slate-50" : "bg-white";
 }
 
-/** Second-column body cell for name/label text (truncated via sticky-edge CSS). */
+/** Second-column body cell for name/label text. */
 export function scrollableTableStickyFirstWrapTdClassName(
   options?: ScrollableTableStickyFirstCellOptions,
 ): string {
   return [
-    "px-4 py-3 truncate align-top",
-    scrollableTableStickyFirstColumnWidthClassName,
+    scrollableTableIdentifyingTdClassName,
     scrollableTableStickyFirstCellBackground(options),
   ].join(" ");
 }
@@ -184,8 +190,7 @@ export function scrollableTableStickyFirstTdClassName(
   options?: ScrollableTableStickyFirstCellOptions,
 ): string {
   return [
-    "px-4 py-3 truncate align-top",
-    scrollableTableStickyFirstColumnWidthClassName,
+    scrollableTableIdentifyingTdClassName,
     scrollableTableStickyFirstCellBackground(options),
   ].join(" ");
 }
@@ -206,13 +211,52 @@ const LONG_TEXT_TABLE_HEADINGS = new Set([
   "Problem Description",
 ]);
 
+const COMPACT_TABLE_HEADINGS = new Set([
+  "Actions",
+  "Active",
+  "Amount",
+  "Basic Salary",
+  "Days",
+  "Effective Date",
+  "Employment Type",
+  "Qty",
+  "Quantity",
+  "Role",
+  "Shift",
+  "Status",
+  "Type",
+]);
+
 export function scrollableTableHeadingClassName(heading: string): string {
-  return LONG_TEXT_TABLE_HEADINGS.has(heading)
-    ? scrollableTableWrapThClassName
-    : scrollableTableThClassName;
+  if (LONG_TEXT_TABLE_HEADINGS.has(heading)) {
+    return scrollableTableWrapThClassName;
+  }
+  if (COMPACT_TABLE_HEADINGS.has(heading)) {
+    return `${scrollableTableThClassName} ${scrollableTableCompactCellClassName}`;
+  }
+  return scrollableTableThClassName;
+}
+
+export function scrollableTableBodyCellClassNameForHeading(
+  heading: string,
+): string {
+  if (LONG_TEXT_TABLE_HEADINGS.has(heading)) {
+    return scrollableTableWrapTdClassName;
+  }
+  if (COMPACT_TABLE_HEADINGS.has(heading)) {
+    return `px-4 py-3 ${scrollableTableCompactCellClassName}`;
+  }
+  return "px-4 py-3";
 }
 
 export const scrollableTableBodyClassName = "divide-y divide-slate-200";
+
+function cellContentIsClipped(cell: HTMLElement): boolean {
+  return (
+    cell.scrollWidth > cell.clientWidth + 1 ||
+    cell.scrollHeight > cell.clientHeight + 1
+  );
+}
 
 function syncScrollableTableOverflowTitles(host: HTMLElement) {
   host
@@ -236,6 +280,11 @@ function syncScrollableTableOverflowTitles(host: HTMLElement) {
         return;
       }
 
+      if (cell.classList.contains(scrollableTableCompactCellClassName)) {
+        cell.removeAttribute("title");
+        return;
+      }
+
       if (
         cell.matches(":last-child") &&
         cell.querySelector("button, a[role='button']")
@@ -244,7 +293,7 @@ function syncScrollableTableOverflowTitles(host: HTMLElement) {
         return;
       }
 
-      if (cell.scrollWidth > cell.clientWidth + 1) {
+      if (cellContentIsClipped(cell)) {
         const text = cell.textContent?.replace(/\s+/g, " ").trim();
         if (text && text !== "—") {
           cell.title = text;

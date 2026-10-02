@@ -17,6 +17,7 @@ import ScrollableTable, {
   scrollableTableWrapThClassName,
 } from "../scrollable-table";
 import FilteredListCount from "../filtered-list-count";
+import { WarningHint } from "@/components/feedback/warning-hint";
 import {
   getEmployeeDisplayName,
   type HrEmployee,
@@ -576,9 +577,12 @@ export default function FailedInspections({
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-2">
                         {overdue ? (
-                          <span aria-hidden className="text-red-600" title="Overdue">
-                            ⚠
-                          </span>
+                          <WarningHint
+                            tone="red"
+                            title="Overdue failed inspection"
+                            description={`This item is not marked complete and the target date (${entry.target_date ? formatDate(entry.target_date) : "—"}) has passed. Update progress or close it when resolved.`}
+                            ariaLabel="Overdue failed inspection"
+                          />
                         ) : null}
                         {formatDate(entry.date_identified)}
                       </span>

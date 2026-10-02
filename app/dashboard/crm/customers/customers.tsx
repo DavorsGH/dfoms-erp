@@ -27,6 +27,7 @@ import {
   nullableText,
 } from "../../operations/operations-register-utils";
 import { getCustomerDeleteErrorMessage } from "@/utils/customer-delete-errors";
+import { WarningHint } from "@/components/feedback/warning-hint";
 import {
   CUSTOMER_RECORD_TYPE_OPTIONS,
   CUSTOMER_STATUS_OPTIONS,
@@ -711,17 +712,22 @@ export default function Customers({
                   <td className="px-4 py-3 font-medium text-[#0f2744]">
                     <span className="inline-flex items-center gap-2">
                       {showOperationsColumns && renewalDue ? (
-                        <span
-                          aria-hidden
-                          className={expired ? "text-red-600" : "text-amber-600"}
+                        <WarningHint
+                          tone={expired ? "red" : "amber"}
                           title={
+                            expired ? "Contract expired" : "Contract ending soon"
+                          }
+                          description={
+                            expired
+                              ? `This customer's contract ended on ${customer.contract_end ? formatDate(customer.contract_end) : "—"}. Renew or update the contract status.`
+                              : `This customer's contract ends on ${customer.contract_end ? formatDate(customer.contract_end) : "—"} (within the next 30 days). Plan renewal before service coverage lapses.`
+                          }
+                          ariaLabel={
                             expired
                               ? "Contract expired — renewal needed"
                               : "Contract ending within 30 days"
                           }
-                        >
-                          ⚠
-                        </span>
+                        />
                       ) : null}
                       <Link
                         href={`/dashboard/crm/customers/${customer.client_id}`}
