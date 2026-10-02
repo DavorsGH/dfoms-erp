@@ -815,6 +815,17 @@ game.
     passed. This matches what you see on the Statutory Ledger overview
     and on your Dashboard reminders.
 
+-   **Automatic statutory reminders (Phase 2)** --- when **Reminders** are
+    enabled in Statutory Ledger → Settings, a daily job (08:00 Ghana
+    time) notifies active **Super Admins, Finance users, and Directors**
+    for each unremitted period that hits a reminder milestone: **3, 2, and
+    1 days before** the calculated due date, **on the due date**, and
+    **one day after** if still unremitted. Each milestone fires at most
+    once per person and channel (in-app notification and SMS where the
+    user has a valid phone and SMS credits apply). Due dates use the same
+    per-period rules as the ledger --- not the legacy next-due fields.
+    After you **Mark Period as Remitted**, reminders stop for that period.
+
 -   **Mark Period as Remitted** --- once you have actually paid GRA or
     SSNIT for a period, mark it as remitted; the ledger clears that
     balance for that period. If you need to reverse a remittance, use
