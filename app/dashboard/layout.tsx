@@ -80,6 +80,7 @@ async function DashboardLayoutInner({
         userFullName={shell.displayInfo.fullName ?? shell.displayInfo.email}
         tenantId={shell.account?.tenant_id ?? null}
         authUid={shell.authUser?.id ?? null}
+        linkedEmployeeId={shell.account?.employee_id ?? null}
         businessUnitSwitcher={shell.businessUnitSwitcher}
       >
         {children}

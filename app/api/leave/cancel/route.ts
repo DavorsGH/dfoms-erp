@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { requireRoleIn } from "@/utils/admin-auth";
+import { requireLinkedEmployeeAccount } from "@/utils/admin-auth";
 import { createClient } from "@/utils/supabase/server";
-import { SELF_SERVICE_SECTION_ROLES } from "@/utils/rbac-access";
 
 type CancelLeaveBody = {
   request_id?: string;
 };
 
 export async function POST(request: Request) {
-  const auth = await requireRoleIn(SELF_SERVICE_SECTION_ROLES);
+  const auth = await requireLinkedEmployeeAccount();
   if (!auth.ok) {
     return auth.response;
   }

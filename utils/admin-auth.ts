@@ -16,6 +16,53 @@ export type TenantSuperAdminResult =
   | { ok: true; tenantId: string }
   | { ok: false; response: NextResponse };
 
+export type LinkedEmployeeAuthResult =
+  | { ok: true; employeeId: string }
+  | { ok: false; response: NextResponse };
+
+export async function requireLinkedEmployeeAccount(): Promise<LinkedEmployeeAuthResult> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  const { data: account } = await supabase
+    .from("user_accounts")
+    .select("role, employee_id, is_active")
+    .eq("auth_uid", user.id)
+    .maybeSingle();
+
+  const employeeId = account?.employee_id?.trim() ?? "";
+  if (
+    !account ||
+    account.is_active === false ||
+    account.role === "client" ||
+    !employeeId
+  ) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            "Your user account is not linked to an employee record. Contact HR or your administrator.",
+        },
+        { status: 403 },
+      ),
+    };
+  }
+
+  return { ok: true, employeeId };
+}
+
 export async function requireRoleIn(roles: readonly string[]): Promise<AuthResult> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);

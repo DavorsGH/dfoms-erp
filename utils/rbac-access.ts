@@ -226,8 +226,18 @@ export function canStartRotation(role: AppRole | null): boolean {
   return roleIn(role, START_ROTATION_ROLES);
 }
 
-export function canAccessSelfServiceSection(role: AppRole | null): boolean {
-  return roleIn(role, SELF_SERVICE_SECTION_ROLES);
+/** Self-Service requires a linked `user_accounts.employee_id` (not the client portal role). */
+export function canAccessSelfServiceSection(
+  role: AppRole | null,
+  linkedEmployeeId?: string | null,
+): boolean {
+  if (!linkedEmployeeId?.trim()) {
+    return false;
+  }
+  if (role === "client") {
+    return false;
+  }
+  return true;
 }
 
 export function canAccessClientPortalSection(role: AppRole | null): boolean {
@@ -360,7 +370,10 @@ export function getDashboardVisibility(role: AppRole | null): DashboardVisibilit
   };
 }
 
-export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
+export function getSidebarNavItems(
+  role: AppRole | null,
+  linkedEmployeeId?: string | null,
+): SidebarNavItem[] {
   const items: SidebarNavItem[] = [{ label: "Dashboard", href: "/dashboard" }];
 
   // POS lives inside Sales & CRM for users who can access that section; only
@@ -394,7 +407,7 @@ export function getSidebarNavItems(role: AppRole | null): SidebarNavItem[] {
     items.push({ label: "HR Management", href: "/dashboard/hr-payroll" });
   }
 
-  if (canAccessSelfServiceSection(role)) {
+  if (canAccessSelfServiceSection(role, linkedEmployeeId)) {
     items.push({ label: "Self-Service", href: "/dashboard/self-service" });
   }
 

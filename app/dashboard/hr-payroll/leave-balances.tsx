@@ -1,7 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRefetchOnWindowFocus } from "@/hooks/use-refetch-on-window-focus";
+import { formatLeaveEmployeeLabel } from "../self-service/leave-employee-display";
+import { getEmployeeDisplayName } from "./employee-utils";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -50,10 +53,10 @@ export default function LeaveBalances({
     );
   }, [balances, selectedEmployeeId]);
 
-  async function refreshBalances() {
+  const refreshBalances = useCallback(async () => {
     const { data, error: refreshError } = await supabase
       .from("employee_leave_balances")
-      .select("*, leave_types(type_name), employees!employee_leave_balances_employee_id_fkey(full_name, staff_id)")
+      .select("*, leave_types(type_name)")
       .eq("year", currentYear)
       .order("employee_id");
 
@@ -64,7 +67,9 @@ export default function LeaveBalances({
 
     setBalances((data as EmployeeLeaveBalance[] | null) ?? []);
     setError(null);
-  }
+  }, [currentYear, supabase]);
+
+  useRefetchOnWindowFocus(refreshBalances);
 
   async function handleSaveBalance() {
     if (!selectedEmployeeId || !selectedLeaveTypeId || entitledDays === "") {
@@ -224,13 +229,10 @@ export default function LeaveBalances({
                 filteredBalances.map((balance) => (
                   <tr key={balance.id} className="border-b border-slate-100">
                     <td className="px-4 py-3 text-sm text-slate-900">
-                      {(balance as EmployeeLeaveBalance & {
-                        employees?: { staff_id: string; full_name: string };
-                      }).employees?.staff_id}{" "}
-                      —{" "}
-                      {(balance as EmployeeLeaveBalance & {
-                        employees?: { staff_id: string; full_name: string };
-                      }).employees?.full_name}
+                      {formatLeaveEmployeeLabel(
+                        balance.employee_id,
+                        getEmployeeDisplayName(employees, balance.employee_id),
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {balance.leave_types?.type_name ?? "—"}

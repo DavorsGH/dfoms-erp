@@ -1,48 +1,92 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRefetchOnWindowFocus } from "@/hooks/use-refetch-on-window-focus";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
 import { formatDate, inputClassName } from "../hr-payroll/hr-register-utils";
+import {
+  buildLeaveEmployeeNameLookup,
+  formatLeaveEmployeeLabel,
+} from "../self-service/leave-employee-display";
 import type { LeaveRequest } from "../self-service/leave-request-utils";
 
 type LeaveApprovalsProps = {
+  approverAuthUid: string | null;
+  tenantId: string | null;
+  initialEmployeeNames: Record<string, string>;
   initialRequests: LeaveRequest[];
   fetchError: string | null;
 };
 
 export default function LeaveApprovals({
+  approverAuthUid,
+  tenantId,
+  initialEmployeeNames,
   initialRequests,
   fetchError,
 }: LeaveApprovalsProps) {
   const supabase = createClient();
   const [requests, setRequests] = useState(initialRequests);
+  const [employeeNames, setEmployeeNames] =
+    useState<Record<string, string>>(initialEmployeeNames);
   const [notesById, setNotesById] = useState<Record<string, string>>({});
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
 
-  async function refreshRequests() {
-    const { data, error: refreshError } = await supabase
+  const refreshRequests = useCallback(async () => {
+    let query = supabase
       .from("leave_requests")
-      .select(
-        "*, leave_types(type_name), employees!leave_requests_employee_id_fkey(full_name, staff_id)",
-      )
+      .select("*, leave_types(type_name)")
       .eq("status", "Pending")
       .order("submitted_at", { ascending: true });
+
+    if (approverAuthUid) {
+      query = query.eq("approver_user_account_id", approverAuthUid);
+    }
+
+    const { data, error: refreshError } = await query;
 
     if (refreshError) {
       setError(refreshError.message);
       return;
     }
 
-    setRequests((data as LeaveRequest[] | null) ?? []);
+    const nextRequests = (data as LeaveRequest[] | null) ?? [];
+    setRequests(nextRequests);
     setError(null);
-  }
+
+    if (!tenantId) {
+      return;
+    }
+
+    const employeeIds = [
+      ...new Set(nextRequests.map((request) => request.employee_id)),
+    ];
+    if (employeeIds.length === 0) {
+      return;
+    }
+
+    const { data: employeeRows, error: employeesError } = await supabase
+      .from("employees")
+      .select("employee_id, full_name")
+      .eq("tenant_id", tenantId)
+      .in("employee_id", employeeIds);
+
+    if (employeesError) {
+      setError(employeesError.message);
+      return;
+    }
+
+    setEmployeeNames(buildLeaveEmployeeNameLookup(employeeRows ?? []));
+  }, [approverAuthUid, supabase, tenantId]);
+
+  useRefetchOnWindowFocus(refreshRequests);
 
   async function handleDecision(
     requestId: string,
@@ -130,8 +174,10 @@ export default function LeaveApprovals({
               requests.map((request) => (
                 <tr key={request.id} className="border-b border-slate-100">
                   <td className="px-4 py-3 text-sm text-slate-900">
-                    {request.employees?.staff_id} —{" "}
-                    {request.employees?.full_name}
+                    {formatLeaveEmployeeLabel(
+                      request.employee_id,
+                      employeeNames[request.employee_id],
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-700">
                     {request.leave_types?.type_name ?? "—"}

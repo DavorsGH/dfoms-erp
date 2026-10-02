@@ -33,6 +33,7 @@ type DashboardShellProps = {
   userFullName?: string | null;
   tenantId?: string | null;
   authUid?: string | null;
+  linkedEmployeeId?: string | null;
   businessUnitSwitcher?: {
     units: BusinessUnitSwitcherOption[];
     activeBusinessUnitId: string | null;
@@ -54,6 +55,7 @@ export default function DashboardShell({
   userFullName,
   tenantId = null,
   authUid = null,
+  linkedEmployeeId = null,
   businessUnitSwitcher = null,
 }: DashboardShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -125,6 +127,7 @@ export default function DashboardShell({
           <div className="hidden shrink-0 md:flex" data-dashboard-chrome>
             <Sidebar
               userRole={userRole}
+              linkedEmployeeId={linkedEmployeeId}
               showLeaveApprovals={showLeaveApprovals}
               showPlatformSettings={showPlatformSettings}
               showRealEstate={showRealEstate}
@@ -143,6 +146,7 @@ export default function DashboardShell({
               <div className="fixed inset-y-0 left-0 z-50 md:hidden" data-dashboard-chrome>
                 <Sidebar
                   userRole={userRole}
+                  linkedEmployeeId={linkedEmployeeId}
                   showLeaveApprovals={showLeaveApprovals}
                   showPlatformSettings={showPlatformSettings}
                   showRealEstate={showRealEstate}

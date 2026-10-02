@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRefetchOnWindowFocus } from "@/hooks/use-refetch-on-window-focus";
+import { formatLeaveEmployeeLabel } from "../self-service/leave-employee-display";
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -88,7 +90,7 @@ export default function LeaveManagement({
     });
   }, [entries, filterEmployee, filterStatus]);
 
-  async function refreshEntries() {
+  const refreshEntries = useCallback(async () => {
     if (!tenantId) {
       setError("Unable to resolve your workspace.");
       return;
@@ -116,7 +118,9 @@ export default function LeaveManagement({
 
     setEntries((data as LeaveManagementEntry[] | null) ?? []);
     setError(null);
-  }
+  }, [buReadScope, supabase, tenantId]);
+
+  useRefetchOnWindowFocus(refreshEntries);
 
   function openAddForm() {
     setEditingLeaveId(null);
@@ -502,7 +506,10 @@ export default function LeaveManagement({
                 <tr key={entry.leave_id} className={getStripedRowClassName(index)}>
                   <td className="px-4 py-3">{formatDate(entry.start_date)}</td>
                   <td className="px-4 py-3">
-                    {getEmployeeDisplayName(employees, entry.employee_id)}
+                    {formatLeaveEmployeeLabel(
+                      entry.employee_id,
+                      getEmployeeDisplayName(employees, entry.employee_id),
+                    )}
                   </td>
                   <td className="px-4 py-3">{entry.leave_id}</td>
                   <td className="px-4 py-3">{entry.leave_type}</td>

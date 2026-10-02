@@ -45,6 +45,7 @@ expect(canAccessPosSection("sales_rep"), "POS unchanged");
 expect(canAccessCrmSection("sales_rep"), "CRM section access for sidebar");
 
 const sidebar = getSidebarNavItems("sales_rep");
+const sidebarWithEmployee = getSidebarNavItems("sales_rep", "DF0001");
 const salesCrmItem = sidebar.find((item) => item.label === "Sales & CRM");
 expect(Boolean(salesCrmItem), "sidebar shows Sales & CRM");
 expect(
@@ -54,6 +55,14 @@ expect(
 expect(
   !sidebar.some((item) => item.label === "POS" && item.href === "/dashboard/pos"),
   "no standalone POS sidebar link",
+);
+expect(
+  !sidebar.some((item) => item.label === "Self-Service"),
+  "Self-Service hidden without linked employee",
+);
+expect(
+  sidebarWithEmployee.some((item) => item.label === "Self-Service"),
+  "Self-Service visible when employee is linked",
 );
 expect(
   !getAccessibleReportCategoryIds("sales_rep").includes("sales"),

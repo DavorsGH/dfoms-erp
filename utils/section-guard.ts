@@ -3,8 +3,12 @@ import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { AppRole } from "@/app/dashboard/user-account-types";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
 import {
+  getCurrentUserEmployeeId,
+  getCurrentUserRole,
+} from "@/utils/dashboard-auth";
+import {
+  canAccessSelfServiceSection,
   CRM_CUSTOMER_LIST_ROLES,
   CRM_FULL_FEATURE_ROLES,
   CRM_SECTION_ROLES,
@@ -48,4 +52,15 @@ export async function guardCrmSectionAccess(): Promise<AppRole> {
 /** Full CRM admin tabs — blocks sales_rep scoped subset (defense in depth). */
 export async function guardCrmFullFeatureAccess(): Promise<AppRole> {
   return guardSectionAccess(CRM_FULL_FEATURE_ROLES);
+}
+
+export async function guardSelfServiceAccess(): Promise<void> {
+  const [role, employeeId] = await Promise.all([
+    getCurrentUserRole(),
+    getCurrentUserEmployeeId(),
+  ]);
+
+  if (!canAccessSelfServiceSection(role as AppRole | null, employeeId)) {
+    redirect("/dashboard");
+  }
 }

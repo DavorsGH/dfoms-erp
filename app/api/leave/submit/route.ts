@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { requireRoleIn } from "@/utils/admin-auth";
+import { requireLinkedEmployeeAccount } from "@/utils/admin-auth";
 import { notifyAdminsDirectorsLeaveRequestSubmitted } from "@/utils/tenant-admin-director-tier2-notifications";
 import { createClient } from "@/utils/supabase/server";
-import { SELF_SERVICE_SECTION_ROLES } from "@/utils/rbac-access";
 
 type SubmitLeaveBody = {
   leave_type_id?: string;
@@ -13,7 +12,7 @@ type SubmitLeaveBody = {
 };
 
 export async function POST(request: Request) {
-  const auth = await requireRoleIn(SELF_SERVICE_SECTION_ROLES);
+  const auth = await requireLinkedEmployeeAccount();
   if (!auth.ok) {
     return auth.response;
   }

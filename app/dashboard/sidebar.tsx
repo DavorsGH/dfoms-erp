@@ -42,6 +42,7 @@ import {
 
 type SidebarProps = {
   userRole: AppRole | null;
+  linkedEmployeeId?: string | null;
   showLeaveApprovals?: boolean;
   showPlatformSettings?: boolean;
   showRealEstate?: boolean;
@@ -200,6 +201,7 @@ function SidebarExpandableNavSection({
 
 export default function Sidebar({
   userRole,
+  linkedEmployeeId = null,
   showLeaveApprovals = false,
   showPlatformSettings = false,
   showRealEstate = false,
@@ -209,7 +211,7 @@ export default function Sidebar({
   onClose,
 }: SidebarProps) {
   const pathname = usePathname();
-  const navItems = getSidebarNavItems(userRole);
+  const navItems = getSidebarNavItems(userRole, linkedEmployeeId);
   const administrationLinks = getAdministrationSidebarLinks({
     isDavorsPlatformSuperAdmin: showPlatformSettings,
   });

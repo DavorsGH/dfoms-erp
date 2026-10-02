@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { useRefetchOnWindowFocus } from "@/hooks/use-refetch-on-window-focus";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -19,6 +20,7 @@ import type {
 } from "./leave-request-utils";
 
 type MyLeaveProps = {
+  employeeId: string;
   initialBalances: EmployeeLeaveBalance[];
   initialRequests: LeaveRequest[];
   leaveTypes: LeaveType[];
@@ -34,6 +36,7 @@ const emptyForm = {
 };
 
 export default function MyLeave({
+  employeeId,
   initialBalances,
   initialRequests,
   leaveTypes,
@@ -44,7 +47,7 @@ export default function MyLeave({
   const [balances, setBalances] = useState(initialBalances);
   const [requests, setRequests] = useState(initialRequests);
   const [form, setForm] = useState(emptyForm);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
@@ -62,22 +65,26 @@ export default function MyLeave({
     calculatedDays > 0 &&
     calculatedDays > Number(selectedBalance.days_remaining);
 
-  async function refreshData() {
+  const refreshData = useCallback(async () => {
     const [{ data: balanceRows }, { data: requestRows }] = await Promise.all([
       supabase
         .from("employee_leave_balances")
         .select("*, leave_types(type_name)")
+        .eq("employee_id", employeeId)
         .eq("year", currentYear)
         .order("leave_type_id"),
       supabase
         .from("leave_requests")
         .select("*, leave_types(type_name)")
+        .eq("employee_id", employeeId)
         .order("submitted_at", { ascending: false }),
     ]);
 
     setBalances((balanceRows as EmployeeLeaveBalance[] | null) ?? []);
     setRequests((requestRows as LeaveRequest[] | null) ?? []);
-  }
+  }, [currentYear, employeeId, supabase]);
+
+  useRefetchOnWindowFocus(refreshData);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -174,40 +181,14 @@ export default function MyLeave({
       ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
-          Leave Balance ({currentYear})
-        </h3>
-        <p className="mb-4 text-xs text-amber-700">
-          Annual Leave entitlement is pending confirmation from management
-          (Ghana Labour Act standard — flagged for David).
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {balances.map((balance) => (
-            <div
-              key={balance.id}
-              className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
-            >
-              <p className="text-sm font-medium text-[#0f2744]">
-                {balance.leave_types?.type_name ?? "Leave"}
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                Entitled: {balance.entitled_days} · Used: {balance.days_used} ·
-                Remaining: {balance.days_remaining}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-4">
           <h3 className="text-lg font-semibold text-[#0f2744]">Request Leave</h3>
           <button
             type="button"
             onClick={() => setShowForm((current) => !current)}
-            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c]"
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            {showForm ? "Close Form" : "Request Leave"}
+            {showForm ? "Hide form" : "Show form"}
           </button>
         </div>
 
@@ -321,6 +302,39 @@ export default function MyLeave({
             </div>
           </form>
         ) : null}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
+          Leave Balance ({currentYear})
+        </h3>
+        <p className="mb-4 text-xs text-amber-700">
+          Annual Leave entitlement is pending confirmation from management
+          (Ghana Labour Act standard — flagged for David).
+        </p>
+        {balances.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            No leave balance rows for {currentYear} yet. After HR applies the
+            entitlement backfill, refresh this page to see your balances.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {balances.map((balance) => (
+              <div
+                key={balance.id}
+                className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
+              >
+                <p className="text-sm font-medium text-[#0f2744]">
+                  {balance.leave_types?.type_name ?? "Leave"}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Entitled: {balance.entitled_days} · Used: {balance.days_used}{" "}
+                  · Remaining: {balance.days_remaining}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

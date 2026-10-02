@@ -1,11 +1,10 @@
-import { guardSectionAccess } from "@/utils/section-guard";
-import { SELF_SERVICE_SECTION_ROLES } from "@/utils/rbac-access";
+import { guardSelfServiceAccess } from "@/utils/section-guard";
 
 export default async function SelfServiceLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  await guardSectionAccess(SELF_SERVICE_SECTION_ROLES);
+  await guardSelfServiceAccess();
   return <>{children}</>;
 }
