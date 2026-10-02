@@ -7,6 +7,11 @@ import {
   moduleNavActiveTabProps,
 } from "@/app/dashboard/module-nav-tab-strip";
 
+const suppliersNavItem = {
+  label: "Suppliers",
+  href: "/dashboard/finance/suppliers",
+} as const;
+
 const navItems = [
   { label: "Income Register", href: "/dashboard/finance" },
   { label: "Customer Invoices", href: "/dashboard/finance/client-invoices" },
@@ -16,6 +21,7 @@ const navItems = [
   { label: "Expense Register", href: "/dashboard/finance/expenses" },
   { label: "Accounts Payable", href: "/dashboard/finance/accounts-payable" },
   { label: "Supplier Contracts", href: "/dashboard/finance/supplier-contracts" },
+  suppliersNavItem,
   { label: "Fixed Assets", href: "/dashboard/finance/fixed-assets" },
   { label: "Statutory Ledger", href: "/dashboard/finance/tax-ledger" },
   { label: "Staff Welfare Fund", href: "/dashboard/finance/staff-welfare-fund" },
@@ -32,13 +38,19 @@ const navItems = [
   { label: "Cash Flow", href: "/dashboard/finance/cash-flow" },
 ];
 
-export default function FinanceNav() {
+type FinanceNavProps = {
+  /** When true, show only the Suppliers tab (inventory-tier roles). */
+  suppliersOnly?: boolean;
+};
+
+export default function FinanceNav({ suppliersOnly = false }: FinanceNavProps) {
   const pathname = usePathname();
+  const visibleItems = suppliersOnly ? [suppliersNavItem] : navItems;
 
   return (
     <nav className="mb-6 border-b border-slate-200 pb-4">
       <ModuleNavTabStrip scrollKey={pathname}>
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const active =
             item.href === "/dashboard/finance/balance-sheet"
               ? pathname === item.href ||
@@ -52,7 +64,10 @@ export default function FinanceNav() {
                   : item.href === "/dashboard/finance/supplier-contracts"
                     ? pathname === item.href ||
                       pathname.startsWith("/dashboard/finance/supplier-contracts/")
-                    : item.href === "/dashboard/finance/client-receipts"
+                    : item.href === "/dashboard/finance/suppliers"
+                      ? pathname === item.href ||
+                        pathname.startsWith("/dashboard/finance/suppliers/")
+                      : item.href === "/dashboard/finance/client-receipts"
                   ? pathname === item.href ||
                     pathname.startsWith("/dashboard/finance/client-receipts/")
                   : item.href === "/dashboard/finance/tax-ledger"

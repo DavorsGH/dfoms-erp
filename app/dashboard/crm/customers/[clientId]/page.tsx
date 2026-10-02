@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import {
@@ -218,15 +217,6 @@ export default async function CustomerDetailPage({
       sectionTitle="Customer List"
       customerListOnly={isCrmCustomerListOnlyRole(role)}
     >
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <h3 className="text-lg font-semibold text-[#0f2744]">Customer 360</h3>
-        <Link
-          href="/dashboard/crm/customers"
-          className="rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] hover:bg-slate-50"
-        >
-          Back to list
-        </Link>
-      </div>
       <Customer360
         customer={customerEntry}
         supervisorName={supervisorName}

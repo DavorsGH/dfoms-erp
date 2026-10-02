@@ -31,6 +31,7 @@ import {
   mergeScopedStockOntoMaterials,
 } from "../raw-material-bu-stock-utils";
 import type { NamedLookup } from "../../lookup-types";
+import { SUPPLIER_SELECT, type SupplierRow } from "@/utils/suppliers-types";
 
 export default async function RawMaterialsPage() {
   const cookieStore = await cookies();
@@ -52,6 +53,7 @@ export default async function RawMaterialsPage() {
     { data: adjustments, error: adjustmentsError },
     { data: paymentMethods, error: paymentMethodsError },
     { data: projects, error: projectsError },
+    { data: suppliers, error: suppliersError },
     scopedStock,
   ] = await Promise.all([
     supabase
@@ -82,6 +84,14 @@ export default async function RawMaterialsPage() {
             .eq("tenant_id", tenantId),
           buScope,
         ).order("project_name", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    tenantId
+      ? supabase
+          .from("suppliers")
+          .select(SUPPLIER_SELECT)
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .order("name", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
     tenantId
       ? fetchScopedRawMaterialStock(supabase, tenantId, buScope)
@@ -121,12 +131,14 @@ export default async function RawMaterialsPage() {
         }
         initialPaymentMethods={(paymentMethods as NamedLookup[] | null) ?? []}
         initialProjects={(projects as ContractProjectOption[] | null) ?? []}
+        initialSuppliers={(suppliers as SupplierRow[] | null) ?? []}
         fetchError={
           materialsError?.message ??
           purchasesError?.message ??
           adjustmentsError?.message ??
           paymentMethodsError?.message ??
           projectsError?.message ??
+          suppliersError?.message ??
           scopedStock.error ??
           null
         }

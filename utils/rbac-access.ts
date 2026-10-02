@@ -59,6 +59,10 @@ export const INVENTORY_SECTION_ROLES: readonly AppRole[] = [
   "sales_rep",
 ];
 
+/** Finance → Suppliers (same access as former Inventory → Purchasing → Suppliers). */
+export const FINANCE_SUPPLIERS_PAGE_ROLES: readonly AppRole[] =
+  INVENTORY_SECTION_ROLES;
+
 export const INVENTORY_EDIT_ROLES: readonly AppRole[] = [
   "super_admin",
   "operations_manager",
@@ -194,6 +198,25 @@ export function roleIn(role: AppRole | null, allowed: readonly AppRole[]): boole
 
 export function canAccessFinanceSection(role: AppRole | null): boolean {
   return roleIn(role, FINANCE_SECTION_ROLES);
+}
+
+export function isFinanceSuppliersPath(pathname: string): boolean {
+  return (
+    pathname === "/dashboard/finance/suppliers" ||
+    pathname.startsWith("/dashboard/finance/suppliers/")
+  );
+}
+
+/** Inventory-tier roles that reach Suppliers under Finance without full Finance tabs. */
+export function isFinanceSuppliersOnlyRole(role: AppRole | null): boolean {
+  return (
+    roleIn(role, FINANCE_SUPPLIERS_PAGE_ROLES) &&
+    !canAccessFinanceSection(role)
+  );
+}
+
+export function canAccessFinanceSuppliersPage(role: AppRole | null): boolean {
+  return roleIn(role, FINANCE_SUPPLIERS_PAGE_ROLES);
 }
 
 export function canAccessHrPayrollSection(role: AppRole | null): boolean {
@@ -384,6 +407,8 @@ export function getSidebarNavItems(
 
   if (canAccessFinanceSection(role)) {
     items.push({ label: "Finance", href: "/dashboard/finance" });
+  } else if (canAccessFinanceSuppliersPage(role)) {
+    items.push({ label: "Finance", href: "/dashboard/finance/suppliers" });
   }
 
   if (canAccessCrmSection(role)) {

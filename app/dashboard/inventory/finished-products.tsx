@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { createClient } from "@/utils/supabase/client";
@@ -50,6 +50,9 @@ import {
   type FinishedProductStockAdjustmentRecord,
 } from "./finished-products-utils";
 import type { SupplierRow } from "@/utils/suppliers-types";
+import { toVendorSupplierOptions } from "../finance/expense-register-form-fields";
+import { mergeSupplierOptions } from "../finance/vendor-select-utils";
+import { TenantSupplierIdSelect } from "@/components/tenant-supplier-select";
 import { getFinishedProductDeleteErrorMessage, FINISHED_PRODUCT_DELETE_BLOCKED_MESSAGE } from "@/utils/finished-product-delete-errors";
 import {
   useBusinessUnitReadScope,
@@ -145,6 +148,33 @@ export default function FinishedProducts({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const editingProduct = useMemo(
+    () =>
+      editingProductId
+        ? products.find((product) => product.id === editingProductId) ?? null
+        : null,
+    [editingProductId, products],
+  );
+
+  const primarySupplierOptions = useMemo(() => {
+    const base = toVendorSupplierOptions(initialSuppliers);
+    if (!editingProduct?.supplier_id) {
+      return base;
+    }
+    if (base.some((row) => row.id === editingProduct.supplier_id)) {
+      return base;
+    }
+    const knownName = initialSuppliers.find(
+      (row) => row.id === editingProduct.supplier_id,
+    )?.name;
+    return mergeSupplierOptions(base, [
+      {
+        id: editingProduct.supplier_id,
+        name: knownName ?? "Supplier",
+      },
+    ]);
+  }, [editingProduct?.supplier_id, initialSuppliers]);
   const [photoWarning, setPhotoWarning] = useState<string | null>(null);
   const skipFirstStockScopeRefresh = useRef(true);
 
@@ -961,27 +991,29 @@ export default function FinishedProducts({
             </div>
             {form.sourcing_type === "purchased" ? (
               <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Primary Supplier{" "}
-                  <span className="font-normal text-slate-500">(optional)</span>
-                </label>
-                <select
+                <TenantSupplierIdSelect
+                  label="Primary Supplier (optional)"
                   value={form.supplier_id}
-                  onChange={(event) =>
+                  onChange={(supplierId) =>
                     setForm((current) => ({
                       ...current,
-                      supplier_id: event.target.value,
+                      supplier_id: supplierId,
                     }))
                   }
+                  suppliers={primarySupplierOptions}
+                  required={false}
+                  allowEmpty
+                  emptyLabel="No default supplier"
+                  legacyDisplayName={
+                    editingProduct?.supplier_id === form.supplier_id
+                      ? primarySupplierOptions.find(
+                          (row: { id: string; name: string }) =>
+                            row.id === form.supplier_id,
+                        )?.name ?? null
+                      : null
+                  }
                   className={inputClassName}
-                >
-                  <option value="">No default supplier</option>
-                  {initialSuppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-                </select>
+                />
                 <p className="mt-1 text-xs text-slate-500">
                   Per-purchase supplier is recorded on the Purchases screen. This
                   field is only a default reference.

@@ -81,7 +81,9 @@ import {
   inferVendorSelectState,
   resolveVendorNameFromSelect,
   VENDOR_OTHER_VALUE,
+  type VendorSupplierOption,
 } from "./vendor-select-utils";
+import { TenantSupplierVendorNameFields } from "@/components/tenant-supplier-select";
 import {
   useBusinessUnitView,
   useStampBusinessUnitId,
@@ -1119,39 +1121,18 @@ export default function FixedAssets({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Supplier
-                </label>
-                <select
-                  required
-                  value={form.vendor_select}
-                  onChange={(e) => updateField("vendor_select", e.target.value)}
-                  className={inputClassName}
-                >
-                  <option value="">Select supplier</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-                  <option value={VENDOR_OTHER_VALUE}>Other (one-time supplier)</option>
-                </select>
-              </div>
-              {form.vendor_select === VENDOR_OTHER_VALUE ? (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    One-time supplier name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={form.vendor_other}
-                    onChange={(e) => updateField("vendor_other", e.target.value)}
-                    className={inputClassName}
-                  />
-                </div>
-              ) : null}
+              <TenantSupplierVendorNameFields
+                vendorSelect={form.vendor_select}
+                vendorOther={form.vendor_other}
+                onVendorSelectChange={(value) =>
+                  updateField("vendor_select", value)
+                }
+                onVendorOtherChange={(value) =>
+                  updateField("vendor_other", value)
+                }
+                suppliers={suppliers as VendorSupplierOption[]}
+                className={inputClassName}
+              />
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Approved By

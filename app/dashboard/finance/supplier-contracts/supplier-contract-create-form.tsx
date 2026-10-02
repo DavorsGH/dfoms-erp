@@ -33,6 +33,7 @@ import {
 import type { SupplierAgreementType } from "@/utils/supplier-contracts-types";
 
 import { useFinanceSuppliers } from "./use-finance-suppliers";
+import { TenantSupplierIdSelect } from "@/components/tenant-supplier-select";
 
 
 
@@ -368,37 +369,17 @@ export default function SupplierContractCreateForm({
 
           ) : null}
 
-          <label className="block text-sm">
-
-            Supplier
-
-            <select
-
-              className={`${inputClassName} mt-1 w-full`}
-
-              value={form.supplier_id}
-
-              onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
-
-              required
-
-            >
-
-              <option value="">Select supplier</option>
-
-              {suppliers.map((s) => (
-
-                <option key={s.id} value={s.id}>
-
-                  {s.name}
-
-                </option>
-
-              ))}
-
-            </select>
-
-          </label>
+          <TenantSupplierIdSelect
+            label="Supplier"
+            required
+            allowEmpty={false}
+            value={form.supplier_id}
+            onChange={(supplierId) =>
+              setForm({ ...form, supplier_id: supplierId })
+            }
+            suppliers={suppliers}
+            className={`${inputClassName} mt-1 w-full`}
+          />
 
           <div className="flex items-end gap-2">
 

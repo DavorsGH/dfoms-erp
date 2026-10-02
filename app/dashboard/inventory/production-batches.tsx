@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
+import { registerTableActionsInnerClassName } from "../finance/register-row-actions";
 import ScrollableTable, {
+  scrollableTableActionsTdClassName,
+  scrollableTableActionsThClassName,
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
@@ -838,7 +841,7 @@ export default function ProductionBatches({
               <th className={scrollableTableThClassName}>Total Cost</th>
               <th className={scrollableTableThClassName}>Cost / Unit</th>
               <th className={scrollableTableThClassName}>Materials</th>
-              <th className={scrollableTableThClassName}>Actions</th>
+              <th className={scrollableTableActionsThClassName}>Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -883,8 +886,8 @@ export default function ProductionBatches({
                       </div>
                     ))}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <td className={scrollableTableActionsTdClassName}>
+                    <div className={registerTableActionsInnerClassName}>
                       <button
                         type="button"
                         onClick={() => {

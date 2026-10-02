@@ -106,6 +106,11 @@ export function formatSupplierStatus(isActive: boolean): string {
   return isActive ? "Active" : "Inactive";
 }
 
+export const SUPPLIER_STATUS_FILTER_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+] as const;
+
 export type SupplierDeletePreview = {
   can_delete: boolean;
   purchase_count: number;

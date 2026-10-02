@@ -14,10 +14,8 @@ import {
   isFixedAssetsExpenseCategory,
 } from "@/utils/expense-register-category-guard";
 import type { SupplierRow } from "@/utils/suppliers-types";
-import {
-  VENDOR_OTHER_VALUE,
-  type VendorSupplierOption,
-} from "./vendor-select-utils";
+import type { VendorSupplierOption } from "./vendor-select-utils";
+import { TenantSupplierVendorNameFields } from "@/components/tenant-supplier-select";
 
 export const expenseRegisterInputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
@@ -115,43 +113,15 @@ export function ExpenseRegisterSupplierFields({
   disabled?: boolean;
 }) {
   return (
-    <>
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Supplier
-        </label>
-        <select
-          required
-          value={vendorSelect}
-          onChange={(event) => onVendorSelectChange(event.target.value)}
-          className={expenseRegisterInputClassName}
-          disabled={disabled}
-        >
-          <option value="">Select supplier</option>
-          {suppliers.map((supplier) => (
-            <option key={supplier.id} value={supplier.id}>
-              {supplier.name}
-            </option>
-          ))}
-          <option value={VENDOR_OTHER_VALUE}>Other (one-time supplier)</option>
-        </select>
-      </div>
-      {vendorSelect === VENDOR_OTHER_VALUE ? (
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            One-time supplier name
-          </label>
-          <input
-            type="text"
-            required
-            value={vendorOther}
-            onChange={(event) => onVendorOtherChange(event.target.value)}
-            className={expenseRegisterInputClassName}
-            disabled={disabled}
-          />
-        </div>
-      ) : null}
-    </>
+    <TenantSupplierVendorNameFields
+      vendorSelect={vendorSelect}
+      vendorOther={vendorOther}
+      onVendorSelectChange={onVendorSelectChange}
+      onVendorOtherChange={onVendorOtherChange}
+      suppliers={suppliers}
+      disabled={disabled}
+      className={expenseRegisterInputClassName}
+    />
   );
 }
 

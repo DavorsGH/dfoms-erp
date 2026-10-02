@@ -15,9 +15,12 @@ export function useFinanceSuppliers() {
       .then((payload) => {
         if (cancelled) return;
         setSuppliers(
-          ((payload.suppliers as FinanceSupplierOption[] | undefined) ?? []).map(
-            (s) => ({ id: s.id, name: s.name }),
-          ),
+          (
+            (payload.suppliers as Array<FinanceSupplierOption & { is_active?: boolean }> | undefined) ??
+            []
+          )
+            .filter((s) => s.is_active !== false)
+            .map((s) => ({ id: s.id, name: s.name })),
         );
       })
       .catch(() => undefined)

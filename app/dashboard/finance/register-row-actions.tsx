@@ -1,4 +1,10 @@
-import { scrollableTableCompactCellClassName } from "../scrollable-table";
+import {
+  scrollableTableActionsCellClassName,
+  scrollableTableCompactCellClassName,
+} from "../scrollable-table";
+
+export const registerTableActionsInnerClassName =
+  "inline-flex flex-nowrap items-center gap-2";
 
 type RegisterRowActionsProps = {
   onEdit?: () => void;
@@ -160,12 +166,14 @@ export default function RegisterRowActions({
     <td
       className={
         compact
-          ? `px-2 py-2 whitespace-nowrap ${scrollableTableCompactCellClassName}`
-          : `px-4 py-3 whitespace-nowrap ${scrollableTableCompactCellClassName}`
+          ? `px-2 py-2 whitespace-nowrap ${scrollableTableCompactCellClassName} ${scrollableTableActionsCellClassName}`
+          : `px-4 py-3 whitespace-nowrap ${scrollableTableCompactCellClassName} ${scrollableTableActionsCellClassName}`
       }
       onClick={(event) => event.stopPropagation()}
     >
-      <div className={`inline-flex flex-nowrap items-center ${compact ? "gap-1" : "gap-2"}`}>
+      <div
+        className={`${registerTableActionsInnerClassName} ${compact ? "gap-1" : ""}`}
+      >
         {onPrint ? (
           <button
             type="button"

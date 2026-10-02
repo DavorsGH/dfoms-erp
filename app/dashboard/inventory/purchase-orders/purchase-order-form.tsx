@@ -13,6 +13,8 @@ import {
   type PurchaseOrderRawMaterialOption,
 } from "@/utils/purchase-orders-types";
 import type { SupplierRow } from "@/utils/suppliers-types";
+import { toVendorSupplierOptions } from "../../finance/expense-register-form-fields";
+import { TenantSupplierIdSelect } from "@/components/tenant-supplier-select";
 
 type PurchaseOrderFormProps = {
   initialSuppliers: SupplierRow[];
@@ -66,6 +68,10 @@ export default function PurchaseOrderForm({
   const [lineItems, setLineItems] = useState<FormLineItem[]>(() => [
     emptyLineItem(),
   ]);
+  const supplierOptions = useMemo(
+    () => toVendorSupplierOptions(initialSuppliers),
+    [initialSuppliers],
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
 
@@ -152,22 +158,16 @@ export default function PurchaseOrderForm({
         <h3 className="text-sm font-medium text-slate-700">Order Details</h3>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Supplier *
-            </label>
-            <select
+            <TenantSupplierIdSelect
+              label="Supplier *"
               required
+              allowEmpty={false}
+              emptyLabel="Select active supplier"
               value={supplierId}
-              onChange={(event) => setSupplierId(event.target.value)}
+              onChange={setSupplierId}
+              suppliers={supplierOptions}
               className={inputClassName}
-            >
-              <option value="">Select active supplier</option>
-              {initialSuppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">

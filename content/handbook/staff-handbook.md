@@ -1856,11 +1856,10 @@ everything involved in making your own stock.
 
 ## **10.3 Purchasing**
 
-Covers Suppliers, Purchase Orders, and Purchases --- everything involved
-in buying stock from outside your business.
-
--   Suppliers --- your directory of who you buy from (shared across
-    business units)
+Covers Purchase Orders and Purchases --- everything involved in buying
+stock from outside your business. **Suppliers** (your directory of who
+you buy from, shared across business units) lives under **Finance →
+Suppliers**.
 
 -   Purchase Orders --- an optional planning step; a Purchase Order
     records what you intend to buy and from whom, before anything has
@@ -2524,7 +2523,7 @@ worker costs.
 
 ## **Step 1 --- Set up once**
 
--   Inventory → Suppliers: add the warehouse(s) you buy from
+-   Finance → Suppliers: add the warehouse(s) you buy from
 
 -   Inventory → Finished Products: create each item, mark Sourcing as
     Purchased, set your selling price --- do not enter a standing master

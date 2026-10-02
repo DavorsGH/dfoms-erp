@@ -8,13 +8,18 @@ import {
   getCurrentUserRole,
 } from "@/utils/dashboard-auth";
 import {
+  canAccessFinanceSection,
   canAccessSelfServiceSection,
   CRM_CUSTOMER_LIST_ROLES,
   CRM_FULL_FEATURE_ROLES,
   CRM_SECTION_ROLES,
+  FINANCE_SECTION_ROLES,
+  FINANCE_SUPPLIERS_PAGE_ROLES,
   isCrmCustomerListPath,
+  isFinanceSuppliersPath,
   roleIn,
 } from "@/utils/rbac-access";
+import { requireFeatureAccess } from "@/utils/tier-access";
 
 export async function guardSectionAccess(
   allowedRoles: readonly AppRole[],
@@ -52,6 +57,22 @@ export async function guardCrmSectionAccess(): Promise<AppRole> {
 /** Full CRM admin tabs — blocks sales_rep scoped subset (defense in depth). */
 export async function guardCrmFullFeatureAccess(): Promise<AppRole> {
   return guardSectionAccess(CRM_FULL_FEATURE_ROLES);
+}
+
+export async function guardFinanceSectionAccess(): Promise<AppRole> {
+  const pathname = await getRequestPathname();
+
+  if (!isFinanceSuppliersPath(pathname)) {
+    return guardSectionAccess(FINANCE_SECTION_ROLES);
+  }
+
+  const role = await guardSectionAccess(FINANCE_SUPPLIERS_PAGE_ROLES);
+
+  if (!canAccessFinanceSection(role)) {
+    await requireFeatureAccess("inventory");
+  }
+
+  return role;
 }
 
 export async function guardSelfServiceAccess(): Promise<void> {

@@ -79,6 +79,13 @@ import {
   loadWriteBusinessUnitContext,
   resolveWriteBusinessUnitIdForCreate,
 } from "@/utils/business-unit-access";
+import { TenantSupplierVendorNameFields } from "@/components/tenant-supplier-select";
+import {
+  inferVendorSelectState,
+  resolveVendorNameFromSelect,
+  VENDOR_OTHER_VALUE,
+} from "./vendor-select-utils";
+import { useActiveTenantSuppliers } from "@/hooks/use-active-tenant-suppliers";
 
 type AccountsPayableProps = {
   initialEntries: AccountsPayableEntry[];
@@ -92,7 +99,8 @@ type AccountsPayableProps = {
 };
 
 type PayableFormState = {
-  vendor_name: string;
+  vendor_select: string;
+  vendor_other: string;
   invoice_number: string;
   expense_category: string;
   sub_category: string;
@@ -107,7 +115,8 @@ type PayableFormState = {
 };
 
 const emptyForm: PayableFormState = {
-  vendor_name: "",
+  vendor_select: "",
+  vendor_other: "",
   invoice_number: "",
   expense_category: "",
   sub_category: "",
@@ -165,6 +174,7 @@ export default function AccountsPayable({
     initialExpenseSubcategories,
   );
   const [showForm, setShowForm] = useState(false);
+  const { vendorOptions } = useActiveTenantSuppliers({ enabled: showForm });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -404,8 +414,13 @@ export default function AccountsPayable({
   function openEditForm(entry: AccountsPayableEntry) {
     setEditingId(entry.id);
     setWhtAmountEdited(false);
+    const vendorState = inferVendorSelectState(
+      entry.vendor_name ?? "",
+      vendorOptions,
+    );
     setForm({
-      vendor_name: entry.vendor_name ?? "",
+      vendor_select: vendorState.vendorSelect,
+      vendor_other: vendorState.vendorOther,
       invoice_number: entry.invoice_number ?? "",
       expense_category: entry.expense_category ?? "",
       sub_category: entry.sub_category ?? "",
@@ -551,6 +566,22 @@ export default function AccountsPayable({
       return;
     }
 
+    const vendorName = resolveVendorNameFromSelect(
+      form.vendor_select,
+      form.vendor_other,
+      vendorOptions,
+    );
+    if (!vendorName) {
+      setError("Supplier is required.");
+      setLoading(false);
+      return;
+    }
+    if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
+      setError("Enter the one-time supplier name.");
+      setLoading(false);
+      return;
+    }
+
     const taxRows = buildPurchaseTaxLedgerRpcPayload({
       sourceType: "accounts_payable",
       sourceId: editingId ?? "00000000-0000-4000-8000-000000000001",
@@ -561,7 +592,7 @@ export default function AccountsPayable({
       inputTaxComponent: purchaseTax.inputTaxComponent,
       inputTaxRatePct: null,
       inputVatAmount: purchaseTax.inputVatAmount,
-      counterpartyName: form.vendor_name.trim() || null,
+      counterpartyName: vendorName.trim() || null,
       notes: form.invoice_number ? `Invoice ${form.invoice_number}` : null,
       businessUnitId: stampedBusinessUnitId,
     });
@@ -570,7 +601,7 @@ export default function AccountsPayable({
       p_tenant_id: tenantId,
       p_ap_id: editingId,
       p_business_unit_id: stampedBusinessUnitId,
-      p_vendor_name: form.vendor_name,
+      p_vendor_name: vendorName,
       p_invoice_number: form.invoice_number,
       p_expense_category: form.expense_category,
       p_sub_category: form.sub_category,
@@ -797,15 +828,18 @@ export default function AccountsPayable({
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Supplier Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.vendor_name}
-                  onChange={(e) => updateField("vendor_name", e.target.value)}
+              <div className="md:col-span-2">
+                <TenantSupplierVendorNameFields
+                  label="Supplier Name"
+                  vendorSelect={form.vendor_select}
+                  vendorOther={form.vendor_other}
+                  onVendorSelectChange={(value) =>
+                    updateField("vendor_select", value)
+                  }
+                  onVendorOtherChange={(value) =>
+                    updateField("vendor_other", value)
+                  }
+                  suppliers={vendorOptions}
                   className={inputClassName}
                 />
               </div>

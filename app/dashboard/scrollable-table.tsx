@@ -39,6 +39,12 @@ export const scrollableTableIdentifyingCellClassName =
 export const scrollableTableCompactCellClassName =
   "scrollable-table-cell--compact";
 
+/** Actions column — nowrap, width fits button group (see globals.css). */
+export const scrollableTableActionsCellClassName =
+  "scrollable-table-cell--actions";
+
+export const scrollableTableActionsTdClassName = `px-4 py-3 whitespace-nowrap ${scrollableTableCompactCellClassName} ${scrollableTableActionsCellClassName}`;
+
 /** Opt out of register table body ellipsis (IDs, dates, numeric codes). */
 export const scrollableTableNoTruncateCellClassName =
   "scrollable-table-cell--no-truncate";
@@ -73,6 +79,8 @@ export const scrollableTableHeadClassName = "bg-[#0f2744] text-white";
 
 export const scrollableTableThClassName =
   "sticky top-0 z-10 bg-[#0f2744] px-4 py-3 font-medium text-white";
+
+export const scrollableTableActionsThClassName = `${scrollableTableThClassName} ${scrollableTableCompactCellClassName} ${scrollableTableActionsCellClassName}`;
 
 export const scrollableTableRegisterUsefulLifeThClassName =
   `${scrollableTableThClassName} whitespace-normal ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-useful-life`;
@@ -135,7 +143,7 @@ export const scrollableTableIdentifyingThClassName =
   `${scrollableTableThClassName} ${scrollableTableIdentifyingCellClassName}`;
 
 export const scrollableTableIdentifyingTdClassName =
-  `px-4 py-3 align-top ${scrollableTableIdentifyingCellClassName}`;
+  `px-4 py-3 align-middle ${scrollableTableIdentifyingCellClassName}`;
 
 /** Sticky col 2 on finance registers with {@link scrollableTableHostRegisterNameCategoryClassName}. */
 export const scrollableTableRegisterStickyNameThClassName =

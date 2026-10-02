@@ -203,6 +203,11 @@ body {
  * overflow clipped with full value via ScrollableTable title sync.
  */
 .scrollable-table-cell--identifying,
+.scrollable-table-host--sticky-edges table thead th.scrollable-table-cell--identifying,
+.scrollable-table-host--sticky-edges table tbody td.scrollable-table-cell--identifying:not([colspan]) {
+  padding: 0.75rem 1rem;
+}
+
 .scrollable-table-host--sticky-edges table thead th:nth-child(1):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--wrap),
 .scrollable-table-host--sticky-edges table tbody td:nth-child(1):not([colspan]):not(.scrollable-table-cell--no-truncate):not(.scrollable-table-cell--wrap),
 .scrollable-table-host--sticky-edges
@@ -233,9 +238,13 @@ body {
   white-space: normal !important;
   word-break: break-word;
   overflow: hidden !important;
-  vertical-align: top;
+  vertical-align: middle;
   line-height: var(--st-edge-identifying-line-height);
   max-height: var(--st-edge-identifying-max-height);
+}
+
+.scrollable-table-host--sticky-edges table tbody td:not([colspan]) {
+  vertical-align: middle;
 }
 
 .scrollable-table-host--sticky-edges table tbody td.scrollable-table-cell--identifying > *,
@@ -285,10 +294,15 @@ body {
 }
 
 .scrollable-table-host--sticky-edges table thead th:last-child,
-.scrollable-table-host--sticky-edges table tbody td:last-child:not([colspan]) {
-  width: 1%;
+.scrollable-table-host--sticky-edges table tbody td:last-child:not([colspan]),
+.scrollable-table-host--sticky-edges table thead th.scrollable-table-cell--actions,
+.scrollable-table-host--sticky-edges table tbody td.scrollable-table-cell--actions:not([colspan]) {
+  width: max-content !important;
+  min-width: max-content;
   max-width: none;
   white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .scrollable-table-register-col-date {

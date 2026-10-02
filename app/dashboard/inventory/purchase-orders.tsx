@@ -4,8 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { formatDate } from "../finance/income-register-utils";
-import { getStripedRowClassName } from "../finance/register-row-actions";
+import {
+  getStripedRowClassName,
+  registerTableActionsInnerClassName,
+} from "../finance/register-row-actions";
 import ScrollableTable, {
+  scrollableTableActionsTdClassName,
+  scrollableTableActionsThClassName,
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
@@ -177,7 +182,7 @@ export default function PurchaseOrders({
               <th className={scrollableTableThClassName}>Expected Date</th>
               <th className={scrollableTableThClassName}>Status</th>
               <th className={scrollableTableThClassName}>Total</th>
-              <th className={scrollableTableThClassName}>Actions</th>
+              <th className={scrollableTableActionsThClassName}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -209,8 +214,8 @@ export default function PurchaseOrders({
                     </span>
                   </td>
                   <td className="px-4 py-3">{formatInventoryMoney(po.total)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <td className={scrollableTableActionsTdClassName}>
+                    <div className={registerTableActionsInnerClassName}>
                       <Link
                         href={`/dashboard/inventory/purchase-orders/${po.id}`}
                         className={viewButtonClassName}

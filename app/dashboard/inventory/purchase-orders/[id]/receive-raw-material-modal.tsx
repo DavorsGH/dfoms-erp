@@ -1,7 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { TenantSupplierVendorNameFields } from "@/components/tenant-supplier-select";
+import { useActiveTenantSuppliers } from "@/hooks/use-active-tenant-suppliers";
+import {
+  inferVendorSelectState,
+  resolveVendorNameFromSelect,
+  VENDOR_OTHER_VALUE,
+} from "@/app/dashboard/finance/vendor-select-utils";
 import {
   assertBusinessUnitAccess,
   formatBusinessUnitAccessError,
@@ -52,7 +59,15 @@ export default function ReceiveRawMaterialModal({
   );
   const [quantity, setQuantity] = useState(String(target.remaining_quantity));
   const [costPerUnit, setCostPerUnit] = useState(String(target.po_unit_cost));
-  const [supplier, setSupplier] = useState(target.supplier_name);
+  const { vendorOptions } = useActiveTenantSuppliers({ enabled: true });
+  const [vendorSelect, setVendorSelect] = useState("");
+  const [vendorOther, setVendorOther] = useState("");
+
+  useEffect(() => {
+    const state = inferVendorSelectState(target.supplier_name, vendorOptions);
+    setVendorSelect(state.vendorSelect);
+    setVendorOther(state.vendorOther);
+  }, [target.supplier_name, vendorOptions]);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -131,6 +146,17 @@ export default function ReceiveRawMaterialModal({
       return;
     }
 
+    const supplierName = resolveVendorNameFromSelect(
+      vendorSelect,
+      vendorOther,
+      vendorOptions,
+    );
+    if (vendorSelect === VENDOR_OTHER_VALUE && !vendorOther.trim()) {
+      setError("Enter the one-time supplier name.");
+      setSaving(false);
+      return;
+    }
+
     const { error: insertError } = await supabase
       .from("raw_material_purchases")
       .insert({
@@ -139,7 +165,7 @@ export default function ReceiveRawMaterialModal({
         quantity: parsedQuantity,
         cost_per_unit: parsedCost,
         total_cost: Math.round(parsedQuantity * parsedCost * 10000) / 10000,
-        supplier: nullableText(supplier),
+        supplier: nullableText(supplierName),
         payment_method: paymentMethod.trim(),
         notes: nullableText(notes),
         po_id: target.po_id,
@@ -203,13 +229,13 @@ export default function ReceiveRawMaterialModal({
           </div>
 
           <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Supplier
-            </label>
-            <input
-              type="text"
-              value={supplier}
-              onChange={(event) => setSupplier(event.target.value)}
+            <TenantSupplierVendorNameFields
+              vendorSelect={vendorSelect}
+              vendorOther={vendorOther}
+              onVendorSelectChange={setVendorSelect}
+              onVendorOtherChange={setVendorOther}
+              suppliers={vendorOptions}
+              required={false}
               className={inputClassName}
             />
           </div>

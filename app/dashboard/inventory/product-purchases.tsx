@@ -9,10 +9,13 @@ import {
   getStripedRowClassName,
 } from "../finance/register-row-actions";
 import ScrollableTable, {
+  scrollableTableActionsTdClassName,
   scrollableTableClassName,
   scrollableTableHeadClassName,
+  scrollableTableActionsThClassName,
   scrollableTableThClassName,
 } from "../scrollable-table";
+import { registerTableActionsInnerClassName } from "../finance/register-row-actions";
 import FilteredListCount from "../filtered-list-count";
 import {
   formatInventoryMoney,
@@ -30,6 +33,9 @@ import {
   type PurchasedProductOption,
 } from "@/utils/product-purchases-types";
 import type { SupplierRow } from "@/utils/suppliers-types";
+import { toVendorSupplierOptions } from "../finance/expense-register-form-fields";
+import { mergeSupplierOptions } from "../finance/vendor-select-utils";
+import { TenantSupplierIdSelect } from "@/components/tenant-supplier-select";
 import type { ContractProjectOption } from "../administration/projects-utils";
 import BarcodeScanField from "@/components/barcode-scan-field";
 import { findProductByScanCode } from "@/utils/barcode-scan-utils";
@@ -92,6 +98,28 @@ export default function ProductPurchases({
     () => calculateProductPurchaseTotal(form.quantity, form.cost_per_unit),
     [form.quantity, form.cost_per_unit],
   );
+
+  const supplierSelectOptions = useMemo(() => {
+    const base = toVendorSupplierOptions(suppliers);
+    if (!editingPurchaseId) {
+      return base;
+    }
+    const purchase = purchases.find((row) => row.id === editingPurchaseId);
+    if (purchase?.supplier_id && purchase.supplier?.name) {
+      return mergeSupplierOptions(base, [
+        { id: purchase.supplier_id, name: purchase.supplier.name },
+      ]);
+    }
+    return base;
+  }, [editingPurchaseId, purchases, suppliers]);
+
+  const editingSupplierLegacyName = useMemo(() => {
+    if (!editingPurchaseId) {
+      return null;
+    }
+    const purchase = purchases.find((row) => row.id === editingPurchaseId);
+    return purchase?.supplier?.name ?? null;
+  }, [editingPurchaseId, purchases]);
 
   const selectedProduct = useMemo(
     () => products.find((product) => product.id === form.product_id) ?? null,
@@ -323,7 +351,7 @@ export default function ProductPurchases({
               <th className={scrollableTableThClassName}>Total Cost</th>
               <th className={scrollableTableThClassName}>Payment Method</th>
               {!readOnly ? (
-                <th className={scrollableTableThClassName}>Actions</th>
+                <th className={scrollableTableActionsThClassName}>Actions</th>
               ) : null}
             </tr>
           </thead>
@@ -364,9 +392,9 @@ export default function ProductPurchases({
                   </td>
                   <td className="px-4 py-3">{purchase.payment_method}</td>
                   {!readOnly ? (
-                    <td className="px-4 py-3">
+                    <td className={scrollableTableActionsTdClassName}>
                       {confirmingPurchaseId === purchase.id ? (
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className={registerTableActionsInnerClassName}>
                           <span className="whitespace-normal text-sm text-red-700">
                             Delete this purchase? This cannot be undone.
                           </span>
@@ -390,7 +418,7 @@ export default function ProductPurchases({
                           </button>
                         </div>
                       ) : (
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className={registerTableActionsInnerClassName}>
                           <button
                             type="button"
                             onClick={() => openEditModal(purchase)}
@@ -512,27 +540,22 @@ export default function ProductPurchases({
               </div>
 
               <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Supplier
-                </label>
-                <select
+                <TenantSupplierIdSelect
+                  label="Supplier"
                   required
+                  allowEmpty={false}
+                  emptyLabel="Select active supplier"
                   value={form.supplier_id}
-                  onChange={(event) =>
+                  onChange={(supplierId) =>
                     setForm((current) => ({
                       ...current,
-                      supplier_id: event.target.value,
+                      supplier_id: supplierId,
                     }))
                   }
+                  suppliers={supplierSelectOptions}
+                  legacyDisplayName={editingSupplierLegacyName}
                   className={inputClassName}
-                >
-                  <option value="">Select active supplier</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="md:col-span-2">

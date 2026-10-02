@@ -62,6 +62,14 @@ import { isRawMaterialLowStock } from "../reports/inventory-reports-utils";
 import BarcodeScanField from "@/components/barcode-scan-field";
 import { findMaterialByScanCode } from "@/utils/barcode-scan-utils";
 import type { NamedLookup } from "../lookup-types";
+import type { SupplierRow } from "@/utils/suppliers-types";
+import { toVendorSupplierOptions } from "../finance/expense-register-form-fields";
+import {
+  inferVendorSelectState,
+  resolveVendorNameFromSelect,
+  VENDOR_OTHER_VALUE,
+} from "../finance/vendor-select-utils";
+import { TenantSupplierVendorNameFields } from "@/components/tenant-supplier-select";
 import {
   resolveOptionalProjectId,
   type ContractProjectOption,
@@ -79,6 +87,7 @@ type RawMaterialsProps = {
   initialAdjustments: RawMaterialStockAdjustmentRecord[];
   initialPaymentMethods: NamedLookup[];
   initialProjects: ContractProjectOption[];
+  initialSuppliers: SupplierRow[];
   fetchError: string | null;
   readOnly?: boolean;
   /** Create-only stamp for standalone purchases; null = All Businesses. */
@@ -98,7 +107,8 @@ const emptyPurchaseForm = {
   purchase_date: new Date().toISOString().slice(0, 10),
   quantity: "",
   cost_per_unit: "",
-  supplier: "",
+  vendor_select: "",
+  vendor_other: "",
   payment_method: "",
   notes: "",
   project_id: "",
@@ -121,6 +131,7 @@ export default function RawMaterials({
   initialAdjustments,
   initialPaymentMethods,
   initialProjects,
+  initialSuppliers,
   fetchError,
   readOnly = false,
   activeBusinessUnitId = null,
@@ -143,8 +154,12 @@ export default function RawMaterials({
     initialAdjustments.map(normalizeRawMaterialStockAdjustment),
   );
   const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
+  const vendorOptions = useMemo(
+    () => toVendorSupplierOptions(initialSuppliers),
+    [initialSuppliers],
+  );
   const [showMaterialForm, setShowMaterialForm] = useState(false);
-  const [showPurchaseForm, setShowPurchaseForm] = useState(false);
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [showAdjustmentForm, setShowAdjustmentForm] = useState(false);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(
@@ -191,7 +206,7 @@ export default function RawMaterials({
   }, [viewAllBusinessUnits]);
 
   useEffect(() => {
-    if (!showPurchaseForm && !editingPurchaseId) {
+    if (!purchaseModalOpen && !editingPurchaseId) {
       return;
     }
 
@@ -210,7 +225,7 @@ export default function RawMaterials({
     }
 
     void loadPaymentMethods();
-  }, [showPurchaseForm, editingPurchaseId, supabase]);
+  }, [purchaseModalOpen, editingPurchaseId, supabase]);
 
   const purchasePreviewTotal = useMemo(() => {
     const quantity = Number.parseFloat(purchaseForm.quantity);
@@ -421,17 +436,37 @@ export default function RawMaterials({
 
   function openEditPurchaseForm(purchase: RawMaterialPurchaseRecord) {
     setEditingPurchaseId(purchase.id);
+    const vendorState = inferVendorSelectState(
+      purchase.supplier ?? "",
+      vendorOptions,
+    );
     setPurchaseEditForm({
       material_id: purchase.material_id,
       purchase_date: purchase.purchase_date,
       quantity: String(purchase.quantity),
       cost_per_unit: String(purchase.cost_per_unit),
-      supplier: purchase.supplier ?? "",
+      vendor_select: vendorState.vendorSelect,
+      vendor_other: vendorState.vendorOther,
       payment_method: purchase.payment_method ?? "",
       notes: purchase.notes ?? "",
       project_id: purchase.project_id ?? "",
     });
-    setShowPurchaseForm(false);
+    setPurchaseModalOpen(false);
+  }
+
+  function openPurchaseModal() {
+    setPurchaseForm({ ...emptyPurchaseForm });
+    setPurchaseScanError(null);
+    setPurchaseScanSuccess(null);
+    setError(null);
+    setPurchaseModalOpen(true);
+  }
+
+  function closePurchaseModal() {
+    setPurchaseModalOpen(false);
+    setPurchaseForm({ ...emptyPurchaseForm });
+    setPurchaseScanError(null);
+    setPurchaseScanSuccess(null);
   }
 
   function closePurchaseEditForm() {
@@ -493,6 +528,20 @@ export default function RawMaterials({
       return;
     }
 
+    const supplierName = resolveVendorNameFromSelect(
+      purchaseEditForm.vendor_select,
+      purchaseEditForm.vendor_other,
+      vendorOptions,
+    );
+    if (
+      purchaseEditForm.vendor_select === VENDOR_OTHER_VALUE &&
+      !purchaseEditForm.vendor_other.trim()
+    ) {
+      setError("Enter the one-time supplier name.");
+      setLoading(false);
+      return;
+    }
+
     const { error: updateError } = await supabase.rpc(
       "update_raw_material_purchase",
       {
@@ -500,7 +549,7 @@ export default function RawMaterials({
         p_purchase_date: purchaseEditForm.purchase_date,
         p_quantity: quantity,
         p_cost_per_unit: costPerUnit,
-        p_supplier: nullableText(purchaseEditForm.supplier),
+        p_supplier: nullableText(supplierName),
         p_payment_method: purchaseEditForm.payment_method.trim(),
         p_notes: nullableText(purchaseEditForm.notes),
       },
@@ -625,6 +674,20 @@ export default function RawMaterials({
       return;
     }
 
+    const supplierName = resolveVendorNameFromSelect(
+      purchaseForm.vendor_select,
+      purchaseForm.vendor_other,
+      vendorOptions,
+    );
+    if (
+      purchaseForm.vendor_select === VENDOR_OTHER_VALUE &&
+      !purchaseForm.vendor_other.trim()
+    ) {
+      setError("Enter the one-time supplier name.");
+      setLoading(false);
+      return;
+    }
+
     const { error: insertError } = await supabase
       .from("raw_material_purchases")
       .insert({
@@ -633,7 +696,7 @@ export default function RawMaterials({
         quantity,
         cost_per_unit: costPerUnit,
         total_cost: Math.round(quantity * costPerUnit * 10000) / 10000,
-        supplier: nullableText(purchaseForm.supplier),
+        supplier: nullableText(supplierName),
         payment_method: purchaseForm.payment_method.trim(),
         notes: nullableText(purchaseForm.notes),
         project_id: resolveOptionalProjectId(purchaseForm.project_id),
@@ -647,7 +710,7 @@ export default function RawMaterials({
     }
 
     setPurchaseForm(emptyPurchaseForm);
-    setShowPurchaseForm(false);
+    closePurchaseModal();
     await refreshData();
     setLoading(false);
   }
@@ -976,20 +1039,48 @@ export default function RawMaterials({
           {!readOnly ? (
           <button
             type="button"
-            onClick={() => setShowPurchaseForm((current) => !current)}
+            onClick={openPurchaseModal}
             className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
           >
-            {showPurchaseForm ? "Cancel" : "Record Purchase"}
+            Record Purchase
           </button>
           ) : null}
         </div>
 
-        {showPurchaseForm && !readOnly ? (
-          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        {purchaseModalOpen && !readOnly ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="raw-material-purchase-form-title"
+              className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-200 bg-white p-6 shadow-xl"
+            >
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h3
+                    id="raw-material-purchase-form-title"
+                    className="text-lg font-semibold text-[#0f2744]"
+                  >
+                    Record Purchase
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Increases stock and recalculates weighted average cost. Debits
+                    Inventory and credits Cash or Accounts Payable.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closePurchaseModal}
+                  className="rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
+                >
+                  Close
+                </button>
+              </div>
+
             <form onSubmit={handlePurchaseSubmit} className="grid gap-4 md:grid-cols-2">
               <div className="md:col-span-2">
                 <BarcodeScanField
-                  enabled={showPurchaseForm && !readOnly}
+                  enabled={purchaseModalOpen && !readOnly}
                   label="Scan material"
                   hint="Scan a material code to select it below."
                   errorMessage={purchaseScanError}
@@ -1117,22 +1208,25 @@ export default function RawMaterials({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Supplier
-                </label>
-                <input
-                  type="text"
-                  value={purchaseForm.supplier}
-                  onChange={(event) =>
-                    setPurchaseForm((current) => ({
-                      ...current,
-                      supplier: event.target.value,
-                    }))
-                  }
-                  className={inputClassName}
-                />
-              </div>
+              <TenantSupplierVendorNameFields
+                vendorSelect={purchaseForm.vendor_select}
+                vendorOther={purchaseForm.vendor_other}
+                onVendorSelectChange={(value) =>
+                  setPurchaseForm((current) => ({
+                    ...current,
+                    vendor_select: value,
+                  }))
+                }
+                onVendorOtherChange={(value) =>
+                  setPurchaseForm((current) => ({
+                    ...current,
+                    vendor_other: value,
+                  }))
+                }
+                suppliers={vendorOptions}
+                required={false}
+                className={inputClassName}
+              />
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Payment Method
@@ -1180,7 +1274,7 @@ export default function RawMaterials({
                   </span>
                 </div>
               ) : null}
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 flex flex-wrap gap-3">
                 <button
                   type="submit"
                   disabled={loading}
@@ -1188,9 +1282,18 @@ export default function RawMaterials({
                 >
                   {loading ? "Saving…" : "Save Purchase"}
                 </button>
+                <button
+                  type="button"
+                  onClick={closePurchaseModal}
+                  disabled={loading}
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
               </div>
             </form>
-          </section>
+            </div>
+          </div>
         ) : null}
 
         {editingPurchaseId ? (
@@ -1271,22 +1374,25 @@ export default function RawMaterials({
                   className={inputClassName}
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Supplier
-                </label>
-                <input
-                  type="text"
-                  value={purchaseEditForm.supplier}
-                  onChange={(event) =>
-                    setPurchaseEditForm((current) => ({
-                      ...current,
-                      supplier: event.target.value,
-                    }))
-                  }
-                  className={inputClassName}
-                />
-              </div>
+              <TenantSupplierVendorNameFields
+                vendorSelect={purchaseEditForm.vendor_select}
+                vendorOther={purchaseEditForm.vendor_other}
+                onVendorSelectChange={(value) =>
+                  setPurchaseEditForm((current) => ({
+                    ...current,
+                    vendor_select: value,
+                  }))
+                }
+                onVendorOtherChange={(value) =>
+                  setPurchaseEditForm((current) => ({
+                    ...current,
+                    vendor_other: value,
+                  }))
+                }
+                suppliers={vendorOptions}
+                required={false}
+                className={inputClassName}
+              />
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Payment Method
