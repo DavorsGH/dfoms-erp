@@ -287,6 +287,10 @@ export type ClientInvoiceSiteOption = {
   site_code: string;
   site_name: string;
   client_id: string;
+  building?: string | null;
+  floor_zone?: string | null;
+  project_code?: string | null;
+  project_name?: string | null;
 };
 
 export function roundMoney(value: number) {

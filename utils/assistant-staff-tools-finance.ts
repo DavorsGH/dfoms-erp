@@ -533,6 +533,7 @@ export async function getSupplierContractsStatus(): Promise<unknown> {
         const monthlyGhs = resolveMonthlyAmountForBillingMonth(
           (amendments ?? []) as SupplierContractAmendmentRow[],
           billingMonthStart,
+          contract.start_date,
         );
         const invoiceNumber = formatSupplierContractApInvoiceNumber(
           contract.contract_number,

@@ -11,14 +11,18 @@ import {
   resolveBusinessUnitReadScope,
 } from "@/utils/business-unit-view";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
+import { tryCatchUpSupplierContractStartMonthBill } from "@/utils/supplier-contract-ap-generation-core";
 import { createSupplierContract } from "@/utils/supplier-contracts-api";
 import {
   SUPPLIER_CONTRACT_LIST_SELECT,
   normalizeSupplierContractListRow,
+  normalizeSupplierContractStatus,
   validateSupplierContractBody,
+  type SupplierContractApContractRow,
   type SupplierContractListDbRow,
   type SupplierContractWriteBody,
 } from "@/utils/supplier-contracts-types";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
 async function getTenantSupabase() {
@@ -113,6 +117,20 @@ export async function POST(request: Request) {
 
   if (error || !contract) {
     return NextResponse.json({ error: error ?? "Unable to create contract." }, { status: 400 });
+  }
+
+  if (normalizeSupplierContractStatus(contract.status) === "active") {
+    const admin = createAdminClient();
+    const catchUp = await tryCatchUpSupplierContractStartMonthBill({
+      admin,
+      contract: contract as SupplierContractApContractRow,
+    });
+    if (catchUp.error) {
+      console.error(
+        `[supplier-contracts] catch-up bill failed (${contract.id}):`,
+        catchUp.error,
+      );
+    }
   }
 
   return NextResponse.json({ contract });

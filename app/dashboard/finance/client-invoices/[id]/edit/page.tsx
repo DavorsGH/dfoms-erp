@@ -6,7 +6,11 @@ import { CLIENT_SELECT, type ClientEntry } from "@/app/dashboard/operations/clie
 import { getActiveBusinessUnitId, getCurrentUserTenantId } from "@/utils/dashboard-auth";
 import { loadTenantSalesTaxBasis } from "@/app/dashboard/finance/tax-utils";
 import { loadClientInvoiceDetail, loadAuthorizedSignerOptions } from "@/utils/client-invoices-api";
-import { loadActiveServiceContractsForTenant } from "@/utils/service-contracts-api";
+import { normalizeClientInvoiceSiteOption } from "@/utils/client-invoice-site-lines";
+import {
+  loadActiveServiceContractsForTenant,
+  loadServiceContractLineItemsByContractForTenant,
+} from "@/utils/service-contracts-api";
 import { getCurrentTenantBillingSettingsHeader, getCurrentTenantGraTin } from "@/utils/billing-settings-load";
 import {
   clientInvoiceToFormState,
@@ -51,6 +55,7 @@ export default async function EditClientInvoicePage({
     authorizedSignersResult,
     salesTaxBasisResult,
     serviceContractsResult,
+    contractLineItemsResult,
     billingSettings,
     graTin,
   ] = await Promise.all([
@@ -58,15 +63,23 @@ export default async function EditClientInvoicePage({
     supabase.from("customers").select(CLIENT_SELECT).order("client_name", { ascending: true }),
     supabase
       .from("sites")
-      .select("site_code, site_name, client_id")
+      .select(
+        "site_code, site_name, client_id, building, floor_zone, project:projects(project_code, project_name)",
+      )
       .order("site_name", { ascending: true }),
     loadActivePaymentAccountsForTenant(supabase, tenantId),
     loadAuthorizedSignerOptions(supabase, tenantId),
     loadTenantSalesTaxBasis(supabase, tenantId, activeBusinessUnitId),
     loadActiveServiceContractsForTenant(supabase, tenantId),
+    loadServiceContractLineItemsByContractForTenant(supabase, tenantId),
     getCurrentTenantBillingSettingsHeader(),
     getCurrentTenantGraTin(),
   ]);
+
+  const normalizedSites =
+    ((sites as Record<string, unknown>[] | null) ?? [])
+      .map((row) => normalizeClientInvoiceSiteOption(row))
+      .filter((row): row is ClientInvoiceSiteOption => row != null);
 
   if (!detail.invoice) {
     notFound();
@@ -97,6 +110,7 @@ export default async function EditClientInvoicePage({
     authorizedSignersResult.error ??
     salesTaxBasisResult.error ??
     serviceContractsResult.error ??
+    contractLineItemsResult.error ??
     null;
 
   const initialForm = clientInvoiceToFormState(
@@ -130,10 +144,13 @@ export default async function EditClientInvoicePage({
         billingSettings={billingSettings}
         graTin={graTin}
         initialCustomers={(customers as ClientEntry[] | null) ?? []}
-        initialSites={(sites as ClientInvoiceSiteOption[] | null) ?? []}
+        initialSites={normalizedSites}
         initialPaymentAccounts={paymentAccounts ?? []}
         initialAuthorizedSigners={authorizedSignersResult.signers}
         initialServiceContracts={serviceContractsResult.contracts}
+        initialContractLineItemsByContractId={
+          contractLineItemsResult.lineItemsByContractId
+        }
         salesTaxBasis={salesTaxBasisResult.salesTaxBasis}
         initialForm={initialForm}
         fetchError={fetchError}

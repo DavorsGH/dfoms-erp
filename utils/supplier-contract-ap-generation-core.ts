@@ -1,10 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { todayAccraIsoDate } from "@/app/dashboard/finance/statutory-due-rules";
+import {
+  billingMonthEndFromStart,
+  computeSupplierContractProRatedBill,
+  resolveMonthlyAmountForBillingMonth,
+  supplierContractStartMonthBillingRunPassed,
+} from "@/utils/supplier-contract-billing";
 import {
   SUPPLIER_CONTRACT_HEADER_SELECT,
   SUPPLIER_CONTRACT_SOURCE_TYPE,
   billingMonthStartFromDate,
   formatSupplierContractApInvoiceNumber,
-  resolveMonthlyAmountForBillingMonth,
+  normalizeSupplierContractStatus,
   roundMoney,
   toNumber,
   type SupplierContractAmendmentRow,
@@ -92,6 +99,7 @@ async function createSupplierContractAp(
   contract: SupplierContractApContractRow,
   billingMonthStart: string,
   grossBeforeWht: number,
+  description?: string | null,
 ): Promise<{ apId: string | null; skipped: boolean; error?: string }> {
   const invoiceNumber = formatSupplierContractApInvoiceNumber(
     contract.contract_number,
@@ -136,7 +144,9 @@ async function createSupplierContractAp(
     p_invoice_number: invoiceNumber,
     p_expense_category: contract.expense_category,
     p_sub_category: contract.sub_category,
-    p_description: `Supplier contract ${contract.contract_number}`,
+    p_description:
+      description?.trim() ||
+      `Supplier contract ${contract.contract_number}`,
     p_invoice_date: invoiceDate,
     p_due_date: dueDate,
     p_amount: purchaseTax.netOfTaxAmount,
@@ -226,7 +236,21 @@ export async function generateSupplierContractAccountsPayableCore(
     }
 
     const amendments = await loadAmendments(admin, contract.tenant_id, contract.id);
-    let monthly = resolveMonthlyAmountForBillingMonth(amendments, billingMonthStart);
+    const monthlyBase = resolveMonthlyAmountForBillingMonth(
+      amendments,
+      billingMonthStart,
+      contract.start_date,
+    );
+    const proRated = computeSupplierContractProRatedBill({
+      monthlyAmount: monthlyBase,
+      billingMonthStart,
+      contractStartDate: contract.start_date,
+      contractEndDate: endDate,
+    });
+    let monthly = proRated.grossBeforeWht;
+    const apDescription = proRated.descriptionSuffix
+      ? `Supplier contract ${contract.contract_number} — ${proRated.descriptionSuffix}`
+      : `Supplier contract ${contract.contract_number}`;
     let creditApplied = 0;
     let creditBalance = roundMoney(toNumber(contract.credit_balance));
     if (creditBalance > 0 && monthly > 0) {
@@ -241,6 +265,7 @@ export async function generateSupplierContractAccountsPayableCore(
         contract,
         billingMonthStart,
         monthly,
+        apDescription,
       );
       if (apResult.error) {
         errors += 1;
@@ -280,4 +305,89 @@ export async function generateSupplierContractAccountsPayableCore(
   }
 
   return { asOfDate, created, skipped, errors, reminders };
+}
+
+function contractActiveForBillingMonth(
+  contract: Pick<SupplierContractApContractRow, "start_date" | "end_date">,
+  billingMonthStart: string,
+): boolean {
+  const monthEnd = billingMonthEndFromStart(billingMonthStart);
+  const start = contract.start_date.slice(0, 10);
+  const end = contract.end_date.slice(0, 10);
+  return start <= monthEnd && end >= billingMonthStart.slice(0, 10);
+}
+
+export async function tryCatchUpSupplierContractStartMonthBill(options: {
+  admin: SupabaseClient;
+  contract: SupplierContractApContractRow;
+  asOf?: string;
+}): Promise<{ created: boolean; skipped: boolean; error?: string }> {
+  const asOfDate = toDateString(options.asOf ?? todayAccraIsoDate());
+  const contract = options.contract;
+
+  if (normalizeSupplierContractStatus(contract.status) !== "active") {
+    return { created: false, skipped: true };
+  }
+
+  if (!supplierContractStartMonthBillingRunPassed(contract.start_date, asOfDate)) {
+    return { created: false, skipped: true };
+  }
+
+  const billingMonthStart = billingMonthStartFromDate(contract.start_date);
+  if (!contractActiveForBillingMonth(contract, billingMonthStart)) {
+    return { created: false, skipped: true };
+  }
+
+  const amendments = await loadAmendments(
+    options.admin,
+    contract.tenant_id,
+    contract.id,
+  );
+  const monthlyBase = resolveMonthlyAmountForBillingMonth(
+    amendments,
+    billingMonthStart,
+    contract.start_date,
+  );
+  const proRated = computeSupplierContractProRatedBill({
+    monthlyAmount: monthlyBase,
+    billingMonthStart,
+    contractStartDate: contract.start_date,
+    contractEndDate: contract.end_date,
+  });
+
+  if (proRated.grossBeforeWht <= 0) {
+    return { created: false, skipped: true };
+  }
+
+  const apDescription = proRated.descriptionSuffix
+    ? `Supplier contract ${contract.contract_number} — ${proRated.descriptionSuffix}`
+    : `Supplier contract ${contract.contract_number}`;
+
+  const apResult = await createSupplierContractAp(
+    options.admin,
+    contract,
+    billingMonthStart,
+    proRated.grossBeforeWht,
+    apDescription,
+  );
+
+  if (apResult.error) {
+    return { created: false, skipped: false, error: apResult.error };
+  }
+
+  if (apResult.skipped) {
+    return { created: false, skipped: true };
+  }
+
+  const nextBilling = addMonths(billingMonthStart, 1);
+  await options.admin
+    .from("supplier_contracts")
+    .update({
+      next_billing_date: nextBilling,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", contract.id)
+    .eq("tenant_id", contract.tenant_id);
+
+  return { created: true, skipped: false };
 }

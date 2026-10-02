@@ -15,7 +15,6 @@ import TruncatedCell, {
 } from "@/app/dashboard/register-truncated-cell";
 import {
   formatInvoiceDate,
-  formatInvoiceMoney,
   formatSupplierContractStatus,
   isSupplierContractRenewalDue,
   resolveSupplierContractDisplayStatus,
@@ -122,9 +121,7 @@ export default function SupplierContractsList({ contracts, fetchError }: Props) 
                         ) : null}
                       </td>
                       <td className="px-4 py-3">
-                        {row.current_monthly_amount == null
-                          ? "—"
-                          : formatInvoiceMoney(row.current_monthly_amount)}
+                        {row.current_monthly_amount_display}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="inline-flex flex-nowrap items-center gap-2">

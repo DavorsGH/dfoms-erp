@@ -538,6 +538,53 @@ export async function loadActiveServiceContractsForTenant(
   return { contracts: data ?? [], error: null };
 }
 
+export type ServiceContractLineItemsByContractId = Record<
+  string,
+  ServiceContractLineItemInput[]
+>;
+
+export async function loadServiceContractLineItemsByContractForTenant(
+  supabase: DbClient,
+  tenantId: string,
+): Promise<{
+  lineItemsByContractId: ServiceContractLineItemsByContractId;
+  error: string | null;
+}> {
+  const { data, error } = await supabase
+    .from("service_contract_line_items")
+    .select(
+      "contract_id, category_label, description, labour_amount, material_amount, discount_amount, taxed, sort_order",
+    )
+    .eq("tenant_id", tenantId)
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    return { lineItemsByContractId: {}, error: error.message };
+  }
+
+  const lineItemsByContractId: ServiceContractLineItemsByContractId = {};
+  for (const row of data ?? []) {
+    const contractId =
+      typeof row.contract_id === "string" ? row.contract_id.trim() : "";
+    if (!contractId) {
+      continue;
+    }
+    const list = lineItemsByContractId[contractId] ?? [];
+    list.push({
+      category_label: nullableText(row.category_label ?? null),
+      description: String(row.description ?? "").trim(),
+      labour_amount: toNumber(row.labour_amount),
+      material_amount: toNumber(row.material_amount),
+      discount_amount: toNumber(row.discount_amount),
+      taxed: row.taxed !== false,
+      sort_order: toNumber(row.sort_order),
+    });
+    lineItemsByContractId[contractId] = list;
+  }
+
+  return { lineItemsByContractId, error: null };
+}
+
 export async function loadActiveServiceContractsForCustomer(
   supabase: DbClient,
   tenantId: string,

@@ -1,4 +1,10 @@
+import { todayAccraIsoDate } from "@/app/dashboard/finance/statutory-due-rules";
 import { formatInvoiceDate, formatInvoiceMoney, roundMoney, toNumber } from "@/utils/client-invoices-types";
+import {
+  firstBillableDayOfBillingWindow,
+  resolveMonthlyAmountAsOfDate,
+  resolveMonthlyAmountForBillingMonth,
+} from "@/utils/supplier-contract-billing";
 
 export { formatInvoiceDate, formatInvoiceMoney, roundMoney, toNumber };
 
@@ -88,12 +94,14 @@ export type SupplierContractListRow = {
   created_at: string;
   /** Current billing month amount from amendments; null when none exist. */
   current_monthly_amount: number | null;
+  /** List/detail label; may show upcoming amount before first effective amendment. */
+  current_monthly_amount_display: string;
 };
 
 /** Active contract row from header select (cron/AP — no list amount). */
 export type SupplierContractApContractRow = Omit<
   SupplierContractListRow,
-  "current_monthly_amount"
+  "current_monthly_amount" | "current_monthly_amount_display"
 > & { notes?: string | null };
 
 export type SupplierContractWriteBody = {
@@ -221,33 +229,76 @@ export function billingMonthStartFromDate(dateStr: string): string {
   return `${d.slice(0, 7)}-01`;
 }
 
-/** Same billing-month reference as supplier contract detail view. */
+export {
+  firstBillableDayOfBillingWindow,
+  resolveMonthlyAmountAsOfDate,
+  resolveMonthlyAmountForBillingMonth,
+};
+
+/** Latest amendment with effective_date <= asOf (Africa/Accra today by default). */
 export function resolveSupplierContractCurrentMonthlyAmount(
-  contract: Pick<SupplierContractListRow, "next_billing_date">,
+  _contract: Pick<SupplierContractListRow, "next_billing_date">,
   amendments: SupplierContractListAmendmentEmbed[],
   referenceIso?: string,
 ): number {
-  const nextBilling = contract.next_billing_date;
-  const refDate =
-    typeof nextBilling === "string" && nextBilling.trim()
-      ? nextBilling
-      : (referenceIso ?? new Date().toISOString());
-  const billingMonth = billingMonthStartFromDate(refDate);
-  return resolveMonthlyAmountForBillingMonth(amendments, billingMonth);
+  const asOf = referenceIso?.trim()?.slice(0, 10) ?? todayAccraIsoDate();
+  return resolveMonthlyAmountAsOfDate(amendments, asOf);
 }
 
-export function resolveMonthlyAmountForBillingMonth(
-  amendments: Array<Pick<SupplierContractAmendmentRow, "effective_date" | "new_monthly_amount">>,
-  billingMonthStart: string,
-): number {
-  const eligible = amendments
-    .filter((row) => String(row.effective_date).slice(0, 10) <= billingMonthStart)
-    .sort((a, b) =>
-      String(b.effective_date).slice(0, 10).localeCompare(
-        String(a.effective_date).slice(0, 10),
-      ),
-    );
-  return roundMoney(toNumber(eligible[0]?.new_monthly_amount ?? 0));
+function formatSupplierContractUpcomingAmountDate(isoDate: string): string {
+  const date = new Date(`${isoDate.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return isoDate.slice(0, 10);
+  }
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/** Earliest amendment with effective_date strictly after asOf (Africa/Accra today). */
+export function resolveNextSupplierContractMonthlyAmendment(
+  amendments: SupplierContractListAmendmentEmbed[],
+  referenceIso?: string,
+): Pick<SupplierContractListAmendmentEmbed, "effective_date" | "new_monthly_amount"> | null {
+  const asOf = referenceIso?.trim()?.slice(0, 10) ?? todayAccraIsoDate();
+  const sorted = [...amendments].sort((a, b) =>
+    String(a.effective_date).slice(0, 10).localeCompare(
+      String(b.effective_date).slice(0, 10),
+    ),
+  );
+  const next = sorted.find(
+    (row) => String(row.effective_date).slice(0, 10) > asOf,
+  );
+  return next ?? null;
+}
+
+/** Display-only: current amount, or upcoming amount before any amendment is effective. */
+export function formatSupplierContractCurrentMonthlyAmountDisplay(
+  amendments: SupplierContractListAmendmentEmbed[],
+  referenceIso?: string,
+): string {
+  if (amendments.length === 0) {
+    return "—";
+  }
+  const current = resolveSupplierContractCurrentMonthlyAmount(
+    { next_billing_date: null },
+    amendments,
+    referenceIso,
+  );
+  if (current > 0) {
+    return formatInvoiceMoney(current);
+  }
+  const upcoming = resolveNextSupplierContractMonthlyAmendment(
+    amendments,
+    referenceIso,
+  );
+  if (upcoming && toNumber(upcoming.new_monthly_amount) > 0) {
+    const effective = String(upcoming.effective_date).slice(0, 10);
+    return `${formatInvoiceMoney(upcoming.new_monthly_amount)} from ${formatSupplierContractUpcomingAmountDate(effective)}`;
+  }
+  return formatInvoiceMoney(current);
 }
 
 export function formatSupplierContractApInvoiceNumber(
@@ -294,6 +345,8 @@ export function normalizeSupplierContractListRow(
     amendments.length === 0
       ? null
       : resolveSupplierContractCurrentMonthlyAmount(row, amendments);
+  const current_monthly_amount_display =
+    formatSupplierContractCurrentMonthlyAmountDisplay(amendments);
 
   const {
     supplier_contract_amendments: _amendments,
@@ -309,5 +362,6 @@ export function normalizeSupplierContractListRow(
     credit_balance: roundMoney(toNumber(credit_balance)),
     contract_sequence: toNumber(contract_sequence),
     current_monthly_amount,
+    current_monthly_amount_display,
   };
 }

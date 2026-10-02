@@ -41,6 +41,8 @@ export type LineItemsEditorProps<T extends LineItemsEditorBaseLine> = {
   createManualLine: (sortOrder: number) => T;
   createProductLine?: (sortOrder: number) => T;
   resolveLineDisplayTotal?: (line: T) => number;
+  /** When set, overrides the built-in site-line handler (preferred for invoice/quotation forms). */
+  onAddSiteLine?: (siteCode: string) => void;
 };
 
 const inputClassName =
@@ -75,6 +77,7 @@ export default function LineItemsEditor<T extends LineItemsEditorBaseLine>({
   createManualLine,
   createProductLine,
   resolveLineDisplayTotal,
+  onAddSiteLine,
 }: LineItemsEditorProps<T>) {
   const [sitePicker, setSitePicker] = useState("");
 
@@ -170,7 +173,20 @@ export default function LineItemsEditor<T extends LineItemsEditorBaseLine>({
   }
 
   function addSiteLine(siteCode: string) {
-    const site = siteOptions.find((entry) => entry.site_code === siteCode);
+    const normalizedCode = siteCode.trim();
+    if (!normalizedCode) {
+      return;
+    }
+
+    if (onAddSiteLine) {
+      onAddSiteLine(normalizedCode);
+      setSitePicker("");
+      return;
+    }
+
+    const site = siteOptions.find(
+      (entry) => entry.site_code.trim() === normalizedCode,
+    );
     if (!site) {
       return;
     }
@@ -180,7 +196,7 @@ export default function LineItemsEditor<T extends LineItemsEditorBaseLine>({
         ...lineItems,
         {
           ...createManualLine(lineItems.length),
-          site_id: site.site_code,
+          site_id: site.site_code.trim(),
           description: site.site_name,
         },
       ]),

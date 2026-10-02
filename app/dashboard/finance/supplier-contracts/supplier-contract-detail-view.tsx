@@ -24,7 +24,7 @@ import {
   formatInvoiceDate,
   formatInvoiceMoney,
   normalizeSupplierContractStatus,
-  resolveSupplierContractCurrentMonthlyAmount,
+  formatSupplierContractCurrentMonthlyAmountDisplay,
   resolveSupplierContractDisplayStatus,
   supplierContractDisplayStatusBadgeClassName,
   type SupplierContractStatus,
@@ -159,21 +159,13 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
       })
     : "Draft";
 
-  const currentMonthlyAmount = useMemo(() => {
-    if (!detail) return 0;
+  const currentMonthlyAmountDisplay = useMemo(() => {
+    if (!detail) return "—";
     const amendments = detail.amendments.map((row) => ({
       effective_date: String(row.effective_date),
       new_monthly_amount: Number(row.new_monthly_amount),
     }));
-    return resolveSupplierContractCurrentMonthlyAmount(
-      {
-        next_billing_date:
-          typeof detail.contract.next_billing_date === "string"
-            ? detail.contract.next_billing_date
-            : null,
-      },
-      amendments,
-    );
+    return formatSupplierContractCurrentMonthlyAmountDisplay(amendments);
   }, [detail]);
 
   async function uploadDocument(
@@ -476,7 +468,7 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
           </div>
           <div>
             <dt className="text-slate-500">Current monthly amount</dt>
-            <dd className="font-medium">{formatInvoiceMoney(currentMonthlyAmount)}</dd>
+            <dd className="font-medium">{currentMonthlyAmountDisplay}</dd>
           </div>
           <div className="md:col-span-2">
             <dt className="text-slate-500">Document</dt>

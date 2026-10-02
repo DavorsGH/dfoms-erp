@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import LineItemsEditor, { reindexLineItems } from "@/components/line-items-editor";
@@ -38,7 +38,14 @@ import {
   paymentAccountsForDocumentPicker,
   type PaymentAccountRow,
 } from "@/utils/payment-accounts-types";
-import type { ServiceContractOption } from "@/utils/service-contracts-types";
+import {
+  buildClientInvoiceLineFromSite,
+  type ClientInvoiceSiteLineSource,
+} from "@/utils/client-invoice-site-lines";
+import type {
+  ServiceContractLineItemInput,
+  ServiceContractOption,
+} from "@/utils/service-contracts-types";
 import { buildClientInvoicePreviewDisplay } from "./client-invoice-display-utils";
 import ClientInvoicePreviewDialog from "./client-invoice-preview-dialog";
 
@@ -62,6 +69,10 @@ type ClientInvoiceFormProps = {
   initialPaymentAccounts: PaymentAccountRow[];
   initialAuthorizedSigners: ClientInvoiceAuthorizedSignerOption[];
   initialServiceContracts?: ServiceContractOption[];
+  initialContractLineItemsByContractId?: Record<
+    string,
+    ServiceContractLineItemInput[]
+  >;
   initialForm: ClientInvoiceFormState;
   salesTaxBasis: SalesTaxBasis;
   fetchError?: string | null;
@@ -93,6 +104,7 @@ export default function ClientInvoiceForm({
   initialPaymentAccounts,
   initialAuthorizedSigners,
   initialServiceContracts = [],
+  initialContractLineItemsByContractId = {},
   initialForm,
   salesTaxBasis,
   fetchError = null,
@@ -116,6 +128,71 @@ export default function ClientInvoiceForm({
         ? initialSites.filter((site) => site.client_id === form.client_id)
         : [],
     [form.client_id, initialSites],
+  );
+
+  const availableClientSites = useMemo(
+    () => {
+      const usedSiteIds = new Set(
+        form.line_items
+          .map((line) => line.site_id?.trim())
+          .filter((value): value is string => Boolean(value)),
+      );
+      return clientSites.filter(
+        (site) =>
+          site.site_code.trim().length > 0 && !usedSiteIds.has(site.site_code),
+      );
+    },
+    [clientSites, form.line_items],
+  );
+
+  const handleAddSiteLine = useCallback(
+    (siteCode: string) => {
+      const normalizedCode = siteCode.trim();
+      if (!normalizedCode) {
+        return;
+      }
+
+      setForm((current) => {
+        if (
+          current.line_items.some((line) => line.site_id?.trim() === normalizedCode)
+        ) {
+          return current;
+        }
+
+        const site = clientSites.find(
+          (entry) => entry.site_code.trim() === normalizedCode,
+        );
+        if (!site) {
+          return current;
+        }
+
+        const contractId = current.contract_id?.trim() ?? "";
+        const contractLineItems = contractId
+          ? (initialContractLineItemsByContractId[contractId] ?? [])
+          : [];
+
+        const siteSource: ClientInvoiceSiteLineSource = {
+          site_code: site.site_code,
+          site_name: site.site_name,
+          project_code: site.project_code,
+          project_name: site.project_name,
+          building: site.building,
+          floor_zone: site.floor_zone,
+        };
+
+        const newLine = buildClientInvoiceLineFromSite({
+          site: siteSource,
+          contractLineItems,
+          sortOrder: current.line_items.length,
+        });
+
+        return {
+          ...current,
+          line_items: reindexLineItems([...current.line_items, newLine]),
+        };
+      });
+    },
+    [clientSites, initialContractLineItemsByContractId],
   );
 
   const clientContracts = useMemo(
@@ -637,13 +714,18 @@ export default function ClientInvoiceForm({
         lineItems={form.line_items}
         onLineItemsChange={(line_items) => setForm((current) => ({ ...current, line_items }))}
         itemSource="site"
-        siteOptions={clientSites}
+        siteOptions={availableClientSites}
+        onAddSiteLine={handleAddSiteLine}
         clientSelected={Boolean(form.client_id)}
         vatRate={form.vat_nhil_getfund_rate ?? 0}
         whtRate={form.wht_rate ?? 0}
         taxBasis={salesTaxBasis}
         disabled={saving}
-        sectionDescription="Group lines with the same category label. Total cost updates live."
+        sectionDescription={
+          form.client_id && clientSites.length === 0
+            ? "This customer has no operational sites — use Add Manual Line."
+            : "Add site lines from the customer's sites (rate card from the linked service contract when selected). Group lines with the same category label."
+        }
         showCurrencyInHeaders
         createManualLine={emptyLineItem}
       />
