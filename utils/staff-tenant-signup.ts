@@ -15,6 +15,7 @@ import {
   slugifyCompanyName,
 } from "@/utils/tenant-signup";
 import { provisionSignupOwnerEmployeeAndApprovers } from "@/utils/tenant-signup-owner-provisioning";
+import { seedTenantLeaveTypesIfMissing } from "@/utils/tenant-leave-types-seed";
 import { seedTenantPaymentMethodsFromDavorsTemplate } from "@/utils/tenant-payment-methods-seed";
 import {
   rollbackTenantClientDocumentNotifications,
@@ -85,6 +86,7 @@ async function rollbackStaffTenantSignup(
       .eq("tenant_id", state.tenantId)
       .eq("position_title", "Administrator");
     await admin.from("payment_methods").delete().eq("tenant_id", state.tenantId);
+    await admin.from("leave_types").delete().eq("tenant_id", state.tenantId);
     await admin
       .from("inventory_balance_config")
       .delete()
@@ -212,6 +214,12 @@ export async function provisionStaffTenantSignup(
   if (paymentMethodsSeed.error) {
     await rollbackStaffTenantSignup(admin, rollbackState);
     return { ok: false, error: paymentMethodsSeed.error, status: 400 };
+  }
+
+  const leaveTypesSeed = await seedTenantLeaveTypesIfMissing(admin, tenantRow.id);
+  if (leaveTypesSeed.error) {
+    await rollbackStaffTenantSignup(admin, rollbackState);
+    return { ok: false, error: leaveTypesSeed.error, status: 400 };
   }
 
   const ownerProvisioning = await provisionSignupOwnerEmployeeAndApprovers(

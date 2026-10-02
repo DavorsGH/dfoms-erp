@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserEmployeeId } from "@/utils/dashboard-auth";
+import {
+  getCurrentUserEmployeeId,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import MyLeave from "../my-leave";
 import type {
   EmployeeLeaveBalance,
@@ -11,6 +15,7 @@ import SelfServiceShell from "../self-service-shell";
 
 export default async function SelfServiceLeavePage() {
   const employeeId = await getCurrentUserEmployeeId();
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
   const currentYear = new Date().getFullYear();
 
   if (!employeeId) {
@@ -54,7 +59,13 @@ export default async function SelfServiceLeavePage() {
       .select("*, leave_types(type_name)")
       .eq("employee_id", employeeId)
       .order("submitted_at", { ascending: false }),
-    supabase.from("leave_types").select("*").order("type_name"),
+    tenantId
+      ? supabase
+          .from("leave_types")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .order("type_name")
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const fetchError =

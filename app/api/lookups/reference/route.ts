@@ -74,7 +74,11 @@ export async function GET() {
       .from("payment_methods")
       .select("name")
       .order("name", { ascending: true }),
-    supabase.from("leave_types").select("type_name").order("type_name"),
+    supabase
+      .from("leave_types")
+      .select("type_name")
+      .eq("tenant_id", tenantId)
+      .order("type_name"),
     supabase.from("service_types").select("name").order("name", { ascending: true }),
   ]);
 

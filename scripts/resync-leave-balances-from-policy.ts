@@ -138,7 +138,10 @@ async function main() {
       .from("employees")
       .select("employee_id, staff_id, full_name, position, employment_type")
       .eq("tenant_id", args.tenantId),
-    admin.from("leave_types").select("id, type_name"),
+    admin
+      .from("leave_types")
+      .select("id, type_name")
+      .eq("tenant_id", args.tenantId),
     admin
       .from("leave_entitlement_policy")
       .select("id, tenant_id, position, employment_type, leave_type, entitled_days")

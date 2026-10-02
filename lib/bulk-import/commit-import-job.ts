@@ -326,7 +326,8 @@ async function insertEmployeeRow(
         public.resolve_leave_entitlement($1, $4, $5, lt.type_name),
         0
       FROM public.leave_types lt
-      WHERE lt.type_name = ANY (
+      WHERE lt.tenant_id = $1
+        AND lt.type_name = ANY (
         ARRAY['Annual Leave'::text, 'Sick Leave'::text, 'Unpaid Leave'::text]
       )
       ON CONFLICT (employee_id, leave_type_id, year) DO NOTHING

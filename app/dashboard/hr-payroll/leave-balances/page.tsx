@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserRole } from "@/utils/dashboard-auth";
+import {
+  getCurrentUserRole,
+  getCurrentUserTenantId,
+} from "@/utils/dashboard-auth";
+import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import { canManageLeaveBalances } from "@/utils/rbac-access";
 import type { AppRole } from "../../user-account-types";
 import {
@@ -17,6 +21,7 @@ import type {
 
 export default async function LeaveBalancesPage() {
   const role = (await getCurrentUserRole()) as AppRole | null;
+  const tenantId = await getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS);
   const currentYear = new Date().getFullYear();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -32,7 +37,13 @@ export default async function LeaveBalancesPage() {
       .eq("year", currentYear)
       .order("employee_id"),
     supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
-    supabase.from("leave_types").select("*").order("type_name"),
+    tenantId
+      ? supabase
+          .from("leave_types")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .order("type_name")
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const fetchError =
