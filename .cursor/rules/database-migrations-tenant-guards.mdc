@@ -1,0 +1,51 @@
+---
+description: Tenant guard wrappers and SECURITY DEFINER migration rules (330, 331, 331b)
+globs: scripts/**/*.sql
+alwaysApply: false
+---
+
+# Database migrations — tenant guard wrappers
+
+Security migrations **330, 331, 331b** (`scripts/331b_tenant_guard_null_id_passthrough.sql`) (applied on staging and production):
+
+## Guarded public RPCs (22)
+
+These public functions are **SECURITY DEFINER guard wrappers** that call `public.assert_caller_can_act_for_tenant` before running the real logic in `<name>__impl`:
+
+- `save_client_invoice`
+- `change_client_invoice_status`
+- `void_client_invoice`
+- `checkout_pos_cart`
+- `void_product_sale`
+- `record_refund`
+- `save_accounts_payable`
+- `delete_accounts_payable`
+- `recompute_accounts_payable_from_payments`
+- `record_supplier_contract_replacement_payment`
+- `save_fixed_asset`
+- `delete_fixed_asset`
+- `create_fixed_asset_payable`
+- `sync_fixed_asset_payable`
+- `reverse_fixed_asset_payable`
+- `replace_purchase_tax_ledger_entries`
+- `generate_next_code`
+- `submit_leave_request`
+- `approve_leave_request`
+- `reject_leave_request`
+- `cancel_leave_request`
+- `create_product_return`
+
+## Rules
+
+- **NEVER** write `CREATE OR REPLACE FUNCTION public.<name>(...)` for any of these 22 names — that silently removes the tenant guard. To change business logic, edit `public.<name>__impl` instead.
+- When changing an `__impl` function: keep it **SECURITY DEFINER**, keep **`SET search_path = public`**, keep its **signature identical to the wrapper**, and end the migration with:
+
+  ```sql
+  REVOKE ALL ON FUNCTION public.<name>__impl(<args>) FROM PUBLIC, anon, authenticated;
+  GRANT EXECUTE ON FUNCTION public.<name>__impl(<args>) TO service_role;
+  ```
+
+- If an `__impl` **signature must change** (add/remove/retype a parameter), stop and flag it — the wrapper must be rebuilt to match, which needs a reviewed migration.
+- Any **NEW** SECURITY DEFINER function that is executable by `authenticated` and acts on tenant data must call `PERFORM public.assert_caller_can_act_for_tenant(<tenant id>)` before doing anything else, with the tenant id taken from `p_tenant_id` or looked up from the target row (not trusted from client-supplied JSON).
+- After any migration that touches these functions, run `scripts/331_same_tenant_test.sql` and `scripts/331_cross_tenant_test.sql` on **dfoms-staging** and confirm all rows **PASS** before applying to production.
+- **`scripts/334_remit_tax_for_period_no_due_date_patch.sql` must NOT be run.**

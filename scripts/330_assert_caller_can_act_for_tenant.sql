@@ -10,15 +10,20 @@ AS $$
 DECLARE
   v_jwt_claims text;
   v_jwt_role text;
-  v_has_postgrest_jwt boolean;
+  v_session_role text;
 BEGIN
-  v_jwt_claims := current_setting('request.jwt.claims', true);
-  v_has_postgrest_jwt :=
-    v_jwt_claims IS NOT NULL
-    AND btrim(v_jwt_claims) <> ''
-    AND btrim(v_jwt_claims) <> 'null';
+  v_jwt_claims := nullif(btrim(coalesce(current_setting('request.jwt.claims', true), '')), '');
+  IF v_jwt_claims = 'null' THEN
+    v_jwt_claims := NULL;
+  END IF;
 
-  IF NOT v_has_postgrest_jwt THEN
+  v_session_role := nullif(btrim(coalesce(current_setting('role', true), '')), '');
+
+  IF v_jwt_claims IS NULL THEN
+    IF v_session_role IN ('anon', 'authenticated') THEN
+      RAISE EXCEPTION 'Tenant access denied.'
+        USING ERRCODE = '42501';
+    END IF;
     RETURN;
   END IF;
 
@@ -46,8 +51,8 @@ $$;
 
 REVOKE ALL ON FUNCTION public.assert_caller_can_act_for_tenant(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.assert_caller_can_act_for_tenant(uuid) FROM anon;
-GRANT EXECUTE ON FUNCTION public.assert_caller_can_act_for_tenant(uuid)
-  TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.assert_caller_can_act_for_tenant(uuid) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.assert_caller_can_act_for_tenant(uuid) TO service_role;
 
 NOTIFY pgrst, 'reload schema';
 
