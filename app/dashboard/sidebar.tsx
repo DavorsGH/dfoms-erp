@@ -493,7 +493,7 @@ export default function Sidebar({
             {workspaceName}
           </p>
           <p className="mt-0.5 text-xs font-medium leading-tight text-white/90">
-            ERP System
+            DavSuite
           </p>
         </div>
       </div>
@@ -517,7 +517,7 @@ export default function Sidebar({
         <div className="mt-2 flex items-center gap-1.5">
           <Image
             src={DAVORS_PLATFORM_LOGO}
-            alt="Davors"
+            alt="DavSuite"
             width={36}
             height={36}
             className="h-9 w-9 shrink-0 rounded-sm object-cover"

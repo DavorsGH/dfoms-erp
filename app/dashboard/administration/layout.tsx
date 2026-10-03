@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+
+export const metadata: Metadata = {
+  title: "Administration",
+};
 import { getCurrentUserRole } from "@/utils/dashboard-auth";
 import AdministrationShell from "./administration-shell";
 

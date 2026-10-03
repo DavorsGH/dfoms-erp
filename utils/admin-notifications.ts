@@ -60,7 +60,7 @@ export async function notifyNewTenantSignup(options: {
   adminEmail: string;
   trialEndDate: string;
 }): Promise<void> {
-  const subject = `New ERP Suite signup (trial): ${options.tenantName}`;
+  const subject = `New DavSuite signup (trial): ${options.tenantName}`;
   const text = [
     "A new tenant signed up and started a trial.",
     "",
@@ -71,7 +71,7 @@ export async function notifyNewTenantSignup(options: {
   ].join("\n");
 
   const html = `
-    <h2>New ERP Suite signup</h2>
+    <h2>New DavSuite signup</h2>
     <p>A new tenant signed up and started a trial.</p>
     <ul>
       <li><strong>Tenant:</strong> ${escapeHtml(options.tenantName)}</li>

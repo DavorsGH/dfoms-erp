@@ -24,7 +24,7 @@ export async function sendLandlordSignupConfirmationEmail(options: {
     html: `
       <h2>Confirm your email address</h2>
       <p>Hi ${escapeHtml(displayName)},</p>
-      <p>Thanks for signing up for the Davors Landlord Portal. Follow the link below to confirm your email address and activate your account.</p>
+      <p>Thanks for signing up for DavSuite Properties. Follow the link below to confirm your email address and activate your account.</p>
       <p><a href="${options.verifyUrl}">Confirm email address</a></p>
       <p>If you did not create this account, you can ignore this email.</p>
     `,
@@ -50,9 +50,9 @@ export async function sendLandlordSelfSignupWelcomeEmail(options: {
 
   const result = await sendResendEmail({
     to: options.email,
-    subject: "Welcome to the Davors Landlord Portal",
+    subject: "Welcome to DavSuite Properties",
     html: `
-      <h2>Welcome to the Davors Landlord Portal</h2>
+      <h2>Welcome to DavSuite Properties</h2>
       <p>Hi ${escapeHtml(displayName)},</p>
       <p>Your email is confirmed and your landlord account is active. Sign in to manage properties, leases, rent collection, and more.</p>
       <p><a href="${loginUrl}">Sign in to the Landlord Portal</a></p>

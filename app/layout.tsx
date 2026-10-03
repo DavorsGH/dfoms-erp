@@ -24,25 +24,29 @@ export const viewport: Viewport = {
 const portalSiteUrl = resolvePublicSiteUrl();
 
 export const metadata: Metadata = {
-  title: "Davors Technologies ERP",
-  description: "Davors Technologies Ltd ERP System",
+  title: {
+    default: "DavSuite",
+    template: "DavSuite — %s",
+  },
+  description: "DavSuite enterprise management platform",
+  applicationName: "DavSuite",
   manifest: "/manifest.json",
   metadataBase: new URL(portalSiteUrl),
   openGraph: {
-    title: "Davors Technologies ERP",
-    description: "Davors Technologies Ltd ERP System",
+    title: "DavSuite",
+    description: "DavSuite enterprise management platform",
     url: portalSiteUrl,
-    siteName: "Davors Technologies ERP",
+    siteName: "DavSuite",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Davors Technologies ERP",
-    description: "Davors Technologies Ltd ERP System",
+    title: "DavSuite",
+    description: "DavSuite enterprise management platform",
   },
   appleWebApp: {
     capable: true,
-    title: "Davors Technologies ERP",
+    title: "DavSuite",
     statusBarStyle: "default",
   },
   // Next emits mobile-web-app-capable from appleWebApp.capable; older Safari

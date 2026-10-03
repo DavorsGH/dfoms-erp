@@ -150,8 +150,8 @@ export default function FacilityAcceptInvitePage() {
       <div className={portalAuthCardClassName}>
         <div className="mb-4 flex justify-center">
           <Image
-            src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Technologies"
+            src="/icons/icon-512x512.png"
+            alt="DavSuite Properties"
             width={80}
             height={80}
             className="h-20 w-20"
@@ -163,8 +163,8 @@ export default function FacilityAcceptInvitePage() {
         </h1>
         <p className="mb-4 text-center text-sm text-slate-600">
           {landlordName
-            ? `${landlordName} invited you to the Facility Manager Portal.`
-            : "Set a password to access the Facility Manager Portal."}
+            ? `${landlordName} invited you to manage properties on DavSuite Properties.`
+            : "Set a password to access DavSuite Properties."}
         </p>
         {email || expiryLabel ? (
           <div className="mb-6 space-y-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">

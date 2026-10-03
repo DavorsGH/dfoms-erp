@@ -172,13 +172,13 @@ export async function notifyRentPaymentSuccess(options: {
       : "Sign in to the tenant portal to view your receipt.",
     "",
     "Thank you.",
-    "Davors Technologies Ltd",
+    "Powered by Davors Technologies",
   ].join("\n");
   const tenantHtml = `<p>Hi ${escapeHtml(lesseeName)},</p>
 <p>We received your rent payment of <strong>${escapeHtml(amountLabel)}</strong>.</p>
 <p>Period: ${escapeHtml(periodLabel)}<br/>Method: ${escapeHtml(options.paymentMethod)}</p>
 <p>${receiptAttachment ? "Your receipt is attached to this email." : "Sign in to the tenant portal to view your receipt."}</p>
-<p>Thank you.<br/>Davors Technologies Ltd</p>`;
+<p>Thank you.<br/>Powered by Davors Technologies</p>`;
 
   const lesseeEmail = asString(lessee?.email);
   if (lesseeEmail) {
@@ -244,7 +244,7 @@ export async function notifyRentPaymentSuccess(options: {
     "",
     receiptAttachment ? "The payment receipt is attached." : "",
     "",
-    "Davors Technologies Ltd",
+    "Powered by Davors Technologies",
   ]
     .filter(Boolean)
     .join("\n");
@@ -254,7 +254,7 @@ export async function notifyRentPaymentSuccess(options: {
     escrowLine ? `<br/>${escapeHtml(escrowLine)}` : ""
   }</p>
 ${receiptAttachment ? "<p>The payment receipt is attached.</p>" : ""}
-<p>Davors Technologies Ltd</p>`;
+<p>Powered by Davors Technologies</p>`;
 
   const landlordEmail = asString(landlordTenant?.email);
   if (landlordEmail) {
@@ -376,12 +376,12 @@ export async function notifySecurityDepositCollected(options: {
       ? "Your deposit collection receipt is attached."
       : "Sign in to the tenant portal to view your receipt.",
     "",
-    "Davors Technologies Ltd",
+    "Powered by Davors Technologies",
   ].join("\n");
   const tenantHtml = `<p>Hi ${escapeHtml(detail.lesseeName)},</p>
 <p>We recorded your security deposit of <strong>${escapeHtml(amountLabel)}</strong> for ${escapeHtml(unitLabel)}.</p>
 <p>${attachment ? "Your deposit collection receipt is attached." : "Sign in to the tenant portal to view your receipt."}</p>
-<p>Davors Technologies Ltd</p>`;
+<p>Powered by Davors Technologies</p>`;
 
   if (detail.lesseeEmail) {
     const emailResult = await sendResendEmail({
@@ -425,14 +425,14 @@ export async function notifySecurityDepositCollected(options: {
       `A security deposit of ${amountLabel} was collected from ${detail.lesseeName} for ${unitLabel}.`,
       attachment ? "The collection receipt is attached." : "",
       "",
-      "Davors Technologies Ltd",
+      "Powered by Davors Technologies",
     ]
       .filter(Boolean)
       .join("\n");
     const landlordHtml = `<p>Hi ${escapeHtml(landlordName)},</p>
 <p>A security deposit of <strong>${escapeHtml(amountLabel)}</strong> was collected from ${escapeHtml(detail.lesseeName)} for ${escapeHtml(unitLabel)}.</p>
 ${attachment ? "<p>The collection receipt is attached.</p>" : ""}
-<p>Davors Technologies Ltd</p>`;
+<p>Powered by Davors Technologies</p>`;
 
     const emailResult = await sendResendEmail({
       to: landlordEmail,
@@ -503,13 +503,13 @@ export async function notifySecurityDepositResolved(options: {
       ? "The resolution receipt is attached."
       : "Sign in to the tenant portal for details.",
     "",
-    "Davors Technologies Ltd",
+    "Powered by Davors Technologies",
   ].join("\n");
   const tenantHtml = `<p>Hi ${escapeHtml(detail.lesseeName)},</p>
 <p>Your security deposit for ${escapeHtml(unitLabel)} has been resolved as: <strong>${escapeHtml(statusLabel)}</strong>.</p>
 <p>Amount returned: ${escapeHtml(returnedLabel)}.</p>
 <p>${attachment ? "The resolution receipt is attached." : "Sign in to the tenant portal for details."}</p>
-<p>Davors Technologies Ltd</p>`;
+<p>Powered by Davors Technologies</p>`;
 
   if (detail.lesseeEmail) {
     const emailResult = await sendResendEmail({
@@ -554,7 +554,7 @@ export async function notifySecurityDepositResolved(options: {
       `Amount returned: ${returnedLabel}.`,
       attachment ? "The resolution receipt is attached." : "",
       "",
-      "Davors Technologies Ltd",
+      "Powered by Davors Technologies",
     ]
       .filter(Boolean)
       .join("\n");
@@ -566,7 +566,7 @@ export async function notifySecurityDepositResolved(options: {
 <p>The security deposit for ${escapeHtml(detail.lesseeName)} (${escapeHtml(unitLabel)}) was resolved as <strong>${escapeHtml(statusLabel)}</strong>.</p>
 <p>Amount returned: ${escapeHtml(returnedLabel)}.</p>
 ${attachment ? "<p>The resolution receipt is attached.</p>" : ""}
-<p>Davors Technologies Ltd</p>`,
+<p>Powered by Davors Technologies</p>`,
       text: landlordText,
       from,
       attachments: attachment ? [attachment] : undefined,
@@ -632,7 +632,7 @@ async function sendLeaseDocumentEmails(options: {
       "",
       attachmentNote,
       "",
-      "Davors Technologies Ltd",
+      "Powered by Davors Technologies",
     ].join("\n");
 
     const emailResult = await sendResendEmail({
@@ -642,7 +642,7 @@ async function sendLeaseDocumentEmails(options: {
 <p>${escapeHtml(options.tenantIntro)}</p>
 <p>Property: ${escapeHtml(unitLabel)}</p>
 <p>${escapeHtml(attachmentNote)}</p>
-<p>Davors Technologies Ltd</p>`,
+<p>Powered by Davors Technologies</p>`,
       text: tenantText,
       from,
       attachments: attachment ? [attachment] : undefined,
@@ -682,7 +682,7 @@ async function sendLeaseDocumentEmails(options: {
       "",
       attachmentNote,
       "",
-      "Davors Technologies Ltd",
+      "Powered by Davors Technologies",
     ].join("\n");
 
     const emailResult = await sendResendEmail({
@@ -692,7 +692,7 @@ async function sendLeaseDocumentEmails(options: {
 <p>${escapeHtml(options.landlordIntro)}</p>
 <p>Tenant: ${escapeHtml(detail.lesseeName)}<br/>Property: ${escapeHtml(unitLabel)}</p>
 <p>${escapeHtml(attachmentNote)}</p>
-<p>Davors Technologies Ltd</p>`,
+<p>Powered by Davors Technologies</p>`,
       text: landlordText,
       from,
       attachments: attachment ? [attachment] : undefined,

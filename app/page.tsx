@@ -1,12 +1,12 @@
-import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
+import DavSuiteMark from "@/components/davsuite-mark";
 import PortalPropertyManagementMobile from "./portal-property-management-section";
 
 export const metadata: Metadata = {
-  title: "Davors Technologies — Portals",
+  title: "Portals",
   description:
-    "Sign in to the Davors Technologies ERP, landlord, tenant, or facility manager portal.",
+    "Sign in to DavSuite, or choose the landlord, tenant, or facility manager portal.",
 };
 
 const cardClassName =
@@ -26,15 +26,11 @@ export default function PortalChooserPage() {
     <div className="flex min-h-screen flex-col items-center bg-[#0F2744] px-4 py-10 sm:py-14">
       <div className="w-full max-w-5xl">
         <header className="text-center">
-          <div className="mb-4 flex justify-center">
-            <Image
-              src="/branding/davors-technologies-logo-dark.png"
-              alt="Davors Technologies"
-              width={1500}
-              height={271}
-              className="h-auto w-full max-w-[20.16rem] sm:max-w-[22.5rem]"
-              priority
-            />
+          <div className="mb-4 flex flex-col items-center justify-center gap-3 sm:flex-row sm:items-center sm:gap-3.5">
+            <DavSuiteMark color="light" />
+            <span className="text-xl font-bold tracking-[0.18em] text-white sm:text-2xl">
+              DAVSUITE
+            </span>
           </div>
           <p className="mt-2 text-sm text-slate-300 sm:text-base">
             Choose your portal to continue
@@ -44,7 +40,7 @@ export default function PortalChooserPage() {
         <main className="mt-8 space-y-8 sm:mt-10 sm:space-y-10">
           <section>
             <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-slate-300 sm:text-sm">
-              Davors Technologies Enterprise Management System
+              DAVSUITE ERP
             </h2>
             <div
               className={`${cardClassName} border-[#0f2744]/20 p-7 shadow-md sm:p-8`}
@@ -52,7 +48,7 @@ export default function PortalChooserPage() {
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="sm:max-w-xl">
                   <h3 className="text-xl font-semibold text-[#0f2744] sm:text-2xl">
-                    Davors Technologies ERP Suite
+                    DavSuite Enterprise Management System
                   </h3>
                   <p className="mt-2 text-sm text-slate-600 sm:text-base">
                     For businesses on the main platform — finance, HR, CRM,
@@ -76,7 +72,7 @@ export default function PortalChooserPage() {
 
           <section>
             <h2 className="mb-3 hidden text-center text-xs font-semibold uppercase tracking-wider text-slate-300 sm:text-sm md:block">
-              Property Management
+              DAVSUITE PROPERTIES
             </h2>
 
             <PortalPropertyManagementMobile />

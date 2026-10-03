@@ -8,7 +8,7 @@ export default function TestAssistantWidgetPage() {
           AI Assistant Widget — Preview
         </h1>
         <p className="mt-2 text-sm text-slate-600">
-          Standalone test page for the floating Ask DFOMS chat widget. Use the
+          Standalone test page for the floating Ask DavSuite chat widget. Use the
           bubble in the bottom-right corner to open the panel, type a message,
           and send — messages appear locally only (no AI backend yet).
         </p>

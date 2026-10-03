@@ -1,6 +1,8 @@
-**DAVORS TECHNOLOGIES LTD**
+**DavSuite**
 
-ERP System
+*Powered by Davors Technologies*
+
+DavSuite ERP
 
 **COMPREHENSIVE USER HANDBOOK**
 
@@ -63,7 +65,7 @@ Administration
 
 # **Section 1 --- Welcome**
 
-Welcome to Davors Technologies ERP --- a single system for managing
+Welcome to DavSuite --- a single system for managing
 your finances, people, operations, sales, and inventory. This handbook
 walks you through every part of your workspace, from your first login to
 running reports at month end, and explains the business logic behind the
@@ -85,7 +87,7 @@ your own team, never to any other company using the platform.
 
 ## **2.1 Signing Up**
 
-New organizations sign up at the Davors Technologies ERP landing page by
+New organizations sign up at the DavSuite landing page by
 selecting \"Sign up for free.\" You will be asked for your company name
 and an administrator email and password. Once submitted, your workspace
 is created immediately with a 90-day free trial giving full access to
@@ -2374,7 +2376,7 @@ These groups appear only for Davors Technologies platform super Admins:
 
 -   Tenant Management --- customer workspaces on the platform
 
--   Tier Pricing --- ERP Suite plan prices and Paystack plan linkage
+-   Tier Pricing --- DavSuite ERP plan prices and Paystack plan linkage
 
 -   Platform Unit Pricing --- unit-based platform billing configuration
 
@@ -2434,7 +2436,7 @@ Verified against the live tier entitlement map (`tier_features`):
 Your subscription tier is currently set up on your behalf by the Davors
 Facilities team --- contact support if you would like to select or
 change your tier ahead of your trial ending. Current GHS list prices for
-ERP Suite plans are maintained under Administration → Platform Settings
+DavSuite ERP plans are maintained under Administration → Platform Settings
 → Tier Pricing (Davors platform Admins); customer Billing Settings shows
 the plan on your own account.
 
@@ -2584,7 +2586,7 @@ loyalty adjust automatically.
   **Term**           **Meaning**
   ------------------ ----------------------------------------------------
   Workspace / Tenant Your organization's private area within the Davors
-                     Facilities ERP
+                     DavSuite
 
   Admin              The role with full access to your workspace,
                      including Administration
@@ -2692,7 +2694,7 @@ loyalty adjust automatically.
 
 # **Section 19 --- AI Assistant**
 
-A built-in chat assistant is available inside the ERP, for questions
+A built-in chat assistant is available inside DavSuite, for questions
 about your own data or how to do something in the system.
 
 Ask it things like "what's my outstanding balance for Central
@@ -2702,7 +2704,7 @@ own workspace data and explain how a feature works.
 It answers from two sources: this handbook (retrieved by topic) and live
 read-only tools that pull figures from your workspace. It only ever sees
 data your own account already has access to --- the same role-based
-access that applies to the rest of the ERP applies to what it can
+access that applies to the rest of DavSuite applies to what it can
 answer.
 
 It answers questions and points you to the right screen --- it does not

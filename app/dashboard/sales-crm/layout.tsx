@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
 import { guardSectionAccess } from "@/utils/section-guard";
+
+export const metadata: Metadata = {
+  title: "Sales & CRM",
+};
 import { requireFeatureAccess } from "@/utils/tier-access";
 import { CRM_QUOTATIONS_EDIT_ROLES } from "@/utils/rbac-access";
 

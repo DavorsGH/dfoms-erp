@@ -69,7 +69,7 @@ export default function OfflinePage() {
             {/* eslint-disable-next-line @next/next/no-img-element -- raw /icons path for SW precache */}
             <img
               src="/icons/apple-touch-icon-180x180.png"
-              alt="Davors Technologies"
+              alt="DavSuite"
               width={64}
               height={64}
               style={{ width: 64, height: 64, display: "block" }}

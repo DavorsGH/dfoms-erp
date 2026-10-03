@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 
-export const socialPreviewAlt = "Davors Technologies ERP";
+export const socialPreviewAlt = "DavSuite";
 export const socialPreviewSize = { width: 1200, height: 630 };
 export const socialPreviewContentType = "image/png";
 
@@ -51,7 +51,7 @@ export async function renderSocialPreviewImage() {
             paddingRight: 48,
           }}
         >
-          DAVORS TECHNOLOGIES ERP
+          DAVSUITE
         </div>
         <div
           style={{

@@ -1,6 +1,8 @@
-**DAVORS TECHNOLOGIES LTD**
+**DavSuite**
 
-Davors Real Estate System
+*Powered by Davors Technologies*
+
+DavSuite Properties
 
 **FACILITY MANAGER PORTAL GUIDE**
 
@@ -8,7 +10,7 @@ Davors Real Estate System
 
 Version 2.3 | August 2026
 
-*Covers: How Facility Managers use the Davors portal for assigned
+*Covers: How Facility Managers use the DavSuite Properties portal for assigned
 properties*
 
 ## Section 1 --- What a Facility Manager Is

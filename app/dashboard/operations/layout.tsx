@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
 import { guardSectionAccess } from "@/utils/section-guard";
+
+export const metadata: Metadata = {
+  title: "Operations",
+};
 import { requireFeatureAccess } from "@/utils/tier-access";
 import { OPERATIONS_SECTION_ROLES } from "@/utils/rbac-access";
 

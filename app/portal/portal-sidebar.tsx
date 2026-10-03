@@ -81,7 +81,7 @@ export default function TenantPortalSidebar({
                 {DEFAULT_WORKSPACE_NAME}
               </p>
               <p className="mt-0.5 text-xs font-medium leading-tight text-white/90">
-                Tenant Portal
+                DavSuite Properties
               </p>
             </div>
           </div>
@@ -100,7 +100,7 @@ export default function TenantPortalSidebar({
               {DEFAULT_WORKSPACE_NAME}
             </p>
             <p className="mt-0.5 text-sm font-medium leading-tight text-white/90">
-              Tenant Portal
+              DavSuite Properties
             </p>
           </div>
         </div>
@@ -141,7 +141,7 @@ export default function TenantPortalSidebar({
         <div className="mt-2 flex items-center gap-1.5">
           <Image
             src={DAVORS_PLATFORM_LOGO}
-            alt="Davors"
+            alt="DavSuite"
             width={36}
             height={36}
             className="h-9 w-9 shrink-0 rounded-sm object-cover"

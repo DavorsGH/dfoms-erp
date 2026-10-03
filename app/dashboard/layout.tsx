@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
 import DashboardShell from "./dashboard-shell";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+};
 import { getMiddlewareTrustDiagnostics } from "@/utils/middleware-trust-diagnostics";
 import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
 import { StickyBottomBarProvider } from "@/components/sticky-bottom-bar";

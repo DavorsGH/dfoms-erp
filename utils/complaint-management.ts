@@ -368,11 +368,11 @@ export async function updateLesseeComplaint(
       void sendResendEmail({
         to: email,
         subject: title,
-        text: [`Hi ${name},`, "", inAppBody, "", "Davors Technologies Ltd"].join("\n"),
+        text: [`Hi ${name},`, "", inAppBody, "", "Powered by Davors Technologies"].join("\n"),
         html: `<p>Hi ${escapeHtml(name)},</p>
 <p>${escapeHtml(inAppBody.replace(/\n/g, " "))}</p>
 <p><strong>Response:</strong> ${escapeHtml(staffResponse)}</p>
-<p>Davors Technologies Ltd</p>`,
+<p>Powered by Davors Technologies</p>`,
       }).then((result) => {
         if (!result.ok) {
           console.error("[complaints] response notify failed:", result.error);
@@ -456,14 +456,14 @@ export async function updateLesseeComplaint(
           "",
           inAppBody,
           "",
-          "Davors Technologies Ltd",
+          "Powered by Davors Technologies",
         ]
           .filter(Boolean)
           .join("\n"),
         html: `<p>Hi ${escapeHtml(name)},</p>
 <p>${escapeHtml(inAppBody.replace(/\n/g, " "))}</p>
 ${staffResponse ? `<p>${escapeHtml(responseLabel)}: ${escapeHtml(staffResponse)}</p>` : ""}
-<p>Davors Technologies Ltd</p>`,
+<p>Powered by Davors Technologies</p>`,
       }).then((result) => {
         if (!result.ok) {
           console.error("[complaints] notify failed:", result.error);

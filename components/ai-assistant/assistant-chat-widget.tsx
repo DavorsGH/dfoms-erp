@@ -25,7 +25,7 @@ type ChatMessage = {
 };
 
 const WELCOME_MESSAGE =
-  "Hi! Ask me anything about your account or how to use Davors Technologies ERP.";
+  "Hi! Ask me anything about your account or how to use DavSuite.";
 
 const ERROR_MESSAGE = "Sorry, something went wrong. Please try again.";
 
@@ -230,7 +230,7 @@ export default function AssistantChatWidget() {
           <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-[#0f2744] px-4 py-3 text-white">
             <div className="min-w-0">
               <h2 id={titleId} className="truncate text-sm font-semibold">
-                Ask Davors Technologies ERP
+                Ask DavSuite
               </h2>
               <p className="truncate text-xs text-slate-200">
                 Your workspace assistant
@@ -335,8 +335,8 @@ export default function AssistantChatWidget() {
           aria-controls={titleId}
           aria-label={
             isOpen
-              ? "Close Ask Davors Technologies ERP"
-              : "Open Ask Davors Technologies ERP"
+              ? "Close Ask DavSuite"
+              : "Open Ask DavSuite"
           }
           className={`relative z-10 inline-flex h-16 w-16 shrink-0 cursor-grab items-center justify-center rounded-full bg-[#0f2744] text-white shadow-lg hover:bg-[#1a3a5c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f2744] active:cursor-grabbing ${isDragging ? "scale-105 shadow-xl" : "transition-transform duration-150"}`}
           onPointerDown={handlePointerDown}

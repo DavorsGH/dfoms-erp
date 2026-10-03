@@ -4,6 +4,6 @@ import ResetPasswordForm from "@/components/auth/reset-password-form";
 
 export default function LandlordPortalResetPasswordPage() {
   return (
-    <ResetPasswordForm title="Landlord Portal — Set a new password" />
+    <ResetPasswordForm title="Set a new password" logoAlt="DavSuite Properties" />
   );
 }

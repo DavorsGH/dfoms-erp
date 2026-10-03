@@ -89,8 +89,8 @@ export default function LandlordAcceptInvitePage() {
       <div className={portalAuthCardClassName}>
         <div className="mb-4 flex justify-center">
           <Image
-            src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Technologies"
+            src="/icons/icon-512x512.png"
+            alt="DavSuite Properties"
             width={80}
             height={80}
             className="h-20 w-20"
@@ -101,7 +101,7 @@ export default function LandlordAcceptInvitePage() {
           Accept Landlord Invite
         </h1>
         <p className="mb-6 text-center text-sm text-slate-600">
-          Set a password to access your Davors Landlord Portal.
+          Set a password to access DavSuite Properties.
         </p>
 
         {success ? (

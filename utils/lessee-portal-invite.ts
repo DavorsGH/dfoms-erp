@@ -40,18 +40,18 @@ function buildLesseeInviteEmailContent(args: {
   const { displayName, inviteUrl, existingAuthAccount } = args;
 
   return buildPortalInviteEmail({
-    portalName: "Davors Tenant Portal",
+    portalName: "DavSuite Properties tenant portal",
     inviteeDisplayName: displayName,
     inviterLine:
-      "Your landlord (managed by Davors Technologies) has invited you to view your lease and rent status online.",
+      "Your landlord (managed through DavSuite Properties) has invited you to view your lease and rent status online.",
     inviteUrl,
     expiryDays: LESSEE_INVITE_EXPIRY_DAYS,
-    subject: "You're invited to the Davors Tenant Portal",
+    subject: "You're invited to DavSuite Properties",
     existingAuthAccount,
-    reuseSubject: "New lease linked — Davors Tenant Portal",
-    reuseHeading: "Davors Tenant Portal",
+    reuseSubject: "New lease linked — DavSuite Properties",
+    reuseHeading: "DavSuite Properties tenant portal",
     reuseInviterLine:
-      "Your landlord (managed by Davors Technologies) has invited you to view a lease on the Tenant Portal.",
+      "Your landlord (managed through DavSuite Properties) has invited you to view a lease on the tenant portal.",
     reuseLinkPurpose: "link the lease",
     reuseHint: REUSED_ACCOUNT_LOGIN_HINT,
   });

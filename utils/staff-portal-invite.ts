@@ -317,12 +317,12 @@ export async function createAndSendStaffPortalInvite(
   ]);
 
   const content = buildPortalInviteEmail({
-    portalName: "Staff ERP Portal",
+    portalName: "DavSuite",
     inviteeDisplayName,
-    inviterLine: `${inviterName} has invited you to join the Staff ERP Portal.`,
+    inviterLine: `${inviterName} has invited you to join DavSuite.`,
     inviteUrl,
     expiryDays: STAFF_INVITE_EXPIRY_DAYS,
-    subject: "You're invited to Davors Technologies ERP",
+    subject: "You're invited to DavSuite",
   });
 
   const emailResult = await sendResendEmail({

@@ -19,6 +19,7 @@ import { PORTAL_CHOOSER_PATH } from "@/utils/portal-chooser";
 export type ResetPasswordFormProps = {
   title?: string;
   brandBgClassName?: string;
+  logoAlt?: string;
 };
 
 /**
@@ -28,6 +29,7 @@ export type ResetPasswordFormProps = {
 function ResetPasswordFormInner({
   title = "Set a new password",
   brandBgClassName = "bg-[#0F2744]",
+  logoAlt = "DavSuite",
 }: ResetPasswordFormProps) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -103,8 +105,8 @@ function ResetPasswordFormInner({
       <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
         <div className="mb-4 flex justify-center">
           <Image
-            src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Technologies"
+            src="/icons/icon-512x512.png"
+            alt={logoAlt}
             width={64}
             height={64}
             className="h-16 w-16"

@@ -80,8 +80,8 @@ export default function SignupPage() {
       <div className="w-full max-w-lg rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
         <div className="mb-4 flex justify-center">
           <Image
-            src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Technologies"
+            src="/icons/icon-512x512.png"
+            alt="DavSuite"
             width={80}
             height={80}
             className="h-20 w-20"
@@ -89,7 +89,7 @@ export default function SignupPage() {
           />
         </div>
         <h1 className="mb-2 text-center text-2xl font-semibold text-zinc-900">
-          Start your ERP trial
+          Start your DavSuite trial
         </h1>
         <p className="mb-6 text-center text-sm text-zinc-600">
           Create your company workspace with a 90-day trial. Full access — no

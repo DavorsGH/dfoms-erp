@@ -1,6 +1,8 @@
-**DAVORS TECHNOLOGIES LTD**
+**DavSuite**
 
-Davors Real Estate System
+*Powered by Davors Technologies*
+
+DavSuite Properties
 
 **TENANT PORTAL GUIDE**
 
@@ -8,7 +10,7 @@ Davors Real Estate System
 
 Version 2.2 | July 2026
 
-*Covers: How to use your Davors Tenant Portal*
+*Covers: How to use your DavSuite Properties tenant portal*
 
 ## Section 1 --- Getting Started
 
@@ -18,10 +20,10 @@ first - you don't sign up for a tenant account yourself.
 **Note**
 
 This guide is for tenants only. You do not need a staff account, and you
-should not use the main Davors business login.
+should not use the main DavSuite staff login.
 
 Once your lease is created, you'll automatically receive an email
-invite ("You're invited to the Davors Tenant Portal") with a link to
+invite ("You're invited to DavSuite Properties") with a link to
 set your own password. This link expires after 7 days - if it's expired
 or you never received it, ask your landlord to resend your invite.
 

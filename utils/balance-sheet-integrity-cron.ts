@@ -91,7 +91,7 @@ async function sendBalanceSheetIntegrityAlertEmail(
 
   const result = await sendResendEmail({
     to: alertEmail,
-    subject: `[DFOMS] Balance Sheet integrity: ${failures.length} tenant(s) out of balance`,
+    subject: `[DavSuite] Balance Sheet integrity: ${failures.length} tenant(s) out of balance`,
     html,
     text: `Balance Sheet integrity failures (FY${run.fiscalYear}):\n\n${text}`,
   });

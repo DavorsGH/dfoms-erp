@@ -1,6 +1,8 @@
-**DAVORS TECHNOLOGIES LTD**
+**DavSuite**
 
-Davors Real Estate System
+*Powered by Davors Technologies*
+
+DavSuite Properties
 
 **LANDLORD PORTAL GUIDE**
 
@@ -8,13 +10,13 @@ Davors Real Estate System
 
 Version 2.3 | August 2026
 
-*Covers: How to manage your properties on the Davors Real Estate
+*Covers: How to manage your properties on the DavSuite Properties
 platform, and (Section 10) how to invite and manage a Facility Manager*
 
 ## Section 1 --- Getting Started
 
-This guide is for landlords using the Davors Real Estate portal. You do
-not need a staff account or the main business ERP - your portal is
+This guide is for landlords using the DavSuite Properties portal. You do
+not need a staff account or the main DavSuite ERP — your portal is
 separate and built specifically for managing your own property
 portfolio.
 

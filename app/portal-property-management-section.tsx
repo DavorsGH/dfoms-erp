@@ -131,7 +131,7 @@ export default function PortalPropertyManagementMobile() {
         aria-expanded={expanded}
         className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-600/40 bg-slate-900/20 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-300 sm:text-sm"
       >
-        <span>Property Management</span>
+        <span>DAVSUITE PROPERTIES</span>
         <ChevronIcon expanded={expanded} />
       </button>
 

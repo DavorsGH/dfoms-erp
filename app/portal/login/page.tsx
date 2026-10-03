@@ -57,8 +57,8 @@ export default function PortalLoginPage() {
       <div className={portalAuthCardClassName}>
         <div className="mb-4 flex justify-center">
           <Image
-            src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Technologies"
+            src="/icons/icon-512x512.png"
+            alt="DavSuite Properties"
             width={80}
             height={80}
             className="h-20 w-20"

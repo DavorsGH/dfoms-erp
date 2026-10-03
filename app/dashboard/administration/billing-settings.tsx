@@ -912,8 +912,8 @@ export default function BillingSettings({
                 try {
                   if (navigator.share) {
                     await navigator.share({
-                      title: "Davors ERP referral",
-                      text: `Use my referral code ${referralCode} when you sign up for Davors ERP.`,
+                      title: "DavSuite referral",
+                      text: `Use my referral code ${referralCode} when you sign up for DavSuite.`,
                       url: shareUrl,
                     });
                     return;

@@ -1,7 +1,7 @@
 {
-  "name": "Davors Technologies ERP",
-  "short_name": "Davors Technologies ERP",
-  "description": "Davors Technologies Ltd ERP System",
+  "name": "DavSuite",
+  "short_name": "DavSuite",
+  "description": "DavSuite enterprise management platform",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

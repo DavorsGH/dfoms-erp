@@ -128,8 +128,8 @@ export default function StaffAcceptInviteClient() {
       <div className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 shadow-sm">
         <div className="mb-4 flex justify-center">
           <Image
-            src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors Technologies"
+            src="/icons/icon-512x512.png"
+            alt="DavSuite"
             width={80}
             height={80}
             className="h-20 w-20"
@@ -142,7 +142,7 @@ export default function StaffAcceptInviteClient() {
         <p className="mb-6 text-center text-sm text-zinc-600">
           {existingAccount
             ? "Join this workspace with your existing account."
-            : "Set a password to access Davors Technologies ERP."}
+            : "Set a password to access DavSuite."}
         </p>
 
         {success ? (

@@ -144,15 +144,15 @@ export async function maybeRevokeLesseePortalIfNoActiveLeases(
 
   const emailResult = await sendResendEmail({
     to: email,
-    subject: "Your Davors Tenant Portal access has ended",
+    subject: "Your DavSuite Properties tenant access has ended",
     html: `
       <h2>Tenant Portal access ended</h2>
       <p>Hi ${escapeHtml(displayName)},</p>
-      <p>Your access to the Davors Tenant Portal for this landlord has ended because you no longer have an active lease.</p>
+      <p>Your access to the DavSuite Properties tenant portal for this landlord has ended because you no longer have an active lease.</p>
       <p>You can no longer sign in to download receipts or other lease documents from the portal.</p>
       <p>If you need copies of receipts or documents, please request them directly from your landlord.</p>
     `,
-    text: `Hi ${displayName},\n\nYour access to the Davors Tenant Portal for this landlord has ended because you no longer have an active lease.\n\nYou can no longer sign in to download receipts or other lease documents from the portal.\n\nIf you need copies of receipts or documents, please request them directly from your landlord.\n`,
+    text: `Hi ${displayName},\n\nYour access to the DavSuite Properties tenant portal for this landlord has ended because you no longer have an active lease.\n\nYou can no longer sign in to download receipts or other lease documents from the portal.\n\nIf you need copies of receipts or documents, please request them directly from your landlord.\n`,
   });
 
   return {

@@ -22,7 +22,7 @@ export default async function PublicApplyPage({ params }: PageProps) {
         <div className="mb-4 flex justify-center">
           <Image
             src="/icons/apple-touch-icon-180x180.png"
-            alt="Davors"
+            alt="DavSuite Properties"
             width={56}
             height={56}
           />

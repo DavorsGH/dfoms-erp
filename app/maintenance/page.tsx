@@ -13,7 +13,7 @@ export default function MaintenancePage() {
     >
       <div>
         <h1 style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>
-          DFOMS is undergoing scheduled maintenance
+          DavSuite is undergoing scheduled maintenance
         </h1>
         <p style={{ color: "#555" }}>
           We&apos;ll be back shortly. Thank you for your patience.

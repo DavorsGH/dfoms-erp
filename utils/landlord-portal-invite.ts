@@ -115,13 +115,13 @@ export async function createAndSendLandlordPortalInvite(
       : "there";
 
   const content = buildPortalInviteEmail({
-    portalName: "Davors Landlord Portal",
+    portalName: "DavSuite Properties landlord portal",
     inviteeDisplayName: displayName,
     inviterLine:
-      "Your landlord account with Davors Technologies is approved. Use the link below to set a password and view your properties, leases, and rent collection status online.",
+      "Your landlord account is approved. Use the link below to set a password and sign in to DavSuite Properties to view your properties, leases, and rent collection status online.",
     inviteUrl,
     expiryDays: LANDLORD_INVITE_EXPIRY_DAYS,
-    subject: "You're invited to the Davors Landlord Portal",
+    subject: "You're invited to DavSuite Properties",
   });
 
   const emailResult = await sendResendEmail({
