@@ -28,7 +28,12 @@ import {
   MARITAL_STATUS_OPTIONS,
   SHIFT_OPTIONS,
 } from "@/app/dashboard/employees/employee-record-utils";
+import { normalizeEmployeeImportShift } from "@/lib/bulk-import/employee-shift-import";
 import { CONTRACT_STATUS_OPTIONS } from "@/app/dashboard/operations/operations-register-utils";
+import {
+  parseBulkImportDateForCommit,
+  trimBulkImportIdentifier,
+} from "@/lib/bulk-import/import-spreadsheet-values";
 import { FINISHED_PRODUCT_PURCHASED_SOURCING_TYPE } from "@/lib/bulk-import/target-fields";
 
 const DEFAULT_SOURCING_TYPE = "manufactured" as const;
@@ -59,25 +64,7 @@ function parseOptionalNumber(value: unknown): number | null {
 }
 
 function parseOptionalDate(value: unknown): string | null {
-  if (isBlank(value)) {
-    return null;
-  }
-
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
-  }
-
-  const trimmed = String(value).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
-
-  const parsed = new Date(trimmed);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString().slice(0, 10);
-  }
-
-  return null;
+  return parseBulkImportDateForCommit(value);
 }
 
 export type FinishedProductCommitInsert = {
@@ -108,10 +95,18 @@ export type EmployeeCommitInsert = {
   staff_id: string;
   full_name: string;
   gender: string | null;
+  date_of_birth: string | null;
   nationality: string | null;
   marital_status: string | null;
   phone: string | null;
   email: string | null;
+  residential_address: string | null;
+  ghana_card_number: string | null;
+  ssnit_number: string | null;
+  tin_number: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  momo_number: string | null;
   department: string | null;
   position: string | null;
   supervisor: string | null;
@@ -122,6 +117,14 @@ export type EmployeeCommitInsert = {
   contract_project: string | null;
   shift: string | null;
   assigned_site_id: string | null;
+  basic_salary: number;
+  housing_allowance: number;
+  transport_allowance: number;
+  other_allowances: number;
+  emergency_contact_name: string | null;
+  emergency_contact_address: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relationship: string | null;
   data_notes: string | null;
 };
 
@@ -257,13 +260,21 @@ export function buildEmployeeCommitInsert(input: {
     staff_id: input.staffId,
     full_name: String(input.mappedData.full_name).trim(),
     gender: resolveCanonicalEnumValue(input.mappedData.gender, GENDER_OPTIONS),
+    date_of_birth: parseOptionalDate(input.mappedData.date_of_birth),
     nationality: nullableText(input.mappedData.nationality),
     marital_status: resolveCanonicalEnumValue(
       input.mappedData.marital_status,
       MARITAL_STATUS_OPTIONS,
     ),
-    phone: nullableText(input.mappedData.phone),
+    phone: trimBulkImportIdentifier(input.mappedData.phone),
     email: nullableText(input.mappedData.email),
+    residential_address: nullableText(input.mappedData.residential_address),
+    ghana_card_number: trimBulkImportIdentifier(input.mappedData.ghana_card_number),
+    ssnit_number: trimBulkImportIdentifier(input.mappedData.ssnit_number),
+    tin_number: trimBulkImportIdentifier(input.mappedData.tin_number),
+    bank_name: nullableText(input.mappedData.bank_name),
+    account_number: trimBulkImportIdentifier(input.mappedData.account_number),
+    momo_number: trimBulkImportIdentifier(input.mappedData.momo_number),
     department: input.departmentCode,
     position: input.positionTitle,
     supervisor: input.supervisorId,
@@ -276,8 +287,25 @@ export function buildEmployeeCommitInsert(input: {
         EMPLOYMENT_STATUS_OPTIONS,
       ) ?? DEFAULT_EMPLOYMENT_STATUS,
     contract_project: input.projectCode,
-    shift: resolveCanonicalEnumValue(input.mappedData.shift, SHIFT_OPTIONS),
+    shift: resolveCanonicalEnumValue(
+      normalizeEmployeeImportShift(input.mappedData.shift).effectiveValue,
+      SHIFT_OPTIONS,
+    ),
     assigned_site_id: input.assignedSiteCode,
+    basic_salary: 0,
+    housing_allowance: 0,
+    transport_allowance: 0,
+    other_allowances: 0,
+    emergency_contact_name: nullableText(input.mappedData.emergency_contact_name),
+    emergency_contact_address: nullableText(
+      input.mappedData.emergency_contact_address,
+    ),
+    emergency_contact_phone: trimBulkImportIdentifier(
+      input.mappedData.emergency_contact_phone,
+    ),
+    emergency_contact_relationship: nullableText(
+      input.mappedData.emergency_contact_relationship,
+    ),
     data_notes: nullableText(input.mappedData.data_notes),
   };
 }

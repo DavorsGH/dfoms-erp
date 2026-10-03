@@ -8,7 +8,7 @@ DavSuite Properties
 
 **For Customer Use**
 
-Version 2.3 | August 2026
+Version 2.4 | October 2026
 
 *Covers: How to manage your properties on the DavSuite Properties
 platform, and (Section 10) how to invite and manage a Facility Manager*
@@ -38,8 +38,10 @@ needed.
 
 ### 1.2 Signing Up
 
-If you don't have an account yet, go to portal.davorstechnologies.com,
-choose "I'm a Landlord," and click Sign Up. Fill in your name, email,
+If you don't have an account yet, open the **DavSuite** portal chooser
+(at your workspace URL, often the site root), expand **DAVSUITE
+PROPERTIES**, choose **I'm a Landlord**, and click **Sign Up**. You can
+also use portal.davorstechnologies.com the same way. Fill in your name, email,
 phone, and address, and set a password. Your account starts as Platform
 Only and Pending - you can log in right away, but you'll see a "Pending
 Approval" screen until Davors staff review and approve your account.
@@ -49,8 +51,16 @@ Once approved, your real dashboard becomes available.
 
 If Davors staff added your property to the platform on your behalf,
 you'll receive an invite by email and SMS once your account is approved,
-with a link to set your own password. After that, log in any time at
-portal.davorstechnologies.com under "I'm a Landlord."
+with a link to set your own password. After that, log in any time from the portal chooser under **I'm a
+Landlord** (or portal.davorstechnologies.com).
+
+**Password, OAuth, and MFA.** The login page supports email and password,
+optional **Stay logged in**, and **Sign in with Google** where enabled.
+If MFA is required, you complete it on a follow-on screen.
+
+**Branding.** The sidebar shows **DavSuite Properties** under your
+workspace name. The top bar may show **Real Estate Portal** as the
+subtitle --- both refer to the same landlord product.
 
 ### 1.4 Getting Your Portfolio Onboarded
 
@@ -221,33 +231,42 @@ records.
 
 ## Section 7 --- Announcements
 
-Send a message to your tenants - by email, SMS, and an in-app
-notification - targeting all of them, specific properties, specific
-leases, or specific tenants by name. Platform Only landlords can compose
-and send these themselves.
+Under **Real Estate → Announcements** (Platform Only landlords),
+send a message to your tenants --- by email, SMS, and an in-app
+notification --- targeting all of them, specific properties, specific
+leases, or specific tenants by name. Use **Templates** and **Campaigns**
+the same way as other DavSuite announcement modules.
 
-## Section 8 --- Administration
+## Section 8 --- Administration & My Account
 
--   **Billing ---** top up your prepaid SMS credit wallet (used for tenant SMS
-    notifications) via card or Mobile Money, and (for Platform Only
-    landlords) manage your own per-unit platform billing.
+**Sidebar (Administration):**
 
--   **Payment Settings ---** (Platform Only landlords) set up the bank account or Mobile Money
-    number your tenants' rent should be paid into. Enter your details,
-    confirm the account name Paystack resolves against them, and save
-    - your status shows as Active once verified. From then on, your
-    tenants' rent payments settle directly to your own account
-    automatically.
+-   **Workspace Settings** --- contact details and workspace logo (shown
+    in the portal header when you upload one; otherwise Davors
+    Technologies branding).
 
--   **User Accounts ---** see which of your tenants have activated their portal account,
-    resend an invite, reset a tenant's password, deactivate or
-    reactivate their portal access, or jump straight to their lease.
+-   **Billing Settings** --- tabs for **Billing** (Platform Only unit
+    billing), **SMS credits** (prepaid wallet for tenant SMS), and
+    **Payment** (Paystack sub-account for rent settlement). Platform Only
+    landlords manage per-unit platform billing here; past-due billing may
+    show a banner linking back to this page.
 
--   **Workspace Settings ---** your own contact and notification details, and your own workspace
-    logo/photo, shown at the top of your portal (if you don't upload
-    one, the Davors Technologies logo is shown instead).
+-   **User Accounts** --- tenant portal accounts: resend invite, reset
+    password, deactivate/reactivate, open their lease.
 
--   **Account Security ---** change your own password.
+-   **Notification Contacts** --- who receives operational alerts for your
+    portfolio.
+
+-   **Login Activity** --- recent sign-in history for your landlord users.
+
+**My Account** (top-level sidebar, not under Administration):
+
+-   Profile, **change password**, **two-factor authentication** (MFA setup),
+    and **push notification** preferences where enabled.
+
+**Ask DavSuite** --- floating **Ask DavSuite** chat on landlord screens
+for help using the portal (read-only guidance; it does not change your
+data).
 
 ## Section 9 --- Quick Reference
 
@@ -293,10 +312,13 @@ allow.
     assigned to. They'll get an email with a link to set their own
     password.
 
--   **Capabilities ---** tick which of the following they can do: Maintenance, Complaints,
-    Inspections, Cleaning & Gardening service logging, and Collect
-    Rent and/or Collect Charges. Nothing is switched on by default
-    except the operational ones --- you choose what fits.
+-   **Capabilities ---** tick which of the following they can do:
+    **Maintenance**, **Complaints**, **Inspections**, **Services**
+    (cleaning and gardening visits), and **Collect rent** / **Collect
+    charges**. By default, **Maintenance**, **Complaints**,
+    **Inspections**, and **Services** are on; **rent/charge collection**
+    is off until you enable it (Platform Only only --- not on
+    Davors-Managed portfolios).
 
 -   **Their portal ---** a Facility Manager logs in at portal.davorstechnologies.com under
     "I'm a Facility Manager," and sees only the properties and tools

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { useAlert } from "@/components/feedback/feedback-context";
 import { syncProductSaleVfrsTax } from "@/utils/product-sale-tax-sync";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { ClientEntry } from "../operations/clients-utils";
@@ -22,8 +23,25 @@ import {
   resolveWriteBusinessUnitIdForCreate,
 } from "@/utils/business-unit-access";
 
-const IMPORT_ACCEPT =
-  ".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv";
+import {
+  inspectSpreadsheetFileForImport,
+  spreadsheetImportAlertFromError,
+  spreadsheetImportUploadFailedAlert,
+  type SpreadsheetImportAlert,
+} from "@/lib/spreadsheet/spreadsheet-import-alerts";
+import {
+  SPREADSHEET_FILE_ACCEPT,
+  SPREADSHEET_UPLOAD_HINT,
+} from "@/lib/spreadsheet/spreadsheet-upload-validation";
+import SpreadsheetImportSheetOptions from "@/components/spreadsheet-import-sheet-options";
+import { readSpreadsheetFileToRows } from "@/lib/spreadsheet/safe-spreadsheet-parse";
+import {
+  loadSpreadsheetWorkbookFromFile,
+  summarizeSpreadsheetSheet,
+  type SpreadsheetSheetSummary,
+} from "@/lib/spreadsheet/parse-spreadsheet-client";
+
+const IMPORT_ACCEPT = SPREADSHEET_FILE_ACCEPT;
 
 type ProductSalesBulkImportProps = {
   clients: ClientEntry[];
@@ -123,30 +141,72 @@ export default function ProductSalesBulkImport({
 }: ProductSalesBulkImportProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
+  const { alert: showAlert } = useAlert();
+  const showImportAlert = useCallback((payload: SpreadsheetImportAlert) => {
+    showAlert({
+      variant: "error",
+      title: payload.title,
+      message: payload.message,
+    });
+  }, [showAlert]);
+
   const [preview, setPreview] = useState<ProductSaleImportPreview | null>(null);
   const [importSummary, setImportSummary] =
     useState<ProductSaleImportRunSummary | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fileUploadBlocked, setFileUploadBlocked] = useState(false);
+  const [loadingWorkbook, setLoadingWorkbook] = useState(false);
+  const [sheetSummaries, setSheetSummaries] = useState<SpreadsheetSheetSummary[]>(
+    [],
+  );
+  const [selectedSheetName, setSelectedSheetName] = useState("");
+  const [headerRowIndexBySheet, setHeaderRowIndexBySheet] = useState<
+    Record<string, number>
+  >({});
 
-  async function handleFileSelected(files: File[]) {
-    const file = files[0];
-    setSelectedFiles(files);
-
-    if (!file) {
-      setPreview(null);
-      return;
+  function resolvedHeaderRowIndex(sheetName: string): number {
+    if (headerRowIndexBySheet[sheetName] !== undefined) {
+      return headerRowIndexBySheet[sheetName];
     }
 
+    const summary = sheetSummaries.find((sheet) => sheet.name === sheetName);
+    return summary?.detectedHeaderRowIndex ?? 0;
+  }
+
+  async function refreshSheetDataRowCount(
+    file: File,
+    sheetName: string,
+    headerRowIndex: number,
+  ) {
+    const rows = await readSpreadsheetFileToRows(file, {
+      sheetName,
+      rawCells: true,
+    });
+    const { dataRowCount } = summarizeSpreadsheetSheet(rows, headerRowIndex);
+    setSheetSummaries((previous) =>
+      previous.map((sheet) =>
+        sheet.name === sheetName ? { ...sheet, dataRowCount } : sheet,
+      ),
+    );
+  }
+
+  async function parseProductSaleSheet(
+    file: File,
+    sheetName: string,
+    headerRowIndex?: number,
+  ) {
     setParsing(true);
-    setError(null);
     setPreview(null);
     setImportSummary(null);
 
     try {
-      const rawRows = await readProductSaleImportFile(file);
+      const resolvedHeader = headerRowIndex ?? resolvedHeaderRowIndex(sheetName);
+      const rawRows = await readProductSaleImportFile(file, {
+        sheetName,
+        headerRowIndex: resolvedHeader,
+      });
 
       if (rawRows.length === 0) {
         throw new Error("No product sale rows were found in the file.");
@@ -156,14 +216,86 @@ export default function ProductSalesBulkImport({
         classifyProductSaleImportRows(rawRows, clients, finishedProducts),
       );
     } catch (parseError) {
-      setError(
-        parseError instanceof Error
-          ? parseError.message
-          : "Failed to read the import file.",
+      console.error("Product sale import parse failed", parseError);
+      showImportAlert(
+        spreadsheetImportAlertFromError(parseError, "parse"),
       );
       setSelectedFiles([]);
+      setFileUploadBlocked(true);
+      setSheetSummaries([]);
+      setSelectedSheetName("");
     } finally {
       setParsing(false);
+    }
+  }
+
+  async function handleFileSelected(files: File[]) {
+    const file = files[0];
+
+    if (!file) {
+      setSelectedFiles([]);
+      setFileUploadBlocked(false);
+      setPreview(null);
+      setImportSummary(null);
+      setSheetSummaries([]);
+      setSelectedSheetName("");
+      return;
+    }
+
+    setSelectedFiles([file]);
+    const inspection = inspectSpreadsheetFileForImport(file);
+    if (!inspection.ok) {
+      setFileUploadBlocked(true);
+      setPreview(null);
+      setImportSummary(null);
+      setSheetSummaries([]);
+      setSelectedSheetName("");
+      showImportAlert(inspection.alert);
+      return;
+    }
+
+    setFileUploadBlocked(false);
+    setLoadingWorkbook(true);
+    setPreview(null);
+    setImportSummary(null);
+    setSheetSummaries([]);
+    setSelectedSheetName("");
+
+    try {
+      const loaded = await loadSpreadsheetWorkbookFromFile(file);
+      setSheetSummaries(loaded.sheetSummaries);
+      setSelectedSheetName(loaded.defaultSheetName);
+      await parseProductSaleSheet(file, loaded.defaultSheetName);
+    } catch (loadError) {
+      console.error("Product sale import workbook load failed", loadError);
+      showImportAlert(
+        spreadsheetImportAlertFromError(loadError, "parse"),
+      );
+      setSelectedFiles([]);
+      setFileUploadBlocked(true);
+    } finally {
+      setLoadingWorkbook(false);
+    }
+  }
+
+  function handleSheetChange(sheetName: string) {
+    setSelectedSheetName(sheetName);
+    const file = selectedFiles[0];
+    if (file) {
+      void parseProductSaleSheet(file, sheetName);
+    }
+  }
+
+  function handleHeaderRowIndexChange(headerRowIndex: number) {
+    setHeaderRowIndexBySheet((previous) => ({
+      ...previous,
+      [selectedSheetName]: headerRowIndex,
+    }));
+
+    const file = selectedFiles[0];
+    if (file && selectedSheetName) {
+      void refreshSheetDataRowCount(file, selectedSheetName, headerRowIndex);
+      void parseProductSaleSheet(file, selectedSheetName, headerRowIndex);
     }
   }
 
@@ -173,12 +305,13 @@ export default function ProductSalesBulkImport({
     }
 
     setImporting(true);
-    setError(null);
     setImportSummary(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      console.error("Product sale import business unit context failed", buContext.error);
+      showImportAlert(spreadsheetImportUploadFailedAlert());
+      setImporting(false);
       return;
     }
 
@@ -187,7 +320,9 @@ export default function ProductSalesBulkImport({
       stamp: stampBusinessUnit,
     });
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      console.error("Product sale import stamp failed", stampResult.error);
+      showImportAlert(spreadsheetImportUploadFailedAlert());
+      setImporting(false);
       return;
     }
 
@@ -223,9 +358,8 @@ export default function ProductSalesBulkImport({
     setImporting(false);
 
     if (taxError) {
-      setError(
-        `Sales imported, but the VFRS tax ledger could not be updated: ${taxError}`,
-      );
+      console.error("Product sale import VFRS tax sync failed", taxError);
+      showImportAlert(spreadsheetImportUploadFailedAlert());
     }
 
     if (summary.succeeded.length > 0) {
@@ -262,22 +396,35 @@ export default function ProductSalesBulkImport({
             files={selectedFiles}
             onChange={(next) => void handleFileSelected(next)}
             multiple={false}
-            disabled={importing || parsing}
+            disabled={importing || parsing || loadingWorkbook}
             accept={IMPORT_ACCEPT}
             addLabel="Choose file"
             changeLabel="Change file"
-            emptyHint="CSV or Excel (.xlsx)."
+            emptyHint={SPREADSHEET_UPLOAD_HINT}
           />
         </div>
 
-        {parsing ? (
-          <p className="text-sm text-slate-600">Reading file…</p>
+        {loadingWorkbook ? (
+          <p className="text-sm text-slate-600">Reading spreadsheet…</p>
         ) : null}
 
-        {error ? (
-          <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
+        {sheetSummaries.length > 0 && !loadingWorkbook ? (
+          <SpreadsheetImportSheetOptions
+            summaries={sheetSummaries}
+            selectedSheetName={selectedSheetName}
+            onSheetChange={handleSheetChange}
+            headerRowIndex={resolvedHeaderRowIndex(selectedSheetName)}
+            detectedHeaderRowIndex={
+              sheetSummaries.find((sheet) => sheet.name === selectedSheetName)
+                ?.detectedHeaderRowIndex ?? 0
+            }
+            onHeaderRowIndexChange={handleHeaderRowIndexChange}
+            disabled={importing || parsing}
+          />
+        ) : null}
+
+        {parsing && !loadingWorkbook ? (
+          <p className="text-sm text-slate-600">Reading file…</p>
         ) : null}
 
         {importSummary ? <ImportResultsSummary summary={importSummary} /> : null}
@@ -299,7 +446,9 @@ export default function ProductSalesBulkImport({
               <button
                 type="button"
                 onClick={handleConfirmImport}
-                disabled={importing || preview.ready.length === 0}
+                disabled={
+                  importing || fileUploadBlocked || preview.ready.length === 0
+                }
                 className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {importing
@@ -318,7 +467,7 @@ export default function ProductSalesBulkImport({
                 setPreview(null);
                 setImportSummary(null);
                 setSelectedFiles([]);
-                setError(null);
+                setFileUploadBlocked(false);
               }}
               className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >

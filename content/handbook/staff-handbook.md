@@ -8,7 +8,7 @@ DavSuite ERP
 
 **For Customer Use**
 
-Version 3.0 | September 2026
+Version 3.1 | October 2026
 
 *Covers: Getting Started · Bulk Import · User Roles (incl. Director) ·
 Business Units · Finance (incl. Budget, Tax Settings, Client Receipts, Staff
@@ -161,31 +161,43 @@ the list page of any of the following:
 
 -   **Fixed Assets.** Fixed Assets --- Finance.
 
-Every Bulk Import follows the same four steps, whichever type of record
-you are loading:
+Every **central** Bulk Import (from the **Bulk Import** button on the
+list pages above) follows the same four-step wizard:
 
--   **1. Upload.** Choose what you are importing and upload your file
-    (.csv or .xlsx). An Expected Columns panel on the same screen lists
-    exactly which columns to include, which are required, and an example
-    value for each --- check this before you upload if you are building
-    your file from scratch.
+-   **1. Upload.** Choose the import type and upload your spreadsheet
+    (**`.csv`**, **`.xls`**, or **`.xlsx`**, up to **20 MB** and **10,000
+    data rows**). Use **View expected columns** for the exact field list
+    (required vs optional and example values), and **Download template**
+    for a starter CSV. If the workbook has more than one sheet, pick
+    **Which sheet should we import?** (names and row counts are shown;
+    the first sheet with data is selected by default). Large files are
+    read in your browser; row data is sent to the server in small
+    batches so uploads stay reliable.
 
--   **2. Map Columns.** Match each column in your file to the correct
-    field in the system. Column order and header names do not need to
-    match exactly --- you choose what maps to what, or mark a column to
-    be ignored.
+-   **2. Map columns.** Match each column in your file to the correct
+    field. Header names and column order do not need to match the
+    template --- the wizard **auto-matches** obvious names where it can.
+    Mark a column **Ignore** if it should not be imported.
 
--   **3. Validate.** The system checks every row and reports back: rows
-    with a genuine problem (a missing required field, an invalid value)
-    appear under Rows to Fix and must be corrected before you can
-    proceed. Rows with only a soft warning --- for example, a possible
-    duplicate --- appear separately under Rows to Review; these are
-    still valid and will still import, the warning is just there so you
-    notice.
+-   **3. Review.** The system validates every row on the server. Errors
+    are grouped by message so you can fix patterns once; open **Show all
+    errors** or **Download error report** (CSV) for the full list. You
+    cannot import until **zero error rows** remain (valid rows only).
 
--   **4. Commit.** Once your file shows zero errors, Commit Import
-    writes every valid row into the system in one go, and takes you to
-    the real list so you can see your data has landed.
+-   **4. Import.** **Import** writes every valid row in one commit and
+    links you to the destination list (for example Expense Register).
+    If the same file was committed before, the wizard warns you about a
+    possible re-upload before it sends rows.
+
++-----------------------------------------------------------------------+
+| **Note --- other bulk imports**                                       |
+|                                                                       |
+| Attendance, CRM Products, and Product Sales use their own **Bulk      |
+| Import** panels on those screens (preview then confirm). They use the |
+| same file types and **20 MB / 10,000-row** limits and the same        |
+| multi-sheet picker when needed, but they do not use the four-step     |
+| map/review wizard.                                                    |
++-----------------------------------------------------------------------+
 
 +-----------------------------------------------------------------------+
 | **Tip**                                                               |
@@ -216,7 +228,12 @@ you are loading:
 | records matches what you expected.                                    |
 +-----------------------------------------------------------------------+
 
+## **2.5 Clickable warning icons (⚠)**
 
+Some screens show a small **⚠** icon next to a label or total when
+something needs attention (for example leave that exceeds balance, or
+overdue supplier payables). **Click or tap the icon** to open a short
+explanation --- no technical error text is shown in the main form.
 
 # **Section 3 --- Understanding User Roles**
 
@@ -239,20 +256,23 @@ by your workspace administrator under Administration → User Accounts.
   HR                 HR / payroll officer  HR Management, Sales & CRM,
                                            Reports
 
-  Operations Manager Site / operations     Operations, Inventory, Reports
-                     lead                  
+  Operations Manager Site / operations     Operations, Inventory, Reports;
+                     lead                  **Finance → Suppliers** only
+                                           (Supplier 360 purchasing view)
 
   Supervisor         Site supervisor       Operations at assigned sites,
                                            limited HR
 
   Sales Rep          Sales / till staff    Sales & CRM (Customer List,
                                            Point of Sale, Sales register,
-                                           Credit Notes, Quotations); own
-                                           sales and assigned quotations
-                                           only on the Dashboard
+                                           Credit Notes, Quotations); **Finance
+                                           → Suppliers** only (Supplier 360
+                                           purchasing view); own sales and
+                                           assigned quotations on the Dashboard
 
-  Employee           General staff         Self-Service only (payslips,
-                                           leave requests)
+  Employee           General staff         **Self-Service** when your user
+                                           account is **linked to an employee
+                                           record** (see Section 11)
 
   Client             Your own customer     Their own invoices/statements
                                            only, via Customer Portal
@@ -391,6 +411,21 @@ The Finance module is the financial heart of your workspace. All figures
 are reconciled monthly and feed directly into your Dashboard and
 Reports.
 
+## **6.0 Finance module tabs**
+
+Open **Finance** in the sidebar to see a horizontal tab strip (full
+Finance roles). Tabs appear in this order:
+
+Income Register → Customer Invoices → Customer Receipts → Credit Notes →
+Service Contracts → Expense Register → Accounts Payable → Supplier
+Contracts → **Suppliers** → Fixed Assets → Statutory Ledger → Staff
+Welfare Fund → Manual Financial Entries → Budget → Profit & Loss →
+Balance Sheet → Cash Flow.
+
+**Operations Manager** and **Sales Rep** users who have Finance access
+see **Suppliers** only --- the shared supplier directory and Supplier 360
+(Section 6.4c), not the rest of the Finance tabs.
+
 ## **6.1 Income Register**
 
 Records all income, whether service-based (e.g. contract billing to a
@@ -470,10 +505,22 @@ expense, but they still display on older rows that already used them.
 
 Tracks amounts your business owes to suppliers or vendors, and their
 payment status. **Unpaid supplier bills and unpaid GRA penalties** belong
-here; when you pay, record the payment **against the payable** (Record
-Payment). Whether a purchase creates an Accounts Payable entry at all
+here; when you pay, record the payment **against the payable** (**Record
+Payment**). Whether a purchase creates an Accounts Payable entry at all
 depends on how it was paid --- see Section 10.3 for Cash vs. Credit
 purchases.
+
+-   **Detail drawer ---** click the **supplier name** on a row (or follow a
+    deep link to that payable) to open **Accounts payable** in the
+    side drawer. Sections include **Invoice**, **Amounts & status**,
+    **Related records** (links to the supplier contract, fixed asset, or
+    **GRA penalty — Statutory Ledger** when applicable), **Notes**,
+    **Payment history** (each payment with date, amount, payment source,
+    and notes), and **Business unit**.
+
+-   **Payment history ---** every **Record Payment** against that AP line
+    appears in the drawer; if none exist yet, the drawer says **No
+    payments recorded**.
 
 ## **6.4 Fixed Assets**
 
@@ -485,6 +532,10 @@ distinction.
 
 You can bulk import your existing asset register from a spreadsheet
 using the Bulk Import button on this page --- see Section 2.4.
+
+Use the **filter icon** on column headers to narrow the list: **Asset
+Name**, **Category**, **Purchase Date** (date range), **Depreciation
+Method**, and **Location**.
 
 ## **6.4a Recording asset purchases (company equipment & property)**
 
@@ -573,6 +624,57 @@ Fixed Assets and never in the Fixed Assets module.
 
 Supplier contract APs follow normal operating AP accrual rules (not
 Fixed Asset credit APs).
+
+-   **Pro-rated first and last month ---** if the contract does not run
+    for every day of a calendar month (starts mid-month or ends
+    mid-month), the generated AP amount is **monthly amount × (billable
+    days ÷ days in that month)**. The AP description includes a suffix
+    such as **Pro-rated 15 Jan 2026–31 Jan 2026 (17 of 31 days)**.
+
+-   **Billing on the 1st ---** the scheduled job creates each month's bill
+    on the **1st** of that month. The **first** bill for the contract's
+    start month is created on the **1st of the start month** (pro-rated
+    when the start date is after the 1st).
+
+-   **Activate after the 1st ---** if you **Activate** a contract **after**
+    the 1st of its start month has already passed, the system **creates
+    that month's bill immediately** (still pro-rated from the contract
+    start date through month-end) so you are not waiting until next
+    month.
+
+-   **Current vs upcoming amount ---** the list and summary show **Current
+    monthly amount**. When a **Change Amount** amendment is saved but not
+    yet effective, the label can show the **new amount from {date}**
+    until that date arrives.
+
+## **6.4c Suppliers and Supplier 360**
+
+**Finance → Suppliers** is the workspace-wide supplier directory (shared
+across business units). The same supplier picker appears on Expense
+Register, Accounts Payable, Fixed Assets, purchase forms, and elsewhere:
+choose a saved supplier, or **Other (one-time supplier)** and type a
+one-time name.
+
+Open a supplier to see **Supplier 360**:
+
+-   **Summary cards (full Finance access) ---** **Total Spent ({year})**,
+    **Outstanding**, **Overdue** (tap **⚠** on Overdue for an
+    explanation), and **Last Activity**.
+
+-   **Tabs (full Finance access) ---** **Purchases**, **Purchase Orders**,
+    **Accounts Payable**, **Expenses**, **Supplier Contracts**, **Fixed
+    Assets**. Each row can include a **View** link that opens the source
+    record (often with a query such as `?apId=` for payables).
+
+-   **Sales Rep / Operations Manager ---** Finance shows **Suppliers**
+    only. Supplier 360 is limited to purchasing: cards **Total
+    Purchased** and **Last Activity**, tabs **Purchases** and **Purchase
+    Orders** only --- no AP balances, expenses, contracts, or fixed
+    assets. They can still use the supplier dropdown on forms they are
+    allowed to complete.
+
+-   **Edit Supplier ---** roles with inventory edit rights (not Sales Rep
+    suppliers-only access) can update directory details from Supplier 360.
 
 ## **6.5 Manual Financial Entries**
 
@@ -724,7 +826,10 @@ the ERP, matching your standard invoice format.
 
 -   Each invoice supports site-based or manually entered line items,
     grouped by category, with Service and Material amounts, discounts,
-    and line totals.
+    and line totals. Use **Add site line…** to pull a line from the
+    customer's **sites**; when a **service contract** is linked, rates come
+    from that contract's **rate card** (category, service/material split,
+    and discounts). Group lines that share the same category label.
 
 -   VAT/NHIL/GETFund (20%) is calculated on the Service amount and added
     to the invoice total. Withholding Tax (WHT, 7.5%) is shown for your
@@ -817,16 +922,20 @@ game.
     passed. This matches what you see on the Statutory Ledger overview
     and on your Dashboard reminders.
 
--   **Automatic statutory reminders (Phase 2)** --- when **Reminders** are
-    enabled in Statutory Ledger → Settings, a daily job (08:00 Ghana
-    time) notifies active **Super Admins, Finance users, and Directors**
-    for each unremitted period that hits a reminder milestone: **3, 2, and
-    1 days before** the calculated due date, **on the due date**, and
-    **one day after** if still unremitted. Each milestone fires at most
-    once per person and channel (in-app notification and SMS where the
-    user has a valid phone and SMS credits apply). Due dates use the same
-    per-period rules as the ledger --- not the legacy next-due fields.
-    After you **Mark Period as Remitted**, reminders stop for that period.
+-   **Automatic statutory reminders ---** when **Reminder Enabled** is on
+    for a tax type in Statutory Ledger → **Settings**, a daily job
+    (08:00 Ghana time) notifies active **Super Admins, Finance users, and
+    Directors** for each **unremitted** obligation that hits a milestone:
+    **3, 2, and 1 days before** the calculated due date, **on the due
+    date**, and **one day after** if still unremitted. Each milestone
+    fires at most once per person per channel (**in-app notification**
+    and **SMS** where the user has a valid phone and SMS credits apply).
+    Messages respect **business unit** when your workspace has more than
+    one unit. Turn reminders off by clearing **Reminder Enabled** for that
+    tax type in Settings. Due dates use the same per-period rules as the
+    ledger. After you **Mark Period as Remitted**, reminders stop for that
+    period. The Statutory Ledger overview also shows an **Upcoming
+    statutory filings** banner while reminders are enabled.
 
 -   **Mark Period as Remitted** --- once you have actually paid GRA or
     SSNIT for a period, mark it as remitted; the ledger clears that
@@ -1111,6 +1220,13 @@ navy; **Hold**, **Return**, and **Void** are amber; **Remove line** and
 Customer Display**, and **Apply** (promo or store credit) are grey
 secondary. **Request Payment (link)** keeps the emerald payment-link
 style.
+
+**Full-screen checkout.** Use **Full screen** to hide the rest of the app
+for till work (uses the browser full-screen API when available). Press
+**Esc** to exit full screen --- unless a modal or drawer is open (for
+example **Return**, payment popup, or **Held carts**), in which case Esc
+closes that layer first. **Exit full screen** is also on the checkout
+toolbar.
 
 ## **Sales register (Add Sale) vs. Point of Sale --- which do I use?**
 
@@ -1611,11 +1727,14 @@ blocked** until rates are available.
 
 -   Attendance --- record and review attendance
 
--   Leave --- requests and day-to-day leave handling. Default
-    entitlement days for Annual, Sick, and Unpaid Leave can be set once
-    per Position and Employment Type under Leave Settings → Leave
-    Entitlements, so new hires get the correct balance automatically;
-    individual staff can still be adjusted separately if needed.
+-   Leave --- requests and day-to-day leave handling. When a **new
+    company workspace** is created, **Annual Leave** (15 days default),
+    **Sick Leave**, and **Unpaid Leave** types are added automatically if
+    missing. Default entitlement days can be set per Position and
+    Employment Type under **Administration → HR Settings → Leave Settings
+    → Leave Entitlements** (plus a **Default (all positions)** row);
+    new hires pick up entitlements from that grid; individual balances
+    can still be adjusted on **Leave Balances**.
 
 -   Leave Balances --- see and adjust remaining leave days per employee
 
@@ -1636,9 +1755,13 @@ blocked** until rates are available.
 ## **8.3a Leave Approvals**
 
 If you are set up as a leave approver, HR Management → Leave Approvals
-is your inbox for leave requests waiting on you. Approve or reject from
-there --- this is separate from Self-Service, which only shows your own
-leave as an employee.
+is your inbox for leave requests waiting on you. The table shows each
+**Employee** by name (staff ID and name). Approve or reject from there
+--- this is separate from Self-Service, which only shows your own leave.
+
+When a request **exceeds remaining balance**, the employee sees an amber
+warning on **My Leave** (and a **⚠** hint); approvers still see the
+request and can use their judgment.
 
 ## **8.4 Employee Announcements**
 
@@ -1768,6 +1891,13 @@ history and formally approve a rotation.
     Print, which opens your browser's print dialog.
 
 *Fig. 8 --- Duty Roster: rotation review and approval.*
+
+**Business unit visibility ---** roster data (config, projects, staff
+assignments, rotation metadata) follows the **Business Unit switcher**.
+Customers and sites can span units; printed roster letterhead shows a
+business unit name only when **every staffed site** for that client
+shares the same unit on its projects --- otherwise the letterhead stays
+neutral.
 
 # **Section 10 --- Inventory (Production & Purchasing)**
 
@@ -2154,19 +2284,26 @@ Income by Property) appear under Reports when you have this access.
 
 # **Section 11 --- Self-Service**
 
-Self-Service is for **your own staff** --- every staff role can open it.
-It is **not** where customers log in; customers use the **Customer
-Portal**.
+Self-Service is for **your own staff**, not customers (customers use the
+**Customer Portal**). The sidebar shows **Self-Service** only when your
+user account is **linked to an employee record** --- any
+role with that link (Admin, Finance, HR, Operations, Sales Rep, etc.)
+can use it, not only the Employee role.
 
 The four tabs are:
 
--   My Payslip --- your payslips
+-   **My Payslip** --- your payslips
 
--   My Attendance --- your attendance
+-   **My Attendance** --- your attendance
 
--   My Leave --- your leave requests and balances
+-   **My Leave** --- **Request Leave** at the top (show/hide the form),
+    then **Leave Balance ({year})** with **Entitled**, **Used**, and
+    **Remaining** per leave type (**your balances only**), then **My
+    Leave Requests**. If dates you enter exceed **Remaining**, an amber
+    warning appears (tap **⚠** for detail); you can still submit and
+    your approver decides.
 
--   My Roster --- your duty roster assignments
+-   **My Roster** --- your duty roster assignments
 
 Leave requests that need **your approval as a manager** appear under HR
 Management → Leave Approvals (Section 8.3a), not under Self-Service.
@@ -2309,9 +2446,10 @@ stamped to it.
 
 ## **13.2a Finance Settings --- Expense and Asset Categories**
 
-Under **Administration → Finance Settings**:
+Under **Administration → Finance Settings** (sidebar group **Finance
+Settings**):
 
-**Expense Categories and Sub-Categories**
+**Expense Categories and Sub-Categories** (**Expense Categories**)
 
 -   Every **sub-category belongs to one expense category**. When you add
     or edit a sub-category, you choose its parent category.
@@ -2692,10 +2830,11 @@ loyalty adjust automatically.
   Customer credits   Balance Sheet liability for unused store credit owed
                      to customers (see Section 6.6)
 
-# **Section 19 --- AI Assistant**
+# **Section 19 --- AI Assistant (Ask DavSuite)**
 
-A built-in chat assistant is available inside DavSuite, for questions
-about your own data or how to do something in the system.
+A built-in chat assistant (**Ask DavSuite**, floating button on
+DavSuite ERP screens) is available for questions about your own data or
+how to do something in the system.
 
 Ask it things like "what's my outstanding balance for Central
 University" or "how do I raise a purchase order" --- it can look up your

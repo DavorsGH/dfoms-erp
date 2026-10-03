@@ -113,8 +113,16 @@ export async function resolvePositionTitleForCommit(input: {
   tenantId: string;
   positionTitle: string | null;
   cache: PositionTitleResolverCache;
+  /** When false, unknown titles are left unset (bulk import opt-out). Default true. */
+  createIfMissing?: boolean;
 }): Promise<string | null> {
-  const { client, tenantId, positionTitle, cache } = input;
+  const {
+    client,
+    tenantId,
+    positionTitle,
+    cache,
+    createIfMissing = true,
+  } = input;
   const trimmed = positionTitle?.trim();
   if (!trimmed) {
     return null;
@@ -147,6 +155,10 @@ export async function resolvePositionTitleForCommit(input: {
     const title = String(existing.rows[0].position_title);
     cache.set(key, title);
     return title;
+  }
+
+  if (!createIfMissing) {
+    return null;
   }
 
   await client.query(
@@ -185,8 +197,17 @@ export async function resolveProjectCodeForCommit(input: {
   projectName: string | null;
   cache: ProjectCodeResolverCache;
   businessUnitId?: string | null;
+  /** When false, returns null if no existing project matches (bulk import). */
+  createIfMissing?: boolean;
 }): Promise<string | null> {
-  const { client, tenantId, projectName, cache, businessUnitId = null } = input;
+  const {
+    client,
+    tenantId,
+    projectName,
+    cache,
+    businessUnitId = null,
+    createIfMissing = true,
+  } = input;
   const trimmed = projectName?.trim();
   if (!trimmed) {
     return null;
@@ -219,6 +240,10 @@ export async function resolveProjectCodeForCommit(input: {
     const projectCode = String(existing.rows[0].project_code);
     cache.set(key, projectCode);
     return projectCode;
+  }
+
+  if (!createIfMissing) {
+    return null;
   }
 
   const projectCode = await generateNextCodeInTransaction(
@@ -330,10 +355,37 @@ export async function resolveAssignedSiteCodeForCommit(input: {
 export async function allocateEmployeeIdsForCommit(input: {
   client: Client;
   tenantId: string;
+  preferredStaffId?: string | null;
 }): Promise<{ employeeId: string; staffId: string }> {
-  const { client, tenantId } = input;
+  const { client, tenantId, preferredStaffId } = input;
 
   const employeeId = await generateNextCodeInTransaction(client, tenantId, "EMP");
+
+  const trimmedStaffId = preferredStaffId?.trim();
+  if (trimmedStaffId) {
+    const existing = await client.query(
+      `
+        SELECT staff_id
+        FROM public.employees
+        WHERE tenant_id = $1
+          AND lower(trim(staff_id)) = $2
+        LIMIT 1
+      `,
+      [tenantId, normalizeTenantLookupKey(trimmedStaffId)],
+    );
+
+    if (existing.rows.length > 0) {
+      throw new Error(
+        `staff_id "${trimmedStaffId}" is already assigned to another employee in this workspace`,
+      );
+    }
+
+    return {
+      employeeId,
+      staffId: trimmedStaffId,
+    };
+  }
+
   const staffRaw = await generateNextCodeInTransaction(client, tenantId, "STAFF");
 
   return {

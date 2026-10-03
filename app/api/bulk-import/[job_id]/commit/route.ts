@@ -63,8 +63,20 @@ async function resolveChangedByLabel(): Promise<string> {
   return "Unknown user";
 }
 
+function parseCreateMissingPositions(body: unknown): boolean {
+  if (body === null || typeof body !== "object") {
+    return true;
+  }
+
+  if (!("create_missing_positions" in body)) {
+    return true;
+  }
+
+  return (body as { create_missing_positions?: unknown }).create_missing_positions !== false;
+}
+
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ job_id: string }> },
 ) {
   const gateAuth = await requireTenantRoleIn(BULK_IMPORT_GATE_ROLES);
@@ -76,6 +88,17 @@ export async function POST(
   const trimmedJobId = jobId?.trim();
   if (!trimmedJobId) {
     return NextResponse.json({ error: "job_id is required." }, { status: 400 });
+  }
+
+  let createMissingPositions = true;
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      const rawBody = await request.json();
+      createMissingPositions = parseCreateMissingPositions(rawBody);
+    } catch {
+      createMissingPositions = true;
+    }
   }
 
   const databaseUrl = resolveDatabaseUrl();
@@ -128,14 +151,6 @@ export async function POST(
   if (jobStatus !== "validated") {
     return NextResponse.json(
       { error: "Validate this import before committing." },
-      { status: 400 },
-    );
-  }
-
-  const errorRows = Number(job.error_rows ?? 0);
-  if (errorRows > 0) {
-    return NextResponse.json(
-      { error: "Fix validation errors and re-validate before committing." },
       { status: 400 },
     );
   }
@@ -205,6 +220,8 @@ export async function POST(
       rows: validRows,
       changedBy,
       activeBusinessUnitId,
+      createMissingPositions:
+        importType === "employee" ? createMissingPositions : undefined,
     });
 
     const response: BulkImportCommitResponse = {

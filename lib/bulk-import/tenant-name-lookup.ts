@@ -2,6 +2,25 @@ export function normalizeTenantLookupKey(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+/** When exactly one tenant record matches a normalized name key, map key → canonical name. */
+export function buildTenantUniqueNameByLookupKey(
+  items: Array<{ name: string }>,
+): Map<string, string> {
+  const counts = buildTenantNameMatchCounts(items);
+  const byKey = new Map<string, string>();
+
+  for (const item of items) {
+    const key = normalizeTenantLookupKey(item.name);
+    if (!key || counts.get(key) !== 1 || byKey.has(key)) {
+      continue;
+    }
+
+    byKey.set(key, String(item.name).trim());
+  }
+
+  return byKey;
+}
+
 export function buildTenantNameMatchCounts(
   items: Array<{ name: string }>,
 ): Map<string, number> {

@@ -57,6 +57,12 @@ import {
   snapshotFromPayload,
 } from "@/app/dashboard/employees/employment-history-utils";
 import {
+  resolvePayrollPolicyCompensation,
+  type PayrollCompensationPolicyConfig,
+} from "@/app/dashboard/hr-payroll/payroll-processing-utils";
+import { ensureMissingPositionsForEmployeeImport } from "@/lib/bulk-import/ensure-employee-import-positions";
+import { loadCompensationPolicyConfigForCommit } from "@/lib/bulk-import/load-compensation-policy-config-for-commit";
+import {
   buildPurchaseTaxLedgerRows,
   type TaxLedgerEntryInsert,
 } from "@/app/dashboard/finance/tax-ledger-sync";
@@ -184,6 +190,32 @@ async function insertServiceCatalogRow(
   );
 }
 
+function applySalarySettingsCompensationToEmployeePayload(
+  payload: ReturnType<typeof buildEmployeeCommitInsert>,
+  compensationPolicyConfig: PayrollCompensationPolicyConfig,
+): ReturnType<typeof buildEmployeeCommitInsert> {
+  const policy = resolvePayrollPolicyCompensation(
+    {
+      position: payload.position,
+      employment_type: payload.employment_type,
+      shift: payload.shift,
+    },
+    compensationPolicyConfig,
+  );
+
+  if (!policy) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    basic_salary: policy.basic_salary,
+    housing_allowance: policy.housing_allowance,
+    transport_allowance: policy.transport_allowance,
+    other_allowances: policy.other_allowances,
+  };
+}
+
 async function insertEmployeeRow(
   client: Client,
   tenantId: string,
@@ -196,7 +228,9 @@ async function insertEmployeeRow(
     supervisorCache: SupervisorIdResolverCache;
     siteCache: SiteCodeResolverCache;
   },
+  compensationPolicyConfig: PayrollCompensationPolicyConfig,
   businessUnitId: string | null = null,
+  createMissingPositions = true,
 ) {
   const departmentCode = await resolveDepartmentCodeForCommit({
     client,
@@ -209,6 +243,7 @@ async function insertEmployeeRow(
     tenantId,
     positionTitle: String(mappedData.position_title ?? ""),
     cache: caches.positionCache,
+    createIfMissing: createMissingPositions,
   });
   const projectCode = await resolveProjectCodeForCommit({
     client,
@@ -216,6 +251,7 @@ async function insertEmployeeRow(
     projectName: String(mappedData.contract_project_name ?? ""),
     cache: caches.projectCache,
     businessUnitId,
+    createIfMissing: false,
   });
   const supervisorId = await resolveSupervisorIdForCommit({
     client,
@@ -233,19 +269,23 @@ async function insertEmployeeRow(
   const { employeeId, staffId } = await allocateEmployeeIdsForCommit({
     client,
     tenantId,
+    preferredStaffId: String(mappedData.staff_id ?? "").trim() || null,
   });
 
-  const payload = buildEmployeeCommitInsert({
-    mappedData,
-    tenantId,
-    employeeId,
-    staffId,
-    departmentCode,
-    positionTitle,
-    projectCode,
-    supervisorId,
-    assignedSiteCode,
-  });
+  const payload = applySalarySettingsCompensationToEmployeePayload(
+    buildEmployeeCommitInsert({
+      mappedData,
+      tenantId,
+      employeeId,
+      staffId,
+      departmentCode,
+      positionTitle,
+      projectCode,
+      supervisorId,
+      assignedSiteCode,
+    }),
+    compensationPolicyConfig,
+  );
 
   await client.query(
     `
@@ -255,10 +295,18 @@ async function insertEmployeeRow(
         staff_id,
         full_name,
         gender,
+        date_of_birth,
         nationality,
         marital_status,
         phone,
         email,
+        residential_address,
+        ghana_card_number,
+        ssnit_number,
+        tin_number,
+        bank_name,
+        account_number,
+        momo_number,
         department,
         position,
         supervisor,
@@ -274,12 +322,17 @@ async function insertEmployeeRow(
         housing_allowance,
         transport_allowance,
         other_allowances,
+        emergency_contact_name,
+        emergency_contact_address,
+        emergency_contact_phone,
+        emergency_contact_relationship,
         business_unit_id
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        0, 0, 0, 0, $21
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+        $31, $32, $33, $34, $35, $36, $37
       )
     `,
     [
@@ -288,10 +341,18 @@ async function insertEmployeeRow(
       payload.staff_id,
       payload.full_name,
       payload.gender,
+      payload.date_of_birth,
       payload.nationality,
       payload.marital_status,
       payload.phone,
       payload.email,
+      payload.residential_address,
+      payload.ghana_card_number,
+      payload.ssnit_number,
+      payload.tin_number,
+      payload.bank_name,
+      payload.account_number,
+      payload.momo_number,
       payload.department,
       payload.position,
       payload.supervisor,
@@ -303,6 +364,14 @@ async function insertEmployeeRow(
       payload.shift,
       payload.assigned_site_id,
       payload.data_notes,
+      payload.basic_salary,
+      payload.housing_allowance,
+      payload.transport_allowance,
+      payload.other_allowances,
+      payload.emergency_contact_name,
+      payload.emergency_contact_address,
+      payload.emergency_contact_phone,
+      payload.emergency_contact_relationship,
       businessUnitId,
     ],
   );
@@ -349,10 +418,10 @@ async function insertEmployeeRow(
       shift: payload.shift,
       employment_status: payload.employment_status,
       employment_type: payload.employment_type,
-      basic_salary: 0,
-      housing_allowance: 0,
-      transport_allowance: 0,
-      other_allowances: 0,
+      basic_salary: payload.basic_salary,
+      housing_allowance: payload.housing_allowance,
+      transport_allowance: payload.transport_allowance,
+      other_allowances: payload.other_allowances,
     }),
     changeReason: "Employee created",
     changedBy,
@@ -843,6 +912,8 @@ export async function commitImportJobInTransaction(input: {
   changedBy?: string;
   /** Create stamp for product/employee/expense/fixed_asset; null = workspace default BU. */
   activeBusinessUnitId?: string | null;
+  /** Employee import: create spreadsheet positions not yet in tenant. Default true. */
+  createMissingPositions?: boolean;
 }): Promise<number> {
   const {
     client,
@@ -852,6 +923,7 @@ export async function commitImportJobInTransaction(input: {
     rows,
     changedBy,
     activeBusinessUnitId = null,
+    createMissingPositions = true,
   } = input;
 
   await client.query("BEGIN");
@@ -873,6 +945,20 @@ export async function commitImportJobInTransaction(input: {
     const fixedAssetPaymentMethodCache: FixedAssetPaymentMethodResolverCache =
       new Map();
 
+    const employeeCompensationPolicyConfig =
+      importType === "employee"
+        ? await loadCompensationPolicyConfigForCommit(client, tenantId)
+        : null;
+
+    if (importType === "employee" && createMissingPositions) {
+      await ensureMissingPositionsForEmployeeImport({
+        client,
+        tenantId,
+        rows,
+        cache: positionCache,
+      });
+    }
+
     for (const row of rows) {
       if (importType === "product") {
         await insertFinishedProduct(
@@ -885,6 +971,10 @@ export async function commitImportJobInTransaction(input: {
       } else if (importType === "service") {
         await insertServiceCatalogRow(client, tenantId, row.mapped_data);
       } else if (importType === "employee") {
+        if (!employeeCompensationPolicyConfig) {
+          throw new Error("Employee import requires Salary Settings configuration.");
+        }
+
         await insertEmployeeRow(
           client,
           tenantId,
@@ -897,7 +987,9 @@ export async function commitImportJobInTransaction(input: {
             supervisorCache,
             siteCache,
           },
+          employeeCompensationPolicyConfig,
           activeBusinessUnitId,
+          createMissingPositions,
         );
       } else if (importType === "customer") {
         await insertCustomerRow(

@@ -10,7 +10,12 @@ import {
   buildExpenseDuplicateKey,
   buildFixedAssetDuplicateKey,
 } from "@/lib/bulk-import/expense-duplicate-key";
-import { buildTenantNameMatchCounts } from "@/lib/bulk-import/tenant-name-lookup";
+import {
+  buildTenantNameMatchCounts,
+  buildTenantUniqueNameByLookupKey,
+} from "@/lib/bulk-import/tenant-name-lookup";
+import { loadCompensationPolicyConfigForValidate } from "@/lib/bulk-import/load-compensation-policy-config-for-validate";
+import type { PayrollCompensationPolicyConfig } from "@/app/dashboard/hr-payroll/payroll-processing-utils";
 import { buildExpenseSubcategoryKeysByCategory } from "@/app/dashboard/finance/expense-register-utils";
 import { validateImportRows } from "@/lib/bulk-import/validate-import-rows";
 import type {
@@ -127,6 +132,8 @@ export async function POST(
   let existingServiceNames = new Set<string>();
   let supplierNameMatchCounts = new Map<string, number>();
   let employeeLookups;
+  let employeeCompensationPolicyConfig: PayrollCompensationPolicyConfig | null =
+    null;
   let customerLookups;
   let expenseLookups;
   let fixedAssetLookups;
@@ -197,7 +204,7 @@ export async function POST(
         .eq("is_archived", false),
       supabase
         .from("employees")
-        .select("full_name")
+        .select("full_name, staff_id")
         .eq("tenant_id", sectionAuth.tenantId),
       supabase
         .from("sites")
@@ -220,17 +227,32 @@ export async function POST(
       );
     }
 
+    const positionRows = (positionsResult.data ?? []).map((row) => ({
+      name: String(row.position_title ?? ""),
+    }));
+
+    try {
+      employeeCompensationPolicyConfig =
+        await loadCompensationPolicyConfigForValidate(
+          supabase,
+          sectionAuth.tenantId,
+        );
+    } catch (compensationLoadError) {
+      const message =
+        compensationLoadError instanceof Error
+          ? compensationLoadError.message
+          : "Failed to load salary settings for validation.";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+
     employeeLookups = {
       departmentNameMatchCounts: buildTenantNameMatchCounts(
         (departmentsResult.data ?? []).map((row) => ({
           name: String(row.department_name ?? ""),
         })),
       ),
-      positionTitleMatchCounts: buildTenantNameMatchCounts(
-        (positionsResult.data ?? []).map((row) => ({
-          name: String(row.position_title ?? ""),
-        })),
-      ),
+      positionTitleMatchCounts: buildTenantNameMatchCounts(positionRows),
+      positionTitleByLookupKey: buildTenantUniqueNameByLookupKey(positionRows),
       contractProjectNameMatchCounts: buildTenantNameMatchCounts(
         (projectsResult.data ?? []).map((row) => ({
           name: String(row.project_name ?? ""),
@@ -245,6 +267,11 @@ export async function POST(
         (sitesResult.data ?? []).map((row) => ({
           name: String(row.site_name ?? ""),
         })),
+      ),
+      existingStaffIds: new Set(
+        (employeesResult.data ?? [])
+          .map((row) => String(row.staff_id ?? "").trim().toLowerCase())
+          .filter(Boolean),
       ),
     };
   } else if (importType === "customer") {
@@ -448,7 +475,13 @@ export async function POST(
     };
   }
 
-  const { validatedRows, summary, issueRows, warningRows } = validateImportRows({
+  const {
+    validatedRows,
+    summary,
+    issueRows,
+    warningRows,
+    missingPositions,
+  } = validateImportRows({
     importType,
     columnMapping,
     rows: (rows ?? []).map((row) => ({
@@ -460,6 +493,7 @@ export async function POST(
     existingServiceNames,
     supplierNameMatchCounts,
     employeeLookups,
+    employeeCompensationPolicyConfig,
     customerLookups,
     expenseLookups,
     fixedAssetLookups,
@@ -506,6 +540,9 @@ export async function POST(
     ...summary,
     issue_rows: issueRows,
     warning_rows: warningRows,
+    ...(importType === "employee" && missingPositions.length > 0
+      ? { missing_positions: missingPositions }
+      : {}),
   };
 
   return NextResponse.json(response);

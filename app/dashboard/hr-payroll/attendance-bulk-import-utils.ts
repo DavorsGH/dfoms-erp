@@ -1,4 +1,7 @@
 import * as XLSX from "xlsx";
+import { readSpreadsheetFileToRows } from "@/lib/spreadsheet/safe-spreadsheet-parse";
+import { listSpreadsheetLayoutRecords } from "@/lib/spreadsheet/spreadsheet-layout-parse";
+import { pickSpreadsheetRecordValue } from "@/lib/spreadsheet/spreadsheet-record-access";
 import {
   DEFAULT_ATTENDANCE_STATUS,
   type AttendanceRegisterEntry,
@@ -210,91 +213,54 @@ function parseOptionalNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function isBlankImportRow(row: unknown[]): boolean {
-  const meaningfulIndexes = [0, 1, 5, 6, 7, 8, 9];
-  return meaningfulIndexes.every((index) => String(row[index] ?? "").trim() === "");
-}
-
-function isHeaderRow(row: unknown[]): boolean {
-  const dateHeader = String(row[0] ?? "")
-    .trim()
-    .toLowerCase();
-  const staffHeader = String(row[1] ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-
-  return dateHeader === "date" && staffHeader === "staff id";
-}
-
-function rowToRawImportRow(
-  row: unknown[],
-  rowNumber: number,
-): RawAttendanceImportRow {
-  return {
+export function parseAttendanceLayoutRecords(
+  records: Array<{ rowNumber: number; record: Record<string, unknown> }>,
+): RawAttendanceImportRow[] {
+  return records.map(({ rowNumber, record }) => ({
     rowNumber,
-    dateRaw: row[0],
-    staffIdRaw: row[1],
-    clockInRaw: row[5],
-    clockOutRaw: row[6],
-    hoursWorkedRaw: row[7],
-    overtimeHoursRaw: row[8],
-    attendanceStatusRaw: row[9],
-  };
-}
-
-export function parseAttendanceSpreadsheetRows(rows: unknown[][]): RawAttendanceImportRow[] {
-  const parsedRows: RawAttendanceImportRow[] = [];
-
-  rows.forEach((row, index) => {
-    const rowNumber = index + 1;
-
-    if (!Array.isArray(row) || isBlankImportRow(row)) {
-      return;
-    }
-
-    if (index === 0 && isHeaderRow(row)) {
-      return;
-    }
-
-    parsedRows.push(rowToRawImportRow(row, rowNumber));
-  });
-
-  return parsedRows;
+    dateRaw: pickSpreadsheetRecordValue(record, ["Date", "date"]),
+    staffIdRaw: pickSpreadsheetRecordValue(record, [
+      "Staff ID",
+      "Staff Id",
+      "staff_id",
+      "StaffID",
+    ]),
+    clockInRaw: pickSpreadsheetRecordValue(record, ["Clock In", "Clock in"]),
+    clockOutRaw: pickSpreadsheetRecordValue(record, ["Clock Out", "Clock out"]),
+    hoursWorkedRaw: pickSpreadsheetRecordValue(record, [
+      "Hours Worked",
+      "Hours worked",
+    ]),
+    overtimeHoursRaw: pickSpreadsheetRecordValue(record, [
+      "Overtime Hours",
+      "Overtime hours",
+    ]),
+    attendanceStatusRaw: pickSpreadsheetRecordValue(record, [
+      "Attendance Status",
+      "Attendance status",
+      "Status",
+    ]),
+  }));
 }
 
 export async function readAttendanceImportFile(
   file: File,
+  options: { sheetName?: string; headerRowIndex?: number } = {},
 ): Promise<RawAttendanceImportRow[]> {
-  const extension = file.name.split(".").pop()?.toLowerCase();
-
-  if (extension === "csv") {
-    const text = await file.text();
-    const workbook = XLSX.read(text, { type: "string" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: "",
-      raw: false,
-    }) as unknown[][];
-
-    return parseAttendanceSpreadsheetRows(rows);
+  try {
+    const rows = await readSpreadsheetFileToRows(file, {
+      sheetName: options.sheetName,
+      rawCells: true,
+    });
+    const { records } = listSpreadsheetLayoutRecords(rows, {
+      headerRowIndex: options.headerRowIndex,
+    });
+    return parseAttendanceLayoutRecords(records);
+  } catch (error) {
+    throw error instanceof Error
+      ? error
+      : new Error("Could not read this spreadsheet. Check the file format and try again.");
   }
-
-  if (extension === "xlsx") {
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: "",
-      raw: true,
-    }) as unknown[][];
-
-    return parseAttendanceSpreadsheetRows(rows);
-  }
-
-  throw new Error("Unsupported file type. Upload a .csv or .xlsx file.");
 }
 
 function buildAttendancePayload(

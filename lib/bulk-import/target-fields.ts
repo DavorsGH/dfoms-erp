@@ -139,14 +139,21 @@ export const FINISHED_PRODUCT_TARGET_FIELDS: readonly BulkImportTargetField[] = 
 /**
  * employees mappable columns for bulk import (HR migration).
  *
- * Excluded: employee_id, staff_id, tenant_id, photo_url, compensation fields,
- * statutory/payment fields, date_of_birth, residential_address, emergency contacts.
+ * Excluded: employee_id (system-generated), tenant_id, photo_url, payment_method,
+ * momo_name, allowance columns, gross/net pay (Salary Settings / calculated).
  *
- * department_name, position_title, contract_project_name resolve at commit
- * (lookup or auto-create). supervisor_name and assigned_site_name resolve at
- * commit when uniquely matched; blank when unmatched.
+ * department_name, position_title resolve at commit (lookup or auto-create).
+ * contract_project_name matches an existing project by name only.
  */
 export const EMPLOYEE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
+  {
+    key: "staff_id",
+    label: "Staff ID",
+    required: false,
+    example: "DF0027",
+    mappingHint:
+      "Optional; must be unique in this workspace. Leave unmapped to auto-generate.",
+  },
   {
     key: "full_name",
     label: "Full name",
@@ -165,6 +172,12 @@ export const EMPLOYEE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
     label: "Gender",
     required: false,
     example: "Female",
+  },
+  {
+    key: "date_of_birth",
+    label: "Date of birth",
+    required: false,
+    example: "1990-05-15",
   },
   {
     key: "nationality",
@@ -189,6 +202,48 @@ export const EMPLOYEE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
     label: "Email",
     required: false,
     example: "jane.doe@company.com",
+  },
+  {
+    key: "residential_address",
+    label: "Residential address",
+    required: false,
+    example: "12 Independence Ave, Accra",
+  },
+  {
+    key: "ghana_card_number",
+    label: "Ghana card number",
+    required: false,
+    example: "GHA-123456789-0",
+  },
+  {
+    key: "ssnit_number",
+    label: "SSNIT number",
+    required: false,
+    example: "C1234567890",
+  },
+  {
+    key: "tin_number",
+    label: "TIN number",
+    required: false,
+    example: "P0012345678",
+  },
+  {
+    key: "bank_name",
+    label: "Bank name",
+    required: false,
+    example: "GCB Bank",
+  },
+  {
+    key: "account_number",
+    label: "Account number",
+    required: false,
+    example: "1234567890",
+  },
+  {
+    key: "momo_number",
+    label: "Mobile money number",
+    required: false,
+    example: "+233 24 123 4567",
   },
   {
     key: "department_name",
@@ -235,7 +290,8 @@ export const EMPLOYEE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
     label: "Contract project name",
     required: false,
     example: "Accra Mall Cleaning",
-    mappingHint: "Project name (not code); auto-created at import if missing",
+    mappingHint:
+      "Existing project name only; left blank with a warning if not found",
   },
   {
     key: "shift",
@@ -249,6 +305,38 @@ export const EMPLOYEE_TARGET_FIELDS: readonly BulkImportTargetField[] = [
     required: false,
     example: "Accra Mall",
     mappingHint: "Site name (not code); left blank at import if not found",
+  },
+  {
+    key: "basic_salary",
+    label: "Basic salary",
+    required: false,
+    example: "2500.00",
+    mappingHint:
+      "Informational only — basic pay and allowances are set from Salary Settings at import (same as Add Employee)",
+  },
+  {
+    key: "emergency_contact_name",
+    label: "Emergency contact name",
+    required: false,
+    example: "John Doe",
+  },
+  {
+    key: "emergency_contact_address",
+    label: "Emergency contact address",
+    required: false,
+    example: "Kumasi",
+  },
+  {
+    key: "emergency_contact_phone",
+    label: "Emergency contact phone",
+    required: false,
+    example: "+233 20 123 4567",
+  },
+  {
+    key: "emergency_contact_relationship",
+    label: "Emergency contact relationship",
+    required: false,
+    example: "Spouse",
   },
   {
     key: "data_notes",

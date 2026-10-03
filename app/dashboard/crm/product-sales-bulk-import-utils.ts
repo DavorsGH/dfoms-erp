@@ -1,4 +1,6 @@
-import * as XLSX from "xlsx";
+import { readSpreadsheetFileToRows } from "@/lib/spreadsheet/safe-spreadsheet-parse";
+import { listSpreadsheetLayoutRecords } from "@/lib/spreadsheet/spreadsheet-layout-parse";
+import { pickSpreadsheetRecordValue } from "@/lib/spreadsheet/spreadsheet-record-access";
 import { parseImportDate } from "../hr-payroll/attendance-bulk-import-utils";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { ClientEntry } from "../operations/clients-utils";
@@ -99,99 +101,67 @@ function parseNonNegativeNumber(value: unknown): number | null {
   return parsed;
 }
 
-function isBlankImportRow(row: unknown[]): boolean {
-  const meaningfulIndexes = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-  return meaningfulIndexes.every(
-    (index) => String(row[index] ?? "").trim() === "",
-  );
-}
-
-function isHeaderRow(row: unknown[]): boolean {
-  const dateHeader = String(row[0] ?? "")
-    .trim()
-    .toLowerCase();
-  const invoiceHeader = String(row[1] ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-
-  return dateHeader === "date" && invoiceHeader === "invoice_no";
-}
-
-function rowToRawImportRow(
-  row: unknown[],
-  rowNumber: number,
-): RawProductSaleImportRow {
-  return {
-    rowNumber,
-    dateRaw: row[0],
-    invoiceNoRaw: row[1],
-    customerIdRaw: row[2],
-    customerNameRaw: row[3],
-    productCodeRaw: row[4],
-    quantityRaw: row[5],
-    unitPriceRaw: row[6],
-    amountReceivedRaw: row[7],
-    paymentStatusRaw: row[8],
-    dueDateRaw: row[9],
-    notesRaw: row[10],
-  };
-}
-
-export function parseProductSaleSpreadsheetRows(
-  rows: unknown[][],
+export function parseProductSaleLayoutRecords(
+  records: Array<{ rowNumber: number; record: Record<string, unknown> }>,
 ): RawProductSaleImportRow[] {
-  const parsedRows: RawProductSaleImportRow[] = [];
-
-  rows.forEach((row, index) => {
-    const rowNumber = index + 1;
-
-    if (!Array.isArray(row) || isBlankImportRow(row)) {
-      return;
-    }
-
-    if (index === 0 && isHeaderRow(row)) {
-      return;
-    }
-
-    parsedRows.push(rowToRawImportRow(row, rowNumber));
-  });
-
-  return parsedRows;
+  return records.map(({ rowNumber, record }) => ({
+    rowNumber,
+    dateRaw: pickSpreadsheetRecordValue(record, ["Date", "date"]),
+    invoiceNoRaw: pickSpreadsheetRecordValue(record, [
+      "Invoice No",
+      "invoice_no",
+      "Invoice Number",
+    ]),
+    customerIdRaw: pickSpreadsheetRecordValue(record, [
+      "Customer ID",
+      "customer_id",
+      "Client ID",
+    ]),
+    customerNameRaw: pickSpreadsheetRecordValue(record, [
+      "Customer Name",
+      "customer_name",
+      "Client Name",
+    ]),
+    productCodeRaw: pickSpreadsheetRecordValue(record, [
+      "Product Code",
+      "product_code",
+    ]),
+    quantityRaw: pickSpreadsheetRecordValue(record, ["Quantity", "quantity"]),
+    unitPriceRaw: pickSpreadsheetRecordValue(record, [
+      "Unit Price",
+      "unit_price",
+    ]),
+    amountReceivedRaw: pickSpreadsheetRecordValue(record, [
+      "Amount Received",
+      "amount_received",
+    ]),
+    paymentStatusRaw: pickSpreadsheetRecordValue(record, [
+      "Payment Status",
+      "payment_status",
+    ]),
+    dueDateRaw: pickSpreadsheetRecordValue(record, ["Due Date", "due_date"]),
+    notesRaw: pickSpreadsheetRecordValue(record, ["Notes", "notes"]),
+  }));
 }
 
 export async function readProductSaleImportFile(
   file: File,
+  options: { sheetName?: string; headerRowIndex?: number } = {},
 ): Promise<RawProductSaleImportRow[]> {
-  const extension = file.name.split(".").pop()?.toLowerCase();
-
-  if (extension === "csv") {
-    const text = await file.text();
-    const workbook = XLSX.read(text, { type: "string" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: "",
-      raw: false,
-    }) as unknown[][];
-
-    return parseProductSaleSpreadsheetRows(rows);
+  try {
+    const rows = await readSpreadsheetFileToRows(file, {
+      sheetName: options.sheetName,
+      rawCells: true,
+    });
+    const { records } = listSpreadsheetLayoutRecords(rows, {
+      headerRowIndex: options.headerRowIndex,
+    });
+    return parseProductSaleLayoutRecords(records);
+  } catch (error) {
+    throw error instanceof Error
+      ? error
+      : new Error("Could not read this spreadsheet. Check the file format and try again.");
   }
-
-  if (extension === "xlsx") {
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: "",
-      raw: true,
-    }) as unknown[][];
-
-    return parseProductSaleSpreadsheetRows(rows);
-  }
-
-  throw new Error("Unsupported file type. Upload a .csv or .xlsx file.");
 }
 
 function buildProductByCodeMap(

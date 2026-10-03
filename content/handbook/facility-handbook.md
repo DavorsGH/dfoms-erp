@@ -8,7 +8,7 @@ DavSuite Properties
 
 **For Customer Use**
 
-Version 2.3 | August 2026
+Version 2.4 | October 2026
 
 *Covers: How Facility Managers use the DavSuite Properties portal for assigned
 properties*
@@ -38,8 +38,17 @@ account or any other role you might hold on the platform.
 
 ### 2.2 Logging in
 
-Go to portal.davorstechnologies.com and choose "I'm a Facility Manager."
-You'll only see the properties the landlord has assigned you to.
+Open the **DavSuite** portal chooser, choose **I'm a Facility Manager**
+under **DAVSUITE PROPERTIES** (or portal.davorstechnologies.com). Use
+email and password, or **Sign in with Google** on the accept-invite /
+login flow where enabled. **MFA** may be required at login. There is no
+separate **Account** page in the facility portal --- security settings
+are limited to what you complete at login.
+
+You'll only see the properties the landlord assigned you to. The sidebar
+shows **DavSuite Properties**.
+
+**Ask DavSuite** --- floating chat for help (read-only guidance).
 
 ## Section 3 --- What You Can Do
 

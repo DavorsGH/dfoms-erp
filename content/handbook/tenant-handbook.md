@@ -8,7 +8,7 @@ DavSuite Properties
 
 **For Customer Use**
 
-Version 2.2 | July 2026
+Version 2.3 | October 2026
 
 *Covers: How to use your DavSuite Properties tenant portal*
 
@@ -27,12 +27,17 @@ invite ("You're invited to DavSuite Properties") with a link to
 set your own password. This link expires after 7 days - if it's expired
 or you never received it, ask your landlord to resend your invite.
 
-To log in, go to portal.davorstechnologies.com, choose "I'm a Tenant,"
-and log in with the email and password you set.
+To log in, open the **DavSuite** portal chooser, choose **I'm a Tenant**
+under **DAVSUITE PROPERTIES** (or use portal.davorstechnologies.com the
+same way). Sign in with email and password, **Sign in with Google**
+(OAuth) where enabled, and **MFA** if your landlord requires it.
 
-## Section 2 --- Your Home
+**Branding.** The sidebar shows **DavSuite Properties**; the top bar may
+say **Real Estate Portal** --- both are the tenant product.
 
-Your Home screen shows your unit, your active lease (rent amount,
+## Section 2 --- Home
+
+**Home** (sidebar) is your main screen. It shows your unit, your active lease (rent amount,
 start/end date, status), and your current rent status.
 
 ## Section 3 --- Paying Rent, Other Charges & Payment History
@@ -101,12 +106,18 @@ Termination on your Home screen and give a reason. Your lease stays
 active while your landlord reviews the request - you'll be notified
 once it's approved or rejected.
 
-## Section 8 --- Announcements & Notifications
+## Section 8 --- Account, announcements & notifications
 
-Your landlord may send you announcements (by email, SMS, or an in-app
-notification) - you'll also get automatic reminders as your rent due
-date approaches, and a receipt whenever a payment is confirmed. Check
-the bell icon in your portal for your notification inbox.
+**Account** (sidebar) --- update profile, **change password**, set up
+**two-factor authentication**, and manage **push notifications** where
+enabled.
+
+Your landlord may send announcements (email, SMS, in-app). You'll also
+get rent reminders and payment receipts. Use the **bell** icon for your
+inbox.
+
+**Ask DavSuite** --- floating chat for help using the tenant portal
+(read-only guidance).
 
 ## Section 9 --- Quick Reference
 

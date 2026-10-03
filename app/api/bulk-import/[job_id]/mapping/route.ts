@@ -8,6 +8,7 @@ import {
   getBulkImportTargetFieldKeys,
   isValidBulkImportTargetField,
 } from "@/lib/bulk-import/target-fields";
+import { BULK_IMPORT_HEADER_ROW_INDEX_MAPPING_KEY } from "@/lib/bulk-import/column-mapping-meta";
 import {
   BULK_IMPORT_IGNORE_COLUMN,
   type BulkImportMappingSaveBody,
@@ -53,7 +54,16 @@ function parseColumnMapping(body: unknown): BulkImportMappingSaveBody | null {
     }
 
     const trimmedTarget = targetField.trim();
-    if (!trimmedTarget || trimmedTarget === BULK_IMPORT_IGNORE_COLUMN) {
+    if (!trimmedTarget) {
+      continue;
+    }
+
+    if (header === BULK_IMPORT_HEADER_ROW_INDEX_MAPPING_KEY) {
+      columnMapping[header] = trimmedTarget;
+      continue;
+    }
+
+    if (trimmedTarget === BULK_IMPORT_IGNORE_COLUMN) {
       continue;
     }
 
@@ -125,7 +135,18 @@ export async function PATCH(
 
   const allowedTargets = new Set(getBulkImportTargetFieldKeys(importType));
 
-  for (const targetField of Object.values(parsedBody.column_mapping)) {
+  for (const [header, targetField] of Object.entries(parsedBody.column_mapping)) {
+    if (header === BULK_IMPORT_HEADER_ROW_INDEX_MAPPING_KEY) {
+      const parsed = Number.parseInt(String(targetField), 10);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return NextResponse.json(
+          { error: "Invalid spreadsheet header row index." },
+          { status: 400 },
+        );
+      }
+      continue;
+    }
+
     if (!allowedTargets.has(targetField)) {
       return NextResponse.json(
         { error: `Invalid target field "${targetField}" for ${importType} import.` },
@@ -141,7 +162,9 @@ export async function PATCH(
     }
   }
 
-  const assignedTargets = Object.values(parsedBody.column_mapping);
+  const assignedTargets = Object.entries(parsedBody.column_mapping)
+    .filter(([header]) => header !== BULK_IMPORT_HEADER_ROW_INDEX_MAPPING_KEY)
+    .map(([, targetField]) => targetField);
   if (new Set(assignedTargets).size !== assignedTargets.length) {
     return NextResponse.json(
       { error: "Each target field can only be mapped once." },

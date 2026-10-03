@@ -9,6 +9,8 @@ import {
 } from "@/lib/bulk-import/target-fields";
 
 import { buildMappedData } from "@/lib/bulk-import/build-mapped-data";
+import { parseBulkImportSpreadsheetDate } from "@/lib/bulk-import/import-spreadsheet-values";
+import { isSpreadsheetPlaceholderCell } from "@/lib/spreadsheet/spreadsheet-matrix-utils";
 import { validateSupplierNameLookup } from "@/lib/bulk-import/supplier-name";
 import {
   buildExpenseDuplicateKey,
@@ -28,6 +30,20 @@ import {
   validateTenantNameLookup,
   validateTenantNameLookupRequireMatch,
 } from "@/lib/bulk-import/tenant-name-lookup";
+import {
+  buildReviewFormatContext,
+  toReviewIssueRow,
+  type BulkImportReviewIssue,
+  type BulkImportReviewIssueRow,
+} from "@/lib/bulk-import/bulk-import-review-issue";
+import { stripBulkImportColumnMappingMeta } from "@/lib/bulk-import/column-mapping-meta";
+import { collectEmployeeImportReviewIssues } from "@/lib/bulk-import/employee-import-review-issues";
+import {
+  summarizeMissingImportPositions,
+  type BulkImportMissingPositionSummary,
+} from "@/lib/bulk-import/missing-positions-import";
+import { reviewIssuesFromLegacyErrorMessages } from "@/lib/bulk-import/generic-import-review-issues";
+import type { PayrollCompensationPolicyConfig } from "@/app/dashboard/hr-payroll/payroll-processing-utils";
 
 function hiddenExpenseCategoryImportError(
   value: unknown,
@@ -149,6 +165,8 @@ export type BulkImportValidationSummary = {
 
   duplicate_rows: number;
 
+  blank_rows_skipped: number;
+
 };
 
 
@@ -162,6 +180,24 @@ type ImportRowInput = {
   raw_data: Record<string, unknown>;
 
 };
+
+function isBlankBulkImportMappedRow(
+  rawData: Record<string, unknown>,
+  columnMapping: BulkImportColumnMapping,
+  requiredFieldKeys: Set<string>,
+): boolean {
+  const mappedRequiredHeaders = Object.entries(columnMapping).filter(([, target]) =>
+    requiredFieldKeys.has(target),
+  );
+
+  if (mappedRequiredHeaders.length === 0) {
+    return false;
+  }
+
+  return mappedRequiredHeaders.every(([header]) =>
+    isSpreadsheetPlaceholderCell(rawData[header]),
+  );
+}
 
 
 
@@ -197,6 +233,8 @@ const NUMERIC_FIELD_CONSTRAINTS = {
 
   default_rate: { precision: 12, scale: 2 },
 
+  basic_salary: { precision: 12, scale: 2 },
+
 } as const;
 
 
@@ -215,7 +253,11 @@ const NON_NEGATIVE_NUMERIC_FIELDS = new Set([
 
 const PRODUCT_DATE_FIELDS = new Set(["manufacturing_date", "expiration_date"]);
 
-const EMPLOYEE_DATE_FIELDS = new Set(["date_hired", "appointment_end_date"]);
+const EMPLOYEE_DATE_FIELDS = new Set([
+  "date_of_birth",
+  "date_hired",
+  "appointment_end_date",
+]);
 const CUSTOMER_DATE_FIELDS = new Set(["contract_start", "contract_end"]);
 const EXPENSE_DATE_FIELDS = new Set(["date"]);
 const FIXED_ASSET_DATE_FIELDS = new Set(["purchase_date"]);
@@ -236,9 +278,11 @@ const CUSTOMER_STATUS_VALUES = CUSTOMER_STATUS_OPTIONS.map(
 export type EmployeeImportLookupContext = {
   departmentNameMatchCounts: Map<string, number>;
   positionTitleMatchCounts: Map<string, number>;
+  positionTitleByLookupKey: Map<string, string>;
   contractProjectNameMatchCounts: Map<string, number>;
   supervisorNameMatchCounts: Map<string, number>;
   assignedSiteNameMatchCounts: Map<string, number>;
+  existingStaffIds: Set<string>;
 };
 
 export type CustomerImportLookupContext = {
@@ -495,75 +539,11 @@ function normalizeIsoDateParts(isoDate: string): string | null {
 
 
 function parseOptionalDate(value: unknown): string | null | "invalid" | "out_of_range" {
-
   if (isBlank(value)) {
-
     return null;
-
   }
 
-
-
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-
-    const iso = value.toISOString().slice(0, 10);
-
-    const normalized = normalizeIsoDateParts(iso);
-
-    if (normalized === "out_of_range") {
-
-      return "out_of_range";
-
-    }
-
-    return normalized ?? "invalid";
-
-  }
-
-
-
-  const trimmed = String(value).trim();
-
-  const isoMatch = normalizeIsoDateParts(trimmed);
-
-  if (isoMatch && isoMatch !== "out_of_range") {
-
-    return isoMatch;
-
-  }
-
-  if (isoMatch === "out_of_range") {
-
-    return "out_of_range";
-
-  }
-
-
-
-  const parsed = new Date(trimmed);
-
-  if (Number.isNaN(parsed.getTime())) {
-
-    return "invalid";
-
-  }
-
-
-
-  const iso = parsed.toISOString().slice(0, 10);
-
-  const normalized = normalizeIsoDateParts(iso);
-
-  if (normalized === "out_of_range") {
-
-    return "out_of_range";
-
-  }
-
-
-
-  return normalized ?? "invalid";
-
+  return parseBulkImportSpreadsheetDate(value);
 }
 
 
@@ -993,74 +973,7 @@ function collectFieldErrors(
 
 
   if (importType === "employee") {
-    const employeeLookups = lookups.employeeLookups;
-    if (!employeeLookups) {
-      throw new Error("Employee import validation requires lookup context.");
-    }
-
-    for (const fieldKey of EMPLOYEE_DATE_FIELDS) {
-      if (!(fieldKey in mappedData)) {
-        continue;
-      }
-
-      const parsed = parseOptionalDate(mappedData[fieldKey]);
-      if (parsed === "invalid") {
-        errors.push(`${fieldLabel(fieldKey)} is not a valid date`);
-      } else if (parsed === "out_of_range") {
-        errors.push(`${fieldLabel(fieldKey)} is outside the allowed date range`);
-      }
-    }
-
-    const enumChecks: Array<[string, readonly string[]]> = [
-      ["employment_type", EMPLOYMENT_TYPE_OPTIONS],
-      ["employment_status", EMPLOYMENT_STATUS_OPTIONS],
-      ["gender", GENDER_OPTIONS],
-      ["marital_status", MARITAL_STATUS_OPTIONS],
-      ["shift", SHIFT_OPTIONS],
-    ];
-
-    for (const [fieldKey, allowedValues] of enumChecks) {
-      if (!(fieldKey in mappedData)) {
-        continue;
-      }
-
-      const enumError = validateEnumField(
-        fieldKey,
-        mappedData[fieldKey],
-        allowedValues,
-      );
-      if (enumError) {
-        errors.push(enumError);
-      }
-    }
-
-    const nameLookups: Array<[string, Map<string, number>, string]> = [
-      ["department_name", employeeLookups.departmentNameMatchCounts, "departments"],
-      ["position_title", employeeLookups.positionTitleMatchCounts, "positions"],
-      [
-        "contract_project_name",
-        employeeLookups.contractProjectNameMatchCounts,
-        "projects",
-      ],
-      ["supervisor_name", employeeLookups.supervisorNameMatchCounts, "employees"],
-      ["assigned_site_name", employeeLookups.assignedSiteNameMatchCounts, "sites"],
-    ];
-
-    for (const [fieldKey, matchCounts, entityLabel] of nameLookups) {
-      if (!(fieldKey in mappedData)) {
-        continue;
-      }
-
-      const lookupError = validateTenantNameLookup(
-        mappedData[fieldKey],
-        matchCounts,
-        fieldKey,
-        entityLabel,
-      );
-      if (lookupError) {
-        errors.push(lookupError);
-      }
-    }
+    return errors;
   }
 
   if (importType === "customer") {
@@ -1554,6 +1467,7 @@ export function validateImportRows(input: {
   existingServiceNames?: Set<string>;
   supplierNameMatchCounts?: Map<string, number>;
   employeeLookups?: EmployeeImportLookupContext;
+  employeeCompensationPolicyConfig?: PayrollCompensationPolicyConfig | null;
   customerLookups?: CustomerImportLookupContext;
   expenseLookups?: ExpenseImportLookupContext;
   fixedAssetLookups?: FixedAssetImportLookupContext;
@@ -1563,11 +1477,22 @@ export function validateImportRows(input: {
 
   summary: BulkImportValidationSummary;
 
-  issueRows: Array<{ row_number: number; error_message: string }>;
+  issueRows: BulkImportReviewIssueRow[];
 
-  warningRows: Array<{ row_number: number; error_message: string }>;
+  warningRows: BulkImportReviewIssueRow[];
+
+  missingPositions: BulkImportMissingPositionSummary[];
 
 } {
+
+  const columnMappingForData = stripBulkImportColumnMappingMeta(
+    input.columnMapping,
+  );
+  const reviewCtx = buildReviewFormatContext({
+    importType: input.importType,
+    columnMapping: input.columnMapping,
+  });
+  const allReviewIssues: BulkImportReviewIssue[] = [];
 
   const existingProductCodes =
 
@@ -1593,9 +1518,31 @@ export function validateImportRows(input: {
     fixedAssetLookups,
   };
 
+  const requiredFieldKeys = new Set(
+    getBulkImportTargetFields(input.importType)
+      .filter((field) => field.required)
+      .map((field) => field.key),
+  );
 
+  let blankRowsSkipped = 0;
+  const rowsForValidation: ImportRowInput[] = [];
 
-  const stagedRows = input.rows.map((row) => ({
+  for (const row of input.rows) {
+    if (
+      isBlankBulkImportMappedRow(
+        row.raw_data,
+        columnMappingForData,
+        requiredFieldKeys,
+      )
+    ) {
+      blankRowsSkipped += 1;
+      continue;
+    }
+
+    rowsForValidation.push(row);
+  }
+
+  const stagedRows = rowsForValidation.map((row) => ({
 
     id: row.id,
 
@@ -1625,6 +1572,11 @@ export function validateImportRows(input: {
 
       : new Set<string>();
 
+  const inFileDuplicateStaffIds =
+    input.importType === "employee"
+      ? indexDuplicateKeys(stagedRows, "staff_id")
+      : new Set<string>();
+
   const inFileDuplicateExpenseKeys =
     input.importType === "expense"
       ? indexInFileDuplicateExpenseKeys(stagedRows)
@@ -1648,6 +1600,48 @@ export function validateImportRows(input: {
 
 
   const validatedRows: BulkImportValidatedRow[] = stagedRows.map((row) => {
+    const pushIssues = (...issues: BulkImportReviewIssue[]) => {
+      allReviewIssues.push(...issues);
+    };
+
+    if (input.importType === "employee") {
+      if (!employeeLookups) {
+        throw new Error("Employee import validation requires lookup context.");
+      }
+
+      const rowIssues = collectEmployeeImportReviewIssues({
+        mappedData: row.mapped_data,
+        rowNumber: row.row_number,
+        ctx: reviewCtx,
+        employeeLookups,
+        compensationPolicyConfig: input.employeeCompensationPolicyConfig,
+        inFileDuplicateStaffIds,
+      });
+      pushIssues(...rowIssues);
+
+      const errors = rowIssues.filter((issue) => issue.severity === "error");
+      if (errors.length > 0) {
+        return {
+          id: row.id,
+          row_number: row.row_number,
+          mapped_data: row.mapped_data,
+          status: "error",
+          error_message: errors.map((issue) => issue.message).join("\n"),
+        };
+      }
+
+      const warnings = rowIssues.filter((issue) => issue.severity === "warning");
+      return {
+        id: row.id,
+        row_number: row.row_number,
+        mapped_data: row.mapped_data,
+        status: "valid",
+        error_message:
+          warnings.length > 0
+            ? warnings.map((issue) => issue.message).join("\n")
+            : null,
+      };
+    }
 
     const hardErrors = collectFieldErrors(
       input.importType,
@@ -1655,95 +1649,78 @@ export function validateImportRows(input: {
       validationLookups,
     );
 
-
-
     if (hardErrors.length > 0) {
+      const rowIssues = reviewIssuesFromLegacyErrorMessages({
+        ctx: reviewCtx,
+        mappedData: row.mapped_data,
+        rowNumber: row.row_number,
+        messages: hardErrors,
+        severity: "error",
+      });
+      pushIssues(...rowIssues);
 
       return {
-
         id: row.id,
-
         row_number: row.row_number,
-
         mapped_data: row.mapped_data,
-
         status: "error",
-
-        error_message: hardErrors.join("; "),
-
+        error_message: rowIssues.map((issue) => issue.message).join("\n"),
       };
-
     }
-
-
 
     if (input.importType === "product") {
-
       const duplicateMessage = collectProductDuplicateMessage(
-
         row.mapped_data,
-
         inFileDuplicateProductCodes,
-
         existingProductCodes,
-
       );
-
-
 
       if (duplicateMessage) {
+        const rowIssues = reviewIssuesFromLegacyErrorMessages({
+          ctx: reviewCtx,
+          mappedData: row.mapped_data,
+          rowNumber: row.row_number,
+          messages: [duplicateMessage],
+          severity: "error",
+        });
+        pushIssues(...rowIssues);
 
         return {
-
           id: row.id,
-
           row_number: row.row_number,
-
           mapped_data: row.mapped_data,
-
           status: "duplicate",
-
-          error_message: duplicateMessage,
-
+          error_message: rowIssues.map((issue) => issue.message).join("\n"),
         };
-
       }
-
     }
-
-
 
     if (input.importType === "service") {
-
       const warnings = collectServiceWarnings(
-
         row.mapped_data,
-
         inFileDuplicateServiceNames,
-
         existingServiceNames,
-
       );
 
+      if (warnings.length > 0) {
+        const rowIssues = reviewIssuesFromLegacyErrorMessages({
+          ctx: reviewCtx,
+          mappedData: row.mapped_data,
+          rowNumber: row.row_number,
+          messages: warnings,
+          severity: "warning",
+        });
+        pushIssues(...rowIssues);
 
-
-      return {
-
-        id: row.id,
-
-        row_number: row.row_number,
-
-        mapped_data: row.mapped_data,
-
-        status: "valid",
-
-        error_message: warnings.length > 0 ? warnings.join("; ") : null,
-
-      };
-
+        return {
+          id: row.id,
+          row_number: row.row_number,
+          mapped_data: row.mapped_data,
+          status: "valid",
+          error_message: rowIssues.map((issue) => issue.message).join("\n"),
+        };
+      }
     }
-
-
 
     if (input.importType === "expense") {
       const expenseCategoryRaw = row.mapped_data.expense_category;
@@ -1754,12 +1731,21 @@ export function validateImportRows(input: {
             ? null
             : String(expenseCategoryRaw);
       if (isFixedAssetsExpenseCategory(expenseCategory)) {
+        const rowIssues = reviewIssuesFromLegacyErrorMessages({
+          ctx: reviewCtx,
+          mappedData: row.mapped_data,
+          rowNumber: row.row_number,
+          messages: [EXPENSE_REGISTER_FIXED_ASSETS_REJECTION_MESSAGE],
+          severity: "error",
+        });
+        pushIssues(...rowIssues);
+
         return {
           id: row.id,
           row_number: row.row_number,
           mapped_data: row.mapped_data,
           status: "error",
-          error_message: EXPENSE_REGISTER_FIXED_ASSETS_REJECTION_MESSAGE,
+          error_message: rowIssues.map((issue) => issue.message).join("\n"),
         };
       }
 
@@ -1768,13 +1754,24 @@ export function validateImportRows(input: {
         existingExpenseDuplicateKeys,
       });
 
-      return {
-        id: row.id,
-        row_number: row.row_number,
-        mapped_data: row.mapped_data,
-        status: "valid",
-        error_message: warnings.length > 0 ? warnings.join("; ") : null,
-      };
+      if (warnings.length > 0) {
+        const rowIssues = reviewIssuesFromLegacyErrorMessages({
+          ctx: reviewCtx,
+          mappedData: row.mapped_data,
+          rowNumber: row.row_number,
+          messages: warnings,
+          severity: "warning",
+        });
+        pushIssues(...rowIssues);
+
+        return {
+          id: row.id,
+          row_number: row.row_number,
+          mapped_data: row.mapped_data,
+          status: "valid",
+          error_message: rowIssues.map((issue) => issue.message).join("\n"),
+        };
+      }
     }
 
     if (input.importType === "fixed_asset") {
@@ -1783,31 +1780,33 @@ export function validateImportRows(input: {
         existingFixedAssetDuplicateKeys,
       });
 
-      return {
-        id: row.id,
-        row_number: row.row_number,
-        mapped_data: row.mapped_data,
-        status: "valid",
-        error_message: warnings.length > 0 ? warnings.join("; ") : null,
-      };
+      if (warnings.length > 0) {
+        const rowIssues = reviewIssuesFromLegacyErrorMessages({
+          ctx: reviewCtx,
+          mappedData: row.mapped_data,
+          rowNumber: row.row_number,
+          messages: warnings,
+          severity: "warning",
+        });
+        pushIssues(...rowIssues);
+
+        return {
+          id: row.id,
+          row_number: row.row_number,
+          mapped_data: row.mapped_data,
+          status: "valid",
+          error_message: rowIssues.map((issue) => issue.message).join("\n"),
+        };
+      }
     }
 
-
-
     return {
-
       id: row.id,
-
       row_number: row.row_number,
-
       mapped_data: row.mapped_data,
-
       status: "valid",
-
       error_message: null,
-
     };
-
   });
 
 
@@ -1824,32 +1823,47 @@ export function validateImportRows(input: {
 
       .length,
 
+    blank_rows_skipped: blankRowsSkipped,
+
   };
 
 
 
-  const issueRows = validatedRows
+  const validRowNumbers = new Set(
+    validatedRows
+      .filter((row) => row.status === "valid")
+      .map((row) => row.row_number),
+  );
 
-    .filter((row) => row.status === "error" || row.status === "duplicate")
+  const issueRows = allReviewIssues
+    .filter((issue) => issue.severity === "error")
+    .map(toReviewIssueRow);
 
-    .map((row) => ({
+  const warningRows = allReviewIssues
+    .filter(
+      (issue) =>
+        issue.severity === "warning" &&
+        validRowNumbers.has(issue.row_number),
+    )
+    .map(toReviewIssueRow);
 
-      row_number: row.row_number,
+  const missingPositions =
+    input.importType === "employee" && employeeLookups
+      ? summarizeMissingImportPositions(
+          validatedRows
+            .filter((row) => row.status === "valid")
+            .map((row) => ({ mapped_data: row.mapped_data })),
+          employeeLookups,
+        )
+      : [];
 
-      error_message: row.error_message ?? "",
-
-    }));
-
-  const warningRows = validatedRows
-    .filter((row) => row.status === "valid" && !isBlank(row.error_message))
-    .map((row) => ({
-      row_number: row.row_number,
-      error_message: row.error_message ?? "",
-    }));
-
-
-
-  return { validatedRows, summary, issueRows, warningRows };
+  return {
+    validatedRows,
+    summary,
+    issueRows,
+    warningRows,
+    missingPositions,
+  };
 
 }
 

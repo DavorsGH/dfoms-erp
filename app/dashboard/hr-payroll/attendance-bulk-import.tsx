@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
+import { useAlert } from "@/components/feedback/feedback-context";
 import type { AttendanceRegisterEntry } from "./attendance-register-utils";
 import {
   classifyAttendanceImportRows,
@@ -13,8 +14,25 @@ import {
 } from "./attendance-bulk-import-utils";
 import type { HrEmployee } from "./employee-utils";
 
-const IMPORT_ACCEPT =
-  ".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv";
+import {
+  inspectSpreadsheetFileForImport,
+  spreadsheetImportAlertFromError,
+  spreadsheetImportUploadFailedAlert,
+  type SpreadsheetImportAlert,
+} from "@/lib/spreadsheet/spreadsheet-import-alerts";
+import {
+  SPREADSHEET_FILE_ACCEPT,
+  SPREADSHEET_UPLOAD_HINT,
+} from "@/lib/spreadsheet/spreadsheet-upload-validation";
+import SpreadsheetImportSheetOptions from "@/components/spreadsheet-import-sheet-options";
+import { readSpreadsheetFileToRows } from "@/lib/spreadsheet/safe-spreadsheet-parse";
+import {
+  loadSpreadsheetWorkbookFromFile,
+  summarizeSpreadsheetSheet,
+  type SpreadsheetSheetSummary,
+} from "@/lib/spreadsheet/parse-spreadsheet-client";
+
+const IMPORT_ACCEPT = SPREADSHEET_FILE_ACCEPT;
 
 type AttendanceBulkImportProps = {
   employees: HrEmployee[];
@@ -67,27 +85,69 @@ export default function AttendanceBulkImport({
   onImported,
 }: AttendanceBulkImportProps) {
   const supabase = createClient();
+  const { alert: showAlert } = useAlert();
+  const showImportAlert = useCallback((payload: SpreadsheetImportAlert) => {
+    showAlert({
+      variant: "error",
+      title: payload.title,
+      message: payload.message,
+    });
+  }, [showAlert]);
+
   const [preview, setPreview] = useState<AttendanceImportPreview | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fileUploadBlocked, setFileUploadBlocked] = useState(false);
+  const [loadingWorkbook, setLoadingWorkbook] = useState(false);
+  const [sheetSummaries, setSheetSummaries] = useState<SpreadsheetSheetSummary[]>(
+    [],
+  );
+  const [selectedSheetName, setSelectedSheetName] = useState("");
+  const [headerRowIndexBySheet, setHeaderRowIndexBySheet] = useState<
+    Record<string, number>
+  >({});
 
-  async function handleFileSelected(files: File[]) {
-    const file = files[0];
-    setSelectedFiles(files);
-
-    if (!file) {
-      setPreview(null);
-      return;
+  function resolvedHeaderRowIndex(sheetName: string): number {
+    if (headerRowIndexBySheet[sheetName] !== undefined) {
+      return headerRowIndexBySheet[sheetName];
     }
 
+    const summary = sheetSummaries.find((sheet) => sheet.name === sheetName);
+    return summary?.detectedHeaderRowIndex ?? 0;
+  }
+
+  async function refreshSheetDataRowCount(
+    file: File,
+    sheetName: string,
+    headerRowIndex: number,
+  ) {
+    const rows = await readSpreadsheetFileToRows(file, {
+      sheetName,
+      rawCells: true,
+    });
+    const { dataRowCount } = summarizeSpreadsheetSheet(rows, headerRowIndex);
+    setSheetSummaries((previous) =>
+      previous.map((sheet) =>
+        sheet.name === sheetName ? { ...sheet, dataRowCount } : sheet,
+      ),
+    );
+  }
+
+  async function parseAttendanceSheet(
+    file: File,
+    sheetName: string,
+    headerRowIndex?: number,
+  ) {
     setParsing(true);
-    setError(null);
     setPreview(null);
 
     try {
-      const rawRows = await readAttendanceImportFile(file);
+      const resolvedHeader = headerRowIndex ?? resolvedHeaderRowIndex(sheetName);
+      const rawRows = await readAttendanceImportFile(file, {
+        sheetName,
+        headerRowIndex: resolvedHeader,
+      });
 
       if (rawRows.length === 0) {
         throw new Error("No attendance rows were found in the file.");
@@ -97,14 +157,83 @@ export default function AttendanceBulkImport({
         classifyAttendanceImportRows(rawRows, employees, existingEntries),
       );
     } catch (parseError) {
-      setError(
-        parseError instanceof Error
-          ? parseError.message
-          : "Failed to read the import file.",
+      console.error("Attendance import parse failed", parseError);
+      showImportAlert(
+        spreadsheetImportAlertFromError(parseError, "parse"),
       );
       setSelectedFiles([]);
+      setFileUploadBlocked(true);
+      setSheetSummaries([]);
+      setSelectedSheetName("");
     } finally {
       setParsing(false);
+    }
+  }
+
+  async function handleFileSelected(files: File[]) {
+    const file = files[0];
+
+    if (!file) {
+      setSelectedFiles([]);
+      setFileUploadBlocked(false);
+      setPreview(null);
+      setSheetSummaries([]);
+      setSelectedSheetName("");
+      return;
+    }
+
+    setSelectedFiles([file]);
+    const inspection = inspectSpreadsheetFileForImport(file);
+    if (!inspection.ok) {
+      setFileUploadBlocked(true);
+      setPreview(null);
+      setSheetSummaries([]);
+      setSelectedSheetName("");
+      showImportAlert(inspection.alert);
+      return;
+    }
+
+    setFileUploadBlocked(false);
+    setLoadingWorkbook(true);
+    setPreview(null);
+    setSheetSummaries([]);
+    setSelectedSheetName("");
+
+    try {
+      const loaded = await loadSpreadsheetWorkbookFromFile(file);
+      setSheetSummaries(loaded.sheetSummaries);
+      setSelectedSheetName(loaded.defaultSheetName);
+      await parseAttendanceSheet(file, loaded.defaultSheetName);
+    } catch (loadError) {
+      console.error("Attendance import workbook load failed", loadError);
+      showImportAlert(
+        spreadsheetImportAlertFromError(loadError, "parse"),
+      );
+      setSelectedFiles([]);
+      setFileUploadBlocked(true);
+    } finally {
+      setLoadingWorkbook(false);
+    }
+  }
+
+  function handleSheetChange(sheetName: string) {
+    setSelectedSheetName(sheetName);
+    const file = selectedFiles[0];
+    if (file) {
+      void parseAttendanceSheet(file, sheetName);
+    }
+  }
+
+  function handleHeaderRowIndexChange(headerRowIndex: number) {
+    setHeaderRowIndexBySheet((previous) => ({
+      ...previous,
+      [selectedSheetName]: headerRowIndex,
+    }));
+
+    const file = selectedFiles[0];
+    if (file && selectedSheetName) {
+      void refreshSheetDataRowCount(file, selectedSheetName, headerRowIndex);
+      void parseAttendanceSheet(file, selectedSheetName, headerRowIndex);
     }
   }
 
@@ -114,7 +243,6 @@ export default function AttendanceBulkImport({
     }
 
     setImporting(true);
-    setError(null);
 
     const payloads = preview.ready
       .map((row) => row.payload)
@@ -125,7 +253,8 @@ export default function AttendanceBulkImport({
       .insert(payloads);
 
     if (insertError) {
-      setError(insertError.message);
+      console.error("Attendance import insert failed", insertError);
+      showImportAlert(spreadsheetImportUploadFailedAlert());
       setImporting(false);
       return;
     }
@@ -163,22 +292,35 @@ export default function AttendanceBulkImport({
             files={selectedFiles}
             onChange={(next) => void handleFileSelected(next)}
             multiple={false}
-            disabled={importing || parsing}
+            disabled={importing || parsing || loadingWorkbook}
             accept={IMPORT_ACCEPT}
             addLabel="Choose file"
             changeLabel="Change file"
-            emptyHint="CSV or Excel (.xlsx)."
+            emptyHint={SPREADSHEET_UPLOAD_HINT}
           />
         </div>
 
-        {parsing ? (
-          <p className="text-sm text-slate-600">Reading file…</p>
+        {loadingWorkbook ? (
+          <p className="text-sm text-slate-600">Reading spreadsheet…</p>
         ) : null}
 
-        {error ? (
-          <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
+        {sheetSummaries.length > 0 && !loadingWorkbook ? (
+          <SpreadsheetImportSheetOptions
+            summaries={sheetSummaries}
+            selectedSheetName={selectedSheetName}
+            onSheetChange={handleSheetChange}
+            headerRowIndex={resolvedHeaderRowIndex(selectedSheetName)}
+            detectedHeaderRowIndex={
+              sheetSummaries.find((sheet) => sheet.name === selectedSheetName)
+                ?.detectedHeaderRowIndex ?? 0
+            }
+            onHeaderRowIndexChange={handleHeaderRowIndexChange}
+            disabled={importing || parsing}
+          />
+        ) : null}
+
+        {parsing && !loadingWorkbook ? (
+          <p className="text-sm text-slate-600">Reading file…</p>
         ) : null}
 
         {preview ? (
@@ -207,7 +349,9 @@ export default function AttendanceBulkImport({
               <button
                 type="button"
                 onClick={handleConfirmImport}
-                disabled={importing || preview.ready.length === 0}
+                disabled={
+                  importing || fileUploadBlocked || preview.ready.length === 0
+                }
                 className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {importing

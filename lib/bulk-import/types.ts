@@ -1,3 +1,6 @@
+import type { BulkImportReviewIssueRow } from "@/lib/bulk-import/bulk-import-review-issue";
+import type { BulkImportMissingPositionSummary } from "@/lib/bulk-import/missing-positions-import";
+
 export type BulkImportType =
   | "product"
   | "service"
@@ -47,9 +50,13 @@ export type BulkImportValidationResponse = {
   valid_rows: number;
   error_rows: number;
   duplicate_rows: number;
-  issue_rows: Array<{ row_number: number; error_message: string }>;
+  /** Rows skipped because every mapped required column was empty. */
+  blank_rows_skipped: number;
+  issue_rows: BulkImportReviewIssueRow[];
   /** Valid rows with non-blocking warning messages (e.g. possible duplicates). */
-  warning_rows: Array<{ row_number: number; error_message: string }>;
+  warning_rows: BulkImportReviewIssueRow[];
+  /** Employee import: distinct position titles on valid rows not in tenant yet. */
+  missing_positions?: BulkImportMissingPositionSummary[];
 };
 
 export type BulkImportCommitResponse = {
