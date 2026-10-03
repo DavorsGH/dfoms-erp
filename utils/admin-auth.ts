@@ -195,11 +195,19 @@ export async function requireTenantRoleIn(
     };
   }
 
-  const { data: account } = await supabase
+  const admin = createAdminClient();
+  const { data: account, error } = await admin
     .from("user_accounts")
     .select("role, is_active, tenant_id")
     .eq("auth_uid", user.id)
     .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: error.message }, { status: 500 }),
+    };
+  }
 
   if (
     !account ||

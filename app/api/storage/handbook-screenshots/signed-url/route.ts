@@ -7,6 +7,7 @@ import {
   createHandbookScreenshotSignedUrl,
   extractHandbookScreenshotStoragePath,
   HANDBOOK_SCREENSHOTS_SIGNED_URL_TTL_SECONDS,
+  isAllowedHandbookScreenshotObjectPath,
 } from "@/utils/handbook-screenshots-storage";
 import { createAdminClient } from "@/utils/supabase/admin";
 
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   }
 
   const storagePath = extractHandbookScreenshotStoragePath(reference);
-  if (!storagePath) {
+  if (!storagePath || !isAllowedHandbookScreenshotObjectPath(storagePath)) {
     return NextResponse.json(
       { error: "Not a handbook-screenshots storage reference." },
       { status: 400 },

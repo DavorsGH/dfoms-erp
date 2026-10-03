@@ -6,10 +6,7 @@ export async function GET() {
 
   try {
     const supabase = createAdminClient();
-    const { error } = await supabase
-      .from("employees")
-      .select("employee_id")
-      .limit(1);
+    const { error } = await supabase.from("short_links").select("code").limit(1);
 
     if (error) {
       return NextResponse.json(

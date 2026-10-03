@@ -60,6 +60,23 @@ export function extractHandbookScreenshotStoragePath(
   return trimmed;
 }
 
+/** Object path inside the handbook-screenshots bucket (not tenant-scoped). */
+export function isAllowedHandbookScreenshotObjectPath(path: string): boolean {
+  const trimmed = path.trim();
+  if (!trimmed || trimmed.startsWith("/") || trimmed.includes("\\")) {
+    return false;
+  }
+  if (trimmed.includes("..")) {
+    return false;
+  }
+  const segments = trimmed.split("/");
+  if (segments.length !== 2 || segments.some((part) => !part.trim())) {
+    return false;
+  }
+  const file = segments[1]!;
+  return /\.(png|jpe?g|webp)$/i.test(file);
+}
+
 export function isExternalNonHandbookScreenshotUrl(reference: string): boolean {
   const trimmed = reference.trim();
   if (!trimmed) {

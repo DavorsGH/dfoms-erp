@@ -28,6 +28,9 @@ export async function GET(_request: Request, context: RouteContext) {
     }
 
     const target = resolveDestinationRedirectUrl(destination);
+    if (!target) {
+      return new NextResponse("Not found", { status: 404 });
+    }
     return NextResponse.redirect(target, 302);
   } catch (error) {
     console.error(

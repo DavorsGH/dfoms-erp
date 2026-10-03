@@ -431,7 +431,11 @@ export async function loadPaymentRequestForFulfillment(
       "id, tenant_id, invoice_no, income_ids, paystack_reference, amount_requested, status, cart_snapshot, payment_method",
     );
 
-  if (options.paymentRequestId) {
+  if (options.paymentRequestId && options.reference) {
+    query = query
+      .eq("id", options.paymentRequestId)
+      .eq("paystack_reference", options.reference);
+  } else if (options.paymentRequestId) {
     query = query.eq("id", options.paymentRequestId);
   } else if (options.reference) {
     query = query.eq("paystack_reference", options.reference);
