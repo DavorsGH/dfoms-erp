@@ -15,6 +15,20 @@ import ScrollableTable, {
 } from "../scrollable-table";
 import { getEmployeeDisplayName, type HrEmployee } from "./employee-utils";
 import type { OvertimeRegisterEntry } from "./overtime-register-utils";
+import OvertimeBulkConfirmDialog, {
+  type OvertimeBulkConfirmEmployee,
+} from "./overtime-bulk-confirm-dialog";
+import OvertimeEmployeeMultiSelect from "./overtime-employee-multi-select";
+import {
+  OVERTIME_DAY_TYPE_NORMAL,
+  OVERTIME_DAY_TYPE_REST,
+  displayOvertimeDayType,
+  hasOvertimeFieldErrors,
+  normalizeOvertimeDayType,
+  validateOvertimeEntryInput,
+  type OvertimeDayType,
+  type OvertimeEntryFieldErrors,
+} from "./overtime-register-validation";
 import {
   calculateOvertimeAmount,
   formatDate,
@@ -31,7 +45,9 @@ type OvertimeRegisterProps = {
 
 const emptyForm = {
   date: "",
+  employee_ids: [] as string[],
   employee_id: "",
+  day_type: OVERTIME_DAY_TYPE_NORMAL as OvertimeDayType,
   hours_worked: "",
   overtime_hours: "",
   overtime_rate: "",
@@ -52,8 +68,20 @@ export default function OvertimeRegister({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [fieldErrors, setFieldErrors] = useState<OvertimeEntryFieldErrors>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [confirmBulk, setConfirmBulk] = useState<{
+    employees: OvertimeBulkConfirmEmployee[];
+    parsed: {
+      date: string;
+      day_type: OvertimeDayType;
+      hours_worked: number;
+      overtime_hours: number;
+      overtime_rate: number;
+      approved_by: string;
+    };
+  } | null>(null);
 
   const previewOvertimeAmount = useMemo(
     () =>
@@ -63,6 +91,14 @@ export default function OvertimeRegister({
       ),
     [form.overtime_hours, form.overtime_rate],
   );
+
+  const employeeNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const employee of employees) {
+      map.set(employee.employee_id, employee.full_name);
+    }
+    return map;
+  }, [employees]);
 
   useEffect(() => {
     setEntries(initialEntries);
@@ -86,20 +122,27 @@ export default function OvertimeRegister({
   function openAddForm() {
     setEditingId(null);
     setForm(emptyForm);
+    setFieldErrors({});
     setShowForm(true);
   }
 
   function closeForm() {
     setEditingId(null);
     setForm(emptyForm);
+    setFieldErrors({});
     setShowForm(false);
+    setConfirmBulk(null);
   }
 
   function openEditForm(entry: OvertimeRegisterEntry) {
     setEditingId(entry.id);
+    setFieldErrors({});
     setForm({
       date: toDateInputValue(entry.date),
+      employee_ids: [],
       employee_id: entry.employee_id,
+      day_type:
+        normalizeOvertimeDayType(entry.day_type) ?? OVERTIME_DAY_TYPE_NORMAL,
       hours_worked:
         entry.hours_worked === null ? "" : String(entry.hours_worked),
       overtime_hours: String(entry.overtime_hours),
@@ -109,8 +152,77 @@ export default function OvertimeRegister({
     setShowForm(true);
   }
 
-  function updateField(field: keyof typeof emptyForm, value: string) {
-    setForm((current) => ({ ...current, [field]: value }));
+  function updateField<K extends keyof typeof emptyForm>(
+    field: K,
+    value: (typeof emptyForm)[K],
+  ) {
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+
+      if (field === "day_type" && value === OVERTIME_DAY_TYPE_REST) {
+        const hours = Number(next.hours_worked);
+        if (Number.isFinite(hours) && hours > 0) {
+          next.overtime_hours = String(hours);
+        }
+      }
+
+      if (field === "hours_worked" && next.day_type === OVERTIME_DAY_TYPE_REST) {
+        const hours = Number(value);
+        if (Number.isFinite(hours) && hours > 0) {
+          next.overtime_hours = String(hours);
+        }
+      }
+
+      return next;
+    });
+    setFieldErrors((current) => {
+      if (!current[field as keyof OvertimeEntryFieldErrors]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[field as keyof OvertimeEntryFieldErrors];
+      return next;
+    });
+  }
+
+  function buildValidatedInput(): {
+    ok: true;
+    input: {
+      date: string;
+      day_type: OvertimeDayType;
+      hours_worked: number;
+      overtime_hours: number;
+      overtime_rate: number;
+      approved_by: string;
+    };
+  } | { ok: false } {
+    const dayType = normalizeOvertimeDayType(form.day_type);
+    const input = {
+      date: form.date.trim(),
+      day_type: dayType ?? OVERTIME_DAY_TYPE_NORMAL,
+      hours_worked: Number(form.hours_worked),
+      overtime_hours: Number(form.overtime_hours),
+      overtime_rate: Number(form.overtime_rate),
+      approved_by: form.approved_by.trim(),
+    };
+
+    const errors = validateOvertimeEntryInput(input);
+    if (!editingId && form.employee_ids.length === 0) {
+      errors.employee_ids = "Select at least one employee.";
+    }
+    if (editingId && !form.employee_id.trim()) {
+      errors.employee_ids = "Employee is required.";
+    }
+    if (!dayType) {
+      errors.day_type = "Day type is required.";
+    }
+
+    setFieldErrors(errors);
+    if (hasOvertimeFieldErrors(errors)) {
+      return { ok: false };
+    }
+
+    return { ok: true, input };
   }
 
   async function handleDelete(id: string) {
@@ -140,43 +252,147 @@ export default function OvertimeRegister({
     setDeletingId(null);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
 
-    const overtimeAmount = calculateOvertimeAmount(
-      Number(form.overtime_hours) || 0,
-      Number(form.overtime_rate) || 0,
-    );
-
-    const payload = {
-      date: form.date,
-      employee_id: form.employee_id,
-      hours_worked: form.hours_worked ? Number(form.hours_worked) : null,
-      overtime_hours: Number(form.overtime_hours) || 0,
-      overtime_rate: Number(form.overtime_rate) || 0,
-      overtime_amount: overtimeAmount,
-      approved_by: form.approved_by || null,
-    };
-
-    const { error: saveError } = editingId
-      ? await supabase
-          .from("overtime_register")
-          .update(payload)
-          .eq("id", editingId)
-      : await supabase.from("overtime_register").insert(payload);
-
-    if (saveError) {
-      setError(saveError.message);
-      setLoading(false);
+    const validated = buildValidatedInput();
+    if (!validated.ok) {
       return;
     }
 
-    closeForm();
-    await refreshEntries();
+    if (editingId) {
+      void submitEdit(validated.input);
+      return;
+    }
+
+    const dateKey = validated.input.date.slice(0, 10);
+    const duplicateIds = new Set(
+      entries
+        .filter(
+          (entry) =>
+            entry.date.slice(0, 10) === dateKey &&
+            form.employee_ids.includes(entry.employee_id),
+        )
+        .map((entry) => entry.employee_id),
+    );
+
+    const confirmEmployees: OvertimeBulkConfirmEmployee[] = form.employee_ids
+      .map((employeeId) => ({
+        employee_id: employeeId,
+        full_name: employeeNameById.get(employeeId) ?? employeeId,
+        hasDuplicateOnDate: duplicateIds.has(employeeId),
+      }))
+      .sort((left, right) => left.full_name.localeCompare(right.full_name));
+
+    setConfirmBulk({
+      employees: confirmEmployees,
+      parsed: validated.input,
+    });
+  }
+
+  async function submitBulk(
+    employeeIds: string[],
+    parsed: NonNullable<typeof confirmBulk>["parsed"],
+  ) {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/hr-payroll/overtime-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_ids: employeeIds,
+          date: parsed.date,
+          day_type: parsed.day_type,
+          hours_worked: parsed.hours_worked,
+          overtime_hours: parsed.overtime_hours,
+          overtime_rate: parsed.overtime_rate,
+          approved_by: parsed.approved_by,
+        }),
+      });
+
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setError(body.error ?? "Failed to save overtime entries.");
+        setLoading(false);
+        return;
+      }
+
+      closeForm();
+      await refreshEntries();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to save overtime entries.",
+      );
+    }
+
     setLoading(false);
   }
+
+  async function submitEdit(parsed: {
+    date: string;
+    day_type: OvertimeDayType;
+    hours_worked: number;
+    overtime_hours: number;
+    overtime_rate: number;
+    approved_by: string;
+  }) {
+    if (!editingId) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/hr-payroll/overtime-register", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingId,
+          employee_id: form.employee_id,
+          date: parsed.date,
+          day_type: parsed.day_type,
+          hours_worked: parsed.hours_worked,
+          overtime_hours: parsed.overtime_hours,
+          overtime_rate: parsed.overtime_rate,
+          approved_by: parsed.approved_by,
+        }),
+      });
+
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setError(body.error ?? "Failed to update overtime entry.");
+        setLoading(false);
+        return;
+      }
+
+      closeForm();
+      await refreshEntries();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to update overtime entry.",
+      );
+    }
+
+    setLoading(false);
+  }
+
+  const confirmDateLabel = confirmBulk
+    ? formatDate(confirmBulk.parsed.date)
+    : "";
+  const confirmAmountEach = confirmBulk
+    ? calculateOvertimeAmount(
+        confirmBulk.parsed.overtime_hours,
+        confirmBulk.parsed.overtime_rate,
+      )
+    : 0;
 
   return (
     <div className="min-w-0 space-y-6">
@@ -216,29 +432,86 @@ export default function OvertimeRegister({
                   value={form.date}
                   onChange={(e) => updateField("date", e.target.value)}
                   className={inputClassName}
+                  aria-invalid={Boolean(fieldErrors.date)}
                 />
+                {fieldErrors.date ? (
+                  <p className="mt-1 text-sm text-red-600" role="alert">
+                    {fieldErrors.date}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Employee
+                  Day type
                 </label>
                 <select
                   required
-                  value={form.employee_id}
-                  onChange={(e) => updateField("employee_id", e.target.value)}
+                  value={form.day_type}
+                  onChange={(e) =>
+                    updateField(
+                      "day_type",
+                      e.target.value as OvertimeDayType,
+                    )
+                  }
                   className={inputClassName}
+                  aria-invalid={Boolean(fieldErrors.day_type)}
                 >
-                  <option value="">Select employee</option>
-                  {employees.map((employee) => (
-                    <option
-                      key={employee.employee_id}
-                      value={employee.employee_id}
-                    >
-                      {employee.full_name}
-                    </option>
-                  ))}
+                  <option value={OVERTIME_DAY_TYPE_NORMAL}>
+                    Normal working day
+                  </option>
+                  <option value={OVERTIME_DAY_TYPE_REST}>
+                    Rest day / weekend / public holiday
+                  </option>
                 </select>
+                {fieldErrors.day_type ? (
+                  <p className="mt-1 text-sm text-red-600" role="alert">
+                    {fieldErrors.day_type}
+                  </p>
+                ) : null}
               </div>
+              {editingId ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Employee
+                  </label>
+                  <select
+                    required
+                    value={form.employee_id}
+                    onChange={(e) =>
+                      updateField("employee_id", e.target.value)
+                    }
+                    className={inputClassName}
+                  >
+                    <option value="">Select employee</option>
+                    {employees.map((employee) => (
+                      <option
+                        key={employee.employee_id}
+                        value={employee.employee_id}
+                      >
+                        {employee.full_name}
+                      </option>
+                    ))}
+                  </select>
+                  {fieldErrors.employee_ids ? (
+                    <p className="mt-1 text-sm text-red-600" role="alert">
+                      {fieldErrors.employee_ids}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="md:col-span-2 xl:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Employees
+                  </label>
+                  <OvertimeEmployeeMultiSelect
+                    employees={employees}
+                    selectedIds={form.employee_ids}
+                    onChange={(ids) => updateField("employee_ids", ids)}
+                    disabled={loading}
+                    error={fieldErrors.employee_ids ?? null}
+                  />
+                </div>
+              )}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Hours Worked
@@ -246,11 +519,19 @@ export default function OvertimeRegister({
                 <input
                   type="number"
                   min="0"
+                  max="24"
                   step="0.01"
+                  required
                   value={form.hours_worked}
                   onChange={(e) => updateField("hours_worked", e.target.value)}
                   className={inputClassName}
+                  aria-invalid={Boolean(fieldErrors.hours_worked)}
                 />
+                {fieldErrors.hours_worked ? (
+                  <p className="mt-1 text-sm text-red-600" role="alert">
+                    {fieldErrors.hours_worked}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -259,6 +540,7 @@ export default function OvertimeRegister({
                 <input
                   type="number"
                   min="0"
+                  max="24"
                   step="0.01"
                   required
                   value={form.overtime_hours}
@@ -266,7 +548,13 @@ export default function OvertimeRegister({
                     updateField("overtime_hours", e.target.value)
                   }
                   className={inputClassName}
+                  aria-invalid={Boolean(fieldErrors.overtime_hours)}
                 />
+                {fieldErrors.overtime_hours ? (
+                  <p className="mt-1 text-sm text-red-600" role="alert">
+                    {fieldErrors.overtime_hours}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -280,16 +568,24 @@ export default function OvertimeRegister({
                   value={form.overtime_rate}
                   onChange={(e) => updateField("overtime_rate", e.target.value)}
                   className={inputClassName}
+                  aria-invalid={Boolean(fieldErrors.overtime_rate)}
                 />
+                {fieldErrors.overtime_rate ? (
+                  <p className="mt-1 text-sm text-red-600" role="alert">
+                    {fieldErrors.overtime_rate}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Approved By
                 </label>
                 <select
+                  required
                   value={form.approved_by}
                   onChange={(e) => updateField("approved_by", e.target.value)}
                   className={inputClassName}
+                  aria-invalid={Boolean(fieldErrors.approved_by)}
                 >
                   <option value="">Select approver</option>
                   {approvers.map((approver) => (
@@ -298,6 +594,11 @@ export default function OvertimeRegister({
                     </option>
                   ))}
                 </select>
+                {fieldErrors.approved_by ? (
+                  <p className="mt-1 text-sm text-red-600" role="alert">
+                    {fieldErrors.approved_by}
+                  </p>
+                ) : null}
               </div>
             </div>
             <p className="text-sm text-slate-600">
@@ -305,6 +606,13 @@ export default function OvertimeRegister({
               <span className="font-medium text-[#0f2744]">
                 {formatGHS(previewOvertimeAmount)}
               </span>
+              {!editingId && form.employee_ids.length > 1 ? (
+                <span>
+                  {" "}
+                  × {form.employee_ids.length} employees ={" "}
+                  {formatGHS(previewOvertimeAmount * form.employee_ids.length)}
+                </span>
+              ) : null}
             </p>
             <div className="flex gap-3">
               <button
@@ -312,7 +620,11 @@ export default function OvertimeRegister({
                 disabled={loading}
                 className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? "Saving…" : editingId ? "Save Changes" : "Add Entry"}
+                {loading
+                  ? "Saving…"
+                  : editingId
+                    ? "Save Changes"
+                    : "Add Entry"}
               </button>
               <button
                 type="button"
@@ -327,12 +639,32 @@ export default function OvertimeRegister({
         </section>
       )}
 
+      {confirmBulk ? (
+        <OvertimeBulkConfirmDialog
+          dateLabel={confirmDateLabel}
+          overtimeHours={confirmBulk.parsed.overtime_hours}
+          overtimeRate={confirmBulk.parsed.overtime_rate}
+          amountEach={confirmAmountEach}
+          employees={confirmBulk.employees}
+          confirming={loading}
+          onCancel={() => {
+            if (!loading) {
+              setConfirmBulk(null);
+            }
+          }}
+          onConfirm={(employeeIds) => {
+            void submitBulk(employeeIds, confirmBulk.parsed);
+          }}
+        />
+      ) : null}
+
       <ScrollableTable>
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Date</th>
               <th className={scrollableTableThClassName}>Employee</th>
+              <th className={scrollableTableThClassName}>Day type</th>
               <th className={scrollableTableThClassName}>Hours Worked</th>
               <th className={scrollableTableThClassName}>Overtime Hours</th>
               <th className={scrollableTableThClassName}>Overtime Rate</th>
@@ -345,7 +677,7 @@ export default function OvertimeRegister({
             {entries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No overtime entries yet.
@@ -365,6 +697,9 @@ export default function OvertimeRegister({
                     <td className="px-4 py-3">{formatDate(entry.date)}</td>
                     <td className="px-4 py-3">
                       {getEmployeeDisplayName(employees, entry.employee_id)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {displayOvertimeDayType(entry.day_type)}
                     </td>
                     <td className="px-4 py-3">{entry.hours_worked ?? "—"}</td>
                     <td className="px-4 py-3">{entry.overtime_hours}</td>
