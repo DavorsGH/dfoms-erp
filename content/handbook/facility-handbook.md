@@ -85,7 +85,7 @@ The landlord's financials, payouts, bank or Mobile Money account
 details, leases, or account settings are never visible to you, whatever
 your assigned capabilities.
 
-If you also work with more than one landlord on Davors, each needs to
+If you also work with more than one landlord on DavSuite Properties, each needs to
 invite you separately, and you'll need a distinct email for each if you
 already hold another role on the platform (staff, tenant, or another
 landlord's Facility Manager).

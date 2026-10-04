@@ -22,7 +22,7 @@ portfolio.
 
 ### 1.1 Two Kinds of Landlord Account
 
-There are two kinds of landlord accounts on Davors: Davors-Managed,
+There are two kinds of landlord accounts on DavSuite Properties: Davors-Managed,
 where Davors' own team runs the day-to-day property management for you,
 and Platform Only, where you manage everything yourself using the
 portal. If you're not sure which one you are, check your Dashboard - it

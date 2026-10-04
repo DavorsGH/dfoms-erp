@@ -17,7 +17,7 @@ Sales & CRM (Pipeline, Product Quotes, Client Quotations, Returns &
 Credit Notes, Discounts & Loyalty, Targets & Commissions) · Point of
 Sale · Email & Promotions · HR Management · Operations (incl. Duty
 Roster Approvals) · Inventory (Production & Purchasing, Stock
-Adjustments, Barcode Scanning) · Real Estate (Davors platform) · Reports ·
+Adjustments, Barcode Scanning) · Real Estate (Davors Technologies only) · Reports ·
 Administration
 · Your Subscription*
 
@@ -43,7 +43,7 @@ Administration
 
 10\. Inventory (Production & Purchasing)
 
-10A\. Real Estate (Davors platform)
+10A\. Real Estate (Davors Technologies only)
 
 11\. Self-Service
 
@@ -248,7 +248,7 @@ by your workspace administrator under Administration → User Accounts.
 
   Director           Senior manager        Finance, HR Management,
                                            Operations, Real Estate
-                                           (Davors only), Reports
+                                           (Davors Technologies only), Reports
 
   Finance            Accountant /          Finance, Sales & CRM, Reports
                      bookkeeper            
@@ -311,7 +311,7 @@ full:
     business unit where you use more than one
 
 -   Real Estate (Section 10A) --- landlords, properties, leases, and
-    rent (Davors platform staff only)
+    rent (Davors Technologies staff only)
 
 -   Self-Service (Section 11) --- what every individual staff user sees
     for themselves
@@ -1103,7 +1103,7 @@ to customers --- separate from Finished Products in Inventory.
 You can bulk import Services from a spreadsheet using the Bulk Import
 button on this page --- see Section 2.4.
 
-## **7.1b Product Catalog (Davors platform)**
+## **7.1b Product Catalog (Davors Technologies only)**
 
 On the Davors Technologies platform tenant only, Sales & CRM includes a
 **Product Catalog** tab for platform product listings used in billing
@@ -1705,7 +1705,7 @@ the Bulk Import button on the Employee Directory --- see Section 2.4.
 ## **8.2a Ghana statutory payroll rates (platform-wide)**
 
 PAYE monthly bands, SSNIT percentages, and casual-worker flat tax come
-from **platform-wide statutory rate tables maintained by Davors** (with
+from **platform-wide statutory rate tables maintained by Davors Technologies** (with
 **effective dates**) --- they are **not** configured per company under HR
 Settings. Payroll Processing picks the ladder and rates that apply to the
 **period end date** (same for every tenant on the platform).
@@ -2245,10 +2245,10 @@ choose the item from the dropdown instead.
 | cart using the barcode segment of the label.                          |
 +-----------------------------------------------------------------------+
 
-# **Section 10A --- Real Estate (Davors platform only)**
+# **Section 10A --- Real Estate (Davors Technologies only)**
 
 Real Estate appears in the sidebar only for Davors Technologies platform
-staff with Admin or Director access on the Davors tenant. Ordinary
+staff with Admin or Director access on the Davors Technologies tenant. Ordinary
 customer workspaces do not see this module.
 
 Use it to run the managed property portfolio:
@@ -2335,7 +2335,7 @@ role and whether Real Estate is available:
 7.  Incidents --- Individual Incident Report; Monthly Incident Summary;
     Escalated Incidents Report; Recurring Issue / Trend Report
 
-8.  Real Estate (Davors platform staff only) --- Vacancy Rate;
+8.  Real Estate (Davors Technologies staff only) --- Vacancy Rate;
     Occupancy; Arrears Aging; Income by Property
 
 Every report can be exported to CSV or sent to print directly from the
@@ -2382,12 +2382,11 @@ organized into the following groups:
                      Problem
 
   Platform Settings  Tenant Management; Tier Pricing; Platform Unit
-  (Davors platform   Pricing --- Davors platform super Admin only
-  only)              
+                     Pricing --- Davors Technologies super admin only
 
-  Monitoring &       System Event Log; User Activity Log; Support
-  Support (Davors    Tickets; Platform SMS Usage --- Davors platform
-  platform only)     super Admin only
+  Monitoring &       System Event Log; User Activity Log; Support Tickets;
+  Support            Platform SMS Usage --- Davors Technologies
+                     super admin only
 
 ## **13.1 Managing User Accounts**
 
@@ -2483,7 +2482,7 @@ Settings**):
 **Billing Settings** --- also listed under Workspace Settings in the
 sidebar; see Section 14.1 for what you can change there.
 
-**Report a Problem** --- send a support issue to Davors from inside the
+**Report a Problem** --- send a support issue to Davors Technologies from inside the
 app when something is wrong.
 
 ## **13.3 Payment Accounts**
@@ -2495,7 +2494,7 @@ Settings → Payment Accounts.
 
 **Payment Settlement.** When a customer pays by Mobile Money or card
 through POS, the payment settles directly to your own linked bank or
-mobile money account, not to Davors. Keep those profiles up to date
+mobile money account, not to Davors Technologies. Keep those profiles up to date
 under Payment Accounts / Billing Settings as applicable.
 
 ## **13.4 Inventory Go-Live**
@@ -2508,7 +2507,7 @@ Inventory mid-year without distorting your historical books. For
 quantity opening balances **per business unit** after go-live, use
 Record Stock Adjustment → Opening Balance (Section 10.6).
 
-## **13.5 Platform Settings and Monitoring (Davors only)**
+## **13.5 Platform Settings and Monitoring (Davors Technologies only)**
 
 These groups appear only for Davors Technologies platform super Admins:
 
@@ -2575,7 +2574,7 @@ Your subscription tier is currently set up on your behalf by the Davors
 Facilities team --- contact support if you would like to select or
 change your tier ahead of your trial ending. Current GHS list prices for
 DavSuite ERP plans are maintained under Administration → Platform Settings
-→ Tier Pricing (Davors platform Admins); customer Billing Settings shows
+→ Tier Pricing (Davors Technologies admins); customer Billing Settings shows
 the plan on your own account.
 
 ## **14.1 Billing Settings**
@@ -2723,8 +2722,7 @@ loyalty adjust automatically.
 
   **Term**           **Meaning**
   ------------------ ----------------------------------------------------
-  Workspace / Tenant Your organization's private area within the Davors
-                     DavSuite
+  Workspace / Tenant Your organization's private area within DavSuite
 
   Admin              The role with full access to your workspace,
                      including Administration
