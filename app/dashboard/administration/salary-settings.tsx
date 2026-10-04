@@ -557,6 +557,7 @@ export default function SalarySettings({
 
       {tab === "basic" ? (
         <SalaryRates
+          tenantId={tenantId}
           initialRates={initialRates}
           initialPositions={positions}
           fetchError={tab === "basic" ? fetchError : null}

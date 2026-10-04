@@ -2,12 +2,18 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { getNamedLookupDeleteErrorMessage } from "@/utils/named-lookup-delete-errors";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+} from "@/utils/tenant-scoped-supabase";
 import type { NamedLookup } from "../lookup-types";
 import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
 import { invalidateReferenceLookupsAfterWrite } from "@/lib/client-cache/dashboard-summary-cache";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
 
 type ExpenseCategoriesProps = {
+  tenantId: string;
   initialCategories: NamedLookup[];
   fetchError: string | null;
 };
@@ -16,6 +22,7 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 export default function ExpenseCategories({
+  tenantId,
   initialCategories,
   fetchError,
 }: ExpenseCategoriesProps) {
@@ -58,9 +65,10 @@ export default function ExpenseCategories({
     setLoading(true);
     setError(null);
 
+    const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
       .from("expense_categories")
-      .insert({ name: name.trim() });
+      .insert({ tenant_id: scopedTenantId, name: name.trim() });
 
     if (insertError) {
       setError(insertError.message);
@@ -82,13 +90,15 @@ export default function ExpenseCategories({
     setDeletingName(categoryName);
     setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("expense_categories")
-      .delete()
-      .eq("name", categoryName);
+    const { error: deleteError } = await tenantScopedDelete(
+      supabase,
+      "expense_categories",
+      assertTenantIdForMutation(tenantId),
+      { name: categoryName },
+    );
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(getNamedLookupDeleteErrorMessage(deleteError, "category"));
       setDeletingName(null);
       return;
     }

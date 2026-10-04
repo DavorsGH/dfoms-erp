@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+  tenantScopedUpdate,
+} from "@/utils/tenant-scoped-supabase";
+import {
   formatDate,
   formatGHS,
   inputClassName,
@@ -27,6 +32,7 @@ import {
 import { useStampBusinessUnitId } from "@/app/dashboard/business-unit-view-context";
 
 type SalaryRatesProps = {
+  tenantId: string;
   initialRates: SalaryRateEntry[];
   initialPositions: string[];
   fetchError: string | null;
@@ -42,12 +48,14 @@ const emptyForm = {
 };
 
 export default function SalaryRates({
+  tenantId,
   initialRates,
   initialPositions,
   fetchError,
   activeBusinessUnitId = null,
 }: SalaryRatesProps) {
   const supabase = createClient();
+  const scopedTenantId = assertTenantIdForMutation(tenantId);
   const stampBusinessUnit = useStampBusinessUnitId();
   const [rates, setRates] = useState(initialRates);
   const [positions, setPositions] = useState(initialPositions);
@@ -73,6 +81,7 @@ export default function SalaryRates({
       const { data, error: positionsError } = await client
         .from("positions")
         .select("position_title")
+        .eq("tenant_id", scopedTenantId)
         .order("position_title", { ascending: true });
 
       if (positionsError || !data?.length) {
@@ -89,12 +98,13 @@ export default function SalaryRates({
     }
 
     void loadPositions();
-  }, [showForm]);
+  }, [showForm, scopedTenantId]);
 
   async function refreshRates() {
     const { data, error: refreshError } = await supabase
       .from("salary_rate_config")
       .select("*")
+      .eq("tenant_id", scopedTenantId)
       .order("effective_date", { ascending: false });
 
     if (refreshError) {
@@ -142,10 +152,12 @@ export default function SalaryRates({
     setDeletingId(id);
     setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("salary_rate_config")
-      .delete()
-      .eq("id", id);
+    const { error: deleteError } = await tenantScopedDelete(
+      supabase,
+      "salary_rate_config",
+      scopedTenantId,
+      { id },
+    );
 
     if (deleteError) {
       setError(deleteError.message);
@@ -181,12 +193,16 @@ export default function SalaryRates({
     };
 
     const { error: saveError } = editingId
-      ? await supabase
-          .from("salary_rate_config")
-          .update(payload)
-          .eq("id", editingId)
+      ? await tenantScopedUpdate(
+          supabase,
+          "salary_rate_config",
+          scopedTenantId,
+          payload,
+          { id: editingId },
+        )
       : await supabase.from("salary_rate_config").insert({
           ...payload,
+          tenant_id: scopedTenantId,
           business_unit_id: stampBusinessUnit.ok
             ? stampBusinessUnit.businessUnitId
             : null,

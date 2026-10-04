@@ -2,12 +2,18 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { getNamedLookupDeleteErrorMessage } from "@/utils/named-lookup-delete-errors";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+} from "@/utils/tenant-scoped-supabase";
 import type { NamedLookup } from "../lookup-types";
 import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
 import { invalidateReferenceLookupsAfterWrite } from "@/lib/client-cache/dashboard-summary-cache";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
 
 type PaymentMethodsProps = {
+  tenantId: string;
   initialMethods: NamedLookup[];
   fetchError: string | null;
 };
@@ -16,6 +22,7 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 export default function PaymentMethods({
+  tenantId,
   initialMethods,
   fetchError,
 }: PaymentMethodsProps) {
@@ -58,9 +65,10 @@ export default function PaymentMethods({
     setLoading(true);
     setError(null);
 
+    const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
       .from("payment_methods")
-      .insert({ name: name.trim() });
+      .insert({ tenant_id: scopedTenantId, name: name.trim() });
 
     if (insertError) {
       setError(insertError.message);
@@ -82,13 +90,15 @@ export default function PaymentMethods({
     setDeletingName(methodName);
     setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("payment_methods")
-      .delete()
-      .eq("name", methodName);
+    const { error: deleteError } = await tenantScopedDelete(
+      supabase,
+      "payment_methods",
+      assertTenantIdForMutation(tenantId),
+      { name: methodName },
+    );
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(getNamedLookupDeleteErrorMessage(deleteError, "payment method"));
       setDeletingName(null);
       return;
     }

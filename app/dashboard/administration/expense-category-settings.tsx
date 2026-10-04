@@ -2,6 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { formatCantDeleteAlertTitle } from "@/utils/delete-blocked-messaging";
+import { getNamedLookupDeleteErrorMessage } from "@/utils/named-lookup-delete-errors";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+  tenantScopedUpdate,
+} from "@/utils/tenant-scoped-supabase";
 import type { NamedLookup } from "../lookup-types";
 import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
 import { invalidateReferenceLookupsAfterWrite } from "@/lib/client-cache/dashboard-summary-cache";
@@ -34,6 +41,7 @@ import {
 type ExpenseCategoryRow = NamedLookup & { is_active?: boolean };
 
 type ExpenseCategorySettingsProps = {
+  tenantId: string;
   initialCategories: ExpenseCategoryRow[];
   initialSubcategories: ExpenseSubcategoryLookup[];
   fetchError: string | null;
@@ -43,11 +51,13 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 export default function ExpenseCategorySettings({
+  tenantId,
   initialCategories,
   initialSubcategories,
   fetchError,
 }: ExpenseCategorySettingsProps) {
   const supabase = createClient();
+  const scopedTenantId = assertTenantIdForMutation(tenantId);
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
   const { showActionError, showActionSuccess, preserveScroll } =
     useLookupSettingsFeedback(fetchError);
@@ -198,7 +208,7 @@ export default function ExpenseCategorySettings({
     setLoading(true);
     const { error: insertError } = await supabase
       .from("expense_categories")
-      .insert({ name: trimmed, is_active: true });
+      .insert({ tenant_id: scopedTenantId, name: trimmed, is_active: true });
 
     if (insertError) {
       showActionError(insertError);
@@ -274,6 +284,7 @@ export default function ExpenseCategorySettings({
           expense_category: categoryName,
           is_active: true,
         })
+        .eq("tenant_id", scopedTenantId)
         .eq("id", unlinkedRow.id)
         .is("expense_category", null)
         .select("id, name, expense_category, is_active")
@@ -308,6 +319,7 @@ export default function ExpenseCategorySettings({
     const { error: insertError } = await supabase
       .from("expense_subcategories")
       .insert({
+        tenant_id: scopedTenantId,
         name: trimmed,
         expense_category: categoryName,
         is_active: true,
@@ -448,10 +460,13 @@ export default function ExpenseCategorySettings({
     }
 
     setBusyKey(`rename-cat:${previousName}`);
-    const { error: updateError } = await supabase
-      .from("expense_categories")
-      .update({ name: trimmed })
-      .eq("name", previousName);
+    const { error: updateError } = await tenantScopedUpdate(
+      supabase,
+      "expense_categories",
+      scopedTenantId,
+      { name: trimmed },
+      { name: previousName },
+    );
 
     if (updateError) {
       showActionError(updateError);
@@ -459,10 +474,13 @@ export default function ExpenseCategorySettings({
       return;
     }
 
-    const { error: relinkError } = await supabase
-      .from("expense_subcategories")
-      .update({ expense_category: trimmed })
-      .eq("expense_category", previousName);
+    const { error: relinkError } = await tenantScopedUpdate(
+      supabase,
+      "expense_subcategories",
+      scopedTenantId,
+      { expense_category: trimmed },
+      { expense_category: previousName },
+    );
 
     if (relinkError) {
       showActionError(relinkError);
@@ -489,10 +507,13 @@ export default function ExpenseCategorySettings({
     }
 
     setBusyKey(`rename-sub:${sub.id}`);
-    const { error: updateError } = await supabase
-      .from("expense_subcategories")
-      .update({ name: trimmed })
-      .eq("id", sub.id);
+    const { error: updateError } = await tenantScopedUpdate(
+      supabase,
+      "expense_subcategories",
+      scopedTenantId,
+      { name: trimmed },
+      { id: sub.id },
+    );
 
     if (updateError) {
       showActionError(updateError);
@@ -513,10 +534,13 @@ export default function ExpenseCategorySettings({
       return;
     }
     setBusyKey(`hide-cat:${categoryName}`);
-    const { error: updateError } = await supabase
-      .from("expense_categories")
-      .update({ is_active: !hide })
-      .eq("name", categoryName);
+    const { error: updateError } = await tenantScopedUpdate(
+      supabase,
+      "expense_categories",
+      scopedTenantId,
+      { is_active: !hide },
+      { name: categoryName },
+    );
     if (updateError) {
       showActionError(updateError);
     } else {
@@ -546,7 +570,9 @@ export default function ExpenseCategorySettings({
         linkedSubcategoryCount,
       );
       if (blockMessage) {
-        showActionError(blockMessage);
+        showActionError(blockMessage, {
+          title: formatCantDeleteAlertTitle("category"),
+        });
         setBusyKey(null);
         return;
       }
@@ -558,12 +584,17 @@ export default function ExpenseCategorySettings({
         setBusyKey(null);
         return;
       }
-      const { error: deleteError } = await supabase
-        .from("expense_categories")
-        .delete()
-        .eq("name", categoryName);
+      const { error: deleteError } = await tenantScopedDelete(
+        supabase,
+        "expense_categories",
+        scopedTenantId,
+        { name: categoryName },
+      );
       if (deleteError) {
-        showActionError(deleteError);
+        showActionError(
+          getNamedLookupDeleteErrorMessage(deleteError, "category"),
+          { title: formatCantDeleteAlertTitle("category") },
+        );
       } else {
         await refreshAll();
         await invalidateReferenceCache();
@@ -581,10 +612,13 @@ export default function ExpenseCategorySettings({
       return;
     }
     setBusyKey(`hide-sub:${sub.id}`);
-    const { error: updateError } = await supabase
-      .from("expense_subcategories")
-      .update({ is_active: !hide })
-      .eq("id", sub.id);
+    const { error: updateError } = await tenantScopedUpdate(
+      supabase,
+      "expense_subcategories",
+      scopedTenantId,
+      { is_active: !hide },
+      { id: sub.id },
+    );
     if (updateError) {
       showActionError(updateError);
     } else {

@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { getProjectDeleteErrorMessage } from "@/utils/project-delete-errors";
+import {
+  formatProjectDeleteBlockedByEmployeesMessage,
+  getProjectDeleteErrorMessage,
+} from "@/utils/project-delete-errors";
 import type { ClientEntry } from "../operations/clients-utils";
 import { inputClassName } from "../employees/employee-record-utils";
 import RegisterRowActions, {
@@ -41,8 +44,14 @@ import {
   loadWriteBusinessUnitContext,
   resolveWriteBusinessUnitIdForCreate,
 } from "@/utils/business-unit-access";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+  tenantScopedUpdate,
+} from "@/utils/tenant-scoped-supabase";
 
 type ProjectsProps = {
+  tenantId: string;
   initialProjects: ProjectEntry[];
   initialSites: SiteEntry[];
   initialClients: ClientEntry[];
@@ -57,6 +66,7 @@ const emptyContractForm = {
 };
 
 export default function Projects({
+  tenantId,
   initialProjects,
   initialSites,
   initialClients,
@@ -64,6 +74,7 @@ export default function Projects({
   fetchError,
 }: ProjectsProps) {
   const supabase = createClient();
+  const scopedTenantId = assertTenantIdForMutation(tenantId);
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const [projects, setProjects] = useState(
@@ -225,10 +236,13 @@ export default function Projects({
       return;
     }
 
-    const { error: archiveError } = await supabase
-      .from("projects")
-      .update({ is_archived: true })
-      .eq("project_code", projectCode);
+    const { error: archiveError } = await tenantScopedUpdate(
+      supabase,
+      "projects",
+      scopedTenantId,
+      { is_archived: true },
+      { project_code: projectCode },
+    );
 
     if (archiveError) {
       setError("Unable to deactivate this contract/project. Try again.");
@@ -271,10 +285,13 @@ export default function Projects({
       return;
     }
 
-    const { error: reactivateError } = await supabase
-      .from("projects")
-      .update({ is_archived: false })
-      .eq("project_code", projectCode);
+    const { error: reactivateError } = await tenantScopedUpdate(
+      supabase,
+      "projects",
+      scopedTenantId,
+      { is_archived: false },
+      { project_code: projectCode },
+    );
 
     if (reactivateError) {
       setError("Unable to reactivate this contract/project. Try again.");
@@ -294,10 +311,19 @@ export default function Projects({
     setDeletingCode(projectCode);
     setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("projects")
-      .delete()
-      .eq("project_code", projectCode);
+    const assignedEmployees = initialEmployeeCountByProjectCode[projectCode] ?? 0;
+    if (assignedEmployees > 0) {
+      setError(formatProjectDeleteBlockedByEmployeesMessage(assignedEmployees));
+      setDeletingCode(null);
+      return;
+    }
+
+    const { error: deleteError } = await tenantScopedDelete(
+      supabase,
+      "projects",
+      scopedTenantId,
+      { project_code: projectCode },
+    );
 
     if (deleteError) {
       setError(getProjectDeleteErrorMessage(deleteError));
@@ -361,12 +387,16 @@ export default function Projects({
     }
 
     const { error: saveError } = editingCode
-      ? await supabase
-          .from("projects")
-          .update({ project_name: payload.project_name })
-          .eq("project_code", editingCode)
+      ? await tenantScopedUpdate(
+          supabase,
+          "projects",
+          scopedTenantId,
+          { project_name: payload.project_name },
+          { project_code: editingCode },
+        )
       : await supabase.from("projects").insert({
           ...payload,
+          tenant_id: scopedTenantId,
           business_unit_id: stampResult.businessUnitId,
         });
 
@@ -407,10 +437,13 @@ export default function Projects({
       return;
     }
 
-    const { error: saveError } = await supabase
-      .from("sites")
-      .update({ required_staff: requiredStaff })
-      .eq("site_code", siteCode);
+    const { error: saveError } = await tenantScopedUpdate(
+      supabase,
+      "sites",
+      scopedTenantId,
+      { required_staff: requiredStaff },
+      { site_code: siteCode },
+    );
 
     if (saveError) {
       setError(saveError.message);

@@ -79,12 +79,26 @@ export default async function ProjectsPage() {
       (employeeCountByProjectCode[code] ?? 0) + 1;
   }
 
+  if (!tenantId) {
+    return (
+      <>
+        <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
+          Contract/Project Assignments
+        </h2>
+        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Unable to resolve tenant for Contract/Project Assignments.
+        </p>
+      </>
+    );
+  }
+
   return (
     <>
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
         Contract/Project Assignments
       </h2>
       <Projects
+        tenantId={tenantId}
         initialProjects={
           (data as ProjectEntry[] | null)?.map((project) =>
             normalizeProjectEntry(project),

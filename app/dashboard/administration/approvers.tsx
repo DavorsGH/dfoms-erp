@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+} from "@/utils/tenant-scoped-supabase";
 import type { Approver, Employee } from "../lookup-types";
 import { mapApproverRows } from "../approver-utils";
 
 type ApproversProps = {
+  tenantId: string;
   initialApprovers: Approver[];
   initialEmployees: Employee[];
   fetchError: string | null;
@@ -20,6 +25,7 @@ type ApproverRow = {
 };
 
 export default function Approvers({
+  tenantId,
   initialApprovers,
   initialEmployees,
   fetchError,
@@ -67,9 +73,10 @@ export default function Approvers({
     setLoading(true);
     setError(null);
 
+    const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
       .from("approvers")
-      .insert({ employee_id: employeeId });
+      .insert({ tenant_id: scopedTenantId, employee_id: employeeId });
 
     if (insertError) {
       setError(insertError.message);
@@ -86,13 +93,15 @@ export default function Approvers({
     setDeletingId(approverEmployeeId);
     setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("approvers")
-      .delete()
-      .eq("employee_id", approverEmployeeId);
+    const { error: deleteError } = await tenantScopedDelete(
+      supabase,
+      "approvers",
+      assertTenantIdForMutation(tenantId),
+      { employee_id: approverEmployeeId },
+    );
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError("Unable to remove this approver. Try again.");
       setDeletingId(null);
       return;
     }

@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { getNamedLookupDeleteErrorMessage } from "@/utils/named-lookup-delete-errors";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+} from "@/utils/tenant-scoped-supabase";
 import type { NamedLookup } from "../lookup-types";
 
 type ExpenseSubcategoriesProps = {
+  tenantId: string;
   initialSubcategories: NamedLookup[];
   fetchError: string | null;
 };
@@ -13,6 +19,7 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 export default function ExpenseSubcategories({
+  tenantId,
   initialSubcategories,
   fetchError,
 }: ExpenseSubcategoriesProps) {
@@ -43,9 +50,10 @@ export default function ExpenseSubcategories({
     setLoading(true);
     setError(null);
 
+    const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
       .from("expense_subcategories")
-      .insert({ name: name.trim() });
+      .insert({ tenant_id: scopedTenantId, name: name.trim() });
 
     if (insertError) {
       setError(insertError.message);
@@ -62,13 +70,15 @@ export default function ExpenseSubcategories({
     setDeletingName(subcategoryName);
     setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("expense_subcategories")
-      .delete()
-      .eq("name", subcategoryName);
+    const { error: deleteError } = await tenantScopedDelete(
+      supabase,
+      "expense_subcategories",
+      assertTenantIdForMutation(tenantId),
+      { name: subcategoryName },
+    );
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(getNamedLookupDeleteErrorMessage(deleteError, "sub-category"));
       setDeletingName(null);
       return;
     }

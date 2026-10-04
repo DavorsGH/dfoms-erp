@@ -2,10 +2,16 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { getNamedLookupDeleteErrorMessage } from "@/utils/named-lookup-delete-errors";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+} from "@/utils/tenant-scoped-supabase";
 import type { ServiceType } from "../service-types";
 import FilteredListCount from "../filtered-list-count";
 
 type ServiceCategoriesProps = {
+  tenantId: string;
   initialCategories: ServiceType[];
   fetchError: string | null;
 };
@@ -14,6 +20,7 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 export default function ServiceCategories({
+  tenantId,
   initialCategories,
   fetchError,
 }: ServiceCategoriesProps) {
@@ -44,9 +51,10 @@ export default function ServiceCategories({
     setLoading(true);
     setError(null);
 
+    const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
       .from("service_types")
-      .insert({ name: name.trim() });
+      .insert({ tenant_id: scopedTenantId, name: name.trim() });
 
     if (insertError) {
       setError(insertError.message);
@@ -63,13 +71,15 @@ export default function ServiceCategories({
     setDeletingName(categoryName);
     setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("service_types")
-      .delete()
-      .eq("name", categoryName);
+    const { error: deleteError } = await tenantScopedDelete(
+      supabase,
+      "service_types",
+      assertTenantIdForMutation(tenantId),
+      { name: categoryName },
+    );
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(getNamedLookupDeleteErrorMessage(deleteError, "service category"));
       setDeletingName(null);
       return;
     }

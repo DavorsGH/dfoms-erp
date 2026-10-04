@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { formatCantDeleteAlertTitle } from "@/utils/delete-blocked-messaging";
+import { getNamedLookupDeleteErrorMessage } from "@/utils/named-lookup-delete-errors";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+  tenantScopedUpdate,
+} from "@/utils/tenant-scoped-supabase";
 import { useOfflineWriteBlocked } from "@/hooks/use-online-status";
 import { invalidateReferenceLookupsAfterWrite } from "@/lib/client-cache/dashboard-summary-cache";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
@@ -19,6 +26,7 @@ import { useLookupSettingsFeedback } from "./lookup-settings-feedback";
 type AssetCategoryRow = { name: string; is_active?: boolean };
 
 type AssetCategoriesProps = {
+  tenantId: string;
   initialCategories: AssetCategoryRow[];
   fetchError: string | null;
 };
@@ -27,10 +35,12 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 export default function AssetCategories({
+  tenantId,
   initialCategories,
   fetchError,
 }: AssetCategoriesProps) {
   const supabase = createClient();
+  const scopedTenantId = assertTenantIdForMutation(tenantId);
   const { isOffline, offlineWriteMessage } = useOfflineWriteBlocked();
   const { showActionError, showActionSuccess, preserveScroll } =
     useLookupSettingsFeedback(fetchError);
@@ -83,7 +93,7 @@ export default function AssetCategories({
       setLoading(true);
       const { error: insertError } = await supabase
         .from("asset_categories")
-        .insert({ name: trimmed, is_active: true });
+        .insert({ tenant_id: scopedTenantId, name: trimmed, is_active: true });
 
       if (insertError) {
         showActionError(insertError);
@@ -116,10 +126,13 @@ export default function AssetCategories({
       }
 
       setBusyKey(`edit-asset-cat:${previousName}`);
-      const { error: updateError } = await supabase
-        .from("asset_categories")
-        .update({ name: trimmed })
-        .eq("name", previousName);
+      const { error: updateError } = await tenantScopedUpdate(
+        supabase,
+        "asset_categories",
+        scopedTenantId,
+        { name: trimmed },
+        { name: previousName },
+      );
 
       if (updateError) {
         showActionError(updateError);
@@ -142,10 +155,13 @@ export default function AssetCategories({
         return;
       }
       setBusyKey(`hide-asset-cat:${categoryName}`);
-      const { error: updateError } = await supabase
-        .from("asset_categories")
-        .update({ is_active: !hide })
-        .eq("name", categoryName);
+      const { error: updateError } = await tenantScopedUpdate(
+        supabase,
+        "asset_categories",
+        scopedTenantId,
+        { is_active: !hide },
+        { name: categoryName },
+      );
       if (updateError) {
         showActionError(updateError);
       } else {
@@ -178,7 +194,9 @@ export default function AssetCategories({
           usageLines,
         );
         if (blockMessage) {
-          showActionError(blockMessage);
+          showActionError(blockMessage, {
+            title: formatCantDeleteAlertTitle("asset category"),
+          });
           setBusyKey(null);
           return;
         }
@@ -190,12 +208,17 @@ export default function AssetCategories({
           setBusyKey(null);
           return;
         }
-        const { error: deleteError } = await supabase
-          .from("asset_categories")
-          .delete()
-          .eq("name", categoryName);
+        const { error: deleteError } = await tenantScopedDelete(
+          supabase,
+          "asset_categories",
+          scopedTenantId,
+          { name: categoryName },
+        );
         if (deleteError) {
-          showActionError(deleteError);
+          showActionError(
+            getNamedLookupDeleteErrorMessage(deleteError, "asset category"),
+            { title: formatCantDeleteAlertTitle("asset category") },
+          );
         } else {
           await refreshCategories();
           await invalidateReferenceCache();

@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
+import { getNamedLookupDeleteErrorMessage } from "@/utils/named-lookup-delete-errors";
+import {
+  assertTenantIdForMutation,
+  tenantScopedDelete,
+} from "@/utils/tenant-scoped-supabase";
 import type { NamedLookup } from "../lookup-types";
 
 type DepreciationMethodsProps = {
+  tenantId: string;
   initialMethods: NamedLookup[];
   fetchError: string | null;
 };
@@ -13,6 +19,7 @@ const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
 export default function DepreciationMethods({
+  tenantId,
   initialMethods,
   fetchError,
 }: DepreciationMethodsProps) {
@@ -43,9 +50,10 @@ export default function DepreciationMethods({
     setLoading(true);
     setError(null);
 
+    const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { error: insertError } = await supabase
       .from("depreciation_methods")
-      .insert({ name: name.trim() });
+      .insert({ tenant_id: scopedTenantId, name: name.trim() });
 
     if (insertError) {
       setError(insertError.message);
@@ -62,13 +70,17 @@ export default function DepreciationMethods({
     setDeletingName(methodName);
     setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("depreciation_methods")
-      .delete()
-      .eq("name", methodName);
+    const { error: deleteError } = await tenantScopedDelete(
+      supabase,
+      "depreciation_methods",
+      assertTenantIdForMutation(tenantId),
+      { name: methodName },
+    );
 
     if (deleteError) {
-      setError(deleteError.message);
+      setError(
+        getNamedLookupDeleteErrorMessage(deleteError, "depreciation method"),
+      );
       setDeletingName(null);
       return;
     }

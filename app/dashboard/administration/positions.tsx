@@ -1,13 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import { createClient } from "@/utils/supabase/client";
+import {
+  formatPositionAddFailedMessage,
+  formatPositionDeleteFailedMessage,
+  formatPositionDuplicateTitleMessage,
+  resolvePositionDeleteClientMessage,
+} from "@/utils/position-delete-errors";
+import { formatCantDeleteAlertTitle } from "@/utils/delete-blocked-messaging";
+import { assertTenantIdForMutation } from "@/utils/tenant-scoped-supabase";
 
 export type PositionRow = {
   position_title: string;
 };
 
 type PositionsProps = {
+  tenantId: string;
   initialPositions: PositionRow[];
   fetchError: string | null;
 };
@@ -15,76 +25,162 @@ type PositionsProps = {
 const inputClassName =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
 
+const POSITIONS_API = "/api/administration/positions";
+const CANT_DELETE_POSITION_ALERT = {
+  title: formatCantDeleteAlertTitle("position"),
+};
+
+async function readPositionsApiError(
+  response: Response,
+): Promise<string | undefined> {
+  try {
+    const payload = (await response.json()) as { error?: unknown };
+    const message = payload.error;
+    return typeof message === "string" ? message : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export default function Positions({
+  tenantId,
   initialPositions,
   fetchError,
 }: PositionsProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const [positions, setPositions] = useState(initialPositions);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [deletingTitle, setDeletingTitle] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(fetchError);
+
+  useEffect(() => {
+    if (fetchError) {
+      alertError(fetchError);
+    }
+  }, [alertError, fetchError]);
 
   async function refreshPositions() {
+    const scopedTenantId = assertTenantIdForMutation(tenantId);
     const { data, error: refreshError } = await supabase
       .from("positions")
       .select("position_title")
+      .eq("tenant_id", scopedTenantId)
       .order("position_title", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      console.error("[positions refresh]", refreshError);
+      alertError("Couldn't refresh the positions list. Please try again.");
       return;
     }
 
     setPositions((data as PositionRow[] | null) ?? []);
-    setError(null);
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
     const positionTitle = title.trim();
     if (!positionTitle) {
-      setError("Position title is required.");
+      alertError("Position title is required.");
       setLoading(false);
       return;
     }
 
-    const { error: insertError } = await supabase
-      .from("positions")
-      .insert({ position_title: positionTitle });
-
-    if (insertError) {
-      setError(insertError.message);
+    try {
+      assertTenantIdForMutation(tenantId);
+    } catch (tenantError) {
+      alertError(
+        tenantError instanceof Error
+          ? tenantError.message
+          : "Unable to resolve your workspace.",
+      );
       setLoading(false);
       return;
     }
 
-    setTitle("");
-    await refreshPositions();
+    try {
+      const response = await fetch(POSITIONS_API, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position_title: positionTitle }),
+      });
+
+      if (!response.ok) {
+        const apiError = await readPositionsApiError(response);
+        const lower = (apiError ?? "").toLowerCase();
+        if (
+          lower.includes("already exists") ||
+          lower.includes("duplicate")
+        ) {
+          alertError(formatPositionDuplicateTitleMessage(positionTitle));
+        } else if (apiError) {
+          alertError(apiError);
+        } else {
+          alertError(formatPositionAddFailedMessage(positionTitle));
+        }
+        setLoading(false);
+        return;
+      }
+
+      setTitle("");
+      await refreshPositions();
+      toast("Position added.");
+    } catch (addError) {
+      console.error("[positions add]", addError);
+      alertError(formatPositionAddFailedMessage(positionTitle));
+    }
+
     setLoading(false);
   }
 
   async function handleDelete(positionTitle: string) {
     setDeletingTitle(positionTitle);
-    setError(null);
 
-    const { error: deleteError } = await supabase
-      .from("positions")
-      .delete()
-      .eq("position_title", positionTitle);
-
-    if (deleteError) {
-      setError(deleteError.message);
+    try {
+      assertTenantIdForMutation(tenantId);
+    } catch (tenantError) {
+      alertError(
+        tenantError instanceof Error
+          ? tenantError.message
+          : "Unable to resolve your workspace.",
+      );
       setDeletingTitle(null);
       return;
     }
 
-    await refreshPositions();
-    setDeletingTitle(null);
+    try {
+      const response = await fetch(POSITIONS_API, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position_title: positionTitle }),
+      });
+
+      if (!response.ok) {
+        const apiError = await readPositionsApiError(response);
+        alertError(
+          resolvePositionDeleteClientMessage(positionTitle, apiError),
+          CANT_DELETE_POSITION_ALERT,
+        );
+        setDeletingTitle(null);
+        return;
+      }
+
+      await refreshPositions();
+      toast("Position deleted.");
+      setDeletingTitle(null);
+    } catch (deleteError) {
+      console.error("[positions delete]", deleteError);
+      alertError(
+        formatPositionDeleteFailedMessage(positionTitle),
+        CANT_DELETE_POSITION_ALERT,
+      );
+      setDeletingTitle(null);
+    }
   }
 
   return (
@@ -92,12 +188,6 @@ export default function Positions({
       <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
         Manage Positions
       </h2>
-
-      {error && (
-        <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       <form onSubmit={handleAdd} className="mb-6 flex flex-col gap-3 sm:flex-row">
         <input
