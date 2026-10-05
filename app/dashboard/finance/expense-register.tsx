@@ -88,7 +88,16 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import { buildExpenseRegisterDetailSections } from "./register-detail-sections";
-import { resolveRegisterPaymentMethodLabel } from "./register-detail-labels";
+import {
+  AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE,
+  collectApIdsFromApAccrualExpenseEntries,
+  fetchLinkedAccountsPayableForApAccrualExpenses,
+  resolveApAccrualPaymentStatusDisplay,
+  resolveExpenseRegisterPaymentMethodLabel,
+  resolveExpenseRegisterPaymentStatusLabel,
+  type ApAccrualLinkedPayableSummary,
+} from "./expense-register-ap-accrual-display";
+import { buildApAccrualPaymentStatusListCell } from "./expense-register-ap-accrual-display-ui";
 import RegisterRecordDetailDrawer from "../register-record-detail-drawer";
 import { RegisterRecordNameLink } from "../register-record-name-link";
 import TruncatedCell, {
@@ -236,6 +245,8 @@ export default function ExpenseRegister({
     useState<RegisterColumnFilterValue>(null);
   const [descriptionFilter, setDescriptionFilter] =
     useState<RegisterColumnFilterValue>(null);
+  const [paymentStatusFilter, setPaymentStatusFilter] =
+    useState<RegisterColumnFilterValue>(null);
   const [dateFilter, setDateFilter] =
     useState<RegisterDateRangeFilterValue>(null);
   const [showForm, setShowForm] = useState(false);
@@ -263,6 +274,15 @@ export default function ExpenseRegister({
   const [error, setError] = useState<string | null>(fetchError);
   const [linkedProductSaleCogsByExpenseId, setLinkedProductSaleCogsByExpenseId] =
     useState<Map<string, LinkedProductSaleCogs>>(() => new Map());
+  const [linkedApAccrualPayables, setLinkedApAccrualPayables] = useState<
+    Map<string, ApAccrualLinkedPayableSummary>
+  >(() => new Map());
+  const [linkedApAccrualPayablesLoaded, setLinkedApAccrualPayablesLoaded] =
+    useState(true);
+  const linkedApAccrualDisplayOptions = useMemo(
+    () => ({ linkedPayablesLoaded: linkedApAccrualPayablesLoaded }),
+    [linkedApAccrualPayablesLoaded],
+  );
   const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
   const [detailExpense, setDetailExpense] = useState<ExpenseRegisterEntry | null>(
     null,
@@ -324,11 +344,27 @@ export default function ExpenseRegister({
                 dateFilter,
               ) &&
               columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
-              columnValuePassesFilter(entry.description, descriptionFilter),
+              columnValuePassesFilter(entry.description, descriptionFilter) &&
+              columnValuePassesFilter(
+                resolveExpenseRegisterPaymentStatusLabel(
+                  entry,
+                  linkedApAccrualPayables,
+                  linkedApAccrualDisplayOptions,
+                ),
+                paymentStatusFilter,
+              ),
           )
           .map((entry) => entry.expense_category),
       ),
-    [entries, dateFilter, subCategoryFilter, descriptionFilter],
+    [
+      entries,
+      dateFilter,
+      subCategoryFilter,
+      descriptionFilter,
+      paymentStatusFilter,
+      linkedApAccrualPayables,
+      linkedApAccrualDisplayOptions,
+    ],
   );
 
   const subCategoryOptions = useMemo(
@@ -342,11 +378,27 @@ export default function ExpenseRegister({
                 dateFilter,
               ) &&
               columnValuePassesFilter(entry.expense_category, categoryFilter) &&
-              columnValuePassesFilter(entry.description, descriptionFilter),
+              columnValuePassesFilter(entry.description, descriptionFilter) &&
+              columnValuePassesFilter(
+                resolveExpenseRegisterPaymentStatusLabel(
+                  entry,
+                  linkedApAccrualPayables,
+                  linkedApAccrualDisplayOptions,
+                ),
+                paymentStatusFilter,
+              ),
           )
           .map((entry) => entry.sub_category),
       ),
-    [entries, dateFilter, categoryFilter, descriptionFilter],
+    [
+      entries,
+      dateFilter,
+      categoryFilter,
+      descriptionFilter,
+      paymentStatusFilter,
+      linkedApAccrualPayables,
+      linkedApAccrualDisplayOptions,
+    ],
   );
 
   const descriptionOptions = useMemo(
@@ -360,11 +412,66 @@ export default function ExpenseRegister({
                 dateFilter,
               ) &&
               columnValuePassesFilter(entry.expense_category, categoryFilter) &&
-              columnValuePassesFilter(entry.sub_category, subCategoryFilter),
+              columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
+              columnValuePassesFilter(
+                resolveExpenseRegisterPaymentStatusLabel(
+                  entry,
+                  linkedApAccrualPayables,
+                  linkedApAccrualDisplayOptions,
+                ),
+                paymentStatusFilter,
+              ),
           )
           .map((entry) => entry.description),
       ),
-    [entries, dateFilter, categoryFilter, subCategoryFilter],
+    [
+      entries,
+      dateFilter,
+      categoryFilter,
+      subCategoryFilter,
+      paymentStatusFilter,
+      linkedApAccrualPayables,
+      linkedApAccrualDisplayOptions,
+    ],
+  );
+
+  const paymentStatusOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              dateValuePassesRangeFilter(
+                toDateInputValue(entry.date),
+                dateFilter,
+              ) &&
+              columnValuePassesFilter(entry.expense_category, categoryFilter) &&
+              columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
+              columnValuePassesFilter(entry.description, descriptionFilter),
+          )
+          .map((entry) =>
+            resolveExpenseRegisterPaymentStatusLabel(
+              entry,
+              linkedApAccrualPayables,
+              linkedApAccrualDisplayOptions,
+            ),
+          ),
+      ),
+    [
+      entries,
+      dateFilter,
+      categoryFilter,
+      subCategoryFilter,
+      descriptionFilter,
+      linkedApAccrualPayables,
+      linkedApAccrualDisplayOptions,
+    ],
+  );
+
+  const apAccrualLinkedIdsKey = useMemo(
+    () =>
+      collectApIdsFromApAccrualExpenseEntries(entries).sort().join("\0"),
+    [entries],
   );
 
   const visibleEntries = useMemo(() => {
@@ -407,9 +514,17 @@ export default function ExpenseRegister({
     const live = entries.filter(
       (entry) =>
         dateValuePassesRangeFilter(toDateInputValue(entry.date), dateFilter) &&
-        columnValuePassesFilter(entry.expense_category, categoryFilter) &&
-        columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
-        columnValuePassesFilter(entry.description, descriptionFilter),
+              columnValuePassesFilter(entry.expense_category, categoryFilter) &&
+              columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
+              columnValuePassesFilter(entry.description, descriptionFilter) &&
+              columnValuePassesFilter(
+                resolveExpenseRegisterPaymentStatusLabel(
+                  entry,
+                  linkedApAccrualPayables,
+                  linkedApAccrualDisplayOptions,
+                ),
+                paymentStatusFilter,
+              ),
     );
 
     const queuedFiltered = queued.filter(
@@ -417,7 +532,15 @@ export default function ExpenseRegister({
         dateValuePassesRangeFilter(toDateInputValue(entry.date), dateFilter) &&
         columnValuePassesFilter(entry.expense_category, categoryFilter) &&
         columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
-        columnValuePassesFilter(entry.description, descriptionFilter),
+        columnValuePassesFilter(entry.description, descriptionFilter) &&
+        columnValuePassesFilter(
+          resolveExpenseRegisterPaymentStatusLabel(
+            entry,
+            linkedApAccrualPayables,
+            linkedApAccrualDisplayOptions,
+          ),
+          paymentStatusFilter,
+        ),
     );
 
     return [...queuedFiltered, ...live] as DisplayExpense[];
@@ -428,6 +551,9 @@ export default function ExpenseRegister({
     categoryFilter,
     subCategoryFilter,
     descriptionFilter,
+    paymentStatusFilter,
+    linkedApAccrualPayables,
+    linkedApAccrualDisplayOptions,
   ]);
 
   const visibleNetPaidTotal = useMemo(() => {
@@ -465,6 +591,67 @@ export default function ExpenseRegister({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function refreshLinkedApAccrualPayables(
+    entryList: ExpenseRegisterEntry[],
+  ) {
+    const apIds = collectApIdsFromApAccrualExpenseEntries(entryList);
+    if (apIds.length === 0) {
+      setLinkedApAccrualPayables(new Map());
+      setLinkedApAccrualPayablesLoaded(true);
+      return;
+    }
+    setLinkedApAccrualPayablesLoaded(false);
+    const map = await fetchLinkedAccountsPayableForApAccrualExpenses(
+      supabase,
+      buReadScope,
+      apIds,
+    );
+    setLinkedApAccrualPayables(map);
+    setLinkedApAccrualPayablesLoaded(true);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const apIds = apAccrualLinkedIdsKey
+          ? apAccrualLinkedIdsKey.split("\0")
+          : [];
+        if (apIds.length === 0) {
+          if (!cancelled) {
+            setLinkedApAccrualPayables(new Map());
+            setLinkedApAccrualPayablesLoaded(true);
+          }
+          return;
+        }
+        if (!cancelled) {
+          setLinkedApAccrualPayablesLoaded(false);
+        }
+        const map = await fetchLinkedAccountsPayableForApAccrualExpenses(
+          supabase,
+          buReadScope,
+          apIds,
+        );
+        if (!cancelled) {
+          setLinkedApAccrualPayables(map);
+          setLinkedApAccrualPayablesLoaded(true);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load Accounts Payable status for accrual expenses.",
+          );
+          setLinkedApAccrualPayablesLoaded(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apAccrualLinkedIdsKey, buReadScope, supabase]);
+
   async function refreshLinkedProductSaleCogs() {
     const linked = await fetchLinkedProductSaleCogsByExpenseId(supabase);
     setLinkedProductSaleCogsByExpenseId(linked);
@@ -481,14 +668,15 @@ export default function ExpenseRegister({
       return;
     }
 
-    setEntries(
+    const normalized =
       ((data as ExpenseRegisterEntry[] | null) ?? []).map((entry) =>
         normalizeExpenseRegisterEntry(entry),
-      ),
-    );
+      );
+    setEntries(normalized);
     setError(null);
 
     try {
+      await refreshLinkedApAccrualPayables(normalized);
       await refreshLinkedProductSaleCogs();
     } catch (loadError) {
       setError(
@@ -583,9 +771,7 @@ export default function ExpenseRegister({
     }
 
     if (isApAccrualExpenseRegisterRow(entry)) {
-      setError(
-        "Auto-posted from Accounts Payable (AP-ACCRUAL-*). Manage the bill in Finance → Accounts Payable — do not edit this accrual row here.",
-      );
+      setError(AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE);
       return;
     }
 
@@ -1530,6 +1716,7 @@ export default function ExpenseRegister({
           categoryFilter,
           subCategoryFilter,
           descriptionFilter,
+          paymentStatusFilter,
           dateFilter,
         )}
       />
@@ -1576,7 +1763,14 @@ export default function ExpenseRegister({
                 <th className={scrollableTableThClassName}>WHT</th>
                 <th className={scrollableTableThClassName}>Net Paid</th>
                 <th className={scrollableTableThClassName}>Payment Method</th>
-                <th className={scrollableTableThClassName}>Payment Status</th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
+                    label="Payment Status"
+                    options={paymentStatusOptions}
+                    applied={paymentStatusFilter}
+                    onApply={setPaymentStatusFilter}
+                  />
+                </th>
                 <th className={scrollableTableThClassName}>Actions</th>
               </tr>
             </thead>
@@ -1617,6 +1811,14 @@ export default function ExpenseRegister({
                           linkedProductSaleCogs,
                         )
                       : undefined;
+                  const apAccrualRow = isApAccrualExpenseRegisterRow(entry);
+                  const apAccrualStatus = apAccrualRow
+                    ? resolveApAccrualPaymentStatusDisplay(
+                        entry,
+                        linkedApAccrualPayables,
+                        linkedApAccrualDisplayOptions,
+                      )
+                    : null;
 
                   return (
                     <tr
@@ -1719,8 +1921,8 @@ export default function ExpenseRegister({
                         className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
                       >
                         <TruncatedCell>
-                          {resolveRegisterPaymentMethodLabel(
-                            entry.payment_method,
+                          {resolveExpenseRegisterPaymentMethodLabel(
+                            entry,
                             paymentMethods,
                           )}
                         </TruncatedCell>
@@ -1728,7 +1930,15 @@ export default function ExpenseRegister({
                       <td
                         className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
                       >
-                        <TruncatedCell>{entry.payment_status}</TruncatedCell>
+                        <TruncatedCell>
+                          {apAccrualStatus
+                            ? buildApAccrualPaymentStatusListCell(apAccrualStatus)
+                            : resolveExpenseRegisterPaymentStatusLabel(
+                                entry,
+                                linkedApAccrualPayables,
+                                linkedApAccrualDisplayOptions,
+                              )}
+                        </TruncatedCell>
                       </td>
                       <RegisterRowActions
                         onEdit={() => openEditForm(entry)}
@@ -1739,6 +1949,11 @@ export default function ExpenseRegister({
                         }
                         deleting={deletingId === entry.id}
                         disableEdit={systemLinked}
+                        editDisabledTitle={
+                          apAccrualRow
+                            ? AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE
+                            : undefined
+                        }
                         disableDelete={linkedProductSaleCogs != null || autoPosted}
                         deleteDisabledTitle={deleteBlockedMessage}
                         onMarkPaid={
@@ -1774,6 +1989,8 @@ export default function ExpenseRegister({
             ? buildExpenseRegisterDetailSections(detailExpense, businessUnits, {
                 paymentMethods,
                 projects: initialProjects,
+                linkedApAccrualPayables,
+                linkedApAccrualPayablesLoaded,
               })
             : []
         }
@@ -1797,11 +2014,13 @@ export default function ExpenseRegister({
             ? formatLinkedProductSaleCogsDeleteMessage(
                 linkedProductSaleCogsByExpenseId.get(detailExpense.id)!,
               )
-            : detailExpense && isAutoPostedExpenseRegisterEntry(detailExpense)
-              ? isInventoryGoLiveTrueUpExpense(detailExpense)
-                ? "Inventory go-live true-up entries cannot be edited here."
-                : "Payroll auto-posted expenses cannot be edited here."
-              : undefined
+            : detailExpense && isApAccrualExpenseRegisterRow(detailExpense)
+              ? AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE
+              : detailExpense && isAutoPostedExpenseRegisterEntry(detailExpense)
+                ? isInventoryGoLiveTrueUpExpense(detailExpense)
+                  ? "Inventory go-live true-up entries cannot be edited here."
+                  : "Payroll auto-posted expenses cannot be edited here."
+                : undefined
         }
       />
     </div>

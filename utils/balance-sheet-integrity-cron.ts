@@ -22,11 +22,19 @@ function buildTenantLogMessage(result: TenantBalanceSheetIntegrityResult): strin
     return `FY${result.fiscalYear}: fetch failed — ${result.fetchError}`;
   }
 
+  const orphanSuffix =
+    result.orphanApAccrualCount > 0
+      ? `; ${result.orphanApAccrualCount} orphan AP-ACCRUAL expense(s)`
+      : "";
+
   if (result.imbalances.length === 0) {
     const through =
       result.monthsChecked.length > 0
         ? MONTH_LABELS[result.monthsChecked.at(-1)!]
         : "none";
+    if (result.orphanApAccrualCount > 0) {
+      return `FY${result.fiscalYear}: balanced through ${through}${orphanSuffix}`;
+    }
     return `FY${result.fiscalYear}: balanced through ${through}`;
   }
 
@@ -36,7 +44,42 @@ function buildTenantLogMessage(result: TenantBalanceSheetIntegrityResult): strin
         `${row.businessUnitName}/${row.monthLabel}=${row.diff.toFixed(2)}`,
     )
     .join(", ");
-  return `FY${result.fiscalYear}: out of balance — ${monthSummary}`;
+  return `FY${result.fiscalYear}: out of balance — ${monthSummary}${orphanSuffix}`;
+}
+
+export async function logTenantBalanceSheetIntegrityResult(
+  result: TenantBalanceSheetIntegrityResult,
+  options: {
+    runId?: string;
+    referenceDateIso?: string;
+    source?: "cron" | "live-check";
+  } = {},
+): Promise<void> {
+  const referenceDateIso =
+    options.referenceDateIso ?? new Date().toISOString().slice(0, 10);
+
+  await logSystemEvent({
+    eventType: "cron",
+    eventName: BS_INTEGRITY_EVENT_NAME,
+    status: result.status,
+    message: buildTenantLogMessage(result),
+    metadata: {
+      kind: "tenant",
+      runId: options.runId ?? crypto.randomUUID(),
+      referenceDate: referenceDateIso,
+      source: options.source ?? "cron",
+      tenantId: result.tenantId,
+      tenantName: result.tenantName,
+      fiscalYear: result.fiscalYear,
+      monthsChecked: result.monthsChecked,
+      imbalances: result.imbalances,
+      scopeResults: result.scopeResults,
+      maxAbsDiff: result.maxAbsDiff,
+      orphanApAccrualCount: result.orphanApAccrualCount,
+      durationMs: result.durationMs,
+      fetchError: result.fetchError,
+    },
+  });
 }
 
 async function sendBalanceSheetIntegrityAlertEmail(
@@ -137,25 +180,10 @@ export async function runBalanceSheetIntegrityWithLogging(
     );
     tenantResults.push(result);
 
-    await logSystemEvent({
-      eventType: "cron",
-      eventName: BS_INTEGRITY_EVENT_NAME,
-      status: result.status,
-      message: buildTenantLogMessage(result),
-      metadata: {
-        kind: "tenant",
-        runId,
-        referenceDate: referenceDateIso,
-        tenantId: result.tenantId,
-        tenantName: result.tenantName,
-        fiscalYear: result.fiscalYear,
-        monthsChecked: result.monthsChecked,
-        imbalances: result.imbalances,
-        scopeResults: result.scopeResults,
-        maxAbsDiff: result.maxAbsDiff,
-        durationMs: result.durationMs,
-        fetchError: result.fetchError,
-      },
+    await logTenantBalanceSheetIntegrityResult(result, {
+      runId,
+      referenceDateIso,
+      source: "cron",
     });
   }
 

@@ -352,7 +352,20 @@ async function main() {
     .delete()
     .eq("accounts_payable_id", octAp.id);
   await admin.from("supplier_contract_deductions").delete().eq("contract_id", contract.id);
-  await admin.from("accounts_payable").delete().eq("source_id", contract.id);
+  const { data: cleanupAps } = await admin
+    .from("accounts_payable")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("source_id", contract.id);
+  for (const ap of cleanupAps ?? []) {
+    const { error: delApErr } = await admin.rpc("delete_accounts_payable", {
+      p_tenant_id: tenantId,
+      p_ap_id: ap.id,
+    });
+    if (delApErr) {
+      throw new Error(delApErr.message);
+    }
+  }
   await admin.from("supplier_contract_amendments").delete().eq("contract_id", contract.id);
   await admin.from("supplier_contracts").delete().eq("id", contract.id);
   await admin.from("suppliers").delete().eq("id", supplier.id);

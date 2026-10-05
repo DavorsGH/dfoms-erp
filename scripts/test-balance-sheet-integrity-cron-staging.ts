@@ -41,17 +41,21 @@ function buildTenantLogMessage(result: TenantBalanceSheetIntegrityResult): strin
   if (result.fetchError) {
     return `FY${result.fiscalYear}: fetch failed — ${result.fetchError}`;
   }
+  const orphanSuffix =
+    result.orphanApAccrualCount > 0
+      ? `; ${result.orphanApAccrualCount} orphan AP-ACCRUAL expense(s)`
+      : "";
   if (result.imbalances.length === 0) {
     const through =
       result.monthsChecked.length > 0
         ? MONTH_LABELS[result.monthsChecked.at(-1)!]
         : "none";
-    return `FY${result.fiscalYear}: balanced through ${through}`;
+    return `FY${result.fiscalYear}: balanced through ${through}${orphanSuffix}`;
   }
   const monthSummary = result.imbalances
     .map((row) => `${row.monthLabel}=${row.diff.toFixed(2)}`)
     .join(", ");
-  return `FY${result.fiscalYear}: out of balance — ${monthSummary}`;
+  return `FY${result.fiscalYear}: out of balance — ${monthSummary}${orphanSuffix}`;
 }
 
 async function logEvent(
@@ -127,6 +131,7 @@ async function main() {
         imbalances: result.imbalances,
         scopeResults: result.scopeResults,
         maxAbsDiff: result.maxAbsDiff,
+        orphanApAccrualCount: result.orphanApAccrualCount,
         durationMs: result.durationMs,
         fetchError: result.fetchError,
       },

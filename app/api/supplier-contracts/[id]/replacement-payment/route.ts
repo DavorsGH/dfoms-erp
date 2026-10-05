@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { getServerAuthUid } from "@/utils/business-unit-access.server";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
+import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 
 type ReplacementBody = {
@@ -41,13 +42,14 @@ export async function POST(
   }
 
   const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const authUser = await getServerAuthUid(supabase);
+  const sessionClient = createClient(cookieStore);
+  const authUser = await getServerAuthUid(sessionClient);
+  const admin = createAdminClient();
   if (!authUser.ok) {
     return NextResponse.json({ error: authUser.error }, { status: authUser.status });
   }
 
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await admin.rpc(
     "record_supplier_contract_replacement_payment",
     {
       p_tenant_id: auth.tenantId,

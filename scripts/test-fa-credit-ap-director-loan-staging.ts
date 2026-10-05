@@ -477,7 +477,13 @@ async function runTenantScenario(admin, tenant: TenantSpec): Promise<StepResult[
       await admin.from("fixed_assets").delete().eq("asset_id", assetId).eq("tenant_id", tenant.id);
     }
     for (const id of cleanup.payableIds) {
-      await admin.from("accounts_payable").delete().eq("id", id);
+      const { error: delApErr } = await admin.rpc("delete_accounts_payable", {
+        p_tenant_id: tenant.id,
+        p_ap_id: id,
+      });
+      if (delApErr) {
+        throw new Error(delApErr.message);
+      }
     }
     for (const id of cleanup.manualIds) {
       await admin.from("manual_financial_entries").delete().eq("id", id);

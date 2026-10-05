@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { inputClassName } from "./employees/employee-record-utils";
 import { formatGHS } from "./finance/income-register-utils";
 import {
@@ -19,6 +19,7 @@ import {
 type DashboardSpendingAnalysisProps = {
   incomeEntries: SpendingAnalysisIncomeRow[];
   expenseEntries: SpendingAnalysisExpenseRow[];
+  summaryMonthKey?: string;
 };
 
 export function AnalysisRankedList({
@@ -62,6 +63,7 @@ export function AnalysisRankedList({
 export default function DashboardSpendingAnalysis({
   incomeEntries,
   expenseEntries,
+  summaryMonthKey,
 }: DashboardSpendingAnalysisProps) {
   const monthKeys = useMemo(
     () => collectAnalysisMonthKeys(incomeEntries, expenseEntries),
@@ -72,9 +74,33 @@ export default function DashboardSpendingAnalysis({
     [incomeEntries, expenseEntries],
   );
 
+  const monthOptions = useMemo(() => {
+    const key = summaryMonthKey?.trim();
+    if (key && !monthKeys.includes(key)) {
+      return [key, ...monthKeys];
+    }
+    return monthKeys;
+  }, [monthKeys, summaryMonthKey]);
+
+  const resolvedSummaryMonthKey = useMemo(() => {
+    if (summaryMonthKey?.trim()) {
+      return summaryMonthKey.trim();
+    }
+    return monthKeys[0] ?? "";
+  }, [monthKeys, summaryMonthKey]);
+
   const [periodMode, setPeriodMode] =
     useState<SpendingAnalysisPeriodMode>("month");
-  const [monthKey, setMonthKey] = useState(monthKeys[0] ?? "");
+  const [monthKey, setMonthKey] = useState(resolvedSummaryMonthKey);
+
+  useEffect(() => {
+    if (periodMode !== "month") {
+      return;
+    }
+    if (resolvedSummaryMonthKey) {
+      setMonthKey(resolvedSummaryMonthKey);
+    }
+  }, [periodMode, resolvedSummaryMonthKey]);
   const [yearKey, setYearKey] = useState(yearKeys[0] ?? "");
   const [grouping, setGrouping] =
     useState<SpendingAnalysisGrouping>("category");
@@ -162,7 +188,7 @@ export default function DashboardSpendingAnalysis({
                 onChange={(event) => setMonthKey(event.target.value)}
                 className={inputClassName}
               >
-                {monthKeys.map((key) => (
+                {monthOptions.map((key) => (
                   <option key={key} value={key}>
                     {formatAnalysisMonthLabel(key)}
                   </option>

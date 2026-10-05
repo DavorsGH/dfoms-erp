@@ -85,6 +85,9 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
     : summary.periodLabel;
   const asOfLabel = `as of ${summary.periodLabel}`;
   const budgetMonthKey = isYtdMode ? data.defaultMonthKey : selectedMonthKey;
+  const spendingAnalysisMonthKey = isYtdMode
+    ? data.defaultMonthKey
+    : selectedMonthKey;
   const budgetStatus =
     data.budgetStatusByMonthKey[budgetMonthKey] ??
     data.budgetStatusByMonthKey[data.defaultMonthKey];
@@ -249,6 +252,7 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
         <DashboardSpendingAnalysis
           incomeEntries={data.spendingAnalysisIncome}
           expenseEntries={data.spendingAnalysisExpenses}
+          summaryMonthKey={spendingAnalysisMonthKey}
         />
       ) : null}
 

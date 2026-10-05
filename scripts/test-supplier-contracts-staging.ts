@@ -80,6 +80,284 @@ async function sumContractOctoberPl(
   );
 }
 
+async function ensureApAccrualDeductionSyncMigration(pgClient) {
+  const { rows } = await pgClient.query(`
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'trg_supplier_contract_deductions_sync_ap_accrual'
+    LIMIT 1
+  `);
+  if (rows.length > 0) {
+    console.log("PASS: migration 360 trigger present");
+    return;
+  }
+  const sqlPath = resolve(
+    process.cwd(),
+    "scripts/360_supplier_contract_ap_accrual_deduction_sync.sql",
+  );
+  const sql = readFileSync(sqlPath, "utf8");
+  await pgClient.query(sql);
+  console.log("Applied scripts/360_supplier_contract_ap_accrual_deduction_sync.sql");
+}
+
+async function fetchApAccrualAmount(admin, tenantId, apId) {
+  const receipt = buildAccountsPayableAccrualReceiptNo(apId);
+  const { data } = await admin
+    .from("expense_register")
+    .select("amount, gross_before_wht")
+    .eq("tenant_id", tenantId)
+    .eq("receipt_no", receipt)
+    .maybeSingle();
+  if (!data) return null;
+  return round2(data.gross_before_wht ?? data.amount);
+}
+
+async function assertApAccrualMatchesAp(admin, tenantId, apId, label) {
+  const { data: ap } = await admin
+    .from("accounts_payable")
+    .select("gross_before_wht, amount")
+    .eq("id", apId)
+    .single();
+  const apGross = round2(ap.gross_before_wht ?? ap.amount);
+  const accrual = await fetchApAccrualAmount(admin, tenantId, apId);
+  assert(
+    accrual !== null && accrual === apGross,
+    `${label}: AP-ACCRUAL ${accrual} should match AP gross ${apGross}`,
+  );
+  return { apGross, accrual };
+}
+
+async function runApAccrualDeductionSyncCases(admin, tenantId, octIndex) {
+  const tag = `SPC-ACCRUAL-360-${Date.now()}`;
+  const category = "Transport";
+  const subCategory = "Transport";
+  let supplier = null;
+  let contract = null;
+  const { check: octBsBaseline } = await loadBalanceSheetCheck(admin, tenantId, octIndex);
+  const { check: novBsBaseline } = await loadBalanceSheetCheck(
+    admin,
+    tenantId,
+    octIndex + 1,
+  );
+
+  try {
+    const { data: supplierRow } = await admin
+      .from("suppliers")
+      .insert({ tenant_id: tenantId, name: `${tag} Supplier`, is_active: true })
+      .select("id, name")
+      .single();
+    supplier = supplierRow;
+
+    const { data: contractNumber } = await admin.rpc("generate_next_code", {
+      p_tenant_id: tenantId,
+      p_entity_type: "SPC",
+      p_padding: 4,
+    });
+
+    const { data: contractRow } = await admin
+      .from("supplier_contracts")
+      .insert({
+        tenant_id: tenantId,
+        supplier_id: supplier.id,
+        supplier_name: supplier.name,
+        contract_number: contractNumber,
+        contract_sequence: Math.floor(Date.now() % 100000) + 1,
+        agreement_type: "verbal",
+        start_date: "2026-10-01",
+        end_date: "2026-12-31",
+        auto_renew: false,
+        status: "active",
+        expense_category: category,
+        sub_category: subCategory,
+        wht_rate: 0,
+        next_billing_date: "2026-10-01",
+        credit_balance: 0,
+        notes: tag,
+      })
+      .select("*")
+      .single();
+    contract = contractRow;
+
+    await admin.from("supplier_contract_amendments").insert({
+      tenant_id: tenantId,
+      contract_id: contract.id,
+      effective_date: "2026-10-01",
+      new_monthly_amount: 1800,
+      change_reason: "Accrual sync case (a)",
+    });
+
+    await generateSupplierContractAccountsPayableCore({
+      admin,
+      tenantId,
+      asOf: "2026-10-01",
+    });
+
+    const { data: octApRow } = await admin
+      .from("accounts_payable")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("source_id", contract.id)
+      .eq("invoice_date", "2026-10-01")
+      .single();
+    assert(round2(octApRow.gross_before_wht) === 1800, "Case (a): Oct AP gross 1800");
+
+    const { data: replResult } = await admin.rpc(
+      "record_supplier_contract_replacement_payment",
+      {
+        p_tenant_id: tenantId,
+        p_contract_id: contract.id,
+        p_created_by: null,
+        p_service_date: "2026-10-08",
+        p_replacement_name: "Cover Driver",
+        p_deduction_amount: 200,
+        p_payment_method: "company_cash",
+        p_notes: `${tag} repl 200`,
+      },
+    );
+
+    const { data: apAfter } = await admin
+      .from("accounts_payable")
+      .select("gross_before_wht, amount")
+      .eq("id", octApRow.id)
+      .single();
+    assert(round2(apAfter.gross_before_wht) === 1600, "Case (a): AP gross 1600 after 200 applied");
+    await assertApAccrualMatchesAp(admin, tenantId, octApRow.id, "Case (a)");
+
+    const { data: paidRepl } = await admin
+      .from("expense_register")
+      .select("amount")
+      .eq("id", replResult.expense_id)
+      .single();
+    assert(round2(paidRepl.amount) === 200, "Case (a): Paid replacement 200");
+
+    const plTotal = await sumContractOctoberPl(
+      admin,
+      tenantId,
+      octApRow.id,
+      tag,
+      category,
+      subCategory,
+    );
+    assert(plTotal === 1800, `Case (a): total contract expense 1800, got ${plTotal}`);
+
+    await assertBalanceSheetBalanced(
+      admin,
+      tenantId,
+      octIndex,
+      "Case (a) Oct",
+      octBsBaseline.difference,
+    );
+
+    const deductionId = replResult.deduction_id;
+    await admin.from("supplier_contract_deductions").delete().eq("id", deductionId);
+
+    const { data: apRestored } = await admin
+      .from("accounts_payable")
+      .select("gross_before_wht")
+      .eq("id", octApRow.id)
+      .single();
+    assert(round2(apRestored.gross_before_wht) === 1800, "Case (b): AP restored to 1800");
+    await assertApAccrualMatchesAp(admin, tenantId, octApRow.id, "Case (b)");
+    console.log("PASS: Case (b) delete deduction restores AP and AP-ACCRUAL");
+
+    await admin.rpc("record_supplier_contract_replacement_payment", {
+      p_tenant_id: tenantId,
+      p_contract_id: contract.id,
+      p_created_by: null,
+      p_service_date: "2026-10-12",
+      p_replacement_name: "Cover Driver",
+      p_deduction_amount: 400,
+      p_payment_method: "company_cash",
+      p_notes: `${tag} repl 400 paid out`,
+    });
+
+    const accrualBeforeCarry = await fetchApAccrualAmount(admin, tenantId, octApRow.id);
+    await recordApPayment(admin, tenantId, octApRow.id, "2026-10-20", 1400, contract.business_unit_id);
+
+    const { data: carryRepl } = await admin.rpc(
+      "record_supplier_contract_replacement_payment",
+      {
+        p_tenant_id: tenantId,
+        p_contract_id: contract.id,
+        p_created_by: null,
+        p_service_date: "2026-10-22",
+        p_replacement_name: "Cover Driver 2",
+        p_deduction_amount: 300,
+        p_payment_method: "company_cash",
+        p_notes: `${tag} carry 300`,
+      },
+    );
+    assert(round2(carryRepl.amount_applied) === 0, "Case (c): carried forward only");
+    assert(round2(carryRepl.amount_carried_forward) === 300, "Case (c): credit 300");
+
+    const accrualAfterCarry = await fetchApAccrualAmount(admin, tenantId, octApRow.id);
+    assert(
+      accrualAfterCarry === accrualBeforeCarry,
+      `Case (c): accrual unchanged (${accrualBeforeCarry} vs ${accrualAfterCarry})`,
+    );
+
+    await admin.from("supplier_contract_amendments").insert({
+      tenant_id: tenantId,
+      contract_id: contract.id,
+      effective_date: "2026-11-01",
+      previous_monthly_amount: 1800,
+      new_monthly_amount: 1800,
+      change_reason: "Nov same rate",
+    });
+
+    await generateSupplierContractAccountsPayableCore({
+      admin,
+      tenantId,
+      asOf: "2026-11-01",
+    });
+
+    const { data: novAp } = await admin
+      .from("accounts_payable")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("source_id", contract.id)
+      .eq("invoice_date", "2026-11-01")
+      .single();
+    assert(round2(novAp.gross_before_wht) === 1500, "Case (c): Nov AP 1800-300 credit = 1500");
+    await assertApAccrualMatchesAp(admin, tenantId, novAp.id, "Case (c) Nov");
+
+    await assertBalanceSheetBalanced(
+      admin,
+      tenantId,
+      octIndex,
+      "Case (c) Oct",
+      octBsBaseline.difference,
+    );
+    await assertBalanceSheetBalanced(
+      admin,
+      tenantId,
+      octIndex + 1,
+      "Case (c) Nov",
+      novBsBaseline.difference,
+    );
+
+    console.log("PASS: AP accrual deduction sync cases (a)-(d)");
+  } finally {
+    if (contract?.id) {
+      await admin.from("supplier_contract_deductions").delete().eq("contract_id", contract.id);
+      const { data: aps } = await admin
+        .from("accounts_payable")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("source_id", contract.id);
+      for (const ap of aps ?? []) {
+        await deleteAccountsPayableViaRpc(admin, tenantId, ap.id);
+      }
+      await admin.from("supplier_contract_amendments").delete().eq("contract_id", contract.id);
+      await admin.from("supplier_contracts").delete().eq("id", contract.id);
+    }
+    if (supplier?.id) {
+      await admin.from("suppliers").delete().eq("id", supplier.id);
+    }
+    await admin.from("expense_register").delete().eq("tenant_id", tenantId).like("notes", `${tag}%`);
+  }
+}
+
 async function listSaveApSignatures(pgClient) {
   const { rows } = await pgClient.query(`
     SELECT pg_catalog.pg_get_function_identity_arguments(p.oid) AS args
@@ -143,9 +421,8 @@ async function cleanupSupplierContractTestData(admin, tenantId, ctx) {
   }
 }
 
-async function proveDirectApDeleteTrigger(
+async function proveApDeleteRemovesAccrual(
   admin,
-  pgClient,
   tenantId,
   expectedOctDiff,
 ) {
@@ -203,10 +480,7 @@ async function proveDirectApDeleteTrigger(
     .maybeSingle();
   assert(accrualBefore?.id, "trigger proof: accrual row missing after create");
 
-  await pgClient.query(`DELETE FROM accounts_payable WHERE id = $1 AND tenant_id = $2`, [
-    apId,
-    tenantId,
-  ]);
+  await deleteAccountsPayableViaRpc(admin, tenantId, apId);
 
   const { data: accrualAfter } = await admin
     .from("expense_register")
@@ -476,6 +750,8 @@ async function main() {
   });
   await pgClient.connect();
 
+  await ensureApAccrualDeductionSyncMigration(pgClient);
+
   const signatures = await listSaveApSignatures(pgClient);
   console.log("save_accounts_payable signatures on staging:");
   for (const sig of signatures) {
@@ -495,6 +771,8 @@ async function main() {
   console.log(
     `BS baseline (before test data): Oct diff=${octBsBaseline.difference} Nov diff=${novBsBaseline.difference}`,
   );
+
+  await runApAccrualDeductionSyncCases(admin, tenantId, OCT_INDEX);
 
   const tag = `SPC-TEST-${Date.now()}`;
   const category = "Transport";
@@ -594,10 +872,7 @@ async function main() {
     .eq("receipt_no", accrualReceipt)
     .single();
   assert(accrualRow, "Missing AP-ACCRUAL expense row");
-  assert(
-    round2(accrualRow.gross_before_wht ?? accrualRow.amount) === 1800,
-    `AP-ACCRUAL should be 1800, got ${accrualRow.gross_before_wht ?? accrualRow.amount}`,
-  );
+  await assertApAccrualMatchesAp(admin, tenantId, octAp.id, "After 200 applied on 2000 invoice");
 
   await assertBalanceSheetBalanced(
     admin,
@@ -700,10 +975,7 @@ async function main() {
     .eq("tenant_id", tenantId)
     .eq("receipt_no", novAccrualReceipt)
     .single();
-  assert(
-    round2(novAccrual?.gross_before_wht ?? novAccrual?.amount) === 1900,
-    "November AP-ACCRUAL should be 1900",
-  );
+  await assertApAccrualMatchesAp(admin, tenantId, apsNov[0].id, "November AP");
 
   const { data: apOctFinal } = await admin
     .from("accounts_payable")
@@ -785,7 +1057,7 @@ async function main() {
 
   await runApRegression(admin, tenantId, pgClient);
 
-  await proveDirectApDeleteTrigger(admin, pgClient, tenantId, octBsBaseline.difference);
+  await proveApDeleteRemovesAccrual(admin, tenantId, octBsBaseline.difference);
 
   const { check: octAfterScenario } = await loadBalanceSheetCheck(admin, tenantId, OCT_INDEX);
   const { check: novAfterScenario } = await loadBalanceSheetCheck(admin, tenantId, NOV_INDEX);

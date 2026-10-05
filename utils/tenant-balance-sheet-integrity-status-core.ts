@@ -23,6 +23,7 @@ export type TenantBalanceSheetIntegrityStatus = {
   hasCronResult: boolean;
   /** True when the status came from an on-demand live audit (not system_event_log). */
   isLiveCheck?: boolean;
+  orphanApAccrualCount?: number;
 };
 
 type TenantEventMetadata = {
@@ -31,6 +32,7 @@ type TenantEventMetadata = {
   fiscalYear?: number;
   imbalances?: TenantBalanceSheetIntegrityImbalance[];
   maxAbsDiff?: number;
+  orphanApAccrualCount?: number;
 };
 
 function roundCurrency(value: number): number {
@@ -73,6 +75,10 @@ function parseTenantMetadata(
       typeof metadata.maxAbsDiff === "number"
         ? roundCurrency(metadata.maxAbsDiff)
         : undefined,
+    orphanApAccrualCount:
+      typeof metadata.orphanApAccrualCount === "number"
+        ? metadata.orphanApAccrualCount
+        : undefined,
   };
 }
 
@@ -114,6 +120,7 @@ export function buildTenantBalanceSheetIntegrityStatusFromMetadata(input: {
     isStale,
     cronStatus: input.cronStatus,
     hasCronResult: checkedAt !== null,
+    orphanApAccrualCount: parsed.orphanApAccrualCount ?? 0,
   };
 }
 
@@ -129,5 +136,6 @@ export function emptyTenantBalanceSheetIntegrityStatus(): TenantBalanceSheetInte
     isStale: true,
     cronStatus: null,
     hasCronResult: false,
+    orphanApAccrualCount: 0,
   };
 }

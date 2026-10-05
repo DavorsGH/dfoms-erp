@@ -73,7 +73,9 @@ export async function POST(): Promise<
   }
 
   try {
-    const status = await runLiveTenantBalanceSheetIntegrityCheck(tenantId);
+    const status = await runLiveTenantBalanceSheetIntegrityCheck(tenantId, {
+      persist: true,
+    });
     return NextResponse.json(status);
   } catch (error) {
     const message =

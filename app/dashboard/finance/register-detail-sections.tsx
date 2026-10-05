@@ -9,6 +9,13 @@ import {
   resolveProjectOptionLabel,
   resolveRegisterPaymentMethodLabel,
 } from "./register-detail-labels";
+import { buildApAccrualPaymentStatusDetailValue } from "./expense-register-ap-accrual-display-ui";
+import {
+  resolveApAccrualPaymentStatusDisplay,
+  resolveExpenseRegisterPaymentMethodLabel,
+  resolveExpenseRegisterPaymentStatusLabel,
+  type ApAccrualLinkedPayableSummary,
+} from "./expense-register-ap-accrual-display";
 import {
   formatDate,
   formatGHS,
@@ -80,6 +87,9 @@ export type RegisterDetailLabelContext = {
   paymentMethods: NamedLookup[];
   depreciationMethods?: NamedLookup[];
   projects?: ContractProjectOption[];
+  /** Display-only AP settlement status for AP-ACCRUAL expense rows. */
+  linkedApAccrualPayables?: Map<string, ApAccrualLinkedPayableSummary>;
+  linkedApAccrualPayablesLoaded?: boolean;
 };
 
 function resolveExpenseRegisterSourceLabel(
@@ -113,6 +123,15 @@ export function buildExpenseRegisterDetailSections(
 ): RegisterDetailSection[] {
   const normalized = normalizeExpenseRegisterEntry(entry);
   const gross = getExpenseGrossBeforeWht(normalized);
+  const linkedApMap = labels.linkedApAccrualPayables ?? new Map();
+  const linkedApDisplayOptions = {
+    linkedPayablesLoaded: labels.linkedApAccrualPayablesLoaded ?? true,
+  };
+  const apAccrualStatus = resolveApAccrualPaymentStatusDisplay(
+    normalized,
+    linkedApMap,
+    linkedApDisplayOptions,
+  );
 
   return [
     {
@@ -159,12 +178,23 @@ export function buildExpenseRegisterDetailSections(
       fields: [
         {
           label: "Payment method",
-          value: resolveRegisterPaymentMethodLabel(
-            normalized.payment_method,
+          value: resolveExpenseRegisterPaymentMethodLabel(
+            normalized,
             labels.paymentMethods,
           ),
         },
-        { label: "Payment status", value: formatDetailText(normalized.payment_status) },
+        {
+          label: "Payment status",
+          value: apAccrualStatus
+            ? buildApAccrualPaymentStatusDetailValue(apAccrualStatus)
+            : formatDetailText(
+                resolveExpenseRegisterPaymentStatusLabel(
+                  normalized,
+                  linkedApMap,
+                  linkedApDisplayOptions,
+                ),
+              ),
+        },
         { label: "Receipt / reference", value: formatDetailText(normalized.receipt_no) },
         { label: "Approved by", value: formatDetailText(normalized.approved_by) },
       ],

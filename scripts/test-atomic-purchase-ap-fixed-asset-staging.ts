@@ -68,10 +68,13 @@ async function cleanup(admin, pgClient) {
     `DELETE FROM expense_register WHERE tenant_id = $1 AND notes LIKE $2`,
     [DAVORS, `${STAMP}%`],
   );
-  await pgClient.query(
-    `DELETE FROM accounts_payable WHERE tenant_id = $1 AND notes LIKE $2`,
+  const { rows: apRows } = await pgClient.query(
+    `SELECT id FROM accounts_payable WHERE tenant_id = $1 AND notes LIKE $2`,
     [DAVORS, `${STAMP}%`],
   );
+  for (const row of apRows) {
+    await deleteApRpc(admin, row.id);
+  }
   await pgClient.query(
     `DELETE FROM fixed_assets WHERE tenant_id = $1 AND notes LIKE $2`,
     [DAVORS, `${STAMP}%`],

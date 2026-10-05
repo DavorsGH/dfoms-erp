@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getCurrentFinancialYear } from "@/app/dashboard/finance/finance-year-utils";
+import { logTenantBalanceSheetIntegrityResult } from "@/utils/balance-sheet-integrity-cron";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { BS_INTEGRITY_EVENT_NAME } from "@/utils/balance-sheet-integrity-constants";
 import {
@@ -26,45 +27,6 @@ export {
   emptyTenantBalanceSheetIntegrityStatus,
 } from "@/utils/tenant-balance-sheet-integrity-status-core";
 
-/**
- * Latest nightly balance-sheet-integrity cron result for one tenant.
- * Uses admin client — caller must pass session-resolved tenantId only.
- */
-export async function fetchTenantBalanceSheetIntegrityStatus(
-  tenantId: string,
-  options: {
-    admin?: SupabaseClient;
-    referenceDate?: Date;
-  } = {},
-): Promise<TenantBalanceSheetIntegrityStatus> {
-  const admin = options.admin ?? createAdminClient();
-
-  const { data, error } = await admin
-    .from("system_event_log")
-    .select("status, metadata, created_at")
-    .eq("event_name", BS_INTEGRITY_EVENT_NAME)
-    .filter("metadata->>kind", "eq", "tenant")
-    .filter("metadata->>tenantId", "eq", tenantId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (!data) {
-    return emptyTenantBalanceSheetIntegrityStatus();
-  }
-
-  return buildTenantBalanceSheetIntegrityStatusFromMetadata({
-    metadata: (data.metadata as Record<string, unknown> | null) ?? null,
-    createdAt: data.created_at,
-    cronStatus: data.status as SystemEventStatus,
-    referenceDate: options.referenceDate,
-  });
-}
-
 function roundCurrency(value: number): number {
   return Math.round(Number(value || 0) * 100) / 100;
 }
@@ -72,6 +34,7 @@ function roundCurrency(value: number): number {
 function buildStatusFromAuditResult(
   result: TenantBalanceSheetIntegrityResult,
   checkedAt: Date,
+  options: { isLiveCheck?: boolean; hasCronResult?: boolean } = {},
 ): TenantBalanceSheetIntegrityStatus {
   const imbalances = result.imbalances.map((row) => ({
     monthIndex: row.monthIndex,
@@ -96,20 +59,50 @@ function buildStatusFromAuditResult(
     checkedAt: checkedAt.toISOString(),
     isStale: false,
     cronStatus: result.status,
-    hasCronResult: false,
-    isLiveCheck: true,
+    hasCronResult: options.hasCronResult ?? false,
+    isLiveCheck: options.isLiveCheck ?? false,
+    orphanApAccrualCount: result.orphanApAccrualCount,
   };
 }
 
-/**
- * On-demand live BS audit for one tenant. Does not write system_event_log.
- * Caller must pass session-resolved tenantId only.
- */
-export async function runLiveTenantBalanceSheetIntegrityCheck(
+async function loadLatestLoggedTenantIntegrity(
+  admin: SupabaseClient,
+  tenantId: string,
+  referenceDate: Date,
+): Promise<TenantBalanceSheetIntegrityStatus | null> {
+  const { data, error } = await admin
+    .from("system_event_log")
+    .select("status, metadata, created_at")
+    .eq("event_name", BS_INTEGRITY_EVENT_NAME)
+    .filter("metadata->>kind", "eq", "tenant")
+    .filter("metadata->>tenantId", "eq", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return buildTenantBalanceSheetIntegrityStatusFromMetadata({
+    metadata: (data.metadata as Record<string, unknown> | null) ?? null,
+    createdAt: data.created_at,
+    cronStatus: data.status as SystemEventStatus,
+    referenceDate,
+  });
+}
+
+async function runLiveTenantBalanceSheetIntegrityAudit(
   tenantId: string,
   options: {
     admin?: SupabaseClient;
     referenceDate?: Date;
+    persist?: boolean;
+    logSource?: "cron" | "live-check";
   } = {},
 ): Promise<TenantBalanceSheetIntegrityStatus> {
   const admin = options.admin ?? createAdminClient();
@@ -140,5 +133,72 @@ export async function runLiveTenantBalanceSheetIntegrityCheck(
     throw new Error(result.fetchError);
   }
 
-  return buildStatusFromAuditResult(result, referenceDate);
+  if (options.persist) {
+    await logTenantBalanceSheetIntegrityResult(result, {
+      referenceDateIso: referenceDate.toISOString().slice(0, 10),
+      source: options.logSource ?? "live-check",
+    });
+  }
+
+  return buildStatusFromAuditResult(result, referenceDate, {
+    isLiveCheck: options.persist ? false : true,
+    hasCronResult: Boolean(options.persist),
+  });
+}
+
+/**
+ * Latest balance-sheet-integrity result for one tenant.
+ * When the logged result is older than 24 hours, runs a live audit instead.
+ */
+export async function fetchTenantBalanceSheetIntegrityStatus(
+  tenantId: string,
+  options: {
+    admin?: SupabaseClient;
+    referenceDate?: Date;
+  } = {},
+): Promise<TenantBalanceSheetIntegrityStatus> {
+  const admin = options.admin ?? createAdminClient();
+  const referenceDate = options.referenceDate ?? new Date();
+
+  const logged = await loadLatestLoggedTenantIntegrity(
+    admin,
+    tenantId,
+    referenceDate,
+  );
+
+  if (!logged) {
+    return runLiveTenantBalanceSheetIntegrityAudit(tenantId, {
+      admin,
+      referenceDate,
+      persist: false,
+    });
+  }
+
+  if (logged.isStale) {
+    return runLiveTenantBalanceSheetIntegrityAudit(tenantId, {
+      admin,
+      referenceDate,
+      persist: false,
+    });
+  }
+
+  return logged;
+}
+
+/**
+ * On-demand live BS audit for one tenant. Optionally persists to system_event_log.
+ */
+export async function runLiveTenantBalanceSheetIntegrityCheck(
+  tenantId: string,
+  options: {
+    admin?: SupabaseClient;
+    referenceDate?: Date;
+    persist?: boolean;
+  } = {},
+): Promise<TenantBalanceSheetIntegrityStatus> {
+  return runLiveTenantBalanceSheetIntegrityAudit(tenantId, {
+    ...options,
+    persist: options.persist ?? false,
+    logSource: "live-check",
+  });
 }

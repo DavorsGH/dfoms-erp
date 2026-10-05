@@ -135,6 +135,13 @@ export default function DashboardBalanceSheetIntegrityBanner({
       ) : status.isLiveCheck ? (
         <p className="mt-2 text-xs text-amber-800/90">Checked just now.</p>
       ) : null}
+      {(status.orphanApAccrualCount ?? 0) > 0 ? (
+        <p className="mt-2 text-xs text-amber-800/90">
+          {status.orphanApAccrualCount} AP-ACCRUAL expense
+          {status.orphanApAccrualCount === 1 ? "" : "s"} reference missing
+          Accounts Payable rows.
+        </p>
+      ) : null}
     </div>
   );
 }

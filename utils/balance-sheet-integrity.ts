@@ -43,6 +43,7 @@ export type TenantBalanceSheetIntegrityResult = {
   imbalances: BalanceSheetMonthImbalance[];
   scopeResults: BalanceSheetIntegrityScopeResult[];
   maxAbsDiff: number;
+  orphanApAccrualCount: number;
   status: SystemEventStatus;
   fetchError: string | null;
   durationMs: number;
@@ -85,9 +86,10 @@ export function resolveClosedMonthIndices(
 
 export function classifyBalanceSheetIntegrityStatus(
   imbalances: BalanceSheetMonthImbalance[],
+  orphanApAccrualCount = 0,
 ): SystemEventStatus {
   if (imbalances.length === 0) {
-    return "success";
+    return orphanApAccrualCount > 0 ? "warning" : "success";
   }
 
   const maxAbsDiff = Math.max(...imbalances.map((row) => Math.abs(row.diff)));
@@ -95,11 +97,26 @@ export function classifyBalanceSheetIntegrityStatus(
     return "failure";
   }
 
-  if (maxAbsDiff > BALANCE_TOLERANCE) {
+  if (maxAbsDiff > BALANCE_TOLERANCE || orphanApAccrualCount > 0) {
     return "warning";
   }
 
   return "success";
+}
+
+export async function countTenantOrphanApAccrualExpenses(
+  admin: SupabaseClient,
+  tenantId: string,
+): Promise<number> {
+  const { data, error } = await admin.rpc("count_tenant_orphan_ap_accrual_expenses", {
+    p_tenant_id: tenantId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Number(data ?? 0);
 }
 
 type BusinessUnitRow = { id: string; name: string };
@@ -204,6 +221,7 @@ export async function auditTenantBalanceSheetIntegrity(
       imbalances: [],
       scopeResults: [],
       maxAbsDiff: 0,
+      orphanApAccrualCount: 0,
       status: "failure",
       fetchError: error instanceof Error ? error.message : String(error),
       durationMs: Date.now() - startedAt,
@@ -225,6 +243,7 @@ export async function auditTenantBalanceSheetIntegrity(
       imbalances: [],
       scopeResults: [],
       maxAbsDiff: 0,
+      orphanApAccrualCount: 0,
       status: "failure",
       fetchError: tenantWideData.fetchError,
       durationMs: Date.now() - startedAt,
@@ -258,6 +277,7 @@ export async function auditTenantBalanceSheetIntegrity(
         imbalances: [],
         scopeResults,
         maxAbsDiff: 0,
+        orphanApAccrualCount: 0,
         status: "failure",
         fetchError: unitData.fetchError,
         durationMs: Date.now() - startedAt,
@@ -283,6 +303,25 @@ export async function auditTenantBalanceSheetIntegrity(
       ? Math.max(...imbalances.map((row) => Math.abs(row.diff)))
       : 0;
 
+  let orphanApAccrualCount = 0;
+  try {
+    orphanApAccrualCount = await countTenantOrphanApAccrualExpenses(admin, tenant.id);
+  } catch (error) {
+    return {
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      fiscalYear,
+      monthsChecked,
+      imbalances,
+      scopeResults,
+      maxAbsDiff: roundCurrency(maxAbsDiff),
+      orphanApAccrualCount: 0,
+      status: "failure",
+      fetchError: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startedAt,
+    };
+  }
+
   return {
     tenantId: tenant.id,
     tenantName: tenant.name,
@@ -291,7 +330,8 @@ export async function auditTenantBalanceSheetIntegrity(
     imbalances,
     scopeResults,
     maxAbsDiff: roundCurrency(maxAbsDiff),
-    status: classifyBalanceSheetIntegrityStatus(imbalances),
+    orphanApAccrualCount,
+    status: classifyBalanceSheetIntegrityStatus(imbalances, orphanApAccrualCount),
     fetchError: null,
     durationMs: Date.now() - startedAt,
   };
