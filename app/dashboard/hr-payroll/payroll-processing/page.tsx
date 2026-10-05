@@ -29,6 +29,11 @@ import type {
 } from "../../administration/compensation-policy-utils";
 import type { SalaryRateConfig } from "../../employees/pay-estimate-utils";
 import { getAttendanceMonthBounds } from "../attendance-register-utils";
+import {
+  HR_PAYROLL_SETTINGS_SELECT,
+  normalizeHrPayrollSettingsRow,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
 
 export default async function PayrollProcessingPage() {
   const cookieStore = await cookies();
@@ -51,7 +56,7 @@ export default async function PayrollProcessingPage() {
   });
 
   const employeeSelect =
-    "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
+    "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, business_unit_id, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
 
   const [
     { data: processingMonths, error: processingMonthsError },
@@ -65,6 +70,7 @@ export default async function PayrollProcessingPage() {
     { data: allowanceTypes },
     { data: compensationPolicies },
     statutoryTaxBundle,
+    { data: hrPayrollSettingsRows, error: hrPayrollSettingsError },
   ] = await Promise.all([
     supabase.from("payroll_processing").select("payroll_month"),
     supabase.from("payroll_history").select("payroll_month"),
@@ -91,7 +97,7 @@ export default async function PayrollProcessingPage() {
       .lte("date", attendanceEnd),
     supabase
       .from("overtime_register")
-      .select("employee_id, date, overtime_amount")
+      .select("employee_id, date, overtime_amount, approved_by")
       .gte("date", attendanceStart)
       .lte("date", attendanceEnd),
     supabase
@@ -113,6 +119,12 @@ export default async function PayrollProcessingPage() {
       .select("*")
       .eq("tenant_id", tenantId),
     fetchStatutoryPayrollTaxConfigs(admin),
+    tenantId
+      ? admin
+          .from("hr_payroll_settings")
+          .select(HR_PAYROLL_SETTINGS_SELECT)
+          .eq("tenant_id", tenantId)
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   const fetchError =
@@ -125,7 +137,14 @@ export default async function PayrollProcessingPage() {
     overtimeError?.message ??
     loansError?.message ??
     statutoryTaxBundle.error ??
+    hrPayrollSettingsError?.message ??
     null;
+
+  const normalizedHrPayrollSettingsRows = (
+    (hrPayrollSettingsRows as HrPayrollSettingsRow[] | null) ?? []
+  )
+    .map((row) => normalizeHrPayrollSettingsRow(row))
+    .filter((row): row is HrPayrollSettingsRow => row !== null);
 
   return (
     <HrPayrollShell sectionTitle="Payroll Processing">
@@ -165,6 +184,7 @@ export default async function PayrollProcessingPage() {
         )}
         fetchError={fetchError}
         activeBusinessUnitId={activeBusinessUnitId}
+        hrPayrollSettingsRows={normalizedHrPayrollSettingsRows}
       />
     </HrPayrollShell>
   );

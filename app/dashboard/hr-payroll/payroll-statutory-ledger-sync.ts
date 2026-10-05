@@ -50,6 +50,7 @@ type PayrollStatutorySourceRow = {
   employer_ssnit?: number | null;
   tier2?: number | null;
   paye_tax?: number | null;
+  overtime_tax?: number | null;
 };
 
 type PayrollStatutoryPeriod = {
@@ -116,7 +117,8 @@ type DesiredLeg = {
 function buildDesiredLegs(
   rows: PayrollStatutorySourceRow[],
 ): DesiredLeg[] {
-  const paye = sumField(rows, "paye_tax");
+  const paye =
+    sumField(rows, "paye_tax") + sumField(rows, "overtime_tax");
   const employeeSsnit = sumField(rows, "employee_ssnit");
   const employerTier1 = sumField(rows, "employer_ssnit");
   const tier2 = sumField(rows, "tier2");

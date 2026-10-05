@@ -425,7 +425,12 @@ async function testCaantaResolvesSameAsDavors(admin) {
 
 function testLockGuardInMemory() {
   console.log("\n=== Lock guard: in-memory missing global config ===");
-  const emptyConfigs = { ssnitRows: [], casualRows: [], payeBands: [] };
+  const emptyConfigs = {
+    ssnitRows: [],
+    casualRows: [],
+    payeBands: [],
+    overtimeRows: [],
+  };
   const block = validateStatutoryPayrollBeforeLock({
     taxConfigs: emptyConfigs,
     periodYear: 2026,

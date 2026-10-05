@@ -15,7 +15,7 @@ import {
   calculatePayrollRow,
   countAbsencesForStaff,
   resolvePayrollPolicyCompensation,
-  sumOvertimeForEmployee,
+  sumOvertimeForEmployeeInPeriod,
   type PayrollAttendanceSource,
   type PayrollCompensationPolicyConfig,
   type PayrollEmployeeSource,
@@ -23,6 +23,10 @@ import {
   type PayrollProcessingRow,
   type PayrollTaxConfigs,
 } from "../hr-payroll/payroll-processing-utils";
+import {
+  resolvePayrollWelfareConfigForEmployee,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
 import {
   formatPeriodLabel,
   getPeriodEndDate,
@@ -42,6 +46,9 @@ export type HrReportEmployee = HrEmployee & {
   housing_allowance?: number | null;
   transport_allowance?: number | null;
   other_allowances?: number | null;
+  welfare_deduction_rate?: number | null;
+  business_unit_id?: string | null;
+  contract_project?: string | null;
 };
 
 /** Batch inputs for open-period live recalculation (display-only). */
@@ -51,6 +58,7 @@ export type PayrollSummaryLiveContext = {
   loans: LoanRegisterEntry[];
   taxConfigs: PayrollTaxConfigs;
   compensationPolicyConfig: PayrollCompensationPolicyConfig;
+  hrPayrollSettingsRows: HrPayrollSettingsRow[];
 };
 
 export type PayrollSummaryRow = {
@@ -219,6 +227,8 @@ function toPayrollEmployeeSource(
     housing_allowance: employee.housing_allowance ?? null,
     transport_allowance: employee.transport_allowance ?? null,
     other_allowances: employee.other_allowances ?? null,
+    welfare_deduction_rate: employee.welfare_deduction_rate ?? null,
+    business_unit_id: employee.business_unit_id ?? null,
     department: employee.department ?? null,
     contract_project: employee.contract_project,
   };
@@ -270,11 +280,10 @@ function summaryRowFromLivePayroll(
         period.year,
         period.month,
       ),
-      overtimeAmount: sumOvertimeForEmployee(
+      overtimeAmount: sumOvertimeForEmployeeInPeriod(
         liveContext.overtime,
         source.employee_id,
-        period.year,
-        period.month,
+        period,
       ),
       loanRepayment: calculateLoanRepaymentForEmployee(
         liveContext.loans,
@@ -283,6 +292,10 @@ function summaryRowFromLivePayroll(
     },
     buildManualInputsFromRow(row, period.totalWorkingDays),
     policy,
+    resolvePayrollWelfareConfigForEmployee(
+      source.business_unit_id,
+      liveContext.hrPayrollSettingsRows,
+    ),
   );
 
   return {

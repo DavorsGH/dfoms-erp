@@ -480,6 +480,14 @@ export default function Payslip({
         label: "PAYE Tax",
         amount: Number(payrollRow.paye_tax) || 0,
       },
+      ...(Number(payrollRow.overtime_tax) > 0
+        ? [
+            {
+              label: "Overtime Tax",
+              amount: Number(payrollRow.overtime_tax) || 0,
+            },
+          ]
+        : []),
       {
         label: "Loan Repayment",
         amount: Number(payrollRow.loan_repayment) || 0,

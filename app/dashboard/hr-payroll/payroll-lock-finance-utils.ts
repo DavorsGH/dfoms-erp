@@ -93,6 +93,7 @@ export type PayrollLockFinanceSourceRow = Pick<
   | "employer_ssnit"
   | "tier2"
   | "paye_tax"
+  | "overtime_tax"
 >;
 
 type LoanRegisterBalanceRow = {
@@ -178,7 +179,10 @@ export function calculatePayrollLockFinanceTotals(
     totalSsnitRemittance: roundCurrency(
       totalEmployeeSsnit + totalEmployerSsnit + totalTier2,
     ),
-    totalPayeTax: sumNumericField(rows, "paye_tax"),
+    totalPayeTax: roundCurrency(
+      sumNumericField(rows, "paye_tax") +
+        sumNumericField(rows, "overtime_tax"),
+    ),
   };
 }
 

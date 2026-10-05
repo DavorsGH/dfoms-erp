@@ -12,7 +12,15 @@ import {
   type CompensationPolicyRow,
   type ResolvedAllowanceLine,
 } from "../administration/compensation-policy-utils";
+import type { PayrollWelfareConfig } from "@/utils/hr-payroll-settings-types";
 import { filterEmployeesForPayrollPeriod } from "./employee-utils";
+import {
+  calculateCasualOvertimeTax,
+  calculateJuniorOvertimeTax,
+  isGraOvertimeTaxRuleActive,
+  qualifiesAsJuniorEmployee,
+  type GraOvertimeTaxConfig,
+} from "./gra-overtime-tax-utils";
 import { calculateLoanOutstanding } from "./hr-register-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 import {
@@ -48,6 +56,7 @@ export type PayrollProcessingRow = {
   employer_ssnit: number | null;
   tier2: number | null;
   paye_tax: number | null;
+  overtime_tax: number | null;
   total_deductions: number | null;
   net_pay: number | null;
 };
@@ -78,6 +87,7 @@ export type PayrollEmployeeSource = {
    * into payroll_processing.welfare_deduction — not a manual Adjust field.
    */
   welfare_deduction_rate?: number | null;
+  business_unit_id?: string | null;
   /** Optional — loaded on Payroll Processing for display-only Payment Method. */
   payment_method?: "cash" | "momo" | "bank" | null;
   bank_name?: string | null;
@@ -200,6 +210,7 @@ export type PayrollOvertimeSource = {
   employee_id: string;
   date: string;
   overtime_amount: number | null;
+  approved_by?: string | null;
 };
 
 export type PayrollSsnitConfig = {
@@ -227,6 +238,7 @@ export type PayrollTaxConfigs = {
   ssnitRows: PayrollSsnitConfig[];
   casualRows: PayrollCasualTaxConfig[];
   payeBands: PayrollPayeBand[];
+  overtimeRows: GraOvertimeTaxConfig[];
 };
 
 export type PayrollManualInputs = {
@@ -255,6 +267,7 @@ export type PayrollCalculatedRow = PayrollManualInputs & {
   employer_ssnit: number;
   tier2: number;
   paye_tax: number;
+  overtime_tax: number;
   total_deductions: number;
   net_pay: number;
 };
@@ -489,14 +502,41 @@ export function sumOvertimeForEmployee(
   employeeId: string,
   year: number,
   month: number,
+  options?: { requireApproved?: boolean },
 ): number {
   return overtimeRows
-    .filter(
-      (row) =>
-        row.employee_id === employeeId &&
-        isDateInPayrollMonth(row.date, year, month),
-    )
+    .filter((row) => {
+      if (row.employee_id !== employeeId) {
+        return false;
+      }
+      if (!isDateInPayrollMonth(row.date, year, month)) {
+        return false;
+      }
+      if (
+        options?.requireApproved &&
+        !String(row.approved_by ?? "").trim()
+      ) {
+        return false;
+      }
+      return true;
+    })
     .reduce((sum, row) => sum + (Number(row.overtime_amount) || 0), 0);
+}
+
+export function sumOvertimeForEmployeeInPeriod(
+  overtimeRows: PayrollOvertimeSource[],
+  employeeId: string,
+  period: SelectedPayrollPeriod,
+): number {
+  const asOf = getPeriodEndDate(period.year, period.month);
+  const requireApproved = isGraOvertimeTaxRuleActive(asOf);
+  return sumOvertimeForEmployee(
+    overtimeRows,
+    employeeId,
+    period.year,
+    period.month,
+    { requireApproved },
+  );
 }
 
 export function calculateLoanRepaymentForEmployee(
@@ -539,18 +579,38 @@ export function calculateLoanRepaymentForEmployee(
     }, 0);
 }
 
+export type WelfareDeductionCalculationOptions = {
+  overtimeAmount?: number;
+  asOfDate?: string;
+  includeOvertimeInWelfare?: boolean;
+};
+
 /**
- * Auto welfare amount from standing employee rate × period gross.
- * Rate is percent points (2.5 → 2.5% of gross). Same ROUND(..., 2) as other money.
+ * Auto welfare from employee rate × welfare base.
+ * Base is period gross (basic + allowances + overtime + bonuses + arrears) unless
+ * include_overtime_in_welfare is off for periods on/after 2026-10-01 — then OT is excluded.
+ * Rate is percent points (2.5 → 2.5% of base). Same ROUND(..., 2) as other money.
  */
 export function calculateWelfareDeductionForEmployee(
   employee: Pick<PayrollEmployeeSource, "welfare_deduction_rate">,
   grossPay: number,
+  options?: WelfareDeductionCalculationOptions,
 ): number {
   const rate = Math.max(0, Number(employee.welfare_deduction_rate) || 0);
   const gross = Math.max(0, Number(grossPay) || 0);
-  return roundMoney((gross * rate) / 100);
+  let welfareBase = gross;
+
+  const asOf = String(options?.asOfDate ?? "").slice(0, 10);
+  const includeOvertime = options?.includeOvertimeInWelfare !== false;
+  if (isGraOvertimeTaxRuleActive(asOf) && !includeOvertime) {
+    const overtime = Math.max(0, Number(options?.overtimeAmount) || 0);
+    welfareBase = Math.max(gross - overtime, 0);
+  }
+
+  return roundMoney((welfareBase * rate) / 100);
 }
+
+export type { PayrollWelfareConfig };
 
 export function calculatePayrollRow(
   employee: PayrollEmployeeSource,
@@ -563,6 +623,7 @@ export function calculatePayrollRow(
   },
   manual: Partial<PayrollManualInputs> = {},
   policyCompensation: PayrollPolicyCompensation | null = null,
+  welfareConfig: PayrollWelfareConfig | null = null,
 ): PayrollCalculatedRow {
   const basicSalary = policyCompensation
     ? Number(policyCompensation.basic_salary) || 0
@@ -609,12 +670,18 @@ export function calculatePayrollRow(
       arrears,
   );
 
+  const asOf = getPeriodEndDate(period.year, period.month);
+
   const welfareDeduction = calculateWelfareDeductionForEmployee(
     employee,
     grossPay,
+    {
+      overtimeAmount,
+      asOfDate: asOf,
+      includeOvertimeInWelfare:
+        welfareConfig?.includeOvertimeInWelfare !== false,
+    },
   );
-
-  const asOf = getPeriodEndDate(period.year, period.month);
   const employmentType = employee.employment_type?.trim() ?? "";
   const proratedBasicPay = periodPayBasic;
 
@@ -622,6 +689,16 @@ export function calculatePayrollRow(
   let employerSsnit = 0;
   let tier2 = 0;
   let payeTax = 0;
+  let overtimeTax = 0;
+
+  const graOvertimeActive = isGraOvertimeTaxRuleActive(asOf);
+  const overtimeConfig = graOvertimeActive
+    ? pickLatestByEffectiveDate(taxConfigs.overtimeRows ?? [], asOf)
+    : null;
+
+  const regularEmolumentsExcludingOvertime = roundMoney(
+    periodPayBasic + allowanceTotal + bonuses + arrears,
+  );
 
   if (employmentType === "Casual") {
     const casualConfig = pickLatestByEffectiveDate(taxConfigs.casualRows, asOf);
@@ -629,6 +706,12 @@ export function calculatePayrollRow(
       proratedBasicPay *
         normalizeRate(Number(casualConfig?.flat_rate) || 0),
     );
+    if (graOvertimeActive && overtimeAmount > 0) {
+      overtimeTax = calculateCasualOvertimeTax(
+        overtimeAmount,
+        Number(casualConfig?.flat_rate) || 0,
+      );
+    }
   } else if (
     employmentType === "Full-Time" ||
     employmentType === "Part-Time" ||
@@ -652,7 +735,25 @@ export function calculatePayrollRow(
         normalizeRate(Number(ssnitConfig?.employer_tier2_rate) || 0),
     );
 
-    const taxableIncome = Math.max(grossPay - employeeSsnit, 0);
+    let payeTaxableGross = grossPay;
+    if (
+      graOvertimeActive &&
+      overtimeConfig &&
+      overtimeAmount > 0 &&
+      qualifiesAsJuniorEmployee(
+        regularEmolumentsExcludingOvertime,
+        overtimeConfig.junior_annual_income_threshold,
+      )
+    ) {
+      overtimeTax = calculateJuniorOvertimeTax({
+        overtimeAmount,
+        monthlyBasicSalary: basicSalary,
+        config: overtimeConfig,
+      });
+      payeTaxableGross = roundMoney(grossPay - overtimeAmount);
+    }
+
+    const taxableIncome = Math.max(payeTaxableGross - employeeSsnit, 0);
     const payeBands = pickPayeBandsForDate(taxConfigs.payeBands, asOf);
     payeTax = calculatePayeTax(taxableIncome, payeBands);
   }
@@ -660,6 +761,7 @@ export function calculatePayrollRow(
   const totalDeductions = roundMoney(
     employeeSsnit +
       payeTax +
+      overtimeTax +
       loanRepayment +
       salaryAdvance +
       welfareDeduction +
@@ -692,6 +794,7 @@ export function calculatePayrollRow(
     employer_ssnit: employerSsnit,
     tier2,
     paye_tax: payeTax,
+    overtime_tax: overtimeTax,
     total_deductions: totalDeductions,
     net_pay: netPay,
   };
@@ -727,6 +830,7 @@ export function processingRowToHistoryPayload(
     employer_ssnit: row.employer_ssnit,
     tier2: row.tier2,
     paye_tax: row.paye_tax,
+    overtime_tax: row.overtime_tax,
     loan_repayment: row.loan_repayment,
     salary_advance: row.salary_advance,
     welfare_deduction: row.welfare_deduction,
@@ -782,6 +886,7 @@ export function historyRowToProcessingPayload(
     employer_ssnit: row.employer_ssnit,
     tier2: row.tier2,
     paye_tax: row.paye_tax,
+    overtime_tax: row.overtime_tax,
     total_deductions: row.total_deductions,
     net_pay: row.net_pay,
   };
@@ -818,7 +923,10 @@ export function buildProcessingPayload(
     employer_ssnit: calculated.employer_ssnit,
     tier2: calculated.tier2,
     paye_tax: calculated.paye_tax,
+    overtime_tax: calculated.overtime_tax,
     total_deductions: calculated.total_deductions,
     net_pay: calculated.net_pay,
   };
 }
+
+export { mapGraOvertimeTaxConfigRows } from "./gra-overtime-tax-utils";

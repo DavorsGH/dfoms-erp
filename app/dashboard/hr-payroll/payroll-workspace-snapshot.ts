@@ -19,7 +19,7 @@ import {
   calculatePayrollRow,
   countAbsencesForStaff,
   resolvePayrollPolicyCompensation,
-  sumOvertimeForEmployee,
+  sumOvertimeForEmployeeInPeriod,
   type PayrollAttendanceSource,
   type PayrollCompensationPolicyConfig,
   type PayrollEmployeeSource,
@@ -30,6 +30,12 @@ import {
 } from "./payroll-processing-utils";
 import { fetchStatutoryPayrollTaxConfigs } from "./statutory-payroll-config-utils";
 import {
+  HR_PAYROLL_SETTINGS_SELECT,
+  normalizeHrPayrollSettingsRow,
+  resolvePayrollWelfareConfigForEmployee,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
+import {
   getPeriodEndDate,
   isMonthClosed,
   resolveSelectedPeriod,
@@ -38,7 +44,7 @@ import {
 } from "./payroll-period-utils";
 
 const PAYROLL_EMPLOYEE_SELECT =
-  "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
+  "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, business_unit_id, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
 
 export type PayrollWorkspaceSnapshotAllowanceLine = {
   allowance_code: string;
@@ -67,6 +73,7 @@ export type PayrollWorkspaceSnapshotEmployee = {
   tier2: number | null;
   employer_ssnit_cost: number | null;
   paye_tax: number | null;
+  overtime_tax: number | null;
   loan_repayment: number | null;
   salary_advance: number | null;
   welfare_deduction: number | null;
@@ -175,6 +182,7 @@ function snapshotEmployeeFromCalculated(
     tier2: num(calculated.tier2),
     employer_ssnit_cost: employerSsnit + tier2,
     paye_tax: num(calculated.paye_tax),
+    overtime_tax: num(calculated.overtime_tax),
     loan_repayment: num(calculated.loan_repayment),
     salary_advance: num(calculated.salary_advance),
     welfare_deduction: num(calculated.welfare_deduction),
@@ -219,6 +227,7 @@ function snapshotEmployeeFromHistoryRow(
     tier2: num(row.tier2),
     employer_ssnit_cost: employerSsnit + tier2,
     paye_tax: num(row.paye_tax),
+    overtime_tax: num(row.overtime_tax),
     loan_repayment: num(row.loan_repayment),
     salary_advance: num(row.salary_advance),
     welfare_deduction: num(row.welfare_deduction),
@@ -287,6 +296,7 @@ export async function buildPayrollWorkspaceSnapshot(input: {
     { data: compensationPolicies },
     statutoryTaxBundle,
     monthEndClose,
+    { data: hrPayrollSettingsData, error: hrPayrollSettingsError },
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase
@@ -303,7 +313,7 @@ export async function buildPayrollWorkspaceSnapshot(input: {
       .lte("date", attendanceEnd),
     supabase
       .from("overtime_register")
-      .select("employee_id, date, overtime_amount")
+      .select("employee_id, date, overtime_amount, approved_by")
       .gte("date", attendanceStart)
       .lte("date", attendanceEnd),
     supabase
@@ -326,7 +336,17 @@ export async function buildPayrollWorkspaceSnapshot(input: {
       .eq("tenant_id", tenantId),
     fetchStatutoryPayrollTaxConfigs(admin),
     fetchMonthEndCloseForScope(supabase, period.payrollMonth, buScope),
+    admin
+      .from("hr_payroll_settings")
+      .select(HR_PAYROLL_SETTINGS_SELECT)
+      .eq("tenant_id", tenantId),
   ]);
+
+  const hrPayrollSettingsRows = (
+    (hrPayrollSettingsData as HrPayrollSettingsRow[] | null) ?? []
+  )
+    .map((row) => normalizeHrPayrollSettingsRow(row))
+    .filter((row): row is HrPayrollSettingsRow => row !== null);
 
   const fetchError =
     employeesError?.message ??
@@ -334,6 +354,7 @@ export async function buildPayrollWorkspaceSnapshot(input: {
     overtimeError?.message ??
     loansError?.message ??
     statutoryTaxBundle.error ??
+    hrPayrollSettingsError?.message ??
     null;
 
   const employees = (employeesData as PayrollEmployeeSource[] | null) ?? [];
@@ -446,11 +467,10 @@ export async function buildPayrollWorkspaceSnapshot(input: {
       period.year,
       period.month,
     );
-    const overtimeAmount = sumOvertimeForEmployee(
+    const overtimeAmount = sumOvertimeForEmployeeInPeriod(
       overtime,
       employee.employee_id,
-      period.year,
-      period.month,
+      period,
     );
     const loanRepayment = calculateLoanRepaymentForEmployee(
       loans,
@@ -469,6 +489,10 @@ export async function buildPayrollWorkspaceSnapshot(input: {
       { absenceCount, overtimeAmount, loanRepayment },
       buildManualInputsFromRow(row, period.totalWorkingDays),
       policy,
+      resolvePayrollWelfareConfigForEmployee(
+        employee.business_unit_id,
+        hrPayrollSettingsRows,
+      ),
     );
 
     employeesOut[row.employee_id] = snapshotEmployeeFromCalculated(

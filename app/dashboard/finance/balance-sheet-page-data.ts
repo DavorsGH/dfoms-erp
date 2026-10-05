@@ -89,7 +89,7 @@ import type { ScopedEmployeeIdsResult } from "../hr-payroll/payroll-bu-scope-uti
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
-  "id, payroll_month, status, employee_id, basic_salary, housing_allowance, transport_allowance, other_allowances, department, project_contract, daily_rate, days_to_pay, absence_deduction, overtime_amount, loan_repayment, bonuses, arrears, net_only_adjustment, salary_advance, welfare_deduction, other_deductions, gross_pay, employee_ssnit, employer_ssnit, tier2, paye_tax, total_deductions, net_pay";
+  "id, payroll_month, status, employee_id, basic_salary, housing_allowance, transport_allowance, other_allowances, department, project_contract, daily_rate, days_to_pay, absence_deduction, overtime_amount, loan_repayment, bonuses, arrears, net_only_adjustment, salary_advance, welfare_deduction, other_deductions, gross_pay, employee_ssnit, employer_ssnit, tier2, paye_tax, overtime_tax, total_deductions, net_pay";
 
 export const MONTH_END_CLOSE_SELECT =
   "month, employees_recorded, total_net_pay, lock_status, notes";
@@ -838,12 +838,14 @@ export async function fetchBalanceSheetPageData(
           ssnitRows: [],
           casualRows: [],
           payeBands: [],
+          overtimeRows: [],
         },
         compensationPolicyConfig: {
           salaryRates: [],
           allowanceTypes: [],
           compensationPolicies: [],
         },
+        hrPayrollSettingsRows: [],
       },
       error: null,
     };

@@ -15,7 +15,7 @@ import {
   calculatePayrollRow,
   countAbsencesForStaff,
   resolvePayrollPolicyCompensation,
-  sumOvertimeForEmployee,
+  sumOvertimeForEmployeeInPeriod,
   type PayrollAttendanceSource,
   type PayrollCompensationPolicyConfig,
   type PayrollEmployeeSource,
@@ -24,6 +24,12 @@ import {
   type PayrollTaxConfigs,
 } from "./payroll-processing-utils";
 import { fetchStatutoryPayrollTaxConfigs } from "./statutory-payroll-config-utils";
+import {
+  HR_PAYROLL_SETTINGS_SELECT,
+  normalizeHrPayrollSettingsRow,
+  resolvePayrollWelfareConfigForEmployee,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
 import {
   getPeriodEndDate,
   resolveSelectedPeriod,
@@ -51,6 +57,7 @@ export type PayrollLiveRecalcEmployee = {
   transport_allowance?: number | null;
   other_allowances?: number | null;
   welfare_deduction_rate?: number | null;
+  business_unit_id?: string | null;
 };
 
 export type PayrollLiveRecalcContext = {
@@ -59,10 +66,11 @@ export type PayrollLiveRecalcContext = {
   loans: LoanRegisterEntry[];
   taxConfigs: PayrollTaxConfigs;
   compensationPolicyConfig: PayrollCompensationPolicyConfig;
+  hrPayrollSettingsRows: HrPayrollSettingsRow[];
 };
 
 export const PAYROLL_LIVE_RECALC_EMPLOYEE_SELECT =
-  "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, department, contract_project, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate";
+  "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, department, contract_project, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, business_unit_id";
 
 function toPayrollEmployeeSource(
   employee: PayrollLiveRecalcEmployee,
@@ -82,6 +90,7 @@ function toPayrollEmployeeSource(
     transport_allowance: employee.transport_allowance ?? null,
     other_allowances: employee.other_allowances ?? null,
     welfare_deduction_rate: employee.welfare_deduction_rate ?? null,
+    business_unit_id: employee.business_unit_id ?? null,
     department: employee.department ?? null,
     contract_project: employee.contract_project,
   };
@@ -132,6 +141,7 @@ export async function fetchPayrollLiveRecalcBundle(
     { data: allowanceTypes, error: allowanceTypesError },
     { data: compensationPolicies, error: compensationPoliciesError },
     statutoryTaxBundle,
+    hrPayrollSettingsResult,
   ] = await Promise.all([
     employeesQuery.order("staff_id", { ascending: true }),
     withOptionalTenant(
@@ -143,7 +153,7 @@ export async function fetchPayrollLiveRecalcBundle(
     withOptionalTenant(
       supabase
         .from("overtime_register")
-        .select("employee_id, date, overtime_amount"),
+        .select("employee_id, date, overtime_amount, approved_by"),
       tenantId,
     ),
     withOptionalTenant(supabase.from("loan_register").select("*"), tenantId),
@@ -162,7 +172,19 @@ export async function fetchPayrollLiveRecalcBundle(
       tenantId,
     ),
     fetchStatutoryPayrollTaxConfigs(supabase),
+    withOptionalTenant(
+      supabase
+        .from("hr_payroll_settings")
+        .select(HR_PAYROLL_SETTINGS_SELECT),
+      tenantId,
+    ),
   ]);
+
+  const hrPayrollSettingsRows = (
+    (hrPayrollSettingsResult.data as HrPayrollSettingsRow[] | null) ?? []
+  )
+    .map((row) => normalizeHrPayrollSettingsRow(row))
+    .filter((row): row is HrPayrollSettingsRow => row !== null);
 
   return {
     employees: (employees as PayrollLiveRecalcEmployee[] | null) ?? [],
@@ -176,6 +198,7 @@ export async function fetchPayrollLiveRecalcBundle(
         allowanceTypes: allowanceTypes ?? [],
         compensationPolicies: compensationPolicies ?? [],
       },
+      hrPayrollSettingsRows,
     },
     error:
       employeesError?.message ??
@@ -186,6 +209,7 @@ export async function fetchPayrollLiveRecalcBundle(
       allowanceTypesError?.message ??
       compensationPoliciesError?.message ??
       statutoryTaxBundle.error ??
+      hrPayrollSettingsResult.error?.message ??
       null,
   };
 }
@@ -256,11 +280,10 @@ export function buildLiveOpenMonthPayrollWagesEntries(
           period.year,
           period.month,
         ),
-        overtimeAmount: sumOvertimeForEmployee(
+        overtimeAmount: sumOvertimeForEmployeeInPeriod(
           liveContext.overtime,
           source.employee_id,
-          period.year,
-          period.month,
+          period,
         ),
         loanRepayment: calculateLoanRepaymentForEmployee(
           liveContext.loans,
@@ -269,6 +292,10 @@ export function buildLiveOpenMonthPayrollWagesEntries(
       },
       manuals,
       policy,
+      resolvePayrollWelfareConfigForEmployee(
+        source.business_unit_id,
+        liveContext.hrPayrollSettingsRows,
+      ),
     );
 
     entries.push({

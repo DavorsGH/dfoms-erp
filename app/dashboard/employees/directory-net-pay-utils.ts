@@ -6,7 +6,7 @@ import {
   calculatePayrollRow,
   countAbsencesForStaff,
   resolvePayrollPolicyCompensation,
-  sumOvertimeForEmployee,
+  sumOvertimeForEmployeeInPeriod,
   type PayrollAttendanceSource,
   type PayrollCompensationPolicyConfig,
   type PayrollEmployeeSource,
@@ -16,6 +16,12 @@ import {
 } from "../hr-payroll/payroll-processing-utils";
 import type { LoanRegisterEntry } from "../hr-payroll/loan-register-utils";
 import { fetchStatutoryPayrollTaxConfigs } from "../hr-payroll/statutory-payroll-config-utils";
+import {
+  HR_PAYROLL_SETTINGS_SELECT,
+  normalizeHrPayrollSettingsRow,
+  resolvePayrollWelfareConfigForEmployee,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
 import {
   formatPeriodLabel,
   getPeriodEndDate,
@@ -59,6 +65,7 @@ function toPayrollEmployeeSource(
     transport_allowance: employee.transport_allowance,
     other_allowances: employee.other_allowances,
     welfare_deduction_rate: employee.welfare_deduction_rate,
+    business_unit_id: employee.business_unit_id,
     department: employee.department,
     contract_project: employee.contract_project,
   };
@@ -86,6 +93,7 @@ export function buildDirectoryNetPayByEmployee(
   loans: LoanRegisterEntry[],
   taxConfigs: PayrollTaxConfigs,
   compensationPolicyConfig: PayrollCompensationPolicyConfig,
+  hrPayrollSettingsRows: HrPayrollSettingsRow[],
 ): Omit<DirectoryNetPayContext, "period" | "periodLabel"> {
   const processingByEmployee = new Map(
     processingRows.map((row) => [row.employee_id, row]),
@@ -109,11 +117,10 @@ export function buildDirectoryNetPayByEmployee(
         period.year,
         period.month,
       ),
-      overtimeAmount: sumOvertimeForEmployee(
+      overtimeAmount: sumOvertimeForEmployeeInPeriod(
         overtime,
         source.employee_id,
-        period.year,
-        period.month,
+        period,
       ),
       loanRepayment: calculateLoanRepaymentForEmployee(
         loans,
@@ -133,6 +140,10 @@ export function buildDirectoryNetPayByEmployee(
         sources,
         buildManualInputsFromRow(existing, period.totalWorkingDays),
         policy,
+        resolvePayrollWelfareConfigForEmployee(
+          source.business_unit_id,
+          hrPayrollSettingsRows,
+        ),
       );
       netPayByEmployeeId[employee.employee_id] = calculated.net_pay;
       fromProcessingRow += 1;
@@ -155,6 +166,10 @@ export function buildDirectoryNetPayByEmployee(
         other_deductions: 0,
       },
       policy,
+      resolvePayrollWelfareConfigForEmployee(
+        source.business_unit_id,
+        hrPayrollSettingsRows,
+      ),
     );
     netPayByEmployeeId[employee.employee_id] = calculated.net_pay;
     fromFreshCalculation += 1;
@@ -203,7 +218,7 @@ export async function loadDirectoryNetPayContext(
     .lte("date", periodEnd);
   let overtimeQuery = supabase
     .from("overtime_register")
-    .select("employee_id, date, overtime_amount")
+    .select("employee_id, date, overtime_amount, approved_by")
     .gte("date", periodStart)
     .lte("date", periodEnd);
   let loansQuery = supabase.from("loan_register").select("*");
@@ -239,6 +254,7 @@ export async function loadDirectoryNetPayContext(
     { data: allowanceTypes },
     { data: compensationPolicies },
     statutoryTaxBundle,
+    hrPayrollSettingsResult,
   ] = await Promise.all([
     processingQuery,
     attendanceQuery,
@@ -248,9 +264,20 @@ export async function loadDirectoryNetPayContext(
     allowanceTypesQuery,
     compensationPoliciesQuery,
     fetchStatutoryPayrollTaxConfigs(supabase),
+    tenantId
+      ? supabase
+          .from("hr_payroll_settings")
+          .select(HR_PAYROLL_SETTINGS_SELECT)
+          .eq("tenant_id", tenantId)
+      : Promise.resolve({ data: null, error: null }),
   ]);
 
   const taxConfigs = statutoryTaxBundle.taxConfigs;
+  const hrPayrollSettingsRows = (
+    (hrPayrollSettingsResult.data as HrPayrollSettingsRow[] | null) ?? []
+  )
+    .map((row) => normalizeHrPayrollSettingsRow(row))
+    .filter((row): row is HrPayrollSettingsRow => row !== null);
 
   const built = buildDirectoryNetPayByEmployee(
     employees,
@@ -269,6 +296,7 @@ export async function loadDirectoryNetPayContext(
         (compensationPolicies as PayrollCompensationPolicyConfig["compensationPolicies"]) ??
         [],
     },
+    hrPayrollSettingsRows,
   );
 
   return {

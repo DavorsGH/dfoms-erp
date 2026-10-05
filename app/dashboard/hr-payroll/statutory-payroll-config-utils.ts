@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PayeTaxBand } from "../employees/pay-estimate-utils";
+import { isGraOvertimeTaxRuleActive } from "./gra-overtime-tax-utils";
 import {
   mapCasualTaxConfigRows,
+  mapGraOvertimeTaxConfigRows,
   mapPayrollPayeBandRows,
   mapSsnitConfigRows,
   pickLatestByEffectiveDate,
@@ -71,6 +73,12 @@ export function assessStatutoryPayrollConfig(
   ) {
     missing.push("casual worker tax rate");
   }
+  if (
+    isGraOvertimeTaxRuleActive(asOfDate) &&
+    !pickLatestByEffectiveDate(taxConfigs.overtimeRows ?? [], asOfDate)
+  ) {
+    missing.push("overtime tax config");
+  }
 
   if (missing.length === 0) {
     return { ok: true, missing: [], message: null };
@@ -91,6 +99,7 @@ export async function fetchStatutoryPayrollTaxConfigs(
     { data: ssnitRows, error: ssnitError },
     { data: casualRows, error: casualError },
     { data: payeRows, error: payeError },
+    { data: overtimeRows, error: overtimeError },
   ] = await Promise.all([
     supabase
       .from("statutory_ssnit_rate_config")
@@ -110,12 +119,20 @@ export async function fetchStatutoryPayrollTaxConfigs(
       .eq("country_code", countryCode)
       .order("effective_date", { ascending: false })
       .order("band_order", { ascending: true }),
+    supabase
+      .from("statutory_overtime_tax_config")
+      .select(
+        "effective_date, junior_annual_income_threshold, basic_salary_split_ratio, rate_within_split, rate_above_split",
+      )
+      .eq("country_code", countryCode)
+      .order("effective_date", { ascending: false }),
   ]);
 
   const error =
     ssnitError?.message ??
     casualError?.message ??
     payeError?.message ??
+    overtimeError?.message ??
     null;
 
   return {
@@ -128,6 +145,9 @@ export async function fetchStatutoryPayrollTaxConfigs(
       ),
       payeBands: mapPayrollPayeBandRows(
         (payeRows as Record<string, unknown>[] | null) ?? [],
+      ),
+      overtimeRows: mapGraOvertimeTaxConfigRows(
+        (overtimeRows as Record<string, unknown>[] | null) ?? [],
       ),
     },
     error,
@@ -151,6 +171,7 @@ export async function loadStatutoryPayrollConfig(
         ssnitRows: [],
         casualRows: [],
         payeBands: [],
+        overtimeRows: [],
       },
       asOf: asOfDate,
       payeBandsForDate: [],

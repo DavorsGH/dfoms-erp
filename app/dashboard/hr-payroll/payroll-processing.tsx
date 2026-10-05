@@ -46,7 +46,7 @@ import {
   formatPayrollPaymentMethodDisplay,
   formatPayrollMomoNameDisplay,
   resolvePayrollPolicyCompensation,
-  sumOvertimeForEmployee,
+  sumOvertimeForEmployeeInPeriod,
   type PayrollAttendanceSource,
   type PayrollCompensationPolicyConfig,
   type PayrollEmployeeSource,
@@ -77,6 +77,10 @@ import {
   resolveWriteBusinessUnitIdForCreate,
   type AllowedBusinessUnits,
 } from "@/utils/business-unit-access";
+import {
+  resolvePayrollWelfareConfigForEmployee,
+  type HrPayrollSettingsRow,
+} from "@/utils/hr-payroll-settings-types";
 
 type PayrollProcessingProps = {
   tenantId: string | null;
@@ -92,6 +96,7 @@ type PayrollProcessingProps = {
   fetchError: string | null;
   /** Stamp only new payroll_allowance_lines; null = All Businesses. */
   activeBusinessUnitId?: string | null;
+  hrPayrollSettingsRows?: HrPayrollSettingsRow[];
 };
 
 type WorkspaceRow = PayrollProcessingRow & {
@@ -147,6 +152,7 @@ export default function PayrollProcessing({
   canManagePayrollPeriod,
   fetchError,
   activeBusinessUnitId = null,
+  hrPayrollSettingsRows = [],
 }: PayrollProcessingProps) {
   const supabase = createClient();
   const stampBusinessUnit = useStampBusinessUnitId();
@@ -367,11 +373,10 @@ export default function PayrollProcessing({
         period.year,
         period.month,
       ),
-      overtimeAmount: sumOvertimeForEmployee(
+      overtimeAmount: sumOvertimeForEmployeeInPeriod(
         overtimeRows,
         employee.employee_id,
-        period.year,
-        period.month,
+        period,
       ),
       loanRepayment: calculateLoanRepaymentForEmployee(
         loans,
@@ -410,6 +415,10 @@ export default function PayrollProcessing({
         ...manualOverrides,
       },
       policy,
+      resolvePayrollWelfareConfigForEmployee(
+        employee.business_unit_id,
+        hrPayrollSettingsRows,
+      ),
     );
 
     return toWorkspaceRow(
@@ -663,11 +672,10 @@ export default function PayrollProcessing({
           period.year,
           period.month,
         );
-        const overtimeAmount = sumOvertimeForEmployee(
+        const overtimeAmount = sumOvertimeForEmployeeInPeriod(
           overtimeRows,
           employee.employee_id,
-          period.year,
-          period.month,
+          period,
         );
         const loanRepayment = calculateLoanRepaymentForEmployee(
           loans,
@@ -688,6 +696,10 @@ export default function PayrollProcessing({
             other_deductions: 0,
           },
           policyForEmployee(employee, period),
+          resolvePayrollWelfareConfigForEmployee(
+            employee.business_unit_id,
+            hrPayrollSettingsRows,
+          ),
         );
 
         return buildProcessingPayload(period.payrollMonth, employee, calculated);
@@ -822,7 +834,7 @@ export default function PayrollProcessing({
           .lte("date", attendanceEnd),
         supabase
           .from("overtime_register")
-          .select("employee_id, date, overtime_amount")
+          .select("employee_id, date, overtime_amount, approved_by")
           .gte("date", attendanceStart)
           .lte("date", attendanceEnd),
       ]);
@@ -1002,6 +1014,10 @@ export default function PayrollProcessing({
         ...updates,
       },
       policyForEmployee(employee, currentPeriod),
+      resolvePayrollWelfareConfigForEmployee(
+        employee.business_unit_id,
+        hrPayrollSettingsRows,
+      ),
     );
 
     const payload = buildProcessingPayload(
@@ -1365,6 +1381,10 @@ export default function PayrollProcessing({
         getRowSources(employee, currentPeriod),
         buildManualInputsFromRow(row, currentPeriod.totalWorkingDays),
         policyForEmployee(employee, currentPeriod),
+        resolvePayrollWelfareConfigForEmployee(
+          employee.business_unit_id,
+          hrPayrollSettingsRows,
+        ),
       );
 
       scopedRows.push({
@@ -1808,6 +1828,7 @@ export default function PayrollProcessing({
               <th className={scrollableTableThClassName}>Gross Pay</th>
               <th className={scrollableTableThClassName}>Employee SSNIT</th>
               <th className={scrollableTableThClassName}>PAYE Tax</th>
+              <th className={scrollableTableThClassName}>Overtime Tax</th>
               <th className={scrollableTableThClassName}>Loan Repayment</th>
               <th className={scrollableTableThClassName}>Welfare Deduction</th>
               <th className={scrollableTableThClassName}>Total Deductions</th>
@@ -1880,6 +1901,7 @@ export default function PayrollProcessing({
                       {formatGHS(row.employee_ssnit)}
                     </td>
                     <td className="px-4 py-3">{formatGHS(row.paye_tax)}</td>
+                    <td className="px-4 py-3">{formatGHS(row.overtime_tax)}</td>
                     <td className="px-4 py-3">
                       {formatGHS(row.loan_repayment)}
                     </td>

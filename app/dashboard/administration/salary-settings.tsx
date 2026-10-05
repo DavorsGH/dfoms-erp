@@ -26,6 +26,7 @@ import {
 import {
   formatDefaultWelfareDeductionRate,
   HR_PAYROLL_SETTINGS_ON_CONFLICT,
+  INCLUDE_OVERTIME_IN_WELFARE_HELPER_TEXT,
   parseDefaultWelfareDeductionRateInput,
   WELFARE_DEDUCTION_RATE_HELPER_TEXT,
   type HrPayrollSettingsRow,
@@ -83,6 +84,9 @@ export default function SalarySettings({
   const [defaultWelfareSuccess, setDefaultWelfareSuccess] = useState<string | null>(
     null,
   );
+  const [includeOvertimeInWelfare, setIncludeOvertimeInWelfare] = useState(
+    () => initialHrPayrollSettings?.include_overtime_in_welfare !== false,
+  );
 
   const [policyForm, setPolicyForm] = useState(emptyPolicyForm);
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
@@ -101,6 +105,9 @@ export default function SalarySettings({
       formatDefaultWelfareDeductionRate(
         initialHrPayrollSettings?.default_welfare_deduction_rate,
       ),
+    );
+    setIncludeOvertimeInWelfare(
+      initialHrPayrollSettings?.include_overtime_in_welfare !== false,
     );
   }, [
     initialPositions,
@@ -187,6 +194,7 @@ export default function SalarySettings({
         tenant_id: tenantId,
         business_unit_id,
         default_welfare_deduction_rate,
+        include_overtime_in_welfare: includeOvertimeInWelfare,
         updated_at: new Date().toISOString(),
       },
       { onConflict: HR_PAYROLL_SETTINGS_ON_CONFLICT },
@@ -517,6 +525,25 @@ export default function SalarySettings({
             />
           </div>
           <p className="text-xs text-slate-500">{WELFARE_DEDUCTION_RATE_HELPER_TEXT}</p>
+          <label className="flex max-w-xl cursor-pointer items-start gap-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeOvertimeInWelfare}
+              onChange={(event) => {
+                setIncludeOvertimeInWelfare(event.target.checked);
+                setDefaultWelfareSuccess(null);
+              }}
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-[#0f2744] focus:ring-[#0f2744]"
+            />
+            <span>
+              <span className="font-medium text-slate-800">
+                Include overtime in welfare deduction
+              </span>
+              <span className="mt-1 block text-xs text-slate-500">
+                {INCLUDE_OVERTIME_IN_WELFARE_HELPER_TEXT}
+              </span>
+            </span>
+          </label>
           {defaultWelfareSuccess ? (
             <p className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               {defaultWelfareSuccess}
