@@ -137,7 +137,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ business_unit: data as BusinessUnitRow });
+  const businessUnit = data as BusinessUnitRow;
+  const { data: backfillResult, error: backfillError } = await admin.rpc(
+    "backfill_null_business_unit_ids_after_first_unit",
+    {
+      p_tenant_id: auth.tenantId,
+      p_business_unit_id: businessUnit.id,
+    },
+  );
+
+  if (backfillError) {
+    console.error(
+      "[business-units] first-unit NULL business_unit_id backfill failed:",
+      backfillError.message,
+    );
+    return NextResponse.json(
+      {
+        error:
+          "Business unit was created, but tagging existing records to this unit failed. Contact support.",
+        business_unit: businessUnit,
+      },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({
+    business_unit: businessUnit,
+    first_unit_backfill: backfillResult,
+  });
 }
 
 export async function PUT(request: Request) {
