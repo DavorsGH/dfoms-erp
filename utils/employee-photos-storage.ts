@@ -5,9 +5,6 @@ import { EMPLOYEE_PHOTOS_BUCKET } from "@/utils/employee-photo";
 
 export const EMPLOYEE_PHOTOS_SIGNED_URL_TTL_SECONDS = 3600;
 
-/** Set to false after production flat-path migration; then remove `, path` on line 118. */
-export const EMPLOYEE_PHOTOS_ALLOW_LEGACY_FLAT_PATH = true;
-
 export type EmployeePhotoSigningRow = {
   employee_id: string;
   tenant_id: string;
@@ -16,7 +13,6 @@ export type EmployeePhotoSigningRow = {
 
 const PUBLIC_OBJECT_PREFIX = `/storage/v1/object/public/${EMPLOYEE_PHOTOS_BUCKET}/`;
 const SIGNED_OBJECT_PREFIX = `/storage/v1/object/sign/${EMPLOYEE_PHOTOS_BUCKET}/`;
-const TENANT_PATH_PREFIX = /^[0-9a-f-]{36}\//i;
 
 function decodeStoragePath(segment: string): string {
   try {
@@ -69,60 +65,55 @@ export function buildEmployeePhotoStoragePath(
   return `${tenantId.trim()}/${employeeId.trim()}.${extension}`;
 }
 
-async function objectExists(
-  admin: SupabaseClient,
-  path: string,
-): Promise<boolean> {
-  const slash = path.lastIndexOf("/");
-  const folder = slash >= 0 ? path.slice(0, slash) : "";
-  const name = slash >= 0 ? path.slice(slash + 1) : path;
-  const { data, error } = await admin.storage
-    .from(EMPLOYEE_PHOTOS_BUCKET)
-    .list(folder, { search: name, limit: 1 });
-  if (error) {
-    return false;
+function extensionFromEmployeePhotoReference(
+  reference: string,
+): "jpg" | "png" | "webp" {
+  const path = extractEmployeePhotosStoragePath(reference) ?? reference;
+  if (/\.webp$/i.test(path)) {
+    return "webp";
   }
-  return (data ?? []).some((row) => row.name === name);
+  if (/\.png$/i.test(path)) {
+    return "png";
+  }
+  return "jpg";
 }
 
-export async function resolveEmployeePhotoSigningPaths(
-  admin: SupabaseClient,
+/**
+ * Canonical signing path: `{tenant_id}/{employee_id}.{ext}` only.
+ * Uses a tenant-scoped reference when present; otherwise builds from caller ids + extension hint.
+ */
+export function buildEmployeePhotoSigningPath(
   tenantId: string,
-  reference: string,
-  options?: { allowLegacyFlatPath?: boolean },
-): Promise<string[]> {
-  const allowLegacyFlatPath =
-    options?.allowLegacyFlatPath ?? EMPLOYEE_PHOTOS_ALLOW_LEGACY_FLAT_PATH;
-
-  const path = extractEmployeePhotosStoragePath(reference);
-  if (!path) {
-    return [];
+  employeeId: string,
+  photoReference: string,
+): string | null {
+  const reference = photoReference.trim();
+  const tenant = tenantId.trim();
+  const employee = employeeId.trim();
+  if (!reference || !tenant || !employee) {
+    return null;
   }
 
-  const scopedTenantId = tenantIdFromEmployeePhotosStoragePath(path);
-  if (scopedTenantId) {
-    if (scopedTenantId !== tenantId.trim()) {
-      return [];
-    }
-    return [path];
-  }
-
-  const tenantScoped = `${tenantId.trim()}/${path}`;
-  const candidates: string[] = TENANT_PATH_PREFIX.test(path)
-    ? [path]
-    : allowLegacyFlatPath
-      ? [tenantScoped, path]
-      : [tenantScoped];
-  const existing: string[] = [];
-  for (const candidate of candidates) {
-    if (await objectExists(admin, candidate)) {
-      existing.push(candidate);
+  const extracted = extractEmployeePhotosStoragePath(reference);
+  if (extracted) {
+    const pathTenant = tenantIdFromEmployeePhotosStoragePath(extracted);
+    if (pathTenant) {
+      if (pathTenant !== tenant) {
+        return null;
+      }
+      const basename = extracted.slice(pathTenant.length + 1);
+      if (!basename.toLowerCase().startsWith(`${employee.toLowerCase()}.`)) {
+        return null;
+      }
+      return extracted;
     }
   }
-  if (existing.length > 0) {
-    return existing;
-  }
-  return candidates;
+
+  return buildEmployeePhotoStoragePath(
+    tenant,
+    employee,
+    extensionFromEmployeePhotoReference(reference),
+  );
 }
 
 export async function createEmployeePhotosSignedUrlForEmployee(
@@ -135,44 +126,21 @@ export async function createEmployeePhotosSignedUrlForEmployee(
     return null;
   }
 
-  const paths = await resolveEmployeePhotoSigningPaths(
-    admin,
+  const path = buildEmployeePhotoSigningPath(
     row.tenant_id,
+    row.employee_id,
     reference,
   );
-  for (const path of paths) {
-    const { data, error } = await admin.storage
-      .from(EMPLOYEE_PHOTOS_BUCKET)
-      .createSignedUrl(path, expiresIn);
-
-    if (!error && data?.signedUrl) {
-      return data.signedUrl;
-    }
-  }
-
-  return null;
-}
-
-export async function createEmployeePhotosSignedUrl(
-  admin: SupabaseClient,
-  tenantId: string,
-  reference: string,
-  expiresIn = EMPLOYEE_PHOTOS_SIGNED_URL_TTL_SECONDS,
-): Promise<string | null> {
-  const trimmed = reference.trim();
-  if (!trimmed) {
+  if (!path) {
     return null;
   }
 
-  const paths = await resolveEmployeePhotoSigningPaths(admin, tenantId, trimmed);
-  for (const path of paths) {
-    const { data, error } = await admin.storage
-      .from(EMPLOYEE_PHOTOS_BUCKET)
-      .createSignedUrl(path, expiresIn);
+  const { data, error } = await admin.storage
+    .from(EMPLOYEE_PHOTOS_BUCKET)
+    .createSignedUrl(path, expiresIn);
 
-    if (!error && data?.signedUrl) {
-      return data.signedUrl;
-    }
+  if (!error && data?.signedUrl) {
+    return data.signedUrl;
   }
 
   return null;
