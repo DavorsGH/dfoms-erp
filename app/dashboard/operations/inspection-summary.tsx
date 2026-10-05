@@ -268,7 +268,7 @@ export default function InspectionSummary({
   }
 
   async function handleDelete(checklistId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

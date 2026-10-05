@@ -282,7 +282,7 @@ export default function WorkOrders({
   }
 
   async function handleDelete(workOrderNo: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

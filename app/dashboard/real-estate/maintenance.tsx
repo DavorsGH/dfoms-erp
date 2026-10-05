@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
@@ -327,7 +328,7 @@ export default function Maintenance({
           : "Approve this cost on behalf of the landlord? This will deduct the amount from their escrow balance."
         : "Reject this maintenance request? No financial change will be made.";
 
-    if (!window.confirm(confirmMessage)) {
+    if (!(await confirmDialog({ message: confirmMessage }))) {
       return;
     }
 

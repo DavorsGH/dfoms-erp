@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { uploadEmployeePhoto } from "@/utils/employee-photo";
+import { prefetchEmployeePhotoSignedUrls } from "@/utils/employee-photo-signed-url-cache";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import EmployeePhotoAvatar from "../employee-photo-avatar";
 import {
@@ -695,6 +696,16 @@ export default function EmployeesDirectory({
       filterShift,
   );
 
+  useEffect(() => {
+    const photoUrlByEmployeeId = new Map(
+      displayEmployees.map((employee) => [employee.employee_id, employee.photo_url]),
+    );
+    prefetchEmployeePhotoSignedUrls(
+      displayEmployees.map((employee) => employee.employee_id),
+      photoUrlByEmployeeId,
+    );
+  }, [displayEmployees]);
+
   const tableColumnCount = (canViewSalary ? 12 : 9) + 1;
 
   const allVisibleSelected =
@@ -941,11 +952,7 @@ export default function EmployeesDirectory({
     setPhotoUploading(true);
     setError(null);
 
-    const uploadResult = await uploadEmployeePhoto(
-      supabase,
-      form.employee_id,
-      file,
-    );
+    const uploadResult = await uploadEmployeePhoto(form.employee_id, file);
 
     if ("error" in uploadResult) {
       setError(uploadResult.error);
@@ -953,7 +960,7 @@ export default function EmployeesDirectory({
       return;
     }
 
-    const photoUrl = uploadResult.publicUrl;
+    const photoUrl = uploadResult.storagePath;
     setForm((current) => ({ ...current, photo_url: photoUrl }));
 
     if (editingEmployeeId) {
@@ -996,7 +1003,7 @@ export default function EmployeesDirectory({
   }
 
   async function handleDelete(employeeId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 
@@ -1373,6 +1380,7 @@ export default function EmployeesDirectory({
               <div className="flex flex-wrap items-center gap-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <EmployeePhotoAvatar
                   photoUrl={form.photo_url}
+                  employeeId={editingEmployeeId}
                   fullName={form.full_name}
                   size="xl"
                 />
@@ -2206,8 +2214,10 @@ export default function EmployeesDirectory({
                     <td className="px-4 py-3">
                       <EmployeePhotoAvatar
                         photoUrl={employee.photo_url}
+                        employeeId={employee.employee_id}
                         fullName={employee.full_name}
                         size="sm"
+                        useBatchSignedUrls
                       />
                     </td>
                     <td className="px-4 py-3">{employee.staff_id}</td>

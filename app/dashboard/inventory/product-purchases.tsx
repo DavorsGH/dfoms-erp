@@ -215,7 +215,7 @@ export default function ProductPurchases({
     }
 
     if (editingPurchaseId) {
-      if (!confirmProductPurchaseEdit()) {
+      if (!(await confirmProductPurchaseEdit())) {
         setLoading(false);
         return;
       }

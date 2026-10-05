@@ -178,7 +178,7 @@ export default function Customers({
   }
 
   async function handleDelete(clientId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

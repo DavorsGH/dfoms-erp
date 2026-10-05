@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -42,15 +43,16 @@ export default function ApplicationActions({
 
     if (decision === "approve") {
       if (
-        !window.confirm(
-          "Approve this application? The unit will be placed on application hold.",
-        )
+        !(await confirmDialog({
+          message:
+            "Approve this application? The unit will be placed on application hold.",
+        }))
       ) {
         setLoading(false);
         return;
       }
     } else if (decision === "reject") {
-      if (!window.confirm("Reject this application?")) {
+      if (!(await confirmDialog({ message: "Reject this application?" }))) {
         setLoading(false);
         return;
       }

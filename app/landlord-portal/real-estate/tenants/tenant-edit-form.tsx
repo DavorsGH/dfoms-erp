@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LandlordPortalLesseeDetail } from "@/utils/landlord-portal-auth";
@@ -161,7 +162,7 @@ export default function LandlordPortalTenantEditForm({
 
   async function handleRevokePortal() {
     if (!canEdit) return;
-    if (!window.confirm(revokeConfirmMessage(detail.fullName))) {
+    if (!(await confirmDialog({ message: revokeConfirmMessage(detail.fullName) }))) {
       return;
     }
 

@@ -17,6 +17,10 @@ import {
 import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { insertEmployeeInAppNotification } from "@/utils/employee-in-app-notifications";
+import {
+  resolveFirstName,
+  resolveFullDisplayName,
+} from "@/utils/message-person-name";
 import { resolveTenantDisplayName } from "@/utils/tenant-display-name";
 
 export const ANNOUNCEMENT_SEND_BATCH_SIZE = 50;
@@ -108,7 +112,17 @@ export function buildEmployeeVariables(
       vars[key] = String(value);
     }
   }
-  vars.employee_name = employee.full_name?.trim() || employee.staff_id;
+  const fullName = resolveFullDisplayName(
+    employee.full_name,
+    employee.staff_id,
+  );
+  vars.full_name = fullName;
+  vars.first_name = resolveFirstName({
+    fullName,
+    storedFirstName:
+      typeof employee.first_name === "string" ? employee.first_name : null,
+  });
+  vars.employee_name = fullName || employee.staff_id;
   vars.staff_id = employee.staff_id;
   vars.employee_id = employee.employee_id;
   if (employee.email?.trim()) vars.email = employee.email.trim();

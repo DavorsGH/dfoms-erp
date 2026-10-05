@@ -32,7 +32,7 @@ export default async function CampaignsPage() {
     );
   }
 
-  const [campaignsResult, templatesResult] = await Promise.all([
+  const [campaignsResult, templatesResult, customersResult] = await Promise.all([
     supabase
       .from("campaigns")
       .select(CAMPAIGN_SELECT)
@@ -44,6 +44,12 @@ export default async function CampaignsPage() {
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .order("name", { ascending: true }),
+    supabase
+      .from("customers")
+      .select("client_id, client_name, contact_person, phone, email")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .order("client_name", { ascending: true }),
   ]);
 
   const campaigns = (
@@ -53,8 +59,22 @@ export default async function CampaignsPage() {
     (templatesResult.data as MessageTemplateRow[] | null) ?? []
   ).map(normalizeMessageTemplateRow);
 
+  const audienceCustomers =
+    (customersResult.data as
+      | Array<{
+          client_id: string;
+          client_name: string | null;
+          contact_person: string | null;
+          phone: string | null;
+          email: string | null;
+        }>
+      | null) ?? [];
+
   const fetchError =
-    campaignsResult.error?.message ?? templatesResult.error?.message ?? null;
+    campaignsResult.error?.message ??
+    templatesResult.error?.message ??
+    customersResult.error?.message ??
+    null;
 
   return (
     <CrmShell sectionTitle="Email & Promotions">
@@ -63,6 +83,7 @@ export default async function CampaignsPage() {
           tenantId={tenantId}
           initialCampaigns={campaigns}
           activeTemplates={activeTemplates}
+          audienceCustomers={audienceCustomers}
           fetchError={fetchError}
         />
       </EmailPromotionsShell>

@@ -1,15 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadCampaignCustomers } from "@/utils/campaign-audience";
 import {
   normalizeAudienceFilter,
   type CampaignAudienceFilter,
   type CampaignChannel,
+  type CampaignCustomer,
 } from "@/utils/campaigns-types";
 import { sendHubtelSms } from "@/utils/hubtel-sms";
+import {
+  resolveFirstName,
+  resolveFullDisplayName,
+} from "@/utils/message-person-name";
 import {
   escapeHtml,
   substituteTemplatePlaceholders,
   templateBodyToEmailHtml,
 } from "@/utils/message-template-render";
+import { normalizeGhanaPhone } from "@/utils/product-sale-paystack";
 import { sendResendEmail } from "@/utils/resend-email";
 import { tryDebitSmsCredit } from "@/utils/sms-credit";
 import { resolvePublicSiteUrl } from "@/utils/public-site-url";
@@ -30,17 +37,7 @@ export type CampaignRecipientStatus =
   | "skipped_opted_out"
   | "skipped_no_credit";
 
-export type CampaignCustomer = {
-  client_id: string;
-  client_name: string | null;
-  contact_person: string | null;
-  phone: string | null;
-  email: string | null;
-  address: string | null;
-  customer_type: string | null;
-  status: string | null;
-  [key: string]: unknown;
-};
+export type { CampaignCustomer } from "@/utils/campaigns-types";
 
 export type CommPreferenceRow = {
   id: string;
@@ -67,18 +64,35 @@ export type CampaignForSend = {
   id: string;
   tenant_id: string;
   name: string;
-  template_id: string;
+  template_id: string | null;
   channel: CampaignChannel;
+  subject: string | null;
+  body_email: string | null;
+  body_sms: string | null;
   audience_filter: CampaignAudienceFilter;
   status: string;
   total_recipients: number;
 };
 
+export type CampaignMessageContent = {
+  subject: string | null;
+  body_email: string;
+  body_sms: string;
+  source: "template" | "adhoc";
+  templateName: string | null;
+};
+
 export type AudiencePreview = {
   customerCount: number;
   pendingCount: number;
+  eligibleEmailCount: number;
+  eligibleSmsCount: number;
   skippedOptedOutCount: number;
+  skippedOptedOutEmailCount: number;
+  skippedOptedOutSmsCount: number;
   missingContactCount: number;
+  missingEmailCount: number;
+  missingPhoneCount: number;
 };
 
 export type SendBatchResult = {
@@ -112,6 +126,14 @@ export function isChannelOptedIn(
   return pref.sms_opt_in !== false;
 }
 
+export function resolveCustomerSmsPhone(
+  phone: string | null | undefined,
+): string | null {
+  const raw = phone?.trim() ?? "";
+  if (!raw) return null;
+  return normalizeGhanaPhone(raw) ?? null;
+}
+
 export function hasContactForChannel(
   customer: CampaignCustomer,
   channel: RecipientDeliveryChannel,
@@ -119,11 +141,12 @@ export function hasContactForChannel(
   if (channel === "email") {
     return Boolean(customer.email?.trim());
   }
-  return Boolean(customer.phone?.trim());
+  return Boolean(resolveCustomerSmsPhone(customer.phone));
 }
 
 export function buildCustomerVariables(
   customer: CampaignCustomer,
+  businessName: string,
 ): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const [key, value] of Object.entries(customer)) {
@@ -132,10 +155,24 @@ export function buildCustomerVariables(
       vars[key] = String(value);
     }
   }
-  vars.customer_name = customer.client_name?.trim() || customer.client_id;
+  const companyName = customer.client_name?.trim() || "";
+  const fullName = resolveFullDisplayName(
+    customer.contact_person,
+    customer.client_name,
+    customer.client_id,
+  );
+  vars.full_name = fullName;
+  vars.first_name = resolveFirstName({ fullName });
+  vars.company_name = companyName;
+  vars.business_name = businessName.trim();
+  vars.customer_name = companyName || customer.client_id;
+  vars.client_name = companyName;
   vars.customer_id = customer.client_id;
+  vars.client_id = customer.client_id;
   if (customer.email?.trim()) vars.email = customer.email.trim();
-  if (customer.phone?.trim()) vars.phone = customer.phone.trim();
+  const smsPhone = resolveCustomerSmsPhone(customer.phone);
+  if (smsPhone) vars.phone = smsPhone;
+  else if (customer.phone?.trim()) vars.phone = customer.phone.trim();
   if (customer.contact_person?.trim()) {
     vars.contact_person = customer.contact_person.trim();
   }
@@ -162,34 +199,6 @@ export function appendSmsUnsubscribeFooter(body: string, token: string): string 
   const trimmed = body.trimEnd();
   const portalHost = new URL(resolvePublicSiteUrl()).host;
   return `${trimmed} Reply STOP or visit ${portalHost}/unsubscribe/${token} to opt out`;
-}
-
-export async function loadCampaignCustomers(
-  supabase: SupabaseClient,
-  tenantId: string,
-  audience: CampaignAudienceFilter,
-): Promise<CampaignCustomer[]> {
-  // DB stores lowercase status (lead/active/inactive) and coded customer_type
-  // (service_client/digital_subscriber/product_client/all) — never UI display labels.
-  // "all" = every active customer for the tenant (matches countAudienceRecipients).
-  let query = supabase
-    .from("customers")
-    .select(
-      "client_id, client_name, contact_person, phone, email, address, customer_type, status",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("status", "active");
-
-  if (audience.type === "customer_type") {
-    query = query.eq("customer_type", audience.value);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data as CampaignCustomer[] | null) ?? [];
 }
 
 export async function loadCommPreferencesMap(
@@ -231,29 +240,111 @@ export function previewAudienceResolution(options: {
 }): AudiencePreview {
   const channels = deliveryChannelsForCampaign(options.campaignChannel);
   let pendingCount = 0;
+  let eligibleEmailCount = 0;
+  let eligibleSmsCount = 0;
   let skippedOptedOutCount = 0;
+  let skippedOptedOutEmailCount = 0;
+  let skippedOptedOutSmsCount = 0;
   let missingContactCount = 0;
+  let missingEmailCount = 0;
+  let missingPhoneCount = 0;
 
   for (const customer of options.customers) {
     const pref = options.preferences.get(customer.client_id);
     for (const channel of channels) {
       if (!hasContactForChannel(customer, channel)) {
         missingContactCount += 1;
+        if (channel === "email") missingEmailCount += 1;
+        if (channel === "sms") missingPhoneCount += 1;
         continue;
       }
       if (!isChannelOptedIn(pref, channel)) {
         skippedOptedOutCount += 1;
+        if (channel === "email") skippedOptedOutEmailCount += 1;
+        if (channel === "sms") skippedOptedOutSmsCount += 1;
         continue;
       }
       pendingCount += 1;
+      if (channel === "email") eligibleEmailCount += 1;
+      if (channel === "sms") eligibleSmsCount += 1;
     }
   }
 
   return {
     customerCount: options.customers.length,
     pendingCount,
+    eligibleEmailCount,
+    eligibleSmsCount,
     skippedOptedOutCount,
+    skippedOptedOutEmailCount,
+    skippedOptedOutSmsCount,
     missingContactCount,
+    missingEmailCount,
+    missingPhoneCount,
+  };
+}
+
+export async function loadCampaignMessageContent(
+  supabase: SupabaseClient,
+  tenantId: string,
+  campaign: CampaignForSend,
+): Promise<CampaignMessageContent> {
+  if (campaign.template_id) {
+    const { data, error } = await supabase
+      .from("message_templates")
+      .select(
+        "id, name, channel, subject, body_email, body_sms, variables, is_active, tenant_id",
+      )
+      .eq("id", campaign.template_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (!data) {
+      throw Object.assign(
+        new Error("Campaign template not found in this workspace."),
+        { status: 404 },
+      );
+    }
+    if (data.is_active !== true) {
+      throw Object.assign(
+        new Error("Campaign template is inactive and cannot be sent."),
+        { status: 400 },
+      );
+    }
+
+    const bodyEmail = String(data.body_email ?? "").trim();
+    const bodySms = String(data.body_sms ?? "").trim();
+    if (!bodyEmail && !bodySms) {
+      throw Object.assign(new Error("Template has no message body."), {
+        status: 400,
+      });
+    }
+
+    return {
+      subject: data.subject?.trim() || campaign.name,
+      body_email: bodyEmail,
+      body_sms: bodySms,
+      source: "template",
+      templateName: data.name ?? null,
+    };
+  }
+
+  const bodyEmail = (campaign.body_email ?? "").trim();
+  const bodySms = (campaign.body_sms ?? "").trim();
+  if (!bodyEmail && !bodySms) {
+    throw Object.assign(
+      new Error("Campaign has no template and no message body."),
+      { status: 400 },
+    );
+  }
+
+  return {
+    subject: (campaign.subject ?? "").trim() || campaign.name,
+    body_email: bodyEmail,
+    body_sms: bodySms,
+    source: "adhoc",
+    templateName: null,
   };
 }
 
@@ -286,19 +377,19 @@ export async function resolveAudienceAndInsertRecipients(
     status: CampaignRecipientStatus;
   }> = [];
 
-  let pendingCount = 0;
-  let skippedOptedOutCount = 0;
-  let missingContactCount = 0;
+  const preview = previewAudienceResolution({
+    customers,
+    preferences,
+    campaignChannel: options.campaignChannel,
+  });
 
   for (const customer of customers) {
     const pref = preferences.get(customer.client_id);
     for (const channel of channels) {
       if (!hasContactForChannel(customer, channel)) {
-        missingContactCount += 1;
         continue;
       }
       if (!isChannelOptedIn(pref, channel)) {
-        skippedOptedOutCount += 1;
         rows.push({
           tenant_id: options.tenantId,
           campaign_id: options.campaignId,
@@ -308,7 +399,6 @@ export async function resolveAudienceAndInsertRecipients(
         });
         continue;
       }
-      pendingCount += 1;
       rows.push({
         tenant_id: options.tenantId,
         campaign_id: options.campaignId,
@@ -330,12 +420,7 @@ export async function resolveAudienceAndInsertRecipients(
     }
   }
 
-  return {
-    customerCount: customers.length,
-    pendingCount,
-    skippedOptedOutCount,
-    missingContactCount,
-  };
+  return preview;
 }
 
 async function ensureCommPreference(
@@ -418,13 +503,13 @@ export async function processCampaignSendBatch(
   options: {
     tenantId: string;
     campaign: CampaignForSend;
-    template: MessageTemplateForSend;
+    content: CampaignMessageContent;
     batchSize?: number;
   },
 ): Promise<SendBatchResult> {
   const batchSize = options.batchSize ?? CAMPAIGN_SEND_BATCH_SIZE;
   const campaign = options.campaign;
-  const template = options.template;
+  const content = options.content;
   const tenantName = await resolveTenantDisplayName(
     supabase,
     options.tenantId,
@@ -501,16 +586,16 @@ export async function processCampaignSendBatch(
         continue;
       }
 
-      const vars = buildCustomerVariables(customer);
+      const vars = buildCustomerVariables(customer, tenantName);
       const now = new Date().toISOString();
 
       if (channel === "email") {
         const subject = substituteTemplatePlaceholders(
-          template.subject ?? "",
+          content.subject ?? campaign.name,
           vars,
         );
         const rawBody = substituteTemplatePlaceholders(
-          template.body_email ?? "",
+          content.body_email,
           vars,
         );
         const { html, text } = appendEmailUnsubscribeFooter(
@@ -561,15 +646,12 @@ export async function processCampaignSendBatch(
       }
 
       // SMS
-      const rawSms = substituteTemplatePlaceholders(
-        template.body_sms ?? "",
-        vars,
-      );
-      const content = appendSmsUnsubscribeFooter(
+      const rawSms = substituteTemplatePlaceholders(content.body_sms, vars);
+      const smsBody = appendSmsUnsubscribeFooter(
         rawSms,
         pref.unsubscribe_token,
       );
-      const to = customer.phone?.trim() ?? "";
+      const to = resolveCustomerSmsPhone(customer.phone) ?? "";
       if (!to) {
         await supabase
           .from("campaign_recipients")
@@ -600,9 +682,11 @@ export async function processCampaignSendBatch(
 
       const result = await sendHubtelSms({
         to,
-        content,
+        content: smsBody,
         tenantName,
         recipientName: vars.customer_name,
+        purpose: "marketing",
+        tenantId: options.tenantId,
       });
       if (result.ok) {
         await supabase
@@ -731,7 +815,7 @@ export async function runCampaignSend(
   const { data: campaignRaw, error: campaignError } = await supabase
     .from("campaigns")
     .select(
-      "id, tenant_id, name, template_id, channel, audience_filter, status, total_recipients",
+      "id, tenant_id, name, template_id, channel, subject, body_email, body_sms, audience_filter, status, total_recipients",
     )
     .eq("id", options.campaignId)
     .eq("tenant_id", options.tenantId)
@@ -754,8 +838,11 @@ export async function runCampaignSend(
     id: campaignRaw.id,
     tenant_id: campaignRaw.tenant_id,
     name: campaignRaw.name,
-    template_id: campaignRaw.template_id,
+    template_id: campaignRaw.template_id ?? null,
     channel: campaignRaw.channel as CampaignChannel,
+    subject: campaignRaw.subject ?? null,
+    body_email: campaignRaw.body_email ?? null,
+    body_sms: campaignRaw.body_sms ?? null,
     audience_filter: audience,
     status: String(campaignRaw.status),
     total_recipients: Number(campaignRaw.total_recipients) || 0,
@@ -770,32 +857,11 @@ export async function runCampaignSend(
     );
   }
 
-  const { data: templateRaw, error: templateError } = await supabase
-    .from("message_templates")
-    .select(
-      "id, name, channel, subject, body_email, body_sms, variables, is_active, tenant_id",
-    )
-    .eq("id", campaign.template_id)
-    .eq("tenant_id", options.tenantId)
-    .maybeSingle();
-
-  if (templateError) throw new Error(templateError.message);
-  if (!templateRaw) {
-    throw Object.assign(new Error("Campaign template not found in this workspace."), {
-      status: 404,
-    });
-  }
-
-  const template: MessageTemplateForSend = {
-    id: templateRaw.id,
-    name: templateRaw.name,
-    channel: String(templateRaw.channel),
-    subject: templateRaw.subject ?? null,
-    body_email: templateRaw.body_email ?? null,
-    body_sms: templateRaw.body_sms ?? null,
-    variables: templateRaw.variables,
-    is_active: templateRaw.is_active === true,
-  };
+  const messageContent = await loadCampaignMessageContent(
+    supabase,
+    options.tenantId,
+    campaign,
+  );
 
   if (campaign.status === "draft") {
     const { count: existingCount, error: existingError } = await supabase
@@ -828,7 +894,7 @@ export async function runCampaignSend(
   return processCampaignSendBatch(supabase, {
     tenantId: options.tenantId,
     campaign,
-    template,
+    content: messageContent,
   });
 }
 

@@ -318,7 +318,7 @@ export default function AttendanceRegister({
 
   async function handleDelete(entry: DisplayAttendanceEntry) {
     if (entry.pendingSync) {
-      if (!confirmDeleteEntry()) return;
+      if (!(await confirmDeleteEntry())) return;
       setDeletingId(entry.id);
       await writeQueue?.discardItem(entry.id);
       setDeletingId(null);
@@ -330,7 +330,7 @@ export default function AttendanceRegister({
       return;
     }
 
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

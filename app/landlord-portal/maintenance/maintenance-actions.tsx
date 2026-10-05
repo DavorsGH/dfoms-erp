@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatMaintenanceMoney } from "@/app/dashboard/real-estate/maintenance-utils";
@@ -44,22 +45,23 @@ export default function LandlordPortalMaintenanceActions({
         return;
       }
       if (
-        !window.confirm(
-          `Approve self-fix cost ${formatMaintenanceMoney(parsed)}? This amount will be credited against the tenant’s next rent.`,
-        )
+        !(await confirmDialog({
+          message: `Approve self-fix cost ${formatMaintenanceMoney(parsed)}? This amount will be credited against the tenant’s next rent.`,
+        }))
       ) {
         setLoading(false);
         return;
       }
     } else if (decision === "approve") {
-      if (!window.confirm("Approve this maintenance request?")) {
+      if (!(await confirmDialog({ message: "Approve this maintenance request?" }))) {
         setLoading(false);
         return;
       }
     } else if (
-      !window.confirm(
-        "Reject this maintenance request? No financial change will be made.",
-      )
+      !(await confirmDialog({
+        message:
+          "Reject this maintenance request? No financial change will be made.",
+      }))
     ) {
       setLoading(false);
       return;

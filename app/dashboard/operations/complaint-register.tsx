@@ -225,7 +225,7 @@ export default function ComplaintRegister({
   }
 
   async function handleDelete(complaintNo: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

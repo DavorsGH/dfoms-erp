@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { formatCantDeleteAlertTitle } from "@/utils/delete-blocked-messaging";
@@ -389,7 +390,7 @@ export default function ExpenseCategorySettings({
       sub.name,
       linkedCategories,
     );
-    if (!window.confirm(message)) {
+    if (!(await confirmDialog({ message }))) {
       showActionError(message);
       return;
     }
@@ -577,9 +578,11 @@ export default function ExpenseCategorySettings({
         return;
       }
       if (
-        !window.confirm(
-          `Delete expense category "${categoryName}"? This cannot be undone.`,
-        )
+        !(await confirmDialog({
+          message: `Delete expense category "${categoryName}"? This cannot be undone.`,
+          tone: "danger",
+          confirmLabel: "Delete",
+        }))
       ) {
         setBusyKey(null);
         return;
@@ -650,7 +653,7 @@ export default function ExpenseCategorySettings({
         sub.name,
         linkedCategories,
       );
-      if (!window.confirm(message)) {
+      if (!(await confirmDialog({ message }))) {
         showActionError(message);
         return;
       }
@@ -661,9 +664,11 @@ export default function ExpenseCategorySettings({
     }
 
     if (
-      !window.confirm(
-        `Delete sub-category "${sub.name}"? This cannot be undone.`,
-      )
+      !(await confirmDialog({
+        message: `Delete sub-category "${sub.name}"? This cannot be undone.`,
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
     ) {
       return;
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -400,7 +401,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
     if (isProductSaleVoided(entry)) {
       return;
     }
-    if (!window.confirm(buildVoidProductSaleConfirmMessage(entry))) {
+    if (!(await confirmDialog({ message: buildVoidProductSaleConfirmMessage(entry) }))) {
       return;
     }
     setVoidingId(entry.id);

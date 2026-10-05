@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useMemo, useRef, useState } from "react";
 import RegisterRowActions, {
   getStripedRowClassName,
@@ -188,9 +189,9 @@ export default function LesseeMessageTemplates({
 
   async function handleDeactivate(row: LesseeMessageTemplateRow) {
     if (
-      !window.confirm(
-        `Deactivate template “${row.name}”? It will be hidden from the list but kept for history.`,
-      )
+      !(await confirmDialog({
+        message: `Deactivate template “${row.name}”? It will be hidden from the list but kept for history.`,
+      }))
     ) {
       return;
     }

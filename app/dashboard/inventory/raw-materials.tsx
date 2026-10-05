@@ -418,7 +418,7 @@ export default function RawMaterials({
     }
 
     const preview = previewData as RawMaterialDeletePreview;
-    if (!confirmCascadeDelete(buildRawMaterialDeleteMessage(preview))) {
+    if (!(await confirmCascadeDelete(buildRawMaterialDeleteMessage(preview)))) {
       setDeletingMaterialId(null);
       return;
     }
@@ -502,7 +502,7 @@ export default function RawMaterials({
   async function handlePurchaseEditSubmit(event: React.FormEvent) {
     event.preventDefault();
 
-    if (!confirmRawMaterialPurchaseEdit()) {
+    if (!(await confirmRawMaterialPurchaseEdit())) {
       return;
     }
 
@@ -605,7 +605,7 @@ export default function RawMaterials({
   }
 
   async function handleDeletePurchase(purchaseId: string) {
-    if (!confirmRawMaterialPurchaseDelete()) {
+    if (!(await confirmRawMaterialPurchaseDelete())) {
       return;
     }
 

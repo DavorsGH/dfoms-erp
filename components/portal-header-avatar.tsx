@@ -64,7 +64,6 @@ export default function PortalHeaderAvatar({
       photoUrl={null}
       fullName={fullName}
       size={employeeSizeMap[size]}
-      square
       className={className}
     />
   );

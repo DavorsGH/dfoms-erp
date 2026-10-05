@@ -193,7 +193,7 @@ export default function EquipmentRegister({
   }
 
   async function handleDelete(equipmentId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

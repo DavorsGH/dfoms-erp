@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { formatCantDeleteAlertTitle } from "@/utils/delete-blocked-messaging";
@@ -201,9 +202,11 @@ export default function AssetCategories({
           return;
         }
         if (
-          !window.confirm(
-            `Delete asset category "${categoryName}"? This cannot be undone.`,
-          )
+          !(await confirmDialog({
+            message: `Delete asset category "${categoryName}"? This cannot be undone.`,
+            tone: "danger",
+            confirmLabel: "Delete",
+          }))
         ) {
           setBusyKey(null);
           return;

@@ -1,3 +1,5 @@
+import { confirmDialog } from "@/components/feedback/app-dialogs";
+
 export type RawMaterialDeletePreview = {
   material_name: string;
   purchase_count: number;
@@ -106,6 +108,10 @@ export function buildFinishedProductDeleteMessage(
   return `Deleting '${preview.product_name}' will also permanently void/delete ${parts.join(", ")}. This cannot be undone. Continue?`;
 }
 
-export function confirmCascadeDelete(message: string): boolean {
-  return window.confirm(message);
+export async function confirmCascadeDelete(message: string): Promise<boolean> {
+  return confirmDialog({
+    message,
+    tone: "danger",
+    confirmLabel: "Continue",
+  });
 }

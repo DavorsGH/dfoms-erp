@@ -209,7 +209,7 @@ export default function FailedInspections({
   }
 
   async function handleDelete(issueNo: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

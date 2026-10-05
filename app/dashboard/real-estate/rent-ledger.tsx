@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStripedRowClassName } from "../finance/register-row-actions";
@@ -286,9 +287,10 @@ export default function RentLedger({
       return;
     }
     if (
-      !window.confirm(
-        "Confirm that this cash/bank transfer payment has been verified?",
-      )
+      !(await confirmDialog({
+        message:
+          "Confirm that this cash/bank transfer payment has been verified?",
+      }))
     ) {
       return;
     }

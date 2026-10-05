@@ -34,9 +34,14 @@ export function AlertDialogUi({
   const titleId = useId();
   const bodyId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const okRef = useRef<HTMLButtonElement>(null);
 
   useFocusTrap(true, panelRef);
-  useDialogKeyboard(true, { onPrimary: onClose, onDismiss: onClose });
+  useDialogKeyboard(true, {
+    onPrimary: onClose,
+    onDismiss: onClose,
+    primaryButtonRef: okRef,
+  });
 
   const resolvedTitle = title?.trim() || TITLE_BY_VARIANT[variant];
 
@@ -71,6 +76,7 @@ export function AlertDialogUi({
         </p>
         <div className="mt-5 flex justify-end">
           <button
+            ref={okRef}
             type="button"
             autoFocus
             onClick={onClose}

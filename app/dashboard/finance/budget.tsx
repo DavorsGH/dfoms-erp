@@ -283,7 +283,7 @@ export default function Budget({
   }
 
   async function handleDelete(entry: BudgetRecord) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

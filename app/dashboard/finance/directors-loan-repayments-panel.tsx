@@ -161,7 +161,7 @@ export default function DirectorsLoanRepaymentsPanel({
   }
 
   async function handleDelete(id: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

@@ -45,9 +45,10 @@ export async function sendHubtelSms(options: {
 }): Promise<SendSmsResult> {
   const purpose = options.purpose ?? "transactional";
   const platformTenant = isDavorsPlatformTenant(options.tenantId);
+  const isNonOtpPurpose = purpose === "otp" ? false : true;
 
   let content = options.content.trim();
-  if (purpose !== "otp") {
+  if (isNonOtpPurpose) {
     content = formatTransactionalSmsBody({
       tenantName: options.tenantName,
       recipientName: options.recipientName,
@@ -61,7 +62,7 @@ export async function sendHubtelSms(options: {
     return sendFormulaDcSms(routed);
   }
 
-  if (purpose !== "otp" && !isNonOtpSmsSendingEnabled() && !platformTenant) {
+  if (isNonOtpPurpose && !isNonOtpSmsSendingEnabled() && !platformTenant) {
     console.warn(
       `[hubtel-sms] Non-OTP SMS suppressed (purpose=${purpose}, to=${options.to.trim()}). NON_OTP_SMS_ENABLED is not true.`,
     );

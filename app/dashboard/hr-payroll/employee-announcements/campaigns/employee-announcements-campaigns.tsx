@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   EMPLOYMENT_TYPE_OPTIONS,
@@ -266,7 +267,8 @@ function AnnouncementMessagePreview({
   sampleVariables: Record<string, string> | null;
 }) {
   const vars = sampleVariables ?? {
-    employee_name: "Employee Name",
+    first_name: "Alex",
+    full_name: "Alex Mensah",
     staff_id: "DF0000",
     employee_id: "EMP0000",
   };
@@ -516,9 +518,11 @@ export default function EmployeeAnnouncementsCampaigns({
     if (!isDraftStatus(row.status)) return;
 
     if (
-      !window.confirm(
-        `Delete draft announcement “${row.name}”? This cannot be undone.`,
-      )
+      !(await confirmDialog({
+        message: `Delete draft announcement “${row.name}”? This cannot be undone.`,
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
     ) {
       return;
     }
@@ -604,14 +608,22 @@ export default function EmployeeAnnouncementsCampaigns({
     }
 
     const preview = previewPayload.preview;
-    const confirmed = window.confirm(
-      `Send announcement “${row.name}”?\n\n` +
-        `Employees in audience: ${preview.employeeCount}\n` +
-        `Eligible deliveries: ${preview.pendingCount}\n` +
-        `No contact (email/phone): ${preview.skippedNoContactCount}\n` +
-        `No login (in-app): ${preview.skippedNoLoginCount}\n\n` +
-        `Sends are processed in batches of up to 50. Continue?`,
-    );
+    const confirmed = await confirmDialog({
+      title: "Send announcement?",
+      message: `You are about to send “${row.name}”. Review the audience breakdown below.`,
+      details: [
+        { label: "Employees in audience", value: preview.employeeCount },
+        { label: "Eligible deliveries", value: preview.pendingCount },
+        {
+          label: "No contact (email/phone)",
+          value: preview.skippedNoContactCount,
+        },
+        { label: "No login (in-app)", value: preview.skippedNoLoginCount },
+      ],
+      detail:
+        "Sends are processed in batches of up to 50. You may need to click Continue Sending until the announcement finishes.",
+      confirmLabel: "Continue",
+    });
 
     if (!confirmed) return;
     await executeSend(row.id);
@@ -829,7 +841,7 @@ export default function EmployeeAnnouncementsCampaigns({
                         }))
                       }
                       className={inputClassName}
-                      placeholder="Hello {{employee_name}}, ..."
+                      placeholder="Hello {{first_name}}, ..."
                     />
                     <TemplatePlaceholderReference
                       placeholders={EMPLOYEE_TEMPLATE_PLACEHOLDERS}

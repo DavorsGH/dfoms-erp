@@ -80,7 +80,7 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
     items: [
       {
         label: "Employee Announcements",
-        href: "/dashboard/hr-payroll/employee-announcements/templates",
+        href: "/dashboard/hr-payroll/employee-announcements/campaigns",
       },
     ],
   },

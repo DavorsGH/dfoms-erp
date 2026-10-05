@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { prefetchEmployeePhotoSignedUrls } from "@/utils/employee-photo-signed-url-cache";
 import EmployeePhotoAvatar from "../employee-photo-avatar";
 import {
   getStripedRowClassName,
@@ -83,10 +84,12 @@ function StaffIdCard({
         <div className="flex min-h-0 flex-1 gap-2">
           <EmployeePhotoAvatar
             photoUrl={employee.photo_url}
+            employeeId={employee.employee_id}
             fullName={employee.full_name}
             size="md"
-            square
-            className="!h-[0.95in] !w-[0.75in] rounded-sm"
+            frame="passport"
+            useBatchSignedUrls
+            className="!h-[0.95in] !w-[0.75in]"
           />
 
           <div className="min-w-0 flex-1 text-[8px] leading-tight text-slate-800">
@@ -134,6 +137,16 @@ export default function StaffIdCards({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showPrintLayout, setShowPrintLayout] = useState(false);
+
+  useEffect(() => {
+    const photoUrlByEmployeeId = new Map(
+      activeEmployees.map((employee) => [employee.employee_id, employee.photo_url]),
+    );
+    prefetchEmployeePhotoSignedUrls(
+      activeEmployees.map((employee) => employee.employee_id),
+      photoUrlByEmployeeId,
+    );
+  }, [activeEmployees]);
 
   const allSelected =
     activeEmployees.length > 0 &&
@@ -308,7 +321,9 @@ export default function StaffIdCards({
                       <td className="px-4 py-3">
                         <EmployeePhotoAvatar
                           photoUrl={employee.photo_url}
+                          employeeId={employee.employee_id}
                           fullName={employee.full_name}
+                          useBatchSignedUrls
                           size="sm"
                         />
                       </td>

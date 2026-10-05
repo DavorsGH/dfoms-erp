@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -26,7 +27,7 @@ export default function LandlordPortalTerminationActions({
       action === "approve"
         ? "Approve early termination? The lease will be terminated immediately."
         : "Reject this termination request? The lease will continue.";
-    if (!window.confirm(confirmMessage)) {
+    if (!(await confirmDialog({ message: confirmMessage }))) {
       return;
     }
 

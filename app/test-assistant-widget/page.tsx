@@ -1,6 +1,14 @@
+import { notFound } from "next/navigation";
 import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
 
 export default function TestAssistantWidgetPage() {
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production"
+  ) {
+    notFound();
+  }
+
   return (
     <main className="min-h-dvh bg-slate-50">
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">

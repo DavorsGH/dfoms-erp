@@ -151,7 +151,7 @@ export default function AssetRegister({
   }
 
   async function handleDelete(assetId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

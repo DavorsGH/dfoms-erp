@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useMemo, useRef, useState } from "react";
 import RegisterRowActions, {
   getStripedRowClassName,
@@ -10,6 +11,7 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../../../scrollable-table";
 import TemplatePlaceholderReference from "@/components/template-placeholder-reference";
+import SmsBodyCounter from "@/components/sms-body-counter";
 import { CUSTOMER_TEMPLATE_PLACEHOLDERS } from "@/utils/message-template-placeholders";
 import {
   channelIncludesEmail,
@@ -101,7 +103,6 @@ export default function MessageTemplates({
 
   const showEmailFields = channelIncludesEmail(form.channel);
   const showSmsFields = channelIncludesSms(form.channel);
-  const smsCharCount = form.body_sms.length;
 
   const filteredTemplates = useMemo(() => {
     return templates.filter((row) => {
@@ -208,9 +209,9 @@ export default function MessageTemplates({
 
   async function handleDeactivate(row: MessageTemplateRow) {
     if (
-      !window.confirm(
-        `Deactivate template “${row.name}”? It will be hidden from the list but kept for history.`,
-      )
+      !(await confirmDialog({
+        message: `Deactivate template “${row.name}”? It will be hidden from the list but kept for history.`,
+      }))
     ) {
       return;
     }
@@ -397,7 +398,7 @@ export default function MessageTemplates({
                       }))
                     }
                     className={inputClassName}
-                    placeholder="Hello {{customer_name}}, ..."
+                    placeholder="Hello {{first_name}}, ..."
                   />
                   <TemplatePlaceholderReference
                     placeholders={CUSTOMER_TEMPLATE_PLACEHOLDERS}
@@ -417,12 +418,7 @@ export default function MessageTemplates({
                   <label className="block text-sm font-medium text-slate-700">
                     SMS body
                   </label>
-                  <span className="text-xs text-slate-500">
-                    {smsCharCount} character{smsCharCount === 1 ? "" : "s"}
-                    {smsCharCount > 160
-                      ? ` · ~${Math.ceil(smsCharCount / 160)} segments`
-                      : ""}
-                  </span>
+                  <SmsBodyCounter body={form.body_sms} />
                 </div>
                 <textarea
                   ref={smsBodyTextareaRef}
@@ -436,7 +432,7 @@ export default function MessageTemplates({
                     }))
                   }
                   className={inputClassName}
-                  placeholder="Hi {{customer_name}}, your balance is {{amount}}."
+                  placeholder="Hi {{first_name}}, ..."
                 />
                 <TemplatePlaceholderReference
                   placeholders={CUSTOMER_TEMPLATE_PLACEHOLDERS}

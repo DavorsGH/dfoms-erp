@@ -212,7 +212,7 @@ export default function CorrectiveActions({
   }
 
   async function handleDelete(actionNo: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

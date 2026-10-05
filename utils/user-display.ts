@@ -13,6 +13,7 @@ export type UserDisplayInfo = {
   label: string;
   fullName: string | null;
   photoUrl: string | null;
+  employeeId: string | null;
   email: string;
 };
 
@@ -24,7 +25,7 @@ export async function getUserDisplayInfo(): Promise<UserDisplayInfo> {
   let label = email;
 
   if (!user) {
-    return { label, fullName, photoUrl, email };
+    return { label, fullName, photoUrl, employeeId: null, email };
   }
 
   const account = await getCurrentUserAccount();
@@ -32,7 +33,7 @@ export async function getUserDisplayInfo(): Promise<UserDisplayInfo> {
   const roleSuffix = role ? ` [${getRoleLabel(role)}]` : "";
 
   if (!account) {
-    return { label, fullName, photoUrl, email };
+    return { label, fullName, photoUrl, employeeId: null, email };
   }
 
   const cookieStore = await cookies();
@@ -63,5 +64,11 @@ export async function getUserDisplayInfo(): Promise<UserDisplayInfo> {
     }
   }
 
-  return { label, fullName, photoUrl, email };
+  return {
+    label,
+    fullName,
+    photoUrl,
+    employeeId: account.employee_id?.trim() || null,
+    email,
+  };
 }

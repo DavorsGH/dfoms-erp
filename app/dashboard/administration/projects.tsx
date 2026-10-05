@@ -210,7 +210,7 @@ export default function Projects({
   }
 
   async function handleArchiveContract(projectCode: string) {
-    if (!confirmArchiveEntry("contract/project")) {
+    if (!(await confirmArchiveEntry("contract/project"))) {
       return;
     }
 
@@ -259,7 +259,7 @@ export default function Projects({
   }
 
   async function handleReactivateContract(projectCode: string) {
-    if (!confirmReactivateEntry("contract/project")) {
+    if (!(await confirmReactivateEntry("contract/project"))) {
       return;
     }
 
@@ -304,7 +304,7 @@ export default function Projects({
   }
 
   async function handleDeleteContract(projectCode: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

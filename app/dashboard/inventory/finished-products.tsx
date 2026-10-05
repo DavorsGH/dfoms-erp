@@ -522,7 +522,7 @@ export default function FinishedProducts({
   }
 
   async function handleArchive(productId: string) {
-    if (!confirmArchiveEntry("finished product")) {
+    if (!(await confirmArchiveEntry("finished product"))) {
       return;
     }
 
@@ -571,7 +571,7 @@ export default function FinishedProducts({
   }
 
   async function handleReactivate(productId: string) {
-    if (!confirmReactivateEntry("finished product")) {
+    if (!(await confirmReactivateEntry("finished product"))) {
       return;
     }
 
@@ -640,7 +640,7 @@ export default function FinishedProducts({
       return;
     }
 
-    if (!confirmCascadeDelete(buildFinishedProductDeleteMessage(preview))) {
+    if (!(await confirmCascadeDelete(buildFinishedProductDeleteMessage(preview)))) {
       setDeletingProductId(null);
       return;
     }

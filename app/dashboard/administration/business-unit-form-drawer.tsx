@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useState } from "react";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import PaymentAccountFormFields, {
@@ -299,11 +300,11 @@ export default function BusinessUnitFormDrawer({
     const isLastLink =
       account.business_unit_ids.length === 1 &&
       account.business_unit_ids.includes(editingUnit.id);
-    const confirmed = window.confirm(
-      isLastLink
+    const confirmed = await confirmDialog({
+      message: isLastLink
         ? `Unlink "${account.account_name}" from this business unit? This account will become available to all business units.`
         : `Unlink "${account.account_name}" from this business unit?`,
-    );
+    });
     if (!confirmed) {
       return;
     }

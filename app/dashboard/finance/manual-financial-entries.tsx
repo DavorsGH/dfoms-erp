@@ -286,7 +286,7 @@ export default function ManualFinancialEntries({
   }
 
   async function handleDelete(entry: ManualFinancialEntryRecord) {
-    if (!confirmDeleteManualEntry(entry)) {
+    if (!(await confirmDeleteManualEntry(entry))) {
       return;
     }
 

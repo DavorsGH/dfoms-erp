@@ -393,7 +393,7 @@ export default function PropertyDetailView({
   }
 
   async function handleDeleteUnit(unitId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

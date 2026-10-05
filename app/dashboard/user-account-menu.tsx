@@ -9,12 +9,14 @@ type UserAccountMenuProps = {
   userLabel: string;
   userPhotoUrl?: string | null;
   userFullName?: string | null;
+  linkedEmployeeId?: string | null;
 };
 
 export default function UserAccountMenu({
   userLabel,
   userPhotoUrl,
   userFullName,
+  linkedEmployeeId = null,
 }: UserAccountMenuProps) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -54,9 +56,9 @@ export default function UserAccountMenu({
         >
           <EmployeePhotoAvatar
             photoUrl={userPhotoUrl}
+            employeeId={linkedEmployeeId}
             fullName={userFullName ?? userLabel}
             size="header"
-            square
           />
           <span>{userLabel}</span>
         </Link>
@@ -74,9 +76,9 @@ export default function UserAccountMenu({
         >
           <EmployeePhotoAvatar
             photoUrl={userPhotoUrl}
+            employeeId={linkedEmployeeId}
             fullName={userFullName ?? userLabel}
             size="header"
-            square
           />
         </button>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -129,9 +130,9 @@ export default function TierPricing({
       return;
     }
 
-    const confirmed = window.confirm(
-      `Update ${row.name} to USD ${unitPrice.toFixed(2)} / GHS ${priceGhs.toFixed(2)}? This affects pricing shown to new signups.`,
-    );
+    const confirmed = await confirmDialog({
+      message: `Update ${row.name} to USD ${unitPrice.toFixed(2)} / GHS ${priceGhs.toFixed(2)}? This affects pricing shown to new signups.`,
+    });
     if (!confirmed) {
       return;
     }

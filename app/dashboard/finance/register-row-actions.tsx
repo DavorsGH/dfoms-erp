@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import {
   scrollableTableActionsCellClassName,
   scrollableTableCompactCellClassName,
@@ -82,38 +83,51 @@ export function getStripedRowClassName(index: number): string {
   return index % 2 === 1 ? "bg-slate-50 text-slate-900" : "text-slate-900";
 }
 
-export function confirmDeleteEntry(): boolean {
-  return window.confirm("Are you sure you want to delete this entry?");
+export async function confirmDeleteEntry(): Promise<boolean> {
+  return confirmDialog({
+    message: "Are you sure you want to delete this entry?",
+    tone: "danger",
+    confirmLabel: "Delete",
+  });
 }
 
-export function confirmArchiveEntry(label: string): boolean {
-  return window.confirm(
-    `Archive this ${label}? It will be hidden from dropdowns for new transactions, but existing history stays visible.`,
-  );
+export async function confirmArchiveEntry(label: string): Promise<boolean> {
+  return confirmDialog({
+    message: `Archive this ${label}? It will be hidden from dropdowns for new transactions, but existing history stays visible.`,
+    confirmLabel: "Archive",
+  });
 }
 
-export function confirmReactivateEntry(label: string): boolean {
-  return window.confirm(
-    `Reactivate this ${label}? It will appear again in dropdowns for new transactions.`,
-  );
+export async function confirmReactivateEntry(label: string): Promise<boolean> {
+  return confirmDialog({
+    message: `Reactivate this ${label}? It will appear again in dropdowns for new transactions.`,
+    confirmLabel: "Reactivate",
+  });
 }
 
-export function confirmRawMaterialPurchaseDelete(): boolean {
-  return window.confirm(
-    "Delete this purchase? Stock and average cost will be recalculated and any linked Cash or Accounts Payable posting will be reversed.",
-  );
+export async function confirmRawMaterialPurchaseDelete(): Promise<boolean> {
+  return confirmDialog({
+    message:
+      "Delete this purchase? Stock and average cost will be recalculated and any linked Cash or Accounts Payable posting will be reversed.",
+    tone: "danger",
+    confirmLabel: "Delete",
+  });
 }
 
-export function confirmRawMaterialPurchaseEdit(): boolean {
-  return window.confirm(
-    "Save changes to this purchase? Stock, average cost, and linked financial postings may be adjusted.",
-  );
+export async function confirmRawMaterialPurchaseEdit(): Promise<boolean> {
+  return confirmDialog({
+    message:
+      "Save changes to this purchase? Stock, average cost, and linked financial postings may be adjusted.",
+    confirmLabel: "Save",
+  });
 }
 
-export function confirmProductPurchaseEdit(): boolean {
-  return window.confirm(
-    "Save changes to this purchase? Stock, average cost, and linked financial postings may be adjusted.",
-  );
+export async function confirmProductPurchaseEdit(): Promise<boolean> {
+  return confirmDialog({
+    message:
+      "Save changes to this purchase? Stock, average cost, and linked financial postings may be adjusted.",
+    confirmLabel: "Save",
+  });
 }
 
 export const reversalActionButtonClassName =

@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import PaymentAccountFormFields from "@/components/payment-account-form-fields";
@@ -183,9 +184,11 @@ export default function PaymentAccountsSettings({
   }
 
   async function handleDelete(account: PaymentAccountRow) {
-    const confirmed = window.confirm(
-      `Delete payment account "${account.account_name}"? This cannot be undone.`,
-    );
+    const confirmed = await confirmDialog({
+      message: `Delete payment account "${account.account_name}"? This cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
 
     if (!confirmed) {
       return;

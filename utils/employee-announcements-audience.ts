@@ -11,6 +11,7 @@ export type AnnouncementEmployee = {
   employee_id: string;
   staff_id: string;
   full_name: string;
+  first_name?: string | null;
   email: string | null;
   phone: string | null;
   position: string | null;

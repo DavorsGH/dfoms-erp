@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type RefObject } from "react";
 
 export function useDialogKeyboard(
   open: boolean,
   options: {
     onPrimary: () => void;
     onDismiss: () => void;
+    /** When set, Enter triggers onPrimary only if this button is focused. */
+    primaryButtonRef?: RefObject<HTMLButtonElement | null>;
   },
 ) {
   useEffect(() => {
@@ -25,6 +27,11 @@ export function useDialogKeyboard(
         if (target instanceof HTMLTextAreaElement) {
           return;
         }
+        if (options.primaryButtonRef) {
+          if (document.activeElement !== options.primaryButtonRef.current) {
+            return;
+          }
+        }
         event.preventDefault();
         options.onPrimary();
       }
@@ -32,5 +39,5 @@ export function useDialogKeyboard(
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, options.onDismiss, options.onPrimary]);
+  }, [open, options.onDismiss, options.onPrimary, options.primaryButtonRef]);
 }

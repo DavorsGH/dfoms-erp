@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -800,9 +801,10 @@ export default function TaxLedger({
         : `This posts one Cash Position outflow of ${formatGHS(cashPreview)} and clears ${candidates.length} open ${label} Tax Ledger leg(s) for the period.`;
 
     if (
-      !window.confirm(
-        `Remit ${label} for ${periodLabel}?\n\n${confirmDetail}`,
-      )
+      !(await confirmDialog({
+        message: `Remit ${label} for ${periodLabel}?`,
+        detail: confirmDetail,
+      }))
     ) {
       return;
     }
@@ -906,9 +908,10 @@ export default function TaxLedger({
       : "";
 
     if (
-      !window.confirm(
-        `Undo Remit ${label} for ${periodLabel}?\n\nWARNING: Undo assumes the real-world payment has NOT been sent to ${kind === "ssnit" ? "SSNIT" : "GRA"} yet.\n\n${confirmDetail}${penaltyConfirmLine}`,
-      )
+      !(await confirmDialog({
+        message: `Undo Remit ${label} for ${periodLabel}?`,
+        detail: `WARNING: Undo assumes the real-world payment has NOT been sent to ${kind === "ssnit" ? "SSNIT" : "GRA"} yet.\n\n${confirmDetail}${penaltyConfirmLine}`,
+      }))
     ) {
       return;
     }

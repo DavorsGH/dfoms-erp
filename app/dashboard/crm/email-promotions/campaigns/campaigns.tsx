@@ -1,18 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getStripedRowClassName } from "../../../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
 } from "../../../scrollable-table";
+import TemplatePlaceholderReference from "@/components/template-placeholder-reference";
+import SmsBodyCounter from "@/components/sms-body-counter";
 import {
   AUDIENCE_CUSTOMER_TYPE_OPTIONS,
-  AUDIENCE_TYPE_OPTIONS,
+  campaignChannelFlags,
+  campaignChannelFromFlags,
   defaultChannelFromTemplate,
+  formatCampaignChannelListLabel,
+  filteredCampaignAudienceHasCriteria,
+  formatAudienceLabel,
   formatCampaignStatusLabel,
   isDraftStatus,
+  type CampaignAudienceCustomerType,
   type CampaignAudienceFilter,
   type CampaignChannel,
   type NormalizedCampaignRow,
@@ -23,7 +31,11 @@ import {
   formatChannelLabel,
   type MessageTemplateRow,
 } from "@/utils/message-templates-types";
+import { CUSTOMER_TEMPLATE_PLACEHOLDERS } from "@/utils/message-template-placeholders";
 import { substituteTemplatePlaceholders } from "@/utils/message-template-render";
+import CampaignSendConfirmDialog, {
+  type CampaignSendPreviewStats,
+} from "./campaign-send-confirm-dialog";
 
 type CampaignRecipientDetail = {
   id: string;
@@ -51,30 +63,53 @@ type CampaignDetailPayload = {
   error?: string;
 };
 
+type AudienceCustomerOption = {
+  client_id: string;
+  client_name: string | null;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+};
+
 type CampaignsProps = {
   tenantId: string;
   initialCampaigns: NormalizedCampaignRow[];
   activeTemplates: MessageTemplateRow[];
+  audienceCustomers: AudienceCustomerOption[];
   fetchError: string | null;
 };
 
-type AudienceType = "all" | "customer_type";
+type AudienceMode = "all" | "filtered";
+type ContentMode = "template" | "adhoc";
 
 type FormState = {
   name: string;
+  contentMode: ContentMode;
   template_id: string;
-  audienceType: AudienceType;
-  customerType: "service_client" | "digital_subscriber" | "product_client" | "all";
-  /** Fallback when viewing a non-draft whose template is no longer active. */
+  subject: string;
+  body: string;
+  channelEmail: boolean;
+  channelSms: boolean;
+  audienceMode: AudienceMode;
+  customerTypes: CampaignAudienceCustomerType[];
+  individualIds: string[];
+  individualSearch: string;
   lockedChannel: CampaignChannel | null;
   lockedTemplateName: string | null;
 };
 
 const emptyForm: FormState = {
   name: "",
+  contentMode: "template",
   template_id: "",
-  audienceType: "all",
-  customerType: "service_client",
+  subject: "",
+  body: "",
+  channelEmail: true,
+  channelSms: false,
+  audienceMode: "all",
+  customerTypes: [],
+  individualIds: [],
+  individualSearch: "",
   lockedChannel: null,
   lockedTemplateName: null,
 };
@@ -167,34 +202,78 @@ function formatSentAt(value: string | null): string {
   });
 }
 
-function audienceFromForm(form: FormState): CampaignAudienceFilter {
-  if (form.audienceType === "customer_type") {
-    return { type: "customer_type", value: form.customerType };
+function toggleListValue(list: string[], value: string): string[] {
+  if (list.includes(value)) {
+    return list.filter((item) => item !== value);
   }
-  return { type: "all" };
+  return [...list, value];
+}
+
+function audienceFromForm(form: FormState): CampaignAudienceFilter {
+  if (form.audienceMode === "all") {
+    return { type: "all" };
+  }
+  return {
+    type: "filtered",
+    customer_types: form.customerTypes,
+    client_ids: form.individualIds,
+  };
+}
+
+function customerDisplayName(customer: AudienceCustomerOption): string {
+  return (
+    customer.client_name?.trim() ||
+    customer.contact_person?.trim() ||
+    customer.client_id
+  );
+}
+
+function customerContactHint(customer: AudienceCustomerOption): string {
+  const parts: string[] = [];
+  if (customer.phone?.trim()) parts.push(customer.phone.trim());
+  if (customer.email?.trim()) parts.push(customer.email.trim());
+  return parts.length > 0 ? parts.join(" · ") : customer.client_id;
 }
 
 function formFromCampaign(row: NormalizedCampaignRow): FormState {
   const filter = row.audience_filter;
+  const channelFlags = campaignChannelFlags(row.channel);
   const locked = {
     lockedChannel: row.channel,
     lockedTemplateName: row.message_templates?.name ?? null,
   };
+  const base = {
+    name: row.name,
+    contentMode: row.template_id ? ("template" as const) : ("adhoc" as const),
+    template_id: row.template_id ?? "",
+    subject: row.subject ?? "",
+    body: (row.body_email ?? row.body_sms ?? "").trim(),
+    channelEmail: channelFlags.email,
+    channelSms: channelFlags.sms,
+    individualSearch: "",
+    ...locked,
+  };
+  if (filter.type === "filtered") {
+    return {
+      ...base,
+      audienceMode: "filtered",
+      customerTypes: filter.customer_types,
+      individualIds: filter.client_ids,
+    };
+  }
   if (filter.type === "customer_type") {
     return {
-      name: row.name,
-      template_id: row.template_id,
-      audienceType: "customer_type",
-      customerType: filter.value,
-      ...locked,
+      ...base,
+      audienceMode: "filtered",
+      customerTypes: [filter.value],
+      individualIds: [],
     };
   }
   return {
-    name: row.name,
-    template_id: row.template_id,
-    audienceType: "all",
-    customerType: "service_client",
-    ...locked,
+    ...base,
+    audienceMode: "all",
+    customerTypes: [],
+    individualIds: [],
   };
 }
 
@@ -207,10 +286,14 @@ function CampaignMessagePreview({
 }) {
   // Render with sample placeholder values so the user sees the template shape.
   const sampleVars: Record<string, string> = {
-    customer_name: "Customer Name",
+    first_name: "Ama",
+    full_name: "Ama Owusu",
+    company_name: "Central University",
     email: "customer@example.com",
-    phone: "0000000000",
-    contact_person: "Contact Person",
+    phone: "0244123456",
+    business_name: "Your Business",
+    customer_name: "Central University",
+    contact_person: "Ama Owusu",
     client_id: "CLI000",
   };
 
@@ -286,16 +369,24 @@ export default function Campaigns({
   tenantId,
   initialCampaigns,
   activeTemplates,
+  audienceCustomers,
   fetchError,
 }: CampaignsProps) {
   void tenantId;
 
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [templates] = useState(activeTemplates);
+  const [customers] = useState(audienceCustomers);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewOnly, setViewOnly] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [sendConfirm, setSendConfirm] = useState<{
+    campaignId: string;
+    campaignName: string;
+    preview: CampaignSendPreviewStats;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -348,9 +439,20 @@ export default function Campaigns({
     [templates, form.template_id],
   );
 
-  const derivedChannel: CampaignChannel | null = selectedTemplate
-    ? defaultChannelFromTemplate(selectedTemplate.channel)
-    : form.lockedChannel;
+  const derivedChannel: CampaignChannel | null =
+    campaignChannelFromFlags({
+      email: form.channelEmail,
+      sms: form.channelSms,
+    }) ?? form.lockedChannel;
+
+  const showEmailFields =
+    form.contentMode === "adhoc" &&
+    form.channelEmail &&
+    Boolean(derivedChannel && derivedChannel !== "sms");
+  const showAdhocSmsBody =
+    form.contentMode === "adhoc" &&
+    form.channelSms &&
+    Boolean(derivedChannel && derivedChannel !== "email");
 
   const filteredCampaigns = useMemo(() => {
     if (!statusFilter) return campaigns;
@@ -419,19 +521,54 @@ export default function Campaigns({
       setError("Campaign name is required.");
       return;
     }
-    if (!form.template_id) {
+    if (!derivedChannel) {
+      setError("Select at least one channel (Email and/or SMS).");
+      return;
+    }
+    if (form.contentMode === "template" && !form.template_id) {
       setError("Select a message template.");
       return;
     }
-    if (!derivedChannel) {
-      setError("Selected template is not available.");
-      return;
+    if (form.contentMode === "adhoc") {
+      if (derivedChannel !== "sms" && !form.subject.trim()) {
+        setError("Email campaigns require a subject line.");
+        return;
+      }
+      if (!form.body.trim()) {
+        setError("Enter a message body.");
+        return;
+      }
     }
 
+    if (form.audienceMode === "filtered") {
+      const draftAudience = audienceFromForm(form);
+      if (
+        draftAudience.type === "filtered" &&
+        !filteredCampaignAudienceHasCriteria(draftAudience)
+      ) {
+        setError(
+          "Select at least one customer type or add at least one customer by name.",
+        );
+        return;
+      }
+    }
+
+    const adhocBody = form.body.trim();
     const payload = {
       name: form.name.trim(),
-      template_id: form.template_id,
+      template_id: form.contentMode === "template" ? form.template_id : null,
       channel: derivedChannel,
+      subject: form.contentMode === "adhoc" ? form.subject.trim() : null,
+      body_email:
+        form.contentMode === "adhoc" &&
+        (derivedChannel === "email" || derivedChannel === "both")
+          ? adhocBody
+          : null,
+      body_sms:
+        form.contentMode === "adhoc" &&
+        (derivedChannel === "sms" || derivedChannel === "both")
+          ? adhocBody
+          : null,
       audience_filter: audienceFromForm(form),
     };
 
@@ -460,9 +597,11 @@ export default function Campaigns({
 
   async function handleDelete(row: NormalizedCampaignRow) {
     if (
-      !window.confirm(
-        `Delete draft campaign “${row.name}”? This cannot be undone.`,
-      )
+      !(await confirmDialog({
+        message: `Delete draft campaign “${row.name}”? This cannot be undone.`,
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
     ) {
       return;
     }
@@ -529,8 +668,7 @@ export default function Campaigns({
       `/api/campaigns/${row.id}/audience-preview`,
     );
     const previewPayload = (await previewResponse.json()) as {
-      preview?: {
-        customerCount: number;
+      preview?: CampaignSendPreviewStats & {
         pendingCount: number;
         skippedOptedOutCount: number;
         missingContactCount: number;
@@ -546,17 +684,19 @@ export default function Campaigns({
     }
 
     const preview = previewPayload.preview;
-    const confirmed = window.confirm(
-      `Send campaign “${row.name}”?\n\n` +
-        `Customers in audience: ${preview.customerCount}\n` +
-        `Eligible deliveries: ${preview.pendingCount}\n` +
-        `Opted out (will be recorded as skipped): ${preview.skippedOptedOutCount}\n` +
-        `Missing email/phone (skipped, not recorded): ${preview.missingContactCount}\n\n` +
-        `Sends are processed in batches of up to 50. Continue?`,
-    );
-
-    if (!confirmed) return;
-    await executeSend(row.id);
+    setSendConfirm({
+      campaignId: row.id,
+      campaignName: row.name,
+      preview: {
+        customerCount: preview.customerCount,
+        eligibleEmailCount: preview.eligibleEmailCount ?? 0,
+        eligibleSmsCount: preview.eligibleSmsCount ?? 0,
+        skippedOptedOutEmailCount: preview.skippedOptedOutEmailCount ?? 0,
+        skippedOptedOutSmsCount: preview.skippedOptedOutSmsCount ?? 0,
+        missingEmailCount: preview.missingEmailCount ?? 0,
+        missingPhoneCount: preview.missingPhoneCount ?? 0,
+      },
+    });
   }
 
   async function continueSending(row: NormalizedCampaignRow) {
@@ -568,6 +708,35 @@ export default function Campaigns({
     : editingId
       ? "Edit Campaign"
       : "New Campaign";
+
+  const individualSearchMatches = useMemo(() => {
+    const q = form.individualSearch.trim().toLowerCase();
+    if (!q) return [];
+    return customers
+      .filter((customer) => {
+        if (form.individualIds.includes(customer.client_id)) return false;
+        const hay = [
+          customer.client_name,
+          customer.contact_person,
+          customer.phone,
+          customer.email,
+          customer.client_id,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      })
+      .slice(0, 8);
+  }, [customers, form.individualIds, form.individualSearch]);
+
+  const selectedIndividuals = useMemo(
+    () =>
+      form.individualIds
+        .map((id) => customers.find((c) => c.client_id === id))
+        .filter(Boolean) as AudienceCustomerOption[],
+    [customers, form.individualIds],
+  );
 
   const canSendDraft =
     Boolean(editingCampaign) &&
@@ -636,125 +805,375 @@ export default function Campaigns({
             onSubmit={(event) => void handleSubmit(event)}
             className="space-y-4"
           >
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Name
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Name
+              </label>
+              <input
+                required
+                disabled={viewOnly}
+                value={form.name}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                className={inputClassName}
+                placeholder="e.g. March promo blast"
+              />
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-medium text-slate-700">Content</p>
+              <div className="mb-3 flex flex-wrap gap-4">
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="radio"
+                    name="campaignContentMode"
+                    disabled={viewOnly}
+                    checked={form.contentMode === "template"}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        contentMode: "template",
+                      }))
+                    }
+                  />
+                  Use template
                 </label>
-                <input
-                  required
-                  disabled={viewOnly}
-                  value={form.name}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  className={inputClassName}
-                  placeholder="e.g. March promo blast"
-                />
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="radio"
+                    name="campaignContentMode"
+                    disabled={viewOnly}
+                    checked={form.contentMode === "adhoc"}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        contentMode: "adhoc",
+                        template_id: "",
+                      }))
+                    }
+                  />
+                  Ad-hoc message
+                </label>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Template
-                </label>
-                <select
-                  required
-                  disabled={viewOnly}
-                  value={form.template_id}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      template_id: event.target.value,
-                      lockedChannel: null,
-                      lockedTemplateName: null,
-                    }))
-                  }
-                  className={inputClassName}
-                >
-                  <option value="">Select an active template</option>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name} ({formatChannelLabel(template.channel)})
-                    </option>
-                  ))}
-                  {viewOnly &&
-                  form.template_id &&
-                  !templates.some((t) => t.id === form.template_id) ? (
-                    <option value={form.template_id}>
-                      {form.lockedTemplateName ?? "Inactive template"} (
-                      {form.lockedChannel
-                        ? formatChannelLabel(form.lockedChannel)
-                        : "—"})
-                    </option>
+
+              {form.contentMode === "template" ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Template
+                  </label>
+                  <select
+                    required
+                    disabled={viewOnly}
+                    value={form.template_id}
+                    onChange={(event) => {
+                      const templateId = event.target.value;
+                      const template = templates.find((row) => row.id === templateId);
+                      const suggested = template
+                        ? campaignChannelFlags(
+                            defaultChannelFromTemplate(template.channel),
+                          )
+                        : { email: true, sms: false };
+                      setForm((current) => ({
+                        ...current,
+                        template_id: templateId,
+                        lockedChannel: null,
+                        lockedTemplateName: null,
+                        channelEmail: suggested.email,
+                        channelSms: suggested.sms,
+                      }));
+                    }}
+                    className={inputClassName}
+                  >
+                    <option value="">Select an active template</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name} ({formatChannelLabel(template.channel)})
+                      </option>
+                    ))}
+                    {viewOnly &&
+                    form.template_id &&
+                    !templates.some((t) => t.id === form.template_id) ? (
+                      <option value={form.template_id}>
+                        {form.lockedTemplateName ?? "Inactive template"}
+                      </option>
+                    ) : null}
+                  </select>
+                  {templates.length === 0 && !viewOnly ? (
+                    <p className="mt-1 text-xs text-amber-700">
+                      No active templates. Create one under Templates first.
+                    </p>
                   ) : null}
-                </select>
-                {templates.length === 0 && !viewOnly ? (
-                  <p className="mt-1 text-xs text-amber-700">
-                    No active templates. Create one under Templates first.
-                  </p>
-                ) : null}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {showEmailFields ? (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Subject
+                      </label>
+                      <input
+                        required
+                        disabled={viewOnly}
+                        value={form.subject}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            subject: event.target.value,
+                          }))
+                        }
+                        className={inputClassName}
+                        placeholder="Email subject line"
+                      />
+                    </div>
+                  ) : null}
+                  <div>
+                    <div className="mb-1 flex items-center justify-between gap-3">
+                      <label className="block text-sm font-medium text-slate-700">
+                        Body
+                      </label>
+                      {showAdhocSmsBody ? (
+                        <SmsBodyCounter body={form.body} />
+                      ) : null}
+                    </div>
+                    <textarea
+                      ref={bodyTextareaRef}
+                      required
+                      disabled={viewOnly}
+                      rows={5}
+                      value={form.body}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          body: event.target.value,
+                        }))
+                      }
+                      className={inputClassName}
+                      placeholder="Hello {{first_name}}, ..."
+                    />
+                    <TemplatePlaceholderReference
+                      placeholders={CUSTOMER_TEMPLATE_PLACEHOLDERS}
+                      value={form.body}
+                      onChange={(next) =>
+                        setForm((current) => ({ ...current, body: next }))
+                      }
+                      textareaRef={bodyTextareaRef}
+                      disabled={viewOnly}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-medium text-slate-700">Channels</p>
+              <div className="flex flex-wrap gap-4">
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    disabled={viewOnly}
+                    checked={form.channelEmail}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        channelEmail: !current.channelEmail,
+                      }))
+                    }
+                  />
+                  Email
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    disabled={viewOnly}
+                    checked={form.channelSms}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        channelSms: !current.channelSms,
+                      }))
+                    }
+                  />
+                  SMS
+                </label>
               </div>
             </div>
 
-            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              Channel:{" "}
-              <span className="font-medium text-slate-900">
-                {derivedChannel
-                  ? formatChannelLabel(derivedChannel)
-                  : "— (select a template)"}
+            <div>
+              <span className="mb-2 block text-sm font-medium text-slate-700">
+                Audience
               </span>
-            </p>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Audience
-                </label>
-                <select
-                  disabled={viewOnly}
-                  value={form.audienceType}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      audienceType: event.target.value as AudienceType,
-                    }))
-                  }
-                  className={inputClassName}
-                >
-                  {AUDIENCE_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {form.audienceType === "customer_type" ? (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Customer type
-                  </label>
-                  <select
+              <div className="flex flex-wrap gap-4">
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="radio"
+                    name="audienceMode"
                     disabled={viewOnly}
-                    value={form.customerType}
-                    onChange={(event) =>
+                    checked={form.audienceMode === "all"}
+                    onChange={() =>
                       setForm((current) => ({
                         ...current,
-                        customerType: event.target.value as FormState["customerType"],
+                        audienceMode: "all",
+                        customerTypes: [],
+                        individualIds: [],
+                        individualSearch: "",
                       }))
                     }
-                    className={inputClassName}
-                  >
-                    {AUDIENCE_CUSTOMER_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.value === "all"
-                          ? "All (multi-type customers)"
-                          : option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  All customers
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="radio"
+                    name="audienceMode"
+                    disabled={viewOnly}
+                    checked={form.audienceMode === "filtered"}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        audienceMode: "filtered",
+                      }))
+                    }
+                  />
+                  Filtered (union of criteria + named customers)
+                </label>
+              </div>
+
+              {form.audienceMode === "filtered" ? (
+                <div className="mt-4 space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs text-slate-500">
+                    Recipients are the union of everyone matching any selected
+                    customer type, plus anyone added by name — duplicates are
+                    removed automatically.
+                  </p>
+
+                  <fieldset>
+                    <legend className="mb-2 text-sm font-medium text-slate-700">
+                      Customer types
+                    </legend>
+                    <div className="max-h-40 space-y-1 overflow-auto rounded border border-slate-200 bg-white p-2">
+                      {AUDIENCE_CUSTOMER_TYPE_OPTIONS.map((option) => (
+                        <label
+                          key={option.value}
+                          className="flex items-center gap-2 text-sm text-slate-700"
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={viewOnly}
+                            checked={form.customerTypes.includes(
+                              option.value as CampaignAudienceCustomerType,
+                            )}
+                            onChange={() =>
+                              setForm((current) => ({
+                                ...current,
+                                customerTypes: toggleListValue(
+                                  current.customerTypes,
+                                  option.value,
+                                ) as CampaignAudienceCustomerType[],
+                              }))
+                            }
+                          />
+                          {option.value === "all"
+                            ? "All (multi-type customers)"
+                            : option.label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Named customers
+                    </label>
+                    {!viewOnly ? (
+                      <div className="space-y-2">
+                        <input
+                          value={form.individualSearch}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              individualSearch: event.target.value,
+                            }))
+                          }
+                          className={inputClassName}
+                          placeholder="Search by name, phone, email, or customer ID…"
+                        />
+                        {individualSearchMatches.length > 0 ? (
+                          <ul className="rounded border border-slate-200 bg-white">
+                            {individualSearchMatches.map((customer) => (
+                              <li key={customer.client_id}>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                                  onClick={() =>
+                                    setForm((current) => ({
+                                      ...current,
+                                      individualIds: [
+                                        ...current.individualIds,
+                                        customer.client_id,
+                                      ],
+                                      individualSearch: "",
+                                    }))
+                                  }
+                                >
+                                  <span className="font-medium text-slate-900">
+                                    {customerDisplayName(customer)}
+                                  </span>
+                                  <span className="shrink-0 text-xs text-slate-500">
+                                    {customerContactHint(customer)}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {selectedIndividuals.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {selectedIndividuals.map((customer) => (
+                          <span
+                            key={customer.client_id}
+                            className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-800 ring-1 ring-slate-200"
+                          >
+                            {customerDisplayName(customer)}
+                            {!viewOnly ? (
+                              <button
+                                type="button"
+                                className="ml-1 text-slate-500 hover:text-red-600"
+                                onClick={() =>
+                                  setForm((current) => ({
+                                    ...current,
+                                    individualIds: current.individualIds.filter(
+                                      (id) => id !== customer.client_id,
+                                    ),
+                                  }))
+                                }
+                                aria-label={`Remove ${customerDisplayName(customer)}`}
+                              >
+                                ×
+                              </button>
+                            ) : null}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500">
+                        Search and add individual customers, or select types
+                        above.
+                      </p>
+                    )}
+                  </div>
                 </div>
+              ) : null}
+
+              {viewOnly && editingCampaign ? (
+                <p className="mt-2 text-xs text-slate-600">
+                  {formatAudienceLabel(editingCampaign.audience_filter)}
+                </p>
               ) : null}
             </div>
 
@@ -956,7 +1375,7 @@ export default function Campaigns({
                       </td>
                       <td className="px-4 py-3">
                         <Badge
-                          label={formatChannelLabel(row.channel)}
+                          label={formatCampaignChannelListLabel(row.channel)}
                           tone={channelBadgeTone(row.channel)}
                         />
                       </td>
@@ -1056,6 +1475,20 @@ export default function Campaigns({
           Tip: draft campaigns can be edited or deleted. Once a campaign moves
           past draft, use View to inspect it.
         </p>
+      ) : null}
+
+      {sendConfirm ? (
+        <CampaignSendConfirmDialog
+          campaignName={sendConfirm.campaignName}
+          preview={sendConfirm.preview}
+          confirming={sendingId === sendConfirm.campaignId}
+          onCancel={() => setSendConfirm(null)}
+          onConfirm={() => {
+            const id = sendConfirm.campaignId;
+            setSendConfirm(null);
+            void executeSend(id);
+          }}
+        />
       ) : null}
     </div>
   );

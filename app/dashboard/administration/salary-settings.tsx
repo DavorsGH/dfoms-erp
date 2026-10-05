@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -333,9 +334,11 @@ export default function SalarySettings({
 
   async function handleDeletePolicyGroup(group: (typeof policyGroups)[number]) {
     if (
-      !window.confirm(
-        `Delete all allowance amounts for ${group.position} / ${group.employment_type} / ${group.shift}?`,
-      )
+      !(await confirmDialog({
+        message: `Delete all allowance amounts for ${group.position} / ${group.employment_type} / ${group.shift}?`,
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
     ) {
       return;
     }
@@ -425,9 +428,9 @@ export default function SalarySettings({
 
   async function handleDeactivateType(type: AllowanceTypeRow) {
     if (
-      !window.confirm(
-        `Deactivate “${type.name}”? It will stop applying to new payroll but history is kept.`,
-      )
+      !(await confirmDialog({
+        message: `Deactivate “${type.name}”? It will stop applying to new payroll but history is kept.`,
+      }))
     ) {
       return;
     }

@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 
 const tabs = [
   {
-    label: "Templates",
-    href: "/dashboard/crm/email-promotions/templates",
-  },
-  {
     label: "Campaigns",
     href: "/dashboard/crm/email-promotions/campaigns",
+  },
+  {
+    label: "Templates",
+    href: "/dashboard/crm/email-promotions/templates",
   },
   {
     label: "Notification Rules",

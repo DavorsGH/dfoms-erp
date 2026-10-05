@@ -1,16 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getInitialsFromName } from "@/utils/employee-photo";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import {
+  employeePhotoSignedUrlEndpoint,
+  getInitialsFromName,
+  isEmployeePhotoStorageReference,
+} from "@/utils/employee-photo";
+import {
+  getCachedEmployeePhotoSignedUrl,
+  subscribeEmployeePhotoSignedUrlCache,
+} from "@/utils/employee-photo-signed-url-cache";
 import { offlineAvatarSrc } from "@/lib/client-cache/offline-shell-assets";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 
+/** Matches header user menu avatars (`rounded-lg`, square, object-cover). */
+export const EMPLOYEE_AVATAR_CORNER_CLASS = "rounded-lg";
+
 type EmployeePhotoAvatarProps = {
   photoUrl?: string | null;
+  employeeId?: string | null;
   fullName?: string | null;
   size?: "xs" | "sm" | "md" | "lg" | "xl" | "header";
   className?: string;
-  square?: boolean;
+  /**
+   * `standard` — rounded square (default, same as header menu).
+   * `passport` — tighter radius for printed ID card photo slot only.
+   */
+  frame?: "standard" | "passport";
+  /** When true, resolve storage photos from the batch cache (no per-avatar GET). */
+  useBatchSignedUrls?: boolean;
 };
 
 const sizeClasses = {
@@ -35,44 +53,108 @@ function PersonSilhouetteIcon({ className }: { className: string }) {
   );
 }
 
+function useBatchSignedUrl(employeeId: string | null | undefined): string | null {
+  return useSyncExternalStore(
+    subscribeEmployeePhotoSignedUrlCache,
+    () => getCachedEmployeePhotoSignedUrl(employeeId ?? undefined),
+    () => null,
+  );
+}
+
 export default function EmployeePhotoAvatar({
   photoUrl,
+  employeeId,
   fullName,
   size = "md",
   className = "",
-  square = false,
+  frame = "standard",
+  useBatchSignedUrls = false,
 }: EmployeePhotoAvatarProps) {
   const isOnline = useOnlineStatus();
-  // SSR + first client paint must match: always start with the real URL.
-  // Switch to the offline placeholder only after mount.
-  const [displaySrc, setDisplaySrc] = useState(() =>
-    offlineAvatarSrc(true, photoUrl),
-  );
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
+  const batchSignedUrl = useBatchSignedUrl(
+    useBatchSignedUrls ? employeeId : undefined,
+  );
   const sizeClass = sizeClasses[size];
-  const shapeClass = square ? "rounded-lg" : "rounded-full";
+  const shapeClass =
+    frame === "passport" ? "rounded-sm" : EMPLOYEE_AVATAR_CORNER_CLASS;
   const initials = getInitialsFromName(fullName);
 
   useEffect(() => {
-    setDisplaySrc(offlineAvatarSrc(isOnline, photoUrl));
+    let cancelled = false;
     setImageFailed(false);
-  }, [photoUrl, isOnline]);
+
+    const trimmed = photoUrl?.trim() ?? "";
+    if (!trimmed) {
+      setResolvedSrc(null);
+      return;
+    }
+
+    if (!isEmployeePhotoStorageReference(trimmed)) {
+      setResolvedSrc(trimmed);
+      return;
+    }
+
+    if (useBatchSignedUrls) {
+      setResolvedSrc(null);
+      return;
+    }
+
+    const id = employeeId?.trim();
+    if (!id) {
+      setResolvedSrc(null);
+      return;
+    }
+
+    setResolvedSrc(null);
+
+    fetch(employeePhotoSignedUrlEndpoint(id))
+      .then(async (response) => {
+        if (!response.ok) {
+          return null;
+        }
+        const payload = (await response.json()) as { signedUrl?: string };
+        return payload.signedUrl?.trim() || null;
+      })
+      .then((signedUrl) => {
+        if (!cancelled) {
+          setResolvedSrc(signedUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedSrc(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [photoUrl, employeeId, useBatchSignedUrls]);
+
+  const storageResolvedSrc = useBatchSignedUrls ? batchSignedUrl : resolvedSrc;
+  const displaySrc = offlineAvatarSrc(isOnline, storageResolvedSrc);
+
+  const wrapperClass = `${sizeClass} ${shapeClass} shrink-0 overflow-hidden ${className}`;
 
   if (displaySrc?.trim() && !imageFailed) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={displaySrc}
-        alt={fullName ? `${fullName} photo` : "Employee photo"}
-        className={`${sizeClass} ${shapeClass} shrink-0 object-cover bg-slate-100 ${className}`}
-        onError={() => setImageFailed(true)}
-      />
+      <div className={wrapperClass}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={displaySrc}
+          alt={fullName ? `${fullName} photo` : "Employee photo"}
+          className={`h-full w-full ${shapeClass} object-cover bg-slate-100`}
+          onError={() => setImageFailed(true)}
+        />
+      </div>
     );
   }
 
   return (
     <div
-      className={`${sizeClass} ${shapeClass} flex shrink-0 items-center justify-center bg-[#0f2744] text-white ${className}`}
+      className={`${wrapperClass} flex items-center justify-center bg-[#0f2744] text-white`}
       aria-hidden={!fullName}
       title={fullName ?? undefined}
     >

@@ -563,7 +563,7 @@ export default function FixedAssets({
   }
 
   async function handleDelete(assetId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

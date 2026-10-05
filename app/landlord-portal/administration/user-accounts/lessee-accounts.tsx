@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -112,7 +113,7 @@ export default function LandlordPortalLesseeAccounts({
   }
 
   async function handleDeactivate(row: LandlordPortalLesseeAccountViewRow) {
-    if (!window.confirm(deactivateConfirmMessage(row.fullName))) {
+    if (!(await confirmDialog({ message: deactivateConfirmMessage(row.fullName) }))) {
       return;
     }
 

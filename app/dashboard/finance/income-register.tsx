@@ -331,7 +331,7 @@ export default function IncomeRegister({
         return;
       }
     }
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

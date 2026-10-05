@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -15,9 +16,11 @@ export default function DeleteUnitButton({ unitId, unitLabel }: Props) {
 
   async function handleDelete() {
     if (
-      !window.confirm(
-        `Delete unit ${unitLabel}? This cannot be undone. Units with leases, rent history, applications, or an active tenant cannot be deleted.`,
-      )
+      !(await confirmDialog({
+        message: `Delete unit ${unitLabel}? This cannot be undone. Units with leases, rent history, applications, or an active tenant cannot be deleted.`,
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
     ) {
       return;
     }

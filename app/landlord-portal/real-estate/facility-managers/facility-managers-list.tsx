@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
@@ -322,9 +323,9 @@ export default function LandlordPortalFacilityManagersList({
 
   async function handleRevoke(row: FacilityManagerRow) {
     if (
-      !window.confirm(
-        `Revoke facility manager access for ${row.full_name}? They will no longer be able to sign in.`,
-      )
+      !(await confirmDialog({
+        message: `Revoke facility manager access for ${row.full_name}? They will no longer be able to sign in.`,
+      }))
     ) {
       return;
     }

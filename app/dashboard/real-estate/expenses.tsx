@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
@@ -362,7 +363,13 @@ export default function Expenses({
     if (!selectedLandlordId) {
       return;
     }
-    if (!window.confirm("Delete this expense entry? This cannot be undone.")) {
+    if (
+      !(await confirmDialog({
+        message: "Delete this expense entry? This cannot be undone.",
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
+    ) {
       return;
     }
 

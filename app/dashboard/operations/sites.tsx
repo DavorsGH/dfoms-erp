@@ -179,7 +179,7 @@ export default function Sites({
   }
 
   async function handleDelete(siteCode: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

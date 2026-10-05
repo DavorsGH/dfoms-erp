@@ -1,4 +1,5 @@
 import AssistantChatWidget from "@/components/ai-assistant/assistant-chat-widget";
+import { FeedbackShell } from "@/components/feedback";
 import { StickyBottomBarProvider } from "@/components/sticky-bottom-bar";
 import { getFacilityManagerSession } from "@/utils/facility-portal-auth";
 import { getFacilityPortalNavLinks } from "./portal-nav-config";
@@ -17,14 +18,16 @@ export default async function FacilityPortalLayout({
 
   return (
     <StickyBottomBarProvider>
-      <PortalLayoutClient
-        userLabel={session?.fullName ?? null}
-        links={links}
-        isAuthenticated={Boolean(session)}
-      >
-        {children}
-        {session ? <AssistantChatWidget /> : null}
-      </PortalLayoutClient>
+      <FeedbackShell>
+        <PortalLayoutClient
+          userLabel={session?.fullName ?? null}
+          links={links}
+          isAuthenticated={Boolean(session)}
+        >
+          {children}
+          {session ? <AssistantChatWidget /> : null}
+        </PortalLayoutClient>
+      </FeedbackShell>
     </StickyBottomBarProvider>
   );
 }

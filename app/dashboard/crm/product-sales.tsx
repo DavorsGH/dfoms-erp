@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -662,7 +663,7 @@ export default function ProductSales({
       return;
     }
 
-    if (!window.confirm(buildVoidProductSaleConfirmMessage(entry))) {
+    if (!(await confirmDialog({ message: buildVoidProductSaleConfirmMessage(entry) }))) {
       return;
     }
 

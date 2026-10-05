@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -639,7 +640,7 @@ export default function ExpenseRegister({
       ? `Mark this Employer SSNIT expense as Paid? This posts a Cash Position outflow for ${formatGHS(entry.amount)} and remits matching employer SSNIT Tax Ledger legs (Tier 1 + Tier 2) for the payroll period. Employee SSNIT remains open — use Statutory Ledger → Remit SSNIT for period for the remaining employee remittance (employer cash will not be posted again).`
       : `Mark this Staff Salaries expense as Paid? This posts a Cash Position outflow for ${formatGHS(entry.amount)} and clears Accrued Wages for the period.`;
 
-    if (!window.confirm(confirmMessage)) {
+    if (!(await confirmDialog({ message: confirmMessage }))) {
       return;
     }
 
@@ -664,7 +665,7 @@ export default function ExpenseRegister({
       (item) => item.id === id && item.type === "expense",
     );
     if (pending) {
-      if (!confirmDeleteEntry()) return;
+      if (!(await confirmDeleteEntry())) return;
       setDeletingId(id);
       await writeQueue?.discardItem(id);
       setDeletingId(null);
@@ -691,7 +692,7 @@ export default function ExpenseRegister({
       return;
     }
 
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

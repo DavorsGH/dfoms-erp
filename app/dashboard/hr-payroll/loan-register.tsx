@@ -127,7 +127,7 @@ export default function LoanRegister({
   }
 
   async function handleDelete(loanId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

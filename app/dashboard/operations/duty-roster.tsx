@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -523,9 +524,10 @@ export default function DutyRoster({
       return;
     }
 
-    const confirmed = window.confirm(
-      `Start Rotation ${data.currentRotationNumber + 1} for ${data.clientName}?\n\nThis will advance the cycle to begin ${formatShortDate(data.summary.nextRotationDate)} and record assignment changes in Roster History.`,
-    );
+    const confirmed = await confirmDialog({
+      message: `Start Rotation ${data.currentRotationNumber + 1} for ${data.clientName}?`,
+      detail: `This will advance the cycle to begin ${formatShortDate(data.summary.nextRotationDate)} and record assignment changes in Roster History.`,
+    });
 
     if (!confirmed) {
       return;

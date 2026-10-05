@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatProductPrice } from "../crm/products/products-utils";
@@ -120,11 +121,11 @@ export default function PlatformUnitPricing({
       return;
     }
 
-    const confirmed = window.confirm(
-      isIntegerRow
+    const confirmed = await confirmDialog({
+      message: isIntegerRow
         ? `Update ${row.label.toLowerCase()} to ${savedValue} units? Platform-only landlords are not charged for activation or recurring billing on units beyond this cap.`
         : `Update ${row.label.toLowerCase()} to GHS ${savedValue.toFixed(2)}? New charges use this rate; historical audit rows keep their recorded amounts.`,
-    );
+    });
     if (!confirmed) {
       return;
     }

@@ -50,7 +50,7 @@ export default function SalesTargetsList({
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleDelete(targetId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

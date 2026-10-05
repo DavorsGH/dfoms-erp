@@ -232,7 +232,7 @@ export default function IncidentRegister({
   }
 
   async function handleDelete(incidentNo: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

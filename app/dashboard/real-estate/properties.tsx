@@ -128,7 +128,7 @@ export default function Properties({
   }
 
   async function handleDelete(propertyId: string) {
-    if (!selectedLandlordId || !confirmDeleteEntry()) {
+    if (!selectedLandlordId || !(await confirmDeleteEntry())) {
       return;
     }
 

@@ -8,32 +8,39 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { bindAppDialogBridge } from "./app-dialogs";
 import { AlertDialogUi, type AlertVariant } from "./alert-dialog-ui";
 import { ConfirmDialogUi } from "./confirm-dialog-ui";
+import { PromptDialogUi } from "./prompt-dialog-ui";
 import { ToastUi } from "./toast-ui";
 import {
   FeedbackContext,
   type AlertOptions,
   type ConfirmOptions,
   type FeedbackContextValue,
+  type PromptOptions,
 } from "./feedback-context";
 import { formatActionError } from "./format-action-error";
 
 const TOAST_VISIBLE_MS = 4000;
 
-type AlertState = {
+type AlertState = AlertOptions & {
   variant: AlertVariant;
-  title?: string;
-  message: string;
+  resolve: () => void;
 };
 
 type ConfirmState = ConfirmOptions & {
   resolve: (value: boolean) => void;
 };
 
+type PromptState = PromptOptions & {
+  resolve: (value: string | null) => void;
+};
+
 export function FeedbackProvider({ children }: { children: ReactNode }) {
   const [alertState, setAlertState] = useState<AlertState | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+  const [promptState, setPromptState] = useState<PromptState | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastQueueRef = useRef<string[]>([]);
   const toastBusyRef = useRef(false);
@@ -49,7 +56,10 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   );
 
   const closeAlert = useCallback(() => {
-    setAlertState(null);
+    setAlertState((current) => {
+      current?.resolve();
+      return null;
+    });
   }, []);
 
   const drainToastQueue = useCallback(() => {
@@ -85,16 +95,19 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   );
 
   const alert = useCallback((options: AlertOptions) => {
-    setAlertState({
-      variant: options.variant ?? "error",
-      title: options.title,
-      message: options.message,
+    return new Promise<void>((resolve) => {
+      setAlertState({
+        variant: options.variant ?? "info",
+        title: options.title,
+        message: options.message,
+        resolve,
+      });
     });
   }, []);
 
   const alertError = useCallback(
     (error: unknown, options?: Omit<AlertOptions, "message">) => {
-      alert({
+      return alert({
         ...options,
         variant: options?.variant ?? "error",
         message: formatActionError(error),
@@ -109,6 +122,12 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const prompt = useCallback((options: PromptOptions) => {
+    return new Promise<string | null>((resolve) => {
+      setPromptState({ ...options, resolve });
+    });
+  }, []);
+
   const closeConfirm = useCallback((result: boolean) => {
     setConfirmState((current) => {
       current?.resolve(result);
@@ -116,10 +135,26 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const closePrompt = useCallback((result: string | null) => {
+    setPromptState((current) => {
+      current?.resolve(result);
+      return null;
+    });
+  }, []);
+
   const value = useMemo<FeedbackContextValue>(
-    () => ({ alert, alertError, toast, confirm }),
-    [alert, alertError, toast, confirm],
+    () => ({ alert, alertError, toast, confirm, prompt }),
+    [alert, alertError, toast, confirm, prompt],
   );
+
+  useEffect(() => {
+    bindAppDialogBridge({
+      confirm: value.confirm,
+      alert: value.alert,
+      prompt: value.prompt,
+    });
+    return () => bindAppDialogBridge(null);
+  }, [value]);
 
   return (
     <FeedbackContext.Provider value={value}>
@@ -137,11 +172,25 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           title={confirmState.title?.trim() || "Confirm"}
           message={confirmState.message}
           detail={confirmState.detail}
+          details={confirmState.details}
           confirmLabel={confirmState.confirmLabel?.trim() || "Confirm"}
           cancelLabel={confirmState.cancelLabel?.trim() || "Cancel"}
           destructive={confirmState.destructive === true}
           onConfirm={() => closeConfirm(true)}
           onCancel={() => closeConfirm(false)}
+        />
+      ) : null}
+      {promptState ? (
+        <PromptDialogUi
+          title={promptState.title?.trim() || "Enter value"}
+          message={promptState.message}
+          defaultValue={promptState.defaultValue}
+          inputLabel={promptState.inputLabel}
+          confirmLabel={promptState.confirmLabel?.trim() || "OK"}
+          cancelLabel={promptState.cancelLabel?.trim() || "Cancel"}
+          required={promptState.required}
+          onConfirm={(next) => closePrompt(next)}
+          onCancel={() => closePrompt(null)}
         />
       ) : null}
       {toastMessage ? <ToastUi message={toastMessage} /> : null}

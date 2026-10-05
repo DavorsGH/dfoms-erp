@@ -172,7 +172,7 @@ export default function LeaveManagement({
   }
 
   async function handleDelete(leaveId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

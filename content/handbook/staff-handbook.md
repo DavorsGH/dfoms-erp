@@ -1274,17 +1274,23 @@ from the platform, in two distinct ways: marketing campaigns you send
 yourself, and transactional notifications the platform sends
 automatically when something happens (a sale, a payment, an invoice).
 
-**Templates.** Every message starts from a template --- Marketing or
-Transactional, Email or SMS or both. Templates support placeholders like
-{{customer_name}} that are filled in automatically for each recipient.
+**Templates.** Reusable Marketing or Transactional messages, for Email,
+SMS, or both. Click-to-insert placeholders include {{first_name}},
+{{full_name}}, {{company_name}}, {{email}}, {{phone}}, and
+{{business_name}} (your sending workspace name). Legacy placeholders such
+as {{customer_name}} and {{client_name}} still work in saved templates.
 
-**Marketing Campaigns.** Create a draft campaign, pick a template,
-choose an audience (all customers, or customers of a specific type), and
-send. Before sending, you are always shown exactly how many customers
-are in the audience and how many are eligible to receive it. Every
-marketing email includes an unsubscribe link --- customers who
-unsubscribe are never contacted for marketing again, though they still
-receive transactional notifications below.
+**Marketing Campaigns.** Create a draft, choose **Use template** or
+**Ad-hoc message** (subject + body when writing one-off copy), tick
+**Email** and/or **SMS** (at least one), pick an audience (all customers
+or a customer type), and send. Templates may suggest a default channel,
+but you can change it on the campaign. Before sending, a confirmation
+dialog shows customers in the audience, eligible email and SMS
+deliveries, and skips (no email, no valid phone, opted out). SMS uses
+your SMS credit wallet; recipients without credits are logged as skipped.
+Every marketing email and SMS includes opt-out handling --- customers
+who unsubscribe are not contacted for marketing on either channel, though
+they still receive transactional notifications below.
 
 **Transactional Notifications.** Configure once, under the Notification
 Rules tab, and the platform sends automatically:
@@ -1307,7 +1313,7 @@ while still using the service.
 | **Worked Example --- A Real Campaign, Confirmed Live**                |
 |                                                                       |
 | Template: Marketing / Email --- Subject "Test Campaign", Body "Hi     |
-| {{customer_name}}, this is a test."                                   |
+| {{first_name}}, this is a test."                                      |
 |                                                                       |
 | Campaign: "Test Campaign 1", Audience: All Customers, reference code  |
 | CAN-CAMP-0006.                                                        |
@@ -1392,8 +1398,8 @@ Campaign templates.
 all three transactional notification types have been confirmed working
 end-to-end, including real email delivery.
 
--   SMS sending is built throughout the platform but not yet turned on
-    for your workspace --- email is fully live.
+-   SMS marketing uses the same Hubtel routing and credit wallet as other
+    non-OTP SMS (subject to `NON_OTP_SMS_ENABLED` and your balance).
 
 -   There is no audience targeting beyond "All Customers" and "By
     Customer Type" yet.
@@ -1772,12 +1778,13 @@ Email & Promotions in Section 7.5, which is for your customers.
 The module has two tabs:
 
 -   **Templates** --- reusable message templates (or write a one-off
-    notice). Templates support placeholders such as {{employee_name}},
-    {{staff_id}}, and {{position}} that are filled in automatically for
-    each recipient.
+    notice). Templates support click-to-insert placeholders such as
+    {{first_name}}, {{full_name}}, {{staff_id}}, and {{position}} that
+    are filled in automatically for each recipient.
 
--   **Campaigns** --- the actual sends. Create a draft, choose a
-    template (or write a one-off message), pick your audience, and send.
+-   **Campaigns** --- the actual sends. Create a draft, choose **Use
+    template** or **Ad-hoc message**, pick channels (email, SMS, and/or
+    in-app), pick your audience, and send.
 
 **Sending an Announcement.** Delivery happens per employee, on whichever
 channels they can actually be reached on: email if one is on file, SMS
@@ -1815,8 +1822,8 @@ notifications, never anyone else's.
 +-----------------------------------------------------------------------+
 | **Worked Example --- Reaching a Mixed Group in One Send**             |
 |                                                                       |
-| Template: Payroll Notice (SMS) --- "Hi {{employee_name}}, your        |
-| payslip for the period is ready to view."                             |
+| Template: Payroll Notice (SMS) --- "Hi {{first_name}}, your payslip   |
+| for the period is ready to view."                                     |
 |                                                                       |
 | Audience: Position "Chief Executive Officer" plus two named           |
 | individuals added directly --- the announcement reaches everyone      |

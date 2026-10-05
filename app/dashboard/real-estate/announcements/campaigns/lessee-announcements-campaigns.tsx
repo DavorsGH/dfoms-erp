@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getStripedRowClassName } from "../../../finance/register-row-actions";
 import ScrollableTable, {
@@ -504,9 +505,11 @@ export default function LesseeAnnouncementsCampaigns({
   async function handleDelete(row: NormalizedLesseeAnnouncementRow) {
     if (!isDraftStatus(row.status)) return;
     if (
-      !window.confirm(
-        `Delete draft announcement “${row.name}”? This cannot be undone.`,
-      )
+      !(await confirmDialog({
+        message: `Delete draft announcement “${row.name}”? This cannot be undone.`,
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
     ) {
       return;
     }
@@ -585,14 +588,25 @@ export default function LesseeAnnouncementsCampaigns({
     }
 
     const preview = previewPayload.preview;
-    const confirmed = window.confirm(
-      `Send announcement “${row.name}”?\n\n` +
-        `Tenants in audience: ${preview.lesseeCount}\n` +
-        `Eligible deliveries: ${preview.pendingCount}\n` +
-        `No contact (email/phone): ${preview.skippedNoContactCount}\n` +
-        `No portal login (in-app): ${preview.skippedNoLoginCount}\n\n` +
-        `Sends are processed in batches of up to 50. Continue?`,
-    );
+    const confirmed = await confirmDialog({
+      title: "Send announcement?",
+      message: `You are about to send “${row.name}”. Review the audience breakdown below.`,
+      details: [
+        { label: "Tenants in audience", value: preview.lesseeCount },
+        { label: "Eligible deliveries", value: preview.pendingCount },
+        {
+          label: "No contact (email/phone)",
+          value: preview.skippedNoContactCount,
+        },
+        {
+          label: "No portal login (in-app)",
+          value: preview.skippedNoLoginCount,
+        },
+      ],
+      detail:
+        "Sends are processed in batches of up to 50. You may need to click Continue Sending until the announcement finishes.",
+      confirmLabel: "Continue",
+    });
 
     if (!confirmed) return;
     await executeSend(row.id);

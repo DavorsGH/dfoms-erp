@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TenantLogosMediaImage } from "@/components/tenant-logos-media";
@@ -233,11 +234,11 @@ export default function BusinessUnitsSettings({
 
   async function handleSetActive(unit: BusinessUnitRow, isActive: boolean) {
     const actionLabel = isActive ? "reactivate" : "deactivate";
-    const confirmed = window.confirm(
-      isActive
+    const confirmed = await confirmDialog({
+      message: isActive
         ? `Reactivate "${unit.name}"? It will appear again in the business switcher and create pickers.`
         : `Deactivate "${unit.name}"? It will be hidden from the switcher and create pickers. Historical records stay intact.`,
-    );
+    });
 
     if (!confirmed) {
       return;
@@ -283,9 +284,9 @@ export default function BusinessUnitsSettings({
   }
 
   async function handleSetPrimary(unit: BusinessUnitRow) {
-    const confirmed = window.confirm(
-      `Set "${unit.name}" as the primary business unit? The primary unit is the default for system-generated records when no other business unit applies.`,
-    );
+    const confirmed = await confirmDialog({
+      message: `Set "${unit.name}" as the primary business unit? The primary unit is the default for system-generated records when no other business unit applies.`,
+    });
 
     if (!confirmed) {
       return;

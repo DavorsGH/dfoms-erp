@@ -16,13 +16,37 @@ export const CAMPAIGN_CHANNELS = ["email", "sms", "both"] as const;
 export type CampaignChannel = (typeof CAMPAIGN_CHANNELS)[number];
 
 export type CampaignAudienceAll = { type: "all" };
+/** Legacy stored shape — still accepted on read and in send resolution. */
 export type CampaignAudienceByCustomerType = {
   type: "customer_type";
   value: "service_client" | "digital_subscriber" | "product_client" | "all";
 };
+export type CampaignAudienceFiltered = {
+  type: "filtered";
+  customer_types: Array<
+    "service_client" | "digital_subscriber" | "product_client" | "all"
+  >;
+  client_ids: string[];
+};
 export type CampaignAudienceFilter =
   | CampaignAudienceAll
-  | CampaignAudienceByCustomerType;
+  | CampaignAudienceByCustomerType
+  | CampaignAudienceFiltered;
+
+export type CampaignAudienceCustomerType =
+  CampaignAudienceFiltered["customer_types"][number];
+
+export type CampaignCustomer = {
+  client_id: string;
+  client_name: string | null;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  customer_type: string | null;
+  status: string | null;
+  [key: string]: unknown;
+};
 
 export type CampaignTemplateJoin = {
   name: string;
@@ -35,8 +59,11 @@ export type CampaignRow = {
   tenant_id: string;
   campaign_code: string | null;
   name: string;
-  template_id: string;
+  template_id: string | null;
   channel: CampaignChannel;
+  subject: string | null;
+  body_email: string | null;
+  body_sms: string | null;
   audience_filter: CampaignAudienceFilter;
   status: CampaignStatus;
   scheduled_at: string | null;
@@ -54,18 +81,69 @@ export type NormalizedCampaignRow = Omit<CampaignRow, "message_templates"> & {
 
 export type CampaignInput = {
   name?: string;
-  template_id?: string;
+  template_id?: string | null;
   channel?: string;
+  subject?: string | null;
+  body_email?: string | null;
+  body_sms?: string | null;
   audience_filter?: unknown;
 };
 
 export const CAMPAIGN_SELECT =
-  "id, tenant_id, campaign_code, name, template_id, channel, audience_filter, status, scheduled_at, sent_at, total_recipients, created_by, created_at, updated_at, message_templates(name, channel, is_active)" as const;
+  "id, tenant_id, campaign_code, name, template_id, channel, subject, body_email, body_sms, audience_filter, status, scheduled_at, sent_at, total_recipients, created_by, created_at, updated_at, message_templates(name, channel, is_active)" as const;
 
 export const AUDIENCE_TYPE_OPTIONS = [
-  { value: "all", label: "All Customers" },
-  { value: "customer_type", label: "By Customer Type" },
+  { value: "all", label: "All customers" },
+  { value: "filtered", label: "Filtered" },
 ] as const;
+
+const FILTER_CUSTOMER_TYPE_VALUES = new Set<string>([
+  "service_client",
+  "digital_subscriber",
+  "product_client",
+  "all",
+]);
+
+function normalizeStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    const unique = new Set<string>();
+    for (const item of value) {
+      if (typeof item === "string" && item.trim()) {
+        unique.add(item.trim());
+      }
+    }
+    return [...unique];
+  }
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
+  return [];
+}
+
+export function emptyFilteredCampaignAudience(): CampaignAudienceFiltered {
+  return { type: "filtered", customer_types: [], client_ids: [] };
+}
+
+export function filteredCampaignAudienceHasCriteria(
+  filter: CampaignAudienceFiltered,
+): boolean {
+  return filter.customer_types.length > 0 || filter.client_ids.length > 0;
+}
+
+function normalizeCustomerTypeList(value: unknown): CampaignAudienceFiltered["customer_types"] {
+  const out: CampaignAudienceFiltered["customer_types"] = [];
+  for (const item of normalizeStringList(value)) {
+    if (item === "both") {
+      if (!out.includes("all")) out.push("all");
+      continue;
+    }
+    if (FILTER_CUSTOMER_TYPE_VALUES.has(item)) {
+      const typed = item as CampaignAudienceCustomerType;
+      if (!out.includes(typed)) out.push(typed);
+    }
+  }
+  return out;
+}
 
 export const AUDIENCE_CUSTOMER_TYPE_OPTIONS = CUSTOMER_TYPE_FILTER_OPTIONS;
 
@@ -79,12 +157,33 @@ export function formatCampaignStatusLabel(status: string): string {
 
 export function formatAudienceLabel(filter: CampaignAudienceFilter): string {
   if (filter.type === "all") {
-    return "All Customers";
+    return "All customers";
   }
-  const match = AUDIENCE_CUSTOMER_TYPE_OPTIONS.find(
-    (option) => option.value === filter.value,
-  );
-  return match ? `Customer type: ${match.label}` : `Customer type: ${filter.value}`;
+  if (filter.type === "customer_type") {
+    const match = AUDIENCE_CUSTOMER_TYPE_OPTIONS.find(
+      (option) => option.value === filter.value,
+    );
+    return match
+      ? `Customer type: ${match.label}`
+      : `Customer type: ${filter.value}`;
+  }
+
+  const parts: string[] = [];
+  if (filter.customer_types.length > 0) {
+    parts.push(
+      filter.customer_types.length === 1
+        ? `Type: ${filter.customer_types[0]}`
+        : `Types: ${filter.customer_types.length}`,
+    );
+  }
+  if (filter.client_ids.length > 0) {
+    parts.push(
+      filter.client_ids.length === 1
+        ? "Individual: 1 customer"
+        : `Individuals: ${filter.client_ids.length}`,
+    );
+  }
+  return parts.length > 0 ? parts.join(" · ") : "Filtered audience";
 }
 
 export function normalizeAudienceFilter(
@@ -117,6 +216,18 @@ export function normalizeAudienceFilter(
     }
   }
 
+  if (type === "filtered") {
+    const filtered: CampaignAudienceFiltered = {
+      type: "filtered",
+      customer_types: normalizeCustomerTypeList(record.customer_types),
+      client_ids: normalizeStringList(record.client_ids),
+    };
+    if (!filteredCampaignAudienceHasCriteria(filtered)) {
+      return null;
+    }
+    return filtered;
+  }
+
   return null;
 }
 
@@ -127,7 +238,9 @@ export function channelsCompatible(
   if (templateChannel === "both") {
     return CAMPAIGN_CHANNELS.includes(campaignChannel as CampaignChannel);
   }
-  // Template locked to one channel — campaign must match exactly.
+  if (campaignChannel === "both") {
+    return false;
+  }
   return templateChannel === campaignChannel;
 }
 
@@ -139,6 +252,31 @@ export function defaultChannelFromTemplate(
   return "email";
 }
 
+export function formatCampaignChannelListLabel(channel: CampaignChannel): string {
+  if (channel === "both") return "Email, SMS";
+  if (channel === "sms") return "SMS";
+  return "Email";
+}
+
+export function campaignChannelFromFlags(options: {
+  email: boolean;
+  sms: boolean;
+}): CampaignChannel | null {
+  if (options.email && options.sms) return "both";
+  if (options.email) return "email";
+  if (options.sms) return "sms";
+  return null;
+}
+
+export function campaignChannelFlags(
+  channel: CampaignChannel,
+): { email: boolean; sms: boolean } {
+  return {
+    email: channel === "email" || channel === "both",
+    sms: channel === "sms" || channel === "both",
+  };
+}
+
 export function validateCampaignInput(body: CampaignInput): string | null {
   const name = body.name?.trim() ?? "";
   if (!name) {
@@ -146,18 +284,38 @@ export function validateCampaignInput(body: CampaignInput): string | null {
   }
 
   const templateId = body.template_id?.trim() ?? "";
-  if (!templateId) {
-    return "Select a message template.";
+  const bodyEmail = body.body_email?.trim() ?? "";
+  const bodySms = body.body_sms?.trim() ?? "";
+  const subject = body.subject?.trim() ?? "";
+
+  if (!templateId && !bodyEmail && !bodySms) {
+    return "Select a template or enter an ad-hoc message body.";
   }
 
   const channel = body.channel?.trim() ?? "";
   if (!CAMPAIGN_CHANNELS.includes(channel as CampaignChannel)) {
-    return "Channel must be email, sms, or both.";
+    return "Select at least one channel (email and/or SMS).";
+  }
+
+  const channelTyped = channel as CampaignChannel;
+  if (!templateId) {
+    if (channelTyped !== "sms" && !subject) {
+      return "Email campaigns require a subject line.";
+    }
+    if (
+      (channelTyped === "email" || channelTyped === "both") &&
+      !bodyEmail
+    ) {
+      return "Enter an email body or select a template.";
+    }
+    if ((channelTyped === "sms" || channelTyped === "both") && !bodySms) {
+      return "Enter an SMS body or select a template.";
+    }
   }
 
   const audience = normalizeAudienceFilter(body.audience_filter ?? { type: "all" });
   if (!audience) {
-    return "Audience must be All Customers or a valid customer type.";
+    return "Audience must be all customers, or at least one customer type or named customer.";
   }
 
   return null;
@@ -165,14 +323,21 @@ export function validateCampaignInput(body: CampaignInput): string | null {
 
 export function trimCampaignInput(body: CampaignInput): {
   name: string;
-  template_id: string;
+  template_id: string | null;
   channel: CampaignChannel;
+  subject: string | null;
+  body_email: string | null;
+  body_sms: string | null;
   audience_filter: CampaignAudienceFilter;
 } {
+  const templateId = (body.template_id ?? "").trim();
   return {
     name: (body.name ?? "").trim(),
-    template_id: (body.template_id ?? "").trim(),
+    template_id: templateId || null,
     channel: (body.channel ?? "").trim() as CampaignChannel,
+    subject: (body.subject ?? "").trim() || null,
+    body_email: (body.body_email ?? "").trim() || null,
+    body_sms: (body.body_sms ?? "").trim() || null,
     audience_filter:
       normalizeAudienceFilter(body.audience_filter ?? { type: "all" }) ?? {
         type: "all",

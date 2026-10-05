@@ -222,7 +222,7 @@ export default function Products({
       return;
     }
 
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

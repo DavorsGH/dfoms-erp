@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -189,7 +190,12 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
   }
 
   async function activateContract() {
-    if (!window.confirm("Activate this supplier contract? Monthly billing will follow the contract schedule.")) {
+    if (
+      !(await confirmDialog({
+        message:
+          "Activate this supplier contract? Monthly billing will follow the contract schedule.",
+      }))
+    ) {
       return;
     }
     setSaving(true);
@@ -331,7 +337,14 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
       creditBalance > 0
         ? `\n\nSupplier owes ${formatInvoiceMoney(creditBalance)} of unused credit. This will be recorded in the contract notes. Generated accounts payable are kept as real obligations; only future billing stops.`
         : "\n\nGenerated accounts payable are kept as real obligations; only future billing stops.";
-    if (!window.confirm(`Terminate this contract?${creditWarning}`)) return;
+    if (
+      !(await confirmDialog({
+        message: "Terminate this contract?",
+        detail: creditWarning.replace(/^\n\n/, ""),
+      }))
+    ) {
+      return;
+    }
     const response = await fetch(`/api/supplier-contracts/${contractId}/terminate`, {
       method: "POST",
     });

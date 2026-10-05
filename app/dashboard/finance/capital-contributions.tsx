@@ -142,7 +142,7 @@ export default function CapitalContributions({
   }
 
   async function handleDelete(id: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

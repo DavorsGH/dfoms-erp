@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useCallback, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useRefetchOnWindowFocus } from "@/hooks/use-refetch-on-window-focus";
@@ -143,7 +144,7 @@ export default function MyLeave({
   }
 
   async function handleCancel(requestId: string) {
-    if (!window.confirm("Cancel this pending leave request?")) {
+    if (!(await confirmDialog({ message: "Cancel this pending leave request?" }))) {
       return;
     }
 

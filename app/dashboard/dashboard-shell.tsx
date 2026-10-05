@@ -166,6 +166,7 @@ export default function DashboardShell({
               userLabel={userLabel}
               userPhotoUrl={userPhotoUrl}
               userFullName={userFullName}
+              linkedEmployeeId={linkedEmployeeId}
               onMenuToggle={() => setMobileNavOpen((current) => !current)}
               mobileNavOpen={mobileNavOpen}
               businessUnitSwitcher={businessUnitSwitcher}

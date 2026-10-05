@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef } from "react";
+import { DialogDetailList, type DialogDetailRow } from "./dialog-detail-list";
 import { useDialogKeyboard } from "./use-dialog-keyboard";
 import { useFocusTrap } from "./use-focus-trap";
 
@@ -8,6 +9,7 @@ export type ConfirmDialogUiProps = {
   title: string;
   message: string;
   detail?: string;
+  details?: DialogDetailRow[];
   confirmLabel: string;
   cancelLabel: string;
   destructive: boolean;
@@ -19,6 +21,7 @@ export function ConfirmDialogUi({
   title,
   message,
   detail,
+  details,
   confirmLabel,
   cancelLabel,
   destructive,
@@ -28,9 +31,14 @@ export function ConfirmDialogUi({
   const titleId = useId();
   const bodyId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
   useFocusTrap(true, panelRef);
-  useDialogKeyboard(true, { onPrimary: onConfirm, onDismiss: onCancel });
+  useDialogKeyboard(true, {
+    onPrimary: onConfirm,
+    onDismiss: onCancel,
+    primaryButtonRef: confirmRef,
+  });
 
   const confirmClassName = destructive
     ? "rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800"
@@ -62,15 +70,21 @@ export function ConfirmDialogUi({
         {detail?.trim() ? (
           <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{detail}</p>
         ) : null}
+        {details?.length ? <DialogDetailList rows={details} /> : null}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             {cancelLabel}
           </button>
-          <button type="button" autoFocus onClick={onConfirm} className={confirmClassName}>
+          <button
+            ref={confirmRef}
+            type="button"
+            onClick={onConfirm}
+            className={confirmClassName}
+          >
             {confirmLabel}
           </button>
         </div>

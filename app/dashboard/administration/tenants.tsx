@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CrmProductEntry } from "../crm/products/products-utils";
@@ -132,9 +133,9 @@ export default function TenantManagement({
 
   async function handleSuspend(row: CustomerTenantRow) {
     if (
-      !window.confirm(
-        `Suspend ${row.companyName}? Users in this tenant will be blocked from accessing the dashboard.`,
-      )
+      !(await confirmDialog({
+        message: `Suspend ${row.companyName}? Users in this tenant will be blocked from accessing the dashboard.`,
+      }))
     ) {
       return;
     }
@@ -143,7 +144,7 @@ export default function TenantManagement({
   }
 
   async function handleReactivate(row: CustomerTenantRow) {
-    if (!window.confirm(`Reactivate ${row.companyName}?`)) {
+    if (!(await confirmDialog({ message: `Reactivate ${row.companyName}?` }))) {
       return;
     }
 
@@ -322,9 +323,9 @@ export default function TenantManagement({
 
   async function handleUnwaive(row: CustomerTenantRow) {
     if (
-      !window.confirm(
-        `Remove the billing waiver for ${row.companyName}? Normal trial/subscription rules will apply again.`,
-      )
+      !(await confirmDialog({
+        message: `Remove the billing waiver for ${row.companyName}? Normal trial/subscription rules will apply again.`,
+      }))
     ) {
       return;
     }

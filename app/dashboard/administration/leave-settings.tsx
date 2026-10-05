@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../hr-payroll/hr-register-utils";
@@ -339,9 +340,11 @@ export default function LeaveSettings({
     group: (typeof entitlementGroups)[number],
   ) {
     if (
-      !window.confirm(
-        `Delete leave entitlements for ${group.position} / ${group.employment_type}?`,
-      )
+      !(await confirmDialog({
+        message: `Delete leave entitlements for ${group.position} / ${group.employment_type}?`,
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
     ) {
       return;
     }

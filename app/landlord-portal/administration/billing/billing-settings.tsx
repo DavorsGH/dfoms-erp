@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -171,7 +172,7 @@ export default function LandlordPortalBillingSettings({
           ? `Switch to monthly billing after your current annual period ends${formattedPeriodEnd ? ` on ${formattedPeriodEnd}` : ""}? No immediate charge.`
           : "Switch to monthly billing?";
 
-    if (!window.confirm(confirmMessage)) {
+    if (!(await confirmDialog({ message: confirmMessage }))) {
       setCycleLoading(null);
       return;
     }

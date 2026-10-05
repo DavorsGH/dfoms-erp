@@ -5,10 +5,14 @@ import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { assertTenantHasFeature } from "@/utils/tier-access";
 import { CRM_FULL_FEATURE_ROLES } from "@/utils/rbac-access";
 import {
+  countCampaignAudienceRecipients,
+  sanitizeFilteredClientIds,
+} from "@/utils/campaign-audience";
+import {
   CAMPAIGN_CODE_ENTITY_TYPE,
   CAMPAIGN_SELECT,
   channelsCompatible,
-  defaultChannelFromTemplate,
+  filteredCampaignAudienceHasCriteria,
   normalizeCampaignRow,
   trimCampaignInput,
   validateCampaignInput,
@@ -94,28 +98,28 @@ async function loadActiveTemplate(
   return { ok: true, channel: String(data.channel) };
 }
 
-async function countAudienceRecipients(
+async function resolveAudienceForSave(
   supabase: SupabaseClient,
   tenantId: string,
   audience: CampaignAudienceFilter,
-): Promise<number> {
-  let query = supabase
-    .from("customers")
-    .select("client_id", { count: "exact", head: true })
-    .eq("tenant_id", tenantId)
-    .eq("status", "active");
-
-  if (audience.type === "customer_type") {
-    query = query.eq("customer_type", audience.value);
+): Promise<CampaignAudienceFilter | null> {
+  if (audience.type !== "filtered") {
+    return audience;
   }
 
-  const { count, error } = await query;
-  if (error) {
-    console.error("[campaigns] audience count failed:", error.message);
-    return 0;
+  const client_ids = await sanitizeFilteredClientIds(
+    supabase,
+    tenantId,
+    audience.client_ids,
+  );
+  const resolved: CampaignAudienceFilter = {
+    ...audience,
+    client_ids,
+  };
+  if (!filteredCampaignAudienceHasCriteria(resolved)) {
+    return null;
   }
-
-  return count ?? 0;
+  return resolved;
 }
 
 export async function GET(request: Request) {
@@ -185,26 +189,46 @@ export async function POST(request: Request) {
   const trimmed = trimCampaignInput(body);
   const supabase = await getTenantSupabase();
 
-  const template = await loadActiveTemplate(
+  const audienceForSave = await resolveAudienceForSave(
     supabase,
     auth.tenantId,
-    trimmed.template_id,
+    trimmed.audience_filter,
   );
-  if (!template.ok) {
+  if (!audienceForSave) {
     return NextResponse.json(
-      { error: template.error },
-      { status: template.status },
-    );
-  }
-
-  // Channel is owned by the template for v1 — ignore mismatched client values.
-  const channel = defaultChannelFromTemplate(template.channel);
-  if (!channelsCompatible(template.channel, channel)) {
-    return NextResponse.json(
-      { error: "Campaign channel is not compatible with the selected template." },
+      {
+        error:
+          "Audience must be all customers, or at least one customer type or named customer.",
+      },
       { status: 400 },
     );
   }
+
+  if (trimmed.template_id) {
+    const template = await loadActiveTemplate(
+      supabase,
+      auth.tenantId,
+      trimmed.template_id,
+    );
+    if (!template.ok) {
+      return NextResponse.json(
+        { error: template.error },
+        { status: template.status },
+      );
+    }
+
+    if (!channelsCompatible(template.channel, trimmed.channel)) {
+      return NextResponse.json(
+        {
+          error:
+            "Campaign channels are not compatible with the selected template.",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
+  const channel = trimmed.channel;
 
   const allocated = await allocateCampaignCode(supabase, auth.tenantId);
   if (allocated.error || !allocated.code) {
@@ -218,10 +242,10 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const totalRecipients = await countAudienceRecipients(
+  const totalRecipients = await countCampaignAudienceRecipients(
     supabase,
     auth.tenantId,
-    trimmed.audience_filter,
+    audienceForSave,
   );
 
   const now = new Date().toISOString();
@@ -233,7 +257,10 @@ export async function POST(request: Request) {
       name: trimmed.name,
       template_id: trimmed.template_id,
       channel,
-      audience_filter: trimmed.audience_filter,
+      subject: trimmed.template_id ? null : trimmed.subject,
+      body_email: trimmed.template_id ? null : trimmed.body_email,
+      body_sms: trimmed.template_id ? null : trimmed.body_sms,
+      audience_filter: audienceForSave,
       status: "draft",
       total_recipients: totalRecipients,
       created_by: user?.id ?? null,

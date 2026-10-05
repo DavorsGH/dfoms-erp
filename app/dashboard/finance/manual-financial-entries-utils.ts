@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { formatGHS } from "./income-register-utils";
 import { buildPeriodMonth, getPeriodMonthParts } from "./cash-flow-utils";
 
@@ -481,22 +482,31 @@ export function applyAddOtherCashInflows(params: {
 }
 
 /** Confirm delete with a full field listing for the month row. */
-export function confirmDeleteManualEntry(
+export async function confirmDeleteManualEntry(
   entry: ManualFinancialEntryRecord,
-): boolean {
+): Promise<boolean> {
   const nonZeroColumns = MANUAL_ENTRY_LIST_COLUMNS.filter(
     (column) => Math.abs(Number(entry[column.key]) || 0) > 0.005,
   );
-  const lines = nonZeroColumns
-    .map((column) => `${column.label}: ${formatGHS(entry[column.key] ?? 0)}`)
-    .join("\n");
+  const details = nonZeroColumns.map((column) => ({
+    label: column.label,
+    value: formatGHS(entry[column.key] ?? 0),
+  }));
   const warning =
     nonZeroColumns.length > 1
-      ? `\n\nWarning: this month row has ${nonZeroColumns.length} non-zero fields. Deleting removes ALL of them (bank loans, LTL, loan proceeds, opening cash, etc.) — not just one line. Use guided actions to adjust a single field instead, or clear fields individually by editing the row.\n`
-      : "";
-  return window.confirm(
-    `Delete manual entry for ${formatPeriodMonthLabel(entry.period_month)}?${warning}\n${lines || "(all amounts are zero)"}`,
-  );
+      ? "This month row has several non-zero fields. Deleting removes all of them (bank loans, long-term loans, loan proceeds, opening cash, and so on)—not just one line. Use guided actions or edit the row to change a single field instead."
+      : undefined;
+  return confirmDialog({
+    title: "Delete manual entry?",
+    message: `Delete manual entry for ${formatPeriodMonthLabel(entry.period_month)}?`,
+    detail: warning,
+    details:
+      details.length > 0
+        ? details
+        : [{ label: "Amounts", value: "All zero" }],
+    tone: "danger",
+    confirmLabel: "Delete",
+  });
 }
 
 export function entryToCashMovementManualEntry(

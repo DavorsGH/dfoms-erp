@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { LoadingState } from "@/components/loading-indicator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
@@ -1126,9 +1127,9 @@ export default function PayrollProcessing({
     const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
 
     if (
-      !window.confirm(
-        `Reopen ${label} for editing? This will remove it from Finance reports until re-locked.`,
-      )
+      !(await confirmDialog({
+        message: `Reopen ${label} for editing? This will remove it from Finance reports until re-locked.`,
+      }))
     ) {
       return;
     }
@@ -1220,9 +1221,9 @@ export default function PayrollProcessing({
 
     const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
 
-    const confirmed = window.confirm(
-      `Clear stale payroll history for ${label}? This removes leftover history rows while keeping the period Open. Do not use this if the month is locked.`,
-    );
+    const confirmed = await confirmDialog({
+      message: `Clear stale payroll history for ${label}? This removes leftover history rows while keeping the period Open. Do not use this if the month is locked.`,
+    });
 
     if (!confirmed) {
       return;
@@ -1270,9 +1271,9 @@ export default function PayrollProcessing({
     const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
 
     if (
-      !window.confirm(
-        `Release ${label} back to Open? This removes permanent lock protection, deletes Finance auto-posts for this month, and restores payroll rows for editing.`,
-      )
+      !(await confirmDialog({
+        message: `Release ${label} back to Open? This removes permanent lock protection, deletes Finance auto-posts for this month, and restores payroll rows for editing.`,
+      }))
     ) {
       return;
     }
@@ -1387,9 +1388,9 @@ export default function PayrollProcessing({
     const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
 
     if (
-      !window.confirm(
-        `Lock ${label} permanently? This cannot be reopened through the UI after the month ends.`,
-      )
+      !(await confirmDialog({
+        message: `Lock ${label} permanently? This cannot be reopened through the UI after the month ends.`,
+      }))
     ) {
       return;
     }
@@ -1419,9 +1420,9 @@ export default function PayrollProcessing({
     const label = formatPeriodLabel(currentPeriod.year, currentPeriod.month);
 
     if (
-      !window.confirm(
-        `Fully lock ${label}? This marks payroll as fully paid and posts a cash outflow to Cash Position. This cannot be undone without Release to Open (or Reopen if still Partially Locked).`,
-      )
+      !(await confirmDialog({
+        message: `Fully lock ${label}? This marks payroll as fully paid and posts a cash outflow to Cash Position. This cannot be undone without Release to Open (or Reopen if still Partially Locked).`,
+      }))
     ) {
       return;
     }

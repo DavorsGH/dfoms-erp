@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -196,7 +197,7 @@ export default function LesseeDetailView({
   }
 
   async function handleRevokePortal() {
-    if (!window.confirm(revokePortalConfirmMessage(detail.fullName))) {
+    if (!(await confirmDialog({ message: revokePortalConfirmMessage(detail.fullName) }))) {
       return;
     }
 

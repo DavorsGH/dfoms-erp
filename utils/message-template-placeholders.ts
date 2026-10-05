@@ -20,7 +20,7 @@ export const LESSEE_TEMPLATE_PLACEHOLDERS = [
 
 /** From buildEmployeeVariables (utils/employee-announcement-send.ts). */
 export const EMPLOYEE_TEMPLATE_PLACEHOLDERS = [
-  "employee_name",
+  "first_name",
   "full_name",
   "staff_id",
   "employee_id",
@@ -34,12 +34,16 @@ export const EMPLOYEE_TEMPLATE_PLACEHOLDERS = [
 
 /** From buildCustomerVariables (utils/campaign-send.ts). */
 export const CUSTOMER_TEMPLATE_PLACEHOLDERS = [
+  "first_name",
+  "full_name",
+  "company_name",
+  "email",
+  "phone",
+  "business_name",
   "customer_name",
   "client_name",
   "customer_id",
   "client_id",
-  "email",
-  "phone",
   "contact_person",
   "address",
   "customer_type",

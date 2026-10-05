@@ -1,5 +1,6 @@
 "use client";
 
+import { promptDialog } from "@/components/feedback/app-dialogs";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -199,9 +200,10 @@ export default function DirectorsLoanLedgerPanel({
   }
 
   async function handleReverse(entry: DirectorsLoanLedgerEntry) {
-    const reason = window.prompt(
-      "Reason for reversing this entry (required, min 5 characters):",
-    );
+    const reason = await promptDialog({
+      message: "Reason for reversing this entry (required, min 5 characters):",
+      required: true,
+    });
     if (!reason || reason.trim().length < 5) {
       return;
     }

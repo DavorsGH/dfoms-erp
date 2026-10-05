@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 
 const tabs = [
   {
-    label: "Templates",
-    href: "/dashboard/hr-payroll/employee-announcements/templates",
-  },
-  {
     label: "Campaigns",
     href: "/dashboard/hr-payroll/employee-announcements/campaigns",
+  },
+  {
+    label: "Templates",
+    href: "/dashboard/hr-payroll/employee-announcements/templates",
   },
 ] as const;
 

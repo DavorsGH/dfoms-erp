@@ -13,6 +13,7 @@ type TopBarProps = {
   userLabel: string;
   userPhotoUrl?: string | null;
   userFullName?: string | null;
+  linkedEmployeeId?: string | null;
   onMenuToggle: () => void;
   mobileNavOpen: boolean;
   businessUnitSwitcher?: {
@@ -46,6 +47,7 @@ export default function TopBar({
   userLabel,
   userPhotoUrl,
   userFullName,
+  linkedEmployeeId = null,
   onMenuToggle,
   mobileNavOpen,
   businessUnitSwitcher = null,
@@ -79,6 +81,7 @@ export default function TopBar({
           userLabel={userLabel}
           userPhotoUrl={userPhotoUrl}
           userFullName={userFullName}
+          linkedEmployeeId={linkedEmployeeId}
         />
       </div>
     </header>

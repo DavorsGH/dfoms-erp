@@ -1,7 +1,7 @@
 import "server-only";
 
 /** OTP/auth SMS always send. Everything else respects NON_OTP_SMS_ENABLED. */
-export type SmsSendPurpose = "otp" | "transactional";
+export type SmsSendPurpose = "otp" | "transactional" | "marketing";
 
 export type SendSmsResult =
   | { ok: true; id: string | null }

@@ -146,7 +146,7 @@ export default function ServiceCatalogList({
   }
 
   async function handleDelete(serviceId: string) {
-    if (!confirmDeleteEntry()) {
+    if (!(await confirmDeleteEntry())) {
       return;
     }
 

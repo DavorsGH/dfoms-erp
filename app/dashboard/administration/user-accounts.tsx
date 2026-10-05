@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/components/feedback/app-dialogs";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PASSWORD_MIN_LENGTH } from "@/utils/password-policy";
@@ -335,7 +336,7 @@ export default function UserAccounts({
 
     const originalAccount = accounts.find((account) => account.auth_uid === authUid);
     if (originalAccount?.is_active && !editForm.is_active) {
-      if (!window.confirm(deactivateConfirmMessage(displayName))) {
+      if (!(await confirmDialog({ message: deactivateConfirmMessage(displayName) }))) {
         return;
       }
     }
@@ -412,7 +413,7 @@ export default function UserAccounts({
   }
 
   async function handleDeactivate(authUid: string, displayName: string) {
-    if (!window.confirm(deactivateConfirmMessage(displayName))) {
+    if (!(await confirmDialog({ message: deactivateConfirmMessage(displayName) }))) {
       return;
     }
 
@@ -482,9 +483,11 @@ export default function UserAccounts({
     }
 
     if (
-      !window.confirm(
-        deleteConfirmMessage(displayName, dependencyPayload.summary),
-      )
+      !(await confirmDialog({
+        message: deleteConfirmMessage(displayName, dependencyPayload.summary),
+        tone: "danger",
+        confirmLabel: "Delete",
+      }))
     ) {
       setActionId(null);
       return;
