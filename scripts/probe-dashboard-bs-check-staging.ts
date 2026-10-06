@@ -11,12 +11,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
-  buildBalanceSheetReport,
-  getBalanceCheckForPeriod,
   getBalanceSheetAmountForMonth,
   FULL_YEAR_INDEX,
 } from "../app/dashboard/finance/balance-sheet-utils";
 import { fetchBalanceSheetPageData } from "../app/dashboard/finance/balance-sheet-page-data";
+import {
+  buildStandardBalanceSheetReport,
+  getBalanceSheetMonthCheck,
+} from "../lib/finance/balance-sheet-standard-report";
 import {
   buildDashboardBalanceSheetCheck,
   buildDashboardViewModel,
@@ -143,21 +145,7 @@ async function probeTenant(
     directorsLoanRepayments: data.initialDirectorsLoanRepayments,
   };
 
-  const financeReport = buildBalanceSheetReport(
-    data.initialIncomeEntries,
-    data.initialExpenseEntries,
-    data.initialFixedAssets,
-    data.initialPayableEntries,
-    data.initialCapitalContributions,
-    data.initialCashFlowExpenseEntries,
-    data.initialPayrollHistory,
-    data.initialMonthEndCloseNetPay,
-    FY,
-    data.initialInventoryBalanceSheet,
-    data.initialManualEntries,
-    data.initialTaxLedgerEntries,
-    reportOptions,
-  );
+  const financeReport = buildStandardBalanceSheetReport(data, tenantId, FY);
 
   const dashboardVm = buildDashboardViewModel({
     incomeEntries: data.initialIncomeEntries.map((e) => ({
@@ -213,8 +201,8 @@ async function probeTenant(
     ? dashboardVm.monthSnapshots[augustKey]?.summary.balanceCheck
     : null;
 
-  const financeAug = getBalanceCheckForPeriod(financeReport, AUGUST_INDEX);
-  const financeDec = getBalanceCheckForPeriod(financeReport, FULL_YEAR_INDEX);
+  const financeAug = getBalanceSheetMonthCheck(financeReport, AUGUST_INDEX);
+  const financeDec = getBalanceSheetMonthCheck(financeReport, FULL_YEAR_INDEX);
   const wrapperAug = buildDashboardBalanceSheetCheck(financeReport, AUGUST_INDEX);
 
   const diffs = rowDiffs(financeReport, financeReport, AUGUST_INDEX);

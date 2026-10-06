@@ -1,14 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getDefaultSelectedYear } from "./finance-year-utils";
 import FinancialYearSelector from "./financial-year-selector";
 import { formatGHS } from "./income-register-utils";
 import {
   FULL_YEAR_INDEX,
   MONTH_LABELS,
-  buildBalanceSheetReport,
-  getBalanceCheckForPeriod,
   type BalanceSheetAccountsPayableEntry,
   type BalanceSheetIncomeEntry,
   type BalanceSheetRow,
@@ -36,7 +34,10 @@ import type {
   CustomerCreditsCreditNoteRow,
   CustomerCreditsRefundRow,
 } from "./customer-credits-liability-utils";
-import { buildCustomerCreditsBalanceSheetOptions } from "./balance-sheet-page-data";
+import {
+  buildStandardBalanceSheetReport,
+  getBalanceSheetMonthCheck,
+} from "@/lib/finance/balance-sheet-standard-report";
 import {
   FinancialStatementScrollableTable,
   scrollableTableFinancialStatementClassName,
@@ -198,36 +199,55 @@ export default function BalanceSheet({
   const focusMonthIndex =
     selectedYear === initialFocusYear ? initialFocusMonth : null;
 
+  const defaultCheckMonthIndex = useMemo(() => {
+    if (focusMonthIndex !== null) {
+      return focusMonthIndex;
+    }
+    const now = new Date();
+    if (now.getFullYear() === selectedYear) {
+      return now.getMonth();
+    }
+    return 11;
+  }, [focusMonthIndex, selectedYear]);
+
+  const [balanceCheckPeriodIndex, setBalanceCheckPeriodIndex] = useState(
+    defaultCheckMonthIndex,
+  );
+
+  useEffect(() => {
+    setBalanceCheckPeriodIndex(defaultCheckMonthIndex);
+  }, [defaultCheckMonthIndex, selectedYear]);
+
   const report = useMemo(
     () =>
-      buildBalanceSheetReport(
-        initialIncomeEntries,
-        initialExpenseEntries,
-        initialFixedAssets,
-        initialPayableEntries,
-        initialCapitalContributions,
-        initialCashFlowExpenseEntries,
-        initialPayrollHistory,
-        initialMonthEndCloseNetPay,
-        selectedYear,
-        initialInventoryBalanceSheet,
-        initialManualEntries,
-        initialTaxLedgerEntries,
-        initialWelfareFundEntries,
+      buildStandardBalanceSheetReport(
         {
-          tenantId,
-          accountsPayablePayments: initialAccountsPayablePayments,
-          directorsLoanRepayments: initialDirectorsLoanRepayments,
-          directorsLoanLedgerEntries: initialDirectorsLoanLedgerEntries,
+          initialIncomeEntries,
+          initialExpenseEntries,
+          initialFixedAssets,
+          initialPayableEntries,
+          initialAccountsPayablePayments,
+          initialDirectorsLoanRepayments,
+          initialDirectorsLoanLedgerEntries,
+          initialCapitalContributions,
+          initialCashFlowExpenseEntries,
+          initialPayrollHistory,
+          initialMonthEndCloseNetPay,
+          initialInventoryBalanceSheet,
+          initialManualEntries,
+          initialTaxLedgerEntries,
+          initialWelfareFundEntries,
+          initialCreditNotesForCustomerCredits,
+          initialRefundsForCustomerCredits,
+          initialCreditNoteApplications,
+        },
+        tenantId,
+        selectedYear,
+        {
           allBusinessUnitsDirectorsLoan: viewAllBusinessUnits,
           rawManualFinancialEntries: viewAllBusinessUnits
             ? initialRawManualEntries
             : undefined,
-          ...buildCustomerCreditsBalanceSheetOptions({
-            initialCreditNotesForCustomerCredits,
-            initialRefundsForCustomerCredits,
-            initialCreditNoteApplications,
-          }),
         },
       ),
     [
@@ -252,9 +272,14 @@ export default function BalanceSheet({
   );
 
   const balanceCheck = useMemo(
-    () => getBalanceCheckForPeriod(report, FULL_YEAR_INDEX),
-    [report],
+    () => getBalanceSheetMonthCheck(report, balanceCheckPeriodIndex),
+    [report, balanceCheckPeriodIndex],
   );
+
+  const balanceCheckPeriodLabel =
+    balanceCheckPeriodIndex === FULL_YEAR_INDEX
+      ? `Full year (Dec ${report.financialYear})`
+      : `31 ${MONTH_LABELS[balanceCheckPeriodIndex]} ${report.financialYear}`;
 
   return (
     <div className="min-w-0 space-y-6">
@@ -283,8 +308,12 @@ export default function BalanceSheet({
         totalLiabilitiesAndEquity={balanceCheck.totalLiabilitiesAndEquity}
         difference={balanceCheck.difference}
         isBalanced={balanceCheck.isBalanced}
-        periodLabel={`31 Dec ${report.financialYear}`}
+        periodLabel={balanceCheckPeriodLabel}
       />
+      <p className="text-xs text-slate-500">
+        Click a month column header (or Full Year) below to change which period
+        this balance check uses.
+      </p>
 
       <FinancialStatementScrollableTable>
         <table className={scrollableTableFinancialStatementClassName}>
@@ -296,19 +325,29 @@ export default function BalanceSheet({
               {MONTH_LABELS.map((month, monthIndex) => (
                 <th
                   key={month}
-                  className={`whitespace-nowrap ${
-                    focusMonthIndex === monthIndex
+                  className={`cursor-pointer whitespace-nowrap ${
+                    balanceCheckPeriodIndex === monthIndex
                       ? focusMonthHeaderClassName
-                      : scrollableTableFinancialStatementThClassName
+                      : focusMonthIndex === monthIndex
+                        ? "bg-amber-50 px-4 py-3 font-medium text-amber-950 ring-1 ring-inset ring-amber-200"
+                        : scrollableTableFinancialStatementThClassName
                   }`}
+                  onClick={() => setBalanceCheckPeriodIndex(monthIndex)}
+                  title="Use this month for the balance check above"
                 >
                   {month} {report.financialYear}
                 </th>
               ))}
               <th
-                className={`${scrollableTableFinancialStatementThClassName} whitespace-nowrap`}
+                className={`${scrollableTableFinancialStatementThClassName} cursor-pointer whitespace-nowrap ${
+                  balanceCheckPeriodIndex === FULL_YEAR_INDEX
+                    ? "bg-slate-200 ring-2 ring-inset ring-slate-400"
+                    : ""
+                }`}
+                onClick={() => setBalanceCheckPeriodIndex(FULL_YEAR_INDEX)}
+                title="Use full-year (Dec) column for the balance check above"
               >
-                Full Year
+                Full Year (Dec)
               </th>
             </tr>
           </thead>

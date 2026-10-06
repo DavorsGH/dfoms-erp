@@ -47,6 +47,27 @@ export function getBulkImportColumnAliasLookup(
 ): Map<string, string> {
   const lookup = new Map<string, string>();
 
+  if (importType === "product") {
+    const productPairs: Array<[string, string]> = [
+      ["barcode", "barcode"],
+      ["ean", "barcode"],
+      ["upc", "barcode"],
+      ["unitcost", "unit_cost"],
+      ["costperunit", "unit_cost"],
+      ["costprice", "unit_cost"],
+      ["purchaseprice", "unit_cost"],
+    ];
+    for (const [alias, fieldKey] of productPairs) {
+      lookup.set(normalizeColumnMatchKey(alias), fieldKey);
+    }
+    lookup.set(normalizeColumnMatchKey("bar code"), "barcode");
+    lookup.set(normalizeColumnMatchKey("unit cost"), "unit_cost");
+    lookup.set(normalizeColumnMatchKey("cost per unit"), "unit_cost");
+    lookup.set(normalizeColumnMatchKey("cost price"), "unit_cost");
+    lookup.set(normalizeColumnMatchKey("purchase price"), "unit_cost");
+    return lookup;
+  }
+
   if (importType !== "employee") {
     return lookup;
   }

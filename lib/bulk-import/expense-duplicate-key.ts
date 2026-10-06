@@ -89,10 +89,10 @@ export function buildExpenseDuplicateKey(input: {
   return [date, vendor, price, expenseCategory, paymentMethod].join("|");
 }
 
-export function indexInFileDuplicateExpenseKeys(
-  rows: Array<{ mapped_data: Record<string, unknown> }>,
-): Set<string> {
-  const counts = new Map<string, number>();
+export function indexInFileDuplicateExpenseGroups(
+  rows: Array<{ row_number: number; mapped_data: Record<string, unknown> }>,
+): Map<string, number[]> {
+  const counts = new Map<string, number[]>();
 
   for (const row of rows) {
     const key = buildExpenseDuplicateKey({
@@ -106,14 +106,28 @@ export function indexInFileDuplicateExpenseKeys(
       continue;
     }
 
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const list = counts.get(key) ?? [];
+    list.push(row.row_number);
+    counts.set(key, list);
   }
 
-  return new Set(
-    [...counts.entries()]
-      .filter(([, count]) => count > 1)
-      .map(([key]) => key),
-  );
+  const groups = new Map<string, number[]>();
+  for (const [key, rowNumbers] of counts.entries()) {
+    if (rowNumbers.length > 1) {
+      groups.set(
+        key,
+        rowNumbers.slice().sort((a, b) => a - b),
+      );
+    }
+  }
+
+  return groups;
+}
+
+export function indexInFileDuplicateExpenseKeys(
+  rows: Array<{ row_number: number; mapped_data: Record<string, unknown> }>,
+): Set<string> {
+  return new Set([...indexInFileDuplicateExpenseGroups(rows).keys()]);
 }
 
 export function buildFixedAssetDuplicateKey(input: {
@@ -132,10 +146,10 @@ export function buildFixedAssetDuplicateKey(input: {
   return [assetName, purchaseDate, originalCost].join("|");
 }
 
-export function indexInFileDuplicateFixedAssetKeys(
-  rows: Array<{ mapped_data: Record<string, unknown> }>,
-): Set<string> {
-  const counts = new Map<string, number>();
+export function indexInFileDuplicateFixedAssetGroups(
+  rows: Array<{ row_number: number; mapped_data: Record<string, unknown> }>,
+): Map<string, number[]> {
+  const counts = new Map<string, number[]>();
 
   for (const row of rows) {
     const key = buildFixedAssetDuplicateKey({
@@ -147,12 +161,26 @@ export function indexInFileDuplicateFixedAssetKeys(
       continue;
     }
 
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const list = counts.get(key) ?? [];
+    list.push(row.row_number);
+    counts.set(key, list);
   }
 
-  return new Set(
-    [...counts.entries()]
-      .filter(([, count]) => count > 1)
-      .map(([key]) => key),
-  );
+  const groups = new Map<string, number[]>();
+  for (const [key, rowNumbers] of counts.entries()) {
+    if (rowNumbers.length > 1) {
+      groups.set(
+        key,
+        rowNumbers.slice().sort((a, b) => a - b),
+      );
+    }
+  }
+
+  return groups;
+}
+
+export function indexInFileDuplicateFixedAssetKeys(
+  rows: Array<{ row_number: number; mapped_data: Record<string, unknown> }>,
+): Set<string> {
+  return new Set([...indexInFileDuplicateFixedAssetGroups(rows).keys()]);
 }

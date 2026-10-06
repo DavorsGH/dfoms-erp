@@ -62,4 +62,6 @@ export type BulkImportValidationResponse = {
 export type BulkImportCommitResponse = {
   job_id: string;
   committed_count: number;
+  /** Employee import: position titles created during commit (when opt-in enabled). */
+  positions_created?: string[];
 };

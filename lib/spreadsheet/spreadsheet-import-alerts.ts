@@ -44,6 +44,17 @@ export function spreadsheetImportUploadFailedAlert(): SpreadsheetImportAlert {
   };
 }
 
+export function spreadsheetImportCommitFailedAlert(
+  message?: string,
+): SpreadsheetImportAlert {
+  return {
+    title: "Import failed",
+    message:
+      message?.trim() ||
+      "Something went wrong importing your data. Please try again.",
+  };
+}
+
 export function inspectSpreadsheetFileForImport(
   file: File,
 ): { ok: true } | { ok: false; alert: SpreadsheetImportAlert } {
@@ -125,7 +136,7 @@ export function spreadsheetImportTooManyRowsAlert(): SpreadsheetImportAlert {
 
 export function spreadsheetImportAlertFromError(
   error: unknown,
-  context: "upload" | "parse" = "upload",
+  context: "upload" | "parse" | "commit" = "upload",
 ): SpreadsheetImportAlert {
   if (error instanceof SpreadsheetValidationError) {
     return { title: error.title, message: error.message };
@@ -160,6 +171,10 @@ export function spreadsheetImportAlertFromError(
     return spreadsheetImportUnreadableAlert();
   }
 
+  if (context === "commit") {
+    return spreadsheetImportCommitFailedAlert(message);
+  }
+
   if (message.trim()) {
     return {
       title: "Upload failed",
@@ -172,6 +187,7 @@ export function spreadsheetImportAlertFromError(
 
 export async function spreadsheetImportAlertFromUploadResponse(
   response: Response,
+  context: "upload" | "commit" = "upload",
 ): Promise<SpreadsheetImportAlert> {
   if (response.status === 413) {
     return spreadsheetImportTooLargeAlert(SPREADSHEET_UPLOAD_MAX_BYTES + 1);
@@ -215,21 +231,32 @@ export async function spreadsheetImportAlertFromUploadResponse(
   }
 
   if (payload?.error) {
-    return spreadsheetImportAlertFromError(new Error(payload.error), "upload");
+    return spreadsheetImportAlertFromError(
+      new Error(payload.error),
+      context === "commit" ? "commit" : "upload",
+    );
   }
 
-  return spreadsheetImportUploadFailedAlert();
+  return context === "commit"
+    ? spreadsheetImportCommitFailedAlert()
+    : spreadsheetImportUploadFailedAlert();
 }
 
 export async function readSpreadsheetImportJsonResponse<T>(
   response: Response,
+  options: { failureContext?: "upload" | "commit" } = {},
 ): Promise<
   { ok: true; data: T } | { ok: false; alert: SpreadsheetImportAlert }
 > {
+  const failureContext = options.failureContext ?? "upload";
+
   if (!response.ok) {
     return {
       ok: false,
-      alert: await spreadsheetImportAlertFromUploadResponse(response),
+      alert: await spreadsheetImportAlertFromUploadResponse(
+        response,
+        failureContext,
+      ),
     };
   }
 

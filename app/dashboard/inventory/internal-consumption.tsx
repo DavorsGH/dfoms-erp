@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
-import { getStripedRowClassName } from "../finance/register-row-actions";
+import {
+  getStripedRowClassName,
+  registerTableActionsInnerClassName,
+} from "../finance/register-row-actions";
+import {
+  scrollableTableActionsTdClassName,
+  scrollableTableActionsThClassName,
+} from "../scrollable-table";
 import type { ContractProjectOption } from "../administration/projects-utils";
 import type { SiteEntry } from "../operations/sites-utils";
 import ScrollableTable, {
@@ -40,6 +47,7 @@ import {
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
 import {
+  assertCanModifyBusinessUnitRow,
   formatBusinessUnitAccessError,
   loadWriteBusinessUnitContext,
   resolveWriteBusinessUnitIdForCreate,
@@ -88,6 +96,11 @@ export default function InternalConsumption({
     initialProducts.map(normalizeFinishedProduct),
   );
   const [showForm, setShowForm] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [confirmDeleteEntryId, setConfirmDeleteEntryId] = useState<string | null>(
+    null,
+  );
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
@@ -212,29 +225,122 @@ export default function InternalConsumption({
       return;
     }
 
-    const { error: insertError } = await supabase
-      .from("internal_consumption")
-      .insert({
-        product_id: form.product_id,
-        quantity,
-        consumption_date: form.consumption_date,
-        reason: nullableText(form.reason),
-        notes: nullableText(form.notes),
-        recorded_by: recordedByLabel,
-        site_id: nullableText(form.site_id),
-        business_unit_id: stampResult.businessUnitId,
-      });
+    if (editingEntryId) {
+      const editingEntry = entries.find((row) => row.id === editingEntryId);
+      if (editingEntry?.business_unit_id != null) {
+        try {
+          assertCanModifyBusinessUnitRow(
+            buContext.allowedUnits,
+            editingEntry.business_unit_id,
+          );
+        } catch (accessError) {
+          setError(formatBusinessUnitAccessError(accessError));
+          setLoading(false);
+          return;
+        }
+      }
 
-    if (insertError) {
-      setError(insertError.message);
-      setLoading(false);
-      return;
+      const response = await fetch(
+        `/api/inventory/internal-consumption/${editingEntryId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            consumption_date: form.consumption_date,
+            product_id: form.product_id,
+            quantity,
+            reason: nullableText(form.reason),
+            notes: nullableText(form.notes),
+            site_id: nullableText(form.site_id),
+          }),
+        },
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Unable to save this entry.");
+        setLoading(false);
+        return;
+      }
+    } else {
+      const { error: insertError } = await supabase
+        .from("internal_consumption")
+        .insert({
+          product_id: form.product_id,
+          quantity,
+          consumption_date: form.consumption_date,
+          reason: nullableText(form.reason),
+          notes: nullableText(form.notes),
+          recorded_by: recordedByLabel,
+          site_id: nullableText(form.site_id),
+          business_unit_id: stampResult.businessUnitId,
+        });
+
+      if (insertError) {
+        setError(insertError.message);
+        setLoading(false);
+        return;
+      }
     }
 
+    setEditingEntryId(null);
     setForm(emptyForm);
     setShowForm(false);
     await refreshData();
     setLoading(false);
+  }
+
+  function openEditEntry(entry: InternalConsumptionRecord) {
+    setEditingEntryId(entry.id);
+    setForm({
+      project_id: entry.site?.project_id ?? "",
+      site_id: entry.site_id ?? "",
+      product_id: entry.product_id,
+      quantity: String(entry.quantity),
+      consumption_date: entry.consumption_date.slice(0, 10),
+      reason: entry.reason ?? "",
+      notes: entry.notes ?? "",
+    });
+    setShowForm(true);
+  }
+
+  async function handleDeleteEntry(entry: InternalConsumptionRecord) {
+    setDeletingEntryId(entry.id);
+    setConfirmDeleteEntryId(null);
+    setError(null);
+
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
+      setDeletingEntryId(null);
+      return;
+    }
+
+    if (entry.business_unit_id != null) {
+      try {
+        assertCanModifyBusinessUnitRow(
+          buContext.allowedUnits,
+          entry.business_unit_id,
+        );
+      } catch (accessError) {
+        setError(formatBusinessUnitAccessError(accessError));
+        setDeletingEntryId(null);
+        return;
+      }
+    }
+
+    const response = await fetch(
+      `/api/inventory/internal-consumption/${entry.id}`,
+      { method: "DELETE" },
+    );
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setError(payload.error ?? "Unable to delete this entry.");
+      setDeletingEntryId(null);
+      return;
+    }
+
+    await refreshData();
+    setDeletingEntryId(null);
   }
 
   function updateField(field: keyof typeof emptyForm, value: string) {
@@ -266,16 +372,22 @@ export default function InternalConsumption({
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-slate-600">
-          Record finished product drawn for Davors&apos; own internal use (not
-          sold to a customer). Entries are append-only: stock is reduced
-          automatically and a Non-Cash Direct Operational expense is posted at
-          the product&apos;s weighted-average cost from the go-live date
-          forward.
+          Record finished product drawn for your business&apos;s own internal
+          use (not sold to a customer). Stock is reduced automatically and a
+          Non-Cash Direct Operational expense is posted at the product&apos;s
+          weighted-average cost from the go-live date forward. You can edit or
+          delete entries when the month is still open.
         </p>
         {!readOnly ? (
         <button
           type="button"
-          onClick={() => setShowForm((current) => !current)}
+          onClick={() => {
+            if (showForm) {
+              setEditingEntryId(null);
+              setForm(emptyForm);
+            }
+            setShowForm((current) => !current);
+          }}
           className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
         >
           {showForm ? "Cancel" : "Record Internal Use"}
@@ -286,7 +398,7 @@ export default function InternalConsumption({
       {showForm && !readOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
-            New Internal Consumption
+            {editingEntryId ? "Edit Internal Consumption" : "New Internal Consumption"}
           </h3>
           <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
             <div>
@@ -408,7 +520,7 @@ export default function InternalConsumption({
                 disabled={loading}
                 className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? "Saving…" : "Save Entry"}
+                {loading ? "Saving…" : editingEntryId ? "Save Changes" : "Save Entry"}
               </button>
             </div>
           </form>
@@ -426,13 +538,16 @@ export default function InternalConsumption({
               <th className={scrollableTableThClassName}>Quantity</th>
               <th className={scrollableTableThClassName}>Reason</th>
               <th className={scrollableTableThClassName}>Recorded By</th>
+              {!readOnly ? (
+                <th className={scrollableTableActionsThClassName}>Actions</th>
+              ) : null}
             </tr>
           </thead>
           <tbody className={scrollableTableBodyClassName}>
             {entries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={readOnly ? 7 : 8}
                   className="px-4 py-8 text-center text-sm text-slate-500"
                 >
                   No internal consumption recorded yet.
@@ -463,6 +578,57 @@ export default function InternalConsumption({
                   <td className="px-4 py-3 text-slate-900">
                     {entry.recorded_by ?? "—"}
                   </td>
+                  {!readOnly ? (
+                    <td className={scrollableTableActionsTdClassName}>
+                      <div className={registerTableActionsInnerClassName}>
+                        <button
+                          type="button"
+                          onClick={() => openEditEntry(entry)}
+                          className="rounded-md border border-[#0f2744] px-3 py-1.5 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50"
+                        >
+                          Edit
+                        </button>
+                        {confirmDeleteEntryId === entry.id ? (
+                          <>
+                            <p className="max-w-xs text-sm text-red-800">
+                              Return{" "}
+                              {formatInventoryQuantity(entry.quantity)}{" "}
+                              {entry.product?.unit_of_measure ?? "units"} of{" "}
+                              {entry.product?.product_name ?? "product"} to
+                              stock and remove the linked expense (if any)?
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteEntry(entry)}
+                              disabled={deletingEntryId === entry.id}
+                              className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {deletingEntryId === entry.id
+                                ? "Deleting…"
+                                : "Yes, delete"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteEntryId(null)}
+                              disabled={deletingEntryId === entry.id}
+                              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteEntryId(entry.id)}
+                            disabled={deletingEntryId === entry.id}
+                            className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}

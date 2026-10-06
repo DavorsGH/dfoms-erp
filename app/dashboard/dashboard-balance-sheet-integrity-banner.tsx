@@ -105,7 +105,8 @@ export default function DashboardBalanceSheetIntegrityBanner({
           <span className="font-semibold">Balance Sheet check:</span>{" "}
           {monthCountLabel} currently out of balance (worst:{" "}
           {formatGHS(status.worstDiff)}
-          {worstMonthSuffix}).
+          {worstMonthSuffix}). Each row below is one scope and month (no double
+          counting).
         </p>
         <div className="flex shrink-0 items-center gap-3">
           <button
@@ -125,6 +126,16 @@ export default function DashboardBalanceSheetIntegrityBanner({
           </Link>
         </div>
       </div>
+      {status.imbalances.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-xs text-amber-900/90">
+          {status.imbalances.map((row) => (
+            <li key={`${row.businessUnitName}-${row.monthIndex}`}>
+              <span className="font-medium">{row.businessUnitName}</span>:{" "}
+              {row.monthLabel} — {formatGHS(Math.abs(row.diff))} out of balance
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {error ? (
         <p className="mt-2 text-xs text-red-700">{error}</p>
       ) : status.isStale ? (

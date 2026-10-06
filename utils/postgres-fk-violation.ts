@@ -3,6 +3,9 @@ import type { PostgrestError } from "@supabase/supabase-js";
 const FK_CONSTRAINT_NAME_PATTERN =
   /violates foreign key constraint "([^"]+)"/i;
 
+const UNIQUE_CONSTRAINT_NAME_PATTERN =
+  /violates unique constraint "([^"]+)"/i;
+
 export function extractPostgresForeignKeyConstraintName(
   message: string | null | undefined,
 ): string | null {
@@ -12,6 +15,33 @@ export function extractPostgresForeignKeyConstraintName(
 
   const match = message.match(FK_CONSTRAINT_NAME_PATTERN);
   return match?.[1] ?? null;
+}
+
+export function extractPostgresUniqueConstraintName(
+  message: string | null | undefined,
+): string | null {
+  if (!message) {
+    return null;
+  }
+
+  const match = message.match(UNIQUE_CONSTRAINT_NAME_PATTERN);
+  return match?.[1] ?? null;
+}
+
+export function isPostgresUniqueViolation(
+  error: Pick<PostgrestError, "code" | "message"> | null | undefined,
+): boolean {
+  if (!error) {
+    return false;
+  }
+
+  if (error.code === "23505") {
+    return true;
+  }
+
+  return (error.message ?? "")
+    .toLowerCase()
+    .includes("violates unique constraint");
 }
 
 export function isPostgresForeignKeyViolation(
@@ -55,6 +85,53 @@ export function getPostgresForeignKeyDeleteErrorMessage(
   }
 
   return options.fallbackInUseMessage;
+}
+
+export type PostgresRpcErrorMessageOptions = {
+  constraintMessages?: Record<string, string>;
+  fallbackMessage: string;
+};
+
+export function resolvePostgresRpcErrorMessage(
+  error: Pick<PostgrestError, "code" | "message"> | null | undefined,
+  options: PostgresRpcErrorMessageOptions,
+): string | null {
+  if (!error?.message) {
+    return null;
+  }
+
+  const message = error.message;
+
+  if (isPostgresUniqueViolation(error)) {
+    const uniqueName =
+      extractPostgresUniqueConstraintName(message) ??
+      Object.keys(options.constraintMessages ?? {}).find((name) =>
+        message.includes(name),
+      );
+    if (uniqueName && options.constraintMessages?.[uniqueName]) {
+      return options.constraintMessages[uniqueName];
+    }
+  }
+
+  if (isPostgresForeignKeyViolation(error)) {
+    const fkName =
+      extractPostgresForeignKeyConstraintName(message) ??
+      Object.keys(options.constraintMessages ?? {}).find((name) =>
+        message.includes(name),
+      );
+    if (fkName && options.constraintMessages?.[fkName]) {
+      return options.constraintMessages[fkName];
+    }
+  }
+
+  if (
+    isPostgresUniqueViolation(error) ||
+    isPostgresForeignKeyViolation(error)
+  ) {
+    return options.fallbackMessage;
+  }
+
+  return null;
 }
 
 export function resolveDeleteErrorMessage(

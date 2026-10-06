@@ -43,6 +43,13 @@ import {
   type ProductPurchaseCashEntry,
   type RawMaterialPurchaseCashEntry,
 } from "../inventory/inventory-balance-sheet-utils";
+import {
+  calculateInventoryAdjustmentGainByMonth,
+  calculateInventoryAdjustmentLossByMonth,
+  calculateInventoryAdjustmentOpeningEquityByMonth,
+  filterStockAdjustmentsForPlOverlay,
+  type InventoryStockAdjustmentRow,
+} from "@/lib/inventory/inventory-stock-adjustment-financials";
 import type { FinishedProductRecord } from "../inventory/finished-products-utils";
 import type { RawMaterialRecord } from "../inventory/raw-materials-utils";
 import {
@@ -164,6 +171,9 @@ export type InventoryBalanceSheetInput = {
   productCashPurchases: ProductPurchaseCashEntry[];
   /** Point-in-time valuation history (purchases, production, COGS, consumption). */
   valuationHistory?: InventoryValuationHistory;
+  stockAdjustments?: InventoryStockAdjustmentRow[];
+  /** Gain/loss rows already posted to income/expense register (exclude from RE overlay). */
+  stockAdjustmentRegisterLinkedPlKeys?: string[];
   referenceDate?: Date;
 };
 
@@ -459,6 +469,7 @@ function calculateRetainedEarningsByMonth(
   expenseEntries: ProfitLossExpenseEntry[],
   fixedAssets: ProfitLossAssetEntry[],
   financialYear: number,
+  inventoryAdjustmentPlNetByMonth: MonthlyTotals | null = null,
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   const report = buildProfitLossReport(
@@ -476,7 +487,9 @@ function calculateRetainedEarningsByMonth(
   let cumulative = 0;
 
   for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
-    cumulative += netProfitRow.amounts[monthIndex] ?? 0;
+    cumulative +=
+      (netProfitRow.amounts[monthIndex] ?? 0) +
+      (inventoryAdjustmentPlNetByMonth?.[monthIndex] ?? 0);
     totals[monthIndex] = cumulative;
   }
 
@@ -622,13 +635,62 @@ export function buildBalanceSheetReport(
   const fixedAssetsNet = roundMonthlyTotals(
     calculateFixedAssetsNetByMonth(fixedAssets, financialYear),
   );
+  const stockAdjustments = inventoryInput.stockAdjustments ?? [];
+  const linkedPlKeys = new Set(
+    inventoryInput.stockAdjustmentRegisterLinkedPlKeys ?? [],
+  );
+  const stockAdjustmentsForPlOverlay = filterStockAdjustmentsForPlOverlay(
+    stockAdjustments,
+    linkedPlKeys,
+  );
   const inventory = roundMonthlyTotals(
     calculateInventoryByMonth(
       inventoryInput.valuationHistory ?? emptyInventoryValuationHistory(),
       inventoryInput.config,
       financialYear,
       inventoryInput.referenceDate,
+      stockAdjustments,
     ),
+  );
+  const inventoryAdjustmentGain = roundMonthlyTotals(
+    calculateInventoryAdjustmentGainByMonth(
+      stockAdjustmentsForPlOverlay,
+      financialYear,
+      inventoryInput.config?.go_live_date ?? null,
+    ),
+  );
+  const inventoryAdjustmentLoss = roundMonthlyTotals(
+    calculateInventoryAdjustmentLossByMonth(
+      stockAdjustmentsForPlOverlay,
+      financialYear,
+      inventoryInput.config?.go_live_date ?? null,
+    ),
+  );
+  const inventoryAdjustmentPlNet = roundMonthlyTotals(
+    inventoryAdjustmentGain.map(
+      (gain, index) =>
+        roundCurrency(gain - (inventoryAdjustmentLoss[index] ?? 0)),
+    ) as MonthlyTotals,
+  );
+  const inventoryAdjustmentOpeningEquityRaw =
+    calculateInventoryAdjustmentOpeningEquityByMonth(
+      stockAdjustments,
+      financialYear,
+      inventoryInput.config?.go_live_date ?? null,
+    );
+  const inventoryAdjustmentOpeningEquity = roundMonthlyTotals(
+    (() => {
+      const totals = createEmptyMonthlyTotals();
+      let cumulative = 0;
+      for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+        cumulative = roundCurrency(
+          cumulative + (inventoryAdjustmentOpeningEquityRaw[monthIndex] ?? 0),
+        );
+        totals[monthIndex] = cumulative;
+      }
+      totals[FULL_YEAR_INDEX] = totals[11];
+      return totals;
+    })(),
   );
   const manualDirectorsLoan = calculateManualLiabilityStockByMonth(
     manualEntries,
@@ -737,13 +799,19 @@ export function buildBalanceSheetReport(
       expenseEntries,
       fixedAssets,
       financialYear,
+      inventoryAdjustmentPlNet,
     ),
   );
   const inventoryOpeningEquity = roundMonthlyTotals(
     calculateInventoryOpeningEquityByMonth(inventoryInput.config, financialYear),
   );
   const totalEquity = roundMonthlyTotals(
-    sumMonthlyTotals([shareCapital, retainedEarnings, inventoryOpeningEquity]),
+    sumMonthlyTotals([
+      shareCapital,
+      retainedEarnings,
+      inventoryOpeningEquity,
+      inventoryAdjustmentOpeningEquity,
+    ]),
   );
   const totalLiabilitiesAndEquity = roundMonthlyTotals(
     sumMonthlyTotals([
@@ -761,6 +829,7 @@ export function buildBalanceSheetReport(
       shareCapital,
       retainedEarnings,
       inventoryOpeningEquity,
+      inventoryAdjustmentOpeningEquity,
     ]),
   );
 
@@ -944,6 +1013,13 @@ export function buildBalanceSheetReport(
       key: "inventory-opening-equity",
       label: "Inventory Opening Balance",
       amounts: inventoryOpeningEquity,
+      kind: "data",
+      side: "equity",
+    },
+    {
+      key: "inventory-adjustment-opening-equity",
+      label: "Opening Balance Equity (stock adjustments)",
+      amounts: inventoryAdjustmentOpeningEquity,
       kind: "data",
       side: "equity",
     },

@@ -1,5 +1,7 @@
 "use client";
 
+import Tooltip from "@/components/ui/tooltip";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -442,21 +444,26 @@ export default function ClientQuotationsList({
                             </Link>
                           ) : null}
                           {raiseContractBlocked && customerActiveContract ? (
-                            <span
-                              className="text-xs text-amber-800"
-                              title={`This customer already has active contract ${customerActiveContract.contract_number}. Raise Contract is disabled to prevent duplicate billing.`}
+                            <Tooltip
+                              content={`This customer already has active contract ${customerActiveContract.contract_number}. Raise Contract is disabled to prevent duplicate billing.`}
+                              variant="blocked"
                             >
-                              Active contract {customerActiveContract.contract_number} — Raise
-                              Contract disabled
-                            </span>
+                              <span className="text-xs text-amber-800">
+                                Active contract {customerActiveContract.contract_number} — Raise
+                                Contract disabled
+                              </span>
+                            </Tooltip>
                           ) : null}
                           {emailBadge ? (
-                            <span
-                              className={emailDeliveryBadgeClassName(emailBadge.kind)}
-                              title="Quotation email delivery (Resend)"
-                            >
-                              {emailBadge.label}
-                            </span>
+                            <Tooltip content="Quotation email delivery (Resend)">
+                              <span
+                                className={emailDeliveryBadgeClassName(
+                                  emailBadge.kind,
+                                )}
+                              >
+                                {emailBadge.label}
+                              </span>
+                            </Tooltip>
                           ) : null}
                           {!raisedContract &&
                           !convertedInvoice &&

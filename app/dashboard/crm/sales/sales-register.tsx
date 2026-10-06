@@ -27,6 +27,7 @@ import {
   type RegisterColumnFilterValue,
 } from "@/app/dashboard/finance/register-column-filter";
 import DashboardButton from "@/components/dashboard-button";
+import Tooltip from "@/components/ui/tooltip";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -697,16 +698,17 @@ export default function SalesRegister(props: SalesRegisterProps) {
                 />
               </th>
               <th className={scrollableTableThClassName}>Payment Method</th>
-              <th
-                className={scrollableTableWrapThClassName}
-                title={SALES_REGISTER_SOURCE_FILTER_TOOLTIP_DIGITAL}
-              >
-                <RegisterColumnFilterHeader
-                  label="Source"
-                  options={sourceOptions}
-                  applied={sourceFilter}
-                  onApply={setSourceFilter}
-                />
+              <th className={scrollableTableWrapThClassName}>
+                <Tooltip content={SALES_REGISTER_SOURCE_FILTER_TOOLTIP_DIGITAL}>
+                  <span className="inline-flex">
+                    <RegisterColumnFilterHeader
+                      label="Source"
+                      options={sourceOptions}
+                      applied={sourceFilter}
+                      onApply={setSourceFilter}
+                    />
+                  </span>
+                </Tooltip>
               </th>
               <th className={scrollableTableWrapThClassName}>
                 <RegisterColumnFilterHeader
@@ -1356,19 +1358,30 @@ function SalesRegisterDrawerLinesList({
                   </button>
                 ) : null}
                 {!isProductSaleVoided(line) ? (
-                  <button
-                    type="button"
-                    disabled={hasReturns || voidingId === line.id}
-                    title={
-                      hasReturns
-                        ? "This sale has returns. Use Return instead."
-                        : undefined
-                    }
-                    onClick={() => onVoidLine(line)}
-                    className="rounded-md border border-amber-200 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
-                  >
-                    {voidingId === line.id ? "Voiding…" : "Void line"}
-                  </button>
+                  hasReturns ? (
+                    <Tooltip
+                      content="This sale has returns. Use Return instead."
+                      variant="blocked"
+                    >
+                      <button
+                        type="button"
+                        disabled={hasReturns || voidingId === line.id}
+                        onClick={() => onVoidLine(line)}
+                        className="rounded-md border border-amber-200 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        {voidingId === line.id ? "Voiding…" : "Void line"}
+                      </button>
+                    </Tooltip>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={hasReturns || voidingId === line.id}
+                      onClick={() => onVoidLine(line)}
+                      className="rounded-md border border-amber-200 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                    >
+                      {voidingId === line.id ? "Voiding…" : "Void line"}
+                    </button>
+                  )
                 ) : null}
               </div>
             ) : null}
@@ -1404,15 +1417,27 @@ function SalesRegisterDrawerFooter({
         </button>
       ) : null}
       {canReturn ? (
-        <button
-          type="button"
-          disabled={viewOnly}
-          title={viewOnly ? SALES_REGISTER_VIEW_ONLY_TOOLTIP : undefined}
-          onClick={() => onReturn(row.invoiceNo)}
-          className="rounded-md border border-amber-200 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Return
-        </button>
+        viewOnly ? (
+          <Tooltip content={SALES_REGISTER_VIEW_ONLY_TOOLTIP} variant="blocked">
+            <button
+              type="button"
+              disabled={viewOnly}
+              onClick={() => onReturn(row.invoiceNo)}
+              className="rounded-md border border-amber-200 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Return
+            </button>
+          </Tooltip>
+        ) : (
+          <button
+            type="button"
+            disabled={viewOnly}
+            onClick={() => onReturn(row.invoiceNo)}
+            className="rounded-md border border-amber-200 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Return
+          </button>
+        )
       ) : null}
     </div>
   );

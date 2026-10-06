@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DashboardPageData } from "@/app/dashboard/dashboard-page-data";
-import { buildCustomerCreditsBalanceSheetOptions } from "@/app/dashboard/finance/balance-sheet-page-data";
+import { buildStandardBalanceSheetReportOptions } from "@/lib/finance/balance-sheet-standard-report";
 import {
   toSpendingAnalysisExpenseRows,
   toSpendingAnalysisIncomeRows,
@@ -73,18 +73,17 @@ export async function buildOwnerDashboardViewModel(
     ),
   );
 
-  const balanceSheetReportOptions = {
+  const balanceSheetReportOptions = buildStandardBalanceSheetReportOptions(
     tenantId,
-    accountsPayablePayments,
-    directorsLoanRepayments,
-    directorsLoanLedgerEntries,
-    allBusinessUnitsDirectorsLoan: options.buScope.mode === "all",
-    rawManualFinancialEntries:
-      options.buScope.mode === "all"
-        ? dashboardPageData.initialRawManualEntries
-        : undefined,
-    ...buildCustomerCreditsBalanceSheetOptions(dashboardPageData),
-  };
+    dashboardPageData,
+    {
+      allBusinessUnitsDirectorsLoan: options.buScope.mode === "all",
+      rawManualFinancialEntries:
+        options.buScope.mode === "all"
+          ? dashboardPageData.initialRawManualEntries
+          : undefined,
+    },
+  );
 
   const dashboardData = buildDashboardViewModel({
     incomeEntries:

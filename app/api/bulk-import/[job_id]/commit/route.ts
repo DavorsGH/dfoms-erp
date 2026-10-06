@@ -6,6 +6,7 @@ import {
   requireBulkImportAccess,
 } from "@/lib/bulk-import/bulk-import-route-auth";
 import { commitImportJobInTransaction } from "@/lib/bulk-import/commit-import-job";
+import { mapBulkImportCommitError } from "@/lib/bulk-import/map-bulk-import-commit-error";
 import type { BulkImportCommitResponse, BulkImportType } from "@/lib/bulk-import/types";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
 import { resolveServerWriteBusinessUnitId } from "@/utils/business-unit-access.server";
@@ -212,7 +213,7 @@ export async function POST(
   try {
     await pgClient.connect();
 
-    const committedCount = await commitImportJobInTransaction({
+    const commitResult = await commitImportJobInTransaction({
       client: pgClient,
       jobId: trimmedJobId,
       tenantId: sectionAuth.tenantId,
@@ -226,15 +227,20 @@ export async function POST(
 
     const response: BulkImportCommitResponse = {
       job_id: trimmedJobId,
-      committed_count: committedCount,
+      committed_count: commitResult.committedCount,
+      positions_created:
+        commitResult.positionsCreated.length > 0
+          ? commitResult.positionsCreated
+          : undefined,
     };
 
     return NextResponse.json(response);
   } catch (commitError) {
-    const message =
-      commitError instanceof Error
-        ? commitError.message
-        : "Bulk import commit failed.";
+    const message = mapBulkImportCommitError({
+      error: commitError,
+      importType,
+      rowCount: validRows.length,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   } finally {
     await pgClient.end();

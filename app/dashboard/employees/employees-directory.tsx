@@ -1,5 +1,7 @@
 "use client";
 
+import Tooltip from "@/components/ui/tooltip";
+
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
@@ -408,19 +410,26 @@ function SortableHeader({
 }) {
   const active = sortColumn === column;
 
+  const headerButton = (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className="flex w-full items-center gap-1 text-left font-medium text-white transition-opacity hover:opacity-90"
+    >
+      <span>{label}</span>
+      {active ? (
+        <span aria-hidden="true">{sortDirection === "asc" ? "↑" : "↓"}</span>
+      ) : null}
+    </button>
+  );
+
   return (
-    <th className={className ?? scrollableTableThClassName} title={title}>
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        title={title}
-        className="flex w-full items-center gap-1 text-left font-medium text-white transition-opacity hover:opacity-90"
-      >
-        <span>{label}</span>
-        {active ? (
-          <span aria-hidden="true">{sortDirection === "asc" ? "↑" : "↓"}</span>
-        ) : null}
-      </button>
+    <th className={className ?? scrollableTableThClassName}>
+      {title?.trim() ? (
+        <Tooltip content={title}>{headerButton}</Tooltip>
+      ) : (
+        headerButton
+      )}
     </th>
   );
 }
@@ -2264,15 +2273,16 @@ export default function EmployeesDirectory({
                     <td className="px-4 py-3">
                       {formatGHS(listPay?.gross_monthly ?? 0)}
                     </td>
-                    <td
-                      className="px-4 py-3"
-                      title={
-                        currentNetPay == null
-                          ? undefined
-                          : `Net pay for ${netPayPeriodLabel}`
-                      }
-                    >
-                      {currentNetPay == null ? "—" : formatGHS(currentNetPay)}
+                    <td className="px-4 py-3">
+                      {currentNetPay == null ? (
+                        "—"
+                      ) : (
+                        <Tooltip
+                          content={`Net pay for ${netPayPeriodLabel} (current payroll period)`}
+                        >
+                          <span>{formatGHS(currentNetPay)}</span>
+                        </Tooltip>
+                      )}
                     </td>
                     </>
                     ) : null}

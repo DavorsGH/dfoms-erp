@@ -50,6 +50,8 @@ import {
   resolveSupplierIdForCommit,
   type SupplierIdResolverCache,
 } from "@/lib/bulk-import/resolve-supplier-for-commit";
+import { generateNextCodeInTransaction } from "@/lib/bulk-import/allocate-inventory-code-for-commit";
+import { FINISHED_PRODUCT_BARCODE_ENTITY_TYPE } from "@/lib/bulk-import/finished-product-barcode-import";
 import { FINISHED_PRODUCT_PURCHASED_SOURCING_TYPE } from "@/lib/bulk-import/target-fields";
 import type { BulkImportType } from "@/lib/bulk-import/types";
 import {
@@ -98,6 +100,15 @@ async function insertFinishedProduct(
     resolvedSupplierId,
   );
 
+  const suppliedBarcode = String(mappedData.barcode ?? "").trim();
+  const barcode = suppliedBarcode
+    ? suppliedBarcode
+    : await generateNextCodeInTransaction(
+        client,
+        tenantId,
+        FINISHED_PRODUCT_BARCODE_ENTITY_TYPE,
+      );
+
   // finished_products may carry business_unit_id for user-restricted RLS; opening
   // stock is also seeded on finished_product_balances below.
   const insertResult = await client.query(
@@ -105,30 +116,27 @@ async function insertFinishedProduct(
       INSERT INTO public.finished_products (
         tenant_id,
         product_code,
+        barcode,
         product_name,
         unit_of_measure,
         current_stock,
         standard_selling_price,
         sourcing_type,
         supplier_id,
-        manufacturing_date,
-        expiration_date,
         business_unit_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9)
       RETURNING id
     `,
     [
       payload.tenant_id,
       payload.product_code,
+      barcode,
       payload.product_name,
       payload.unit_of_measure,
-      payload.current_stock,
       payload.standard_selling_price,
       payload.sourcing_type,
       payload.supplier_id,
-      payload.manufacturing_date,
-      payload.expiration_date,
       businessUnitId,
     ],
   );
@@ -140,22 +148,32 @@ async function insertFinishedProduct(
     );
   }
 
-  if (payload.current_stock > 0) {
-    await client.query(
-      `SELECT public.ensure_finished_product_balance($1::uuid, $2::uuid, $3::uuid)`,
-      [tenantId, productId, businessUnitId],
-    );
+  if (payload.opening_stock > 0) {
     await client.query(
       `
-        UPDATE public.finished_product_balances
-        SET current_stock = $1,
-            average_cost_per_unit = 0,
-            updated_at = now()
-        WHERE tenant_id = $2::uuid
-          AND product_id = $3::uuid
-          AND business_unit_id IS NOT DISTINCT FROM $4::uuid
+        SELECT public.apply_bulk_import_finished_product_opening(
+          $1::uuid,
+          $2::uuid,
+          $3::uuid,
+          $4::numeric,
+          $5::numeric,
+          $6::date,
+          $7::date,
+          $8::date,
+          $9::text
+        )
       `,
-      [payload.current_stock, tenantId, productId, businessUnitId],
+      [
+        tenantId,
+        productId,
+        businessUnitId,
+        payload.opening_stock,
+        payload.opening_unit_cost ?? 0,
+        payload.opening_lot_date,
+        payload.manufacturing_date,
+        payload.expiration_date,
+        payload.product_code,
+      ],
     );
   }
 }
@@ -914,7 +932,7 @@ export async function commitImportJobInTransaction(input: {
   activeBusinessUnitId?: string | null;
   /** Employee import: create spreadsheet positions not yet in tenant. Default true. */
   createMissingPositions?: boolean;
-}): Promise<number> {
+}): Promise<{ committedCount: number; positionsCreated: string[] }> {
   const {
     client,
     jobId,
@@ -950,12 +968,14 @@ export async function commitImportJobInTransaction(input: {
         ? await loadCompensationPolicyConfigForCommit(client, tenantId)
         : null;
 
+    const positionsCreated: string[] = [];
     if (importType === "employee" && createMissingPositions) {
       await ensureMissingPositionsForEmployeeImport({
         client,
         tenantId,
         rows,
         cache: positionCache,
+        createdTitles: positionsCreated,
       });
     }
 
@@ -1039,7 +1059,8 @@ export async function commitImportJobInTransaction(input: {
     );
 
     await client.query("COMMIT");
-    return rows.length;
+    positionsCreated.sort((left, right) => left.localeCompare(right));
+    return { committedCount: rows.length, positionsCreated };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

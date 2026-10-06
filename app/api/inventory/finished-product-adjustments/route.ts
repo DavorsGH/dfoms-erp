@@ -34,7 +34,23 @@ type AdjustmentWriteBody = {
   cost_per_unit?: unknown;
   reason?: unknown;
   notes?: unknown;
+  manufacturing_date?: unknown;
+  expiration_date?: unknown;
 };
+
+function parseOptionalDateOnly(value: unknown): string | null {
+  if (value == null || value === "") {
+    return null;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
 
 function isAdjustmentType(value: string): value is FinishedProductAdjustmentType {
   return (FINISHED_PRODUCT_ADJUSTMENT_TYPES as readonly string[]).includes(value);
@@ -79,6 +95,22 @@ function validateBody(body: AdjustmentWriteBody): string | null {
 
   if (body.notes != null && typeof body.notes !== "string") {
     return "Notes must be text.";
+  }
+
+  const allowsLotDates =
+    type === "opening_balance" || type === "found_stock";
+  const hasMfg = body.manufacturing_date != null && body.manufacturing_date !== "";
+  const hasExp = body.expiration_date != null && body.expiration_date !== "";
+
+  if (!allowsLotDates && (hasMfg || hasExp)) {
+    return "Manufacturing and expiration dates are only for Opening Balance and Found Stock.";
+  }
+
+  if (hasMfg && parseOptionalDateOnly(body.manufacturing_date) == null) {
+    return "Manufacturing date must be YYYY-MM-DD.";
+  }
+  if (hasExp && parseOptionalDateOnly(body.expiration_date) == null) {
+    return "Expiration date must be YYYY-MM-DD.";
   }
 
   return null;
@@ -161,6 +193,12 @@ export async function POST(request: Request) {
     adjustmentType === "opening_balance" || adjustmentType === "found_stock";
   // RPC: opening/found require cost; correction/write_off check IS NOT NULL — pass null.
   const costPerUnit = needsCost ? Number(body.cost_per_unit) : null;
+  const manufacturingDate = needsCost
+    ? parseOptionalDateOnly(body.manufacturing_date)
+    : null;
+  const expirationDate = needsCost
+    ? parseOptionalDateOnly(body.expiration_date)
+    : null;
 
   const supabase = await getTenantSupabase();
   const {
@@ -193,6 +231,8 @@ export async function POST(request: Request) {
       p_reason: reason,
       p_notes: notes,
       p_created_by: user?.id ?? null,
+      p_manufacturing_date: manufacturingDate,
+      p_expiration_date: expirationDate,
     },
   );
 

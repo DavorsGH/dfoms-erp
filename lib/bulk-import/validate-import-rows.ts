@@ -4,20 +4,34 @@ import {
 
   FINISHED_PRODUCT_PURCHASED_SOURCING_TYPE,
 
+  getBulkImportTargetField,
   getBulkImportTargetFields,
 
 } from "@/lib/bulk-import/target-fields";
 
 import { buildMappedData } from "@/lib/bulk-import/build-mapped-data";
-import { parseBulkImportSpreadsheetDate } from "@/lib/bulk-import/import-spreadsheet-values";
+import {
+  applyBulkImportDatesToMappedData,
+  buildDateColumnProfilesForImport,
+  collectExpirationBeforeManufacturingReviewIssue,
+} from "@/lib/bulk-import/bulk-import-date-validation";
 import { isSpreadsheetPlaceholderCell } from "@/lib/spreadsheet/spreadsheet-matrix-utils";
 import { validateSupplierNameLookup } from "@/lib/bulk-import/supplier-name";
 import {
-  buildExpenseDuplicateKey,
-  buildFixedAssetDuplicateKey,
-  indexInFileDuplicateExpenseKeys,
-  indexInFileDuplicateFixedAssetKeys,
+  indexInFileDuplicateExpenseGroups,
+  indexInFileDuplicateFixedAssetGroups,
 } from "@/lib/bulk-import/expense-duplicate-key";
+import {
+  buildDuplicateExistsReviewIssue,
+  buildExpenseExistingDuplicateReviewIssue,
+  buildExpenseInFileDuplicateReviewIssue,
+  buildFixedAssetExistingDuplicateReviewIssue,
+  buildFixedAssetInFileDuplicateReviewIssue,
+  buildInFileDuplicateReviewIssue,
+  bulkImportNormalizedDuplicateKey,
+  indexInFileDuplicateGroups,
+} from "@/lib/bulk-import/bulk-import-in-file-duplicate-issues";
+import { validateFinishedProductBarcodeForImport } from "@/lib/bulk-import/finished-product-barcode-import";
 import { isCreditPaymentMethod } from "@/lib/bulk-import/payment-method-credit";
 import {
   EXPENSE_REGISTER_FIXED_ASSETS_REJECTION_MESSAGE,
@@ -32,10 +46,19 @@ import {
 } from "@/lib/bulk-import/tenant-name-lookup";
 import {
   buildReviewFormatContext,
+  bulkImportExcelRowNumber,
+  bulkImportReviewRowDisplayName,
+  bulkImportRowLabel,
+  formatBulkImportReviewIssueMessage,
   toReviewIssueRow,
   type BulkImportReviewIssue,
   type BulkImportReviewIssueRow,
 } from "@/lib/bulk-import/bulk-import-review-issue";
+import {
+  bulkImportCodeLikeFieldKeysForType,
+  bulkImportExcelCorruptedCodeMessage,
+  looksLikeExcelScientificNotation,
+} from "@/lib/bulk-import/bulk-import-code-column";
 import { stripBulkImportColumnMappingMeta } from "@/lib/bulk-import/column-mapping-meta";
 import { collectEmployeeImportReviewIssues } from "@/lib/bulk-import/employee-import-review-issues";
 import {
@@ -219,15 +242,11 @@ const VALID_SOURCING_TYPES = ["manufactured", "purchased"] as const;
 
 
 
-const PG_DATE_MIN = "0001-01-01";
-
-const PG_DATE_MAX = "5874897-12-31";
-
-
-
 const NUMERIC_FIELD_CONSTRAINTS = {
 
   current_stock: { precision: 18, scale: 4 },
+
+  unit_cost: { precision: 18, scale: 4 },
 
   standard_selling_price: { precision: 18, scale: 4 },
 
@@ -243,6 +262,8 @@ const NON_NEGATIVE_NUMERIC_FIELDS = new Set([
 
   "current_stock",
 
+  "unit_cost",
+
   "standard_selling_price",
 
   "default_rate",
@@ -250,17 +271,6 @@ const NON_NEGATIVE_NUMERIC_FIELDS = new Set([
 ]);
 
 
-
-const PRODUCT_DATE_FIELDS = new Set(["manufacturing_date", "expiration_date"]);
-
-const EMPLOYEE_DATE_FIELDS = new Set([
-  "date_of_birth",
-  "date_hired",
-  "appointment_end_date",
-]);
-const CUSTOMER_DATE_FIELDS = new Set(["contract_start", "contract_end"]);
-const EXPENSE_DATE_FIELDS = new Set(["date"]);
-const FIXED_ASSET_DATE_FIELDS = new Set(["purchase_date"]);
 
 const FIXED_ASSET_ORIGINAL_COST_CONSTRAINT = { precision: 12, scale: 2 } as const;
 
@@ -346,10 +356,24 @@ function normalizedKey(value: unknown): string {
 
 
 
+let bulkImportFieldLabelImportType: BulkImportType | null = null;
+
 function fieldLabel(fieldKey: string): string {
+  if (bulkImportFieldLabelImportType) {
+    const field = getBulkImportTargetField(
+      bulkImportFieldLabelImportType,
+      fieldKey,
+    );
+    if (field?.label) {
+      return field.label;
+    }
+  }
 
-  return fieldKey;
-
+  return fieldKey
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 
@@ -464,86 +488,6 @@ function validateNumericField(
 
   return null;
 
-}
-
-
-
-function isValidCalendarDateParts(year: number, month: number, day: number): boolean {
-
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
-
-    return false;
-
-  }
-
-
-
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-
-  return (
-
-    parsed.getUTCFullYear() === year &&
-
-    parsed.getUTCMonth() === month - 1 &&
-
-    parsed.getUTCDate() === day
-
-  );
-
-}
-
-
-
-function normalizeIsoDateParts(isoDate: string): string | null {
-
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
-
-  if (!match) {
-
-    return null;
-
-  }
-
-
-
-  const year = Number(match[1]);
-
-  const month = Number(match[2]);
-
-  const day = Number(match[3]);
-
-
-
-  if (!isValidCalendarDateParts(year, month, day)) {
-
-    return null;
-
-  }
-
-
-
-  const normalized = `${match[1]}-${match[2]}-${match[3]}`;
-
-  if (normalized < PG_DATE_MIN || normalized > PG_DATE_MAX) {
-
-    return "out_of_range";
-
-  }
-
-
-
-  return normalized;
-
-}
-
-
-
-function parseOptionalDate(value: unknown): string | null | "invalid" | "out_of_range" {
-  if (isBlank(value)) {
-    return null;
-  }
-
-  return parseBulkImportSpreadsheetDate(value);
 }
 
 
@@ -701,10 +645,6 @@ function isSpecialExpenseCategory(value: unknown): boolean {
 
 function collectExpenseWarnings(
   mappedData: Record<string, unknown>,
-  options: {
-    inFileDuplicateExpenseKeys: Set<string>;
-    existingExpenseDuplicateKeys: Set<string>;
-  },
 ): string[] {
   const warnings: string[] = [];
 
@@ -713,62 +653,8 @@ function collectExpenseWarnings(
     isSpecialExpenseCategory(mappedData.sub_category)
   ) {
     warnings.push(
-      "Warning: this category normally auto-posts from payroll or other modules; bulk-importing it directly may cause double-counting",
+      "This category normally auto-posts from payroll or other modules; bulk-importing it directly may cause double-counting.",
     );
-  }
-
-  const duplicateKey = buildExpenseDuplicateKey({
-    date: mappedData.date,
-    vendor: mappedData.vendor,
-    price: mappedData.price,
-    expense_category: mappedData.expense_category,
-    payment_method: mappedData.payment_method,
-  });
-
-  if (duplicateKey) {
-    if (options.inFileDuplicateExpenseKeys.has(duplicateKey)) {
-      warnings.push(
-        "Warning: Possible duplicate: a similar expense (same date/supplier/price/category/payment method) appears elsewhere in this file",
-      );
-    }
-
-    if (options.existingExpenseDuplicateKeys.has(duplicateKey)) {
-      warnings.push(
-        "Warning: Possible duplicate: a similar expense (same date/supplier/price/category/payment method) already exists",
-      );
-    }
-  }
-
-  return warnings;
-}
-
-function collectFixedAssetWarnings(
-  mappedData: Record<string, unknown>,
-  options: {
-    inFileDuplicateFixedAssetKeys: Set<string>;
-    existingFixedAssetDuplicateKeys: Set<string>;
-  },
-): string[] {
-  const warnings: string[] = [];
-
-  const duplicateKey = buildFixedAssetDuplicateKey({
-    asset_name: mappedData.asset_name,
-    purchase_date: mappedData.purchase_date,
-    original_cost: mappedData.original_cost,
-  });
-
-  if (duplicateKey) {
-    if (options.inFileDuplicateFixedAssetKeys.has(duplicateKey)) {
-      warnings.push(
-        "Warning: Possible duplicate: a similar fixed asset (same name/purchase date/original cost) appears elsewhere in this file",
-      );
-    }
-
-    if (options.existingFixedAssetDuplicateKeys.has(duplicateKey)) {
-      warnings.push(
-        "Warning: Possible duplicate: a similar fixed asset (same name/purchase date/original cost) already exists",
-      );
-    }
   }
 
   return warnings;
@@ -783,10 +669,24 @@ function collectFieldErrors(
 ): string[] {
 
   const errors: string[] = [];
+  bulkImportFieldLabelImportType = importType;
 
   const targetFields = getBulkImportTargetFields(importType);
 
-
+  for (const fieldKey of bulkImportCodeLikeFieldKeysForType(importType)) {
+    if (!(fieldKey in mappedData) || isBlank(mappedData[fieldKey])) {
+      continue;
+    }
+    const raw = mappedData[fieldKey];
+    if (looksLikeExcelScientificNotation(raw)) {
+      const label = fieldLabel(fieldKey);
+      const { problem, howToFix } = bulkImportExcelCorruptedCodeMessage(
+        label,
+        String(raw ?? "").trim(),
+      );
+      errors.push(`${problem} ${howToFix}`);
+    }
+  }
 
   for (const field of targetFields) {
 
@@ -830,32 +730,6 @@ function collectFieldErrors(
 
 
 
-    for (const fieldKey of PRODUCT_DATE_FIELDS) {
-
-      if (!(fieldKey in mappedData)) {
-
-        continue;
-
-      }
-
-
-
-      const parsed = parseOptionalDate(mappedData[fieldKey]);
-
-      if (parsed === "invalid") {
-
-        errors.push(`${fieldLabel(fieldKey)} is not a valid date`);
-
-      } else if (parsed === "out_of_range") {
-
-        errors.push(`${fieldLabel(fieldKey)} is outside the allowed date range`);
-
-      }
-
-    }
-
-
-
     if ("supplier_name" in mappedData) {
       const supplierError = validateSupplierNameLookup(
         mappedData.supplier_name,
@@ -866,7 +740,15 @@ function collectFieldErrors(
       }
     }
 
-
+    if ("barcode" in mappedData) {
+      const barcodeError = validateFinishedProductBarcodeForImport(
+        mappedData.barcode,
+        fieldLabel("barcode"),
+      );
+      if (barcodeError) {
+        errors.push(barcodeError);
+      }
+    }
 
     const sourcingRaw = mappedData.sourcing_type;
 
@@ -918,32 +800,6 @@ function collectFieldErrors(
 
 
 
-    const manufacturingDate = parseOptionalDate(mappedData.manufacturing_date);
-
-    const expirationDate = parseOptionalDate(mappedData.expiration_date);
-
-    if (
-
-      manufacturingDate &&
-
-      manufacturingDate !== "invalid" &&
-
-      manufacturingDate !== "out_of_range" &&
-
-      expirationDate &&
-
-      expirationDate !== "invalid" &&
-
-      expirationDate !== "out_of_range" &&
-
-      expirationDate < manufacturingDate
-
-    ) {
-
-      errors.push("expiration_date cannot be before manufacturing_date");
-
-    }
-
   }
 
 
@@ -980,19 +836,6 @@ function collectFieldErrors(
     const customerLookups = lookups.customerLookups;
     if (!customerLookups) {
       throw new Error("Customer import validation requires lookup context.");
-    }
-
-    for (const fieldKey of CUSTOMER_DATE_FIELDS) {
-      if (!(fieldKey in mappedData)) {
-        continue;
-      }
-
-      const parsed = parseOptionalDate(mappedData[fieldKey]);
-      if (parsed === "invalid") {
-        errors.push(`${fieldLabel(fieldKey)} is not a valid date`);
-      } else if (parsed === "out_of_range") {
-        errors.push(`${fieldLabel(fieldKey)} is outside the allowed date range`);
-      }
     }
 
     const enumChecks: Array<[string, readonly string[]]> = [
@@ -1055,19 +898,6 @@ function collectFieldErrors(
     const expenseLookups = lookups.expenseLookups;
     if (!expenseLookups) {
       throw new Error("Expense import validation requires lookup context.");
-    }
-
-    for (const fieldKey of EXPENSE_DATE_FIELDS) {
-      if (!(fieldKey in mappedData)) {
-        continue;
-      }
-
-      const parsed = parseOptionalDate(mappedData[fieldKey]);
-      if (parsed === "invalid") {
-        errors.push(`${fieldLabel(fieldKey)} is not a valid date`);
-      } else if (parsed === "out_of_range") {
-        errors.push(`${fieldLabel(fieldKey)} is outside the allowed date range`);
-      }
     }
 
     const priceError = validatePositiveNumericField("price", mappedData.price, {
@@ -1204,19 +1034,6 @@ function collectFieldErrors(
       throw new Error("Fixed asset import validation requires lookup context.");
     }
 
-    for (const fieldKey of FIXED_ASSET_DATE_FIELDS) {
-      if (!(fieldKey in mappedData)) {
-        continue;
-      }
-
-      const parsed = parseOptionalDate(mappedData[fieldKey]);
-      if (parsed === "invalid") {
-        errors.push(`${fieldLabel(fieldKey)} is not a valid date`);
-      } else if (parsed === "out_of_range") {
-        errors.push(`${fieldLabel(fieldKey)} is outside the allowed date range`);
-      }
-    }
-
     const originalCostError = validatePrecisionScaleNumericField(
       "original_cost",
       mappedData.original_cost,
@@ -1309,7 +1126,7 @@ function collectFieldErrors(
     }
   }
 
-
+  bulkImportFieldLabelImportType = null;
 
   return errors;
 
@@ -1317,153 +1134,296 @@ function collectFieldErrors(
 
 
 
-function collectServiceWarnings(
-
-  mappedData: Record<string, unknown>,
-
-  inFileDuplicateServiceNames: Set<string>,
-
-  existingServiceNames: Set<string>,
-
-): string[] {
-
-  const serviceName = String(mappedData.service_name ?? "").trim();
-
+function collectServiceDuplicateReviewIssues(input: {
+  ctx: ReturnType<typeof buildReviewFormatContext>;
+  mappedData: Record<string, unknown>;
+  rowNumber: number;
+  inFileDuplicateServiceGroups: ReturnType<typeof indexInFileDuplicateGroups>;
+  existingServiceNames: Set<string>;
+}): BulkImportReviewIssue[] {
+  const serviceName = String(input.mappedData.service_name ?? "").trim();
   if (!serviceName) {
-
     return [];
-
   }
 
-
-
-  const key = normalizedKey(serviceName);
-
-  const warnings: string[] = [];
-
-
-
-  if (inFileDuplicateServiceNames.has(key)) {
-
-    warnings.push("Warning: duplicate service_name in this file");
-
+  const key = bulkImportNormalizedDuplicateKey(serviceName);
+  const issues: BulkImportReviewIssue[] = [];
+  const inFileGroup = input.inFileDuplicateServiceGroups.get(key);
+  if (inFileGroup) {
+    issues.push(
+      buildInFileDuplicateReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        fieldKey: "service_name",
+        group: inFileGroup,
+        severity: "warning",
+      }),
+    );
   }
 
-
-
-  if (existingServiceNames.has(key)) {
-
-    warnings.push("Warning: service_name already exists in service catalog");
-
+  if (input.existingServiceNames.has(key)) {
+    issues.push(
+      buildDuplicateExistsReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        fieldKey: "service_name",
+        existsLabel: "is already in your service catalog",
+        howToFix: "Use a different service name or skip this row.",
+        severity: "warning",
+      }),
+    );
   }
 
-
-
-  return warnings;
-
+  return issues;
 }
 
-
-
-function collectProductDuplicateMessage(
-
-  mappedData: Record<string, unknown>,
-
-  inFileDuplicateProductCodes: Set<string>,
-
-  existingProductCodes: Set<string>,
-
-): string | null {
-
-  const productCode = String(mappedData.product_code ?? "").trim();
-
+function collectProductDuplicateReviewIssues(input: {
+  ctx: ReturnType<typeof buildReviewFormatContext>;
+  mappedData: Record<string, unknown>;
+  rowNumber: number;
+  inFileDuplicateProductGroups: ReturnType<typeof indexInFileDuplicateGroups>;
+  existingProductCodes: Set<string>;
+}): BulkImportReviewIssue[] {
+  const productCode = String(input.mappedData.product_code ?? "").trim();
   if (!productCode) {
+    return [];
+  }
 
+  const key = bulkImportNormalizedDuplicateKey(productCode);
+  const issues: BulkImportReviewIssue[] = [];
+  const inFileGroup = input.inFileDuplicateProductGroups.get(key);
+  if (inFileGroup) {
+    issues.push(
+      buildInFileDuplicateReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        fieldKey: "product_code",
+        group: inFileGroup,
+        severity: "error",
+      }),
+    );
+  }
+
+  if (input.existingProductCodes.has(key)) {
+    issues.push(
+      buildDuplicateExistsReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        fieldKey: "product_code",
+        existsLabel: "is already in Inventory",
+        howToFix: "Use a different product code or remove this row.",
+        severity: "error",
+      }),
+    );
+  }
+
+  return issues;
+}
+
+function collectProductBarcodeDuplicateReviewIssues(input: {
+  ctx: ReturnType<typeof buildReviewFormatContext>;
+  mappedData: Record<string, unknown>;
+  rowNumber: number;
+  inFileDuplicateBarcodeGroups: ReturnType<typeof indexInFileDuplicateGroups>;
+  existingProductBarcodes: Set<string>;
+}): BulkImportReviewIssue[] {
+  const barcode = String(input.mappedData.barcode ?? "").trim();
+  if (!barcode) {
+    return [];
+  }
+
+  const key = bulkImportNormalizedDuplicateKey(barcode);
+  const issues: BulkImportReviewIssue[] = [];
+  const inFileGroup = input.inFileDuplicateBarcodeGroups.get(key);
+  if (inFileGroup) {
+    issues.push(
+      buildInFileDuplicateReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        fieldKey: "barcode",
+        group: inFileGroup,
+        severity: "error",
+      }),
+    );
+  }
+
+  if (input.existingProductBarcodes.has(key)) {
+    issues.push(
+      buildDuplicateExistsReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        fieldKey: "barcode",
+        existsLabel: "is already assigned to another product in Inventory",
+        howToFix: "Use a different barcode or leave the column blank to auto-generate one.",
+        severity: "error",
+      }),
+    );
+  }
+
+  return issues;
+}
+
+function collectDuplicateAndWarningReviewIssues(input: {
+  importType: BulkImportType;
+  ctx: ReturnType<typeof buildReviewFormatContext>;
+  mappedData: Record<string, unknown>;
+  rowNumber: number;
+  inFileDuplicateProductGroups: ReturnType<typeof indexInFileDuplicateGroups>;
+  inFileDuplicateProductBarcodeGroups: ReturnType<typeof indexInFileDuplicateGroups>;
+  existingProductCodes: Set<string>;
+  existingProductBarcodes: Set<string>;
+  inFileDuplicateServiceGroups: ReturnType<typeof indexInFileDuplicateGroups>;
+  existingServiceNames: Set<string>;
+  inFileDuplicateExpenseGroups: Map<string, number[]>;
+  existingExpenseDuplicateKeys: Set<string>;
+  inFileDuplicateFixedAssetGroups: Map<string, number[]>;
+  existingFixedAssetDuplicateKeys: Set<string>;
+}): BulkImportReviewIssue[] {
+  if (input.importType === "product") {
+    return [
+      ...collectProductDuplicateReviewIssues({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        inFileDuplicateProductGroups: input.inFileDuplicateProductGroups,
+        existingProductCodes: input.existingProductCodes,
+      }),
+      ...collectProductBarcodeDuplicateReviewIssues({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        inFileDuplicateBarcodeGroups: input.inFileDuplicateProductBarcodeGroups,
+        existingProductBarcodes: input.existingProductBarcodes,
+      }),
+    ];
+  }
+
+  if (input.importType === "service") {
+    return collectServiceDuplicateReviewIssues({
+      ctx: input.ctx,
+      mappedData: input.mappedData,
+      rowNumber: input.rowNumber,
+      inFileDuplicateServiceGroups: input.inFileDuplicateServiceGroups,
+      existingServiceNames: input.existingServiceNames,
+    });
+  }
+
+  if (input.importType === "expense") {
+    return [
+      buildExpenseInFileDuplicateReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        inFileGroups: input.inFileDuplicateExpenseGroups,
+      }),
+      buildExpenseExistingDuplicateReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        existingExpenseDuplicateKeys: input.existingExpenseDuplicateKeys,
+      }),
+    ].filter((issue): issue is BulkImportReviewIssue => issue !== null);
+  }
+
+  if (input.importType === "fixed_asset") {
+    return [
+      buildFixedAssetInFileDuplicateReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        inFileGroups: input.inFileDuplicateFixedAssetGroups,
+      }),
+      buildFixedAssetExistingDuplicateReviewIssue({
+        ctx: input.ctx,
+        mappedData: input.mappedData,
+        rowNumber: input.rowNumber,
+        existingFixedAssetDuplicateKeys: input.existingFixedAssetDuplicateKeys,
+      }),
+    ].filter((issue): issue is BulkImportReviewIssue => issue !== null);
+  }
+
+  return [];
+}
+
+function collectProductOpeningStockCostWarning(input: {
+  ctx: ReturnType<typeof buildReviewFormatContext>;
+  mappedData: Record<string, unknown>;
+  rowNumber: number;
+}): BulkImportReviewIssue | null {
+  if (!("current_stock" in input.mappedData) || isBlank(input.mappedData.current_stock)) {
     return null;
-
   }
 
-
-
-  const key = normalizedKey(productCode);
-
-  const messages: string[] = [];
-
-
-
-  if (inFileDuplicateProductCodes.has(key)) {
-
-    messages.push("duplicate product_code: repeated in this file");
-
-  }
-
-
-
-  if (existingProductCodes.has(key)) {
-
-    messages.push("duplicate product_code: already exists in Inventory");
-
-  }
-
-
-
-  return messages.length > 0 ? messages.join("; ") : null;
-
-}
-
-
-
-function indexDuplicateKeys(
-
-  rows: Array<{ row_number: number; mapped_data: Record<string, unknown> }>,
-
-  fieldKey: string,
-
-): Set<string> {
-
-  const counts = new Map<string, number>();
-
-
-
-  for (const row of rows) {
-
-    const value = String(row.mapped_data[fieldKey] ?? "").trim();
-
-    if (!value) {
-
-      continue;
-
-    }
-
-
-
-    const key = normalizedKey(value);
-
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-
-  }
-
-
-
-  return new Set(
-
-    [...counts.entries()]
-
-      .filter(([, count]) => count > 1)
-
-      .map(([key]) => key),
-
+  const stockError = validateNumericField(
+    "current_stock",
+    input.mappedData.current_stock,
   );
+  if (stockError) {
+    return null;
+  }
 
+  const stockToken = parseNumericToken(input.mappedData.current_stock);
+  const stock =
+    stockToken && stockToken !== "invalid" ? Number(stockToken) : 0;
+  if (!Number.isFinite(stock) || stock <= 0) {
+    return null;
+  }
+
+  if ("unit_cost" in input.mappedData && !isBlank(input.mappedData.unit_cost)) {
+    return null;
+  }
+
+  const headerRowIndex = input.ctx.headerRowIndex ?? 0;
+  const excel_row_number = bulkImportExcelRowNumber(
+    input.rowNumber,
+    headerRowIndex,
+  );
+  const employee_name = bulkImportReviewRowDisplayName(
+    input.ctx.importType,
+    input.mappedData,
+  );
+  const row_label = bulkImportRowLabel({
+    excelRowNumber: excel_row_number,
+    employeeName: employee_name,
+  });
+  const problem =
+    "Opening stock will be recorded with zero cost — add a Unit cost to value your inventory correctly.";
+  const how_to_fix =
+    "Enter a unit cost in your spreadsheet and upload the file again, or leave Current stock blank if you are not opening stock yet.";
+
+  return {
+    row_number: input.rowNumber,
+    excel_row_number,
+    employee_name,
+    severity: "warning",
+    column_header: "Current stock",
+    column_label: "Current stock",
+    cell_value: String(input.mappedData.current_stock ?? "").trim(),
+    problem,
+    how_to_fix,
+    message: formatBulkImportReviewIssueMessage({
+      rowLabel: row_label,
+      severity: "warning",
+      problem,
+      howToFix: how_to_fix,
+    }),
+    group_kind: "generic",
+    group_key: "opening_stock_zero_cost",
+  };
 }
-
-
 
 export function validateImportRows(input: {
   importType: BulkImportType;
   columnMapping: BulkImportColumnMapping;
   rows: ImportRowInput[];
   existingProductCodes?: Set<string>;
+  existingProductBarcodes?: Set<string>;
   existingServiceNames?: Set<string>;
   supplierNameMatchCounts?: Map<string, number>;
   employeeLookups?: EmployeeImportLookupContext;
@@ -1497,6 +1457,9 @@ export function validateImportRows(input: {
   const existingProductCodes =
 
     input.existingProductCodes ?? new Set<string>();
+
+  const existingProductBarcodes =
+    input.existingProductBarcodes ?? new Set<string>();
 
   const existingServiceNames =
     input.existingServiceNames ?? new Set<string>();
@@ -1552,45 +1515,64 @@ export function validateImportRows(input: {
 
   }));
 
+  const dateColumnProfiles = buildDateColumnProfilesForImport(
+    input.importType,
+    stagedRows.map((row) => row.mapped_data),
+  );
+
+  const stagedRowsWithDates = stagedRows.map((row) => {
+    const dateApply = applyBulkImportDatesToMappedData({
+      importType: input.importType,
+      mappedData: row.mapped_data,
+      rowNumber: row.row_number,
+      ctx: reviewCtx,
+      profiles: dateColumnProfiles,
+      requiredFieldKeys,
+    });
+    return {
+      ...row,
+      mapped_data: dateApply.mappedData,
+      dateReviewIssues: dateApply.issues,
+      dateLegacyErrors: dateApply.legacyErrors,
+    };
+  });
 
 
-  const inFileDuplicateProductCodes =
 
+  const inFileDuplicateProductGroups =
     input.importType === "product"
+      ? indexInFileDuplicateGroups(stagedRowsWithDates, "product_code")
+      : new Map();
 
-      ? indexDuplicateKeys(stagedRows, "product_code")
+  const inFileDuplicateProductBarcodeGroups =
+    input.importType === "product"
+      ? indexInFileDuplicateGroups(stagedRowsWithDates, "barcode")
+      : new Map();
 
-      : new Set<string>();
-
-
-
-  const inFileDuplicateServiceNames =
-
+  const inFileDuplicateServiceGroups =
     input.importType === "service"
+      ? indexInFileDuplicateGroups(stagedRowsWithDates, "service_name")
+      : new Map();
 
-      ? indexDuplicateKeys(stagedRows, "service_name")
-
-      : new Set<string>();
-
-  const inFileDuplicateStaffIds =
+  const inFileDuplicateStaffIdGroups =
     input.importType === "employee"
-      ? indexDuplicateKeys(stagedRows, "staff_id")
-      : new Set<string>();
+      ? indexInFileDuplicateGroups(stagedRowsWithDates, "staff_id")
+      : new Map();
 
-  const inFileDuplicateExpenseKeys =
+  const inFileDuplicateExpenseGroups =
     input.importType === "expense"
-      ? indexInFileDuplicateExpenseKeys(stagedRows)
-      : new Set<string>();
+      ? indexInFileDuplicateExpenseGroups(stagedRowsWithDates)
+      : new Map<string, number[]>();
 
   const existingExpenseDuplicateKeys =
     input.importType === "expense"
       ? (expenseLookups?.existingExpenseDuplicateKeys ?? new Set<string>())
       : new Set<string>();
 
-  const inFileDuplicateFixedAssetKeys =
+  const inFileDuplicateFixedAssetGroups =
     input.importType === "fixed_asset"
-      ? indexInFileDuplicateFixedAssetKeys(stagedRows)
-      : new Set<string>();
+      ? indexInFileDuplicateFixedAssetGroups(stagedRowsWithDates)
+      : new Map<string, number[]>();
 
   const existingFixedAssetDuplicateKeys =
     input.importType === "fixed_asset"
@@ -1599,10 +1581,25 @@ export function validateImportRows(input: {
 
 
 
-  const validatedRows: BulkImportValidatedRow[] = stagedRows.map((row) => {
+  const validatedRows: BulkImportValidatedRow[] = stagedRowsWithDates.map((row) => {
     const pushIssues = (...issues: BulkImportReviewIssue[]) => {
       allReviewIssues.push(...issues);
     };
+
+    pushIssues(...row.dateReviewIssues);
+
+    const expirationOrderIssue = collectExpirationBeforeManufacturingReviewIssue(
+      {
+        ctx: reviewCtx,
+        mappedData: row.mapped_data,
+        rowNumber: row.row_number,
+        dateReviewIssues: row.dateReviewIssues,
+        dateLegacyErrors: row.dateLegacyErrors,
+      },
+    );
+    if (expirationOrderIssue) {
+      pushIssues(expirationOrderIssue);
+    }
 
     if (input.importType === "employee") {
       if (!employeeLookups) {
@@ -1615,18 +1612,30 @@ export function validateImportRows(input: {
         ctx: reviewCtx,
         employeeLookups,
         compensationPolicyConfig: input.employeeCompensationPolicyConfig,
-        inFileDuplicateStaffIds,
+        inFileDuplicateStaffIdGroups,
       });
       pushIssues(...rowIssues);
 
       const errors = rowIssues.filter((issue) => issue.severity === "error");
-      if (errors.length > 0) {
+      if (row.dateLegacyErrors.length > 0 || errors.length > 0) {
+        const dateErrorIssues =
+          row.dateLegacyErrors.length > 0
+            ? reviewIssuesFromLegacyErrorMessages({
+                ctx: reviewCtx,
+                mappedData: row.mapped_data,
+                rowNumber: row.row_number,
+                messages: row.dateLegacyErrors,
+                severity: "error",
+              })
+            : [];
+        pushIssues(...dateErrorIssues);
+        const combined = [...dateErrorIssues, ...errors];
         return {
           id: row.id,
           row_number: row.row_number,
           mapped_data: row.mapped_data,
           status: "error",
-          error_message: errors.map((issue) => issue.message).join("\n"),
+          error_message: combined.map((issue) => issue.message).join("\n"),
         };
       }
 
@@ -1643,83 +1652,91 @@ export function validateImportRows(input: {
       };
     }
 
+    const duplicateAndWarningIssues = collectDuplicateAndWarningReviewIssues({
+      importType: input.importType,
+      ctx: reviewCtx,
+      mappedData: row.mapped_data,
+      rowNumber: row.row_number,
+      inFileDuplicateProductGroups,
+      inFileDuplicateProductBarcodeGroups,
+      existingProductCodes,
+      existingProductBarcodes,
+      inFileDuplicateServiceGroups,
+      existingServiceNames,
+      inFileDuplicateExpenseGroups,
+      existingExpenseDuplicateKeys,
+      inFileDuplicateFixedAssetGroups,
+      existingFixedAssetDuplicateKeys,
+    });
+
     const hardErrors = collectFieldErrors(
       input.importType,
       row.mapped_data,
       validationLookups,
     );
 
-    if (hardErrors.length > 0) {
+    const blockingDuplicateIssues = duplicateAndWarningIssues.filter(
+      (issue) => issue.severity === "error",
+    );
+
+    if (
+      row.dateLegacyErrors.length > 0 ||
+      hardErrors.length > 0 ||
+      expirationOrderIssue
+    ) {
       const rowIssues = reviewIssuesFromLegacyErrorMessages({
         ctx: reviewCtx,
         mappedData: row.mapped_data,
         rowNumber: row.row_number,
-        messages: hardErrors,
+        messages: [...row.dateLegacyErrors, ...hardErrors],
         severity: "error",
       });
       pushIssues(...rowIssues);
+      if (duplicateAndWarningIssues.length > 0) {
+        pushIssues(...duplicateAndWarningIssues);
+      }
+
+      const combinedMessages = [
+        ...(expirationOrderIssue ? [expirationOrderIssue] : []),
+        ...rowIssues,
+        ...duplicateAndWarningIssues,
+      ].map((issue) => issue.message);
 
       return {
         id: row.id,
         row_number: row.row_number,
         mapped_data: row.mapped_data,
         status: "error",
-        error_message: rowIssues.map((issue) => issue.message).join("\n"),
+        error_message: combinedMessages.join("\n"),
       };
     }
 
-    if (input.importType === "product") {
-      const duplicateMessage = collectProductDuplicateMessage(
-        row.mapped_data,
-        inFileDuplicateProductCodes,
-        existingProductCodes,
-      );
+    if (input.importType === "product" && blockingDuplicateIssues.length > 0) {
+      pushIssues(...duplicateAndWarningIssues);
 
-      if (duplicateMessage) {
-        const rowIssues = reviewIssuesFromLegacyErrorMessages({
-          ctx: reviewCtx,
-          mappedData: row.mapped_data,
-          rowNumber: row.row_number,
-          messages: [duplicateMessage],
-          severity: "error",
-        });
-        pushIssues(...rowIssues);
-
-        return {
-          id: row.id,
-          row_number: row.row_number,
-          mapped_data: row.mapped_data,
-          status: "duplicate",
-          error_message: rowIssues.map((issue) => issue.message).join("\n"),
-        };
-      }
+      return {
+        id: row.id,
+        row_number: row.row_number,
+        mapped_data: row.mapped_data,
+        status: "duplicate",
+        error_message: duplicateAndWarningIssues
+          .map((issue) => issue.message)
+          .join("\n"),
+      };
     }
 
-    if (input.importType === "service") {
-      const warnings = collectServiceWarnings(
-        row.mapped_data,
-        inFileDuplicateServiceNames,
-        existingServiceNames,
-      );
+    if (input.importType === "service" && duplicateAndWarningIssues.length > 0) {
+      pushIssues(...duplicateAndWarningIssues);
 
-      if (warnings.length > 0) {
-        const rowIssues = reviewIssuesFromLegacyErrorMessages({
-          ctx: reviewCtx,
-          mappedData: row.mapped_data,
-          rowNumber: row.row_number,
-          messages: warnings,
-          severity: "warning",
-        });
-        pushIssues(...rowIssues);
-
-        return {
-          id: row.id,
-          row_number: row.row_number,
-          mapped_data: row.mapped_data,
-          status: "valid",
-          error_message: rowIssues.map((issue) => issue.message).join("\n"),
-        };
-      }
+      return {
+        id: row.id,
+        row_number: row.row_number,
+        mapped_data: row.mapped_data,
+        status: "valid",
+        error_message: duplicateAndWarningIssues
+          .map((issue) => issue.message)
+          .join("\n"),
+      };
     }
 
     if (input.importType === "expense") {
@@ -1749,19 +1766,23 @@ export function validateImportRows(input: {
         };
       }
 
-      const warnings = collectExpenseWarnings(row.mapped_data, {
-        inFileDuplicateExpenseKeys,
-        existingExpenseDuplicateKeys,
-      });
+      const expenseCategoryWarnings = collectExpenseWarnings(row.mapped_data);
 
-      if (warnings.length > 0) {
-        const rowIssues = reviewIssuesFromLegacyErrorMessages({
-          ctx: reviewCtx,
-          mappedData: row.mapped_data,
-          rowNumber: row.row_number,
-          messages: warnings,
-          severity: "warning",
-        });
+      if (
+        expenseCategoryWarnings.length > 0 ||
+        duplicateAndWarningIssues.length > 0
+      ) {
+        const categoryIssues =
+          expenseCategoryWarnings.length > 0
+            ? reviewIssuesFromLegacyErrorMessages({
+                ctx: reviewCtx,
+                mappedData: row.mapped_data,
+                rowNumber: row.row_number,
+                messages: expenseCategoryWarnings,
+                severity: "warning",
+              })
+            : [];
+        const rowIssues = [...categoryIssues, ...duplicateAndWarningIssues];
         pushIssues(...rowIssues);
 
         return {
@@ -1774,28 +1795,37 @@ export function validateImportRows(input: {
       }
     }
 
-    if (input.importType === "fixed_asset") {
-      const warnings = collectFixedAssetWarnings(row.mapped_data, {
-        inFileDuplicateFixedAssetKeys,
-        existingFixedAssetDuplicateKeys,
+    if (
+      input.importType === "fixed_asset" &&
+      duplicateAndWarningIssues.length > 0
+    ) {
+      pushIssues(...duplicateAndWarningIssues);
+
+      return {
+        id: row.id,
+        row_number: row.row_number,
+        mapped_data: row.mapped_data,
+        status: "valid",
+        error_message: duplicateAndWarningIssues
+          .map((issue) => issue.message)
+          .join("\n"),
+      };
+    }
+
+    if (input.importType === "product") {
+      const openingStockWarning = collectProductOpeningStockCostWarning({
+        ctx: reviewCtx,
+        mappedData: row.mapped_data,
+        rowNumber: row.row_number,
       });
-
-      if (warnings.length > 0) {
-        const rowIssues = reviewIssuesFromLegacyErrorMessages({
-          ctx: reviewCtx,
-          mappedData: row.mapped_data,
-          rowNumber: row.row_number,
-          messages: warnings,
-          severity: "warning",
-        });
-        pushIssues(...rowIssues);
-
+      if (openingStockWarning) {
+        pushIssues(openingStockWarning);
         return {
           id: row.id,
           row_number: row.row_number,
           mapped_data: row.mapped_data,
           status: "valid",
-          error_message: rowIssues.map((issue) => issue.message).join("\n"),
+          error_message: openingStockWarning.message,
         };
       }
     }

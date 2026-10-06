@@ -1,5 +1,6 @@
 "use client";
 
+import Tooltip, { type TooltipVariant } from "@/components/ui/tooltip";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type DashboardButtonVariant =
@@ -29,23 +30,24 @@ type DashboardButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: DashboardButtonVariant;
   icon?: ReactNode;
   tooltip?: string;
+  tooltipVariant?: TooltipVariant;
 };
 
 export default function DashboardButton({
   variant = "primary",
   icon,
   tooltip,
+  tooltipVariant,
   className = "",
   children,
   disabled,
   type = "button",
   ...rest
 }: DashboardButtonProps) {
-  return (
+  const button = (
     <button
       type={type}
       disabled={disabled}
-      title={tooltip}
       aria-label={tooltip && !children ? tooltip : undefined}
       className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variantClassName[variant]} ${className}`}
       {...rest}
@@ -54,4 +56,16 @@ export default function DashboardButton({
       {children ? <span>{children}</span> : null}
     </button>
   );
+
+  if (tooltip?.trim()) {
+    const variant =
+      tooltipVariant ?? (disabled ? "blocked" : "info");
+    return (
+      <Tooltip content={tooltip} variant={variant}>
+        {button}
+      </Tooltip>
+    );
+  }
+
+  return button;
 }

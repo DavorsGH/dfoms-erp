@@ -20,6 +20,19 @@ export function formatInventoryMoney(value: number | null | undefined): string {
   })}`;
 }
 
+export function formatInventoryMoneyDisplay2dp(
+  value: number | null | undefined,
+): string {
+  if (value == null || Number.isNaN(Number(value))) {
+    return "—";
+  }
+
+  return `GHS ${Number(value).toLocaleString("en-GB", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export function nullableNumber(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) {

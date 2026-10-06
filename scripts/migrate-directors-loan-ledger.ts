@@ -21,6 +21,7 @@ import {
   compareReportBundles,
   compareSnapshots,
   patchManualEntriesForLedger,
+  previewManualMigrationPatches,
   planLedgerInserts,
   simulateLedgerEntries,
   snapshotNewPath,
@@ -153,7 +154,6 @@ async function runParityForTenant(
     tenantManuals as ManualFinancialEntry[],
     planned,
     PARITY_FY,
-    existingLedger,
   );
   const allDiffs: ParityDiff[] = [];
   const oldPathSnapshots = new Map<string, Record<string, number[]>>();
@@ -200,6 +200,87 @@ function printParityFailure(allDiffs: ParityDiff[]) {
     );
   }
   if (allDiffs.length > 80) console.log(`… and ${allDiffs.length - 80} more`);
+}
+
+async function countCoreActivityForBusinessUnit(
+  admin: SupabaseClient,
+  tenantId: string,
+  businessUnitId: string | null,
+): Promise<number> {
+  if (!businessUnitId) {
+    return 0;
+  }
+  const tables = ["income_register", "expense_register", "product_purchases"] as const;
+  let total = 0;
+  for (const table of tables) {
+    const { count, error } = await admin
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("business_unit_id", businessUnitId);
+    if (error) {
+      throw new Error(`${table}: ${error.message}`);
+    }
+    total += count ?? 0;
+  }
+  return total;
+}
+
+/**
+ * Refuse migration inserts onto BUs with no income/expense/product-purchase history
+ * unless --allow-inactive-bu (prevents replay onto empty shells like Davors Technologies).
+ */
+async function assertPlannedLedgerTargetsOperationalBusinessUnits(
+  admin: SupabaseClient,
+  tenantPlans: TenantPlan[],
+  allowInactive: boolean,
+): Promise<void> {
+  if (allowInactive) {
+    console.log("Warning: --allow-inactive-bu — skipping operational BU guard.");
+    return;
+  }
+  const blocked: string[] = [];
+  for (const plan of tenantPlans) {
+    const { count: buCount } = await admin
+      .from("business_units")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", plan.tenantId);
+    const buIds = new Set<string | null>();
+    for (const row of plan.planned) {
+      buIds.add(row.business_unit_id ?? null);
+    }
+    for (const buId of buIds) {
+      if (!buId) {
+        if ((buCount ?? 0) === 0) {
+          continue;
+        }
+        blocked.push(
+          `${plan.tenantName}: planned ledger row with NULL business_unit_id (manual/repayment untagged)`,
+        );
+        continue;
+      }
+      const n = await countCoreActivityForBusinessUnit(admin, plan.tenantId, buId);
+      if (n === 0) {
+        const { data: bu } = await admin
+          .from("business_units")
+          .select("name")
+          .eq("id", buId)
+          .maybeSingle();
+        blocked.push(
+          `${plan.tenantName}: BU "${bu?.name ?? buId}" has no income/expense/product purchases but migration would stamp ${plan.planned.filter((p) => p.business_unit_id === buId).length} ledger row(s). Re-tag manuals/repayments or pass --allow-inactive-bu.`,
+        );
+      }
+    }
+  }
+  if (blocked.length > 0) {
+    console.error("\nRefusing apply — inactive or NULL business unit targets:\n");
+    for (const line of blocked) {
+      console.error(`  - ${line}`);
+    }
+    throw new Error(
+      "Director's loan migration blocked for inactive/NULL BU targets. Fix source manual_financial_entries / repayments BU stamps first.",
+    );
+  }
 }
 
 async function collectTenantPlans(admin: SupabaseClient): Promise<TenantPlan[]> {
@@ -255,6 +336,20 @@ async function runFullParity(
       console.log(
         `  ${p.entry_date} ${p.entry_type} ${p.amount} BU=${p.business_unit_id ?? "null"}`,
       );
+    }
+    const manualPatches = previewManualMigrationPatches(
+      plan.tenantId,
+      plan.manuals,
+      plan.planned,
+      PARITY_FY,
+    );
+    if (manualPatches.length > 0) {
+      console.log(`Manual row updates (${manualPatches.length}):`);
+      for (const patch of manualPatches) {
+        console.log(
+          `  ${patch.period_month} BU=${patch.business_unit_id ?? "null"} directors_loan ${patch.before.directors_loan}→${patch.after.directors_loan} loan_proceeds ${patch.before.loan_proceeds}→${patch.after.loan_proceeds} (unchanged) loan_repayments ${patch.before.loan_repayments}→${patch.after.loan_repayments}`,
+        );
+      }
     }
 
     const { diffs, oldPathSnapshots: tenantOldSnaps } = await runParityForTenant(
@@ -327,39 +422,44 @@ async function applyAllInTransaction(
         manuals as ManualFinancialEntry[],
         planned,
         PARITY_FY,
-        [],
       );
       for (const entry of patched) {
         const raw = entry as ManualFinancialEntryRecord;
         const y = Number(String(raw.period_month).slice(0, 4));
         if (y !== PARITY_FY) continue;
+        const original = manuals.find(
+          (m) =>
+            m.period_month === raw.period_month &&
+            (m.business_unit_id ?? null) === (raw.business_unit_id ?? null),
+        );
+        if (!original) continue;
+        const beforeLoan = Number(original.directors_loan) || 0;
+        const beforeRepay = Number(original.loan_repayments) || 0;
+        const afterLoan = Number(raw.directors_loan) || 0;
+        const afterRepay = Number(raw.loan_repayments) || 0;
+        if (beforeLoan === afterLoan && beforeRepay === afterRepay) {
+          continue;
+        }
         if (raw.business_unit_id == null) {
           await client.query(
             `UPDATE manual_financial_entries
-             SET directors_loan = 0,
-                 loan_proceeds = $3,
+             SET directors_loan = $3,
                  loan_repayments = $4
              WHERE tenant_id = $1 AND period_month = $2 AND business_unit_id IS NULL`,
-            [
-              tenantId,
-              raw.period_month,
-              Number(raw.loan_proceeds) || 0,
-              Number(raw.loan_repayments) || 0,
-            ],
+            [tenantId, raw.period_month, afterLoan, afterRepay],
           );
         } else {
           await client.query(
             `UPDATE manual_financial_entries
-             SET directors_loan = 0,
-                 loan_proceeds = $4,
+             SET directors_loan = $4,
                  loan_repayments = $5
              WHERE tenant_id = $1 AND period_month = $2 AND business_unit_id = $3`,
             [
               tenantId,
               raw.period_month,
               raw.business_unit_id,
-              Number(raw.loan_proceeds) || 0,
-              Number(raw.loan_repayments) || 0,
+              afterLoan,
+              afterRepay,
             ],
           );
         }
@@ -478,6 +578,12 @@ async function main() {
   console.log(`\n=== PRE-APPLY PARITY (immediate) ===`);
   const preWrite = await runFullParity(admin, tenantPlans, { verifyOnly: false });
   assertParityPass(preWrite.allDiffs, "pre-apply");
+
+  await assertPlannedLedgerTargetsOperationalBusinessUnits(
+    admin,
+    tenantPlans,
+    args.has("--allow-inactive-bu"),
+  );
 
   assertIdempotency(tenantPlans);
 

@@ -10,6 +10,7 @@ import {
   buildAutoColumnMapping,
   countRequiredFieldMapping,
   downloadBulkImportTemplateCsv,
+  downloadBulkImportTemplateXlsx,
 } from "@/lib/bulk-import/bulk-import-wizard-utils";
 import {
   downloadBulkImportReviewReportCsv,
@@ -42,6 +43,7 @@ import {
   inspectSpreadsheetFileForImport,
   readSpreadsheetImportJsonResponse,
   spreadsheetImportAlertFromError,
+  spreadsheetImportCommitFailedAlert,
   spreadsheetImportUploadFailedAlert,
   type SpreadsheetImportAlert,
 } from "@/lib/spreadsheet/spreadsheet-import-alerts";
@@ -67,6 +69,11 @@ import {
   type SpreadsheetSheetSummary,
 } from "@/lib/spreadsheet/parse-spreadsheet-client";
 import BulkImportWizardDialog from "./bulk-import-wizard-dialog";
+import {
+  formatBulkImportCommittedSummary,
+  formatBulkImportPrimaryButtonLabel,
+  formatBulkImportSkippedSummary,
+} from "@/lib/bulk-import/bulk-import-finish-copy";
 
 const IMPORT_ACCEPT = SPREADSHEET_FILE_ACCEPT;
 const UNMAPPED_VALUE = "";
@@ -267,10 +274,12 @@ function WizardProgress({ currentStep }: { currentStep: WizardStep }) {
 
 type BulkImportClientProps = {
   initialImportType?: BulkImportType;
+  moduleBackLink?: { href: string; label: string } | null;
 };
 
 export default function BulkImportClient({
   initialImportType = "product",
+  moduleBackLink = null,
 }: BulkImportClientProps) {
   const { alert: showAlert } = useAlert();
   const showImportAlert = useCallback(
@@ -418,6 +427,18 @@ export default function BulkImportClient({
     setCommitResult(null);
     setPendingReupload(null);
     setWizardStep(1);
+  }
+
+  function resetWizardForAnotherImport() {
+    resetMappingStep();
+    resetSpreadsheetSelection();
+    setSelectedFiles([]);
+    setFileUploadBlocked(false);
+    setCreateMissingPositionsOnImport(true);
+    setShowAllErrors(false);
+    setShowAllWarnings(false);
+    setErrorsPage(0);
+    setWarningsPage(0);
   }
 
   function resetSpreadsheetSelection() {
@@ -844,7 +865,7 @@ export default function BulkImportClient({
 
       const parsed = await readSpreadsheetImportJsonResponse<
         BulkImportCommitResponse & { error?: string }
-      >(response);
+      >(response, { failureContext: "commit" });
 
       if (!parsed.ok) {
         showImportAlert(parsed.alert);
@@ -855,7 +876,11 @@ export default function BulkImportClient({
       setWizardStep(4);
     } catch (commitError) {
       console.error("Bulk import commit failed", commitError);
-      showImportAlert(spreadsheetImportUploadFailedAlert());
+      showImportAlert(
+        spreadsheetImportCommitFailedAlert(
+          commitError instanceof Error ? commitError.message : undefined,
+        ),
+      );
     } finally {
       primaryActionInFlightRef.current = false;
       setCommitting(false);
@@ -863,10 +888,28 @@ export default function BulkImportClient({
   }
 
   function handleDownloadTemplate() {
+    downloadBulkImportTemplateXlsx(
+      targetFields,
+      importType,
+      `${importType}-import-template.xlsx`,
+    );
+  }
+
+  function handleDownloadTemplateCsv() {
     downloadBulkImportTemplateCsv(
       targetFields,
       `${importType}-import-template.csv`,
     );
+  }
+
+  function buildReviewReportIssues(
+    issues: BulkImportReviewIssue[],
+  ): BulkImportReviewIssue[] {
+    return issues.map((issue) => ({
+      ...issue,
+      message: formatReviewIssueMessage(issue),
+      error_message: formatReviewIssueMessage(issue),
+    }));
   }
 
   function handleDownloadErrorReport() {
@@ -882,20 +925,31 @@ export default function BulkImportClient({
       return;
     }
 
-    const reportIssues: BulkImportReviewIssue[] = [
-      ...validationResult.issue_rows,
-      ...validationResult.warning_rows,
-    ].map((issue) => ({
-      ...issue,
-      message: formatReviewIssueMessage(issue),
-      error_message: formatReviewIssueMessage(issue),
-    }));
-
     downloadBulkImportReviewReportCsv(
-      reportIssues,
+      buildReviewReportIssues([
+        ...validationResult.issue_rows,
+        ...validationResult.warning_rows,
+      ]),
       `${importType}-import-review-report.csv`,
+      importType,
     );
   }
+
+  function handleDownloadSkippedRowsReport() {
+    if (!validationResult || validationResult.issue_rows.length === 0) {
+      return;
+    }
+
+    downloadBulkImportReviewReportCsv(
+      buildReviewReportIssues(validationResult.issue_rows),
+      `${importType}-import-skipped-rows.csv`,
+      importType,
+    );
+  }
+
+  const skippedImportRowCount = validationResult
+    ? validationResult.error_rows + validationResult.duplicate_rows
+    : 0;
 
   const stickyPrimaryDisabled =
     (wizardStep === 1 && (uploading || uploadBlocked)) ||
@@ -908,11 +962,7 @@ export default function BulkImportClient({
 
   const importPrimaryLabel =
     wizardStep === 3 && validationResult
-      ? validationResult.valid_rows === 0
-        ? "Import"
-        : `Import ${validationResult.valid_rows.toLocaleString()} valid row${
-            validationResult.valid_rows === 1 ? "" : "s"
-          }`
+      ? formatBulkImportPrimaryButtonLabel(importType, validationResult.valid_rows)
       : "Import";
 
   const step2PrimaryLoading = savingMapping || validating;
@@ -920,6 +970,16 @@ export default function BulkImportClient({
   return (
     <div className={wizardCardClassName}>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        {moduleBackLink ? (
+          <p className="mb-4">
+            <Link
+              href={moduleBackLink.href}
+              className="text-sm font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+            >
+              ← Back to {moduleBackLink.label}
+            </Link>
+          </p>
+        ) : null}
         <WizardProgress currentStep={wizardStep} />
 
         {wizardStep === 1 ? (
@@ -998,7 +1058,14 @@ export default function BulkImportClient({
                 onClick={handleDownloadTemplate}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
-                Download template
+                Download template (.xlsx)
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadTemplateCsv}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Download CSV template
               </button>
             </div>
 
@@ -1107,7 +1174,7 @@ export default function BulkImportClient({
                         </option>
                       </select>
                       {mappedTarget?.mappingHint ? (
-                        <p className="mt-1 text-xs text-amber-800">
+                        <p className="mt-1 text-xs text-slate-600">
                           {mappedTarget.mappingHint}
                         </p>
                       ) : null}
@@ -1334,22 +1401,54 @@ export default function BulkImportClient({
               Import complete
             </p>
             <p>
-              {commitResult.committed_count} row
-              {commitResult.committed_count === 1 ? "" : "s"} written to{" "}
-              {IMPORT_TYPE_LABELS[importType]} records.
+              {formatBulkImportCommittedSummary(
+                importType,
+                commitResult.committed_count,
+              )}
             </p>
-            <Link
-              href={IMPORT_TYPE_DESTINATION[importType].href}
-              className="inline-flex rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#16365c]"
-            >
-              {IMPORT_TYPE_DESTINATION[importType].label}
-            </Link>
+            {skippedImportRowCount > 0 ? (
+              <div className="space-y-2">
+                <p>{formatBulkImportSkippedSummary(skippedImportRowCount)}</p>
+                {validationResult && validationResult.issue_rows.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleDownloadSkippedRowsReport}
+                    className="rounded-md border border-emerald-700 bg-white px-3 py-1.5 text-sm font-medium text-emerald-950 hover:bg-emerald-100/80"
+                  >
+                    Download skipped rows report
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {commitResult.positions_created &&
+            commitResult.positions_created.length > 0 ? (
+              <p>
+                Created {commitResult.positions_created.length} new position
+                {commitResult.positions_created.length === 1 ? "" : "s"}:{" "}
+                {commitResult.positions_created.join(", ")}.
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-3 pt-1">
+              <Link
+                href={IMPORT_TYPE_DESTINATION[importType].href}
+                className="inline-flex rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#16365c]"
+              >
+                {IMPORT_TYPE_DESTINATION[importType].label}
+              </Link>
+              <button
+                type="button"
+                onClick={resetWizardForAnotherImport}
+                className="inline-flex rounded-md border border-emerald-800 bg-white px-4 py-2 text-sm font-medium text-emerald-950 hover:bg-emerald-100/80"
+              >
+                Import another file
+              </button>
+            </div>
           </div>
         ) : null}
 
       </div>
 
-      {wizardStep <= 4 ? (
+      {wizardStep < 4 ? (
         <div className="sticky bottom-0 z-10 shrink-0 border-t border-slate-200 bg-white shadow-[0_-4px_12px_rgba(15,39,68,0.06)]">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div>

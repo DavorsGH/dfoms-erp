@@ -115,6 +115,7 @@ export async function resolvePositionTitleForCommit(input: {
   cache: PositionTitleResolverCache;
   /** When false, unknown titles are left unset (bulk import opt-out). Default true. */
   createIfMissing?: boolean;
+  onCreated?: (positionTitle: string) => void;
 }): Promise<string | null> {
   const {
     client,
@@ -122,6 +123,7 @@ export async function resolvePositionTitleForCommit(input: {
     positionTitle,
     cache,
     createIfMissing = true,
+    onCreated,
   } = input;
   const trimmed = positionTitle?.trim();
   if (!trimmed) {
@@ -187,6 +189,7 @@ export async function resolvePositionTitleForCommit(input: {
     throw new Error(`Unable to resolve position_title "${trimmed}" after create.`);
   }
 
+  onCreated?.(resolved);
   cache.set(key, resolved);
   return resolved;
 }

@@ -1,6 +1,5 @@
 import {
   buildBalanceSheetReport,
-  getBalanceCheckForPeriod,
   getBalanceSheetAmountForMonth,
   type BalanceSheetAccountsPayableEntry,
   type BalanceSheetIncomeEntry,
@@ -10,6 +9,7 @@ import {
   type BalanceSheetWelfareFundEntry,
   type InventoryBalanceSheetInput,
 } from "./finance/balance-sheet-utils";
+import { getBalanceSheetMonthCheck } from "@/lib/finance/balance-sheet-standard-report";
 import type { BalanceSheetCashExpenseEntry } from "./finance/accrued-wages-utils";
 import type {
   MonthEndCloseNetPayEntry,
@@ -222,7 +222,7 @@ export function buildDashboardBalanceSheetCheck(
   report: BalanceSheetReport,
   monthIndex: number,
 ): { isBalanced: boolean; difference: number } {
-  const check = getBalanceCheckForPeriod(report, monthIndex);
+  const check = getBalanceSheetMonthCheck(report, monthIndex);
   return {
     isBalanced: check.isBalanced,
     difference: check.difference,

@@ -261,6 +261,19 @@ export function calculateDirectorsLoanLedgerNetByMonth(
   };
 }
 
+const MIGRATED_LEDGER_REFERENCE_PREFIX = "migrated" as const;
+const PATCH_DEDupe_TOLERANCE = 0.01;
+
+function isMigratedDirectorsLoanLedgerCashEntry(
+  entry: DirectorsLoanLedgerEntry,
+): boolean {
+  if (isNonCashDirectorsLoanLedgerEntry(entry)) {
+    return false;
+  }
+  const ref = (entry.reference ?? "").trim().toLowerCase();
+  return ref === MIGRATED_LEDGER_REFERENCE_PREFIX || ref.startsWith("migrated-");
+}
+
 export function patchManualFinancialEntriesForDirectorLoanLedger(
   manuals: Array<
     ManualFinancialEntryRecordLike
@@ -272,7 +285,7 @@ export function patchManualFinancialEntriesForDirectorLoanLedger(
   const repaymentsByBuMonth = new Map<string, number>();
 
   for (const entry of ledgerEntries) {
-    if (isNonCashDirectorsLoanLedgerEntry(entry)) continue;
+    if (!isMigratedDirectorsLoanLedgerCashEntry(entry)) continue;
     const y = Number(entry.entry_date.slice(0, 4));
     if (y !== fy) continue;
     const mi = getEntryMonthIndex(entry.entry_date, fy);
@@ -300,15 +313,50 @@ export function patchManualFinancialEntriesForDirectorLoanLedger(
     const key = `${buKey}:${mi}`;
     const lent = proceedsByBuMonth.get(key) ?? 0;
     const repaid = repaymentsByBuMonth.get(key) ?? 0;
+    const loanProceeds = Number(row.loan_proceeds) || 0;
+    const loanRepayments = Number(row.loan_repayments) || 0;
+    const shouldDedupeProceeds =
+      lent > 0 &&
+      loanProceeds > 0 &&
+      loanProceeds <= lent + PATCH_DEDupe_TOLERANCE;
+    const shouldDedupeRepayments =
+      repaid > 0 &&
+      loanRepayments > 0 &&
+      loanRepayments <= repaid + PATCH_DEDupe_TOLERANCE;
     return {
       ...row,
       directors_loan: 0,
-      loan_proceeds: roundCurrency(Math.max(0, (Number(row.loan_proceeds) || 0) - lent)),
-      loan_repayments: roundCurrency(
-        Math.max(0, (Number(row.loan_repayments) || 0) - repaid),
-      ),
+      loan_proceeds: shouldDedupeProceeds
+        ? roundCurrency(Math.max(0, loanProceeds - lent))
+        : loanProceeds,
+      loan_repayments: shouldDedupeRepayments
+        ? roundCurrency(Math.max(0, loanRepayments - repaid))
+        : loanRepayments,
     };
   });
+}
+
+/** Patch manuals for every calendar year present in `period_month` (balance sheet / cash load). */
+export function patchManualFinancialEntriesForDirectorLoanLedgerAllYears(
+  manuals: Array<ManualFinancialEntryRecordLike>,
+  ledgerEntries: DirectorsLoanLedgerEntry[],
+): typeof manuals {
+  const years = new Set<number>();
+  for (const row of manuals) {
+    const y = Number(String(row.period_month).slice(0, 4));
+    if (y > 2000 && y < 2100) {
+      years.add(y);
+    }
+  }
+  let result = manuals;
+  for (const fy of [...years].sort((a, b) => a - b)) {
+    result = patchManualFinancialEntriesForDirectorLoanLedger(
+      result,
+      ledgerEntries,
+      fy,
+    );
+  }
+  return result;
 }
 
 type ManualFinancialEntryRecordLike = {

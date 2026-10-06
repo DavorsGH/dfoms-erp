@@ -1,0 +1,13 @@
+-- Explicit per-tenant repair (run manually; not part of migrations 365/366).
+-- Dry-run (default): lists rows that would receive income/expense register links.
+-- SELECT *
+-- FROM public.repair_tenant_inventory_stock_adjustment_register_links(
+--   '<tenant_uuid>'::uuid,
+--   true
+-- );
+-- Apply posts (service_role; mutates books):
+-- SELECT *
+-- FROM public.repair_tenant_inventory_stock_adjustment_register_links(
+--   '<tenant_uuid>'::uuid,
+--   false
+-- );

@@ -38,6 +38,12 @@ import type {
   InventoryValuationHistory,
 } from "../inventory/inventory-balance-sheet-utils";
 import {
+  stockAdjustmentPlLinkKey,
+  type InventoryStockAdjustmentKind,
+  type InventoryStockAdjustmentRow,
+} from "@/lib/inventory/inventory-stock-adjustment-financials";
+import { mergeZeroBuFinishedProductAverageCosts } from "@/lib/inventory/zero-bu-finished-product-wac";
+import {
   RAW_MATERIAL_SELECT,
   normalizeRawMaterial,
 } from "../inventory/raw-materials-utils";
@@ -128,6 +134,8 @@ export type FetchBalanceSheetPageDataOptions = {
   /** Inventory loader started in parallel with the main BS batch (owner /dashboard). */
   preloadedInventoryBalanceSheet?: InventoryBalanceSheetInput;
   preloadedInventoryBalanceSheetPromise?: Promise<InventoryBalanceSheetInput>;
+  /** As-of date for inventory month clamp (integrity cron / probes). */
+  referenceDate?: Date;
 };
 
 export function buildCustomerCreditsBalanceSheetOptions(
@@ -246,6 +254,11 @@ export async function fetchInventoryBalanceSheetInput(
     { data: productSaleCogs },
     { data: internalConsumptionRows },
     { data: rawPurchasesFull },
+    finishedProductAdjustmentsResult,
+    rawMaterialAdjustmentsResult,
+    registerLinksResult,
+    businessUnitCountResult,
+    zeroBuFinishedBalanceRowsResult,
   ] = await Promise.all([
     supabase
       .from("inventory_balance_config")
@@ -316,10 +329,11 @@ export async function fetchInventoryBalanceSheetInput(
       supabase
         .from("income_register")
         .select(
-          "product_id, date, cogs_expense_id, cogs_reversal_expense_id, entry_type",
+          "product_id, date, sale_quantity, cogs_expense_id, cogs_reversal_expense_id, entry_type, sale_status",
         )
         .eq("tenant_id", tenantId)
         .eq("entry_type", "product_sale")
+        .neq("sale_status", "voided")
         .not("product_id", "is", null),
       buScope,
     ),
@@ -341,6 +355,37 @@ export async function fetchInventoryBalanceSheetInput(
         .eq("tenant_id", tenantId),
       buScope,
     ),
+    applyBusinessUnitScope(
+      supabase
+        .from("finished_product_stock_adjustments")
+        .select(
+          "id, adjustment_type, quantity_delta, cost_per_unit, created_at, business_unit_id",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
+    applyBusinessUnitScope(
+      supabase
+        .from("raw_material_stock_adjustments")
+        .select(
+          "id, material_id, adjustment_type, quantity_delta, cost_per_unit, created_at, business_unit_id",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ),
+    supabase
+      .from("inventory_stock_adjustment_register_links")
+      .select("source_kind, adjustment_id")
+      .eq("tenant_id", tenantId),
+    supabase
+      .from("business_units")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId),
+    supabase
+      .from("finished_product_balances")
+      .select("product_id, average_cost_per_unit, current_stock")
+      .eq("tenant_id", tenantId)
+      .is("business_unit_id", null),
   ]);
 
   const cashPurchases = cashPurchasesResult.data;
@@ -423,6 +468,56 @@ export async function fetchInventoryBalanceSheetInput(
 
   const cogsAmountById = expenseAmountById;
 
+  const tenantBusinessUnitCount = businessUnitCountResult.count ?? 0;
+  const finishedProductAverageCosts = mergeZeroBuFinishedProductAverageCosts(
+    tenantBusinessUnitCount,
+    ((averageCostRows as FinishedProductAverageCostRow[] | null) ?? []).map(
+      (row) => ({
+        product_id: row.product_id,
+        average_cost: Number(row.average_cost) || 0,
+      }),
+    ),
+    (zeroBuFinishedBalanceRowsResult.data ?? []) as Array<{
+      product_id: string;
+      average_cost_per_unit: number | string | null;
+      current_stock: number | string | null;
+    }>,
+  );
+  const stockAdjustments: InventoryStockAdjustmentRow[] = [
+    ...((finishedProductAdjustmentsResult.data ?? []) as Array<{
+      id: string;
+      adjustment_type: string;
+      quantity_delta: number;
+      cost_per_unit: number;
+      created_at: string;
+      business_unit_id: string | null;
+    }>).map((row) => ({
+      id: String(row.id),
+      source: "finished" as const,
+      adjustment_type: row.adjustment_type as InventoryStockAdjustmentKind,
+      effective_date: String(row.created_at ?? "").slice(0, 10),
+      quantity_delta: Number(row.quantity_delta) || 0,
+      cost_per_unit: Number(row.cost_per_unit) || 0,
+      business_unit_id: row.business_unit_id,
+    })),
+    ...((rawMaterialAdjustmentsResult.data ?? []) as Array<{
+      id: string;
+      adjustment_type: string;
+      quantity_delta: number;
+      cost_per_unit: number;
+      created_at: string;
+      business_unit_id: string | null;
+    }>).map((row) => ({
+      id: String(row.id),
+      source: "raw" as const,
+      adjustment_type: row.adjustment_type as InventoryStockAdjustmentKind,
+      effective_date: String(row.created_at ?? "").slice(0, 10),
+      quantity_delta: Number(row.quantity_delta) || 0,
+      cost_per_unit: Number(row.cost_per_unit) || 0,
+      business_unit_id: row.business_unit_id,
+    })),
+  ];
+
   const valuationHistory: InventoryValuationHistory = {
     finishedProductInflows: [
       ...(productionBatches ?? []).map((batch) => ({
@@ -445,10 +540,11 @@ export async function fetchInventoryBalanceSheetInput(
       if (!productId) return [];
       const rows: InventoryValuationHistory["finishedProductCogs"] = [];
       if (sale.cogs_expense_id) {
+        const booked = cogsAmountById.get(String(sale.cogs_expense_id)) ?? 0;
         rows.push({
           product_id: productId,
           sale_date: String(sale.date),
-          cogs_amount: cogsAmountById.get(String(sale.cogs_expense_id)) ?? 0,
+          cogs_amount: booked,
         });
       }
       if (sale.cogs_reversal_expense_id) {
@@ -487,18 +583,38 @@ export async function fetchInventoryBalanceSheetInput(
         quantity_used: row.quantity_used,
       }))
       .filter((row) => row.consumption_date),
+    rawMaterialAdjustments: (
+      (rawMaterialAdjustmentsResult.data ?? []) as Array<{
+        material_id: string;
+        adjustment_type: string;
+        quantity_delta: number;
+        cost_per_unit: number;
+        created_at: string;
+      }>
+    ).map((row) => ({
+      material_id: String(row.material_id),
+      effective_date: String(row.created_at ?? "").slice(0, 10),
+      quantity_delta: Number(row.quantity_delta) || 0,
+      cost_per_unit: Number(row.cost_per_unit) || 0,
+    })),
   };
+
+  const stockAdjustmentRegisterLinkedPlKeys = (
+    registerLinksResult.data ?? []
+  ).map((row) =>
+    stockAdjustmentPlLinkKey(
+      row.source_kind === "raw" ? "raw" : "finished",
+      String(row.adjustment_id),
+    ),
+  );
 
   return {
     config,
     rawMaterials: (rawMaterials ?? []).map((row) => normalizeRawMaterial(row)),
     finishedProducts: normalizedFinishedProducts,
-    finishedProductAverageCosts: (
-      (averageCostRows as FinishedProductAverageCostRow[] | null) ?? []
-    ).map((row) => ({
-      product_id: row.product_id,
-      average_cost: Number(row.average_cost) || 0,
-    })),
+    stockAdjustments,
+    stockAdjustmentRegisterLinkedPlKeys,
+    finishedProductAverageCosts,
     cashPurchases: cashPurchases ?? [],
     productCashPurchases: productCashPurchases ?? [],
     valuationHistory,
@@ -956,7 +1072,10 @@ export async function fetchBalanceSheetPageData(
       })),
     initialManualEntries: resolvedManualEntries,
     initialRawManualEntries: rawManualEntries,
-    initialInventoryBalanceSheet: inventoryBalanceSheet,
+    initialInventoryBalanceSheet: {
+      ...inventoryBalanceSheet,
+      referenceDate: options.referenceDate ?? new Date(),
+    },
     initialTaxLedgerEntries:
       (taxLedgerEntries as BalanceSheetTaxLedgerEntry[] | null) ?? [],
     initialWelfareFundEntries:

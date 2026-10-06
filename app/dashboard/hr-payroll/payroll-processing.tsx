@@ -1,6 +1,7 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import Tooltip from "@/components/ui/tooltip";
 import { LoadingState } from "@/components/loading-indicator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
@@ -1621,7 +1622,25 @@ export default function PayrollProcessing({
           ) : null}
           {canManagePayrollPeriod && !isPeriodClosed ? (
             <>
-              <span title={fullLockDisabledReason}>
+              {fullLockDisabledReason ? (
+                <Tooltip content={fullLockDisabledReason} variant="blocked">
+                  <button
+                    type="button"
+                    onClick={handleLockPeriod}
+                    disabled={
+                      locking ||
+                      loading ||
+                      reopening ||
+                      releasing ||
+                      rows.length === 0 ||
+                      !canFullLock
+                    }
+                    className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {locking ? "Locking…" : "Lock Period"}
+                  </button>
+                </Tooltip>
+              ) : (
                 <button
                   type="button"
                   onClick={handleLockPeriod}
@@ -1637,8 +1656,26 @@ export default function PayrollProcessing({
                 >
                   {locking ? "Locking…" : "Lock Period"}
                 </button>
-              </span>
-              <span title={statutoryLockBlockMessage ?? undefined}>
+              )}
+              {statutoryLockBlockMessage ? (
+                <Tooltip content={statutoryLockBlockMessage} variant="blocked">
+                  <button
+                    type="button"
+                    onClick={handlePartialLockPeriod}
+                    disabled={
+                      locking ||
+                      loading ||
+                      reopening ||
+                      releasing ||
+                      rows.length === 0 ||
+                      Boolean(statutoryLockBlockMessage)
+                    }
+                    className="rounded-md border border-amber-500 bg-amber-400 px-4 py-2 text-sm font-medium text-amber-950 transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Partial Lock Period
+                  </button>
+                </Tooltip>
+              ) : (
                 <button
                   type="button"
                   onClick={handlePartialLockPeriod}
@@ -1654,7 +1691,7 @@ export default function PayrollProcessing({
                 >
                   Partial Lock Period
                 </button>
-              </span>
+              )}
             </>
           ) : null}
         </div>

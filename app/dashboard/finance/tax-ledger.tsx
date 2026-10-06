@@ -1,6 +1,7 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import Tooltip from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -975,42 +976,52 @@ export default function TaxLedger({
             !filters.periodMonth ||
             !paid;
           const label = REMIT_TAX_KIND_LABEL[kind];
+          const remitTooltip = !filters.periodMonth
+            ? "Select a period month filter to enable remit"
+            : candidates.length === 0
+              ? `No open ${label} liabilities in this period`
+              : `Posts cash and clears ${label} liabilities for the filtered period`;
+          const undoTooltip = `Undo Remit ${label}: delete ${paid?.receiptNo ?? "receipt"} and reopen remitted legs. Assumes payment was not sent.`;
+
+          const remitButton = (
+            <button
+              type="button"
+              disabled={remitDisabled}
+              onClick={() => handleRemitForPeriod(kind)}
+              className={primaryButtonClassName}
+            >
+              {remittingKind === kind
+                ? `Remitting ${label}…`
+                : `Remit ${label} for period${
+                    candidates.length > 0
+                      ? ` (${candidates.length} · ${formatGHS(cashPreview)})`
+                      : ""
+                  }`}
+            </button>
+          );
+
+          const undoButton = paid ? (
+            <button
+              type="button"
+              disabled={undoDisabled}
+              onClick={() => handleUndoRemitForPeriod(kind)}
+              className={undoButtonClassName}
+            >
+              {undoingKind === kind
+                ? `Undoing ${label}…`
+                : `Undo Remit ${label} for period (${formatGHS(paid.amount)})`}
+            </button>
+          ) : null;
 
           return (
             <div key={kind} className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={remitDisabled}
-                onClick={() => handleRemitForPeriod(kind)}
-                className={primaryButtonClassName}
-                title={
-                  !filters.periodMonth
-                    ? "Select a period month filter to enable remit"
-                    : candidates.length === 0
-                      ? `No open ${label} liabilities in this period`
-                      : `Posts cash and clears ${label} liabilities for the filtered period`
-                }
-              >
-                {remittingKind === kind
-                  ? `Remitting ${label}…`
-                  : `Remit ${label} for period${
-                      candidates.length > 0
-                        ? ` (${candidates.length} · ${formatGHS(cashPreview)})`
-                        : ""
-                    }`}
-              </button>
-              {paid ? (
-                <button
-                  type="button"
-                  disabled={undoDisabled}
-                  onClick={() => handleUndoRemitForPeriod(kind)}
-                  className={undoButtonClassName}
-                  title={`Undo Remit ${label}: delete ${paid.receiptNo} and reopen remitted legs. Assumes payment was not sent.`}
-                >
-                  {undoingKind === kind
-                    ? `Undoing ${label}…`
-                    : `Undo Remit ${label} for period (${formatGHS(paid.amount)})`}
-                </button>
+              <Tooltip content={remitTooltip} variant="blocked">
+                {remitButton}
+              </Tooltip>
+              {undoButton ? (
+                <Tooltip content={undoTooltip} variant="blocked">
+                  {undoButton}
+                </Tooltip>
               ) : null}
             </div>
           );

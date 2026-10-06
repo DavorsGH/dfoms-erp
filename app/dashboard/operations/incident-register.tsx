@@ -1,5 +1,7 @@
 "use client";
 
+import Tooltip from "@/components/ui/tooltip";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
@@ -694,13 +696,18 @@ export default function IncidentRegister({
                       ? "bg-amber-50 text-slate-900"
                       : getStripedRowClassName(index)
                   }
-                  title={
-                    entry.reported_by
-                      ? `Reported by: ${getIncidentReporterName(entry)}`
-                      : undefined
-                  }
                 >
-                  <td className="px-4 py-3">{formatDate(entry.date)}</td>
+                  <td className="px-4 py-3">
+                    {entry.reported_by ? (
+                      <Tooltip
+                        content={`Reported by: ${getIncidentReporterName(entry)}`}
+                      >
+                        <span>{formatDate(entry.date)}</span>
+                      </Tooltip>
+                    ) : (
+                      formatDate(entry.date)
+                    )}
+                  </td>
                   <td className="px-4 py-3">{getIncidentClientName(entry)}</td>
                   <td className="px-4 py-3">{getIncidentSiteName(entry)}</td>
                   <td className={scrollableTableWrapTdClassName}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import Tooltip from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -1842,23 +1843,36 @@ export default function ExpenseRegister({
                           </TruncatedCell>
                         </RegisterRecordNameLink>
                         {"pendingSync" in entry && entry.pendingSync ? (
-                          <span
-                            className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
-                              "queueFailed" in entry && entry.queueFailed
-                                ? "bg-red-100 text-red-800"
-                                : "bg-amber-100 text-amber-900"
-                            }`}
-                            title={
-                              "queueError" in entry
-                                ? (entry.queueError as string | null) ??
-                                  undefined
-                                : undefined
-                            }
-                          >
-                            {"queueFailed" in entry && entry.queueFailed
-                              ? "Sync failed"
-                              : "Pending sync"}
-                          </span>
+                          "queueError" in entry &&
+                          (entry.queueError as string | null)?.trim() ? (
+                            <Tooltip
+                              content={String(entry.queueError).trim()}
+                            >
+                              <span
+                                className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
+                                  "queueFailed" in entry && entry.queueFailed
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-amber-100 text-amber-900"
+                                }`}
+                              >
+                                {"queueFailed" in entry && entry.queueFailed
+                                  ? "Sync failed"
+                                  : "Pending sync"}
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            <span
+                              className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
+                                "queueFailed" in entry && entry.queueFailed
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-amber-100 text-amber-900"
+                              }`}
+                            >
+                              {"queueFailed" in entry && entry.queueFailed
+                                ? "Sync failed"
+                                : "Pending sync"}
+                            </span>
+                          )
                         ) : null}
                         {customerRefund ? (
                           <span className="ml-2 text-xs font-medium opacity-80">
@@ -1921,9 +1935,23 @@ export default function ExpenseRegister({
                         className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
                       >
                         <TruncatedCell>
-                          {resolveExpenseRegisterPaymentMethodLabel(
-                            entry,
-                            paymentMethods,
+                          {apAccrualRow ? (
+                            <Tooltip
+                              content={AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE}
+                              variant="blocked"
+                            >
+                              <span>
+                                {resolveExpenseRegisterPaymentMethodLabel(
+                                  entry,
+                                  paymentMethods,
+                                )}
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            resolveExpenseRegisterPaymentMethodLabel(
+                              entry,
+                              paymentMethods,
+                            )
                           )}
                         </TruncatedCell>
                       </td>

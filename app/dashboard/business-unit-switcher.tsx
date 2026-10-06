@@ -1,5 +1,7 @@
 "use client";
 
+import Tooltip from "@/components/ui/tooltip";
+
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
@@ -177,13 +179,12 @@ export default function BusinessUnitSwitcher({
         ))}
       </select>
       {selection === BU_SELECTION_ALL ? (
-        <p
-          className="max-w-[14rem] text-right text-xs text-slate-600"
-          title={STAMP_REFUSED_VIEW_ALL_MESSAGE}
-        >
-          View-only aggregate — pick {defaultLabel} or a business unit to create
-          records.
-        </p>
+        <Tooltip content={STAMP_REFUSED_VIEW_ALL_MESSAGE} variant="blocked">
+          <p className="max-w-[14rem] text-right text-xs text-slate-600">
+            View-only aggregate — pick {defaultLabel} or a business unit to create
+            records.
+          </p>
+        </Tooltip>
       ) : null}
       {error ? (
         <p className="max-w-[14rem] text-right text-xs text-red-700">{error}</p>

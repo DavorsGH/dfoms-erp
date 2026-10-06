@@ -1,6 +1,6 @@
 import {
-  bulkImportEmployeeDisplayName,
   bulkImportExcelRowNumber,
+  bulkImportReviewRowDisplayName,
   bulkImportRowLabel,
   columnHeaderForFieldKey,
   formatBulkImportReviewIssueMessage,
@@ -8,6 +8,16 @@ import {
   type BulkImportReviewIssue,
 } from "@/lib/bulk-import/bulk-import-review-issue";
 import { getBulkImportTargetFields } from "@/lib/bulk-import/target-fields";
+import { resolveLegacyReviewGroupKey } from "@/lib/bulk-import/bulk-import-legacy-review-group-key";
+import {
+  BULK_IMPORT_FIX_UPLOAD_AGAIN,
+  bulkImportFixEnterDateUploadAgain,
+  bulkImportFixEnterNumberUploadAgain,
+  bulkImportFixEnterSmallerValueUploadAgain,
+  bulkImportFixEnterValueUploadAgain,
+  bulkImportFixReduceDecimalsUploadAgain,
+  bulkImportProblemWithQuotedValue,
+} from "@/lib/bulk-import/bulk-import-review-wording";
 
 function issueBase(
   ctx: BulkImportReviewFormatContext,
@@ -18,10 +28,10 @@ function issueBase(
     rowNumber,
     ctx.headerRowIndex ?? 0,
   );
-  const employee_name =
-    ctx.importType === "employee"
-      ? bulkImportEmployeeDisplayName(mappedData)
-      : "";
+  const employee_name = bulkImportReviewRowDisplayName(
+    ctx.importType,
+    mappedData,
+  );
   return {
     row_number: rowNumber,
     excel_row_number,
@@ -51,34 +61,89 @@ function inferFieldKeyFromMessage(
   return null;
 }
 
-function humanizeLegacyError(message: string, fieldKey: string | null, ctx: BulkImportReviewFormatContext): {
+function humanizeLegacyError(
+  message: string,
+  fieldKey: string | null,
+  ctx: BulkImportReviewFormatContext,
+  cellValue: string,
+): {
   problem: string;
   howToFix: string;
   column_label: string;
   column_header: string;
 } {
-  const fieldKeyResolved = fieldKey ?? "unknown";
   const column = fieldKey
     ? columnHeaderForFieldKey(ctx.columnMapping, fieldKey, ctx.importType)
     : { header: "Column", label: "Column" };
 
   let problem = message;
-  let howToFix = "Correct the value in your spreadsheet and re-validate.";
+  let howToFix = BULK_IMPORT_FIX_UPLOAD_AGAIN;
 
   if (fieldKey && message.includes("must be one of:")) {
     const valueMatch = /^(.+?) must be one of:/i.exec(message);
     const rawLabel = valueMatch?.[1]?.trim() ?? column.label;
     const options = message.split("must be one of:")[1]?.trim() ?? "";
-    problem = `${rawLabel} isn't recognised.`;
-    howToFix = options ? `Use one of: ${options}.` : howToFix;
+    problem = bulkImportProblemWithQuotedValue(rawLabel, cellValue, "isn't recognised.");
+    howToFix = options
+      ? `${options}. Upload the file again.`
+      : BULK_IMPORT_FIX_UPLOAD_AGAIN;
   } else if (message.includes(" is required")) {
     problem = `${column.label} is blank.`;
-    howToFix = "Enter a value in your spreadsheet and re-validate.";
+    howToFix = bulkImportFixEnterValueUploadAgain();
   } else if (message.includes(" is not a valid date")) {
-    problem = `${column.label} isn't a valid date.`;
-    howToFix = "Use a date format like DD/MM/YYYY or YYYY-MM-DD.";
-  } else if (message.includes(" is not a valid number")) {
-    problem = `${column.label} must be a valid number.`;
+    problem = bulkImportProblemWithQuotedValue(
+      column.label,
+      cellValue,
+      "isn't a valid date.",
+    );
+    howToFix = bulkImportFixEnterDateUploadAgain();
+  } else if (
+    message.includes("must be a valid number") ||
+    message.includes(" is not a valid number")
+  ) {
+    problem = bulkImportProblemWithQuotedValue(
+      column.label,
+      cellValue,
+      "isn't a number.",
+    );
+    howToFix = bulkImportFixEnterNumberUploadAgain();
+  } else if (/^duplicate\s+[\w]+:\s*repeated in this file/i.test(message)) {
+    const match = /^duplicate\s+([\w]+):\s*repeated in this file/i.exec(message);
+    const legacyFieldKey = match?.[1] ?? fieldKey;
+    const legacyColumn = legacyFieldKey
+      ? columnHeaderForFieldKey(ctx.columnMapping, legacyFieldKey, ctx.importType)
+      : column;
+    problem = `${legacyColumn.label} appears more than once in this file.`;
+    howToFix =
+      legacyFieldKey === "product_code"
+        ? "Each product needs its own code."
+        : legacyFieldKey === "barcode"
+          ? "Each product needs its own barcode."
+          : "Each row needs a unique value in this column.";
+  } else if (message.includes("must have at most")) {
+    problem = bulkImportProblemWithQuotedValue(
+      column.label,
+      cellValue,
+      "has too many decimal places.",
+    );
+    howToFix = bulkImportFixReduceDecimalsUploadAgain();
+  } else if (message.includes("is too large")) {
+    problem = bulkImportProblemWithQuotedValue(
+      column.label,
+      cellValue,
+      "is too large.",
+    );
+    howToFix = bulkImportFixEnterSmallerValueUploadAgain();
+  } else if (
+    message.includes("is not a valid date") ||
+    message.includes("is outside the allowed date range")
+  ) {
+    problem = bulkImportProblemWithQuotedValue(
+      column.label,
+      cellValue,
+      "wasn't recognised as a date.",
+    );
+    howToFix = bulkImportFixEnterDateUploadAgain();
   } else if (fieldKey) {
     problem = message.replace(new RegExp(`^${fieldKey}\\b`, "i"), column.label);
     problem = problem.replace(new RegExp(`^${fieldKey.replace(/_/g, " ")}`, "i"), column.label);
@@ -111,11 +176,16 @@ export function reviewIssuesFromLegacyErrorMessages(input: {
 
     for (const message of parts) {
       const fieldKey = inferFieldKeyFromMessage(message, input.ctx.importType);
-      const friendly = humanizeLegacyError(message, fieldKey, input.ctx);
       const cellValue =
         fieldKey && fieldKey in input.mappedData
           ? String(input.mappedData[fieldKey] ?? "").trim()
           : "";
+      const friendly = humanizeLegacyError(
+        message,
+        fieldKey,
+        input.ctx,
+        cellValue,
+      );
 
       issues.push({
         row_number: base.row_number,
@@ -134,7 +204,11 @@ export function reviewIssuesFromLegacyErrorMessages(input: {
           howToFix: friendly.howToFix,
         }),
         group_kind: input.group_kind ?? "generic",
-        group_key: `legacy:${message.slice(0, 80)}`,
+        group_key: resolveLegacyReviewGroupKey({
+          message,
+          fieldKey,
+          importType: input.ctx.importType,
+        }),
       });
     }
   }

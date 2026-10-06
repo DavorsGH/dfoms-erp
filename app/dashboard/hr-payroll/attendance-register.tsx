@@ -1,5 +1,7 @@
 "use client";
 
+import Tooltip from "@/components/ui/tooltip";
+
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import RegisterRowActions, {
@@ -723,16 +725,29 @@ export default function AttendanceRegister({
                     <div className="flex flex-col gap-1">
                       <span>{entry.attendance_status}</span>
                       {entry.pendingSync ? (
-                        <span
-                          className={`inline-flex w-fit rounded px-1.5 py-0.5 text-xs font-medium ${
-                            entry.queueFailed
-                              ? "bg-red-100 text-red-800"
-                              : "bg-amber-100 text-amber-900"
-                          }`}
-                          title={entry.queueError ?? undefined}
-                        >
-                          {entry.queueFailed ? "Sync failed" : "Pending sync"}
-                        </span>
+                        entry.queueError?.trim() ? (
+                          <Tooltip content={entry.queueError.trim()}>
+                            <span
+                              className={`inline-flex w-fit rounded px-1.5 py-0.5 text-xs font-medium ${
+                                entry.queueFailed
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-amber-100 text-amber-900"
+                              }`}
+                            >
+                              {entry.queueFailed ? "Sync failed" : "Pending sync"}
+                            </span>
+                          </Tooltip>
+                        ) : (
+                          <span
+                            className={`inline-flex w-fit rounded px-1.5 py-0.5 text-xs font-medium ${
+                              entry.queueFailed
+                                ? "bg-red-100 text-red-800"
+                                : "bg-amber-100 text-amber-900"
+                            }`}
+                          >
+                            {entry.queueFailed ? "Sync failed" : "Pending sync"}
+                          </span>
+                        )
                       ) : null}
                       {entry.queueFailed && writeQueue ? (
                         <button

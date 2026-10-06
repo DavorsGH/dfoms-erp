@@ -40,7 +40,12 @@ function buildStatusFromAuditResult(
     monthIndex: row.monthIndex,
     monthLabel: row.monthLabel,
     diff: roundCurrency(row.diff),
+    businessUnitName: row.businessUnitName,
   }));
+
+  const scopedMonthKeys = new Set(
+    imbalances.map((row) => `${row.businessUnitName}:${row.monthIndex}`),
+  );
 
   const worst =
     imbalances.length > 0
@@ -50,7 +55,7 @@ function buildStatusFromAuditResult(
       : null;
 
   return {
-    imbalancedMonthCount: imbalances.length,
+    imbalancedMonthCount: scopedMonthKeys.size,
     worstDiff: worst ? Math.abs(worst.diff) : roundCurrency(result.maxAbsDiff),
     worstMonthLabel: worst?.monthLabel ?? null,
     worstMonthIndex: worst?.monthIndex ?? null,

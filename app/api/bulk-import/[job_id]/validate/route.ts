@@ -129,6 +129,7 @@ export async function POST(
   }
 
   let existingProductCodes = new Set<string>();
+  let existingProductBarcodes = new Set<string>();
   let existingServiceNames = new Set<string>();
   let supplierNameMatchCounts = new Map<string, number>();
   let employeeLookups;
@@ -154,7 +155,7 @@ export async function POST(
 
     const { data: products, error: productsError } = await supabase
       .from("finished_products")
-      .select("product_code")
+      .select("product_code, barcode")
       .eq("tenant_id", sectionAuth.tenantId);
 
     if (productsError) {
@@ -164,6 +165,12 @@ export async function POST(
     existingProductCodes = new Set(
       (products ?? [])
         .map((row) => String(row.product_code ?? "").trim().toLowerCase())
+        .filter(Boolean),
+    );
+
+    existingProductBarcodes = new Set(
+      (products ?? [])
+        .map((row) => String(row.barcode ?? "").trim().toLowerCase())
         .filter(Boolean),
     );
   } else if (importType === "service") {
@@ -490,6 +497,7 @@ export async function POST(
       raw_data: parseRawData(row.raw_data),
     })),
     existingProductCodes,
+    existingProductBarcodes,
     existingServiceNames,
     supplierNameMatchCounts,
     employeeLookups,

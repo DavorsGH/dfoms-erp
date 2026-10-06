@@ -72,7 +72,9 @@ export type FinishedProductCommitInsert = {
   product_code: string;
   product_name: string;
   unit_of_measure: string;
-  current_stock: number;
+  opening_stock: number;
+  opening_unit_cost: number | null;
+  opening_lot_date: string | null;
   standard_selling_price: number | null;
   sourcing_type: typeof DEFAULT_SOURCING_TYPE | typeof FINISHED_PRODUCT_PURCHASED_SOURCING_TYPE;
   supplier_id: string | null;
@@ -204,19 +206,29 @@ export function buildFinishedProductCommitInsert(
       ? resolvedSupplierId
       : null;
 
-  const currentStock = parseOptionalNumber(mappedData.current_stock);
+  const openingStock = parseOptionalNumber(mappedData.current_stock) ?? 0;
+  const openingUnitCost = parseOptionalNumber(mappedData.unit_cost);
+
+  const manufacturing_date = parseOptionalDate(mappedData.manufacturing_date);
+  const expiration_date = parseOptionalDate(mappedData.expiration_date);
+  const opening_lot_date =
+    manufacturing_date ??
+    expiration_date ??
+    new Date().toISOString().slice(0, 10);
 
   return {
     tenant_id: tenantId,
     product_code: String(mappedData.product_code).trim(),
     product_name: String(mappedData.product_name).trim(),
     unit_of_measure: String(mappedData.unit_of_measure).trim(),
-    current_stock: currentStock ?? 0,
+    opening_stock: openingStock,
+    opening_unit_cost: openingUnitCost,
+    opening_lot_date: openingStock > 0 ? opening_lot_date : null,
     standard_selling_price: parseOptionalNumber(mappedData.standard_selling_price),
     sourcing_type,
     supplier_id,
-    manufacturing_date: parseOptionalDate(mappedData.manufacturing_date),
-    expiration_date: parseOptionalDate(mappedData.expiration_date),
+    manufacturing_date,
+    expiration_date,
   };
 }
 

@@ -48,6 +48,66 @@ export function bulkImportEmployeeDisplayName(
   return name;
 }
 
+function pickMappedDisplayField(
+  mappedData: Record<string, unknown>,
+  keys: readonly string[],
+): string {
+  for (const key of keys) {
+    const value = String(mappedData[key] ?? "").trim();
+    if (value) {
+      return value;
+    }
+  }
+  return "";
+}
+
+/** Primary row label for review messages and CSV (stored in employee_name on issues). */
+export function bulkImportReviewRowDisplayName(
+  importType: BulkImportType,
+  mappedData: Record<string, unknown>,
+): string {
+  switch (importType) {
+    case "employee":
+      return bulkImportEmployeeDisplayName(mappedData);
+    case "product":
+      return pickMappedDisplayField(mappedData, ["product_name", "product_code"]);
+    case "customer":
+      return pickMappedDisplayField(mappedData, [
+        "client_name",
+        "contact_person",
+      ]);
+    case "service":
+      return pickMappedDisplayField(mappedData, ["service_name"]);
+    case "expense":
+      return pickMappedDisplayField(mappedData, ["vendor", "description"]);
+    case "fixed_asset":
+      return pickMappedDisplayField(mappedData, ["asset_name"]);
+    default:
+      return "";
+  }
+}
+
+export function bulkImportReviewRowNameCsvHeader(
+  importType: BulkImportType,
+): string {
+  switch (importType) {
+    case "employee":
+      return "Employee Name";
+    case "product":
+      return "Product Name";
+    case "customer":
+      return "Customer Name";
+    case "service":
+      return "Service Name";
+    case "expense":
+      return "Vendor";
+    case "fixed_asset":
+      return "Asset Name";
+    default:
+      return "Name";
+  }
+}
+
 export function bulkImportRowLabel(input: {
   excelRowNumber: number;
   employeeName: string;
@@ -95,14 +155,27 @@ export function formatBulkImportReviewIssueMessage(input: {
   problem: string;
   howToFix: string;
 }): string {
-  const prefix = input.severity === "error" ? "Error" : "Warning";
-  const problem = input.problem.trim();
-  const fix = input.howToFix.trim();
+  return formatBulkImportReviewIssueMessageForDisplay(input);
+}
+
+export function formatBulkImportReviewIssueMessageForDisplay(input: {
+  rowLabel: string;
+  problem: string;
+  howToFix: string;
+}): string {
+  const problemRaw = input.problem.trim();
+  const fixRaw = input.howToFix.trim();
+  const problem = problemRaw.endsWith(".") ? problemRaw : `${problemRaw}.`;
+  const fix = fixRaw
+    ? fixRaw.endsWith(".")
+      ? fixRaw
+      : `${fixRaw}.`
+    : "";
   if (fix) {
-    return `${prefix}: ${input.rowLabel}: ${problem} ${fix}`.trim();
+    return `${input.rowLabel}: ${problem} ${fix}`.trim();
   }
 
-  return `${prefix}: ${input.rowLabel}: ${problem}`.trim();
+  return `${input.rowLabel}: ${problem}`.trim();
 }
 
 export function toReviewIssueRow(issue: BulkImportReviewIssue): BulkImportReviewIssueRow {
@@ -166,6 +239,7 @@ export function groupBulkImportReviewIssues(
       kind === "generic"
         ? genericGroupHeadlineFromKey(group_key, rows.length, importType)
         : null;
+    const showAllExamples = group_key.startsWith("duplicate_in_file:");
     groups.push({
       group_key,
       group_kind: kind,
@@ -174,7 +248,7 @@ export function groupBulkImportReviewIssues(
         buildGroupHeadline(kind, rows.length, importType),
       body: buildGroupBody(kind, rows, importType, group_key),
       count: rows.length,
-      examples: rows.slice(0, 3),
+      examples: showAllExamples ? rows : rows.slice(0, 3),
     });
   }
 
@@ -237,8 +311,55 @@ function genericGroupHeadlineFromKey(
     return `Staff ID already in use — ${rowSuffix}`;
   }
 
-  if (groupKey === "staff_id_duplicate_file") {
-    return `Duplicate staff ID in file — ${rowSuffix}`;
+  if (groupKey.startsWith("duplicate_in_file:")) {
+    const parts = groupKey.split(":");
+    const fieldKey = parts[1] ?? "value";
+    if (fieldKey === "expense") {
+      return `Duplicate expense in file — ${rowSuffix}`;
+    }
+    if (fieldKey === "fixed_asset") {
+      return `Duplicate fixed asset in file — ${rowSuffix}`;
+    }
+    const field = getBulkImportTargetField(importType, fieldKey);
+    const label = field?.label ?? humanizeFieldKey(fieldKey);
+    return `${label} used more than once — ${rowSuffix}`;
+  }
+
+  if (groupKey.startsWith("duplicate_exists:")) {
+    const fieldKey = groupKey.slice("duplicate_exists:".length);
+    const field = getBulkImportTargetField(importType, fieldKey);
+    const label = field?.label ?? humanizeFieldKey(fieldKey);
+    if (fieldKey === "product_code") {
+      return `${label} already in Inventory — ${rowSuffix}`;
+    }
+    if (fieldKey === "barcode") {
+      return `${label} already in use — ${rowSuffix}`;
+    }
+    if (fieldKey === "service_name") {
+      return `${label} already in service catalog — ${rowSuffix}`;
+    }
+    if (fieldKey === "expense") {
+      return `Possible duplicate expense — ${rowSuffix}`;
+    }
+    if (fieldKey === "fixed_asset") {
+      return `Possible duplicate fixed asset — ${rowSuffix}`;
+    }
+    return `${label} already exists — ${rowSuffix}`;
+  }
+
+  if (groupKey.startsWith("numeric:")) {
+    const fieldKey = groupKey.slice("numeric:".length);
+    const field = getBulkImportTargetField(importType, fieldKey);
+    const label = field?.label ?? humanizeFieldKey(fieldKey);
+    return `${label} isn't a number — ${rowSuffix}`;
+  }
+
+  if (groupKey.startsWith("duplicate_possible:expense")) {
+    return `Possible duplicate expense in file — ${rowSuffix}`;
+  }
+
+  if (groupKey.startsWith("duplicate_possible:fixed_asset")) {
+    return `Possible duplicate fixed asset in file — ${rowSuffix}`;
   }
 
   if (groupKey.startsWith("lookup_ambiguous:")) {
@@ -248,11 +369,23 @@ function genericGroupHeadlineFromKey(
     return `${label} matches multiple records — ${rowSuffix}`;
   }
 
+  if (groupKey === "date_range:expiration_before_manufacturing") {
+    return count === 1
+      ? "Expiration date before manufacturing date — 1 row"
+      : `Expiration date before manufacturing date — ${count} rows`;
+  }
+
   if (groupKey.startsWith("date_invalid:") || groupKey.startsWith("date_range:")) {
     const fieldKey = groupKey.split(":")[1] ?? "date";
     const field = getBulkImportTargetField(importType, fieldKey);
     const label = field?.label ?? humanizeFieldKey(fieldKey);
-    return `${label} date problem — ${rowSuffix}`;
+    return `${label} not recognised — ${rowSuffix}`;
+  }
+
+  if (groupKey === "opening_stock_zero_cost") {
+    return count === 1
+      ? "Opening stock with no unit cost — 1 row"
+      : `Opening stock with no unit cost — ${count} rows`;
   }
 
   return null;
@@ -279,11 +412,18 @@ function buildGroupBody(
     const valueExample =
       rows.find((row) => row.cell_value)?.cell_value ?? rows[0]?.cell_value ?? "";
     const quoted = valueExample ? ` "${valueExample}"` : "";
-    return `e.g.${quoted}. They'll be imported with no contract assigned. Create the project first and re-upload, or assign it later.`;
+    return `e.g.${quoted}. They'll be imported with no contract assigned. Create the project first and upload the file again, or assign it later.`;
   }
 
   if (kind === "shift_placeholder") {
     return "These shifts will be stored blank on import. Add a salary rate after import if needed.";
+  }
+
+  if (kind === "generic") {
+    if (groupKey.startsWith("enum:")) {
+      return "Check the example rows below and fix values in your spreadsheet.";
+    }
+    return "";
   }
 
   return rows[0]?.how_to_fix ?? rows[0]?.problem ?? "";
@@ -316,7 +456,14 @@ export function resolveReviewIssueMessageForDisplay(
     });
   }
 
-  return issue.message;
+  return formatBulkImportReviewIssueMessageForDisplay({
+    rowLabel: bulkImportRowLabel({
+      excelRowNumber: issue.excel_row_number,
+      employeeName: issue.employee_name,
+    }),
+    problem: issue.problem,
+    howToFix: issue.how_to_fix,
+  });
 }
 
 export function escapeCsvCell(value: string): string {
@@ -330,9 +477,11 @@ export function escapeCsvCell(value: string): string {
 export function downloadBulkImportReviewReportCsv(
   issues: BulkImportReviewIssue[],
   fileName: string,
+  importType: BulkImportType,
 ): void {
+  const nameHeader = bulkImportReviewRowNameCsvHeader(importType);
   const lines = [
-    "Excel Row,Employee Name,Severity,Column,Value,Problem,How to fix",
+    `Excel Row,${nameHeader},Severity,Column,Value,Problem,How to fix`,
     ...issues
       .slice()
       .sort(

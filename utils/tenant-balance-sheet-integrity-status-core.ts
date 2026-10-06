@@ -7,6 +7,7 @@ export type TenantBalanceSheetIntegrityImbalance = {
   monthIndex: number;
   monthLabel: string;
   diff: number;
+  businessUnitName: string;
 };
 
 export type TenantBalanceSheetIntegrityStatus = {
@@ -51,7 +52,14 @@ function parseTenantMetadata(
   )
     ? metadata.imbalances
         .filter(
-          (row): row is { monthIndex: number; monthLabel: string; diff: number } =>
+          (
+            row,
+          ): row is {
+            monthIndex: number;
+            monthLabel: string;
+            diff: number;
+            businessUnitName?: string;
+          } =>
             typeof row === "object" &&
             row !== null &&
             typeof (row as { monthIndex?: unknown }).monthIndex === "number" &&
@@ -62,6 +70,10 @@ function parseTenantMetadata(
           monthIndex: row.monthIndex,
           monthLabel: row.monthLabel,
           diff: roundCurrency(row.diff),
+          businessUnitName:
+            typeof row.businessUnitName === "string"
+              ? row.businessUnitName
+              : "All businesses",
         }))
     : [];
 
@@ -109,8 +121,12 @@ export function buildTenantBalanceSheetIntegrityStatusFromMetadata(input: {
     checkedAt === null ||
     referenceMs - new Date(checkedAt).getTime() > BS_INTEGRITY_STALE_MS;
 
+  const scopedMonthKeys = new Set(
+    imbalances.map((row) => `${row.businessUnitName}:${row.monthIndex}`),
+  );
+
   return {
-    imbalancedMonthCount: imbalances.length,
+    imbalancedMonthCount: scopedMonthKeys.size,
     worstDiff: worst ? Math.abs(worst.diff) : roundCurrency(parsed.maxAbsDiff ?? 0),
     worstMonthLabel: worst?.monthLabel ?? null,
     worstMonthIndex: worst?.monthIndex ?? null,

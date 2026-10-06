@@ -35,6 +35,10 @@ import {
   resolveWriteBusinessUnitIdForCreate,
 } from "@/utils/business-unit-access";
 import {
+  RAW_MATERIAL_ADJUSTMENT_TYPE_HELP,
+  RAW_MATERIAL_STOCK_ADJUSTMENT_FORM_INTRO,
+} from "./stock-adjustment-form-copy";
+import {
   formatInventoryMoney,
   formatInventoryQuantity,
   nullableNumber,
@@ -1590,8 +1594,7 @@ export default function RawMaterials({
               Record Stock Adjustment
             </h3>
             <p className="mt-1 text-sm text-slate-600">
-              Opening balance and found stock update quantity and weighted
-              average cost. Corrections and write-offs change quantity only.
+              {RAW_MATERIAL_STOCK_ADJUSTMENT_FORM_INTRO}
             </p>
           </div>
           {!readOnly && !viewAllBusinessUnits ? (
@@ -1670,6 +1673,15 @@ export default function RawMaterials({
                     </option>
                   ))}
                 </select>
+                {adjustmentForm.adjustment_type ? (
+                  <p className="mt-1 text-xs text-slate-600">
+                    {
+                      RAW_MATERIAL_ADJUSTMENT_TYPE_HELP[
+                        adjustmentForm.adjustment_type
+                      ]
+                    }
+                  </p>
+                ) : null}
               </div>
               {adjustmentForm.adjustment_type === "correction" ? (
                 <div>

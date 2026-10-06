@@ -25,7 +25,6 @@ import type { ManualFinancialEntry } from "../../app/dashboard/finance/cash-flow
 import type { CashMovementManualEntry } from "../../app/dashboard/finance/cash-movement-utils";
 import {
   DIRECTORS_LOAN_NON_CASH_REFERENCE_PREFIX,
-  patchManualFinancialEntriesForDirectorLoanLedger,
   type DirectorsLoanLedgerEntry,
   type DirectorsLoanLedgerEntryType,
 } from "../../app/dashboard/finance/directors-loan-ledger-utils";
@@ -166,21 +165,135 @@ export function simulateLedgerEntries(
   }));
 }
 
+export type ManualMigrationPatchPreview = {
+  tenant_id: string;
+  period_month: string;
+  business_unit_id: string | null;
+  before: {
+    directors_loan: number;
+    loan_proceeds: number;
+    loan_repayments: number;
+  };
+  after: {
+    directors_loan: number;
+    loan_proceeds: number;
+    loan_repayments: number;
+  };
+};
+
+/**
+ * After director's-loan amounts are migrated into directors_loan_entries, zero the
+ * manual directors_loan stock column and migrated repayment flows only.
+ * Never alters loan_proceeds (bank loans and director proceeds share that field).
+ */
 export function patchManualEntriesForLedger(
   manuals: ManualFinancialEntry[],
   planned: PlannedLedgerInsert[],
   fy: number,
-  existingLedger: DirectorsLoanLedgerEntry[] = [],
 ): ManualFinancialEntry[] {
-  const ledgerForPatch = [
-    ...existingLedger,
-    ...simulateLedgerEntries(planned),
-  ];
-  return patchManualFinancialEntriesForDirectorLoanLedger(
-    manuals as ManualFinancialEntryRecord[],
-    ledgerForPatch,
+  if (planned.length === 0) {
+    return manuals;
+  }
+
+  const repaidByBuMonth = new Map<string, number>();
+  for (const row of planned) {
+    if (row.entry_type !== "company_repaid_director") continue;
+    const y = Number(row.entry_date.slice(0, 4));
+    if (y !== fy) continue;
+    const mi = monthIndexFromDate(row.entry_date, fy);
+    if (mi === null) continue;
+    const buKey = row.business_unit_id ?? "null";
+    const key = `${buKey}:${mi}`;
+    repaidByBuMonth.set(
+      key,
+      round2((repaidByBuMonth.get(key) ?? 0) + (Number(row.amount) || 0)),
+    );
+  }
+
+  return manuals.map((row) => {
+    const y = Number(String(row.period_month).slice(0, 4));
+    if (y !== fy) return row;
+    const mi = monthIndexFromDate(String(row.period_month).slice(0, 10), fy);
+    if (mi === null) return row;
+    const buKey =
+      (row as { business_unit_id?: string | null }).business_unit_id ?? "null";
+    const key = `${buKey}:${mi}`;
+    const migratedRepaid = repaidByBuMonth.get(key) ?? 0;
+    const loanRepayments = Number(row.loan_repayments) || 0;
+    const loanProceeds = Number(row.loan_proceeds) || 0;
+    const directorsLoan = Number(row.directors_loan) || 0;
+    if (directorsLoan === 0 && migratedRepaid === 0) {
+      return row;
+    }
+    return {
+      ...row,
+      directors_loan: 0,
+      loan_proceeds,
+      loan_repayments:
+        migratedRepaid > 0
+          ? round2(Math.max(0, loanRepayments - migratedRepaid))
+          : loanRepayments,
+    };
+  }) as ManualFinancialEntry[];
+}
+
+export function previewManualMigrationPatches(
+  tenantId: string,
+  manuals: ManualFinancialEntryRecord[],
+  planned: PlannedLedgerInsert[],
+  fy: number,
+): ManualMigrationPatchPreview[] {
+  const beforeByKey = new Map<string, ManualFinancialEntryRecord>();
+  for (const row of manuals) {
+    const y = Number(String(row.period_month).slice(0, 4));
+    if (y !== fy) continue;
+    const bu = row.business_unit_id ?? null;
+    beforeByKey.set(`${bu ?? "null"}:${row.period_month}`, row);
+  }
+
+  const patched = patchManualEntriesForLedger(
+    manuals as ManualFinancialEntry[],
+    planned,
     fy,
-  ) as ManualFinancialEntry[];
+  ) as ManualFinancialEntryRecord[];
+
+  const previews: ManualMigrationPatchPreview[] = [];
+  for (const after of patched) {
+    const y = Number(String(after.period_month).slice(0, 4));
+    if (y !== fy) continue;
+    const bu = after.business_unit_id ?? null;
+    const before = beforeByKey.get(`${bu ?? "null"}:${after.period_month}`);
+    if (!before) continue;
+    const beforeLoan = Number(before.directors_loan) || 0;
+    const beforeProceeds = Number(before.loan_proceeds) || 0;
+    const beforeRepay = Number(before.loan_repayments) || 0;
+    const afterLoan = Number(after.directors_loan) || 0;
+    const afterProceeds = Number(after.loan_proceeds) || 0;
+    const afterRepay = Number(after.loan_repayments) || 0;
+    if (
+      beforeLoan === afterLoan &&
+      beforeProceeds === afterProceeds &&
+      beforeRepay === afterRepay
+    ) {
+      continue;
+    }
+    previews.push({
+      tenant_id: tenantId,
+      period_month: after.period_month,
+      business_unit_id: bu,
+      before: {
+        directors_loan: beforeLoan,
+        loan_proceeds: beforeProceeds,
+        loan_repayments: beforeRepay,
+      },
+      after: {
+        directors_loan: afterLoan,
+        loan_proceeds: afterProceeds,
+        loan_repayments: afterRepay,
+      },
+    });
+  }
+  return previews;
 }
 
 export function normalizeMigratedLedgerReference(

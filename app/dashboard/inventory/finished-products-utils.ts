@@ -37,7 +37,7 @@ export type FinishedProductRecord = {
   updated_at: string;
 };
 
-/** Lot/batch date row from production_batches or product_purchases. */
+/** Lot/batch date row from batches, purchases, or opening/found adjustments. */
 export type FinishedProductLotDateSource = {
   product_id: string;
   manufacturing_date: string | null;
@@ -55,7 +55,7 @@ export const FINISHED_PRODUCT_SOURCING_OPTIONS = [
   { value: "purchased", label: "Purchased" },
 ] as const;
 
-/** Master columns only — lot dates live on production_batches / product_purchases. */
+/** Master columns only — lot dates come from batches, purchases, and adjustments. */
 export const FINISHED_PRODUCT_SELECT =
   "id, product_code, barcode, product_name, unit_of_measure, current_stock, standard_selling_price, sourcing_type, supplier_id, photo_url, is_archived, business_unit_id, created_at, updated_at";
 
@@ -157,7 +157,7 @@ export async function fetchFinishedProductLotDateSources(
   supabase: SupabaseClient,
   buScope: BusinessUnitReadScope = { mode: "all" },
 ): Promise<{ lots: FinishedProductLotDateSource[]; error: string | null }> {
-  const [batchesResult, purchasesResult] = await Promise.all([
+  const [batchesResult, purchasesResult, adjustmentsResult] = await Promise.all([
     applyBusinessUnitScope(
       supabase
         .from("production_batches")
@@ -170,6 +170,15 @@ export async function fetchFinishedProductLotDateSources(
         .select("product_id, manufacturing_date, expiration_date"),
       buScope,
     ),
+    applyBusinessUnitScope(
+      supabase
+        .from("finished_product_stock_adjustments")
+        .select(
+          "product_id, manufacturing_date, expiration_date, adjustment_type",
+        )
+        .in("adjustment_type", ["opening_balance", "found_stock"]),
+      buScope,
+    ),
   ]);
 
   if (batchesResult.error) {
@@ -177,6 +186,9 @@ export async function fetchFinishedProductLotDateSources(
   }
   if (purchasesResult.error) {
     return { lots: [], error: purchasesResult.error.message };
+  }
+  if (adjustmentsResult.error) {
+    return { lots: [], error: adjustmentsResult.error.message };
   }
 
   const batchLots: FinishedProductLotDateSource[] = (
@@ -207,7 +219,30 @@ export async function fetchFinishedProductLotDateSources(
     expiration_date: normalizeDateOnly(row.expiration_date),
   }));
 
-  return { lots: [...batchLots, ...purchaseLots], error: null };
+  const adjustmentLots: FinishedProductLotDateSource[] = (
+    (adjustmentsResult.data as
+      | {
+          product_id: string;
+          manufacturing_date: string | null;
+          expiration_date: string | null;
+        }[]
+      | null) ?? []
+  )
+    .filter(
+      (row) =>
+        normalizeDateOnly(row.manufacturing_date) != null ||
+        normalizeDateOnly(row.expiration_date) != null,
+    )
+    .map((row) => ({
+      product_id: row.product_id,
+      manufacturing_date: normalizeDateOnly(row.manufacturing_date),
+      expiration_date: normalizeDateOnly(row.expiration_date),
+    }));
+
+  return {
+    lots: [...batchLots, ...purchaseLots, ...adjustmentLots],
+    error: null,
+  };
 }
 
 export async function fetchFinishedProductPurchaseCounts(

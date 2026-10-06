@@ -22,6 +22,8 @@ export type ProductionBatchRecord = {
   total_batch_cost: number;
   notes: string | null;
   expiration_date: string | null;
+  manufacturing_date: string | null;
+  remaining_quantity: number | null;
   created_at: string;
   product?: {
     product_code: string;
@@ -38,10 +40,10 @@ export type ProductionMaterialInput = {
 };
 
 export const PRODUCTION_BATCH_SELECT =
-  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, expiration_date, created_at, product:finished_products!finished_product_id(product_code, barcode, product_name, unit_of_measure)";
+  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, expiration_date, manufacturing_date, remaining_quantity, created_at, product:finished_products!finished_product_id(product_code, barcode, product_name, unit_of_measure)";
 
 export const PRODUCTION_BATCH_DETAIL_SELECT =
-  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, expiration_date, created_at, product:finished_products!finished_product_id(product_code, barcode, product_name, unit_of_measure), materials:production_batch_materials(id, batch_id, material_id, quantity_used, cost_at_time, material:raw_materials!material_id(material_code, material_name, unit_of_measure))";
+  "id, batch_number, business_unit_id, production_date, finished_product_id, quantity_produced, cost_per_unit_produced, total_batch_cost, notes, expiration_date, manufacturing_date, remaining_quantity, created_at, product:finished_products!finished_product_id(product_code, barcode, product_name, unit_of_measure), materials:production_batch_materials(id, batch_id, material_id, quantity_used, cost_at_time, material:raw_materials!material_id(material_code, material_name, unit_of_measure))";
 
 export function normalizeProductionBatch(
   raw: ProductionBatchRecord,
@@ -69,6 +71,13 @@ export function normalizeProductionBatch(
     expiration_date: raw.expiration_date?.trim()
       ? raw.expiration_date.trim().slice(0, 10)
       : null,
+    manufacturing_date: raw.manufacturing_date?.trim()
+      ? raw.manufacturing_date.trim().slice(0, 10)
+      : null,
+    remaining_quantity:
+      raw.remaining_quantity == null
+        ? null
+        : Number(raw.remaining_quantity) || 0,
     quantity_produced: Number(raw.quantity_produced) || 0,
     cost_per_unit_produced: Number(raw.cost_per_unit_produced) || 0,
     total_batch_cost: Number(raw.total_batch_cost) || 0,

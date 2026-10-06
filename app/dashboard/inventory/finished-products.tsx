@@ -24,6 +24,10 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import {
+  FINISHED_PRODUCT_ADJUSTMENT_TYPE_HELP,
+  FINISHED_PRODUCT_STOCK_ADJUSTMENT_FORM_INTRO,
+} from "./stock-adjustment-form-copy";
+import {
   formatInventoryMoney,
   formatInventoryQuantity,
 } from "./inventory-utils";
@@ -97,6 +101,8 @@ const emptyAdjustmentForm = {
   quantity: "",
   correction_direction: "increase" as "increase" | "decrease",
   cost_per_unit: "",
+  manufacturing_date: "",
+  expiration_date: "",
   reason: "",
   notes: "",
 };
@@ -752,6 +758,14 @@ export default function FinishedProducts({
     };
     if (needsCost) {
       requestBody.cost_per_unit = costPerUnit;
+      const manufacturingDate = nullableText(adjustmentForm.manufacturing_date);
+      const expirationDate = nullableText(adjustmentForm.expiration_date);
+      if (manufacturingDate) {
+        requestBody.manufacturing_date = manufacturingDate;
+      }
+      if (expirationDate) {
+        requestBody.expiration_date = expirationDate;
+      }
     }
 
     const response = await fetch("/api/inventory/finished-product-adjustments", {
@@ -1164,8 +1178,7 @@ export default function FinishedProducts({
               Record Stock Adjustment
             </h3>
             <p className="mt-1 text-sm text-slate-600">
-              Opening balance and found stock update quantity and weighted
-              average cost. Corrections and write-offs change quantity only.
+              {FINISHED_PRODUCT_STOCK_ADJUSTMENT_FORM_INTRO}
             </p>
           </div>
           {!readOnly && !viewAllBusinessUnits ? (
@@ -1244,6 +1257,15 @@ export default function FinishedProducts({
                     </option>
                   ))}
                 </select>
+                {adjustmentForm.adjustment_type ? (
+                  <p className="mt-1 text-xs text-slate-600">
+                    {
+                      FINISHED_PRODUCT_ADJUSTMENT_TYPE_HELP[
+                        adjustmentForm.adjustment_type
+                      ]
+                    }
+                  </p>
+                ) : null}
               </div>
               {adjustmentForm.adjustment_type === "correction" ? (
                 <div>
@@ -1307,6 +1329,48 @@ export default function FinishedProducts({
                     className={inputClassName}
                   />
                 </div>
+              ) : null}
+              {adjustmentNeedsCost ? (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Manufacturing date{" "}
+                      <span className="font-normal text-slate-500">
+                        (optional)
+                      </span>
+                    </label>
+                    <input
+                      type="date"
+                      value={adjustmentForm.manufacturing_date}
+                      onChange={(event) =>
+                        setAdjustmentForm((current) => ({
+                          ...current,
+                          manufacturing_date: event.target.value,
+                        }))
+                      }
+                      className={inputClassName}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Expiration date{" "}
+                      <span className="font-normal text-slate-500">
+                        (optional)
+                      </span>
+                    </label>
+                    <input
+                      type="date"
+                      value={adjustmentForm.expiration_date}
+                      onChange={(event) =>
+                        setAdjustmentForm((current) => ({
+                          ...current,
+                          expiration_date: event.target.value,
+                        }))
+                      }
+                      className={inputClassName}
+                    />
+                  </div>
+                </>
               ) : null}
               <div className="md:col-span-2">
                 <label className="mb-1 block text-sm font-medium text-slate-700">

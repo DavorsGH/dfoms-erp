@@ -10,6 +10,8 @@ export async function ensureMissingPositionsForEmployeeImport(input: {
   tenantId: string;
   rows: Array<{ mapped_data: Record<string, unknown> }>;
   cache: PositionTitleResolverCache;
+  /** Titles inserted during this pass (for finish-screen summary). */
+  createdTitles?: string[];
 }): Promise<void> {
   const titlesByKey = new Map<string, string>();
 
@@ -32,6 +34,11 @@ export async function ensureMissingPositionsForEmployeeImport(input: {
       positionTitle: title,
       cache: input.cache,
       createIfMissing: true,
+      onCreated: input.createdTitles
+        ? (createdTitle) => {
+            input.createdTitles!.push(createdTitle);
+          }
+        : undefined,
     });
   }
 }

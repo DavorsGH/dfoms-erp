@@ -1,5 +1,7 @@
 "use client";
 
+import Tooltip from "@/components/ui/tooltip";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -963,12 +965,14 @@ export default function ManualFinancialEntries({
             <tr>
               <th className={scrollableTableThClassName}>Period</th>
               {MANUAL_ENTRY_LIST_COLUMNS.map((column) => (
-                <th
-                  key={column.key}
-                  className={scrollableTableThClassName}
-                  title={MANUAL_ENTRY_FIELD_DESCRIPTIONS[column.key]}
-                >
-                  {column.label}
+                <th key={column.key} className={scrollableTableThClassName}>
+                  <Tooltip
+                    content={MANUAL_ENTRY_FIELD_DESCRIPTIONS[column.key]}
+                  >
+                    <span className="inline-flex cursor-help border-b border-dotted border-slate-400">
+                      {column.label}
+                    </span>
+                  </Tooltip>
                 </th>
               ))}
               <th className={scrollableTableThClassName}>Actions</th>

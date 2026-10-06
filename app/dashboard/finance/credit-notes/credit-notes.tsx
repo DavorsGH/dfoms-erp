@@ -1,5 +1,7 @@
 "use client";
 
+import Tooltip from "@/components/ui/tooltip";
+
 import Link from "next/link";
 import DashboardButton from "@/components/dashboard-button";
 import { useMemo, useState } from "react";
@@ -254,18 +256,22 @@ export default function CreditNotes({
                         {canShowPosStoreCreditActions(row) ? (
                           viewAllBusinessUnits ? (
                             <>
-                              <span
-                                title={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
-                                className="cursor-not-allowed rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-400"
+                              <Tooltip
+                                content={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
+                                variant="blocked"
                               >
-                                Apply at POS
-                              </span>
-                              <span
-                                title={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
-                                className="cursor-not-allowed rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-400"
+                                <span className="cursor-not-allowed rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-400">
+                                  Apply at POS
+                                </span>
+                              </Tooltip>
+                              <Tooltip
+                                content={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
+                                variant="blocked"
                               >
-                                Load returned items
-                              </span>
+                                <span className="cursor-not-allowed rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-400">
+                                  Load returned items
+                                </span>
+                              </Tooltip>
                             </>
                           ) : (
                             <>
@@ -289,37 +295,46 @@ export default function CreditNotes({
                             </>
                           )
                         ) : null}
-                        {allowRecordRefund ? (
-                          <button
-                            type="button"
-                            disabled={viewAllBusinessUnits || available <= 0}
-                            title={
-                              viewAllBusinessUnits
-                                ? SALES_REGISTER_VIEW_ONLY_TOOLTIP
-                                : available <= 0
-                                  ? "No balance available to refund"
-                                  : undefined
-                            }
-                            onClick={() => {
-                              const gate = evaluateReturnBusinessUnitGate({
-                                viewAllBusinessUnits,
-                                activeBusinessUnitId,
-                                saleBusinessUnitId: row.business_unit_id,
-                                units,
-                              });
-                              if (!gate.ok) {
-                                setError(gate.message);
-                                return;
-                              }
-                              setError(null);
-                              setRefundNoteId(row.id);
-                              setRefundAmount(String(available));
-                            }}
-                            className="rounded border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
-                          >
-                            Record Refund
-                          </button>
-                        ) : null}
+                        {allowRecordRefund ? (() => {
+                          const refundDisabled =
+                            viewAllBusinessUnits || available <= 0;
+                          const refundTooltip = viewAllBusinessUnits
+                            ? SALES_REGISTER_VIEW_ONLY_TOOLTIP
+                            : available <= 0
+                              ? "No balance available to refund"
+                              : undefined;
+                          const refundButton = (
+                            <button
+                              type="button"
+                              disabled={refundDisabled}
+                              onClick={() => {
+                                const gate = evaluateReturnBusinessUnitGate({
+                                  viewAllBusinessUnits,
+                                  activeBusinessUnitId,
+                                  saleBusinessUnitId: row.business_unit_id,
+                                  units,
+                                });
+                                if (!gate.ok) {
+                                  setError(gate.message);
+                                  return;
+                                }
+                                setError(null);
+                                setRefundNoteId(row.id);
+                                setRefundAmount(String(available));
+                              }}
+                              className="rounded border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
+                            >
+                              Record Refund
+                            </button>
+                          );
+                          return refundDisabled && refundTooltip ? (
+                            <Tooltip content={refundTooltip} variant="blocked">
+                              {refundButton}
+                            </Tooltip>
+                          ) : (
+                            refundButton
+                          );
+                        })() : null}
                       </div>
                     </td>
                   </tr>

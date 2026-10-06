@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Tooltip from "@/components/ui/tooltip";
 import type { ReactNode } from "react";
 import {
   accountsPayableHref,
@@ -32,14 +33,15 @@ export function buildApAccrualPaymentStatusListCell(
       <span className={apAccrualPaymentStatusToneClassName(display.tone)}>
         {display.label}
       </span>
-      <Link
-        href={accountsPayableHref(display.apId)}
-        className="inline-flex shrink-0 items-center text-xs font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
-        title="View bill in Accounts Payable"
-        onClick={(event) => event.stopPropagation()}
-      >
-        View bill
-      </Link>
+      <Tooltip content="View bill in Accounts Payable">
+        <Link
+          href={accountsPayableHref(display.apId)}
+          className="inline-flex shrink-0 items-center text-xs font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          View bill
+        </Link>
+      </Tooltip>
     </span>
   );
 }

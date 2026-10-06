@@ -25,9 +25,13 @@ import {
   displayOvertimeDayType,
   hasOvertimeFieldErrors,
   normalizeOvertimeDayType,
+  overtimeAmountPreviewBlocked,
+  overtimeEntryInputFromFormStrings,
+  pickOvertimeErrorsForLiveValidation,
   validateOvertimeEntryInput,
   type OvertimeDayType,
   type OvertimeEntryFieldErrors,
+  type OvertimeLiveValidatedField,
 } from "./overtime-register-validation";
 import {
   calculateOvertimeAmount,
@@ -69,6 +73,9 @@ export default function OvertimeRegister({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<OvertimeEntryFieldErrors>({});
+  const [liveValidatedFields, setLiveValidatedFields] = useState<
+    Set<OvertimeLiveValidatedField>
+  >(() => new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [confirmBulk, setConfirmBulk] = useState<{
@@ -83,14 +90,15 @@ export default function OvertimeRegister({
     };
   } | null>(null);
 
-  const previewOvertimeAmount = useMemo(
-    () =>
-      calculateOvertimeAmount(
-        Number(form.overtime_hours) || 0,
-        Number(form.overtime_rate) || 0,
-      ),
-    [form.overtime_hours, form.overtime_rate],
-  );
+  const previewOvertimeAmount = useMemo(() => {
+    if (overtimeAmountPreviewBlocked(form)) {
+      return null;
+    }
+    return calculateOvertimeAmount(
+      Number(form.overtime_hours) || 0,
+      Number(form.overtime_rate) || 0,
+    );
+  }, [form]);
 
   const employeeNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -123,6 +131,7 @@ export default function OvertimeRegister({
     setEditingId(null);
     setForm(emptyForm);
     setFieldErrors({});
+    setLiveValidatedFields(new Set());
     setShowForm(true);
   }
 
@@ -130,6 +139,7 @@ export default function OvertimeRegister({
     setEditingId(null);
     setForm(emptyForm);
     setFieldErrors({});
+    setLiveValidatedFields(new Set());
     setShowForm(false);
     setConfirmBulk(null);
   }
@@ -137,6 +147,7 @@ export default function OvertimeRegister({
   function openEditForm(entry: OvertimeRegisterEntry) {
     setEditingId(entry.id);
     setFieldErrors({});
+    setLiveValidatedFields(new Set());
     setForm({
       date: toDateInputValue(entry.date),
       employee_ids: [],
@@ -152,10 +163,56 @@ export default function OvertimeRegister({
     setShowForm(true);
   }
 
+  function applyLiveFieldValidation(
+    nextForm: typeof emptyForm,
+    validatedFields: Set<OvertimeLiveValidatedField>,
+  ) {
+    const dayType = normalizeOvertimeDayType(nextForm.day_type);
+    const input = overtimeEntryInputFromFormStrings(nextForm);
+    const fullErrors = validateOvertimeEntryInput(input);
+    if (!dayType) {
+      fullErrors.day_type = "Day type is required.";
+    }
+    setFieldErrors(
+      pickOvertimeErrorsForLiveValidation(fullErrors, validatedFields),
+    );
+  }
+
+  function extendLiveValidatedFields(
+    current: Set<OvertimeLiveValidatedField>,
+    field: OvertimeLiveValidatedField,
+  ): Set<OvertimeLiveValidatedField> {
+    const next = new Set(current);
+    next.add(field);
+    if (field === "hours_worked" || field === "overtime_hours") {
+      next.add("hours_worked");
+      next.add("overtime_hours");
+    }
+    return next;
+  }
+
+  function handleFieldBlur(field: OvertimeLiveValidatedField) {
+    setLiveValidatedFields((current) => {
+      const next = extendLiveValidatedFields(current, field);
+      applyLiveFieldValidation(form, next);
+      return next;
+    });
+  }
+
   function updateField<K extends keyof typeof emptyForm>(
     field: K,
     value: (typeof emptyForm)[K],
   ) {
+    const liveField = field as OvertimeLiveValidatedField;
+    const liveFields: OvertimeLiveValidatedField[] = [
+      "date",
+      "day_type",
+      "hours_worked",
+      "overtime_hours",
+      "overtime_rate",
+      "approved_by",
+    ];
+
     setForm((current) => {
       const next = { ...current, [field]: value };
 
@@ -173,14 +230,17 @@ export default function OvertimeRegister({
         }
       }
 
-      return next;
-    });
-    setFieldErrors((current) => {
-      if (!current[field as keyof OvertimeEntryFieldErrors]) {
-        return current;
+      if (liveFields.includes(liveField)) {
+        setLiveValidatedFields((currentValidated) => {
+          const nextValidated = extendLiveValidatedFields(
+            currentValidated,
+            liveField,
+          );
+          applyLiveFieldValidation(next, nextValidated);
+          return nextValidated;
+        });
       }
-      const next = { ...current };
-      delete next[field as keyof OvertimeEntryFieldErrors];
+
       return next;
     });
   }
@@ -197,14 +257,7 @@ export default function OvertimeRegister({
     };
   } | { ok: false } {
     const dayType = normalizeOvertimeDayType(form.day_type);
-    const input = {
-      date: form.date.trim(),
-      day_type: dayType ?? OVERTIME_DAY_TYPE_NORMAL,
-      hours_worked: Number(form.hours_worked),
-      overtime_hours: Number(form.overtime_hours),
-      overtime_rate: Number(form.overtime_rate),
-      approved_by: form.approved_by.trim(),
-    };
+    const input = overtimeEntryInputFromFormStrings(form);
 
     const errors = validateOvertimeEntryInput(input);
     if (!editingId && form.employee_ids.length === 0) {
@@ -431,6 +484,7 @@ export default function OvertimeRegister({
                   required
                   value={form.date}
                   onChange={(e) => updateField("date", e.target.value)}
+                  onBlur={() => handleFieldBlur("date")}
                   className={inputClassName}
                   aria-invalid={Boolean(fieldErrors.date)}
                 />
@@ -453,6 +507,7 @@ export default function OvertimeRegister({
                       e.target.value as OvertimeDayType,
                     )
                   }
+                  onBlur={() => handleFieldBlur("day_type")}
                   className={inputClassName}
                   aria-invalid={Boolean(fieldErrors.day_type)}
                 >
@@ -524,6 +579,7 @@ export default function OvertimeRegister({
                   required
                   value={form.hours_worked}
                   onChange={(e) => updateField("hours_worked", e.target.value)}
+                  onBlur={() => handleFieldBlur("hours_worked")}
                   className={inputClassName}
                   aria-invalid={Boolean(fieldErrors.hours_worked)}
                 />
@@ -547,6 +603,7 @@ export default function OvertimeRegister({
                   onChange={(e) =>
                     updateField("overtime_hours", e.target.value)
                   }
+                  onBlur={() => handleFieldBlur("overtime_hours")}
                   className={inputClassName}
                   aria-invalid={Boolean(fieldErrors.overtime_hours)}
                 />
@@ -567,6 +624,7 @@ export default function OvertimeRegister({
                   required
                   value={form.overtime_rate}
                   onChange={(e) => updateField("overtime_rate", e.target.value)}
+                  onBlur={() => handleFieldBlur("overtime_rate")}
                   className={inputClassName}
                   aria-invalid={Boolean(fieldErrors.overtime_rate)}
                 />
@@ -584,6 +642,7 @@ export default function OvertimeRegister({
                   required
                   value={form.approved_by}
                   onChange={(e) => updateField("approved_by", e.target.value)}
+                  onBlur={() => handleFieldBlur("approved_by")}
                   className={inputClassName}
                   aria-invalid={Boolean(fieldErrors.approved_by)}
                 >
@@ -604,9 +663,13 @@ export default function OvertimeRegister({
             <p className="text-sm text-slate-600">
               Overtime Amount:{" "}
               <span className="font-medium text-[#0f2744]">
-                {formatGHS(previewOvertimeAmount)}
+                {previewOvertimeAmount == null
+                  ? "—"
+                  : formatGHS(previewOvertimeAmount)}
               </span>
-              {!editingId && form.employee_ids.length > 1 ? (
+              {previewOvertimeAmount != null &&
+              !editingId &&
+              form.employee_ids.length > 1 ? (
                 <span>
                   {" "}
                   × {form.employee_ids.length} employees ={" "}

@@ -82,6 +82,14 @@ export const FINISHED_PRODUCT_TARGET_FIELDS: readonly BulkImportTargetField[] = 
     example: "SKU-1001",
   },
   {
+    key: "barcode",
+    label: "Barcode",
+    required: false,
+    example: "5901234123457",
+    mappingHint:
+      "Optional; leave blank to auto-generate on import (same as Add product in Inventory).",
+  },
+  {
     key: "product_name",
     label: "Product name",
     required: true,
@@ -98,6 +106,14 @@ export const FINISHED_PRODUCT_TARGET_FIELDS: readonly BulkImportTargetField[] = 
     label: "Current stock",
     required: false,
     example: "100",
+  },
+  {
+    key: "unit_cost",
+    label: "Unit cost",
+    required: false,
+    example: "12.50",
+    mappingHint:
+      "Optional opening cost per unit when Current stock is filled; used for opening balance and inventory value.",
   },
   {
     key: "standard_selling_price",

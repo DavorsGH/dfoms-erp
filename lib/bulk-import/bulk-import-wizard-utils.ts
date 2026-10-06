@@ -2,9 +2,13 @@ import {
   EMPLOYEE_MISSING_SALARY_RATE_REVIEW_GROUP_LABEL,
   isEmployeeMissingSalaryRateWarning,
 } from "@/lib/bulk-import/employee-salary-settings-import-warnings";
+import * as XLSX from "xlsx";
+import { BULK_IMPORT_DATE_FIELDS_BY_TYPE } from "@/lib/bulk-import/bulk-import-date-column";
+import { isBulkImportCodeLikeFieldKey } from "@/lib/bulk-import/bulk-import-code-column";
 import {
   BULK_IMPORT_IGNORE_COLUMN,
   type BulkImportTargetField,
+  type BulkImportType,
 } from "@/lib/bulk-import/types";
 
 export function normalizeColumnMatchKey(value: string): string {
@@ -93,6 +97,102 @@ function escapeCsvCell(value: string): string {
   }
 
   return value;
+}
+
+function dateFieldKeysForTemplate(importType: BulkImportType): Set<string> {
+  return new Set(BULK_IMPORT_DATE_FIELDS_BY_TYPE[importType]);
+}
+
+function isoExampleToExcelDate(example: string): Date | string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(example.trim());
+  if (!match) {
+    return example;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+}
+
+function templateExampleCellValue(
+  field: BulkImportTargetField,
+  importType: BulkImportType,
+  sampleRowIndex: number,
+): string | number | Date {
+  const dateFields = dateFieldKeysForTemplate(importType);
+  if (field.key === "product_code" && sampleRowIndex === 1) {
+    return "SKU-1002";
+  }
+  if (field.key === "product_name" && sampleRowIndex === 1) {
+    return "Widget B";
+  }
+  if (
+    importType === "product" &&
+    field.key === "unit_cost" &&
+    sampleRowIndex === 0
+  ) {
+    return "12.50";
+  }
+  if (dateFields.has(field.key)) {
+    return isoExampleToExcelDate(field.example);
+  }
+  return field.example;
+}
+
+export function downloadBulkImportTemplateXlsx(
+  targetFields: readonly BulkImportTargetField[],
+  importType: BulkImportType,
+  fileName: string,
+): void {
+  const headerRow = targetFields.map((field) => field.label);
+  const sampleRowCount = importType === "product" ? 2 : 1;
+  const dataRows = Array.from({ length: sampleRowCount }, (_, rowIndex) =>
+    targetFields.map((field) =>
+      templateExampleCellValue(field, importType, rowIndex),
+    ),
+  );
+
+  const sheet = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
+  for (let colIndex = 0; colIndex < targetFields.length; colIndex += 1) {
+    const field = targetFields[colIndex];
+    if (!isBulkImportCodeLikeFieldKey(field.key)) {
+      continue;
+    }
+    const headerAddress = XLSX.utils.encode_cell({ r: 0, c: colIndex });
+    const headerCell = sheet[headerAddress];
+    if (headerCell) {
+      headerCell.t = "s";
+      headerCell.z = "@";
+    }
+  }
+  for (let rowIndex = 0; rowIndex < sampleRowCount; rowIndex += 1) {
+    for (let colIndex = 0; colIndex < targetFields.length; colIndex += 1) {
+      const field = targetFields[colIndex];
+      const cellAddress = XLSX.utils.encode_cell({
+        r: rowIndex + 1,
+        c: colIndex,
+      });
+      const cell = sheet[cellAddress];
+      if (!cell) {
+        continue;
+      }
+      if (dateFieldKeysForTemplate(importType).has(field.key)) {
+        if (cell.v instanceof Date) {
+          cell.t = "d";
+        }
+        continue;
+      }
+      if (isBulkImportCodeLikeFieldKey(field.key)) {
+        cell.t = "s";
+        cell.z = "@";
+        cell.v = String(cell.v ?? "");
+      }
+    }
+  }
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Import");
+  XLSX.writeFile(workbook, fileName);
 }
 
 export function downloadBulkImportTemplateCsv(

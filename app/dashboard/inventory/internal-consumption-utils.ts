@@ -19,6 +19,8 @@ export type InternalConsumptionRecord = {
   notes: string | null;
   created_at: string;
   site_id: string | null;
+  business_unit_id: string | null;
+  expense_register_id: string | null;
   product?: {
     product_code: string;
     product_name: string;
@@ -28,7 +30,7 @@ export type InternalConsumptionRecord = {
 };
 
 export const INTERNAL_CONSUMPTION_SELECT =
-  "id, product_id, quantity, consumption_date, reason, recorded_by, notes, created_at, site_id, product:finished_products!product_id(product_code, product_name, unit_of_measure), site:sites!internal_consumption_site_id_fkey(site_code, site_name, client_id, project_id, client:customers!sites_client_id_fkey(client_id, client_name))";
+  "id, product_id, quantity, consumption_date, reason, recorded_by, notes, created_at, site_id, business_unit_id, expense_register_id, product:finished_products!product_id(product_code, product_name, unit_of_measure), site:sites!internal_consumption_site_id_fkey(site_code, site_name, client_id, project_id, client:customers!sites_client_id_fkey(client_id, client_name))";
 
 export function normalizeInternalConsumption(
   raw: InternalConsumptionRecord,

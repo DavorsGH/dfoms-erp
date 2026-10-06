@@ -22,9 +22,11 @@ import {
 } from "@/utils/business-unit-access";
 import {
   formatInventoryMoney,
+  formatInventoryMoneyDisplay2dp,
   formatInventoryQuantity,
   nullableText,
 } from "./inventory-utils";
+import { formatProductionBatchEditBlockReason } from "@/lib/inventory/production-batch-edit-message";
 import { allocateBatchNumber } from "./inventory-ids-api";
 import {
   calculateBatchPreview,
@@ -61,6 +63,13 @@ import {
   findMaterialByScanCode,
   findProductByScanCode,
 } from "@/utils/barcode-scan-utils";
+import { alertDialog } from "@/components/feedback/app-dialogs";
+import Tooltip from "@/components/ui/tooltip";
+import {
+  validateProductionBatchMaterialLines,
+  type ProductionBatchMaterialLineErrors,
+} from "@/lib/inventory/production-batch-form-validation";
+import { mapProductionBatchSaveErrorMessage } from "@/lib/inventory/production-batch-save-error";
 
 type ProductionBatchesProps = {
   initialBatches: ProductionBatchRecord[];
@@ -117,6 +126,18 @@ export default function ProductionBatches({
     initialMaterials.map(normalizeRawMaterial),
   );
   const [showForm, setShowForm] = useState(false);
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+  const [editEligibility, setEditEligibility] = useState<
+    Record<
+      string,
+      {
+        can_edit: boolean;
+        block_reason: string | null;
+        consumed_quantity: number | null;
+        sale_count: number | null;
+      }
+    >
+  >({});
   const [batchForm, setBatchForm] = useState(emptyBatchForm);
   const [materialLines, setMaterialLines] = useState<MaterialLine[]>([
     { ...emptyMaterialLine },
@@ -140,13 +161,48 @@ export default function ProductionBatches({
   const [materialScanSuccess, setMaterialScanSuccess] = useState<string | null>(
     null,
   );
+  const [materialLineErrors, setMaterialLineErrors] = useState<
+    Record<number, ProductionBatchMaterialLineErrors>
+  >({});
+  const [materialFormError, setMaterialFormError] = useState<string | null>(
+    null,
+  );
   const [activeMaterialLineIndex, setActiveMaterialLineIndex] = useState(0);
   const scanTargetRef = useRef<"product" | "material">("product");
   const activeMaterialLineIndexRef = useRef(0);
+  const materialSelectRefs = useRef<(HTMLSelectElement | null)[]>([]);
 
   useEffect(() => {
     activeMaterialLineIndexRef.current = activeMaterialLineIndex;
   }, [activeMaterialLineIndex]);
+
+  useEffect(() => {
+    if (readOnly) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(
+          "/api/inventory/production-batches/edit-eligibility",
+        );
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as {
+          eligibility?: typeof editEligibility;
+        };
+        if (!cancelled && payload.eligibility) {
+          setEditEligibility(payload.eligibility);
+        }
+      } catch {
+        /* eligibility is optional for display */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [readOnly, initialBatches.length]);
 
   useEffect(() => {
     setBatches(initialBatches.map(normalizeProductionBatch));
@@ -282,14 +338,44 @@ export default function ProductionBatches({
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   function openAddForm() {
+    setEditingBatchId(null);
     setBatchForm({ ...emptyBatchForm });
     setMaterialLines([{ ...emptyMaterialLine }]);
+    setMaterialLineErrors({});
+    setMaterialFormError(null);
+    setShowForm(true);
+  }
+
+  function openEditForm(batch: ProductionBatchRecord) {
+    setEditingBatchId(batch.id);
+    setBatchForm({
+      batch_number: batch.batch_number,
+      production_date: batch.production_date.slice(0, 10),
+      finished_product_id: batch.finished_product_id,
+      quantity_produced: String(batch.quantity_produced),
+      manufacturing_date: batch.manufacturing_date ?? "",
+      expiration_date: batch.expiration_date ?? "",
+      notes: batch.notes ?? "",
+    });
+    setMaterialLines(
+      (batch.materials ?? []).length > 0
+        ? (batch.materials ?? []).map((line) => ({
+            material_id: line.material_id,
+            quantity_used: String(line.quantity_used),
+          }))
+        : [{ ...emptyMaterialLine }],
+    );
+    setMaterialLineErrors({});
+    setMaterialFormError(null);
     setShowForm(true);
   }
 
   function closeForm() {
+    setEditingBatchId(null);
     setBatchForm(emptyBatchForm);
     setMaterialLines([{ ...emptyMaterialLine }]);
+    setMaterialLineErrors({});
+    setMaterialFormError(null);
     setShowForm(false);
   }
 
@@ -298,6 +384,15 @@ export default function ProductionBatches({
     field: keyof MaterialLine,
     value: string,
   ) {
+    setMaterialLineErrors((current) => {
+      if (!current[index]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[index];
+      return next;
+    });
+    setMaterialFormError(null);
     setMaterialLines((current) =>
       current.map((line, lineIndex) =>
         lineIndex === index ? { ...line, [field]: value } : line,
@@ -305,8 +400,26 @@ export default function ProductionBatches({
     );
   }
 
+  function materialUsedOnOtherLine(materialId: string, lineIndex: number): boolean {
+    if (!materialId) {
+      return false;
+    }
+    return materialLines.some(
+      (line, index) => index !== lineIndex && line.material_id === materialId,
+    );
+  }
+
   function addMaterialLine() {
-    setMaterialLines((current) => [...current, { ...emptyMaterialLine }]);
+    setMaterialLines((current) => {
+      const nextIndex = current.length;
+      const next = [...current, { ...emptyMaterialLine }];
+      window.setTimeout(() => {
+        materialSelectRefs.current[nextIndex]?.focus();
+        setActiveMaterialLineIndex(nextIndex);
+        scanTargetRef.current = "material";
+      }, 0);
+      return next;
+    });
   }
 
   function removeMaterialLine(index: number) {
@@ -345,6 +458,14 @@ export default function ProductionBatches({
     }
 
     const lineIndex = activeMaterialLineIndexRef.current;
+    if (materialUsedOnOtherLine(material.id, lineIndex)) {
+      setMaterialScanSuccess(null);
+      setMaterialScanError(
+        `${material.material_name} is already on another line. Combine the quantities into one line.`,
+      );
+      return;
+    }
+
     setMaterialScanError(null);
     setProductScanError(null);
     setMaterialScanSuccess(
@@ -392,69 +513,94 @@ export default function ProductionBatches({
 
     const quantityProduced = Number.parseFloat(batchForm.quantity_produced);
     if (Number.isNaN(quantityProduced) || quantityProduced <= 0) {
-      setError("Quantity produced must be greater than zero.");
       setLoading(false);
+      void alertDialog({
+        title: "Quantity required",
+        message: "Enter a quantity produced greater than zero.",
+      });
       return;
     }
 
     if (!batchForm.finished_product_id) {
-      setError("Select a finished product.");
+      setLoading(false);
+      void alertDialog({
+        title: "Finished product required",
+        message: "Select a finished product before saving.",
+      });
+      return;
+    }
+
+    const materialValidation = validateProductionBatchMaterialLines({
+      lines: materialLines,
+      materials,
+      resolveCost: (material) => material.average_cost_per_unit,
+    });
+
+    if (!materialValidation.ok) {
+      setMaterialLineErrors(materialValidation.lineErrors);
+      setMaterialFormError(materialValidation.formError ?? null);
       setLoading(false);
       return;
     }
 
-    const materialPayload: {
-      material_id: string;
-      quantity_used: number;
-      cost_at_time: number;
-    }[] = [];
+    const materialPayload = materialValidation.payload;
 
-    for (const line of materialLines) {
-      if (!line.material_id || !line.quantity_used) {
-        continue;
+    if (editingBatchId) {
+      const editingBatch = batches.find((row) => row.id === editingBatchId);
+      if (editingBatch) {
+        try {
+          assertCanModifyBusinessUnitRow(
+            buContext.allowedUnits,
+            editingBatch.business_unit_id,
+          );
+        } catch (accessError) {
+          setError(formatBusinessUnitAccessError(accessError));
+          setLoading(false);
+          return;
+        }
       }
 
-      const quantityUsed = Number.parseFloat(line.quantity_used);
-      if (Number.isNaN(quantityUsed) || quantityUsed <= 0) {
-        setError("Each material line must have a quantity greater than zero.");
+      const response = await fetch(
+        `/api/inventory/production-batches/${editingBatchId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            production_date: batchForm.production_date,
+            finished_product_id: batchForm.finished_product_id,
+            quantity_produced: quantityProduced,
+            notes: nullableText(batchForm.notes),
+            materials: materialPayload,
+            manufacturing_date: nullableText(batchForm.manufacturing_date),
+            expiration_date: nullableText(batchForm.expiration_date),
+          }),
+        },
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
         setLoading(false);
+        void alertDialog({
+          title: "Couldn't save batch",
+          message:
+            payload.error ??
+            "Couldn't save the production batch. Please try again.",
+        });
         return;
       }
 
-      const material = materials.find((item) => item.id === line.material_id);
-      if (!material) {
-        setError("Select a valid raw material for each line.");
-        setLoading(false);
-        return;
+      closeForm();
+      await refreshData();
+      const eligibilityResponse = await fetch(
+        "/api/inventory/production-batches/edit-eligibility",
+      );
+      if (eligibilityResponse.ok) {
+        const eligibilityPayload = (await eligibilityResponse.json()) as {
+          eligibility?: typeof editEligibility;
+        };
+        if (eligibilityPayload.eligibility) {
+          setEditEligibility(eligibilityPayload.eligibility);
+        }
       }
-
-      if (material.current_stock < quantityUsed) {
-        setError(
-          `Insufficient stock for ${material.material_name}. Available: ${formatInventoryQuantity(material.current_stock)}.`,
-        );
-        setLoading(false);
-        return;
-      }
-
-      // Defense in depth: under default BU, no balance ⇒ stock 0 + null WAC.
-      // Stock check above should already block qty > 0; never coerce null → 0.
-      if (material.average_cost_per_unit == null) {
-        setError(
-          `No unit cost on file for ${material.material_name} in this business. Record stock (opening balance / purchase) before using it in production.`,
-        );
-        setLoading(false);
-        return;
-      }
-
-      materialPayload.push({
-        material_id: line.material_id,
-        quantity_used: quantityUsed,
-        cost_at_time: material.average_cost_per_unit,
-      });
-    }
-
-    if (materialPayload.length === 0) {
-      setError("Add at least one raw material with quantity used.");
       setLoading(false);
       return;
     }
@@ -479,8 +625,12 @@ export default function ProductionBatches({
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      console.error("create_production_batch failed", rpcError);
       setLoading(false);
+      void alertDialog({
+        title: "Couldn't save batch",
+        message: mapProductionBatchSaveErrorMessage(rpcError),
+      });
       return;
     }
 
@@ -518,8 +668,12 @@ export default function ProductionBatches({
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      console.error("delete_production_batch failed", rpcError);
       setDeletingBatchId(null);
+      void alertDialog({
+        title: "Couldn't delete batch",
+        message: mapProductionBatchSaveErrorMessage(rpcError),
+      });
       return;
     }
 
@@ -563,7 +717,7 @@ export default function ProductionBatches({
       {showForm && !readOnly ? (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
-            New Production Batch
+            {editingBatchId ? "Edit Production Batch" : "New Production Batch"}
           </h3>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
@@ -710,18 +864,15 @@ export default function ProductionBatches({
                   handleMaterialBarcodeScan(rawPayload);
                 }}
               />
-              <div className="flex items-center justify-between gap-4">
-                <h4 className="text-sm font-semibold text-[#0f2744]">
-                  Materials Consumed
-                </h4>
-                <button
-                  type="button"
-                  onClick={addMaterialLine}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  Add Material Line
-                </button>
-              </div>
+              <h4 className="text-sm font-semibold text-[#0f2744]">
+                Materials Consumed
+              </h4>
+
+              {materialFormError ? (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {materialFormError}
+                </p>
+              ) : null}
 
               {materialLines.map((line, index) => (
                 <div
@@ -733,7 +884,9 @@ export default function ProductionBatches({
                       Raw Material
                     </label>
                     <select
-                      required
+                      ref={(element) => {
+                        materialSelectRefs.current[index] = element;
+                      }}
                       value={line.material_id}
                       onFocus={() => {
                         scanTargetRef.current = "material";
@@ -744,16 +897,30 @@ export default function ProductionBatches({
                       }
                       className={inputClassName}
                     >
-                      <option value="">Select material</option>
-                      {materials.map((material) => (
-                        <option key={material.id} value={material.id}>
-                          {material.material_code} — {material.material_name} (
-                          {formatInventoryQuantity(material.current_stock)}{" "}
-                          {material.unit_of_measure} @{" "}
-                          {formatInventoryMoney(material.average_cost_per_unit)})
-                        </option>
-                      ))}
+                      <option value="">Select raw material</option>
+                      {materials.map((material) => {
+                        const usedElsewhere = materialUsedOnOtherLine(
+                          material.id,
+                          index,
+                        );
+                        return (
+                          <option
+                            key={material.id}
+                            value={material.id}
+                            disabled={usedElsewhere}
+                          >
+                            {usedElsewhere
+                              ? `${material.material_code} — ${material.material_name} (already added)`
+                              : `${material.material_code} — ${material.material_name} (${formatInventoryQuantity(material.current_stock)} ${material.unit_of_measure} @ ${formatInventoryMoney(material.average_cost_per_unit)})`}
+                          </option>
+                        );
+                      })}
                     </select>
+                    {materialLineErrors[index]?.material ? (
+                      <p className="mt-1 text-sm text-red-700">
+                        {materialLineErrors[index]?.material}
+                      </p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -763,7 +930,6 @@ export default function ProductionBatches({
                       type="number"
                       min={0.0001}
                       step="0.0001"
-                      required
                       value={line.quantity_used}
                       onChange={(event) =>
                         updateMaterialLine(
@@ -774,6 +940,11 @@ export default function ProductionBatches({
                       }
                       className={inputClassName}
                     />
+                    {materialLineErrors[index]?.quantity ? (
+                      <p className="mt-1 text-sm text-red-700">
+                        {materialLineErrors[index]?.quantity}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex items-end">
                     <button
@@ -794,25 +965,40 @@ export default function ProductionBatches({
                 <p>
                   Total batch cost:{" "}
                   <span className="font-medium">
-                    {formatInventoryMoney(preview.total_batch_cost)}
+                    {formatInventoryMoneyDisplay2dp(preview.total_batch_cost)}
                   </span>
                 </p>
                 <p className="mt-1">
                   Cost per unit produced:{" "}
                   <span className="font-medium">
-                    {formatInventoryMoney(preview.cost_per_unit_produced)}
+                    {formatInventoryMoneyDisplay2dp(
+                      preview.cost_per_unit_produced,
+                    )}
                   </span>
                 </p>
               </div>
             ) : null}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? "Saving…" : "Save Production Batch"}
-            </button>
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={addMaterialLine}
+                className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-[#0f2744] px-4 py-2 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 sm:w-auto"
+              >
+                <span aria-hidden>+</span> Add Material Line
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              >
+                {loading
+                  ? "Saving…"
+                  : editingBatchId
+                    ? "Save Production Batch"
+                    : "Save Production Batch"}
+              </button>
+            </div>
           </form>
         </section>
       ) : null}
@@ -872,17 +1058,17 @@ export default function ProductionBatches({
                     {batch.product?.unit_of_measure ?? ""}
                   </td>
                   <td className="px-4 py-3">
-                    {formatInventoryMoney(batch.total_batch_cost)}
+                    {formatInventoryMoneyDisplay2dp(batch.total_batch_cost)}
                   </td>
                   <td className="px-4 py-3">
-                    {formatInventoryMoney(batch.cost_per_unit_produced)}
+                    {formatInventoryMoneyDisplay2dp(batch.cost_per_unit_produced)}
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-600">
                     {(batch.materials ?? []).map((line) => (
                       <div key={line.id}>
                         {line.material?.material_name ?? line.material_id}:{" "}
                         {formatInventoryQuantity(line.quantity_used)} @{" "}
-                        {formatInventoryMoney(line.cost_at_time)}
+                        {formatInventoryMoneyDisplay2dp(line.cost_at_time)}
                       </div>
                     ))}
                   </td>
@@ -899,6 +1085,54 @@ export default function ProductionBatches({
                       >
                         Print Batch Label
                       </button>
+                      {!readOnly ? (
+                        (() => {
+                          const preview = editEligibility[batch.id];
+                          const canEdit = preview?.can_edit ?? true;
+                          const editBlockReason = formatProductionBatchEditBlockReason(
+                            {
+                              can_edit: canEdit,
+                              block_reason: preview?.block_reason ?? null,
+                              consumed_quantity: preview?.consumed_quantity ?? null,
+                              sale_count: preview?.sale_count ?? null,
+                              unit_of_measure:
+                                batch.product?.unit_of_measure ?? null,
+                            },
+                          );
+                          const editButton = (
+                            <button
+                              type="button"
+                              aria-disabled={!canEdit}
+                              onClick={() => {
+                                setError(null);
+                                setSuccess(null);
+                                if (!canEdit) {
+                                  void alertDialog({
+                                    title: "Can't edit batch",
+                                    message: editBlockReason,
+                                  });
+                                  return;
+                                }
+                                openEditForm(batch);
+                              }}
+                              className={`rounded-md border border-[#0f2744] px-3 py-1.5 text-sm font-medium text-[#0f2744] transition-colors hover:bg-slate-50 ${
+                                !canEdit
+                                  ? "cursor-not-allowed opacity-50"
+                                  : ""
+                              }`}
+                            >
+                              Edit
+                            </button>
+                          );
+                          return !canEdit ? (
+                            <Tooltip content={editBlockReason} variant="blocked">
+                              {editButton}
+                            </Tooltip>
+                          ) : (
+                            editButton
+                          );
+                        })()
+                      ) : null}
                       {!readOnly ? (
                         confirmingBatchId === batch.id ? (
                           <>

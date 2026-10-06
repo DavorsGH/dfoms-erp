@@ -1,3 +1,5 @@
+import type { InventoryStockAdjustmentRow } from "@/lib/inventory/inventory-stock-adjustment-financials";
+import { calculateInventoryAdjustmentAssetDeltaByMonth } from "@/lib/inventory/inventory-stock-adjustment-financials";
 import type { FinishedProductRecord } from "./finished-products-utils";
 import type { RawMaterialRecord } from "./raw-materials-utils";
 import {
@@ -79,12 +81,20 @@ export type RawMaterialInventoryConsumption = {
   quantity_used: number;
 };
 
+export type RawMaterialInventoryAdjustment = {
+  material_id: string;
+  effective_date: string;
+  quantity_delta: number;
+  cost_per_unit: number;
+};
+
 export type InventoryValuationHistory = {
   finishedProductInflows: FinishedProductInventoryInflow[];
   finishedProductCogs: FinishedProductInventoryCogs[];
   finishedProductInternalUse: FinishedProductInventoryInternalUse[];
   rawMaterialPurchases: RawMaterialInventoryPurchase[];
   rawMaterialConsumptions: RawMaterialInventoryConsumption[];
+  rawMaterialAdjustments?: RawMaterialInventoryAdjustment[];
 };
 
 export function normalizePaymentMethod(value: string | null | undefined): string {
@@ -269,53 +279,115 @@ export function calculateFinishedProductValueAsOf(
   }
 
   const asOf = normalizeDate(asOfDate);
-  let value = 0;
-
+  const productIds = new Set<string>();
   for (const inflow of inflows) {
-    const effective = getFinishedProductInflowEffectiveDate(
-      inflow,
-      config,
-      inflow.source,
-    );
-    if (!effective || effective > asOf) {
-      continue;
-    }
-    value += Number(inflow.total_cost) || 0;
+    productIds.add(inflow.product_id);
   }
-
   for (const row of cogs) {
-    const saleDate = normalizeDate(row.sale_date);
-    // Match finished_product_weighted_avg_cost / script 145: all product-sale
-    // COGS (and signed reversals) reduce carrying value. Do not gate on go-live —
-    // activated purchases can post at go-live while a sale was business-dated
-    // slightly earlier (Mimshack Club de Nuit: purchase activated 2026-08-08,
-    // COGS dated 2026-08-01).
-    if (saleDate > asOf) {
-      continue;
-    }
-    value -= Number(row.cogs_amount) || 0;
+    productIds.add(row.product_id);
   }
-
   for (const row of internalUse) {
-    const consumptionDate = normalizeDate(row.consumption_date);
-    if (consumptionDate > asOf) {
-      continue;
-    }
-    value -= Number(row.amount) || 0;
+    productIds.add(row.product_id);
   }
 
-  return roundInventoryCurrency(Math.max(value, 0));
+  let total = 0;
+  for (const productId of productIds) {
+    let value = 0;
+
+    for (const inflow of inflows) {
+      if (inflow.product_id !== productId) {
+        continue;
+      }
+      const effective = getFinishedProductInflowEffectiveDate(
+        inflow,
+        config,
+        inflow.source,
+      );
+      if (!effective || effective > asOf) {
+        continue;
+      }
+      value += Number(inflow.total_cost) || 0;
+    }
+
+    for (const row of cogs) {
+      if (row.product_id !== productId) {
+        continue;
+      }
+      const saleDate = normalizeDate(row.sale_date);
+      if (saleDate > asOf) {
+        continue;
+      }
+      value -= Number(row.cogs_amount) || 0;
+    }
+
+    for (const row of internalUse) {
+      if (row.product_id !== productId) {
+        continue;
+      }
+      const consumptionDate = normalizeDate(row.consumption_date);
+      if (consumptionDate > asOf) {
+        continue;
+      }
+      value -= Number(row.amount) || 0;
+    }
+
+    total += value;
+  }
+
+  return roundInventoryCurrency(total);
+}
+
+type RawMaterialValuationEvent =
+  | {
+      kind: "purchase";
+      material_id: string;
+      sort_date: string;
+      qty: number;
+      total_cost: number;
+    }
+  | {
+      kind: "adjustment";
+      material_id: string;
+      sort_date: string;
+      qty: number;
+      total_cost: number;
+    }
+  | {
+      kind: "consumption";
+      material_id: string;
+      sort_date: string;
+      qty: number;
+    };
+
+function applyRawMaterialBalanceInflow(
+  stock: number,
+  avg: number,
+  qty: number,
+  totalCost: number,
+): { stock: number; avg: number } {
+  if (qty === 0) {
+    return { stock, avg };
+  }
+  const oldValue = stock * avg;
+  const newStock = stock + qty;
+  if (newStock <= 0) {
+    return { stock: newStock, avg: 0 };
+  }
+  const newAvg = (oldValue + totalCost) / newStock;
+  return { stock: newStock, avg: newAvg };
 }
 
 /**
- * Raw-material carrying value as of asOfDate: remaining qty × purchase WAC to date
- * (same identity as recalculate_raw_material_inventory).
+ * Raw-material carrying value as of asOfDate, simulated from purchases,
+ * stock adjustments, and production consumption in chronological order.
+ * Matches raw_material_balances WAC rules (consumption changes qty only).
  */
 export function calculateRawMaterialValueAsOf(
   purchases: RawMaterialInventoryPurchase[],
   consumptions: RawMaterialInventoryConsumption[],
   config: InventoryBalanceConfig | null,
   asOfDate: string,
+  adjustments: RawMaterialInventoryAdjustment[] = [],
 ): number {
   if (!config?.go_live_date) {
     return 0;
@@ -323,20 +395,7 @@ export function calculateRawMaterialValueAsOf(
 
   const asOf = normalizeDate(asOfDate);
   const goLive = normalizeDate(config.go_live_date);
-
-  const byMaterial = new Map<
-    string,
-    { purchasedQty: number; purchasedValue: number; consumedQty: number }
-  >();
-
-  function bucket(materialId: string) {
-    let row = byMaterial.get(materialId);
-    if (!row) {
-      row = { purchasedQty: 0, purchasedValue: 0, consumedQty: 0 };
-      byMaterial.set(materialId, row);
-    }
-    return row;
-  }
+  const events: RawMaterialValuationEvent[] = [];
 
   for (const purchase of purchases) {
     const effective = getRawMaterialPurchaseEffectiveDate(purchase, config);
@@ -345,9 +404,35 @@ export function calculateRawMaterialValueAsOf(
     }
     const qty = Number(purchase.quantity) || 0;
     const unit = Number(purchase.cost_per_unit) || 0;
-    const row = bucket(purchase.material_id);
-    row.purchasedQty += qty;
-    row.purchasedValue += qty * unit;
+    if (qty === 0) {
+      continue;
+    }
+    events.push({
+      kind: "purchase",
+      material_id: purchase.material_id,
+      sort_date: effective,
+      qty,
+      total_cost: qty * unit,
+    });
+  }
+
+  for (const adjustment of adjustments) {
+    const effective = normalizeDate(adjustment.effective_date);
+    if (!effective || effective < goLive || effective > asOf) {
+      continue;
+    }
+    const qty = Number(adjustment.quantity_delta) || 0;
+    const unit = Number(adjustment.cost_per_unit) || 0;
+    if (qty === 0) {
+      continue;
+    }
+    events.push({
+      kind: "adjustment",
+      material_id: adjustment.material_id,
+      sort_date: effective,
+      qty,
+      total_cost: qty * unit,
+    });
   }
 
   for (const consumption of consumptions) {
@@ -355,18 +440,60 @@ export function calculateRawMaterialValueAsOf(
     if (consumedOn < goLive || consumedOn > asOf) {
       continue;
     }
-    const row = bucket(consumption.material_id);
-    row.consumedQty += Number(consumption.quantity_used) || 0;
+    const qty = Number(consumption.quantity_used) || 0;
+    if (qty === 0) {
+      continue;
+    }
+    events.push({
+      kind: "consumption",
+      material_id: consumption.material_id,
+      sort_date: consumedOn,
+      qty,
+    });
+  }
+
+  events.sort((a, b) => {
+    const byDate = a.sort_date.localeCompare(b.sort_date);
+    if (byDate !== 0) {
+      return byDate;
+    }
+    const order = { purchase: 0, adjustment: 1, consumption: 2 } as const;
+    return order[a.kind] - order[b.kind];
+  });
+
+  const state = new Map<string, { stock: number; avg: number }>();
+
+  function materialState(materialId: string) {
+    let row = state.get(materialId);
+    if (!row) {
+      row = { stock: 0, avg: 0 };
+      state.set(materialId, row);
+    }
+    return row;
+  }
+
+  for (const event of events) {
+    const row = materialState(event.material_id);
+    if (event.kind === "consumption") {
+      row.stock -= event.qty;
+      continue;
+    }
+    const next = applyRawMaterialBalanceInflow(
+      row.stock,
+      row.avg,
+      event.qty,
+      event.total_cost,
+    );
+    row.stock = next.stock;
+    row.avg = next.avg;
   }
 
   let total = 0;
-  for (const row of byMaterial.values()) {
-    const stock = row.purchasedQty - row.consumedQty;
-    if (stock <= 0 || row.purchasedQty <= 0) {
+  for (const row of state.values()) {
+    if (row.stock <= 0) {
       continue;
     }
-    const avg = row.purchasedValue / row.purchasedQty;
-    total += stock * avg;
+    total += row.stock * row.avg;
   }
 
   return roundInventoryCurrency(Math.max(total, 0));
@@ -390,6 +517,7 @@ export function calculateInventoryValueAsOf(
         history.rawMaterialConsumptions,
         config,
         asOfDate,
+        history.rawMaterialAdjustments ?? [],
       ),
   );
 }
@@ -416,6 +544,7 @@ export function calculateInventoryByMonth(
   config: InventoryBalanceConfig | null,
   financialYear: number,
   referenceDate = new Date(),
+  stockAdjustments: InventoryStockAdjustmentRow[] = [],
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   if (!config?.go_live_date) {
@@ -464,6 +593,23 @@ export function calculateInventoryByMonth(
     totals[goLiveMonthIndex] = roundInventoryCurrency(
       (totals[goLiveMonthIndex] ?? 0) + openingInventoryValue,
     );
+  }
+
+  const adjustmentDeltaByMonth = calculateInventoryAdjustmentAssetDeltaByMonth(
+    stockAdjustments,
+    financialYear,
+    config.go_live_date,
+  );
+  let cumulativeAdjustment = 0;
+  for (let monthIndex = goLiveMonthIndex; monthIndex < 12; monthIndex += 1) {
+    cumulativeAdjustment = roundInventoryCurrency(
+      cumulativeAdjustment + (adjustmentDeltaByMonth[monthIndex] ?? 0),
+    );
+    if (cumulativeAdjustment !== 0) {
+      totals[monthIndex] = roundInventoryCurrency(
+        (totals[monthIndex] ?? 0) + cumulativeAdjustment,
+      );
+    }
   }
 
   totals[FULL_YEAR_INDEX] = totals[11];

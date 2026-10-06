@@ -1,4 +1,6 @@
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import Tooltip from "@/components/ui/tooltip";
+import type { ReactNode } from "react";
 import {
   scrollableTableActionsCellClassName,
   scrollableTableCompactCellClassName,
@@ -74,6 +76,21 @@ const markPaidButtonCompactClassName =
 
 const deleteButtonClassName =
   "rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50";
+
+function withDisabledActionTooltip(
+  disabled: boolean,
+  tooltip: string | undefined,
+  node: ReactNode,
+) {
+  if (disabled && tooltip?.trim()) {
+    return (
+      <Tooltip content={tooltip} variant="blocked">
+        {node}
+      </Tooltip>
+    );
+  }
+  return node;
+}
 
 export function toDateInputValue(value: string): string {
   return value.slice(0, 10);
@@ -212,21 +229,22 @@ export default function RegisterRowActions({
             {printing ? "…" : resolvedPrintLabel}
           </button>
         ) : null}
-        {onRecordPayment ? (
-          <button
-            type="button"
-            onClick={onRecordPayment}
-            disabled={recordingPayment || disableRecordPayment}
-            title={
+        {onRecordPayment
+          ? withDisabledActionTooltip(
+              Boolean(recordingPayment || disableRecordPayment),
               disableRecordPayment
                 ? (recordPaymentDisabledTitle ?? "Record payment is not available")
-                : undefined
-            }
-            className={payClass}
-          >
-            {recordingPayment ? "…" : resolvedPayLabel}
-          </button>
-        ) : null}
+                : undefined,
+              <button
+                type="button"
+                onClick={onRecordPayment}
+                disabled={recordingPayment || disableRecordPayment}
+                className={payClass}
+              >
+                {recordingPayment ? "…" : resolvedPayLabel}
+              </button>,
+            )
+          : null}
         {onMarkPaid ? (
           <button
             type="button"
@@ -237,33 +255,34 @@ export default function RegisterRowActions({
             {markingPaid ? "Marking…" : markPaidLabel}
           </button>
         ) : null}
-        {onEdit ? (
-          <button
-            type="button"
-            onClick={onEdit}
-            disabled={disableEdit}
-            title={
+        {onEdit
+          ? withDisabledActionTooltip(
+              disableEdit,
               disableEdit
                 ? (editDisabledTitle ?? "This entry cannot be edited")
-                : undefined
-            }
-            className={editButtonClassName}
-          >
-            Edit
-          </button>
-        ) : null}
-        {onReturn ? (
-          <button
-            type="button"
-            onClick={onReturn}
-            disabled={returning || disableReturn}
-            title={
+                : undefined,
+              <button
+                type="button"
+                onClick={onEdit}
+                disabled={disableEdit}
+                className={editButtonClassName}
+              >
+                Edit
+              </button>,
+            )
+          : null}
+        {onReturn
+          ? withDisabledActionTooltip(
+              Boolean(returning || disableReturn),
               disableReturn
                 ? (returnDisabledTitle ?? "Return is not available for this row")
-                : undefined
-            }
-            className={voidClass}
-          >
+                : undefined,
+              <button
+                type="button"
+                onClick={onReturn}
+                disabled={returning || disableReturn}
+                className={voidClass}
+              >
             <span className={`inline-flex items-center ${compact ? "gap-0.5" : "gap-1.5"}`}>
               {!compact ? (
                 <svg
@@ -280,23 +299,25 @@ export default function RegisterRowActions({
               ) : null}
               {returning ? "…" : resolvedReturnLabel}
             </span>
-          </button>
-        ) : null}
-        {onVoid ? (
-          <button
-            type="button"
-            onClick={onVoid}
-            disabled={voiding || disableVoid}
-            title={
+              </button>,
+            )
+          : null}
+        {onVoid
+          ? withDisabledActionTooltip(
+              Boolean(voiding || disableVoid),
               disableVoid
                 ? (voidDisabledTitle ?? "This sale has already been voided")
-                : undefined
-            }
-            className={voidClass}
-          >
-            {voiding ? "…" : resolvedVoidLabel}
-          </button>
-        ) : onRestore ? (
+                : undefined,
+              <button
+                type="button"
+                onClick={onVoid}
+                disabled={voiding || disableVoid}
+                className={voidClass}
+              >
+                {voiding ? "…" : resolvedVoidLabel}
+              </button>,
+            )
+          : onRestore ? (
           <button
             type="button"
             onClick={onRestore}
@@ -306,29 +327,33 @@ export default function RegisterRowActions({
             {restoring ? "Reactivating…" : restoreLabel}
           </button>
         ) : onArchive ? (
-          <button
-            type="button"
-            onClick={onArchive}
-            disabled={archiving || disableArchive}
-            title={disableArchive ? "This entry is already archived" : undefined}
-            className={archiveButtonClassName}
-          >
-            {archiving ? "Archiving…" : archiveLabel}
-          </button>
+          withDisabledActionTooltip(
+            Boolean(archiving || disableArchive),
+            disableArchive ? "This entry is already archived" : undefined,
+            <button
+              type="button"
+              onClick={onArchive}
+              disabled={archiving || disableArchive}
+              className={archiveButtonClassName}
+            >
+              {archiving ? "Archiving…" : archiveLabel}
+            </button>,
+          )
         ) : onDelete ? (
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={deleting || disableDelete}
-            title={
-              disableDelete
-                ? (deleteDisabledTitle ?? "This entry cannot be deleted")
-                : undefined
-            }
-            className={deleteButtonClassName}
-          >
-            {deleting ? "Deleting…" : "Delete"}
-          </button>
+          withDisabledActionTooltip(
+            Boolean(deleting || disableDelete),
+            disableDelete
+              ? (deleteDisabledTitle ?? "This entry cannot be deleted")
+              : undefined,
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting || disableDelete}
+              className={deleteButtonClassName}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>,
+          )
         ) : null}
       </div>
     </td>

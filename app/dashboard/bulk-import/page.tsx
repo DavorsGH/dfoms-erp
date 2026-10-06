@@ -1,4 +1,8 @@
 import BulkImportClient from "./bulk-import-client";
+import {
+  BULK_IMPORT_MODULE_BACK_LINK,
+  type BulkImportModuleBackLink,
+} from "@/lib/bulk-import/bulk-import-module-back-link";
 import type { BulkImportType } from "@/lib/bulk-import/types";
 
 type BulkImportPageProps = {
@@ -36,9 +40,20 @@ function parseInitialImportType(rawType: string | string[] | undefined): BulkImp
   return "product";
 }
 
+function moduleBackLinkFromSearchParams(
+  rawType: string | string[] | undefined,
+): BulkImportModuleBackLink | null {
+  const value = Array.isArray(rawType) ? rawType[0] : rawType;
+  if (!value?.trim()) {
+    return null;
+  }
+  return BULK_IMPORT_MODULE_BACK_LINK[parseInitialImportType(rawType)];
+}
+
 export default async function BulkImportPage({ searchParams }: BulkImportPageProps) {
   const params = await searchParams;
   const initialImportType = parseInitialImportType(params.type);
+  const moduleBackLink = moduleBackLinkFromSearchParams(params.type);
 
   return (
     <div>
@@ -46,7 +61,10 @@ export default async function BulkImportPage({ searchParams }: BulkImportPagePro
       <p className="mb-6 text-sm text-slate-600">
         Upload a spreadsheet and map columns to product, service, employee, customer, expense register, or fixed asset fields.
       </p>
-      <BulkImportClient initialImportType={initialImportType} />
+      <BulkImportClient
+        initialImportType={initialImportType}
+        moduleBackLink={moduleBackLink}
+      />
     </div>
   );
 }

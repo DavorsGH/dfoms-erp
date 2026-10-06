@@ -18,12 +18,16 @@ import {
   type BulkImportReviewIssue,
 } from "@/lib/bulk-import/bulk-import-review-issue";
 import { getBulkImportTargetFields } from "@/lib/bulk-import/target-fields";
-import { parseBulkImportSpreadsheetDate } from "@/lib/bulk-import/import-spreadsheet-values";
 import {
   normalizeTenantLookupKey,
   validateTenantNameLookup,
 } from "@/lib/bulk-import/tenant-name-lookup";
 import { normalizeEmployeeImportShift } from "@/lib/bulk-import/employee-shift-import";
+import {
+  buildInFileDuplicateReviewIssue,
+  bulkImportNormalizedDuplicateKey,
+  type InFileDuplicateGroupInfo,
+} from "@/lib/bulk-import/bulk-import-in-file-duplicate-issues";
 import type { EmployeeImportLookupContext } from "@/lib/bulk-import/validate-import-rows";
 
 const SALARY_GROUP_KEY = "salary_rate";
@@ -128,7 +132,7 @@ export function collectEmployeeImportReviewIssues(input: {
   ctx: BulkImportReviewFormatContext;
   employeeLookups: EmployeeImportLookupContext;
   compensationPolicyConfig: PayrollCompensationPolicyConfig | null | undefined;
-  inFileDuplicateStaffIds: Set<string>;
+  inFileDuplicateStaffIdGroups: Map<string, InFileDuplicateGroupInfo>;
 }): BulkImportReviewIssue[] {
   const {
     mappedData,
@@ -136,7 +140,7 @@ export function collectEmployeeImportReviewIssues(input: {
     ctx,
     employeeLookups,
     compensationPolicyConfig,
-    inFileDuplicateStaffIds,
+    inFileDuplicateStaffIdGroups,
   } = input;
 
   const issues: BulkImportReviewIssue[] = [];
@@ -167,51 +171,9 @@ export function collectEmployeeImportReviewIssues(input: {
           fieldKey: field.key,
           cellValue: mappedData[field.key],
           problem: `${field.label} is blank.`,
-          howToFix: "Enter a value in your spreadsheet and re-upload.",
+          howToFix: "Enter a value in your spreadsheet and upload the file again.",
           group_kind: "generic",
           group_key: `required:${field.key}`,
-        }),
-      );
-    }
-  }
-
-  const dateFields = [
-    "date_of_birth",
-    "date_hired",
-    "appointment_end_date",
-    "ghana_card_issue_date",
-    "ghana_card_expiry_date",
-  ] as const;
-
-  for (const fieldKey of dateFields) {
-    if (!(fieldKey in mappedData)) {
-      continue;
-    }
-
-    const parsed = parseBulkImportSpreadsheetDate(mappedData[fieldKey]);
-    const column = columnHeaderForFieldKey(ctx.columnMapping, fieldKey, ctx.importType);
-    if (parsed === "invalid") {
-      issues.push(
-        makeIssue(ctx, mappedData, rowNumber, {
-          severity: "error",
-          fieldKey,
-          cellValue: mappedData[fieldKey],
-          problem: `${column.label} "${cellDisplayValue(mappedData[fieldKey])}" isn't a valid date.`,
-          howToFix: "Use a date format like DD/MM/YYYY or YYYY-MM-DD.",
-          group_kind: "generic",
-          group_key: `date_invalid:${fieldKey}`,
-        }),
-      );
-    } else if (parsed === "out_of_range") {
-      issues.push(
-        makeIssue(ctx, mappedData, rowNumber, {
-          severity: "error",
-          fieldKey,
-          cellValue: mappedData[fieldKey],
-          problem: `${column.label} is outside the allowed date range.`,
-          howToFix: "Correct the date in your spreadsheet.",
-          group_kind: "generic",
-          group_key: `date_range:${fieldKey}`,
         }),
       );
     }
@@ -306,16 +268,16 @@ export function collectEmployeeImportReviewIssues(input: {
       );
     }
 
-    if (inFileDuplicateStaffIds.has(staffKey)) {
+    const staffDuplicateGroup = inFileDuplicateStaffIdGroups.get(staffKey);
+    if (staffDuplicateGroup) {
       issues.push(
-        makeIssue(ctx, mappedData, rowNumber, {
-          severity: "error",
+        buildInFileDuplicateReviewIssue({
+          ctx,
+          mappedData,
+          rowNumber,
           fieldKey: "staff_id",
-          cellValue: mappedData.staff_id,
-          problem: `Staff ID "${cellDisplayValue(mappedData.staff_id)}" is repeated in this file.`,
-          howToFix: "Give each employee a unique staff ID in the spreadsheet.",
-          group_kind: "generic",
-          group_key: "staff_id_duplicate_file",
+          group: staffDuplicateGroup,
+          severity: "error",
         }),
       );
     }
@@ -332,7 +294,7 @@ export function collectEmployeeImportReviewIssues(input: {
           cellValue: mappedData.contract_project_name,
           problem: `Contract/Project "${cellDisplayValue(mappedData.contract_project_name)}" wasn't found.`,
           howToFix:
-            "They'll be imported with no contract assigned. Create the project first and re-upload, or assign it later.",
+            "They'll be imported with no contract assigned. Create the project first and upload the file again, or assign it later.",
           group_kind: "contract_project",
           group_key: CONTRACT_GROUP_KEY,
         }),
@@ -435,19 +397,26 @@ export function employeeStaffIdDuplicateIssue(
   ctx: BulkImportReviewFormatContext,
   mappedData: Record<string, unknown>,
   rowNumber: number,
+  inFileDuplicateStaffIdGroups: Map<string, InFileDuplicateGroupInfo>,
 ): BulkImportReviewIssue | null {
   const staffId = String(mappedData.staff_id ?? "").trim();
   if (!staffId) {
     return null;
   }
 
-  return makeIssue(ctx, mappedData, rowNumber, {
-    severity: "error",
+  const group = inFileDuplicateStaffIdGroups.get(
+    bulkImportNormalizedDuplicateKey(staffId),
+  );
+  if (!group) {
+    return null;
+  }
+
+  return buildInFileDuplicateReviewIssue({
+    ctx,
+    mappedData,
+    rowNumber,
     fieldKey: "staff_id",
-    cellValue: staffId,
-    problem: `Staff ID "${staffId}" is repeated in this file.`,
-    howToFix: "Give each employee a unique staff ID in the spreadsheet.",
-    group_kind: "generic",
-    group_key: "staff_id_duplicate_file",
+    group,
+    severity: "error",
   });
 }

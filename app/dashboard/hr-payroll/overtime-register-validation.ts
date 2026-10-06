@@ -119,3 +119,66 @@ export function firstOvertimeFieldError(
   }
   return null;
 }
+
+export type OvertimeFormStrings = {
+  date: string;
+  day_type: OvertimeDayType;
+  hours_worked: string;
+  overtime_hours: string;
+  overtime_rate: string;
+  approved_by: string;
+};
+
+export function overtimeEntryInputFromFormStrings(
+  form: OvertimeFormStrings,
+): OvertimeEntryInput {
+  const dayType = normalizeOvertimeDayType(form.day_type);
+  return {
+    date: form.date.trim(),
+    day_type: dayType ?? OVERTIME_DAY_TYPE_NORMAL,
+    hours_worked: Number(form.hours_worked),
+    overtime_hours: Number(form.overtime_hours),
+    overtime_rate: Number(form.overtime_rate),
+    approved_by: form.approved_by.trim(),
+  };
+}
+
+/** True when amount preview should be hidden (invalid hours/rate rules). */
+export function overtimeAmountPreviewBlocked(form: OvertimeFormStrings): boolean {
+  const errors = validateOvertimeEntryInput(overtimeEntryInputFromFormStrings(form));
+  return Boolean(
+    errors.hours_worked || errors.overtime_hours || errors.overtime_rate,
+  );
+}
+
+export type OvertimeLiveValidatedField = keyof OvertimeEntryFieldErrors;
+
+const OVERTIME_HOURS_PAIR_FIELDS: OvertimeLiveValidatedField[] = [
+  "hours_worked",
+  "overtime_hours",
+];
+
+export function pickOvertimeErrorsForLiveValidation(
+  full: OvertimeEntryFieldErrors,
+  validatedFields: ReadonlySet<OvertimeLiveValidatedField>,
+): OvertimeEntryFieldErrors {
+  const picked: OvertimeEntryFieldErrors = {};
+  for (const field of validatedFields) {
+    if (full[field]) {
+      picked[field] = full[field];
+    }
+  }
+
+  const hoursPairActive = OVERTIME_HOURS_PAIR_FIELDS.some((field) =>
+    validatedFields.has(field),
+  );
+  if (hoursPairActive) {
+    for (const field of OVERTIME_HOURS_PAIR_FIELDS) {
+      if (full[field]) {
+        picked[field] = full[field];
+      }
+    }
+  }
+
+  return picked;
+}

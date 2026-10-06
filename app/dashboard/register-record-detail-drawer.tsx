@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import Tooltip from "@/components/ui/tooltip";
 import { notifyRegisterDetailDrawerOpen } from "./register-detail-drawer-visibility";
 
 export type RegisterDetailField = {
@@ -153,22 +154,36 @@ export default function RegisterRecordDetailDrawer({
             >
               Close
             </button>
-            <button
-              type="button"
-              disabled={disableEdit}
-              title={
-                disableEdit
-                  ? (editDisabledTitle ?? "This entry cannot be edited")
-                  : undefined
-              }
-              onClick={() => {
-                onClose();
-                onEdit();
-              }}
-              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Edit
-            </button>
+            {disableEdit && editDisabledTitle ? (
+              <Tooltip
+                content={editDisabledTitle ?? "This entry cannot be edited"}
+                variant="blocked"
+              >
+                <button
+                  type="button"
+                  disabled={disableEdit}
+                  onClick={() => {
+                    onClose();
+                    onEdit();
+                  }}
+                  className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Edit
+                </button>
+              </Tooltip>
+            ) : (
+              <button
+                type="button"
+                disabled={disableEdit}
+                onClick={() => {
+                  onClose();
+                  onEdit();
+                }}
+                className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a3a5c] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Edit
+              </button>
+            )}
           </footer>
         ) : null}
       </aside>
