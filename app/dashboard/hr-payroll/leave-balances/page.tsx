@@ -47,6 +47,7 @@ export default async function LeaveBalancesPage() {
         currentYear={currentYear}
         canManage={canManageLeaveBalances(role)}
         fetchError={fetchError}
+        tenantId={tenantId}
       />
     </HrPayrollShell>
   );

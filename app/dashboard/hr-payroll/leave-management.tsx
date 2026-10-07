@@ -27,6 +27,10 @@ import {
   inputClassName,
 } from "./hr-register-utils";
 import { allocateLeaveId } from "./hr-ids-api";
+import {
+  COMPASSIONATE_LEAVE_FORM_HINT,
+  COMPASSIONATE_LEAVE_TYPE_NAME,
+} from "../self-service/compassionate-leave-form-utils";
 import { useBusinessUnitReadScope } from "@/app/dashboard/business-unit-view-context";
 import {
   applyEmployeeIdScope,
@@ -355,6 +359,11 @@ export default function LeaveManagement({
                     </option>
                   ))}
                 </select>
+                {form.leave_type === COMPASSIONATE_LEAVE_TYPE_NAME ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    {COMPASSIONATE_LEAVE_FORM_HINT}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">

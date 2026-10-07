@@ -10,6 +10,7 @@ export const LEAVE_ENTITLEMENT_TYPES = [
   "Sick Leave",
   "Unpaid Leave",
   "Maternity Leave",
+  "Compassionate Leave",
 ] as const;
 
 export type LeaveEntitlementType = (typeof LEAVE_ENTITLEMENT_TYPES)[number];
@@ -70,6 +71,7 @@ export function defaultLeaveEntitlementDraftValues(): Record<
     "Sick Leave": "0",
     "Unpaid Leave": "0",
     "Maternity Leave": "84",
+    "Compassionate Leave": "0",
   };
 }
 

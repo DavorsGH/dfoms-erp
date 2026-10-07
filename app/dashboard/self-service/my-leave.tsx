@@ -19,6 +19,10 @@ import {
   LeaveExceedsBalanceHint,
 } from "./leave-exceeds-balance-hint";
 import {
+  COMPASSIONATE_LEAVE_FORM_HINT,
+  isCompassionateLeaveTypeName,
+} from "./compassionate-leave-form-utils";
+import {
   formatMaternityEntitlementHint,
   isMaternityLeaveTypeName,
   maternityEndDateFromStart,
@@ -70,6 +74,9 @@ export default function MyLeave({
     (type) => type.id === form.leave_type_id,
   );
   const isMaternitySelected = isMaternityLeaveTypeName(
+    selectedLeaveType?.type_name,
+  );
+  const isCompassionateSelected = isCompassionateLeaveTypeName(
     selectedLeaveType?.type_name,
   );
 
@@ -261,6 +268,11 @@ export default function MyLeave({
                   </option>
                 ))}
               </select>
+              {isCompassionateSelected ? (
+                <p className="mt-2 text-sm text-slate-600">
+                  {COMPASSIONATE_LEAVE_FORM_HINT}
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -368,7 +380,7 @@ export default function MyLeave({
         </h3>
         <p className="mb-4 text-xs text-amber-700">
           Annual Leave entitlement is pending confirmation from management
-          (Ghana Labour Act standard — flagged for David).
+          (Ghana Labour Act standard — flagged for your HR team).
         </p>
         {balances.length === 0 ? (
           <p className="text-sm text-slate-600">
