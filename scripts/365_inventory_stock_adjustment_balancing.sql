@@ -25,7 +25,23 @@ CREATE POLICY inventory_stock_adjustment_register_links_tenant_select
   ON public.inventory_stock_adjustment_register_links FOR SELECT TO authenticated
   USING (tenant_matches(tenant_id));
 
-GRANT SELECT ON public.inventory_stock_adjustment_register_links TO authenticated;
+DROP POLICY IF EXISTS inventory_stock_adjustment_register_links_tenant_insert
+  ON public.inventory_stock_adjustment_register_links;
+CREATE POLICY inventory_stock_adjustment_register_links_tenant_insert
+  ON public.inventory_stock_adjustment_register_links
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (public.tenant_matches(tenant_id));
+
+DROP POLICY IF EXISTS inventory_stock_adjustment_register_links_tenant_delete
+  ON public.inventory_stock_adjustment_register_links;
+CREATE POLICY inventory_stock_adjustment_register_links_tenant_delete
+  ON public.inventory_stock_adjustment_register_links
+  FOR DELETE
+  TO authenticated
+  USING (public.tenant_matches(tenant_id));
+
+GRANT SELECT, INSERT, DELETE ON public.inventory_stock_adjustment_register_links TO authenticated;
 GRANT ALL ON public.inventory_stock_adjustment_register_links TO service_role;
 
 DROP TRIGGER IF EXISTS trg_inventory_stock_adjustment_register_links_enforce_tenant_id
@@ -42,12 +58,14 @@ CREATE OR REPLACE FUNCTION public.reverse_inventory_stock_adjustment_register_li
 )
 RETURNS void
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
   v_link public.inventory_stock_adjustment_register_links%ROWTYPE;
 BEGIN
+  PERFORM public.assert_caller_can_act_for_tenant(p_tenant_id);
+
   IF p_tenant_id IS NULL THEN
     RAISE EXCEPTION 'p_tenant_id is required';
   END IF;
@@ -99,7 +117,7 @@ CREATE OR REPLACE FUNCTION public.post_inventory_stock_adjustment_register_link(
 )
 RETURNS void
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = public, extensions, pg_temp
 AS $$
 DECLARE
@@ -113,6 +131,8 @@ DECLARE
   v_invoice text;
   v_receipt text;
 BEGIN
+  PERFORM public.assert_caller_can_act_for_tenant(p_tenant_id);
+
   IF p_tenant_id IS NULL THEN
     RAISE EXCEPTION 'p_tenant_id is required';
   END IF;
@@ -177,7 +197,7 @@ BEGIN
       'Other Income',
       'Inventory gain (stock adjustment)',
       v_amount,
-      v_amount,
+      0,
       0,
       'Non-Cash',
       format(
@@ -466,6 +486,21 @@ BEGIN
     'finished',
     OLD.id
   );
+
+  PERFORM public.adjust_finished_product_balance_qty(
+    OLD.tenant_id,
+    OLD.product_id,
+    OLD.business_unit_id,
+    -OLD.quantity_delta
+  );
+
+  UPDATE public.finished_products
+  SET
+    current_stock = current_stock - OLD.quantity_delta,
+    updated_at = now()
+  WHERE id = OLD.product_id
+    AND tenant_id = OLD.tenant_id;
+
   RETURN OLD;
 END;
 $$;
@@ -525,6 +560,9 @@ BEGIN
     'raw',
     OLD.id
   );
+
+  PERFORM public.recalculate_raw_material_inventory(OLD.material_id);
+
   RETURN OLD;
 END;
 $$;

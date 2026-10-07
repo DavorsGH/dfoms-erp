@@ -50,6 +50,10 @@ import {
   calculateDirectorsLoanCashOutflowsByMonth,
   type DirectorsLoanLedgerEntry,
 } from "./directors-loan-ledger-utils";
+import {
+  calculateStaffAdvanceCashOutflowsByMonth,
+  type StaffAdvanceBalanceSheetEntry,
+} from "./staff-advances-balance-sheet-utils";
 
 export {
   parseCashPaidFromExpenseNotes,
@@ -75,6 +79,7 @@ function getPeriodMonthParts(
 export type CashMovementIncomeEntry = {
   date?: string | null;
   amount_received: number;
+  payment_status?: string | null;
   entry_type?: IncomeEntryType | null;
   sale_status?: ProductSaleStatus | null;
 };
@@ -114,6 +119,7 @@ export type CashMovementInputs = {
   staffSalaryNetByPayrollMonth?: Map<string, number>;
   /** Store credit applied to sales — not cash received (by applied_date). */
   creditNoteApplications?: CustomerCreditsApplicationRow[];
+  staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
 };
 
 export type MonthlyCashComponents = {
@@ -192,6 +198,15 @@ function sumIncomeReceivedByMonth(
 
   for (const entry of incomeEntries) {
     if (!isActiveIncomeForReporting(entry)) {
+      continue;
+    }
+
+    const paymentStatus = (entry.payment_status ?? "")
+      .trim()
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+    if (paymentStatus === "non-cash") {
       continue;
     }
 
@@ -415,6 +430,10 @@ export function buildMonthlyCashComponents(
     inputs.tenantId,
     financialYear,
   );
+  const staffAdvanceOutflows = calculateStaffAdvanceCashOutflowsByMonth(
+    inputs.staffSalaryAdvanceEntries ?? [],
+    financialYear,
+  );
   const loanProceedsForCash = loanProceeds;
   const loanRepaymentsForCash = loanRepayments;
   const fixedAssetPurchases = roundMonthlyTotals(
@@ -440,14 +459,17 @@ export function buildMonthlyCashComponents(
       addMonthlyTotals(
         addMonthlyTotals(
           addMonthlyTotals(
-            addMonthlyTotals(paidExpenses, loanRepaymentsForCash),
-            rawMaterialPurchases,
+            addMonthlyTotals(
+              addMonthlyTotals(paidExpenses, loanRepaymentsForCash),
+              rawMaterialPurchases,
+            ),
+            productPurchases,
           ),
-          productPurchases,
+          accountsPayableSettlements,
         ),
-        accountsPayableSettlements,
+        directorsLoanRepayments,
       ),
-      directorsLoanRepayments,
+      staffAdvanceOutflows,
     ),
     fixedAssetPurchases,
   );

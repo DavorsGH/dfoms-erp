@@ -1,5 +1,4 @@
 import type { InventoryStockAdjustmentRow } from "@/lib/inventory/inventory-stock-adjustment-financials";
-import { calculateInventoryAdjustmentAssetDeltaByMonth } from "@/lib/inventory/inventory-stock-adjustment-financials";
 import type { FinishedProductRecord } from "./finished-products-utils";
 import type { RawMaterialRecord } from "./raw-materials-utils";
 import {
@@ -88,10 +87,19 @@ export type RawMaterialInventoryAdjustment = {
   cost_per_unit: number;
 };
 
+/** Finished-product manual stock adjustment (found stock, opening balance, etc.). */
+export type FinishedProductInventoryAdjustment = {
+  product_id: string;
+  effective_date: string;
+  quantity_delta: number;
+  cost_per_unit: number;
+};
+
 export type InventoryValuationHistory = {
   finishedProductInflows: FinishedProductInventoryInflow[];
   finishedProductCogs: FinishedProductInventoryCogs[];
   finishedProductInternalUse: FinishedProductInventoryInternalUse[];
+  finishedProductAdjustments?: FinishedProductInventoryAdjustment[];
   rawMaterialPurchases: RawMaterialInventoryPurchase[];
   rawMaterialConsumptions: RawMaterialInventoryConsumption[];
   rawMaterialAdjustments?: RawMaterialInventoryAdjustment[];
@@ -273,12 +281,14 @@ export function calculateFinishedProductValueAsOf(
   internalUse: FinishedProductInventoryInternalUse[],
   config: InventoryBalanceConfig | null,
   asOfDate: string,
+  adjustments: FinishedProductInventoryAdjustment[] = [],
 ): number {
   if (!config?.go_live_date) {
     return 0;
   }
 
   const asOf = normalizeDate(asOfDate);
+  const goLive = normalizeDate(config.go_live_date);
   const productIds = new Set<string>();
   for (const inflow of inflows) {
     productIds.add(inflow.product_id);
@@ -287,6 +297,9 @@ export function calculateFinishedProductValueAsOf(
     productIds.add(row.product_id);
   }
   for (const row of internalUse) {
+    productIds.add(row.product_id);
+  }
+  for (const row of adjustments) {
     productIds.add(row.product_id);
   }
 
@@ -329,6 +342,22 @@ export function calculateFinishedProductValueAsOf(
         continue;
       }
       value -= Number(row.amount) || 0;
+    }
+
+    for (const adjustment of adjustments) {
+      if (adjustment.product_id !== productId) {
+        continue;
+      }
+      const effective = normalizeDate(adjustment.effective_date);
+      if (!effective || effective < goLive || effective > asOf) {
+        continue;
+      }
+      const qty = Number(adjustment.quantity_delta) || 0;
+      const unit = Number(adjustment.cost_per_unit) || 0;
+      if (qty === 0) {
+        continue;
+      }
+      value += qty * unit;
     }
 
     total += value;
@@ -511,6 +540,7 @@ export function calculateInventoryValueAsOf(
       history.finishedProductInternalUse,
       config,
       asOfDate,
+      history.finishedProductAdjustments ?? [],
     ) +
       calculateRawMaterialValueAsOf(
         history.rawMaterialPurchases,
@@ -544,7 +574,7 @@ export function calculateInventoryByMonth(
   config: InventoryBalanceConfig | null,
   financialYear: number,
   referenceDate = new Date(),
-  stockAdjustments: InventoryStockAdjustmentRow[] = [],
+  _stockAdjustments: InventoryStockAdjustmentRow[] = [],
 ): MonthlyTotals {
   const totals = createEmptyMonthlyTotals();
   if (!config?.go_live_date) {
@@ -595,22 +625,8 @@ export function calculateInventoryByMonth(
     );
   }
 
-  const adjustmentDeltaByMonth = calculateInventoryAdjustmentAssetDeltaByMonth(
-    stockAdjustments,
-    financialYear,
-    config.go_live_date,
-  );
-  let cumulativeAdjustment = 0;
-  for (let monthIndex = goLiveMonthIndex; monthIndex < 12; monthIndex += 1) {
-    cumulativeAdjustment = roundInventoryCurrency(
-      cumulativeAdjustment + (adjustmentDeltaByMonth[monthIndex] ?? 0),
-    );
-    if (cumulativeAdjustment !== 0) {
-      totals[monthIndex] = roundInventoryCurrency(
-        (totals[monthIndex] ?? 0) + cumulativeAdjustment,
-      );
-    }
-  }
+  // Stock adjustments are included in movement history (FP + RM). P&L overlay
+  // still uses stockAdjustments separately in balance-sheet-utils.
 
   totals[FULL_YEAR_INDEX] = totals[11];
   return totals;
@@ -775,7 +791,9 @@ export function emptyInventoryValuationHistory(): InventoryValuationHistory {
     finishedProductInflows: [],
     finishedProductCogs: [],
     finishedProductInternalUse: [],
+    finishedProductAdjustments: [],
     rawMaterialPurchases: [],
     rawMaterialConsumptions: [],
+    rawMaterialAdjustments: [],
   };
 }

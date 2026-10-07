@@ -10,6 +10,7 @@ export const PLATFORM_LEAVE_TYPE_SEED_ROWS: PlatformLeaveTypeSeedRow[] = [
   { type_name: "Annual Leave", default_annual_entitlement: 15 },
   { type_name: "Sick Leave", default_annual_entitlement: null },
   { type_name: "Unpaid Leave", default_annual_entitlement: 0 },
+  { type_name: "Maternity Leave", default_annual_entitlement: 84 },
 ];
 
 export async function seedTenantLeaveTypesIfMissing(

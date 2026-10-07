@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import {
-  getActiveBusinessUnitId,
-  getViewAllBusinessUnits,
-} from "@/utils/dashboard-auth";
+import { getViewAllBusinessUnits } from "@/utils/dashboard-auth";
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
-import { assertRemitBusinessUnitAllowed } from "@/utils/phase5e-lock";
+import {
+  assertRemitBusinessUnitAllowed,
+  resolvePayrollWriteBusinessUnitId,
+} from "@/utils/phase5e-lock";
 import { FINANCE_SECTION_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import type { RemitTaxForPeriodResult, RemitTaxKind } from "@/app/dashboard/finance/tax-ledger-remit";
@@ -41,10 +41,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
-    getActiveBusinessUnitId(),
+  const [writeBu, viewAllBusinessUnits] = await Promise.all([
+    resolvePayrollWriteBusinessUnitId(tenantId),
     getViewAllBusinessUnits(),
   ]);
+  if (!writeBu.ok) {
+    return NextResponse.json({ error: writeBu.error }, { status: 400 });
+  }
+  const activeBusinessUnitId = writeBu.businessUnitId;
 
   const remitGate = await assertRemitBusinessUnitAllowed(
     tenantId,

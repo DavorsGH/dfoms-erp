@@ -1,6 +1,7 @@
 import type { BalanceSheetPageData } from "@/app/dashboard/finance/balance-sheet-page-data";
 import { buildCustomerCreditsBalanceSheetOptions } from "@/app/dashboard/finance/balance-sheet-page-data";
 import type { CashMovementManualEntry } from "@/app/dashboard/finance/cash-movement-utils";
+import type { StaffAdvanceBalanceSheetEntry } from "@/app/dashboard/finance/staff-advances-balance-sheet-utils";
 
 export type StandardBalanceSheetDataSlice = Pick<
   BalanceSheetPageData,
@@ -27,6 +28,7 @@ export type StandardBalanceSheetReportData = StandardBalanceSheetDataSlice &
     | "initialTaxLedgerEntries"
     | "initialWelfareFundEntries"
   > & {
+  initialStaffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
   initialManualEntries: CashMovementManualEntry[];
 };
 import {
@@ -43,7 +45,9 @@ export type StandardBalanceSheetReportExtras = {
 
 export function buildStandardBalanceSheetReportOptions(
   tenantId: string,
-  data: StandardBalanceSheetDataSlice,
+  data: StandardBalanceSheetDataSlice & {
+    initialStaffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
+  },
   extras: StandardBalanceSheetReportExtras = {},
 ): BalanceSheetReportOptions {
   return {
@@ -53,7 +57,10 @@ export function buildStandardBalanceSheetReportOptions(
     directorsLoanLedgerEntries: data.initialDirectorsLoanLedgerEntries,
     allBusinessUnitsDirectorsLoan: extras.allBusinessUnitsDirectorsLoan,
     rawManualFinancialEntries: extras.rawManualFinancialEntries,
-    ...buildCustomerCreditsBalanceSheetOptions(data),
+    ...buildCustomerCreditsBalanceSheetOptions({
+      ...data,
+      initialStaffSalaryAdvanceEntries: data.initialStaffSalaryAdvanceEntries ?? [],
+    }),
   };
 }
 
@@ -87,6 +94,7 @@ export type BalanceSheetMonthCheck = {
   difference: number;
   totalAssets: number;
   totalLiabilitiesAndEquity: number;
+  roundingDifference: number | null;
 };
 
 export function runBalanceSheetMonthChecks(
@@ -101,6 +109,7 @@ export function runBalanceSheetMonthChecks(
       difference: check.difference,
       totalAssets: check.totalAssets,
       totalLiabilitiesAndEquity: check.totalLiabilitiesAndEquity,
+      roundingDifference: check.roundingDifference,
     };
   });
 }

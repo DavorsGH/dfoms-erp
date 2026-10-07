@@ -18,10 +18,13 @@ export function SummaryCard({
   href,
   tone = "default",
   valueClassName,
+  valueNote,
 }: {
   title: string;
   subtitle?: string;
   value: string;
+  /** Grey helper line under the main value (e.g. rounding tolerance note). */
+  valueNote?: string | null;
   breakdown?: Array<{ label: string; value: string }>;
   /** When false with a breakdown, omit the Total row (e.g. non-additive peers). */
   showTotal?: boolean;
@@ -82,7 +85,12 @@ export function SummaryCard({
           ) : null}
         </div>
       ) : (
-        <p className={resolvedValueClassName}>{value}</p>
+        <>
+          <p className={resolvedValueClassName}>{value}</p>
+          {valueNote ? (
+            <p className="mt-1 text-xs text-slate-500">{valueNote}</p>
+          ) : null}
+        </>
       )}
     </Link>
   );

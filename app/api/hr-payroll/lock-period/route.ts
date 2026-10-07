@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireTenantRoleIn } from "@/utils/admin-auth";
-import { getActiveBusinessUnitId } from "@/utils/dashboard-auth";
 import { scopeToBusinessUnitId } from "@/utils/phase5e-key-structure";
-import { assertLockBusinessUnitAllowed } from "@/utils/phase5e-lock";
+import {
+  assertLockBusinessUnitAllowed,
+  resolvePayrollWriteBusinessUnitId,
+} from "@/utils/phase5e-lock";
 import { PAYROLL_PERIOD_MANAGE_ROLES } from "@/utils/rbac-access";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
@@ -57,7 +59,11 @@ export async function POST(request: Request) {
     const payrollMonth = body.payrollMonth?.slice(0, 10);
     const lockStatus = body.lockStatus;
     const rows = body.rows ?? [];
-    const businessUnitId = await getActiveBusinessUnitId();
+    const writeBu = await resolvePayrollWriteBusinessUnitId(tenantId);
+    if (!writeBu.ok) {
+      return NextResponse.json({ error: writeBu.error }, { status: 400 });
+    }
+    const businessUnitId = writeBu.businessUnitId;
 
     if (!payrollMonth) {
       return NextResponse.json({ error: "payrollMonth is required" }, { status: 400 });

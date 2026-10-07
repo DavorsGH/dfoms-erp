@@ -21,6 +21,7 @@ import {
   type FinishedProductAdjustmentType,
   type FinishedProductStockAdjustmentRecord,
 } from "@/app/dashboard/inventory/finished-products-utils";
+import { mapFinishedProductStockAdjustmentErrorMessage } from "@/lib/inventory/inventory-mutation-error";
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -36,6 +37,7 @@ type AdjustmentWriteBody = {
   notes?: unknown;
   manufacturing_date?: unknown;
   expiration_date?: unknown;
+  business_unit_id?: unknown;
 };
 
 function parseOptionalDateOnly(value: unknown): string | null {
@@ -209,10 +211,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
+  const requestedBu =
+    typeof body.business_unit_id === "string" && body.business_unit_id.trim()
+      ? body.business_unit_id.trim()
+      : undefined;
+
   const writeBu = await resolveServerWriteBusinessUnitId({
     supabase,
     tenantId: auth.tenantId,
     authUid: user.id,
+    requestedBusinessUnitId: requestedBu,
+    requireExplicitSwitcherSelection: requestedBu === undefined,
   });
   if (!writeBu.ok) {
     return NextResponse.json({ error: writeBu.error }, { status: writeBu.status });
@@ -237,7 +246,10 @@ export async function POST(request: Request) {
   );
 
   if (rpcError) {
-    return NextResponse.json({ error: rpcError.message }, { status: 400 });
+    return NextResponse.json(
+      { error: mapFinishedProductStockAdjustmentErrorMessage(rpcError) },
+      { status: 400 },
+    );
   }
 
   const resolvedId =

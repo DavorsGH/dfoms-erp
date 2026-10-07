@@ -1,6 +1,9 @@
 import { BS_INTEGRITY_FAILURE_THRESHOLD } from "@/utils/balance-sheet-integrity-constants";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BALANCE_TOLERANCE } from "@/app/dashboard/finance/balance-sheet-utils";
+import {
+  BALANCE_CHECK_ROUNDING_TOLERANCE,
+  BALANCE_TOLERANCE,
+} from "@/app/dashboard/finance/balance-sheet-utils";
 import { fetchBalanceSheetPageData } from "@/app/dashboard/finance/balance-sheet-page-data";
 import {
   buildStandardBalanceSheetReport,
@@ -102,7 +105,7 @@ export function classifyBalanceSheetIntegrityStatus(
   }
 
   if (
-    maxAbsDiff > BALANCE_TOLERANCE ||
+    maxAbsDiff >= BALANCE_CHECK_ROUNDING_TOLERANCE ||
     orphanApAccrualCount > 0 ||
     zeroCogsProductSaleLines > 0
   ) {

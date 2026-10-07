@@ -30,6 +30,7 @@ import type {
   DirectorsLoanRepaymentRow,
 } from "./directors-loan-utils";
 import type { DirectorsLoanLedgerEntry } from "./directors-loan-ledger-utils";
+import type { StaffAdvanceBalanceSheetEntry } from "./staff-advances-balance-sheet-utils";
 import type {
   IncomeEntryType,
   ProductSaleStatus,
@@ -42,6 +43,7 @@ export type CashFlowReportOptions = {
   directorsLoanRepayments?: DirectorsLoanRepaymentRow[];
   directorsLoanLedgerEntries?: DirectorsLoanLedgerEntry[];
   creditNoteApplications?: CustomerCreditsApplicationRow[];
+  staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
 };
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
@@ -248,6 +250,7 @@ export function buildCashFlowReport(
       directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
       staffSalaryNetByPayrollMonth,
       creditNoteApplications: options.creditNoteApplications,
+      staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
     },
     financialYear,
   );

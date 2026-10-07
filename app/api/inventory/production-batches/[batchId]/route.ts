@@ -161,7 +161,7 @@ export async function PATCH(
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const { error: rpcError } = await admin.rpc("update_production_batch", {
+  const { error: rpcError } = await supabase.rpc("update_production_batch", {
     p_tenant_id: auth.tenantId,
     p_batch_id: batchId,
     p_production_date: body.production_date.trim().slice(0, 10),
@@ -220,6 +220,97 @@ export async function PATCH(
         expiration_date: body.expiration_date ?? null,
         materials,
       },
+    },
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ batchId: string }> },
+) {
+  const auth = await requireTenantRoleIn(INVENTORY_EDIT_ROLES);
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  const { batchId } = await context.params;
+  if (!batchId?.trim()) {
+    return NextResponse.json({ error: "Batch id is required." }, { status: 400 });
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const authUid = await getServerAuthUid(supabase);
+  if (!authUid.ok) {
+    return NextResponse.json({ error: authUid.error }, { status: authUid.status });
+  }
+
+  const rowAccess = await assertServerRowWriteAccess({
+    supabase,
+    tenantId: auth.tenantId,
+    authUid: authUid.authUid,
+    table: "production_batches",
+    rowId: batchId,
+  });
+  if (!rowAccess.ok) {
+    return NextResponse.json({ error: rowAccess.error }, { status: rowAccess.status });
+  }
+
+  const admin = createAdminClient();
+  const { data: batchRow, error: batchError } = await admin
+    .from("production_batches")
+    .select("*")
+    .eq("id", batchId)
+    .eq("tenant_id", auth.tenantId)
+    .maybeSingle();
+
+  if (batchError) {
+    return NextResponse.json({ error: batchError.message }, { status: 500 });
+  }
+  if (!batchRow) {
+    return NextResponse.json({ error: "Production batch not found." }, { status: 404 });
+  }
+
+  const { error: rpcError } = await supabase.rpc("delete_production_batch", {
+    p_batch_id: batchId,
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (rpcError) {
+    console.error("delete_production_batch failed", rpcError);
+    await logInventoryUserActivity({
+      tenantId: auth.tenantId,
+      authUserId: authUid.authUid,
+      email: user?.email,
+      eventName: "inventory.production_batch.delete",
+      status: "failure",
+      metadata: {
+        batch_id: batchId,
+        batch_number: batchRow.batch_number,
+        error: rpcError.message,
+      },
+    });
+    return NextResponse.json(
+      { error: mapProductionBatchSaveErrorMessage(rpcError) },
+      { status: 400 },
+    );
+  }
+
+  await logInventoryUserActivity({
+    tenantId: auth.tenantId,
+    authUserId: authUid.authUid,
+    email: user?.email,
+    eventName: "inventory.production_batch.delete",
+    status: "success",
+    metadata: {
+      batch_id: batchId,
+      batch_number: batchRow.batch_number,
+      deleted: batchRow,
     },
   });
 

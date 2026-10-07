@@ -11,6 +11,7 @@ import {
   scheduleOfflineRouteWarm,
   stableAvatarWarmKey,
 } from "@/lib/offline-nav-warm";
+import { ASSISTANT_BUBBLE_SIZE_PX } from "@/components/ai-assistant/use-assistant-bubble-position";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AppRole } from "@/app/dashboard/user-account-types";
@@ -175,6 +176,9 @@ export default function DashboardShell({
             <main
               data-dashboard-main
               className="min-w-0 flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6"
+              style={{
+                paddingBottom: `max(1.5rem, calc(${ASSISTANT_BUBBLE_SIZE_PX}px + 1.5rem + env(safe-area-inset-bottom, 0px)))`,
+              }}
             >
               <div className="mb-3" data-dashboard-chrome>
                 <SessionOfflineBanner />

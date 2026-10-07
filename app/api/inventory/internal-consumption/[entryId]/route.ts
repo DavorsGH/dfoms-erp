@@ -9,6 +9,10 @@ import {
   getServerAuthUid,
 } from "@/utils/business-unit-access.server";
 import { logInventoryUserActivity } from "@/lib/inventory/inventory-audit-log";
+import {
+  mapInternalConsumptionDeleteErrorMessage,
+  mapInternalConsumptionMutationErrorMessage,
+} from "@/lib/inventory/inventory-mutation-error";
 
 type PatchBody = {
   consumption_date?: string;
@@ -112,7 +116,10 @@ export async function PATCH(
       status: "failure",
       metadata: { entry_id: entryId, error: rpcError.message },
     });
-    return NextResponse.json({ error: rpcError.message }, { status: 400 });
+    return NextResponse.json(
+      { error: mapInternalConsumptionMutationErrorMessage(rpcError) },
+      { status: 400 },
+    );
   }
 
   await logInventoryUserActivity({
@@ -203,7 +210,10 @@ export async function DELETE(
       status: "failure",
       metadata: { entry_id: entryId, error: rpcError.message },
     });
-    return NextResponse.json({ error: rpcError.message }, { status: 400 });
+    return NextResponse.json(
+      { error: mapInternalConsumptionDeleteErrorMessage(rpcError) },
+      { status: 400 },
+    );
   }
 
   await logInventoryUserActivity({

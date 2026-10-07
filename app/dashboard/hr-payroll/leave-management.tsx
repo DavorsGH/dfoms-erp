@@ -19,7 +19,6 @@ import { getEmployeeDisplayName, type HrEmployee } from "./employee-utils";
 import {
   APPROVAL_STATUS_OPTIONS,
   DEFAULT_APPROVAL_STATUS,
-  LEAVE_TYPE_OPTIONS,
   type LeaveManagementEntry,
 } from "./leave-management-utils";
 import {
@@ -38,6 +37,7 @@ type LeaveManagementProps = {
   initialEntries: LeaveManagementEntry[];
   initialEmployees: HrEmployee[];
   fetchError: string | null;
+  leaveTypeOptions?: string[];
   /** Workspace id for employee-linked BU scoping on refresh. */
   tenantId?: string | null;
 };
@@ -57,6 +57,7 @@ export default function LeaveManagement({
   initialEntries,
   initialEmployees,
   fetchError,
+  leaveTypeOptions = [],
   tenantId = null,
 }: LeaveManagementProps) {
   const supabase = createClient();
@@ -348,7 +349,7 @@ export default function LeaveManagement({
                   className={inputClassName}
                 >
                   <option value="">Select leave type</option>
-                  {LEAVE_TYPE_OPTIONS.map((type) => (
+                  {leaveTypeOptions.map((type) => (
                     <option key={type} value={type}>
                       {type}
                     </option>

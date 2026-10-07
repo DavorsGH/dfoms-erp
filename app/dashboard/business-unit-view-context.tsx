@@ -53,14 +53,28 @@ export function useBusinessUnitView(): BusinessUnitViewValue {
 /**
  * Resolve stamp id for client creates, or an error when All Businesses is selected.
  */
+const CHOOSE_BUSINESS_BEFORE_SAVE =
+  "Choose a business before saving." as const;
+
 export function useStampBusinessUnitId():
   | { ok: true; businessUnitId: string | null }
-  | { ok: false; error: typeof STAMP_REFUSED_VIEW_ALL_MESSAGE } {
-  const { viewAllBusinessUnits, activeBusinessUnitId } = useBusinessUnitView();
-  return resolveStampBusinessUnitId({
+  | { ok: false; error: typeof STAMP_REFUSED_VIEW_ALL_MESSAGE | typeof CHOOSE_BUSINESS_BEFORE_SAVE } {
+  const { viewAllBusinessUnits, activeBusinessUnitId, units } =
+    useBusinessUnitView();
+  const stamp = resolveStampBusinessUnitId({
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
+  if (!stamp.ok) {
+    return stamp;
+  }
+  if (units.length > 1 && !activeBusinessUnitId?.trim()) {
+    return { ok: false, error: CHOOSE_BUSINESS_BEFORE_SAVE };
+  }
+  if (units.length === 1) {
+    return { ok: true, businessUnitId: units[0]!.id };
+  }
+  return stamp;
 }
 
 /**

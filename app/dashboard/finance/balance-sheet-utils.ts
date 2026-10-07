@@ -23,6 +23,7 @@ import {
 } from "./profit-loss-utils";
 import { getCurrentFinancialYear } from "./finance-year-utils";
 import {
+  formatGHS,
   isActiveIncomeForReporting,
   resolveIncomeOutstandingBalance,
 } from "./income-register-utils";
@@ -83,6 +84,11 @@ import {
   type CustomerCreditsCreditNoteRow,
   type CustomerCreditsRefundRow,
 } from "./customer-credits-liability-utils";
+import {
+  calculateStaffAdvanceCashOutflowsByMonth,
+  calculateStaffAdvancesReceivableByMonth,
+  type StaffAdvanceBalanceSheetEntry,
+} from "./staff-advances-balance-sheet-utils";
 
 export type { BalanceSheetWelfareFundEntry } from "./staff-welfare-fund-utils";
 export { calculateStaffWelfarePayableByMonth } from "./staff-welfare-fund-utils";
@@ -98,6 +104,7 @@ export type BalanceSheetReportOptions = {
   creditNotesForCustomerCredits?: CustomerCreditsCreditNoteRow[];
   refundsForCustomerCredits?: CustomerCreditsRefundRow[];
   creditNoteApplicationsForCash?: CustomerCreditsApplicationRow[];
+  staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
 };
 
 export type {
@@ -108,7 +115,21 @@ export type {
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
 export { calculateFixedAssetPurchaseOutflowsByMonth } from "./fixed-assets-utils";
 
+/** Line-level scope aggregation parity (All vs BUs + Untagged). */
 export const BALANCE_TOLERANCE = 0.01;
+
+/** GHS: treat |assets − L+E| below this as balanced for display, dashboard, and integrity. */
+export const BALANCE_CHECK_ROUNDING_TOLERANCE = 0.05;
+
+export type BalancePeriodCheck = {
+  totalAssets: number;
+  totalLiabilitiesAndEquity: number;
+  difference: number;
+  isBalanced: boolean;
+  /** Set when balanced only because of rounding tolerance (|difference| > 0). */
+  roundingDifference: number | null;
+  roundingNote: string | null;
+};
 
 export function roundCurrency(value: number): number {
   return Math.round(value * 100) / 100;
@@ -127,6 +148,7 @@ export type BalanceSheetIncomeEntry = {
   amount: number;
   amount_received: number;
   outstanding_balance: number | null;
+  payment_status?: string | null;
   wht_amount?: number | null;
   service_category: string;
   entry_type?: "service" | "product_sale" | null;
@@ -528,6 +550,7 @@ function calculateCashAndCashEquivalentsByMonth(
       directorsLoanLedgerEntries: options.directorsLoanLedgerEntries,
       staffSalaryNetByPayrollMonth,
       creditNoteApplications: options.creditNoteApplicationsForCash,
+      staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
     },
     financialYear,
   );
@@ -561,22 +584,41 @@ export function getBalanceSheetForMonth(
   }));
 }
 
+export function getBalanceCheckRoundingNote(
+  difference: number,
+  isBalanced: boolean,
+): string | null {
+  if (!isBalanced || difference === 0) {
+    return null;
+  }
+  if (Math.abs(difference) >= BALANCE_CHECK_ROUNDING_TOLERANCE) {
+    return null;
+  }
+  return `Rounding difference ${formatGHS(Math.abs(difference))}`;
+}
+
 export function getBalanceCheckForPeriod(
   report: BalanceSheetReport,
   periodIndex = FULL_YEAR_INDEX,
-) {
+): BalancePeriodCheck {
   const totalAssets = roundCurrency(report.totalAssets[periodIndex] ?? 0);
   const totalLiabilitiesAndEquity = roundCurrency(
     report.totalLiabilitiesAndEquity[periodIndex] ?? 0,
   );
   const difference = roundCurrency(totalAssets - totalLiabilitiesAndEquity);
-  const isBalanced = Math.abs(difference) <= BALANCE_TOLERANCE;
+  const isBalanced =
+    Math.abs(difference) < BALANCE_CHECK_ROUNDING_TOLERANCE;
+  const roundingDifference =
+    isBalanced && difference !== 0 ? difference : null;
+  const roundingNote = getBalanceCheckRoundingNote(difference, isBalanced);
 
   return {
     totalAssets,
     totalLiabilitiesAndEquity,
     difference,
     isBalanced,
+    roundingDifference,
+    roundingNote,
   };
 }
 
@@ -724,6 +766,12 @@ export function buildBalanceSheetReport(
         );
   const directorsLoan = directorsLoanLines.liability;
   const dueFromDirector = directorsLoanLines.dueFromDirector;
+  const staffAdvancesReceivable = roundMonthlyTotals(
+    calculateStaffAdvancesReceivableByMonth(
+      options.staffSalaryAdvanceEntries ?? [],
+      financialYear,
+    ),
+  );
 
   const totalAssets = roundMonthlyTotals(
     sumMonthlyTotals([
@@ -734,6 +782,7 @@ export function buildBalanceSheetReport(
       fixedAssetsNet,
       inventory,
       dueFromDirector,
+      staffAdvancesReceivable,
     ]),
   );
 
@@ -887,6 +936,13 @@ export function buildBalanceSheetReport(
       key: "due-from-director",
       label: "Due from Director",
       amounts: dueFromDirector,
+      kind: "data",
+      side: "assets",
+    },
+    {
+      key: "staff-advances",
+      label: "Staff Advances Receivable",
+      amounts: staffAdvancesReceivable,
       kind: "data",
       side: "assets",
     },

@@ -483,17 +483,51 @@ export function buildManualInputsFromRow(
   };
 }
 
+export type MaternityLeaveAbsenceExclusion = {
+  staff_id: string;
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  approval_status: string;
+};
+
+const MATERNITY_LEAVE_TYPE = "Maternity Leave";
+
+function isDateWithinInclusiveRange(
+  date: string,
+  startDate: string,
+  endDate: string,
+): boolean {
+  const day = date.slice(0, 10);
+  return day >= startDate.slice(0, 10) && day <= endDate.slice(0, 10);
+}
+
+function isApprovedMaternityAbsenceExclusion(
+  row: Pick<PayrollAttendanceSource, "staff_id" | "date">,
+  maternityLeaves: MaternityLeaveAbsenceExclusion[],
+): boolean {
+  return maternityLeaves.some(
+    (leave) =>
+      leave.staff_id === row.staff_id &&
+      leave.approval_status === "Approved" &&
+      leave.leave_type === MATERNITY_LEAVE_TYPE &&
+      isDateWithinInclusiveRange(row.date, leave.start_date, leave.end_date),
+  );
+}
+
 export function countAbsencesForStaff(
   attendanceRows: PayrollAttendanceSource[],
   staffId: string,
   year: number,
   month: number,
+  maternityLeaves: MaternityLeaveAbsenceExclusion[] = [],
 ): number {
   return attendanceRows.filter(
     (row) =>
       row.staff_id === staffId &&
       row.attendance_status === "Absent" &&
-      isDateInPayrollMonth(row.date, year, month),
+      isDateInPayrollMonth(row.date, year, month) &&
+      !isApprovedMaternityAbsenceExclusion(row, maternityLeaves),
   ).length;
 }
 

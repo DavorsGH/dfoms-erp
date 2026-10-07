@@ -242,6 +242,7 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
               ? "Balanced"
               : `Out of balance by ${formatGHS(Math.abs(summary.balanceCheck.difference))}`
           }
+          valueNote={summary.balanceCheck.roundingNote}
           href="/dashboard/finance/balance-sheet"
           tone={summary.balanceCheck.isBalanced ? "success" : "danger"}
         />

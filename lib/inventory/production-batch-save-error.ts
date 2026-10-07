@@ -1,5 +1,9 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import {
+  isPostgresRlsViolation,
+  INVENTORY_PERMISSION_DENIED_MESSAGE,
+} from "@/lib/inventory/inventory-mutation-error";
+import {
   extractPostgresUniqueConstraintName,
   resolvePostgresRpcErrorMessage,
 } from "@/utils/postgres-fk-violation";
@@ -12,6 +16,10 @@ const PRODUCTION_BATCH_SAVE_CONSTRAINT_MESSAGES: Record<string, string> = {
 export function mapProductionBatchSaveErrorMessage(
   error: { code?: string | null; message?: string | null } | null | undefined,
 ): string {
+  if (isPostgresRlsViolation(error)) {
+    return INVENTORY_PERMISSION_DENIED_MESSAGE;
+  }
+
   const normalized: Pick<PostgrestError, "code" | "message"> | null =
     error?.message
       ? {

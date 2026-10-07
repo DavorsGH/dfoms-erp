@@ -60,6 +60,10 @@ import {
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
 import { applyBusinessUnitScope } from "@/utils/business-unit-view";
+import {
+  loadWriteBusinessUnitContext,
+  resolveWriteBusinessUnitIdForCreate,
+} from "@/utils/business-unit-access";
 
 type IncomeRegisterProps = {
   initialEntries: IncomeRegisterEntry[];
@@ -375,10 +379,25 @@ export default function IncomeRegister({
     setLoading(true);
     setError(null);
 
-    if (!editingId && !stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+    const buContext = await loadWriteBusinessUnitContext(supabase);
+    if (!buContext.ok) {
+      setError(buContext.error);
       setLoading(false);
       return;
+    }
+
+    let stampId: string | null = null;
+    if (!editingId) {
+      const stampResult = resolveWriteBusinessUnitIdForCreate({
+        allowedUnits: buContext.allowedUnits,
+        stamp: stampBusinessUnit,
+      });
+      if (!stampResult.ok) {
+        setError(stampResult.error);
+        setLoading(false);
+        return;
+      }
+      stampId = stampResult.businessUnitId;
     }
 
     if (editingId) {
@@ -457,9 +476,7 @@ export default function IncomeRegister({
         .from("income_register")
         .insert({
           ...payload,
-          business_unit_id: stampBusinessUnit.ok
-            ? stampBusinessUnit.businessUnitId
-            : null,
+          business_unit_id: stampId,
         })
         .select("id")
         .single();
@@ -478,11 +495,7 @@ export default function IncomeRegister({
           ?.client_name ?? null)
       : otherPayerName;
 
-    const incomeBusinessUnitId = editingId
-      ? undefined
-      : stampBusinessUnit.ok
-        ? stampBusinessUnit.businessUnitId
-        : null;
+    const incomeBusinessUnitId = editingId ? undefined : stampId;
 
     const { error: ledgerError } = await syncIncomeRegisterTaxLedger(supabase, {
       sourceId: savedId as string,

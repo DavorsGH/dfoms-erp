@@ -98,12 +98,30 @@ export async function getServerAuthUid(
  * Resolve business_unit_id for an authenticated server write, applying user
  * access restrictions before the active switcher stamp.
  */
+const EXPLICIT_BU_REQUIRED_MESSAGE = "Choose a business before saving.";
+
+export async function fetchActiveBusinessUnitIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("business_units")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true);
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((row) => String(row.id));
+}
+
 export async function resolveServerWriteBusinessUnitId(input: {
   supabase: SupabaseClient;
   tenantId: string;
   authUid: string;
   requestedBusinessUnitId?: string | null;
   stampOptions?: CreateBusinessUnitStampOptions;
+  requireExplicitSwitcherSelection?: boolean;
 }): Promise<ServerWriteBusinessUnitResult> {
   try {
     const allowedUnits = await getUserAllowedBusinessUnits(
@@ -120,15 +138,47 @@ export async function resolveServerWriteBusinessUnitId(input: {
       return { ok: true, businessUnitId, allowedUnits };
     }
 
+    const activeUnitIds = await fetchActiveBusinessUnitIds(
+      input.supabase,
+      input.tenantId,
+    );
+    const multiBuTenant = activeUnitIds.length > 1;
+    const singleBuId =
+      activeUnitIds.length === 1 ? activeUnitIds[0]! : null;
+
+    const stampOpts: CreateBusinessUnitStampOptions = {
+      ...input.stampOptions,
+      requireExplicitSwitcherSelection:
+        input.requireExplicitSwitcherSelection === true ||
+        input.stampOptions?.requireExplicitSwitcherSelection === true ||
+        (multiBuTenant && input.requestedBusinessUnitId === undefined),
+    };
+
     if (allowedUnits !== null) {
+      if (singleBuId) {
+        const businessUnitId = resolveWriteBusinessUnitId({
+          allowedUnits,
+          requestedBusinessUnitId: singleBuId,
+        });
+        return { ok: true, businessUnitId, allowedUnits };
+      }
+
       let activeStamp: string | null | undefined;
       try {
-        activeStamp = await resolveCreateBusinessUnitId(input.stampOptions);
+        activeStamp = await resolveCreateBusinessUnitId(stampOpts);
       } catch (error) {
         if (!(error instanceof StampRefusedViewAllError)) {
           throw error;
         }
         activeStamp = undefined;
+      }
+
+      if (stampOpts.requireExplicitSwitcherSelection && !activeStamp) {
+        return {
+          ok: false,
+          error: EXPLICIT_BU_REQUIRED_MESSAGE,
+          status: 400,
+        };
       }
 
       const businessUnitId = resolveWriteBusinessUnitId({
@@ -138,7 +188,18 @@ export async function resolveServerWriteBusinessUnitId(input: {
       return { ok: true, businessUnitId, allowedUnits };
     }
 
-    const businessUnitId = await resolveCreateBusinessUnitId(input.stampOptions);
+    if (singleBuId && input.requestedBusinessUnitId === undefined) {
+      return { ok: true, businessUnitId: singleBuId, allowedUnits };
+    }
+
+    const businessUnitId = await resolveCreateBusinessUnitId(stampOpts);
+    if (stampOpts.requireExplicitSwitcherSelection && !businessUnitId) {
+      return {
+        ok: false,
+        error: EXPLICIT_BU_REQUIRED_MESSAGE,
+        status: 400,
+      };
+    }
     return { ok: true, businessUnitId, allowedUnits };
   } catch (error) {
     if (error instanceof StampRefusedViewAllError) {

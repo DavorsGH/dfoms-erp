@@ -18,6 +18,11 @@ import {
   buildLeaveBalanceLookup,
   LeaveExceedsBalanceHint,
 } from "./leave-exceeds-balance-hint";
+import {
+  formatMaternityEntitlementHint,
+  isMaternityLeaveTypeName,
+  maternityEndDateFromStart,
+} from "./maternity-leave-form-utils";
 import type {
   EmployeeLeaveBalance,
   LeaveRequest,
@@ -61,9 +66,29 @@ export default function MyLeave({
     return calculateDaysBetween(form.start_date, form.end_date);
   }, [form.start_date, form.end_date]);
 
+  const selectedLeaveType = leaveTypes.find(
+    (type) => type.id === form.leave_type_id,
+  );
+  const isMaternitySelected = isMaternityLeaveTypeName(
+    selectedLeaveType?.type_name,
+  );
+
   const selectedBalance = balances.find(
     (balance) => balance.leave_type_id === form.leave_type_id,
   );
+
+  const { maternityBalances, otherBalances } = useMemo(() => {
+    const maternity: EmployeeLeaveBalance[] = [];
+    const other: EmployeeLeaveBalance[] = [];
+    for (const balance of balances) {
+      if (isMaternityLeaveTypeName(balance.leave_types?.type_name)) {
+        maternity.push(balance);
+      } else {
+        other.push(balance);
+      }
+    }
+    return { maternityBalances: maternity, otherBalances: other };
+  }, [balances]);
 
   const wouldExceed =
     selectedBalance != null &&
@@ -211,12 +236,22 @@ export default function MyLeave({
               <select
                 required
                 value={form.leave_type_id}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    leave_type_id: event.target.value,
-                  }))
-                }
+                onChange={(event) => {
+                  const leaveTypeId = event.target.value;
+                  const type = leaveTypes.find((row) => row.id === leaveTypeId);
+                  setForm((current) => {
+                    const next = { ...current, leave_type_id: leaveTypeId };
+                    if (
+                      isMaternityLeaveTypeName(type?.type_name) &&
+                      current.start_date
+                    ) {
+                      next.end_date = maternityEndDateFromStart(
+                        current.start_date,
+                      );
+                    }
+                    return next;
+                  });
+                }}
                 className={inputClassName}
               >
                 <option value="">Select leave type</option>
@@ -248,12 +283,16 @@ export default function MyLeave({
                 type="date"
                 required
                 value={form.start_date}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    start_date: event.target.value,
-                  }))
-                }
+                onChange={(event) => {
+                  const startDate = event.target.value;
+                  setForm((current) => {
+                    const next = { ...current, start_date: startDate };
+                    if (isMaternitySelected && startDate) {
+                      next.end_date = maternityEndDateFromStart(startDate);
+                    }
+                    return next;
+                  });
+                }}
                 className={inputClassName}
               />
             </div>
@@ -294,6 +333,15 @@ export default function MyLeave({
               />
             </div>
 
+            {isMaternitySelected ? (
+              <div className="md:col-span-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                {formatMaternityEntitlementHint({
+                  entitledDays: selectedBalance?.entitled_days,
+                  daysRemaining: selectedBalance?.days_remaining,
+                })}
+              </div>
+            ) : null}
+
             {wouldExceed ? (
               <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 This request exceeds your remaining balance. It can still be
@@ -328,21 +376,55 @@ export default function MyLeave({
             entitlement backfill, refresh this page to see your balances.
           </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {balances.map((balance) => (
-              <div
-                key={balance.id}
-                className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
-              >
-                <p className="text-sm font-medium text-[#0f2744]">
-                  {balance.leave_types?.type_name ?? "Leave"}
-                </p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Entitled: {balance.entitled_days} · Used: {balance.days_used}{" "}
-                  · Remaining: {balance.days_remaining}
-                </p>
+          <div className="space-y-6">
+            {maternityBalances.length > 0 ? (
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-[#0f2744]">
+                  Maternity Leave
+                </h4>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {maternityBalances.map((balance) => (
+                    <div
+                      key={balance.id}
+                      className="rounded-md border border-sky-200 bg-sky-50/60 px-4 py-3"
+                    >
+                      <p className="text-sm font-medium text-[#0f2744]">
+                        {balance.leave_types?.type_name ?? "Maternity Leave"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Entitled: {balance.entitled_days} · Used:{" "}
+                        {balance.days_used} · Remaining:{" "}
+                        {balance.days_remaining}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
+            ) : null}
+            {otherBalances.length > 0 ? (
+              <div>
+                <h4 className="mb-2 text-sm font-semibold text-[#0f2744]">
+                  Other leave
+                </h4>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {otherBalances.map((balance) => (
+                    <div
+                      key={balance.id}
+                      className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
+                    >
+                      <p className="text-sm font-medium text-[#0f2744]">
+                        {balance.leave_types?.type_name ?? "Leave"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Entitled: {balance.entitled_days} · Used:{" "}
+                        {balance.days_used} · Remaining:{" "}
+                        {balance.days_remaining}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </section>

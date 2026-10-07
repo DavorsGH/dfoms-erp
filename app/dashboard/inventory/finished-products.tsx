@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import FinishedProductPhoto from "@/components/finished-product-photo";
 import { createClient } from "@/utils/supabase/client";
@@ -75,6 +76,15 @@ import {
   mergeScopedStockOntoProducts,
   scopedFinishedProductsQuery,
 } from "./finished-product-bu-stock-utils";
+import InternalConsumption from "./internal-consumption";
+import {
+  INTERNAL_USE_SECTION_HELP,
+  normalizeInternalConsumption,
+  type InternalConsumptionRecord,
+} from "./internal-consumption-utils";
+import { fetchScopedInternalConsumptionEntries } from "@/lib/inventory/fetch-scoped-internal-consumption";
+import type { ContractProjectOption } from "../administration/projects-utils";
+import type { SiteEntry } from "../operations/sites-utils";
 
 type FinishedProductsProps = {
   initialProducts: FinishedProductRecord[];
@@ -84,6 +94,11 @@ type FinishedProductsProps = {
   fetchError: string | null;
   readOnly?: boolean;
   tenantId?: string | null;
+  initialInternalConsumptionEntries?: InternalConsumptionRecord[];
+  initialInternalConsumptionProducts?: FinishedProductRecord[];
+  initialInternalConsumptionProjects?: ContractProjectOption[];
+  initialInternalConsumptionSites?: SiteEntry[];
+  internalConsumptionRecordedByLabel?: string;
 };
 
 const emptyForm = {
@@ -120,8 +135,14 @@ export default function FinishedProducts({
   fetchError,
   readOnly = false,
   tenantId = null,
+  initialInternalConsumptionEntries = [],
+  initialInternalConsumptionProducts = [],
+  initialInternalConsumptionProjects = [],
+  initialInternalConsumptionSites = [],
+  internalConsumptionRecordedByLabel = "Unknown user",
 }: FinishedProductsProps) {
   const supabase = createClient();
+  const router = useRouter();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const { viewAllBusinessUnits } = useBusinessUnitView();
@@ -136,6 +157,23 @@ export default function FinishedProducts({
   );
   const [showForm, setShowForm] = useState(false);
   const [showAdjustmentForm, setShowAdjustmentForm] = useState(false);
+  const [showInternalUseForm, setShowInternalUseForm] = useState(false);
+  const [internalUseProducts, setInternalUseProducts] = useState(
+    initialInternalConsumptionProducts.map(normalizeFinishedProduct),
+  );
+  const [internalUseEntries, setInternalUseEntries] = useState(
+    initialInternalConsumptionEntries.map(normalizeInternalConsumption),
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (window.location.hash === "#internal-use") {
+      const target = document.getElementById("internal-use");
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [archivingProductId, setArchivingProductId] = useState<string | null>(null);
@@ -153,6 +191,7 @@ export default function FinishedProducts({
   const [photoUploading, setPhotoUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const editingProduct = useMemo(
@@ -192,13 +231,8 @@ export default function FinishedProducts({
     };
   }, [pendingPhotoPreviewUrl]);
 
-  useEffect(() => {
-    setProducts(initialProducts.map(normalizeFinishedProduct));
-    setCatalogProducts(initialCatalogProducts.map(normalizeFinishedProduct));
-    setAdjustments(
-      initialAdjustments.map(normalizeFinishedProductStockAdjustment),
-    );
-  }, [initialProducts, initialCatalogProducts, initialAdjustments]);
+  // Live inventory lists are updated via refreshData / refreshLiveInventoryData only.
+  // Syncing from RSC initial* props here re-applies stale server cache after mutations.
 
   useEffect(() => {
     void fetchFinishedProductPurchaseCounts(supabase, buReadScope).then(
@@ -226,6 +260,7 @@ export default function FinishedProducts({
       lotDatesResult,
       purchaseCountsResult,
       { stockMap, error: stockScopeError },
+      internalUseResult,
     ] = await Promise.all([
       scopedFinishedProductsQuery(supabase, buReadScope, FINISHED_PRODUCT_SELECT).order(
         "product_name",
@@ -241,6 +276,7 @@ export default function FinishedProducts({
       fetchFinishedProductLotDateSources(supabase, buReadScope),
       fetchFinishedProductPurchaseCounts(supabase, buReadScope),
       fetchScopedFinishedProductStock(supabase, tenantId, buReadScope),
+      fetchScopedInternalConsumptionEntries(supabase, tenantId, buReadScope),
     ]);
 
     if (refreshError) {
@@ -263,6 +299,10 @@ export default function FinishedProducts({
       setError(stockScopeError);
       return;
     }
+    if (internalUseResult.error) {
+      setError(internalUseResult.error);
+      return;
+    }
 
     const catalog = mergeFinishedProductsWithLotDates(
       ((data as FinishedProductRecord[] | null) ?? []).map((row) =>
@@ -274,6 +314,13 @@ export default function FinishedProducts({
     setProducts(
       mergeScopedStockOntoProducts(catalog, stockMap, buReadScope.mode),
     );
+    setInternalUseProducts(
+      mergeScopedStockOntoProducts(
+        catalog.filter((row) => !row.is_archived),
+        stockMap,
+        buReadScope.mode,
+      ),
+    );
     setAdjustments(
       (
         ((adjustmentRows as unknown) as FinishedProductStockAdjustmentRecord[] | null) ??
@@ -283,8 +330,15 @@ export default function FinishedProducts({
     setPurchaseCountByProductId(
       Object.fromEntries(purchaseCountsResult.countsByProductId.entries()),
     );
+    setInternalUseEntries(internalUseResult.entries);
     setError(null);
   }
+
+  const refreshLiveInventoryData = useCallback(async () => {
+    await refreshData();
+    router.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshData closes over live scope
+  }, [router]);
 
   useEffect(() => {
     if (skipFirstStockScopeRefresh.current) {
@@ -673,12 +727,12 @@ export default function FinishedProducts({
   async function handleAdjustmentSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
+    setAdjustmentError(null);
     setSuccessMessage(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      setAdjustmentError(buContext.error);
       setLoading(false);
       return;
     }
@@ -688,33 +742,33 @@ export default function FinishedProducts({
       stamp: stampBusinessUnit,
     });
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      setAdjustmentError(stampResult.error);
       setLoading(false);
       return;
     }
 
     if (viewAllBusinessUnits && buContext.allowedUnits === null) {
-      setError("Switch to a specific business to record a stock adjustment.");
+      setAdjustmentError("Switch to a specific business to record a stock adjustment.");
       setLoading(false);
       return;
     }
 
     const adjustmentType = adjustmentForm.adjustment_type;
     if (!adjustmentType) {
-      setError("Select an adjustment type.");
+      setAdjustmentError("Select an adjustment type.");
       setLoading(false);
       return;
     }
 
     if (!adjustmentForm.product_id) {
-      setError("Select a finished product for this adjustment.");
+      setAdjustmentError("Select a finished product for this adjustment.");
       setLoading(false);
       return;
     }
 
     const quantityAbs = Number.parseFloat(adjustmentForm.quantity);
     if (Number.isNaN(quantityAbs) || quantityAbs <= 0) {
-      setError("Quantity must be greater than zero.");
+      setAdjustmentError("Quantity must be greater than zero.");
       setLoading(false);
       return;
     }
@@ -736,14 +790,14 @@ export default function FinishedProducts({
     if (needsCost) {
       costPerUnit = Number.parseFloat(adjustmentForm.cost_per_unit);
       if (Number.isNaN(costPerUnit) || costPerUnit < 0) {
-        setError("Cost per unit must be zero or greater.");
+        setAdjustmentError("Cost per unit must be zero or greater.");
         setLoading(false);
         return;
       }
     }
 
     if (!adjustmentForm.reason.trim()) {
-      setError("Reason is required.");
+      setAdjustmentError("Reason is required.");
       setLoading(false);
       return;
     }
@@ -779,14 +833,17 @@ export default function FinishedProducts({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to record stock adjustment.");
+      setAdjustmentError(
+        payload?.error ?? "Unable to record stock adjustment.",
+      );
       setLoading(false);
       return;
     }
 
     setAdjustmentForm(emptyAdjustmentForm);
     setShowAdjustmentForm(false);
-    await refreshData();
+    setAdjustmentError(null);
+    await refreshLiveInventoryData();
     setLoading(false);
   }
 
@@ -1172,27 +1229,28 @@ export default function FinishedProducts({
       </ScrollableTable>
 
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold text-[#0f2744]">
+            Record Stock Adjustment
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            {FINISHED_PRODUCT_STOCK_ADJUSTMENT_FORM_INTRO}
+          </p>
+        </div>
+        {!readOnly && !viewAllBusinessUnits ? (
           <div>
-            <h3 className="text-lg font-semibold text-[#0f2744]">
-              Record Stock Adjustment
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              {FINISHED_PRODUCT_STOCK_ADJUSTMENT_FORM_INTRO}
-            </p>
-          </div>
-          {!readOnly && !viewAllBusinessUnits ? (
             <button
               type="button"
-              onClick={() =>
-                setShowAdjustmentForm((current) => !current)
-              }
+              onClick={() => {
+                setShowAdjustmentForm((current) => !current);
+                setAdjustmentError(null);
+              }}
               className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
             >
               {showAdjustmentForm ? "Cancel" : "Record Stock Adjustment"}
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         {!readOnly && viewAllBusinessUnits ? (
           <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1206,6 +1264,11 @@ export default function FinishedProducts({
               onSubmit={handleAdjustmentSubmit}
               className="grid gap-4 md:grid-cols-2"
             >
+              {adjustmentError ? (
+                <p className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {adjustmentError}
+                </p>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Product
@@ -1490,6 +1553,50 @@ export default function FinishedProducts({
             </table>
           </ScrollableTable>
         </InventoryCollapsibleHistorySection>
+      </section>
+
+      <section id="internal-use" className="space-y-4 scroll-mt-24">
+        <div>
+          <h3 className="text-lg font-semibold text-[#0f2744]">
+            Record Internal Use
+          </h3>
+          <p className="mt-1 text-sm text-slate-600">
+            {INTERNAL_USE_SECTION_HELP}
+          </p>
+        </div>
+        {!readOnly && !viewAllBusinessUnits ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowInternalUseForm((current) => !current);
+              }}
+              className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+            >
+              {showInternalUseForm ? "Cancel" : "Record Internal Use"}
+            </button>
+          </div>
+        ) : null}
+
+        {!readOnly && viewAllBusinessUnits ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Switch to a specific business to record internal use.
+          </p>
+        ) : null}
+
+        <InternalConsumption
+          embedded
+          showForm={showInternalUseForm}
+          onShowFormChange={setShowInternalUseForm}
+          onInventoryMutated={refreshLiveInventoryData}
+          entries={internalUseEntries}
+          products={internalUseProducts}
+          initialProjects={initialInternalConsumptionProjects}
+          initialSites={initialInternalConsumptionSites}
+          recordedByLabel={internalConsumptionRecordedByLabel}
+          fetchError={null}
+          readOnly={readOnly}
+        />
       </section>
     </div>
   );

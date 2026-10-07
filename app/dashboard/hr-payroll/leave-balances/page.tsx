@@ -1,23 +1,19 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
+  getActiveBusinessUnitId,
   getCurrentUserRole,
   getCurrentUserTenantId,
+  getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { canManageLeaveBalances } from "@/utils/rbac-access";
 import type { AppRole } from "../../user-account-types";
-import {
-  HR_EMPLOYEE_SELECT,
-  filterActiveEmployees,
-  type HrEmployee,
-} from "../employee-utils";
+import { filterActiveEmployees } from "../employee-utils";
+import { fetchLeaveBalancesPageData } from "../leave-balances-page-fetch";
 import HrPayrollShell from "../hr-payroll-shell";
 import LeaveBalances from "../leave-balances";
-import type {
-  EmployeeLeaveBalance,
-  LeaveType,
-} from "../../self-service/leave-request-utils";
 
 export default async function LeaveBalancesPage() {
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -25,39 +21,29 @@ export default async function LeaveBalancesPage() {
   const currentYear = new Date().getFullYear();
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-
-  const [
-    { data: balances, error: balancesError },
-    { data: employees, error: employeesError },
-    { data: leaveTypes, error: typesError },
-  ] = await Promise.all([
-    supabase
-      .from("employee_leave_balances")
-      .select("*, leave_types(type_name), employees!employee_leave_balances_employee_id_fkey(full_name, staff_id)")
-      .eq("year", currentYear)
-      .order("employee_id"),
-    supabase.from("employees").select(HR_EMPLOYEE_SELECT).order("full_name"),
-    tenantId
-      ? supabase
-          .from("leave_types")
-          .select("*")
-          .eq("tenant_id", tenantId)
-          .order("type_name")
-      : Promise.resolve({ data: [], error: null }),
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
   ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
 
-  const fetchError =
-    balancesError?.message ??
-    employeesError?.message ??
-    typesError?.message ??
-    null;
+  const { balances, employees, leaveTypes, error: fetchError } =
+    await fetchLeaveBalancesPageData(
+      supabase,
+      tenantId,
+      buScope,
+      currentYear,
+    );
 
   return (
     <HrPayrollShell sectionTitle="Leave Balances">
       <LeaveBalances
-        initialBalances={(balances as EmployeeLeaveBalance[] | null) ?? []}
-        employees={filterActiveEmployees((employees as HrEmployee[] | null) ?? [])}
-        leaveTypes={(leaveTypes as LeaveType[] | null) ?? []}
+        initialBalances={balances}
+        employees={filterActiveEmployees(employees)}
+        leaveTypes={leaveTypes}
         currentYear={currentYear}
         canManage={canManageLeaveBalances(role)}
         fetchError={fetchError}

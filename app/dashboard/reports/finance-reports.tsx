@@ -237,12 +237,14 @@ function BalanceCheckBanner({
   totalLiabilitiesAndEquity,
   difference,
   isBalanced,
+  roundingNote,
 }: {
   periodLabel: string;
   totalAssets: number;
   totalLiabilitiesAndEquity: number;
   difference: number;
   isBalanced: boolean;
+  roundingNote: string | null;
 }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -274,6 +276,9 @@ function BalanceCheckBanner({
           ? "Balanced"
           : `Out of balance by ${formatGHS(Math.abs(difference))}`}
       </p>
+      {roundingNote ? (
+        <p className="mt-2 text-xs text-slate-500">{roundingNote}</p>
+      ) : null}
     </section>
   );
 }

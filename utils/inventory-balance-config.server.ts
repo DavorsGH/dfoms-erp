@@ -5,9 +5,14 @@ import {
   getUserAllowedBusinessUnits,
   resolveWriteBusinessUnitId,
 } from "@/utils/business-unit-access";
+import { fetchActiveBusinessUnitIds } from "@/utils/business-unit-access.server";
+import { resolveCreateBusinessUnitId } from "@/utils/business-unit-stamp";
 import { INVENTORY_BALANCE_CONFIG_SELECT } from "@/utils/inventory-balance-config-types";
 
-/** Same BU key as PUT: unrestricted → workspace-default null; restricted → default allowed unit. */
+/**
+ * BU key for inventory_balance_config rows: explicit switcher on multi-BU tenants,
+ * sole active unit when only one exists, restricted users' default allowed unit.
+ */
 export async function resolveInventoryBalanceConfigBusinessUnitId(
   supabase: SupabaseClient,
   tenantId: string,
@@ -19,13 +24,29 @@ export async function resolveInventoryBalanceConfigBusinessUnitId(
     authUid,
   );
 
-  if (allowedUnits === null) {
-    return null;
+  const activeUnitIds = await fetchActiveBusinessUnitIds(supabase, tenantId);
+  const multiBuTenant = activeUnitIds.length > 1;
+  const singleBuId = activeUnitIds.length === 1 ? activeUnitIds[0]! : null;
+
+  if (allowedUnits !== null) {
+    if (singleBuId) {
+      return resolveWriteBusinessUnitId({
+        allowedUnits,
+        requestedBusinessUnitId: singleBuId,
+      });
+    }
+    return resolveWriteBusinessUnitId({
+      allowedUnits,
+      requestedBusinessUnitId: undefined,
+    });
   }
 
-  return resolveWriteBusinessUnitId({
-    allowedUnits,
-    requestedBusinessUnitId: undefined,
+  if (singleBuId) {
+    return singleBuId;
+  }
+
+  return resolveCreateBusinessUnitId({
+    requireExplicitSwitcherSelection: multiBuTenant,
   });
 }
 

@@ -10,6 +10,7 @@ import {
   type InventoryBalanceSheetInput,
 } from "./finance/balance-sheet-utils";
 import { getBalanceSheetMonthCheck } from "@/lib/finance/balance-sheet-standard-report";
+import { getBalanceCheckRoundingNote } from "@/app/dashboard/finance/balance-sheet-utils";
 import type { BalanceSheetCashExpenseEntry } from "./finance/accrued-wages-utils";
 import type {
   MonthEndCloseNetPayEntry,
@@ -111,6 +112,7 @@ export type DashboardSummaryCards = {
   balanceCheck: {
     isBalanced: boolean;
     difference: number;
+    roundingNote: string | null;
   };
   /** Key Balance Sheet liability line amounts for the selected month. */
   balanceSheetLiabilityLines: BalanceSheetLiabilityLine[];
@@ -221,11 +223,15 @@ function createMonthKey(year: number, month: number): string {
 export function buildDashboardBalanceSheetCheck(
   report: BalanceSheetReport,
   monthIndex: number,
-): { isBalanced: boolean; difference: number } {
+): { isBalanced: boolean; difference: number; roundingNote: string | null } {
   const check = getBalanceSheetMonthCheck(report, monthIndex);
   return {
     isBalanced: check.isBalanced,
     difference: check.difference,
+    roundingNote: getBalanceCheckRoundingNote(
+      check.difference,
+      check.isBalanced,
+    ),
   };
 }
 
@@ -570,6 +576,7 @@ function buildMonthSnapshot(input: {
       balanceCheck: {
         isBalanced: balanceCheck.isBalanced,
         difference: balanceCheck.difference,
+        roundingNote: balanceCheck.roundingNote,
       },
       balanceSheetLiabilityLines: buildBalanceSheetLiabilityLines(
         balanceSheetReport,

@@ -30,6 +30,18 @@ import {
   scopedFinishedProductsQuery,
 } from "../finished-product-bu-stock-utils";
 import InventoryShell from "../inventory-shell";
+import { CONTRACT_PROJECT_SELECT } from "../../administration/projects-utils";
+import {
+  SITE_ASSIGNMENT_SELECT,
+  normalizeSiteEntry,
+  type SiteEntry,
+} from "../../operations/sites-utils";
+import { getInventoryRecordedByLabel } from "../get-inventory-recorded-by-label";
+import {
+  INTERNAL_CONSUMPTION_SELECT,
+  normalizeInternalConsumption,
+  type InternalConsumptionRecord,
+} from "../internal-consumption-utils";
 
 export default async function FinishedProductsPage() {
   const tenantId = await getCurrentUserTenantId();
@@ -50,6 +62,11 @@ export default async function FinishedProductsPage() {
     { data: adjustments, error: adjustmentsError },
     lotDatesResult,
     scopedStock,
+    internalConsumptionResult,
+    icProductsResult,
+    icProjectsResult,
+    icSitesResult,
+    recordedByLabel,
   ] = await Promise.all([
     scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT).order(
       "product_name",
@@ -76,6 +93,34 @@ export default async function FinishedProductsPage() {
     tenantId
       ? fetchScopedFinishedProductStock(supabase, tenantId, buScope)
       : Promise.resolve({ stockMap: null, error: null }),
+    tenantId
+      ? applyBusinessUnitScope(
+          supabase
+            .from("internal_consumption")
+            .select(INTERNAL_CONSUMPTION_SELECT)
+            .eq("tenant_id", tenantId),
+          buScope,
+        )
+          .order("consumption_date", { ascending: false })
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    scopedFinishedProductsQuery(supabase, buScope, FINISHED_PRODUCT_SELECT)
+      .eq("is_archived", false)
+      .order("product_name", { ascending: true }),
+    tenantId
+      ? applyBusinessUnitScope(
+          supabase
+            .from("projects")
+            .select(CONTRACT_PROJECT_SELECT)
+            .eq("is_archived", false),
+          buScope,
+        ).order("project_name", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from("sites")
+      .select(SITE_ASSIGNMENT_SELECT)
+      .order("site_name", { ascending: true }),
+    getInventoryRecordedByLabel(supabase),
   ]);
 
   const role = (await getCurrentUserRole()) as AppRole | null;
@@ -89,6 +134,14 @@ export default async function FinishedProductsPage() {
   // Scoped catalog rows; stock overlay still applies per active BU.
   const displayProducts = mergeScopedStockOntoProducts(
     catalogProducts,
+    scopedStock.stockMap,
+    buScope.mode,
+  );
+
+  const icProducts = mergeScopedStockOntoProducts(
+    ((icProductsResult.data as FinishedProductRecord[] | null) ?? []).map(
+      (row) => normalizeFinishedProduct(row),
+    ),
     scopedStock.stockMap,
     buScope.mode,
   );
@@ -111,9 +164,25 @@ export default async function FinishedProductsPage() {
           adjustmentsError?.message ??
           lotDatesResult.error ??
           scopedStock.error ??
+          internalConsumptionResult.error?.message ??
+          icProductsResult.error?.message ??
+          icProjectsResult.error?.message ??
+          icSitesResult.error?.message ??
           null
         }
         readOnly={!canEditInventory(role)}
+        initialInternalConsumptionEntries={
+          (
+            (internalConsumptionResult.data as InternalConsumptionRecord[] | null) ??
+            []
+          ).map((row) => normalizeInternalConsumption(row))
+        }
+        initialInternalConsumptionProducts={icProducts}
+        initialInternalConsumptionProjects={icProjectsResult.data ?? []}
+        initialInternalConsumptionSites={(icSitesResult.data ?? []).map((row) =>
+          normalizeSiteEntry(row as unknown as SiteEntry),
+        )}
+        internalConsumptionRecordedByLabel={recordedByLabel}
       />
     </InventoryShell>
   );

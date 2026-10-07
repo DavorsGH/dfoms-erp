@@ -282,6 +282,39 @@ export const getActiveBusinessUnitId = cache(async (): Promise<string | null> =>
 });
 
 /**
+ * Business unit explicitly chosen in the workspace switcher (validated stored id only).
+ * Does not apply primary/name fallback — use for inventory and other writes that must
+ * not stamp a BU the user never selected.
+ */
+export const getActiveBusinessUnitIdForWriteStamp = cache(
+  async (): Promise<string | null> => {
+    const account = await getCurrentUserAccount();
+    const storedId = account?.active_business_unit_id?.trim() || null;
+    const tenantId = account?.tenant_id?.trim() || null;
+    if (!storedId || !tenantId) {
+      return null;
+    }
+
+    const admin = createAdminClient();
+    layoutPerf.dbCalls += 1;
+    const { data: unit } = await admin
+      .from("business_units")
+      .select("id, tenant_id, is_active")
+      .eq("id", storedId)
+      .maybeSingle();
+
+    if (
+      unit &&
+      unit.tenant_id === tenantId &&
+      unit.is_active === true
+    ) {
+      return unit.id;
+    }
+    return null;
+  },
+);
+
+/**
  * True when the staff switcher is on All Businesses (aggregate, not a stamp target).
  * Restricted users never receive true here even if the DB flag is set.
  */

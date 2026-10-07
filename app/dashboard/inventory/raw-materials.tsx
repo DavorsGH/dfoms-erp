@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
@@ -189,6 +189,7 @@ export default function RawMaterials({
   const [adjustmentForm, setAdjustmentForm] = useState(emptyAdjustmentForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
   const [purchaseScanError, setPurchaseScanError] = useState<string | null>(null);
   const [purchaseScanSuccess, setPurchaseScanSuccess] = useState<string | null>(
     null,
@@ -196,20 +197,8 @@ export default function RawMaterials({
   const skipFirstStockScopeRefresh = useRef(true);
 
   useEffect(() => {
-    setMaterials(initialMaterials.map(normalizeRawMaterial));
-    setCatalogMaterials(initialCatalogMaterials.map(normalizeRawMaterial));
-    setPurchases(initialPurchases.map(normalizeRawMaterialPurchase));
-    setAdjustments(
-      initialAdjustments.map(normalizeRawMaterialStockAdjustment),
-    );
     setPaymentMethods(initialPaymentMethods);
-  }, [
-    initialMaterials,
-    initialCatalogMaterials,
-    initialPurchases,
-    initialAdjustments,
-    initialPaymentMethods,
-  ]);
+  }, [initialPaymentMethods]);
 
   useEffect(() => {
     if (viewAllBusinessUnits) {
@@ -278,13 +267,15 @@ export default function RawMaterials({
       applyBusinessUnitScope(
         supabase
           .from("raw_material_purchases")
-          .select(RAW_MATERIAL_PURCHASE_SELECT),
+          .select(RAW_MATERIAL_PURCHASE_SELECT)
+          .eq("tenant_id", tenantId),
         buReadScope,
       ).order("purchase_date", { ascending: false }),
       applyBusinessUnitScope(
         supabase
           .from("raw_material_stock_adjustments")
-          .select(RAW_MATERIAL_STOCK_ADJUSTMENT_SELECT),
+          .select(RAW_MATERIAL_STOCK_ADJUSTMENT_SELECT)
+          .eq("tenant_id", tenantId),
         buReadScope,
       ).order("created_at", { ascending: false }),
       fetchScopedRawMaterialStock(supabase, tenantId, buReadScope),
@@ -323,6 +314,12 @@ export default function RawMaterials({
     );
     setError(null);
   }
+
+  const refreshLiveInventoryData = useCallback(async () => {
+    await refreshData();
+    router.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshData closes over live scope
+  }, [router]);
 
   useEffect(() => {
     if (skipFirstStockScopeRefresh.current) {
@@ -604,7 +601,7 @@ export default function RawMaterials({
     }
 
     closePurchaseEditForm();
-    await refreshData();
+    await refreshLiveInventoryData();
     setLoading(false);
   }
 
@@ -650,7 +647,7 @@ export default function RawMaterials({
       closePurchaseEditForm();
     }
 
-    await refreshData();
+    await refreshLiveInventoryData();
     setDeletingPurchaseId(null);
   }
 
@@ -740,43 +737,43 @@ export default function RawMaterials({
 
     setPurchaseForm(emptyPurchaseForm);
     closePurchaseModal();
-    await refreshData();
+    await refreshLiveInventoryData();
     setLoading(false);
   }
 
   async function handleAdjustmentSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
+    setAdjustmentError(null);
 
     if (viewAllBusinessUnits) {
-      setError("Switch to a specific business to record a stock adjustment.");
+      setAdjustmentError("Switch to a specific business to record a stock adjustment.");
       setLoading(false);
       return;
     }
 
     if (!stampBusinessUnit.ok) {
-      setError(stampBusinessUnit.error);
+      setAdjustmentError(stampBusinessUnit.error);
       setLoading(false);
       return;
     }
 
     const adjustmentType = adjustmentForm.adjustment_type;
     if (!adjustmentType) {
-      setError("Select an adjustment type.");
+      setAdjustmentError("Select an adjustment type.");
       setLoading(false);
       return;
     }
 
     if (!adjustmentForm.material_id) {
-      setError("Select a raw material for this adjustment.");
+      setAdjustmentError("Select a raw material for this adjustment.");
       setLoading(false);
       return;
     }
 
     const quantityAbs = Number.parseFloat(adjustmentForm.quantity);
     if (Number.isNaN(quantityAbs) || quantityAbs <= 0) {
-      setError("Quantity must be greater than zero.");
+      setAdjustmentError("Quantity must be greater than zero.");
       setLoading(false);
       return;
     }
@@ -798,14 +795,14 @@ export default function RawMaterials({
     if (needsCost) {
       costPerUnit = Number.parseFloat(adjustmentForm.cost_per_unit);
       if (Number.isNaN(costPerUnit) || costPerUnit < 0) {
-        setError("Cost per unit must be zero or greater.");
+        setAdjustmentError("Cost per unit must be zero or greater.");
         setLoading(false);
         return;
       }
     }
 
     if (!adjustmentForm.reason.trim()) {
-      setError("Reason is required.");
+      setAdjustmentError("Reason is required.");
       setLoading(false);
       return;
     }
@@ -828,14 +825,17 @@ export default function RawMaterials({
       | null;
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to record stock adjustment.");
+      setAdjustmentError(
+        payload?.error ?? "Unable to record stock adjustment.",
+      );
       setLoading(false);
       return;
     }
 
     setAdjustmentForm(emptyAdjustmentForm);
     setShowAdjustmentForm(false);
-    await refreshData();
+    setAdjustmentError(null);
+    await refreshLiveInventoryData();
     setLoading(false);
   }
 
@@ -1600,9 +1600,10 @@ export default function RawMaterials({
           {!readOnly && !viewAllBusinessUnits ? (
             <button
               type="button"
-              onClick={() =>
-                setShowAdjustmentForm((current) => !current)
-              }
+              onClick={() => {
+                setShowAdjustmentForm((current) => !current);
+                setAdjustmentError(null);
+              }}
               className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
             >
               {showAdjustmentForm ? "Cancel" : "Record Stock Adjustment"}
@@ -1622,6 +1623,11 @@ export default function RawMaterials({
               onSubmit={handleAdjustmentSubmit}
               className="grid gap-4 md:grid-cols-2"
             >
+              {adjustmentError ? (
+                <p className="md:col-span-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {adjustmentError}
+                </p>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Material

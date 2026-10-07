@@ -4,7 +4,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 import { resolveTenantPrimaryBusinessUnitId } from "@/utils/business-units-server";
-import { resolveFallbackBusinessUnitId } from "@/utils/tenant-default-business-unit";
 
 /** Paystack Ghana transaction fee rate applied platform-wide. */
 export const PAYSTACK_TRANSACTION_FEE_RATE = 0.0195;
@@ -194,10 +193,16 @@ async function resolveTenantFallbackBusinessUnitId(
     );
   }
 
-  return resolveFallbackBusinessUnitId(
-    (units as Array<{ id: string; name: string }> | null) ?? [],
-    tenant?.name ?? null,
-  );
+  const active = (units as Array<{ id: string; name: string }> | null) ?? [];
+  if (active.length === 0) {
+    return null;
+  }
+  if (active.length === 1) {
+    return active[0]!.id;
+  }
+  // Multi-BU: never primary/name fallback for webhook expenses without sale BU.
+  void tenant;
+  return null;
 }
 
 /** Inherit BU from the triggering sale/invoice, else tenant fallback. */

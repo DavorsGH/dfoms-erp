@@ -29,10 +29,6 @@ export const INVENTORY_GROUPS: readonly InventoryNavGroup[] = [
         label: "Production Batches",
         href: "/dashboard/inventory/production-batches",
       },
-      {
-        label: "Internal Consumption",
-        href: "/dashboard/inventory/internal-consumption",
-      },
     ],
   },
   {

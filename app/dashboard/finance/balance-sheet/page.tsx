@@ -64,6 +64,7 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
     initialRawManualEntries,
     initialTaxLedgerEntries,
     initialWelfareFundEntries,
+    initialStaffSalaryAdvanceEntries,
     initialCreditNotesForCustomerCredits,
     initialRefundsForCustomerCredits,
     initialCreditNoteApplications,
@@ -92,6 +93,7 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
         viewAllBusinessUnits={viewAllBusinessUnits}
         initialTaxLedgerEntries={initialTaxLedgerEntries}
         initialWelfareFundEntries={initialWelfareFundEntries}
+        initialStaffSalaryAdvanceEntries={initialStaffSalaryAdvanceEntries}
         initialCreditNotesForCustomerCredits={
           initialCreditNotesForCustomerCredits
         }

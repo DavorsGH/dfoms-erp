@@ -17,6 +17,7 @@ import {
   type DirectorsLoanRepaymentRow,
 } from "./balance-sheet-utils";
 import type { DirectorsLoanLedgerEntry } from "./directors-loan-ledger-utils";
+import type { StaffAdvanceBalanceSheetEntry } from "./staff-advances-balance-sheet-utils";
 import type { CapitalContributionEntry } from "./capital-contributions-utils";
 import type {
   BalanceSheetCashExpenseEntry,
@@ -38,6 +39,7 @@ import {
   buildStandardBalanceSheetReport,
   getBalanceSheetMonthCheck,
 } from "@/lib/finance/balance-sheet-standard-report";
+import { getBalanceCheckRoundingNote } from "./balance-sheet-utils";
 import {
   FinancialStatementScrollableTable,
   scrollableTableFinancialStatementClassName,
@@ -68,6 +70,7 @@ type BalanceSheetProps = {
   viewAllBusinessUnits?: boolean;
   initialTaxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
   initialWelfareFundEntries?: BalanceSheetWelfareFundEntry[];
+  initialStaffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
   initialCreditNotesForCustomerCredits?: CustomerCreditsCreditNoteRow[];
   initialRefundsForCustomerCredits?: CustomerCreditsRefundRow[];
   initialCreditNoteApplications?: CustomerCreditsApplicationRow[];
@@ -115,12 +118,14 @@ function BalanceCheckSummary({
   difference,
   isBalanced,
   periodLabel,
+  roundingNote,
 }: {
   totalAssets: number;
   totalLiabilitiesAndEquity: number;
   difference: number;
   isBalanced: boolean;
   periodLabel: string;
+  roundingNote: string | null;
 }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -156,6 +161,9 @@ function BalanceCheckSummary({
           ? "✅ Balanced"
           : `❌ Out of balance by ${formatGHS(Math.abs(difference))}`}
       </p>
+      {roundingNote ? (
+        <p className="mt-2 text-xs text-slate-500">{roundingNote}</p>
+      ) : null}
     </section>
   );
 }
@@ -177,6 +185,7 @@ export default function BalanceSheet({
   initialManualEntries = [],
   initialTaxLedgerEntries = [],
   initialWelfareFundEntries = [],
+  initialStaffSalaryAdvanceEntries = [],
   availableYears,
   fetchError,
   initialFocusMonth = null,
@@ -237,6 +246,7 @@ export default function BalanceSheet({
           initialManualEntries,
           initialTaxLedgerEntries,
           initialWelfareFundEntries,
+          initialStaffSalaryAdvanceEntries,
           initialCreditNotesForCustomerCredits,
           initialRefundsForCustomerCredits,
           initialCreditNoteApplications,
@@ -267,6 +277,7 @@ export default function BalanceSheet({
       initialManualEntries,
       initialTaxLedgerEntries,
       initialWelfareFundEntries,
+      initialStaffSalaryAdvanceEntries,
       selectedYear,
     ],
   );
@@ -309,6 +320,10 @@ export default function BalanceSheet({
         difference={balanceCheck.difference}
         isBalanced={balanceCheck.isBalanced}
         periodLabel={balanceCheckPeriodLabel}
+        roundingNote={getBalanceCheckRoundingNote(
+          balanceCheck.difference,
+          balanceCheck.isBalanced,
+        )}
       />
       <p className="text-xs text-slate-500">
         Click a month column header (or Full Year) below to change which period

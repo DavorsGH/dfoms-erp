@@ -5,21 +5,10 @@ import {
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
-import {
-  applyBusinessUnitScope,
-  resolveBusinessUnitReadScope,
-} from "@/utils/business-unit-view";
-import {
-  applyEmployeeIdScope,
-  fetchScopedEmployeeIds,
-} from "@/app/dashboard/hr-payroll/payroll-bu-scope-utils";
+import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
+import { fetchLeavePageData } from "../leave-page-fetch";
 import LeaveManagement from "../leave-management";
-import type { LeaveManagementEntry } from "../leave-management-utils";
-import {
-  HR_EMPLOYEE_SELECT,
-  filterActiveEmployees,
-  type HrEmployee,
-} from "../employee-utils";
+import { filterActiveEmployees } from "../employee-utils";
 import HrPayrollShell from "../hr-payroll-shell";
 
 export default async function LeavePage() {
@@ -35,39 +24,17 @@ export default async function LeavePage() {
     viewAllBusinessUnits,
     activeBusinessUnitId,
   });
-  const { employeeIds, error: employeeScopeError } = tenantId
-    ? await fetchScopedEmployeeIds(supabase, tenantId, buScope)
-    : {
-        employeeIds: buScope.mode === "all" ? null : [],
-        error:
-          buScope.mode === "all"
-            ? null
-            : "Unable to resolve your workspace.",
-      };
 
-  const [{ data, error }, { data: employees, error: employeesError }] =
-    await Promise.all([
-      applyEmployeeIdScope(
-        supabase.from("leave_management").select("*"),
-        employeeIds,
-      ).order("start_date", { ascending: false }),
-      applyBusinessUnitScope(
-        supabase.from("employees").select(HR_EMPLOYEE_SELECT),
-        buScope,
-      ).order("full_name"),
-    ]);
-
-  const fetchError =
-    employeeScopeError ?? error?.message ?? employeesError?.message ?? null;
+  const { entries, employees, leaveTypeOptions, error: fetchError } =
+    await fetchLeavePageData(supabase, tenantId, buScope);
 
   return (
     <HrPayrollShell sectionTitle="Leave Management">
       <LeaveManagement
-        initialEntries={(data as LeaveManagementEntry[] | null) ?? []}
-        initialEmployees={filterActiveEmployees(
-          (employees as HrEmployee[] | null) ?? [],
-        )}
+        initialEntries={entries}
+        initialEmployees={filterActiveEmployees(employees)}
         fetchError={fetchError}
+        leaveTypeOptions={leaveTypeOptions}
         tenantId={tenantId}
       />
     </HrPayrollShell>

@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { inputClassName } from "../employees/employee-record-utils";
-import { registerTableActionsInnerClassName } from "../finance/register-row-actions";
+import {
+  confirmProductionBatchDelete,
+  registerTableActionsInnerClassName,
+} from "../finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableActionsTdClassName,
   scrollableTableActionsThClassName,
@@ -113,6 +117,7 @@ export default function ProductionBatches({
   tenantId = null,
 }: ProductionBatchesProps) {
   const supabase = createClient();
+  const router = useRouter();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const skipFirstStockScopeRefresh = useRef(true);
@@ -145,9 +150,6 @@ export default function ProductionBatches({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [success, setSuccess] = useState<string | null>(null);
-  const [confirmingBatchId, setConfirmingBatchId] = useState<string | null>(
-    null,
-  );
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
   const [labelPrintBatch, setLabelPrintBatch] =
     useState<ProductionBatchRecord | null>(null);
@@ -203,12 +205,6 @@ export default function ProductionBatches({
       cancelled = true;
     };
   }, [readOnly, initialBatches.length]);
-
-  useEffect(() => {
-    setBatches(initialBatches.map(normalizeProductionBatch));
-    setProducts(initialProducts.map(normalizeFinishedProduct));
-    setMaterials(initialMaterials.map(normalizeRawMaterial));
-  }, [initialBatches, initialProducts, initialMaterials]);
 
   const preview = useMemo(() => {
     const quantityProduced = Number.parseFloat(batchForm.quantity_produced);
@@ -266,7 +262,8 @@ export default function ProductionBatches({
       applyBusinessUnitScope(
         supabase
           .from("production_batches")
-          .select(PRODUCTION_BATCH_DETAIL_SELECT),
+          .select(PRODUCTION_BATCH_DETAIL_SELECT)
+          .eq("tenant_id", tenantId),
         buReadScope,
       ).order("production_date", { ascending: false }),
       scopedFinishedProductsQuery(supabase, buReadScope, FINISHED_PRODUCT_SELECT)
@@ -326,6 +323,12 @@ export default function ProductionBatches({
     );
     setError(null);
   }
+
+  const refreshLiveInventoryData = useCallback(async () => {
+    await refreshData();
+    router.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refreshData closes over live scope
+  }, [router]);
 
   useEffect(() => {
     if (skipFirstStockScopeRefresh.current) {
@@ -492,11 +495,11 @@ export default function ProductionBatches({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
+    setMaterialFormError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      setMaterialFormError(buContext.error);
       setLoading(false);
       return;
     }
@@ -506,7 +509,7 @@ export default function ProductionBatches({
       stamp: stampBusinessUnit,
     });
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      setMaterialFormError(stampResult.error);
       setLoading(false);
       return;
     }
@@ -554,7 +557,7 @@ export default function ProductionBatches({
             editingBatch.business_unit_id,
           );
         } catch (accessError) {
-          setError(formatBusinessUnitAccessError(accessError));
+          setMaterialFormError(formatBusinessUnitAccessError(accessError));
           setLoading(false);
           return;
         }
@@ -589,7 +592,7 @@ export default function ProductionBatches({
       }
 
       closeForm();
-      await refreshData();
+      await refreshLiveInventoryData();
       const eligibilityResponse = await fetch(
         "/api/inventory/production-batches/edit-eligibility",
       );
@@ -607,7 +610,7 @@ export default function ProductionBatches({
 
     const allocated = await allocateBatchNumber(supabase);
     if (allocated.error || !allocated.batchNumber) {
-      setError(allocated.error ?? "Unable to allocate batch number.");
+      setMaterialFormError(allocated.error ?? "Unable to allocate batch number.");
       setLoading(false);
       return;
     }
@@ -635,13 +638,12 @@ export default function ProductionBatches({
     }
 
     closeForm();
-    await refreshData();
+    await refreshLiveInventoryData();
     setLoading(false);
   }
 
   async function handleDeleteBatch(batch: ProductionBatchRecord) {
     setDeletingBatchId(batch.id);
-    setConfirmingBatchId(null);
     setError(null);
     setSuccess(null);
 
@@ -679,7 +681,7 @@ export default function ProductionBatches({
 
     setBatches((current) => current.filter((row) => row.id !== batch.id));
     setSuccess(`Batch ${batch.batch_number} deleted.`);
-    await refreshData();
+    await refreshLiveInventoryData();
     setDeletingBatchId(null);
   }
 
@@ -719,6 +721,11 @@ export default function ProductionBatches({
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingBatchId ? "Edit Production Batch" : "New Production Batch"}
           </h3>
+          {materialFormError ? (
+            <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {materialFormError}
+            </p>
+          ) : null}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -1134,46 +1141,29 @@ export default function ProductionBatches({
                         })()
                       ) : null}
                       {!readOnly ? (
-                        confirmingBatchId === batch.id ? (
-                          <>
-                            <span className="whitespace-normal text-sm text-red-700">
-                              Delete this batch? This cannot be undone.
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteBatch(batch)}
-                              disabled={deletingBatchId === batch.id}
-                              className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {deletingBatchId === batch.id
-                                ? "Deleting…"
-                                : "Yes, delete"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmingBatchId(null)}
-                              disabled={deletingBatchId === batch.id}
-                              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
                               setError(null);
                               setSuccess(null);
-                              setConfirmingBatchId(batch.id);
-                            }}
-                            disabled={deletingBatchId === batch.id}
-                            className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {deletingBatchId === batch.id
-                              ? "Deleting…"
-                              : "Delete"}
-                          </button>
-                        )
+                              if (
+                                !(await confirmProductionBatchDelete(
+                                  batch.batch_number,
+                                ))
+                              ) {
+                                return;
+                              }
+                              await handleDeleteBatch(batch);
+                            })();
+                          }}
+                          disabled={deletingBatchId === batch.id}
+                          className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {deletingBatchId === batch.id
+                            ? "Deleting…"
+                            : "Delete"}
+                        </button>
                       ) : null}
                     </div>
                   </td>

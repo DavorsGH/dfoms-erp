@@ -9,6 +9,7 @@ export const LEAVE_ENTITLEMENT_TYPES = [
   "Annual Leave",
   "Sick Leave",
   "Unpaid Leave",
+  "Maternity Leave",
 ] as const;
 
 export type LeaveEntitlementType = (typeof LEAVE_ENTITLEMENT_TYPES)[number];
@@ -50,7 +51,14 @@ export function isLeaveEntitlementDefaultPolicyRow(
 
 /** Hardcoded fallback when no position-specific or tenant-default row exists. */
 export function leaveEntitlementFallback(leaveType: string): number {
-  return leaveType.trim() === "Annual Leave" ? 15 : 0;
+  const lt = leaveType.trim();
+  if (lt === "Annual Leave") {
+    return 15;
+  }
+  if (lt === "Maternity Leave") {
+    return 84;
+  }
+  return 0;
 }
 
 export function defaultLeaveEntitlementDraftValues(): Record<
@@ -61,6 +69,7 @@ export function defaultLeaveEntitlementDraftValues(): Record<
     "Annual Leave": "15",
     "Sick Leave": "0",
     "Unpaid Leave": "0",
+    "Maternity Leave": "84",
   };
 }
 

@@ -9,14 +9,15 @@ import { cache } from "react";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
   getActiveBusinessUnitId,
+  getActiveBusinessUnitIdForWriteStamp,
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import { LOCK_REQUIRES_SCOPED_BU_MESSAGE, REMIT_REQUIRES_SCOPED_BU_MESSAGE } from "@/utils/business-unit-view";
 
-/** Active BU for scoped writes/filters — null is valid (workspace default row). */
+/** Active BU for scoped writes — no primary/name fallback (explicit switcher or null). */
 export async function resolveWriteBusinessUnitId(): Promise<string | null> {
-  return getActiveBusinessUnitId();
+  return getActiveBusinessUnitIdForWriteStamp();
 }
 
 export const countActiveBusinessUnitsForTenant = cache(
@@ -85,6 +86,41 @@ export async function assertRemitBusinessUnitAllowed(
 
   void activeBusinessUnitId;
   return { ok: true };
+}
+
+const CHOOSE_BUSINESS_MESSAGE = "Choose a business before saving.";
+
+/**
+ * Payroll / lock writes: explicit switcher BU, single-BU tenant default, or null when zero BUs.
+ * Never primary-BU fallback.
+ */
+export async function resolvePayrollWriteBusinessUnitId(
+  tenantId: string,
+): Promise<
+  { ok: true; businessUnitId: string | null } | { ok: false; error: string }
+> {
+  const activeCount = await countActiveBusinessUnitsForTenant(tenantId);
+  if (activeCount === 0) {
+    return { ok: true, businessUnitId: null };
+  }
+
+  if (activeCount === 1) {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("business_units")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    return { ok: true, businessUnitId: data?.id ?? null };
+  }
+
+  const explicit = await getActiveBusinessUnitIdForWriteStamp();
+  if (!explicit) {
+    return { ok: false, error: CHOOSE_BUSINESS_MESSAGE };
+  }
+  return { ok: true, businessUnitId: explicit };
 }
 
 export async function assertLockBusinessUnitAllowedForCurrentUser(

@@ -43,6 +43,7 @@ import {
   calculateLoanRepaymentForEmployee,
   calculatePayrollRow,
   countAbsencesForStaff,
+  type MaternityLeaveAbsenceExclusion,
   findMissingBasicSalaryWarnings,
   formatPayrollPaymentMethodDisplay,
   formatPayrollMomoNameDisplay,
@@ -69,6 +70,10 @@ import {
 } from "./payroll-allowance-lines-utils";
 import type { LoanRegisterEntry } from "./loan-register-utils";
 import {
+  sumSalaryAdvancesForEmployeeInMonth,
+  type SalaryAdvanceRegisterEntry,
+} from "./salary-advance-register-utils";
+import {
   useBusinessUnitReadScope,
   useStampBusinessUnitId,
 } from "@/app/dashboard/business-unit-view-context";
@@ -91,6 +96,8 @@ type PayrollProcessingProps = {
   initialAttendance: PayrollAttendanceSource[];
   initialOvertime: PayrollOvertimeSource[];
   initialLoans: LoanRegisterEntry[];
+  initialSalaryAdvances: SalaryAdvanceRegisterEntry[];
+  initialMaternityLeaves: MaternityLeaveAbsenceExclusion[];
   taxConfigs: PayrollTaxConfigs;
   compensationPolicyConfig: PayrollCompensationPolicyConfig;
   canManagePayrollPeriod: boolean;
@@ -148,6 +155,8 @@ export default function PayrollProcessing({
   initialAttendance,
   initialOvertime,
   initialLoans,
+  initialSalaryAdvances,
+  initialMaternityLeaves,
   taxConfigs,
   compensationPolicyConfig,
   canManagePayrollPeriod,
@@ -169,6 +178,8 @@ export default function PayrollProcessing({
   const [attendance, setAttendance] = useState(initialAttendance);
   const [overtime, setOvertime] = useState(initialOvertime);
   const [loans, setLoans] = useState(initialLoans);
+  const [salaryAdvances, setSalaryAdvances] = useState(initialSalaryAdvances);
+  const [maternityLeaves] = useState(initialMaternityLeaves);
   const [selectedPeriodKey, setSelectedPeriodKey] = useState(
     buildPeriodKey(now.getFullYear(), now.getMonth() + 1),
   );
@@ -223,6 +234,10 @@ export default function PayrollProcessing({
   useEffect(() => {
     setLoans(initialLoans);
   }, [initialLoans]);
+
+  useEffect(() => {
+    setSalaryAdvances(initialSalaryAdvances);
+  }, [initialSalaryAdvances]);
 
   useEffect(() => {
     setError(fetchError);
@@ -373,6 +388,7 @@ export default function PayrollProcessing({
         employee.staff_id,
         period.year,
         period.month,
+        maternityLeaves,
       ),
       overtimeAmount: sumOvertimeForEmployeeInPeriod(
         overtimeRows,
@@ -397,6 +413,19 @@ export default function PayrollProcessing({
     );
   }
 
+  function businessUnitForPayrollRow(
+    employee: PayrollEmployeeSource,
+  ): string | null {
+    const fromEmployee = employee.business_unit_id?.trim() || null;
+    if (fromEmployee) {
+      return fromEmployee;
+    }
+    if (stampBusinessUnit.ok) {
+      return stampBusinessUnit.businessUnitId;
+    }
+    return activeBusinessUnitId?.trim() || null;
+  }
+
   function recalculateWorkspaceRow(
     row: PayrollProcessingRow,
     employee: PayrollEmployeeSource,
@@ -406,15 +435,28 @@ export default function PayrollProcessing({
     overtimeRows: PayrollOvertimeSource[] = overtime,
   ): WorkspaceRow {
     const policy = policyForEmployee(employee, period);
+    const manualInputs = {
+      ...buildManualInputsFromRow(row, period.totalWorkingDays),
+      ...manualOverrides,
+    };
+    if (!("salary_advance" in manualOverrides)) {
+      const registerSum = sumSalaryAdvancesForEmployeeInMonth(
+        salaryAdvances,
+        employee.employee_id,
+        period.payrollMonth,
+        businessUnitForPayrollRow(employee),
+      );
+      manualInputs.salary_advance =
+        registerSum > 0
+          ? registerSum
+          : Number(row.salary_advance) || 0;
+    }
     const calculated = calculatePayrollRow(
       employee,
       period,
       taxConfigs,
       getRowSources(employee, period, attendanceRows, overtimeRows),
-      {
-        ...buildManualInputsFromRow(row, period.totalWorkingDays),
-        ...manualOverrides,
-      },
+      manualInputs,
       policy,
       resolvePayrollWelfareConfigForEmployee(
         employee.business_unit_id,
@@ -1999,7 +2041,6 @@ export default function PayrollProcessing({
                               "net_only_adjustment",
                               "Net-only adjustment (prior period)",
                             ],
-                            ["salary_advance", "Salary Advance"],
                             ["other_deductions", "Other Deductions"],
                           ] as const
                         ).map(([field, label]) => (
@@ -2022,6 +2063,59 @@ export default function PayrollProcessing({
                             />
                           </div>
                         ))}
+                        {(() => {
+                          const rowEmployee = employeeMap.get(row.employee_id);
+                          const registerAdvanceSum = currentPeriod
+                            ? sumSalaryAdvancesForEmployeeInMonth(
+                                salaryAdvances,
+                                row.employee_id,
+                                currentPeriod.payrollMonth,
+                                rowEmployee
+                                  ? businessUnitForPayrollRow(rowEmployee)
+                                  : null,
+                              )
+                            : 0;
+                          const registerSourced = registerAdvanceSum > 0;
+                          return (
+                            <div>
+                              <label className="mb-1 flex items-center gap-1 text-sm font-medium text-slate-700">
+                                Salary Advance
+                                <Tooltip
+                                  content={
+                                    registerSourced
+                                      ? "Comes from Loans & Advances register"
+                                      : "Manual amount (legacy). Use Loans & Advances for new advances."
+                                  }
+                                  variant="info"
+                                >
+                                  <span
+                                    className="cursor-help text-xs font-semibold text-[#0f2744]"
+                                    aria-label="Salary advance source"
+                                  >
+                                    i
+                                  </span>
+                                </Tooltip>
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                readOnly={registerSourced}
+                                disabled={loading || registerSourced}
+                                value={Number(row.salary_advance) || 0}
+                                onChange={(event) =>
+                                  void updateRowField(row, {
+                                    salary_advance:
+                                      Number(event.target.value) || 0,
+                                  })
+                                }
+                                className={`${inputClassName} ${
+                                  registerSourced ? "bg-slate-100" : ""
+                                }`}
+                              />
+                            </div>
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>,

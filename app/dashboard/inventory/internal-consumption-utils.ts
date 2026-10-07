@@ -29,6 +29,23 @@ export type InternalConsumptionRecord = {
   site?: InternalConsumptionSite | null;
 };
 
+import { formatInventoryQuantity } from "./inventory-utils";
+import type { FinishedProductRecord } from "./finished-products-utils";
+
+export const INTERNAL_USE_SECTION_HELP =
+  "Finished products taken for the business's own use (not sold). Stock goes down and the cost is posted as a non-cash Direct Operational expense.";
+
+export function formatInternalUseProductOptionLabel(
+  product: Pick<
+    FinishedProductRecord,
+    "product_code" | "product_name" | "current_stock" | "sourcing_type"
+  >,
+): string {
+  const sourceLabel =
+    product.sourcing_type === "purchased" ? "Purchased" : "Produced";
+  return `${product.product_code} — ${product.product_name} (${sourceLabel}) · ${formatInventoryQuantity(product.current_stock)} in stock`;
+}
+
 export const INTERNAL_CONSUMPTION_SELECT =
   "id, product_id, quantity, consumption_date, reason, recorded_by, notes, created_at, site_id, business_unit_id, expense_register_id, product:finished_products!product_id(product_code, product_name, unit_of_measure), site:sites!internal_consumption_site_id_fkey(site_code, site_name, client_id, project_id, client:customers!sites_client_id_fkey(client_id, client_name))";
 

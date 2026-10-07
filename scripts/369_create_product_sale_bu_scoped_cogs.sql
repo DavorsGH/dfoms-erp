@@ -149,13 +149,10 @@ BEGIN
   v_amount := ROUND(p_quantity * p_unit_price, 4);
   v_outstanding := ROUND(v_amount - COALESCE(p_amount_received, 0), 4);
 
-  v_cogs_unit_cost := coalesce(
-    public.finished_product_weighted_avg_cost_scoped(p_product_id, p_business_unit_id),
-    0
+  v_cogs_unit_cost := public.finished_product_inventory_outflow_unit_cost(
+    p_product_id,
+    p_business_unit_id
   );
-  IF v_cogs_unit_cost <= 0 THEN
-    v_cogs_unit_cost := coalesce(public.finished_product_weighted_avg_cost(p_product_id), 0);
-  END IF;
   v_cogs_amount := ROUND(v_cogs_unit_cost * p_quantity, 4);
   v_cogs_receipt_no := 'COGS-' || TRIM(v_invoice_no);
 

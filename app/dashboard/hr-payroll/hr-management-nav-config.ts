@@ -46,7 +46,7 @@ export const HR_MANAGEMENT_GROUPS: readonly HrManagementNavGroup[] = [
         href: "/dashboard/hr-payroll/leave-balances",
       },
       { label: "Overtime", href: "/dashboard/hr-payroll/overtime" },
-      { label: "Loans", href: "/dashboard/hr-payroll/loans" },
+      { label: "Loans & Advances", href: "/dashboard/hr-payroll/loans" },
       {
         label: "Disciplinary",
         href: "/dashboard/hr-payroll/disciplinary",

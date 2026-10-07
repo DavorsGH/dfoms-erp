@@ -107,7 +107,7 @@ BEGIN
         '% must not supply cost_per_unit — it is captured from the current BU-scoped WAC',
         v_type;
     END IF;
-    v_resolved_cost := public.finished_product_weighted_avg_cost_scoped(
+    v_resolved_cost := public.finished_product_inventory_outflow_unit_cost(
       p_product_id,
       p_business_unit_id
     );

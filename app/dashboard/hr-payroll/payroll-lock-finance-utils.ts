@@ -7,6 +7,11 @@ import {
   payrollMonthToPeriodKey,
 } from "./payroll-period-utils";
 import type { PayrollProcessingRow } from "./payroll-processing-utils";
+import {
+  salaryAdvancePortionForDedsav,
+  sumSalaryAdvancesForEmployeeInMonth,
+  type SalaryAdvanceRegisterEntry,
+} from "./salary-advance-register-utils";
 
 export const PAYROLL_EXPENSE_AUTO_DESCRIPTION_PREFIX =
   "Auto-posted from Payroll";
@@ -137,30 +142,56 @@ export function resolvePayrollLockFinancePeriod(
   };
 }
 
+export type PayrollDeductionSavingsContext = {
+  registerAdvances?: SalaryAdvanceRegisterEntry[];
+  payrollMonth?: string;
+  businessUnitId?: string | null;
+};
+
 export function calculatePayrollDeductionSavingsTotal(
   rows: Pick<
     PayrollLockFinanceSourceRow,
+    | "employee_id"
     | "absence_deduction"
     | "loan_repayment"
-    | "salary_advance"
     | "other_deductions"
+    | "salary_advance"
   >[],
+  context?: PayrollDeductionSavingsContext,
 ): number {
   return roundCurrency(
-    rows.reduce(
-      (sum, row) =>
+    rows.reduce((sum, row) => {
+      const registerSum =
+        context?.registerAdvances && context.payrollMonth
+          ? sumSalaryAdvancesForEmployeeInMonth(
+              context.registerAdvances,
+              row.employee_id,
+              context.payrollMonth,
+              context.businessUnitId,
+            )
+          : 0;
+      const manualAdvance =
+        context?.registerAdvances && context.payrollMonth
+          ? salaryAdvancePortionForDedsav(
+              Number(row.salary_advance) || 0,
+              registerSum,
+            )
+          : Number(row.salary_advance) || 0;
+
+      return (
         sum +
         (Number(row.absence_deduction) || 0) +
         (Number(row.loan_repayment) || 0) +
-        (Number(row.salary_advance) || 0) +
-        (Number(row.other_deductions) || 0),
-      0,
-    ),
+        (Number(row.other_deductions) || 0) +
+        manualAdvance
+      );
+    }, 0),
   );
 }
 
 export function calculatePayrollLockFinanceTotals(
   rows: PayrollLockFinanceSourceRow[],
+  context?: PayrollDeductionSavingsContext,
 ): PayrollLockFinanceTotals {
   const totalGrossPay = sumNumericField(rows, "gross_pay");
   const totalNetOnlyAdjustment = sumNumericField(rows, "net_only_adjustment");
@@ -172,7 +203,7 @@ export function calculatePayrollLockFinanceTotals(
     totalGrossPay,
     totalStaffSalariesExpense: totalGrossPay,
     totalNetOnlyAdjustment,
-    totalDeductionSavings: calculatePayrollDeductionSavingsTotal(rows),
+    totalDeductionSavings: calculatePayrollDeductionSavingsTotal(rows, context),
     totalEmployerSsnitContribution: roundCurrency(
       totalEmployerSsnit + totalTier2,
     ),
@@ -846,6 +877,8 @@ export async function postPayrollLockFinanceEntries(
     skipLoanRepayments?: boolean;
     /** Create-only stamp for new payroll expense rows; null = All Businesses. */
     businessUnitId?: string | null;
+    /** When set, register-sourced salary advances are excluded from DEDSAV. */
+    registerAdvances?: SalaryAdvanceRegisterEntry[];
   },
 ): Promise<{
   insertedExpenses: number;
@@ -874,7 +907,11 @@ export async function postPayrollLockFinanceEntries(
   const { syncPayrollWelfareFundAccrual } = await import(
     "./payroll-welfare-fund-sync"
   );
-  const totals = calculatePayrollLockFinanceTotals(rows);
+  const totals = calculatePayrollLockFinanceTotals(rows, {
+    registerAdvances: options?.registerAdvances,
+    payrollMonth: period.payrollMonth,
+    businessUnitId: options?.businessUnitId,
+  });
   let insertedExpenses = 0;
   let updatedExpenses = 0;
   let insertedIncome = 0;

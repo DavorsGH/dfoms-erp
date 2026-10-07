@@ -144,12 +144,14 @@ export function buildCustomerCreditsBalanceSheetOptions(
     | "initialCreditNotesForCustomerCredits"
     | "initialRefundsForCustomerCredits"
     | "initialCreditNoteApplications"
+    | "initialStaffSalaryAdvanceEntries"
   >,
 ) {
   return {
     creditNotesForCustomerCredits: data.initialCreditNotesForCustomerCredits,
     refundsForCustomerCredits: data.initialRefundsForCustomerCredits,
     creditNoteApplicationsForCash: data.initialCreditNoteApplications,
+    staffSalaryAdvanceEntries: data.initialStaffSalaryAdvanceEntries,
   };
 }
 
@@ -211,6 +213,12 @@ export type BalanceSheetPageData = {
   initialInventoryBalanceSheet: InventoryBalanceSheetInput;
   initialTaxLedgerEntries: BalanceSheetTaxLedgerEntry[];
   initialWelfareFundEntries: BalanceSheetWelfareFundEntry[];
+  initialStaffSalaryAdvanceEntries: Array<{
+    date_issued: string;
+    amount: number;
+    status: "outstanding" | "deducted";
+    deduct_payroll_month: string;
+  }>;
   initialCreditNotesForCustomerCredits: CustomerCreditsCreditNoteRow[];
   initialRefundsForCustomerCredits: CustomerCreditsRefundRow[];
   initialCreditNoteApplications: CustomerCreditsApplicationRow[];
@@ -359,7 +367,7 @@ export async function fetchInventoryBalanceSheetInput(
       supabase
         .from("finished_product_stock_adjustments")
         .select(
-          "id, adjustment_type, quantity_delta, cost_per_unit, created_at, business_unit_id",
+          "id, product_id, adjustment_type, quantity_delta, cost_per_unit, created_at, business_unit_id",
         )
         .eq("tenant_id", tenantId),
       buScope,
@@ -597,6 +605,19 @@ export async function fetchInventoryBalanceSheetInput(
       quantity_delta: Number(row.quantity_delta) || 0,
       cost_per_unit: Number(row.cost_per_unit) || 0,
     })),
+    finishedProductAdjustments: (
+      (finishedProductAdjustmentsResult.data ?? []) as Array<{
+        product_id: string;
+        quantity_delta: number;
+        cost_per_unit: number;
+        created_at: string;
+      }>
+    ).map((row) => ({
+      product_id: String(row.product_id),
+      effective_date: String(row.created_at ?? "").slice(0, 10),
+      quantity_delta: Number(row.quantity_delta) || 0,
+      cost_per_unit: Number(row.cost_per_unit) || 0,
+    })),
   };
 
   const stockAdjustmentRegisterLinkedPlKeys = (
@@ -669,6 +690,17 @@ export async function fetchCashFlowInventoryPurchaseInput(
     rawMaterialCashPurchases: rawMaterialPurchases ?? [],
     productCashPurchases: productPurchases ?? [],
   };
+}
+
+function isMissingSalaryAdvanceRegisterError(message: string | undefined): boolean {
+  if (!message) {
+    return false;
+  }
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("salary_advance_register") &&
+    (lower.includes("does not exist") || lower.includes("schema cache"))
+  );
 }
 
 export async function fetchBalanceSheetPageData(
@@ -820,6 +852,13 @@ export async function fetchBalanceSheetPageData(
       .neq("status", "reversed"),
     buScope,
   ).order("entry_date", { ascending: true });
+  let salaryAdvanceQuery = applyBusinessUnitScope(
+    supabase
+      .from("salary_advance_register")
+      .select("date_issued, amount, status, deduct_payroll_month")
+      .eq("tenant_id", tenantId),
+    buScope,
+  ).order("date_issued", { ascending: true });
 
   if (dateRange) {
     incomeQuery = applyDateRangeFilter(incomeQuery, "date", dateRange);
@@ -832,6 +871,11 @@ export async function fetchBalanceSheetPageData(
     payrollProcessingQuery = applyDateRangeFilter(
       payrollProcessingQuery,
       "payroll_month",
+      dateRange,
+    );
+    salaryAdvanceQuery = applyDateRangeFilter(
+      salaryAdvanceQuery,
+      "date_issued",
       dateRange,
     );
   }
@@ -887,6 +931,7 @@ export async function fetchBalanceSheetPageData(
     { data: monthEndCloseRecords, error: monthEndCloseError },
     { data: taxLedgerEntries, error: taxLedgerError },
     { data: welfareFundEntries, error: welfareFundError },
+    { data: salaryAdvanceEntries, error: salaryAdvanceError },
     { data: creditNotesRows, error: creditNotesError },
     { data: refundsRows, error: refundsError },
     { data: creditApplicationsRows, error: creditApplicationsError },
@@ -912,6 +957,7 @@ export async function fetchBalanceSheetPageData(
     monthEndCloseQuery,
     taxLedgerQuery,
     welfareFundQuery,
+    salaryAdvanceQuery,
     creditNotesQuery,
     refundsQuery,
     creditApplicationsQuery,
@@ -919,7 +965,7 @@ export async function fetchBalanceSheetPageData(
   ]);
 
   if (requestCounter) {
-    let parallelBatchCount = 16;
+    let parallelBatchCount = 17;
     if (useSharedRegisters) {
       parallelBatchCount -= 3;
     }
@@ -1080,6 +1126,12 @@ export async function fetchBalanceSheetPageData(
       (taxLedgerEntries as BalanceSheetTaxLedgerEntry[] | null) ?? [],
     initialWelfareFundEntries:
       (welfareFundEntries as BalanceSheetWelfareFundEntry[] | null) ?? [],
+    initialStaffSalaryAdvanceEntries: isMissingSalaryAdvanceRegisterError(
+      salaryAdvanceError?.message,
+    )
+      ? []
+      : ((salaryAdvanceEntries as BalanceSheetPageData["initialStaffSalaryAdvanceEntries"] | null) ??
+        []),
     initialCreditNotesForCustomerCredits,
     initialRefundsForCustomerCredits,
     initialCreditNoteApplications,
@@ -1093,6 +1145,7 @@ export async function fetchBalanceSheetPageData(
         ...(payrollHistory ?? []).map((entry) => entry.payroll_month),
         ...(taxLedgerEntries ?? []).map((entry) => entry.entry_date),
         ...(welfareFundEntries ?? []).map((entry) => entry.entry_date),
+        ...(salaryAdvanceEntries ?? []).map((entry) => entry.date_issued),
       ],
     ),
     fetchError:
@@ -1112,6 +1165,9 @@ export async function fetchBalanceSheetPageData(
       monthEndCloseError?.message ??
       taxLedgerError?.message ??
       welfareFundError?.message ??
+      (isMissingSalaryAdvanceRegisterError(salaryAdvanceError?.message)
+        ? null
+        : salaryAdvanceError?.message) ??
       creditNotesError?.message ??
       refundsError?.message ??
       creditApplicationsError?.message ??

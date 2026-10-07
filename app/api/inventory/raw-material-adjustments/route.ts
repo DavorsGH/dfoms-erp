@@ -21,6 +21,7 @@ import {
   type RawMaterialAdjustmentType,
   type RawMaterialStockAdjustmentRecord,
 } from "@/app/dashboard/inventory/raw-materials-utils";
+import { mapRawMaterialStockAdjustmentErrorMessage } from "@/lib/inventory/inventory-mutation-error";
 
 async function getTenantSupabase() {
   const cookieStore = await cookies();
@@ -172,10 +173,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
 
+  const bodyWithBu = body as { business_unit_id?: unknown };
+  const requestedBu =
+    typeof bodyWithBu.business_unit_id === "string" &&
+    bodyWithBu.business_unit_id.trim()
+      ? bodyWithBu.business_unit_id.trim()
+      : undefined;
+
   const writeBu = await resolveServerWriteBusinessUnitId({
     supabase,
     tenantId: auth.tenantId,
     authUid: user.id,
+    requestedBusinessUnitId: requestedBu,
+    requireExplicitSwitcherSelection: requestedBu === undefined,
   });
   if (!writeBu.ok) {
     return NextResponse.json({ error: writeBu.error }, { status: writeBu.status });
@@ -198,7 +208,10 @@ export async function POST(request: Request) {
   );
 
   if (rpcError) {
-    return NextResponse.json({ error: rpcError.message }, { status: 400 });
+    return NextResponse.json(
+      { error: mapRawMaterialStockAdjustmentErrorMessage(rpcError) },
+      { status: 400 },
+    );
   }
 
   const resolvedId =

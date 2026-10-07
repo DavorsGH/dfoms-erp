@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   getActiveBusinessUnitId,
+  getActiveBusinessUnitIdForWriteStamp,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
 import {
@@ -18,6 +19,10 @@ export type CreateBusinessUnitStampOptions = {
   businessUnitId?: string | null;
   /** Default true. Set false for system/webhook paths with no staff switcher. */
   useActiveContext?: boolean;
+  /**
+   * When true, only user_accounts.active_business_unit_id counts (no primary-BU fallback).
+   */
+  requireExplicitSwitcherSelection?: boolean;
 };
 
 export class StampRefusedViewAllError extends Error {
@@ -55,6 +60,10 @@ export async function resolveCreateBusinessUnitId(
 
   if (!useActiveContext) {
     return null;
+  }
+
+  if (options?.requireExplicitSwitcherSelection) {
+    return getActiveBusinessUnitIdForWriteStamp();
   }
 
   return getActiveBusinessUnitId();

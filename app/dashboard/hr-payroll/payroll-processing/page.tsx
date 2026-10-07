@@ -23,6 +23,8 @@ import type {
 } from "../payroll-processing-utils";
 import type { MonthEndCloseRecord } from "../payroll-period-utils";
 import type { LoanRegisterEntry } from "../loan-register-utils";
+import type { SalaryAdvanceRegisterEntry } from "../salary-advance-register-utils";
+import type { MaternityLeaveAbsenceExclusion } from "../payroll-processing-utils";
 import type {
   AllowanceTypeRow,
   CompensationPolicyRow,
@@ -34,6 +36,11 @@ import {
   normalizeHrPayrollSettingsRow,
   type HrPayrollSettingsRow,
 } from "@/utils/hr-payroll-settings-types";
+import {
+  applyEmployeeIdScope,
+  applyEmployeeIdScopeToColumn,
+  fetchScopedEmployeeIds,
+} from "../payroll-bu-scope-utils";
 
 export default async function PayrollProcessingPage() {
   const cookieStore = await cookies();
@@ -55,6 +62,38 @@ export default async function PayrollProcessingPage() {
     activeBusinessUnitId,
   });
 
+  let payrollEmployeeScopeError: string | null = null;
+  const scopedEmployees = tenantId
+    ? await fetchScopedEmployeeIds(supabase, tenantId, buScope)
+    : { employeeIds: [] as string[], error: "Unable to resolve tenant." };
+  payrollEmployeeScopeError = scopedEmployees.error;
+  const employeeIds = scopedEmployees.employeeIds;
+
+  let scopedStaffIds: string[] | null = null;
+  if (tenantId && employeeIds !== null) {
+    if (employeeIds.length === 0) {
+      scopedStaffIds = [];
+    } else {
+      const { data: staffRows, error: staffError } = await supabase
+        .from("employees")
+        .select("staff_id")
+        .eq("tenant_id", tenantId)
+        .in("employee_id", employeeIds);
+      if (staffError) {
+        payrollEmployeeScopeError ??= staffError.message;
+        scopedStaffIds = [];
+      } else {
+        scopedStaffIds = [
+          ...new Set(
+            (staffRows ?? [])
+              .map((row) => String(row.staff_id ?? "").trim())
+              .filter(Boolean),
+          ),
+        ];
+      }
+    }
+  }
+
   const employeeSelect =
     "employee_id, staff_id, full_name, employment_type, employment_status, date_hired, appointment_end_date, position, shift, basic_salary, housing_allowance, transport_allowance, other_allowances, welfare_deduction_rate, business_unit_id, department, contract_project, payment_method, bank_name, account_number, momo_number, momo_name";
 
@@ -66,6 +105,8 @@ export default async function PayrollProcessingPage() {
     { data: attendance, error: attendanceError },
     { data: overtime, error: overtimeError },
     { data: loans, error: loansError },
+    { data: salaryAdvances, error: salaryAdvancesError },
+    { data: maternityLeaveRows, error: maternityLeaveError },
     { data: salaryRates },
     { data: allowanceTypes },
     { data: compensationPolicies },
@@ -90,20 +131,47 @@ export default async function PayrollProcessingPage() {
           data: null,
           error: { message: "Unable to resolve tenant for payroll employees." },
         }),
-    supabase
-      .from("attendance_register")
-      .select("staff_id, date, attendance_status")
-      .gte("date", attendanceStart)
-      .lte("date", attendanceEnd),
-    supabase
-      .from("overtime_register")
-      .select("employee_id, date, overtime_amount, approved_by")
-      .gte("date", attendanceStart)
-      .lte("date", attendanceEnd),
-    supabase
-      .from("loan_register")
-      .select("*")
-      .or("outstanding_balance.gt.0.01,outstanding_balance.is.null"),
+    applyEmployeeIdScopeToColumn(
+      supabase
+        .from("attendance_register")
+        .select("staff_id, date, attendance_status")
+        .gte("date", attendanceStart)
+        .lte("date", attendanceEnd),
+      scopedStaffIds,
+      "staff_id",
+    ),
+    applyEmployeeIdScope(
+      supabase
+        .from("overtime_register")
+        .select("employee_id, date, overtime_amount, approved_by")
+        .gte("date", attendanceStart)
+        .lte("date", attendanceEnd),
+      employeeIds,
+    ),
+    applyEmployeeIdScope(
+      supabase
+        .from("loan_register")
+        .select("*")
+        .or("outstanding_balance.gt.0.01,outstanding_balance.is.null"),
+      employeeIds,
+    ),
+    applyEmployeeIdScope(
+      tenantId
+        ? supabase
+            .from("salary_advance_register")
+            .select("*")
+            .eq("tenant_id", tenantId)
+        : supabase.from("salary_advance_register").select("*").limit(0),
+      employeeIds,
+    ),
+    applyEmployeeIdScope(
+      supabase
+        .from("leave_management")
+        .select("employee_id, leave_type, start_date, end_date, approval_status")
+        .eq("approval_status", "Approved")
+        .eq("leave_type", "Maternity Leave"),
+      employeeIds,
+    ),
     supabase
       .from("salary_rate_config")
       .select("*")
@@ -129,6 +197,7 @@ export default async function PayrollProcessingPage() {
 
   const fetchError =
     (!tenantId ? "Unable to resolve tenant for payroll." : null) ??
+    payrollEmployeeScopeError ??
     processingMonthsError?.message ??
     historyMonthsError?.message ??
     monthEndCloseError?.message ??
@@ -136,9 +205,41 @@ export default async function PayrollProcessingPage() {
     attendanceError?.message ??
     overtimeError?.message ??
     loansError?.message ??
+    salaryAdvancesError?.message ??
+    maternityLeaveError?.message ??
     statutoryTaxBundle.error ??
     hrPayrollSettingsError?.message ??
     null;
+
+  const employeeStaffById = new Map(
+    ((employees as PayrollEmployeeSource[] | null) ?? []).map((employee) => [
+      employee.employee_id,
+      employee.staff_id,
+    ]),
+  );
+  const initialMaternityLeaves: MaternityLeaveAbsenceExclusion[] = (
+    (maternityLeaveRows as Array<{
+      employee_id: string;
+      leave_type: string;
+      start_date: string;
+      end_date: string;
+      approval_status: string;
+    }> | null) ?? []
+  )
+    .map((row) => {
+      const staffId = employeeStaffById.get(row.employee_id);
+      if (!staffId) {
+        return null;
+      }
+      return {
+        staff_id: staffId,
+        leave_type: row.leave_type,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        approval_status: row.approval_status,
+      };
+    })
+    .filter((row): row is MaternityLeaveAbsenceExclusion => row !== null);
 
   const normalizedHrPayrollSettingsRows = (
     (hrPayrollSettingsRows as HrPayrollSettingsRow[] | null) ?? []
@@ -172,6 +273,10 @@ export default async function PayrollProcessingPage() {
         initialAttendance={(attendance as PayrollAttendanceSource[] | null) ?? []}
         initialOvertime={(overtime as PayrollOvertimeSource[] | null) ?? []}
         initialLoans={(loans as LoanRegisterEntry[] | null) ?? []}
+        initialSalaryAdvances={
+          (salaryAdvances as SalaryAdvanceRegisterEntry[] | null) ?? []
+        }
+        initialMaternityLeaves={initialMaternityLeaves}
         taxConfigs={statutoryTaxBundle.taxConfigs}
         compensationPolicyConfig={{
           salaryRates: (salaryRates as SalaryRateConfig[] | null) ?? [],

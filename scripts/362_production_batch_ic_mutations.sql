@@ -671,8 +671,40 @@ $$;
 
 REVOKE ALL ON FUNCTION public.update_production_batch(uuid, uuid, date, uuid, numeric, text, jsonb, date, date) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.update_production_batch(uuid, uuid, date, uuid, numeric, text, jsonb, date, date) FROM anon;
-REVOKE ALL ON FUNCTION public.update_production_batch(uuid, uuid, date, uuid, numeric, text, jsonb, date, date) FROM authenticated;
-GRANT EXECUTE ON FUNCTION public.update_production_batch(uuid, uuid, date, uuid, numeric, text, jsonb, date, date) TO service_role;
+GRANT EXECUTE ON FUNCTION public.update_production_batch(uuid, uuid, date, uuid, numeric, text, jsonb, date, date) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.finished_product_inventory_outflow_unit_cost(
+  p_product_id uuid,
+  p_business_unit_id uuid
+)
+RETURNS numeric(18, 4)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, extensions, pg_temp
+AS $$
+DECLARE
+  v_unit_cost numeric(18, 4);
+BEGIN
+  v_unit_cost := coalesce(
+    public.finished_product_weighted_avg_cost_scoped(
+      p_product_id,
+      p_business_unit_id
+    ),
+    0
+  );
+  IF v_unit_cost <= 0 THEN
+    v_unit_cost := coalesce(
+      public.finished_product_weighted_avg_cost(p_product_id),
+      0
+    );
+  END IF;
+  RETURN v_unit_cost;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.finished_product_inventory_outflow_unit_cost(uuid, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.finished_product_inventory_outflow_unit_cost(uuid, uuid) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.delete_internal_consumption_entry(
   p_tenant_id uuid,
@@ -724,6 +756,11 @@ BEGIN
   );
 
   IF v_row.expense_register_id IS NOT NULL THEN
+    UPDATE public.internal_consumption
+    SET expense_register_id = NULL
+    WHERE id = p_entry_id
+      AND tenant_id = p_tenant_id;
+
     DELETE FROM public.expense_register
     WHERE id = v_row.expense_register_id
       AND tenant_id = p_tenant_id;
@@ -812,6 +849,11 @@ BEGIN
   );
 
   IF v_old.expense_register_id IS NOT NULL THEN
+    UPDATE public.internal_consumption
+    SET expense_register_id = NULL
+    WHERE id = p_entry_id
+      AND tenant_id = p_tenant_id;
+
     DELETE FROM public.expense_register
     WHERE id = v_old.expense_register_id
       AND tenant_id = p_tenant_id;
@@ -824,8 +866,7 @@ BEGIN
     quantity = p_quantity,
     reason = NULLIF(trim(p_reason), ''),
     notes = NULLIF(trim(p_notes), ''),
-    site_id = p_site_id,
-    expense_register_id = NULL
+    site_id = p_site_id
   WHERE id = p_entry_id
     AND tenant_id = p_tenant_id;
 
@@ -846,7 +887,7 @@ BEGIN
   v_unit_cost := 0;
   v_expense_amount := 0;
   IF v_go_live IS NOT NULL AND p_consumption_date >= v_go_live THEN
-    v_unit_cost := public.finished_product_weighted_avg_cost_scoped(
+    v_unit_cost := public.finished_product_inventory_outflow_unit_cost(
       p_product_id,
       v_old.business_unit_id
     );
@@ -919,40 +960,40 @@ BEGIN
   END IF;
 
   INSERT INTO public.expense_register (
-    tenant_id,
-    date,
-    expense_category,
-    sub_category,
-    description,
-    vendor,
-    price,
-    quantity,
-    amount,
-    payment_method,
-    approved_by,
-    receipt_no,
-    payment_status,
-    notes,
-    business_unit_id
-  )
-  VALUES (
-    p_tenant_id,
-    p_consumption_date,
-    'Direct Operational',
-    'Finished Goods - Internal Use',
-    'Auto-posted internal consumption of ' || v_product_name,
-    'Internal',
-    v_unit_cost,
-    p_quantity,
-    v_expense_amount,
-    'Internal',
-    'System',
-    'IC-' || left(p_entry_id::text, 8),
-    'Non-Cash',
-    'Linked to internal_consumption ' || p_entry_id::text,
-    v_old.business_unit_id
-  )
-  RETURNING id INTO v_expense_id;
+      tenant_id,
+      date,
+      expense_category,
+      sub_category,
+      description,
+      vendor,
+      price,
+      quantity,
+      amount,
+      payment_method,
+      approved_by,
+      receipt_no,
+      payment_status,
+      notes,
+      business_unit_id
+    )
+    VALUES (
+      p_tenant_id,
+      p_consumption_date,
+      'Direct Operational',
+      'Finished Goods - Internal Use',
+      'Auto-posted internal consumption of ' || v_product_name,
+      'Internal',
+      v_unit_cost,
+      p_quantity,
+      v_expense_amount,
+      'Internal',
+      'System',
+      'IC-' || left(p_entry_id::text, 8),
+      'Non-Cash',
+      'Linked to internal_consumption ' || p_entry_id::text,
+      v_old.business_unit_id
+    )
+    RETURNING id INTO v_expense_id;
 
   UPDATE public.internal_consumption
   SET expense_register_id = v_expense_id
@@ -1138,6 +1179,146 @@ BEGIN
   );
 
   RETURN v_batch_id;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.apply_internal_consumption()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public, extensions, pg_temp
+AS $function$
+DECLARE
+  v_go_live DATE;
+  v_product_name TEXT;
+  v_unit_of_measure TEXT;
+  v_unit_cost NUMERIC(18, 4);
+  v_expense_amount NUMERIC(18, 4);
+  v_expense_id UUID;
+  v_bu_stock NUMERIC(18, 4);
+BEGIN
+  SELECT go_live_date
+  INTO v_go_live
+  FROM public.inventory_balance_config
+  WHERE tenant_id = NEW.tenant_id;
+
+  SELECT product_name, unit_of_measure
+  INTO v_product_name, v_unit_of_measure
+  FROM public.finished_products
+  WHERE id = NEW.product_id;
+
+  PERFORM public.ensure_finished_product_balance(
+    NEW.tenant_id,
+    NEW.product_id,
+    NEW.business_unit_id
+  );
+
+  SELECT current_stock
+  INTO v_bu_stock
+  FROM public.finished_product_balances
+  WHERE product_id = NEW.product_id
+    AND business_unit_id IS NOT DISTINCT FROM NEW.business_unit_id
+  FOR UPDATE;
+
+  IF v_go_live IS NOT NULL AND NEW.consumption_date >= v_go_live THEN
+    v_unit_cost := public.finished_product_inventory_outflow_unit_cost(
+      NEW.product_id,
+      NEW.business_unit_id
+    );
+    v_expense_amount := ROUND(NEW.quantity * v_unit_cost, 4);
+  END IF;
+
+  IF v_bu_stock < NEW.quantity THEN
+    RAISE EXCEPTION
+      'Only % % of % in stock, cannot consume %.',
+      trim(trailing '.' from trim(trailing '0' from v_bu_stock::text)),
+      v_unit_of_measure,
+      v_product_name,
+      trim(trailing '.' from trim(trailing '0' from NEW.quantity::text));
+  END IF;
+
+  UPDATE public.finished_products
+  SET
+    current_stock = current_stock - NEW.quantity,
+    updated_at = now()
+  WHERE id = NEW.product_id;
+
+  PERFORM public.adjust_finished_product_balance_qty(
+    NEW.tenant_id,
+    NEW.product_id,
+    NEW.business_unit_id,
+    -NEW.quantity
+  );
+
+  INSERT INTO public.stock_movements (
+    tenant_id,
+    product_id,
+    movement_type,
+    quantity,
+    reference_id,
+    movement_date,
+    notes,
+    business_unit_id
+  )
+  VALUES (
+    NEW.tenant_id,
+    NEW.product_id,
+    'internal_consumption_out',
+    NEW.quantity,
+    NEW.id,
+    NEW.consumption_date,
+    COALESCE(
+      NULLIF(TRIM(NEW.notes), ''),
+      NULLIF(TRIM(NEW.reason), ''),
+      'Internal consumption'
+    ),
+    NEW.business_unit_id
+  );
+
+  IF v_go_live IS NULL OR NEW.consumption_date < v_go_live THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.expense_register (
+    tenant_id,
+    date,
+    expense_category,
+    sub_category,
+    description,
+    vendor,
+    price,
+    quantity,
+    amount,
+    payment_method,
+    approved_by,
+    receipt_no,
+    payment_status,
+    notes,
+    business_unit_id
+  )
+  VALUES (
+    NEW.tenant_id,
+    NEW.consumption_date,
+    'Direct Operational',
+    'Finished Goods - Internal Use',
+    'Auto-posted internal consumption of ' || v_product_name,
+    'Internal',
+    v_unit_cost,
+    NEW.quantity,
+    v_expense_amount,
+    'Internal',
+    'System',
+    'IC-' || LEFT(NEW.id::TEXT, 8),
+    'Non-Cash',
+    'Linked to internal_consumption ' || NEW.id::TEXT,
+    NEW.business_unit_id
+  )
+  RETURNING id INTO v_expense_id;
+
+  UPDATE public.internal_consumption
+  SET expense_register_id = v_expense_id
+  WHERE id = NEW.id;
+
+  RETURN NEW;
 END;
 $function$;
 

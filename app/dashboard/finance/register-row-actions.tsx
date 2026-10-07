@@ -108,6 +108,27 @@ export async function confirmDeleteEntry(): Promise<boolean> {
   });
 }
 
+export async function confirmInternalUseDelete(options: {
+  quantityLabel: string;
+  productName: string;
+}): Promise<boolean> {
+  return confirmDialog({
+    message: `Return ${options.quantityLabel} of ${options.productName} to stock and remove the linked expense (if any)?`,
+    tone: "danger",
+    confirmLabel: "Delete",
+  });
+}
+
+export async function confirmProductionBatchDelete(
+  batchNumber: string,
+): Promise<boolean> {
+  return confirmDialog({
+    message: `Delete batch ${batchNumber}? This cannot be undone.`,
+    tone: "danger",
+    confirmLabel: "Delete",
+  });
+}
+
 export async function confirmArchiveEntry(label: string): Promise<boolean> {
   return confirmDialog({
     message: `Archive this ${label}? It will be hidden from dropdowns for new transactions, but existing history stays visible.`,

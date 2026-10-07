@@ -7,6 +7,10 @@ import type { SystemEventStatus } from "@/utils/system-event-log-types";
 import { sendResendEmail } from "@/utils/resend-email";
 import { BS_INTEGRITY_EVENT_NAME } from "@/utils/balance-sheet-integrity-constants";
 import {
+  auditCrossTenantSuperAdminPolicies,
+  type CrossTenantPolicyRow,
+} from "@/utils/policy-tenant-scope-guard";
+import {
   auditTenantBalanceSheetIntegrity,
   type BalanceSheetIntegrityRunResult,
   type TenantBalanceSheetIntegrityResult,
@@ -80,6 +84,43 @@ export async function logTenantBalanceSheetIntegrityResult(
       fetchError: result.fetchError,
     },
   });
+}
+
+const POLICY_GUARD_EVENT_NAME = "policy-tenant-scope-guard";
+
+async function sendCrossTenantPolicyAlertEmail(
+  rows: CrossTenantPolicyRow[],
+): Promise<void> {
+  const alertEmail = (process.env.BS_INTEGRITY_ALERT_EMAIL ?? "").trim();
+  if (!alertEmail || rows.length === 0) {
+    return;
+  }
+
+  const list = rows
+    .map(
+      (row) =>
+        `<li><code>${row.tablename}.${row.policyname}</code> [${row.cmd}]</li>`,
+    )
+    .join("");
+
+  const textList = rows
+    .map((row) => `${row.tablename}.${row.policyname} [${row.cmd}]`)
+    .join("\n");
+
+  const result = await sendResendEmail({
+    to: alertEmail,
+    subject: `[DavSuite] RLS alert: ${rows.length} cross-tenant super_admin policy(ies)`,
+    html: `
+      <p>The nightly integrity job found <strong>${rows.length}</strong> RLS policy(ies) with <code>is_super_admin()</code> and no <code>tenant_matches</code> / <code>current_user_tenant_id()</code>.</p>
+      <ul>${list}</ul>
+      <p>Run <code>scripts/audits/policy_tenant_scope_guard.sql</code> on production (read-only) and fix before any tenant data is exposed.</p>
+    `,
+    text: `Cross-tenant RLS policies:\n\n${textList}`,
+  });
+
+  if (!result.ok) {
+    console.error("[policy-tenant-scope-guard] alert email failed:", result.error);
+  }
 }
 
 async function sendBalanceSheetIntegrityAlertEmail(
@@ -241,6 +282,47 @@ export async function runBalanceSheetIntegrityWithLogging(
       tenantResults.filter((row) => row.status === "failure"),
       run,
     );
+  }
+
+  const policyGuard = await auditCrossTenantSuperAdminPolicies();
+  if (policyGuard.error) {
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: POLICY_GUARD_EVENT_NAME,
+      status: "warning",
+      message: `Policy guard skipped: ${policyGuard.error}`,
+      metadata: { kind: "policy-guard", runId, error: policyGuard.error },
+    });
+  } else if (!policyGuard.ok) {
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: POLICY_GUARD_EVENT_NAME,
+      status: "failure",
+      message: `${policyGuard.rows.length} cross-tenant super_admin RLS policy(ies) detected`,
+      metadata: {
+        kind: "policy-guard",
+        runId,
+        policies: policyGuard.rows.map((row) => ({
+          table: row.tablename,
+          policy: row.policyname,
+          cmd: row.cmd,
+        })),
+      },
+    });
+    if (
+      options.sendAlertEmail !== false &&
+      Boolean((process.env.BS_INTEGRITY_ALERT_EMAIL ?? "").trim())
+    ) {
+      await sendCrossTenantPolicyAlertEmail(policyGuard.rows);
+    }
+  } else {
+    await logSystemEvent({
+      eventType: "cron",
+      eventName: POLICY_GUARD_EVENT_NAME,
+      status: "success",
+      message: "No cross-tenant super_admin RLS policies",
+      metadata: { kind: "policy-guard", runId },
+    });
   }
 
   return run;
