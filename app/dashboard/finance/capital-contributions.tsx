@@ -118,18 +118,21 @@ export default function CapitalContributions({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(true);
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(entry: CapitalContributionEntry) {
+    setLoading(false);
     setEditingId(entry.id);
     setForm({
       date: toDateInputValue(entry.date),
@@ -192,10 +195,10 @@ export default function CapitalContributions({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -209,7 +212,6 @@ export default function CapitalContributions({
         );
       } catch (accessError) {
         setError(formatBusinessUnitAccessError(accessError));
-        setLoading(false);
         return;
       }
     } else {
@@ -219,7 +221,6 @@ export default function CapitalContributions({
       });
       if (!stampResult.ok) {
         setError(stampResult.error);
-        setLoading(false);
         return;
       }
       stampedBusinessUnitId = stampResult.businessUnitId;
@@ -245,13 +246,20 @@ export default function CapitalContributions({
 
     if (saveError) {
       setError(saveError.message);
-      setLoading(false);
       return;
     }
 
     closeForm();
     await refreshEntries();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the capital contribution.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function updateField(field: keyof typeof emptyForm, value: string) {

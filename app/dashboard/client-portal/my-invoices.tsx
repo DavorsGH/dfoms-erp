@@ -9,6 +9,7 @@ import ScrollableTable, {
 import {
   formatDate,
   formatGHS,
+  formatIncomeRegisterPaymentStatusForDisplay,
 } from "../finance/income-register-utils";
 import type { IncomeRegisterEntry } from "../finance/income-register-utils";
 
@@ -96,7 +97,7 @@ export default function MyInvoices({
                 {formatGHS(entry.outstanding_balance ?? 0)}
               </td>
               <td className="px-4 py-3 text-sm text-slate-700">
-                {entry.payment_status}
+                {formatIncomeRegisterPaymentStatusForDisplay(entry.payment_status)}
               </td>
               <td className="px-4 py-3 text-sm text-slate-700">
                 {formatDate(entry.due_date)}

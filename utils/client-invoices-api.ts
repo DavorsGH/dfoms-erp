@@ -331,10 +331,10 @@ export async function voidClientInvoice(
       invoice: null,
       error:
         currentStatus === "draft"
-          ? "Draft invoices should be deleted, not voided."
+          ? "Draft invoices should be deleted, not cancelled."
           : currentStatus === "voided"
-            ? "This invoice is already voided."
-            : `Cannot void an invoice with status ${currentStatus}.`,
+            ? "This invoice is already cancelled."
+            : `Cannot cancel an invoice with status ${currentStatus}.`,
     };
   }
 
@@ -349,7 +349,7 @@ export async function voidClientInvoice(
 
   const invoice = parseSaveClientInvoiceResult(data);
   if (!invoice) {
-    return { invoice: null, error: "Unable to void invoice." };
+    return { invoice: null, error: "Unable to cancel invoice." };
   }
 
   return { invoice, error: null };

@@ -445,7 +445,7 @@ whatever is currently visible.
 Entries synced in automatically from a Client Invoice, Platform Billing,
 or a system payroll adjustment show an "(auto-posted)" label and cannot
 be edited or deleted from this screen --- Edit and Delete are shown
-disabled, with a note pointing you to the source (for example, "Void or
+disabled, with a note pointing you to the source (for example, "Cancel or
 delete the Client Invoice instead"). This keeps the register in step
 with its source instead of drifting out of sync. Entries you add
 yourself here, through Add Entry, keep full Edit and Delete as normal.
@@ -855,9 +855,9 @@ the ERP, matching your standard invoice format.
     a Service Contract (Section 6.12) shows a "From Contract DF-SC-00XX"
     badge linking back to it.
 
--   Void --- once an invoice has been sent, Delete is replaced with
-    Void, so a document your customer has already seen is never silently
-    removed. A voided invoice is clearly marked Voided, drops out of
+-   Cancel invoice --- once an invoice has been sent, Delete is replaced with
+    Cancel invoice, so a document your customer has already seen is never silently
+    removed. A cancelled invoice is clearly marked Cancelled, drops out of
     your outstanding totals, and stays in your records for reference.
     Only Draft invoices can still be deleted outright.
 
@@ -1129,7 +1129,7 @@ are on **All Businesses**) digital webhook sales.
 
   **Row actions**
   ---------------
-  **Print**, **Pay** (when money is still owed), **Return**, and **Void**
+  **Print**, **Pay** (when money is still owed), **Return**, and **Cancel sale**
   (when the sale was entered by mistake --- see Section 7.10).
 
   **Add Sale**
@@ -1145,7 +1145,7 @@ are on **All Businesses**) digital webhook sales.
 
   **All Businesses is view-only**
   -------------------------------
-  You cannot add, void, return, or import while **All Businesses** is
+  You cannot add, cancel sales, return, or import while **All Businesses** is
   selected --- switch to your workspace default or a named business unit
   first.
 
@@ -1215,7 +1215,7 @@ Stock is **not reserved** while a cart is held. Held carts older than
 seven days show as **Old** in the list.
 
 **Button colours (POS).** **Complete Sale** is green; **Add to Cart** is
-navy; **Hold**, **Return**, and **Void** are amber; **Remove line** and
+navy; **Hold**, **Return**, and **Cancel sale** are amber; **Remove line** and
 **Clear cart** are red-outline; **Held carts**, **Print**, **Open
 Customer Display**, and **Apply** (promo or store credit) are grey
 secondary. **Request Payment (link)** keeps the emerald payment-link
@@ -1535,10 +1535,10 @@ profile in one place.
 Handle a customer return or an adjustment to an invoice without
 rewriting the original sale record.
 
-**Return vs. Void**
+**Return vs. Cancel sale**
 
--   **Void** --- the sale was **entered by mistake** and should never
-    have happened. Use **Void** on the Sales register row (or the
+-   **Cancel sale** --- the sale was **entered by mistake** and should never
+    have happened. Use **Cancel sale** on the Sales register row (or the
     equivalent flow for a manual sale). This is not a customer bringing
     goods back.
 

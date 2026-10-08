@@ -83,6 +83,9 @@ export default function InternalConsumption({
   const [showFormInternal, setShowFormInternal] = useState(false);
   const showForm = showFormProp ?? showFormInternal;
   const setShowForm = (next: boolean) => {
+    if (!next) {
+      setLoading(false);
+    }
     if (onShowFormChange) {
       onShowFormChange(next);
     } else {
@@ -110,23 +113,21 @@ export default function InternalConsumption({
     setLoading(true);
     setFormError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setFormError(buContext.error);
-      setLoading(false);
       return;
     }
 
     const quantity = Number.parseFloat(form.quantity);
     if (Number.isNaN(quantity) || quantity <= 0) {
       setFormError("Quantity must be greater than zero.");
-      setLoading(false);
       return;
     }
 
     if (!form.product_id) {
       setFormError("Select a finished product.");
-      setLoading(false);
       return;
     }
 
@@ -135,7 +136,6 @@ export default function InternalConsumption({
       setFormError(
         `Only ${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure} of ${product.product_name} in stock, cannot record use of ${formatInventoryQuantity(quantity)}.`,
       );
-      setLoading(false);
       return;
     }
 
@@ -149,7 +149,6 @@ export default function InternalConsumption({
           );
         } catch (accessError) {
           setFormError(formatBusinessUnitAccessError(accessError));
-          setLoading(false);
           return;
         }
       }
@@ -172,7 +171,6 @@ export default function InternalConsumption({
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
         setFormError(payload.error ?? "Unable to save this entry.");
-        setLoading(false);
         return;
       }
     } else {
@@ -192,7 +190,6 @@ export default function InternalConsumption({
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
         setFormError(payload.error ?? "Unable to save this entry.");
-        setLoading(false);
         return;
       }
     }
@@ -206,10 +203,19 @@ export default function InternalConsumption({
     } catch {
       setError("Saved, but the list could not be refreshed. Try again.");
     }
-    setLoading(false);
+    } catch (unexpected) {
+      setFormError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save this entry.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openEditEntry(entry: InternalConsumptionRecord) {
+    setLoading(false);
     setEditingEntryId(entry.id);
     setForm({
       project_id: entry.site?.project_id ?? "",
@@ -402,6 +408,7 @@ export default function InternalConsumption({
             <button
               type="button"
               onClick={() => {
+                setLoading(false);
                 if (showForm) {
                   setEditingEntryId(null);
                   setForm(emptyForm);

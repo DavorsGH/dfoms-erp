@@ -105,7 +105,7 @@ export function buildFinishedProductDeleteMessage(
     parts.push(`${batchCount} production batch${batchCount === 1 ? "" : "es"}`);
   }
 
-  return `Deleting '${preview.product_name}' will also permanently void/delete ${parts.join(", ")}. This cannot be undone. Continue?`;
+  return `Deleting '${preview.product_name}' will also permanently cancel or delete ${parts.join(", ")}. This cannot be undone. Continue?`;
 }
 
 export async function confirmCascadeDelete(message: string): Promise<boolean> {

@@ -107,6 +107,7 @@ export default function DirectorsLoanLedgerPanel({
   }
 
   function resetForm() {
+    setLoading(false);
     setShowForm(false);
     setEditingId(null);
     setAmount("");
@@ -119,6 +120,7 @@ export default function DirectorsLoanLedgerPanel({
   }
 
   function openEdit(entry: DirectorsLoanLedgerEntry) {
+    setLoading(false);
     setEditingId(entry.id);
     setShowForm(true);
     setEntryDate(entry.entry_date.slice(0, 10));
@@ -134,19 +136,18 @@ export default function DirectorsLoanLedgerPanel({
     event.preventDefault();
     setLoading(true);
     setError(null);
+
+    try {
     const parsedAmount = Number(amount);
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       setError("Enter an amount greater than zero.");
-      setLoading(false);
       return;
     }
     if (!description.trim()) {
       setError("Description is required.");
-      setLoading(false);
       return;
     }
 
-    try {
       if (editingId) {
         const response = await fetch(
           `/api/finance/directors-loan-entries/${editingId}`,

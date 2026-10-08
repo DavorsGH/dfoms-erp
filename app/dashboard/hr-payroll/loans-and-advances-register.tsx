@@ -173,6 +173,7 @@ export default function LoansAndAdvancesRegister({
   }
 
   function openAddForm(kind: "loan" | "advance") {
+    setLoading(false);
     setFormKind(kind);
     setEditingLoanId(null);
     setEditingAdvanceId(null);
@@ -183,6 +184,7 @@ export default function LoansAndAdvancesRegister({
   }
 
   function closeForm() {
+    setLoading(false);
     setShowForm(false);
     setEditingLoanId(null);
     setEditingAdvanceId(null);
@@ -275,6 +277,7 @@ export default function LoansAndAdvancesRegister({
     e.preventDefault();
     setLoading(true);
     setError(null);
+    try {
     const loanAmount = Number(loanForm.loan_amount) || 0;
     const totalRepaid = Number(loanForm.total_repaid_to_date) || 0;
     const payload = {
@@ -293,14 +296,12 @@ export default function LoansAndAdvancesRegister({
         .eq("loan_id", editingLoanId);
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
     } else {
       const allocated = await allocateLoanId(supabase);
       if (allocated.error || !allocated.loanId) {
         setError(allocated.error ?? "Unable to allocate loan ID.");
-        setLoading(false);
         return;
       }
       const { error: saveError } = await supabase
@@ -308,13 +309,20 @@ export default function LoansAndAdvancesRegister({
         .insert({ loan_id: allocated.loanId, ...payload });
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
     }
     closeForm();
     await refreshData();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the loan.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   const employeeById = useMemo(() => {
@@ -354,6 +362,7 @@ export default function LoansAndAdvancesRegister({
     e.preventDefault();
     setLoading(true);
     setAdvanceFormError(null);
+    try {
     const issued = advanceForm.date_issued;
     const deductMonth = normalizePayrollMonthStart(
       advanceForm.deduct_payroll_month.trim() ||
@@ -388,7 +397,6 @@ export default function LoansAndAdvancesRegister({
     );
     if (buValidation) {
       setAdvanceFormError(buValidation);
-      setLoading(false);
       return;
     }
 
@@ -410,7 +418,6 @@ export default function LoansAndAdvancesRegister({
       });
       if (rpcError) {
         setAdvanceFormError(formatSalaryAdvanceSaveError(rpcError.message));
-        setLoading(false);
         return;
       }
     } else {
@@ -423,16 +430,24 @@ export default function LoansAndAdvancesRegister({
       });
       if (rpcError) {
         setAdvanceFormError(formatSalaryAdvanceSaveError(rpcError.message));
-        setLoading(false);
         return;
       }
     }
     closeForm();
     await refreshData();
-    setLoading(false);
+    } catch (unexpected) {
+      setAdvanceFormError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the salary advance.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openEditAdvance(entry: SalaryAdvanceRegisterEntry) {
+    setLoading(false);
     setFormKind("advance");
     setEditingAdvanceId(entry.advance_id);
     setEditingLoanId(null);
@@ -875,6 +890,7 @@ export default function LoansAndAdvancesRegister({
                       </td>
                       <RegisterRowActions
                         onEdit={() => {
+                          setLoading(false);
                           setFormKind("loan");
                           setEditingLoanId(entry.loan_id);
                           setLoanForm({

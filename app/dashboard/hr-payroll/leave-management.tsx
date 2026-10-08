@@ -128,18 +128,21 @@ export default function LeaveManagement({
   useRefetchOnWindowFocus(refreshEntries);
 
   function openAddForm() {
+    setLoading(false);
     setEditingLeaveId(null);
     setForm({ ...emptyForm, approval_status: DEFAULT_APPROVAL_STATUS });
     setShowForm(true);
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingLeaveId(null);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(entry: LeaveManagementEntry) {
+    setLoading(false);
     setEditingLeaveId(entry.leave_id);
     setForm({
       employee_id: entry.employee_id,
@@ -208,6 +211,7 @@ export default function LeaveManagement({
     setLoading(true);
     setError(null);
 
+    try {
     const payload = {
       employee_id: form.employee_id,
       leave_type: form.leave_type,
@@ -229,14 +233,12 @@ export default function LeaveManagement({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
     } else {
       const allocated = await allocateLeaveId(supabase);
       if (allocated.error || !allocated.leaveId) {
         setError(allocated.error ?? "Unable to allocate leave ID.");
-        setLoading(false);
         return;
       }
 
@@ -246,14 +248,21 @@ export default function LeaveManagement({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
     }
 
     closeForm();
     await refreshEntries();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the leave request.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

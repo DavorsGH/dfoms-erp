@@ -119,22 +119,31 @@ export default function CreditNotes({
     }
     setSubmitting(true);
     setError(null);
-    const amount = Number(refundAmount);
-    const { error: rpcError } = await supabase.rpc("record_refund", {
-      p_credit_note_id: refundTarget.id,
-      p_amount: amount,
-      p_method: refundMethod,
-      p_notes: refundNotes.trim() || null,
-    });
-    setSubmitting(false);
-    if (rpcError) {
-      setError(rpcError.message);
-      return;
+    try {
+      const amount = Number(refundAmount);
+      const { error: rpcError } = await supabase.rpc("record_refund", {
+        p_credit_note_id: refundTarget.id,
+        p_amount: amount,
+        p_method: refundMethod,
+        p_notes: refundNotes.trim() || null,
+      });
+      if (rpcError) {
+        setError(rpcError.message);
+        return;
+      }
+      setRefundNoteId(null);
+      setRefundAmount("");
+      setRefundNotes("");
+      await refreshRows();
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to record the refund.",
+      );
+    } finally {
+      setSubmitting(false);
     }
-    setRefundNoteId(null);
-    setRefundAmount("");
-    setRefundNotes("");
-    await refreshRows();
   }
 
   return (
@@ -319,6 +328,7 @@ export default function CreditNotes({
                                   return;
                                 }
                                 setError(null);
+                                setSubmitting(false);
                                 setRefundNoteId(row.id);
                                 setRefundAmount(String(available));
                               }}
@@ -400,7 +410,10 @@ export default function CreditNotes({
               <DashboardButton
                 type="button"
                 variant="secondary"
-                onClick={() => setRefundNoteId(null)}
+                onClick={() => {
+                  setSubmitting(false);
+                  setRefundNoteId(null);
+                }}
               >
                 Cancel
               </DashboardButton>

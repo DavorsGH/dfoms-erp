@@ -398,6 +398,7 @@ export default function AccountsPayable({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
     setForm({ ...emptyForm, wht_rate: defaultWhtRate });
@@ -405,6 +406,7 @@ export default function AccountsPayable({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
     setForm(emptyForm);
@@ -501,6 +503,7 @@ export default function AccountsPayable({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
@@ -638,7 +641,15 @@ export default function AccountsPayable({
 
     closeForm();
     await refreshEntries();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save accounts payable.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openRecordPayment(entry: AccountsPayableEntry) {
@@ -652,6 +663,7 @@ export default function AccountsPayable({
   }
 
   function closeRecordPayment() {
+    setRecordingPayment(false);
     setPaymentEntry(null);
     setPaymentForm({
       payment_date: "",
@@ -670,10 +682,10 @@ export default function AccountsPayable({
     setRecordingPayment(true);
     setError(null);
 
+    try {
     const amount = Number(paymentForm.amount) || 0;
     if (amount <= 0) {
       setError("Payment amount must be greater than zero.");
-      setRecordingPayment(false);
       return;
     }
 
@@ -682,14 +694,12 @@ export default function AccountsPayable({
       setError(
         `Payment exceeds balance due (${formatGHS(remaining)} remaining).`,
       );
-      setRecordingPayment(false);
       return;
     }
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setRecordingPayment(false);
       return;
     }
 
@@ -700,7 +710,6 @@ export default function AccountsPayable({
       );
     } catch (accessError) {
       setError(formatBusinessUnitAccessError(accessError));
-      setRecordingPayment(false);
       return;
     }
 
@@ -708,7 +717,6 @@ export default function AccountsPayable({
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
       setError(tenantError ?? "Unable to resolve workspace.");
-      setRecordingPayment(false);
       return;
     }
 
@@ -726,7 +734,6 @@ export default function AccountsPayable({
 
     if (insertError) {
       setError(insertError.message);
-      setRecordingPayment(false);
       return;
     }
 
@@ -743,8 +750,15 @@ export default function AccountsPayable({
         `Payment recorded but payable totals could not be refreshed: ${recomputeError.message}`,
       );
     }
-
-    setRecordingPayment(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to record payment.",
+      );
+    } finally {
+      setRecordingPayment(false);
+    }
   }
 
   function updateField(field: keyof PayableFormState, value: string) {

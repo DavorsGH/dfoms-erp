@@ -131,6 +131,28 @@ export function isActiveIncomeForReporting(entry: {
   return !isVoidedProductSale(entry) && !isVoidedClientInvoiceIncome(entry);
 }
 
+/** User-facing label; DB/API values stay `voided`. */
+export function formatIncomeRegisterPaymentStatusForDisplay(status: string): string {
+  const normalized = (status ?? "").trim().toLowerCase();
+  if (normalized === "voided") {
+    return "Cancelled";
+  }
+  return status;
+}
+
+/** User-facing label; DB/API values stay `voided`. */
+export function formatProductSaleStatusForDisplay(
+  status: ProductSaleStatus | string | null | undefined,
+): string {
+  if (status === "voided") {
+    return "Cancelled";
+  }
+  if (!status || status === "active") {
+    return "Active";
+  }
+  return String(status);
+}
+
 export function getIncomeCustomerDisplayName(
   entry: {
     client?: IncomeRegisterClient | null;

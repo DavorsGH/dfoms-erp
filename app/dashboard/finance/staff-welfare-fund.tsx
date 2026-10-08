@@ -152,10 +152,10 @@ export default function StaffWelfareFund({
     setLoadingDisbursement(true);
     setError(null);
 
+    try {
     const amount = Number(disbursementForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError("Enter a valid disbursement amount greater than zero.");
-      setLoadingDisbursement(false);
       return;
     }
 
@@ -163,11 +163,9 @@ export default function StaffWelfareFund({
       setError(
         `Disbursement (${formatGHS(amount)}) exceeds the current fund balance (${formatGHS(fundBalance)}).`,
       );
-      setLoadingDisbursement(false);
       return;
     }
 
-    try {
       const buContext = await loadWriteBusinessUnitContext(supabase);
       if (!buContext.ok) {
         throw new Error(buContext.error);
@@ -278,14 +276,13 @@ export default function StaffWelfareFund({
     setLoadingContribution(true);
     setError(null);
 
+    try {
     const amount = Number(contributionForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError("Enter a valid contribution amount greater than zero.");
-      setLoadingContribution(false);
       return;
     }
 
-    try {
       const buContext = await loadWriteBusinessUnitContext(supabase);
       if (!buContext.ok) {
         throw new Error(buContext.error);
@@ -422,6 +419,8 @@ export default function StaffWelfareFund({
               type="button"
               className={primaryButtonClassName}
               onClick={() => {
+                setLoadingDisbursement(false);
+                setLoadingContribution(false);
                 setShowDisbursementForm((open) => !open);
                 setShowContributionForm(false);
               }}
@@ -530,6 +529,8 @@ export default function StaffWelfareFund({
               type="button"
               className={primaryButtonClassName}
               onClick={() => {
+                setLoadingDisbursement(false);
+                setLoadingContribution(false);
                 setShowContributionForm((open) => !open);
                 setShowDisbursementForm(false);
               }}

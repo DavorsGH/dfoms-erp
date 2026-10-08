@@ -218,6 +218,7 @@ export default function Budget({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setForm(emptyBudgetForm());
     setInfoMessage(null);
@@ -225,6 +226,7 @@ export default function Budget({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setForm({
       ...emptyBudgetForm(),
@@ -236,6 +238,7 @@ export default function Budget({
   }
 
   function openEditForm(entry: BudgetRecord) {
+    setLoading(false);
     setEditingId(entry.id);
     setForm(entryToBudgetForm(entry));
     setInfoMessage(null);
@@ -335,10 +338,10 @@ export default function Budget({
     setError(null);
     setInfoMessage(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -352,7 +355,6 @@ export default function Budget({
         );
       } catch (accessError) {
         setError(formatBusinessUnitAccessError(accessError));
-        setLoading(false);
         return;
       }
     } else {
@@ -362,7 +364,6 @@ export default function Budget({
       });
       if (!stampResult.ok) {
         setError(stampResult.error);
-        setLoading(false);
         return;
       }
       stampedBusinessUnitId = stampResult.businessUnitId;
@@ -371,7 +372,6 @@ export default function Budget({
     const periodType = form.period_type;
     const periodMonth = resolveBudgetFormPeriodMonth(form);
     if (!validateBeforeSave(periodMonth, periodType)) {
-      setLoading(false);
       return;
     }
 
@@ -424,14 +424,21 @@ export default function Budget({
         setError(saveError.message);
       }
 
-      setLoading(false);
       return;
     }
 
     closeForm();
     await refreshEntries();
-    setLoading(false);
     router.refresh();
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the budget line.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function updateField<K extends keyof BudgetFormState>(

@@ -5,6 +5,7 @@ import {
   formatReportCurrency,
   formatReportDate,
 } from "../reports/report-ui";
+import { formatProductSaleStatusForDisplay } from "../finance/income-register-utils";
 import {
   formatGHS,
   getIncomeCustomerDisplayName,
@@ -26,6 +27,7 @@ export type ProductSaleReceiptData = {
   amountReceived: number;
   paymentStatus: string;
   saleStatus: string;
+  isCancelled: boolean;
   /** Stamped income_register.business_unit_id for letterhead (null = tenant). */
   businessUnitId: string | null;
 };
@@ -50,7 +52,8 @@ export function buildProductSaleReceiptData(
     amount: Number(entry.amount) || 0,
     amountReceived: Number(entry.amount_received) || 0,
     paymentStatus: entry.payment_status,
-    saleStatus: entry.sale_status === "voided" ? "Voided" : "Active",
+    saleStatus: formatProductSaleStatusForDisplay(entry.sale_status),
+    isCancelled: entry.sale_status === "voided",
     businessUnitId: entry.business_unit_id?.trim() || null,
   };
 }
@@ -122,8 +125,18 @@ export function ProductSaleReceiptPanel({
 
       <div
         id={PRODUCT_SALE_RECEIPT_PRINT_AREA_ID}
-        className="rounded-lg border border-slate-200 bg-white p-6 text-slate-900 shadow-sm"
+        className="relative overflow-hidden rounded-lg border border-slate-200 bg-white p-6 text-slate-900 shadow-sm"
       >
+        {receipt.isCancelled ? (
+          <div
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+            aria-hidden
+          >
+            <span className="-rotate-[24deg] border-4 border-red-600/60 px-10 py-3 text-5xl font-bold uppercase tracking-[0.2em] text-red-600/35">
+              CANCELLED
+            </span>
+          </div>
+        ) : null}
         <ReportCompanyHeader
           title="Product Sale Receipt"
           periodLabel={formatReportDate(receipt.date)}

@@ -58,8 +58,20 @@ export default function ClientInvoicePrintLayout({
     branding,
   );
 
+  const isCancelled = invoice.status === "voided";
+
   return (
-    <div id={printAreaId} className={className}>
+    <div id={printAreaId} className={`relative overflow-hidden ${className}`}>
+      {isCancelled ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+          aria-hidden
+        >
+          <span className="-rotate-[24deg] border-4 border-red-600/60 px-10 py-3 text-6xl font-bold uppercase tracking-[0.2em] text-red-600/35">
+            CANCELLED
+          </span>
+        </div>
+      ) : null}
       <header className="bg-[#0f2744] px-6 py-6">
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="flex items-start gap-4">

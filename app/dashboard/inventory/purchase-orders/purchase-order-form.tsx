@@ -101,6 +101,7 @@ export default function PurchaseOrderForm({
     setSaving(true);
     setError(null);
 
+    try {
     const body = {
       supplier_id: supplierId,
       order_date: orderDate,
@@ -118,7 +119,6 @@ export default function PurchaseOrderForm({
     const validationError = validatePurchaseOrderBody(body);
     if (validationError) {
       setError(validationError);
-      setSaving(false);
       return;
     }
 
@@ -134,7 +134,6 @@ export default function PurchaseOrderForm({
 
     if (!response.ok) {
       setError(payload?.error ?? "Unable to create purchase order.");
-      setSaving(false);
       return;
     }
 
@@ -144,6 +143,15 @@ export default function PurchaseOrderForm({
       router.push("/dashboard/inventory/purchase-orders");
     }
     router.refresh();
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to create purchase order.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (

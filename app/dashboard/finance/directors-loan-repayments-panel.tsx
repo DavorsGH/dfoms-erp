@@ -136,6 +136,7 @@ export default function DirectorsLoanRepaymentsPanel({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setForm({
       repayment_date: new Date().toISOString().slice(0, 10),
@@ -146,6 +147,7 @@ export default function DirectorsLoanRepaymentsPanel({
   }
 
   function openEditForm(row: DirectorsLoanRepaymentRecord) {
+    setLoading(false);
     setEditingId(row.id);
     setForm({
       repayment_date: toDateInputValue(row.repayment_date),
@@ -156,6 +158,7 @@ export default function DirectorsLoanRepaymentsPanel({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setShowForm(false);
   }
@@ -208,10 +211,10 @@ export default function DirectorsLoanRepaymentsPanel({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -225,7 +228,6 @@ export default function DirectorsLoanRepaymentsPanel({
         );
       } catch (accessError) {
         setError(formatBusinessUnitAccessError(accessError));
-        setLoading(false);
         return;
       }
     } else {
@@ -235,7 +237,6 @@ export default function DirectorsLoanRepaymentsPanel({
       });
       if (!stampResult.ok) {
         setError(stampResult.error);
-        setLoading(false);
         return;
       }
       stampedBusinessUnitId = stampResult.businessUnitId;
@@ -244,7 +245,6 @@ export default function DirectorsLoanRepaymentsPanel({
     const amount = Number(form.amount) || 0;
     if (amount <= 0) {
       setError("Repayment amount must be greater than zero.");
-      setLoading(false);
       return;
     }
 
@@ -252,7 +252,6 @@ export default function DirectorsLoanRepaymentsPanel({
       setError(
         `Repayment exceeds net outstanding (${formatGHS(outstandingPreview.netOutstanding)}).`,
       );
-      setLoading(false);
       return;
     }
 
@@ -283,7 +282,6 @@ export default function DirectorsLoanRepaymentsPanel({
     const resolvedTenant = await resolveSessionTenantId(supabase);
     if (resolvedTenant.error || resolvedTenant.tenantId !== tenantId) {
       setError(resolvedTenant.error ?? "Tenant mismatch.");
-      setLoading(false);
       return;
     }
 
@@ -296,7 +294,6 @@ export default function DirectorsLoanRepaymentsPanel({
 
       if (updateError) {
         setError(updateError.message);
-        setLoading(false);
         return;
       }
     } else {
@@ -309,14 +306,21 @@ export default function DirectorsLoanRepaymentsPanel({
 
       if (insertError) {
         setError(insertError.message);
-        setLoading(false);
         return;
       }
     }
 
     closeForm();
     await refreshRepayments();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the repayment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

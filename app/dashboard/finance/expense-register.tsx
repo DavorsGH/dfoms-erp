@@ -31,7 +31,6 @@ import {
   getRegisterRowClassName,
   isAutoPostedExpenseRegisterEntry,
   customerRefundExpenseLockMessage,
-  isInventoryGoLiveTrueUpExpense,
   isPayrollEssnitExpense,
   markAutoPostedExpensePaid,
 } from "./register-auto-posted-utils";
@@ -137,6 +136,7 @@ import {
 import {
   isApAccrualExpenseRegisterRow,
   isSystemManagedExpenseRegisterRow,
+  resolveExpenseRegisterLockMessage,
   MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS,
   manualExpensePaymentStatusSelectOptions,
   validateManualExpenseRegisterPaymentStatusForWrite,
@@ -734,6 +734,7 @@ export default function ExpenseRegister({
   }, [searchParams, router]);
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
     setForm({
@@ -744,6 +745,7 @@ export default function ExpenseRegister({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
     setForm(emptyForm);
@@ -771,17 +773,9 @@ export default function ExpenseRegister({
       return;
     }
 
-    if (isApAccrualExpenseRegisterRow(entry)) {
-      setError(AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE);
-      return;
-    }
-
-    if (isAutoPostedExpenseRegisterEntry(entry)) {
-      setError(
-        isInventoryGoLiveTrueUpExpense(entry)
-          ? "Inventory go-live true-up (ADJ-PPIR-*). Do not edit or delete — contact support if a correction is required."
-          : "Payroll auto-posted expenses cannot be edited here. Use Mark as Paid when remitting Accrued Employer SSNIT / Accrued Staff Salaries, or Release payroll to reverse the post.",
-      );
+    const editLockMessage = resolveExpenseRegisterLockMessage(entry);
+    if (editLockMessage) {
+      setError(editLockMessage);
       return;
     }
     setEditingId(entry.id);
@@ -814,6 +808,7 @@ export default function ExpenseRegister({
       notes: entry.notes ?? "",
       project_id: entry.project_id ?? "",
     });
+    setLoading(false);
     setShowForm(true);
   }
 
@@ -864,13 +859,12 @@ export default function ExpenseRegister({
       return;
     }
 
-    if (target && isAutoPostedExpenseRegisterEntry(target)) {
-      setError(
-        isInventoryGoLiveTrueUpExpense(target)
-          ? "Inventory go-live true-up (ADJ-PPIR-*). Do not edit or delete — contact support if a correction is required."
-          : "Payroll auto-posted expenses cannot be deleted here. Release payroll to reverse the post.",
-      );
-      return;
+    if (target) {
+      const deleteLockMessage = resolveExpenseRegisterLockMessage(target);
+      if (deleteLockMessage) {
+        setError(deleteLockMessage);
+        return;
+      }
     }
 
     const knownLink = linkedProductSaleCogsByExpenseId.get(id);
@@ -955,12 +949,12 @@ export default function ExpenseRegister({
             setError(formatLinkedProductSaleCogsDeleteMessage(fallbackLink));
           } else {
             setError(
-              "This expense is linked to a product sale and cannot be deleted directly. Void the original sale from Sales & CRM → Sales instead.",
+              "This expense is linked to a product sale and cannot be deleted directly. Cancel the original sale from Sales & CRM → Sales instead.",
             );
           }
         } catch {
           setError(
-            "This expense is linked to a product sale and cannot be deleted directly. Void the original sale from Sales & CRM → Sales instead.",
+            "This expense is linked to a product sale and cannot be deleted directly. Cancel the original sale from Sales & CRM → Sales instead.",
           );
         }
       } else {
@@ -995,10 +989,10 @@ export default function ExpenseRegister({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -1013,7 +1007,6 @@ export default function ExpenseRegister({
         );
       } catch (accessError) {
         setError(formatBusinessUnitAccessError(accessError));
-        setLoading(false);
         return;
       }
     } else {
@@ -1023,7 +1016,6 @@ export default function ExpenseRegister({
       });
       if (!stampResult.ok) {
         setError(stampResult.error);
-        setLoading(false);
         return;
       }
       stampId = stampResult.businessUnitId;
@@ -1036,7 +1028,6 @@ export default function ExpenseRegister({
       );
       if (categoryError) {
         setError(categoryError);
-        setLoading(false);
         return;
       }
       const subcategoryError = validateNewExpenseRegisterSubcategory(
@@ -1047,7 +1038,6 @@ export default function ExpenseRegister({
       );
       if (subcategoryError) {
         setError(subcategoryError);
-        setLoading(false);
         return;
       }
     }
@@ -1065,7 +1055,6 @@ export default function ExpenseRegister({
         );
       if (paymentStatusError) {
         setError(paymentStatusError);
-        setLoading(false);
         return;
       }
     }
@@ -1080,12 +1069,10 @@ export default function ExpenseRegister({
     );
     if (!vendorName) {
       setError("Supplier is required.");
-      setLoading(false);
       return;
     }
     if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
       setError("Enter the one-time supplier name.");
-      setLoading(false);
       return;
     }
 
@@ -1111,7 +1098,6 @@ export default function ExpenseRegister({
       const resolved = await resolveManualExpenseReceiptNo(supabase, form.receipt_no);
       if (resolved.error || !resolved.receiptNo) {
         setError(resolved.error ?? "Unable to allocate receipt number.");
-        setLoading(false);
         return;
       }
       receiptNo = resolved.receiptNo;
@@ -1143,14 +1129,12 @@ export default function ExpenseRegister({
     if (offlineNow) {
       if (editingId) {
         setError("Editing saved expenses requires a connection.");
-        setLoading(false);
         return;
       }
       const session =
         writeQueue?.session ?? (await resolveClientCacheSession());
       if (!session) {
         setError("Unable to queue offline — session not available.");
-        setLoading(false);
         return;
       }
       const queuePayload: ExpenseQueuePayload = {
@@ -1183,9 +1167,12 @@ export default function ExpenseRegister({
         type: "expense",
         payload: queuePayload,
       });
-      await writeQueue?.refresh();
+      try {
+        await writeQueue?.refresh();
+      } catch {
+        // Entry is queued; list refresh on reconnect is enough if queue UI fails to reload.
+      }
       closeForm();
-      setLoading(false);
       return;
     }
 
@@ -1199,7 +1186,6 @@ export default function ExpenseRegister({
 
       if (updateError) {
         setError(updateError.message);
-        setLoading(false);
         return;
       }
     } else {
@@ -1214,7 +1200,6 @@ export default function ExpenseRegister({
 
       if (insertError || !inserted) {
         setError(insertError?.message ?? "Unable to save the expense entry.");
-        setLoading(false);
         return;
       }
 
@@ -1244,15 +1229,26 @@ export default function ExpenseRegister({
 
     closeForm();
     await refreshEntries();
-    await writeQueue?.refresh();
+    try {
+      await writeQueue?.refresh();
+    } catch {
+      // Saved online; queue badge refresh is non-blocking.
+    }
 
     if (ledgerError) {
       setError(
         `Entry saved, but the tax ledger could not be updated: ${ledgerError}`,
       );
     }
-
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the expense entry.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function updateField<K extends keyof ExpenseFormState>(
@@ -1812,6 +1808,8 @@ export default function ExpenseRegister({
                           linkedProductSaleCogs,
                         )
                       : undefined;
+                  const registerLockMessage =
+                    resolveExpenseRegisterLockMessage(entry);
                   const apAccrualRow = isApAccrualExpenseRegisterRow(entry);
                   const apAccrualStatus = apAccrualRow
                     ? resolveApAccrualPaymentStatusDisplay(
@@ -1978,12 +1976,17 @@ export default function ExpenseRegister({
                         deleting={deletingId === entry.id}
                         disableEdit={systemLinked}
                         editDisabledTitle={
-                          apAccrualRow
-                            ? AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE
-                            : undefined
+                          registerLockMessage ??
+                          (linkedProductSaleCogs
+                            ? formatLinkedProductSaleCogsDeleteMessage(
+                                linkedProductSaleCogs,
+                              )
+                            : undefined)
                         }
-                        disableDelete={linkedProductSaleCogs != null || autoPosted}
-                        deleteDisabledTitle={deleteBlockedMessage}
+                        disableDelete={systemLinked || linkedProductSaleCogs != null}
+                        deleteDisabledTitle={
+                          registerLockMessage ?? deleteBlockedMessage
+                        }
                         onMarkPaid={
                           showMarkPaid
                             ? () => {
@@ -2042,13 +2045,9 @@ export default function ExpenseRegister({
             ? formatLinkedProductSaleCogsDeleteMessage(
                 linkedProductSaleCogsByExpenseId.get(detailExpense.id)!,
               )
-            : detailExpense && isApAccrualExpenseRegisterRow(detailExpense)
-              ? AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE
-              : detailExpense && isAutoPostedExpenseRegisterEntry(detailExpense)
-                ? isInventoryGoLiveTrueUpExpense(detailExpense)
-                  ? "Inventory go-live true-up entries cannot be edited here."
-                  : "Payroll auto-posted expenses cannot be edited here."
-                : undefined
+            : detailExpense
+              ? resolveExpenseRegisterLockMessage(detailExpense) ?? undefined
+              : undefined
         }
       />
     </div>

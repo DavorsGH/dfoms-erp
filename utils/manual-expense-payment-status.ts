@@ -3,7 +3,11 @@ import {
   AP_ACCRUAL_RECEIPT_PREFIX,
 } from "@/app/dashboard/finance/accounts-payable-accrual-utils";
 import { isPaidStatus } from "@/app/dashboard/finance/accrued-wages-utils";
-import { isAutoPostedExpenseRegisterEntry } from "@/app/dashboard/finance/register-auto-posted-utils";
+import { expenseRegisterAutoPostLockMessage } from "@/app/dashboard/finance/register-auto-posted-utils";
+import { AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE } from "@/app/dashboard/finance/expense-register-ap-accrual-display";
+
+const NON_CASH_EXPENSE_REGISTER_LOCK_MESSAGE =
+  "Non-cash system expense (inventory / COGS). Reverse at the originating module — do not edit or delete here.";
 
 export const MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS = "Paid" as const;
 
@@ -21,6 +25,29 @@ export function isApAccrualExpenseRegisterRow(entry: {
   return (entry.description ?? "").trim().startsWith(AP_ACCRUAL_DESCRIPTION_PREFIX);
 }
 
+export function resolveExpenseRegisterLockMessage(entry: {
+  description?: string | null;
+  receipt_no?: string | null;
+  expense_category?: string | null;
+  sub_category?: string | null;
+  is_customer_refund?: boolean | null;
+  payment_status?: string | null;
+  vendor?: string | null;
+}): string | null {
+  if (isApAccrualExpenseRegisterRow(entry)) {
+    return AP_ACCRUAL_EXPENSE_EDIT_DISABLED_TITLE;
+  }
+  const autoMessage = expenseRegisterAutoPostLockMessage(entry);
+  if (autoMessage) {
+    return autoMessage;
+  }
+  const status = (entry.payment_status ?? "").trim().toLowerCase();
+  if (status === "non-cash") {
+    return NON_CASH_EXPENSE_REGISTER_LOCK_MESSAGE;
+  }
+  return null;
+}
+
 /** Rows that must not be edited via the manual Expense Register form. */
 export function isSystemManagedExpenseRegisterRow(entry: {
   description?: string | null;
@@ -29,18 +56,9 @@ export function isSystemManagedExpenseRegisterRow(entry: {
   sub_category?: string | null;
   is_customer_refund?: boolean | null;
   payment_status?: string | null;
+  vendor?: string | null;
 }): boolean {
-  if (isAutoPostedExpenseRegisterEntry(entry)) {
-    return true;
-  }
-  if (isApAccrualExpenseRegisterRow(entry)) {
-    return true;
-  }
-  const status = (entry.payment_status ?? "").trim().toLowerCase();
-  if (status === "non-cash") {
-    return true;
-  }
-  return false;
+  return resolveExpenseRegisterLockMessage(entry) != null;
 }
 
 export function manualExpensePaymentStatusSelectOptions(

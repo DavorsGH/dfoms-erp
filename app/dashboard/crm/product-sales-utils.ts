@@ -91,7 +91,7 @@ export function buildVoidProductSaleConfirmMessage(entry: ProductSaleEntry): str
   const unit = entry.product?.unit_of_measure ?? "units";
   const productName = entry.product?.product_name ?? "this product";
 
-  return `Are you sure? This will restore ${quantity} ${unit} of ${productName} to stock and reverse the COGS entry.`;
+  return `Cancel this sale? Stock goes back to inventory (${quantity} ${unit} of ${productName}) and the income is reversed.`;
 }
 
 export function getProductSaleProductLabel(entry: ProductSaleEntry): string {

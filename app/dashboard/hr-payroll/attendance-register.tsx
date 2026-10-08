@@ -207,6 +207,7 @@ export default function AttendanceRegister({
   }
 
   function openAddForm() {
+    setLoading(false);
     setShowBulkImport(false);
     setEditingId(null);
     setForm({
@@ -218,6 +219,7 @@ export default function AttendanceRegister({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(false);
@@ -363,6 +365,7 @@ export default function AttendanceRegister({
     setLoading(true);
     setError(null);
 
+    try {
     const payload = {
       date: form.date,
       staff_id: form.staff_id,
@@ -379,14 +382,12 @@ export default function AttendanceRegister({
     if (offlineNow) {
       if (editingId) {
         setError("Editing saved attendance requires a connection.");
-        setLoading(false);
         return;
       }
       const session =
         writeQueue?.session ?? (await resolveClientCacheSession());
       if (!session) {
         setError("Unable to queue offline — session not available.");
-        setLoading(false);
         return;
       }
       const staffName = employeeNameByStaffId.get(form.staff_id) ?? null;
@@ -395,9 +396,12 @@ export default function AttendanceRegister({
         type: "attendance",
         payload: { ...payload, staff_name: staffName },
       });
-      await writeQueue?.refresh();
+      try {
+        await writeQueue?.refresh();
+      } catch {
+        // Queued row saved; queue badge refresh is non-blocking.
+      }
       closeForm();
-      setLoading(false);
       return;
     }
 
@@ -410,13 +414,20 @@ export default function AttendanceRegister({
 
     if (saveError) {
       setError(saveError.message);
-      setLoading(false);
       return;
     }
 
     closeForm();
     await refreshEntries();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save attendance.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

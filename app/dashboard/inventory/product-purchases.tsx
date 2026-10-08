@@ -163,6 +163,7 @@ export default function ProductPurchases({
   }
 
   function openModal() {
+    setLoading(false);
     setEditingPurchaseId(null);
     setForm(emptyProductPurchaseForm());
     setModalOpen(true);
@@ -173,6 +174,7 @@ export default function ProductPurchases({
   }
 
   function openEditModal(purchase: ProductPurchaseListRow) {
+    setLoading(false);
     setEditingPurchaseId(purchase.id);
     setForm({
       product_id: purchase.product_id,
@@ -194,6 +196,7 @@ export default function ProductPurchases({
   }
 
   function closeModal() {
+    setLoading(false);
     setModalOpen(false);
     setEditingPurchaseId(null);
     setForm(emptyProductPurchaseForm());
@@ -207,16 +210,15 @@ export default function ProductPurchases({
     setError(null);
     setSuccess(null);
 
+    try {
     const validationError = validateProductPurchaseBody(form);
     if (validationError) {
       setError(validationError);
-      setLoading(false);
       return;
     }
 
     if (editingPurchaseId) {
       if (!(await confirmProductPurchaseEdit())) {
-        setLoading(false);
         return;
       }
 
@@ -232,7 +234,6 @@ export default function ProductPurchases({
 
       if (!response.ok) {
         setError(payload?.error ?? "Unable to update purchase.");
-        setLoading(false);
         return;
       }
 
@@ -247,7 +248,6 @@ export default function ProductPurchases({
 
       setSuccess("Purchase updated.");
       closeModal();
-      setLoading(false);
       router.refresh();
       return;
     }
@@ -264,7 +264,6 @@ export default function ProductPurchases({
 
     if (!response.ok) {
       setError(payload?.error ?? "Unable to record purchase.");
-      setLoading(false);
       return;
     }
 
@@ -282,8 +281,16 @@ export default function ProductPurchases({
         : "Purchase recorded.",
     );
     closeModal();
-    setLoading(false);
     router.refresh();
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the purchase.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDelete(purchase: ProductPurchaseListRow) {

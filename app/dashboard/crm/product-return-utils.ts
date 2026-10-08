@@ -33,7 +33,37 @@ export type ProductReturnRpcResult = {
 };
 
 export const PRODUCT_RETURN_EXPLAINER =
-  "Use Void only for a sale entered by mistake. Use Return when a customer brings goods back.";
+  "Use Cancel sale only for a sale entered by mistake. Use Return when a customer brings goods back.";
+
+export const PRODUCT_SALE_FULLY_RETURNED_CANCEL_TOOLTIP =
+  "This sale has been fully returned. Nothing left to cancel.";
+
+export const PRODUCT_SALE_PARTLY_RETURNED_CANCEL_TOOLTIP =
+  "This sale is partly returned. Return the remaining items instead of cancelling the sale.";
+
+export function isSaleLineFullyReturned(
+  saleQuantity: number,
+  returnedQuantity: number,
+): boolean {
+  const sold = Number(saleQuantity) || 0;
+  const returned = Number(returnedQuantity) || 0;
+  return returned > 0.0001 && returned + 0.0001 >= sold;
+}
+
+export function resolveProductSaleCancelBlockReason(args: {
+  saleQuantity: number;
+  returnedQuantity: number;
+}): string | null {
+  const sold = Number(args.saleQuantity) || 0;
+  const returned = Number(args.returnedQuantity) || 0;
+  if (returned <= 0.0001) {
+    return null;
+  }
+  if (isSaleLineFullyReturned(sold, returned)) {
+    return PRODUCT_SALE_FULLY_RETURNED_CANCEL_TOOLTIP;
+  }
+  return PRODUCT_SALE_PARTLY_RETURNED_CANCEL_TOOLTIP;
+}
 
 export function isProductSaleReturn(
   entry: Pick<ProductSaleEntry, "is_sale_return">,
@@ -155,7 +185,7 @@ export function formatProductReturnRpcError(raw: string | undefined | null): str
   }
 
   if (lower.includes("cannot return voided") || lower.includes("sale_status = 'voided'")) {
-    return "This sale was voided and cannot be returned.";
+    return "This sale was cancelled and cannot be returned.";
   }
 
   if (
@@ -193,7 +223,14 @@ export function formatProductReturnRpcError(raw: string | undefined | null): str
 }
 
 export function formatVoidProductSaleRpcError(raw: string | undefined | null): string {
-  const lower = (raw ?? "").toLowerCase();
+  const message = (raw ?? "").trim();
+  const lower = message.toLowerCase();
+  if (message.includes(PRODUCT_SALE_FULLY_RETURNED_CANCEL_TOOLTIP)) {
+    return PRODUCT_SALE_FULLY_RETURNED_CANCEL_TOOLTIP;
+  }
+  if (message.includes(PRODUCT_SALE_PARTLY_RETURNED_CANCEL_TOOLTIP)) {
+    return PRODUCT_SALE_PARTLY_RETURNED_CANCEL_TOOLTIP;
+  }
   if (lower.includes("credit note") || lower.includes("credit_note")) {
     return "This sale has returns. Use Return instead.";
   }
@@ -301,7 +338,7 @@ export async function loadProductReturnReceiptContext(
   }
 
   if (saleLines.some((row) => row.sale_status === "voided")) {
-    return { ok: false, error: "This sale was voided and cannot be returned." };
+    return { ok: false, error: "This sale was cancelled and cannot be returned." };
   }
 
   const saleBusinessUnitId = saleLines[0]?.business_unit_id ?? null;

@@ -337,7 +337,7 @@ export function formatInvoiceStatus(status: string) {
     case "paid":
       return "Paid";
     case "voided":
-      return "Voided";
+      return "Cancelled";
     default:
       return "Draft";
   }

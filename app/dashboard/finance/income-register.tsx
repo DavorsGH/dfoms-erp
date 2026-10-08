@@ -8,6 +8,7 @@ import {
   calculateIncomeOutstanding,
   formatDate,
   formatGHS,
+  formatIncomeRegisterPaymentStatusForDisplay,
   getIncomeCustomerDisplayName,
   getIncomeEntryOutstanding,
   SERVICE_INCOME_REGISTER_SELECT,
@@ -280,6 +281,7 @@ export default function IncomeRegister({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
     setForm({ ...emptyForm, wht_rate: defaultWhtRate });
@@ -287,6 +289,7 @@ export default function IncomeRegister({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
     setForm(emptyForm);
@@ -320,6 +323,7 @@ export default function IncomeRegister({
       due_date: entry.due_date ? toDateInputValue(entry.due_date) : "",
       notes: entry.notes ?? "",
     });
+    setLoading(false);
     setShowForm(true);
   }
 
@@ -379,6 +383,7 @@ export default function IncomeRegister({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
@@ -521,8 +526,15 @@ export default function IncomeRegister({
         `Entry saved, but the tax ledger could not be updated: ${ledgerError}`,
       );
     }
-
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the income entry.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function updateField(field: IncomeFormTextField, value: string) {
@@ -947,7 +959,9 @@ export default function IncomeRegister({
                       {formatGHS(entry.wht_amount ?? 0)}
                     </td>
                     <td className="px-4 py-3">{formatGHS(outstanding)}</td>
-                    <td className="px-4 py-3">{entry.payment_status}</td>
+                    <td className="px-4 py-3">
+                      {formatIncomeRegisterPaymentStatusForDisplay(entry.payment_status)}
+                    </td>
                     <td className="px-4 py-3">{formatDate(entry.due_date)}</td>
                     <RegisterRowActions
                       onEdit={() => openEditForm(entry)}

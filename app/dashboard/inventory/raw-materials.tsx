@@ -332,12 +332,14 @@ export default function RawMaterials({
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   function openAddMaterialForm() {
+    setLoading(false);
     setEditingMaterialId(null);
     setMaterialForm({ ...emptyMaterialForm });
     setShowMaterialForm(true);
   }
 
   function openEditMaterialForm(material: RawMaterialRecord) {
+    setLoading(false);
     setEditingMaterialId(material.id);
     setMaterialForm({
       material_code: material.material_code,
@@ -350,6 +352,7 @@ export default function RawMaterials({
   }
 
   function closeMaterialForm() {
+    setLoading(false);
     setEditingMaterialId(null);
     setMaterialForm(emptyMaterialForm);
     setShowMaterialForm(false);
@@ -360,6 +363,7 @@ export default function RawMaterials({
     setLoading(true);
     setError(null);
 
+    try {
     if (editingMaterialId) {
       const { error: saveError } = await supabase
         .from("raw_materials")
@@ -373,14 +377,12 @@ export default function RawMaterials({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
     } else {
       const allocated = await allocateMaterialCode(supabase);
       if (allocated.error || !allocated.materialCode) {
         setError(allocated.error ?? "Unable to allocate material code.");
-        setLoading(false);
         return;
       }
 
@@ -393,14 +395,21 @@ export default function RawMaterials({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
     }
 
     closeMaterialForm();
     await refreshData();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the raw material.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDeleteMaterial(materialId: string) {
@@ -444,6 +453,7 @@ export default function RawMaterials({
   }
 
   function openEditPurchaseForm(purchase: RawMaterialPurchaseRecord) {
+    setLoading(false);
     setEditingPurchaseId(purchase.id);
     const vendorState = inferVendorSelectState(
       purchase.supplier ?? "",
@@ -464,6 +474,7 @@ export default function RawMaterials({
   }
 
   function openPurchaseModal() {
+    setLoading(false);
     setPurchaseForm({ ...emptyPurchaseForm });
     setPurchaseScanError(null);
     setPurchaseScanSuccess(null);
@@ -472,6 +483,7 @@ export default function RawMaterials({
   }
 
   function closePurchaseModal() {
+    setLoading(false);
     setPurchaseModalOpen(false);
     setPurchaseForm({ ...emptyPurchaseForm });
     setPurchaseScanError(null);
@@ -479,6 +491,7 @@ export default function RawMaterials({
   }
 
   function closePurchaseEditForm() {
+    setLoading(false);
     setEditingPurchaseId(null);
     setPurchaseEditForm(emptyPurchaseForm);
   }
@@ -514,11 +527,11 @@ export default function RawMaterials({
     setLoading(true);
     setError(null);
 
+    try {
     const purchase = purchases.find((row) => row.id === editingPurchaseId);
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -529,7 +542,6 @@ export default function RawMaterials({
       );
     } catch (accessError) {
       setError(formatBusinessUnitAccessError(accessError));
-      setLoading(false);
       return;
     }
 
@@ -538,19 +550,16 @@ export default function RawMaterials({
 
     if (Number.isNaN(quantity) || quantity <= 0) {
       setError("Purchase quantity must be greater than zero.");
-      setLoading(false);
       return;
     }
 
     if (Number.isNaN(costPerUnit) || costPerUnit < 0) {
       setError("Cost per unit must be zero or greater.");
-      setLoading(false);
       return;
     }
 
     if (!purchaseEditForm.payment_method.trim()) {
       setError("Select a payment method for this purchase.");
-      setLoading(false);
       return;
     }
 
@@ -564,7 +573,6 @@ export default function RawMaterials({
       !purchaseEditForm.vendor_other.trim()
     ) {
       setError("Enter the one-time supplier name.");
-      setLoading(false);
       return;
     }
 
@@ -583,7 +591,6 @@ export default function RawMaterials({
 
     if (updateError) {
       setError(updateError.message);
-      setLoading(false);
       return;
     }
 
@@ -596,13 +603,20 @@ export default function RawMaterials({
 
     if (projectUpdateError) {
       setError(projectUpdateError.message);
-      setLoading(false);
       return;
     }
 
     closePurchaseEditForm();
     await refreshLiveInventoryData();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to update the purchase.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDeletePurchase(purchaseId: string) {
@@ -656,10 +670,10 @@ export default function RawMaterials({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -669,7 +683,6 @@ export default function RawMaterials({
     });
     if (!stampResult.ok) {
       setError(stampResult.error);
-      setLoading(false);
       return;
     }
 
@@ -678,25 +691,21 @@ export default function RawMaterials({
 
     if (Number.isNaN(quantity) || quantity <= 0) {
       setError("Purchase quantity must be greater than zero.");
-      setLoading(false);
       return;
     }
 
     if (Number.isNaN(costPerUnit) || costPerUnit < 0) {
       setError("Cost per unit must be zero or greater.");
-      setLoading(false);
       return;
     }
 
     if (!purchaseForm.material_id) {
       setError("Select a raw material for this purchase.");
-      setLoading(false);
       return;
     }
 
     if (!purchaseForm.payment_method.trim()) {
       setError("Select a payment method for this purchase.");
-      setLoading(false);
       return;
     }
 
@@ -710,7 +719,6 @@ export default function RawMaterials({
       !purchaseForm.vendor_other.trim()
     ) {
       setError("Enter the one-time supplier name.");
-      setLoading(false);
       return;
     }
 
@@ -731,14 +739,21 @@ export default function RawMaterials({
 
     if (insertError) {
       setError(insertError.message);
-      setLoading(false);
       return;
     }
 
     setPurchaseForm(emptyPurchaseForm);
     closePurchaseModal();
     await refreshLiveInventoryData();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to record the purchase.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleAdjustmentSubmit(event: React.FormEvent) {
@@ -746,35 +761,31 @@ export default function RawMaterials({
     setLoading(true);
     setAdjustmentError(null);
 
+    try {
     if (viewAllBusinessUnits) {
       setAdjustmentError("Switch to a specific business to record a stock adjustment.");
-      setLoading(false);
       return;
     }
 
     if (!stampBusinessUnit.ok) {
       setAdjustmentError(stampBusinessUnit.error);
-      setLoading(false);
       return;
     }
 
     const adjustmentType = adjustmentForm.adjustment_type;
     if (!adjustmentType) {
       setAdjustmentError("Select an adjustment type.");
-      setLoading(false);
       return;
     }
 
     if (!adjustmentForm.material_id) {
       setAdjustmentError("Select a raw material for this adjustment.");
-      setLoading(false);
       return;
     }
 
     const quantityAbs = Number.parseFloat(adjustmentForm.quantity);
     if (Number.isNaN(quantityAbs) || quantityAbs <= 0) {
       setAdjustmentError("Quantity must be greater than zero.");
-      setLoading(false);
       return;
     }
 
@@ -796,14 +807,12 @@ export default function RawMaterials({
       costPerUnit = Number.parseFloat(adjustmentForm.cost_per_unit);
       if (Number.isNaN(costPerUnit) || costPerUnit < 0) {
         setAdjustmentError("Cost per unit must be zero or greater.");
-        setLoading(false);
         return;
       }
     }
 
     if (!adjustmentForm.reason.trim()) {
       setAdjustmentError("Reason is required.");
-      setLoading(false);
       return;
     }
 
@@ -828,7 +837,6 @@ export default function RawMaterials({
       setAdjustmentError(
         payload?.error ?? "Unable to record stock adjustment.",
       );
-      setLoading(false);
       return;
     }
 
@@ -836,7 +844,15 @@ export default function RawMaterials({
     setShowAdjustmentForm(false);
     setAdjustmentError(null);
     await refreshLiveInventoryData();
-    setLoading(false);
+    } catch (unexpected) {
+      setAdjustmentError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to record stock adjustment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   const adjustmentNeedsCost =
@@ -1601,6 +1617,7 @@ export default function RawMaterials({
             <button
               type="button"
               onClick={() => {
+                setLoading(false);
                 setShowAdjustmentForm((current) => !current);
                 setAdjustmentError(null);
               }}

@@ -212,14 +212,14 @@ export default function ClientInvoicesList({
         | null;
 
       if (!response.ok || !payload?.client_invoice) {
-        setError(payload?.error ?? "Unable to void invoice.");
+        setError(payload?.error ?? "Unable to cancel invoice.");
         return;
       }
 
       updateInvoiceInList(payload.client_invoice);
       router.refresh();
     } catch {
-      setError("Unable to void invoice. Check your connection and try again.");
+      setError("Unable to cancel invoice. Check your connection and try again.");
     } finally {
       setVoidingId(null);
     }
@@ -385,10 +385,11 @@ export default function ClientInvoicesList({
                             confirmingVoidId === invoice.id ? (
                               <span className="inline-flex max-w-md flex-col gap-2 whitespace-normal">
                                 <span className="text-sm text-amber-900">
-                                  Void {invoice.invoice_number}? This cannot be
-                                  undone. The invoice will be marked Voided (not
-                                  removed) and will no longer appear as due in the
-                                  Customer Portal.
+                                  Cancel invoice {invoice.invoice_number}? This
+                                  cannot be undone. The invoice will be marked
+                                  Cancelled (not removed), income and tax are
+                                  reversed, and it will no longer appear as due
+                                  in the Customer Portal.
                                 </span>
                                 <span className="inline-flex flex-nowrap items-center gap-2">
                                   <button
@@ -396,7 +397,7 @@ export default function ClientInvoicesList({
                                     onClick={() => void handleVoid(invoice)}
                                     className={warnButtonClassName}
                                   >
-                                    Yes, void
+                                    Yes, cancel invoice
                                   </button>
                                   <button
                                     type="button"
@@ -419,7 +420,7 @@ export default function ClientInvoicesList({
                                 disabled={voidingId === invoice.id}
                                 className={warnButtonClassName}
                               >
-                                {voidingId === invoice.id ? "Voiding…" : "Void"}
+                                {voidingId === invoice.id ? "Cancelling…" : "Cancel invoice"}
                               </button>
                             )
                           ) : null}

@@ -215,7 +215,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
   if (existing.invoice.status === "voided") {
     return NextResponse.json(
-      { error: "Voided invoices cannot be edited." },
+      { error: "Cancelled invoices cannot be edited." },
       { status: 400 },
     );
   }
@@ -275,7 +275,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json(
       {
         error:
-          "Only draft invoices can be deleted. Use Void for sent or later invoices.",
+          "Only draft invoices can be deleted. Use Cancel invoice for sent or later invoices.",
       },
       { status: 400 },
     );

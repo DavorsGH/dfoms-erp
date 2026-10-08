@@ -372,6 +372,7 @@ export default function FinishedProducts({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingProductId(null);
     setForm({ ...emptyForm });
     setPhotoUrl(null);
@@ -382,6 +383,7 @@ export default function FinishedProducts({
   }
 
   function openEditForm(product: FinishedProductRecord) {
+    setLoading(false);
     setEditingProductId(product.id);
     setForm(finishedProductToForm(product));
     setPhotoUrl(product.photo_url);
@@ -392,6 +394,7 @@ export default function FinishedProducts({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingProductId(null);
     setForm(emptyForm);
     setPhotoUrl(null);
@@ -461,10 +464,10 @@ export default function FinishedProducts({
     setSuccessMessage(null);
     setPhotoWarning(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -477,7 +480,6 @@ export default function FinishedProducts({
         );
       } catch (accessError) {
         setError(formatBusinessUnitAccessError(accessError));
-        setLoading(false);
         return;
       }
 
@@ -496,7 +498,6 @@ export default function FinishedProducts({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
     } else {
@@ -506,7 +507,6 @@ export default function FinishedProducts({
       });
       if (!stampResult.ok) {
         setError(stampResult.error);
-        setLoading(false);
         return;
       }
 
@@ -516,12 +516,10 @@ export default function FinishedProducts({
       ]);
       if (allocated.error || !allocated.productCode) {
         setError(allocated.error ?? "Unable to allocate product code.");
-        setLoading(false);
         return;
       }
       if (barcodeAllocated.error || !barcodeAllocated.barcode) {
         setError(barcodeAllocated.error ?? "Unable to allocate product barcode.");
-        setLoading(false);
         return;
       }
 
@@ -542,7 +540,6 @@ export default function FinishedProducts({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
 
@@ -551,7 +548,6 @@ export default function FinishedProducts({
 
       closeForm();
       await refreshData();
-      setLoading(false);
       setSuccessMessage("Product added successfully.");
 
       if (newProductId && photoToUpload) {
@@ -578,7 +574,15 @@ export default function FinishedProducts({
 
     closeForm();
     await refreshData();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the finished product.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleArchive(productId: string) {
@@ -730,10 +734,10 @@ export default function FinishedProducts({
     setAdjustmentError(null);
     setSuccessMessage(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setAdjustmentError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -743,33 +747,28 @@ export default function FinishedProducts({
     });
     if (!stampResult.ok) {
       setAdjustmentError(stampResult.error);
-      setLoading(false);
       return;
     }
 
     if (viewAllBusinessUnits && buContext.allowedUnits === null) {
       setAdjustmentError("Switch to a specific business to record a stock adjustment.");
-      setLoading(false);
       return;
     }
 
     const adjustmentType = adjustmentForm.adjustment_type;
     if (!adjustmentType) {
       setAdjustmentError("Select an adjustment type.");
-      setLoading(false);
       return;
     }
 
     if (!adjustmentForm.product_id) {
       setAdjustmentError("Select a finished product for this adjustment.");
-      setLoading(false);
       return;
     }
 
     const quantityAbs = Number.parseFloat(adjustmentForm.quantity);
     if (Number.isNaN(quantityAbs) || quantityAbs <= 0) {
       setAdjustmentError("Quantity must be greater than zero.");
-      setLoading(false);
       return;
     }
 
@@ -791,14 +790,12 @@ export default function FinishedProducts({
       costPerUnit = Number.parseFloat(adjustmentForm.cost_per_unit);
       if (Number.isNaN(costPerUnit) || costPerUnit < 0) {
         setAdjustmentError("Cost per unit must be zero or greater.");
-        setLoading(false);
         return;
       }
     }
 
     if (!adjustmentForm.reason.trim()) {
       setAdjustmentError("Reason is required.");
-      setLoading(false);
       return;
     }
 
@@ -836,7 +833,6 @@ export default function FinishedProducts({
       setAdjustmentError(
         payload?.error ?? "Unable to record stock adjustment.",
       );
-      setLoading(false);
       return;
     }
 
@@ -844,7 +840,15 @@ export default function FinishedProducts({
     setShowAdjustmentForm(false);
     setAdjustmentError(null);
     await refreshLiveInventoryData();
-    setLoading(false);
+    } catch (unexpected) {
+      setAdjustmentError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to record stock adjustment.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   const adjustmentNeedsCost =
@@ -1242,6 +1246,7 @@ export default function FinishedProducts({
             <button
               type="button"
               onClick={() => {
+                setLoading(false);
                 setShowAdjustmentForm((current) => !current);
                 setAdjustmentError(null);
               }}
@@ -1569,6 +1574,7 @@ export default function FinishedProducts({
             <button
               type="button"
               onClick={() => {
+                setLoading(false);
                 setShowInternalUseForm((current) => !current);
               }}
               className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"

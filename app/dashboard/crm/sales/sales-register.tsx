@@ -60,9 +60,10 @@ import {
   type ProductSaleEntry,
 } from "../product-sales-utils";
 import {
-  fetchIncomeIdsWithReturnCredits,
   formatVoidProductSaleRpcError,
   isProductSaleReturn,
+  isSaleLineFullyReturned,
+  resolveProductSaleCancelBlockReason,
 } from "../product-return-utils";
 import { deleteTaxLedgerEntriesForSource } from "@/app/dashboard/finance/tax-ledger-sync";
 import {
@@ -134,9 +135,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
   const [returnedQtyByIncomeId, setReturnedQtyByIncomeId] = useState<
     Map<string, number>
   >(() => new Map());
-  const [incomeIdsWithReturns, setIncomeIdsWithReturns] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [error, setError] = useState<string | null>(props.fetchError);
   const [showForm, setShowForm] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
@@ -220,11 +218,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
         (data ?? []) as { source_income_register_id: string; quantity: number }[],
       ),
     );
-    const withReturns = await fetchIncomeIdsWithReturnCredits(
-      supabase,
-      saleLineIds,
-    );
-    setIncomeIdsWithReturns(withReturns);
   }
 
   async function refreshIncomeEntries() {
@@ -742,7 +735,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
                   key={row.rowKey}
                   row={row}
                   index={index}
-                  incomeIdsWithReturns={incomeIdsWithReturns}
                   printingKey={printingKey}
                   voidingId={voidingId}
                   viewOnly={registerViewOnly}
@@ -787,7 +779,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
         row={drawerRow}
         open={drawerRow != null}
         onClose={() => setDrawerRowKey(null)}
-        incomeIdsWithReturns={incomeIdsWithReturns}
         voidingId={voidingId}
         viewOnly={registerViewOnly}
         onOpenReceiptByInvoice={(invoiceNo) => {
@@ -817,7 +808,6 @@ export default function SalesRegister(props: SalesRegisterProps) {
 function SalesRegisterTableRow({
   row,
   index,
-  incomeIdsWithReturns,
   printingKey,
   voidingId,
   viewOnly,
@@ -829,7 +819,6 @@ function SalesRegisterTableRow({
 }: {
   row: SalesRegisterRow;
   index: number;
-  incomeIdsWithReturns: Set<string>;
   printingKey: string | null;
   voidingId: string | null;
   viewOnly: boolean;
@@ -926,8 +915,19 @@ function SalesRegisterTableRow({
     !row.voided &&
     row.status !== "returned" &&
     row.lines.some((line) => !isProductSaleVoided(line));
-  const voidDisabled = row.lines.some((line) => incomeIdsWithReturns.has(line.id));
   const singleLine = row.lines.length === 1 ? row.lines[0] : null;
+  const singleLineCancelBlock = singleLine
+    ? resolveProductSaleCancelBlockReason({
+        saleQuantity: Number(singleLine.sale_quantity) || 0,
+        returnedQuantity: singleLine.returnedQuantity ?? 0,
+      })
+    : null;
+  const singleLineFullyReturned =
+    singleLine != null &&
+    isSaleLineFullyReturned(
+      Number(singleLine.sale_quantity) || 0,
+      singleLine.returnedQuantity ?? 0,
+    );
 
   return (
     <tr
@@ -987,19 +987,23 @@ function SalesRegisterTableRow({
         disableRecordPayment={viewOnly}
         recordPaymentDisabledTitle={SALES_REGISTER_VIEW_ONLY_TOOLTIP}
         onVoid={
-          singleLine && !row.voided && !viewOnly
+          singleLine &&
+          !row.voided &&
+          !viewOnly &&
+          !singleLineFullyReturned
             ? () => onVoidLine(singleLine)
             : undefined
         }
-        disableVoid={row.voided || voidDisabled || !singleLine || viewOnly}
+        disableVoid={
+          row.voided || !singleLine || viewOnly || singleLineCancelBlock != null
+        }
         voidDisabledTitle={
           viewOnly
             ? SALES_REGISTER_VIEW_ONLY_TOOLTIP
-            : voidDisabled
-              ? "This sale has returns. Use Return instead."
-              : !singleLine
-                ? "Void each line from the receipt detail drawer."
-                : undefined
+            : singleLineCancelBlock ??
+              (!singleLine
+                ? "Cancel each sale line from the receipt detail drawer."
+                : undefined)
         }
         voiding={singleLine ? voidingId === singleLine.id : false}
       />
@@ -1011,7 +1015,6 @@ function SalesRegisterDetailDrawer({
   row,
   open,
   onClose,
-  incomeIdsWithReturns,
   voidingId,
   viewOnly,
   onOpenReceiptByInvoice,
@@ -1023,7 +1026,6 @@ function SalesRegisterDetailDrawer({
   row: SalesRegisterRow | null;
   open: boolean;
   onClose: () => void;
-  incomeIdsWithReturns: Set<string>;
   voidingId: string | null;
   viewOnly: boolean;
   onOpenReceiptByInvoice: (invoiceNo: string) => void;
@@ -1196,7 +1198,6 @@ function SalesRegisterDetailDrawer({
             value: (
               <SalesRegisterDrawerLinesList
                 row={row}
-                incomeIdsWithReturns={incomeIdsWithReturns}
                 voidingId={voidingId}
                 viewOnly={viewOnly}
                 onVoidLine={onVoidLine}
@@ -1262,7 +1263,6 @@ function SalesRegisterDetailDrawer({
     drawerReturns,
     extraLoading,
     linkedInvoiceNo,
-    incomeIdsWithReturns,
     voidingId,
     viewOnly,
     onOpenReceiptByInvoice,
@@ -1307,14 +1307,12 @@ function SalesRegisterDetailDrawer({
 
 function SalesRegisterDrawerLinesList({
   row,
-  incomeIdsWithReturns,
   voidingId,
   viewOnly,
   onVoidLine,
   onRecordPayment,
 }: {
   row: SalesRegisterReceiptRow;
-  incomeIdsWithReturns: Set<string>;
   voidingId: string | null;
   viewOnly: boolean;
   onVoidLine: (line: ProductSaleEntry) => void;
@@ -1328,7 +1326,14 @@ function SalesRegisterDrawerLinesList({
           amount_received: Number(line.amount_received) || 0,
           outstanding_balance: line.outstanding_balance,
         });
-        const hasReturns = incomeIdsWithReturns.has(line.id);
+        const cancelBlockReason = resolveProductSaleCancelBlockReason({
+          saleQuantity: Number(line.sale_quantity) || 0,
+          returnedQuantity: line.returnedQuantity ?? 0,
+        });
+        const fullyReturned = isSaleLineFullyReturned(
+          Number(line.sale_quantity) || 0,
+          line.returnedQuantity ?? 0,
+        );
         return (
           <li
             key={line.id}
@@ -1357,29 +1362,25 @@ function SalesRegisterDrawerLinesList({
                     Record Payment
                   </button>
                 ) : null}
-                {!isProductSaleVoided(line) ? (
-                  hasReturns ? (
-                    <Tooltip
-                      content="This sale has returns. Use Return instead."
-                      variant="blocked"
-                    >
+                {!isProductSaleVoided(line) && !fullyReturned ? (
+                  cancelBlockReason ? (
+                    <Tooltip content={cancelBlockReason} variant="blocked">
                       <button
                         type="button"
-                        disabled={hasReturns || voidingId === line.id}
-                        onClick={() => onVoidLine(line)}
+                        disabled
                         className="rounded-md border border-amber-200 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
                       >
-                        {voidingId === line.id ? "Voiding…" : "Void line"}
+                        Cancel sale
                       </button>
                     </Tooltip>
                   ) : (
                     <button
                       type="button"
-                      disabled={hasReturns || voidingId === line.id}
+                      disabled={voidingId === line.id}
                       onClick={() => onVoidLine(line)}
                       className="rounded-md border border-amber-200 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
                     >
-                      {voidingId === line.id ? "Voiding…" : "Void line"}
+                      {voidingId === line.id ? "Cancelling…" : "Cancel sale"}
                     </button>
                   )
                 ) : null}

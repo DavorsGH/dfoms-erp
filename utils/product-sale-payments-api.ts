@@ -97,7 +97,7 @@ export async function recordProductSalePayment(
     return {
       payment: null,
       income: null,
-      error: "Cannot record payment against a voided sale.",
+      error: "Cannot record payment against a cancelled sale.",
     };
   }
 

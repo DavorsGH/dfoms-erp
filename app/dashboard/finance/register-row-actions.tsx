@@ -209,7 +209,7 @@ export default function RegisterRowActions({
   disableReturn = false,
   returnDisabledTitle,
   returning = false,
-  voidLabel = "Void Sale",
+  voidLabel = "Cancel sale",
   returnLabel = "Return",
   archiveLabel = "Archive",
   restoreLabel = "Reactivate",
@@ -225,7 +225,7 @@ export default function RegisterRowActions({
   const voidClass = compact ? voidButtonCompactClassName : voidButtonClassName;
   const resolvedPrintLabel = compact ? "Print" : printLabel;
   const resolvedPayLabel = compact ? "Pay" : recordPaymentLabel;
-  const resolvedVoidLabel = compact ? "Void" : voidLabel;
+  const resolvedVoidLabel = compact ? "Cancel sale" : voidLabel;
   const resolvedReturnLabel = compact ? "Return" : returnLabel;
 
   return (
@@ -327,7 +327,7 @@ export default function RegisterRowActions({
           ? withDisabledActionTooltip(
               Boolean(voiding || disableVoid),
               disableVoid
-                ? (voidDisabledTitle ?? "This sale has already been voided")
+                ? (voidDisabledTitle ?? "This sale has already been cancelled")
                 : undefined,
               <button
                 type="button"

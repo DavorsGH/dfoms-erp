@@ -341,6 +341,7 @@ export default function ProductionBatches({
   }, [buReadScope.mode, buReadScope.mode === "unit" ? buReadScope.id : null]);
 
   function openAddForm() {
+    setLoading(false);
     setEditingBatchId(null);
     setBatchForm({ ...emptyBatchForm });
     setMaterialLines([{ ...emptyMaterialLine }]);
@@ -350,6 +351,7 @@ export default function ProductionBatches({
   }
 
   function openEditForm(batch: ProductionBatchRecord) {
+    setLoading(false);
     setEditingBatchId(batch.id);
     setBatchForm({
       batch_number: batch.batch_number,
@@ -374,6 +376,7 @@ export default function ProductionBatches({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingBatchId(null);
     setBatchForm(emptyBatchForm);
     setMaterialLines([{ ...emptyMaterialLine }]);
@@ -497,10 +500,10 @@ export default function ProductionBatches({
     setLoading(true);
     setMaterialFormError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setMaterialFormError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -510,13 +513,11 @@ export default function ProductionBatches({
     });
     if (!stampResult.ok) {
       setMaterialFormError(stampResult.error);
-      setLoading(false);
       return;
     }
 
     const quantityProduced = Number.parseFloat(batchForm.quantity_produced);
     if (Number.isNaN(quantityProduced) || quantityProduced <= 0) {
-      setLoading(false);
       void alertDialog({
         title: "Quantity required",
         message: "Enter a quantity produced greater than zero.",
@@ -525,7 +526,6 @@ export default function ProductionBatches({
     }
 
     if (!batchForm.finished_product_id) {
-      setLoading(false);
       void alertDialog({
         title: "Finished product required",
         message: "Select a finished product before saving.",
@@ -542,7 +542,6 @@ export default function ProductionBatches({
     if (!materialValidation.ok) {
       setMaterialLineErrors(materialValidation.lineErrors);
       setMaterialFormError(materialValidation.formError ?? null);
-      setLoading(false);
       return;
     }
 
@@ -558,7 +557,6 @@ export default function ProductionBatches({
           );
         } catch (accessError) {
           setMaterialFormError(formatBusinessUnitAccessError(accessError));
-          setLoading(false);
           return;
         }
       }
@@ -581,7 +579,6 @@ export default function ProductionBatches({
       );
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
-        setLoading(false);
         void alertDialog({
           title: "Couldn't save batch",
           message:
@@ -604,14 +601,12 @@ export default function ProductionBatches({
           setEditEligibility(eligibilityPayload.eligibility);
         }
       }
-      setLoading(false);
       return;
     }
 
     const allocated = await allocateBatchNumber(supabase);
     if (allocated.error || !allocated.batchNumber) {
       setMaterialFormError(allocated.error ?? "Unable to allocate batch number.");
-      setLoading(false);
       return;
     }
 
@@ -629,7 +624,6 @@ export default function ProductionBatches({
 
     if (rpcError) {
       console.error("create_production_batch failed", rpcError);
-      setLoading(false);
       void alertDialog({
         title: "Couldn't save batch",
         message: mapProductionBatchSaveErrorMessage(rpcError),
@@ -639,7 +633,15 @@ export default function ProductionBatches({
 
     closeForm();
     await refreshLiveInventoryData();
-    setLoading(false);
+    } catch (unexpected) {
+      setMaterialFormError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the production batch.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDeleteBatch(batch: ProductionBatchRecord) {

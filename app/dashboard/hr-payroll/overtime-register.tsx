@@ -128,6 +128,7 @@ export default function OvertimeRegister({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setForm(emptyForm);
     setFieldErrors({});
@@ -136,6 +137,7 @@ export default function OvertimeRegister({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setForm(emptyForm);
     setFieldErrors({});
@@ -145,6 +147,7 @@ export default function OvertimeRegister({
   }
 
   function openEditForm(entry: OvertimeRegisterEntry) {
+    setLoading(false);
     setEditingId(entry.id);
     setFieldErrors({});
     setLiveValidatedFields(new Set());
@@ -369,7 +372,6 @@ export default function OvertimeRegister({
       const body = (await response.json()) as { error?: string };
       if (!response.ok) {
         setError(body.error ?? "Failed to save overtime entries.");
-        setLoading(false);
         return;
       }
 
@@ -381,9 +383,9 @@ export default function OvertimeRegister({
           ? requestError.message
           : "Failed to save overtime entries.",
       );
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function submitEdit(parsed: {
@@ -420,7 +422,6 @@ export default function OvertimeRegister({
       const body = (await response.json()) as { error?: string };
       if (!response.ok) {
         setError(body.error ?? "Failed to update overtime entry.");
-        setLoading(false);
         return;
       }
 
@@ -432,9 +433,9 @@ export default function OvertimeRegister({
           ? requestError.message
           : "Failed to update overtime entry.",
       );
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   const confirmDateLabel = confirmBulk

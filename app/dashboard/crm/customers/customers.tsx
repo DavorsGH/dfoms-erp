@@ -129,6 +129,7 @@ export default function Customers({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setForm({
       ...emptyForm,
@@ -140,12 +141,14 @@ export default function Customers({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setForm(emptyForm);
     setShowForm(false);
   }
 
   function openEditForm(customer: CustomerEntry) {
+    setLoading(false);
     setEditingId(customer.client_id);
     setForm({
       client_id: customer.client_id,
@@ -209,6 +212,7 @@ export default function Customers({
     setLoading(true);
     setError(null);
 
+    try {
     const payload = {
       client_id: form.client_id.trim(),
       client_name: form.client_name.trim(),
@@ -256,14 +260,12 @@ export default function Customers({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
     } else {
       const clientAllocated = await allocateClientId(supabase);
       if (clientAllocated.error || !clientAllocated.clientId) {
         setError(clientAllocated.error ?? "Unable to allocate customer ID.");
-        setLoading(false);
         return;
       }
 
@@ -272,7 +274,6 @@ export default function Customers({
         setError(
           contractAllocated.error ?? "Unable to allocate contract number.",
         );
-        setLoading(false);
         return;
       }
 
@@ -284,7 +285,6 @@ export default function Customers({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
 
@@ -298,7 +298,15 @@ export default function Customers({
 
     closeForm();
     await refreshCustomers();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the customer.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

@@ -268,6 +268,26 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: C.textDark,
   },
+  cancelledStampWrap: {
+    position: "absolute",
+    top: 280,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelledStampText: {
+    fontSize: 48,
+    fontWeight: "bold",
+    color: "#dc2626",
+    opacity: 0.28,
+    letterSpacing: 6,
+    transform: "rotate(-24deg)",
+    borderWidth: 4,
+    borderColor: "#dc2626",
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+  },
   signatureBlock: {
     marginTop: 16,
     alignSelf: "flex-start",
@@ -362,10 +382,16 @@ export default function ClientInvoicePdfDocument({
   );
 
   let lineRowIndex = 0;
+  const isCancelled = invoice.status === "voided";
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {isCancelled ? (
+          <View style={styles.cancelledStampWrap}>
+            <Text style={styles.cancelledStampText}>CANCELLED</Text>
+          </View>
+        ) : null}
         <View style={styles.headerRow}>
           <View style={styles.companyBlock}>
             {logoUrl ? (

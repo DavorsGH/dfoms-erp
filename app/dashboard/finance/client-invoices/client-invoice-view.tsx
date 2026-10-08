@@ -179,7 +179,7 @@ export default function ClientInvoiceView({
 
       {invoice.status === "voided" ? (
         <div className="no-print rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          This invoice has been voided and is no longer payable.
+          This invoice has been cancelled and is no longer payable.
         </div>
       ) : null}
 

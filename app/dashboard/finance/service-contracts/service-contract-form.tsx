@@ -221,6 +221,7 @@ export default function ServiceContractForm({
           ? submitError.message
           : "Unable to save service contract.",
       );
+    } finally {
       setSaving(false);
     }
   }

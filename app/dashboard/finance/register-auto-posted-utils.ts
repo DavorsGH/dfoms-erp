@@ -12,7 +12,11 @@ import {
   REMITTED_STATUS,
   todayIsoDate,
 } from "./tax-ledger-utils";
-import { buildRemitExpenseReceiptNo } from "./tax-ledger-remit";
+import {
+  STATUTORY_REMITTANCE_EXPENSE_CATEGORY,
+  buildRemitExpenseReceiptNo,
+  remitKindFromReceiptNo,
+} from "./tax-ledger-remit";
 import {
   buildPayrollPeriodTaxLedgerSourceId,
   PAYROLL_PERIOD_SOURCE_TYPE,
@@ -23,6 +27,11 @@ import {
   PAYROLL_EXPENSE_PAYMENT_STATUS_PAID,
   PAYROLL_INCOME_RECEIPT_SUFFIX,
 } from "../hr-payroll/payroll-lock-finance-utils";
+import {
+  STAFF_WELFARE_CONTRIBUTION_CATEGORY,
+  STAFF_WELFARE_DISBURSEMENT_CATEGORY,
+} from "./staff-welfare-fund-utils";
+import { normalizeCategoryName } from "./profit-loss-utils";
 import { parsePeriodKey } from "../hr-payroll/payroll-period-utils";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -48,6 +57,33 @@ export const REAL_ESTATE_MANAGEMENT_FEE_INCOME_CATEGORY =
   "Real Estate Management Fee";
 
 const RE_MGMT_FEE_INVOICE_PREFIX = "RE-MGMT-FEE-";
+
+const PAYSTACK_FEE_RECEIPT_PREFIX = "PSK-FEE-";
+const PAYSTACK_FEE_EXPENSE_SUB_CATEGORY = "Paystack Transaction Fees";
+const PAYSTACK_FEE_VENDOR = "Paystack";
+
+const INTERNAL_CONSUMPTION_DESCRIPTION_PREFIX =
+  "Auto-posted internal consumption of";
+const INVENTORY_GAIN_INCOME_DESCRIPTION = "Inventory gain (stock adjustment)";
+const INVENTORY_LOSS_EXPENSE_DESCRIPTION = "Inventory loss (stock adjustment)";
+
+export type AutoPostedExpenseKind =
+  | "statutory_remit"
+  | "payroll"
+  | "customer_refund"
+  | "product_cogs"
+  | "inventory_go_live"
+  | "stock_adjustment"
+  | "internal_consumption"
+  | "welfare"
+  | "paystack_fee"
+  | "product_return_cogs";
+
+export type AutoPostedExpenseDetection = {
+  autoPosted: boolean;
+  kind: AutoPostedExpenseKind | null;
+  lockMessage: string | null;
+};
 
 export type AutoPostedIncomeKind =
   | "system_adjustment"
@@ -80,10 +116,197 @@ export function isInventoryGoLiveTrueUpExpense(entry: {
   return /^ADJ-PPIR-/i.test((entry.receipt_no ?? "").trim());
 }
 
+/** Tax Ledger remit-for-period cash rows (TAX-REMIT-* or Statutory Remittance category). */
+export function isStatutoryRemittanceExpense(entry: {
+  receipt_no?: string | null;
+  expense_category?: string | null;
+}): boolean {
+  if (remitKindFromReceiptNo(entry.receipt_no)) {
+    return true;
+  }
+  return (
+    (entry.expense_category ?? "").trim() ===
+    STATUTORY_REMITTANCE_EXPENSE_CATEGORY
+  );
+}
+
+export function statutoryRemittanceExpenseLockMessage(): string {
+  return "Statutory tax remittance (auto-posted). Undo via Finance → Statutory Ledger → remittance controls — do not edit or delete here.";
+}
+
+export function isProductSaleCogsExpense(entry: {
+  receipt_no?: string | null;
+}): boolean {
+  return /^(VOID-)?COGS-/i.test((entry.receipt_no ?? "").trim());
+}
+
+export function isProductReturnCogsReceiptExpense(entry: {
+  receipt_no?: string | null;
+}): boolean {
+  return /^RET-COGS-/i.test((entry.receipt_no ?? "").trim());
+}
+
+export function isStockAdjustmentExpense(entry: {
+  receipt_no?: string | null;
+  description?: string | null;
+}): boolean {
+  const receipt = (entry.receipt_no ?? "").trim();
+  if (/^STKADJ-/i.test(receipt)) {
+    return true;
+  }
+  return (entry.description ?? "").trim() === INVENTORY_LOSS_EXPENSE_DESCRIPTION;
+}
+
+export function isInternalConsumptionExpense(entry: {
+  description?: string | null;
+  receipt_no?: string | null;
+}): boolean {
+  const description = (entry.description ?? "").trim();
+  if (
+    description
+      .toLowerCase()
+      .startsWith(INTERNAL_CONSUMPTION_DESCRIPTION_PREFIX.toLowerCase())
+  ) {
+    return true;
+  }
+  return /^IC-/i.test((entry.receipt_no ?? "").trim());
+}
+
+export function isStaffWelfareFundExpense(entry: {
+  receipt_no?: string | null;
+  expense_category?: string | null;
+}): boolean {
+  const receipt = (entry.receipt_no ?? "").trim().toUpperCase();
+  if (receipt.startsWith("WELFARE-DISB-") || receipt.startsWith("WELFARE-CONT-")) {
+    return true;
+  }
+  const category = normalizeCategoryName(entry.expense_category ?? "");
+  return (
+    category === normalizeCategoryName(STAFF_WELFARE_DISBURSEMENT_CATEGORY) ||
+    category === normalizeCategoryName(STAFF_WELFARE_CONTRIBUTION_CATEGORY)
+  );
+}
+
+export function isPaystackTransactionFeeExpense(entry: {
+  receipt_no?: string | null;
+  sub_category?: string | null;
+  vendor?: string | null;
+}): boolean {
+  const receipt = (entry.receipt_no ?? "").trim().toUpperCase();
+  if (receipt.startsWith(PAYSTACK_FEE_RECEIPT_PREFIX)) {
+    return true;
+  }
+  return (
+    normalizeCategoryName(entry.sub_category ?? "") ===
+      normalizeCategoryName(PAYSTACK_FEE_EXPENSE_SUB_CATEGORY) &&
+    (entry.vendor ?? "").trim().toLowerCase() ===
+      PAYSTACK_FEE_VENDOR.toLowerCase()
+  );
+}
+
 /**
- * Expense Register auto-post detection:
- * description prefix "Auto-posted from Payroll…" OR receipt_no PAYROLL-SAL-* / PAYROLL-ESSNIT-*
- * OR inventory go-live true-up reversals (ADJ-PPIR-*).
+ * Classify expense_register rows written upstream (not manual Add Entry).
+ */
+export function detectAutoPostedExpenseRegisterEntry(entry: {
+  description?: string | null;
+  receipt_no?: string | null;
+  expense_category?: string | null;
+  sub_category?: string | null;
+  is_customer_refund?: boolean | null;
+  vendor?: string | null;
+}): AutoPostedExpenseDetection {
+  if (isStatutoryRemittanceExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "statutory_remit",
+      lockMessage: statutoryRemittanceExpenseLockMessage(),
+    };
+  }
+  if (isCustomerRefundCashOutflowExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "customer_refund",
+      lockMessage: customerRefundExpenseLockMessage(),
+    };
+  }
+  if (
+    isProductReturnCogsReversalExpense(entry) ||
+    isProductReturnCogsReceiptExpense(entry)
+  ) {
+    return {
+      autoPosted: true,
+      kind: "product_return_cogs",
+      lockMessage:
+        "Sale return COGS (auto-posted). Adjust from CRM → Sales → Return or Credit Notes — do not edit or delete here.",
+    };
+  }
+  if (isProductSaleCogsExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "product_cogs",
+      lockMessage:
+        "Product sale COGS (auto-posted). Cancel or adjust the sale from Sales & CRM → Sales — do not edit or delete here.",
+    };
+  }
+  if (isInventoryGoLiveTrueUpExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "inventory_go_live",
+      lockMessage:
+        "Inventory go-live true-up (ADJ-PPIR-*). Do not edit or delete — contact support if a correction is required.",
+    };
+  }
+  if (isStockAdjustmentExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "stock_adjustment",
+      lockMessage:
+        "Inventory stock adjustment (auto-posted). Reverse from Inventory → Stock adjustments — do not edit or delete here.",
+    };
+  }
+  if (isInternalConsumptionExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "internal_consumption",
+      lockMessage:
+        "Internal consumption (auto-posted). Edit or delete from Inventory → Internal use — do not change here.",
+    };
+  }
+  if (isStaffWelfareFundExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "welfare",
+      lockMessage:
+        "Staff welfare fund (auto-posted). Manage from Finance → Staff Welfare Fund — do not edit or delete here.",
+    };
+  }
+  if (isPaystackTransactionFeeExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "paystack_fee",
+      lockMessage:
+        "Paystack transaction fee (auto-posted). Managed from Platform Billing / Paystack settlement — do not edit or delete here.",
+    };
+  }
+  if (isPayrollAutoPostedExpense(entry)) {
+    return {
+      autoPosted: true,
+      kind: "payroll",
+      lockMessage:
+        "Payroll auto-posted expense. Use Mark as Paid when remitting Accrued Employer SSNIT / Accrued Staff Salaries, or Release payroll to reverse the post.",
+    };
+  }
+  return { autoPosted: false, kind: null, lockMessage: null };
+}
+
+export function expenseRegisterAutoPostLockMessage(entry: Parameters<
+  typeof detectAutoPostedExpenseRegisterEntry
+>[0]): string | null {
+  return detectAutoPostedExpenseRegisterEntry(entry).lockMessage;
+}
+
+/**
+ * Expense Register auto-post detection (upstream/system rows).
  */
 export function isAutoPostedExpenseRegisterEntry(entry: {
   description?: string | null;
@@ -91,17 +314,9 @@ export function isAutoPostedExpenseRegisterEntry(entry: {
   expense_category?: string | null;
   sub_category?: string | null;
   is_customer_refund?: boolean | null;
+  vendor?: string | null;
 }): boolean {
-  if (isCustomerRefundCashOutflowExpense(entry)) {
-    return true;
-  }
-  if (isProductReturnCogsReversalExpense(entry)) {
-    return true;
-  }
-  if (isInventoryGoLiveTrueUpExpense(entry)) {
-    return true;
-  }
-  return isPayrollAutoPostedExpense(entry);
+  return detectAutoPostedExpenseRegisterEntry(entry).autoPosted;
 }
 
 export function customerRefundExpenseLockMessage(): string {
@@ -185,7 +400,7 @@ export function detectAutoPostedIncomeRegisterEntry(entry: {
       autoPosted: true,
       kind: "client_invoice",
       lockMessage:
-        "Synced from a Client Invoice. Void or delete the Client Invoice instead — editing this row directly can desync AR/tax and unbalance the Balance Sheet.",
+        "Synced from a Client Invoice. Cancel or delete the Client Invoice instead — editing this row directly can desync AR/tax and unbalance the Balance Sheet.",
     };
   }
 
@@ -206,7 +421,19 @@ export function detectAutoPostedIncomeRegisterEntry(entry: {
       autoPosted: true,
       kind: "product_sale",
       lockMessage:
-        "Product sale (POS). Void or adjust the sale from Sales / POS — do not edit or delete here.",
+        "Product sale (POS). Cancel or adjust the sale from Sales / POS — do not edit or delete here.",
+    };
+  }
+
+  if (
+    description === INVENTORY_GAIN_INCOME_DESCRIPTION.toLowerCase() ||
+    (entry.description ?? "").trim() === INVENTORY_GAIN_INCOME_DESCRIPTION
+  ) {
+    return {
+      autoPosted: true,
+      kind: "system_adjustment",
+      lockMessage:
+        "Inventory stock adjustment gain (auto-posted). Reverse from Inventory → Stock adjustments — do not edit or delete here.",
     };
   }
 

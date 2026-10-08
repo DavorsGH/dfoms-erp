@@ -164,7 +164,7 @@ export async function resolveCreditNoteForPosCheckout(
   }
 
   if (String(row.status ?? "").toLowerCase() === "voided") {
-    return { ok: false, message: "This credit note is voided." };
+    return { ok: false, message: "This credit note is cancelled." };
   }
 
   const available = creditNoteAvailableFromRow(row);

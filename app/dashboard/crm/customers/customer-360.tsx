@@ -594,7 +594,7 @@ function ProductSalesSection({
                   {isReturn ? (
                     <ProductSaleReturnBadge />
                   ) : isProductSaleVoided(entry) ? (
-                    "Voided"
+                    "Cancelled"
                   ) : (
                     entry.payment_status
                   )}

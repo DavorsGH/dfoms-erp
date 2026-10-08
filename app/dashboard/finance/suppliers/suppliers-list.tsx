@@ -123,6 +123,7 @@ export default function SuppliersList({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingSupplierId(null);
     setForm(emptySupplierForm());
     setShowForm(true);
@@ -131,6 +132,7 @@ export default function SuppliersList({
   }
 
   function openEditForm(supplier: SupplierRow) {
+    setLoading(false);
     setEditingSupplierId(supplier.id);
     setForm(supplierToForm(supplier));
     setShowForm(true);
@@ -139,6 +141,7 @@ export default function SuppliersList({
   }
 
   function closeForm() {
+    setLoading(false);
     setShowForm(false);
     setEditingSupplierId(null);
     setForm(emptySupplierForm());
@@ -166,10 +169,10 @@ export default function SuppliersList({
     setError(null);
     setSuccess(null);
 
+    try {
     const validationError = validateSupplierInput(form);
     if (validationError) {
       setError(validationError);
-      setLoading(false);
       return;
     }
 
@@ -189,7 +192,6 @@ export default function SuppliersList({
 
     if (!response.ok) {
       setError(payload?.error ?? "Unable to save supplier.");
-      setLoading(false);
       return;
     }
 
@@ -214,8 +216,16 @@ export default function SuppliersList({
 
     setSuccess(isEditing ? "Supplier updated." : "Supplier created.");
     closeForm();
-    setLoading(false);
     router.refresh();
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save supplier.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function previewDelete(supplier: SupplierRow) {

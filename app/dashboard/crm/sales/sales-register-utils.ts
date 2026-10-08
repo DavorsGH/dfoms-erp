@@ -399,7 +399,7 @@ export function formatSalesRegisterStatusLabel(
     return row.status;
   }
   if (row.status === "voided") {
-    return "Voided";
+    return "Cancelled";
   }
   if (row.status === "returned") {
     return "Returned";

@@ -515,6 +515,7 @@ export default function FixedAssets({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
     setForm({ ...emptyForm });
@@ -522,6 +523,7 @@ export default function FixedAssets({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
     setForm(emptyForm);
@@ -559,6 +561,7 @@ export default function FixedAssets({
           ? ""
           : String(asset.input_vat_amount),
     });
+    setLoading(false);
     setShowForm(true);
   }
 
@@ -662,10 +665,10 @@ export default function FixedAssets({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -682,7 +685,6 @@ export default function FixedAssets({
         );
       } catch (accessError) {
         setError(formatBusinessUnitAccessError(accessError));
-        setLoading(false);
         return;
       }
       stampedBusinessUnitId = existingAsset?.business_unit_id ?? null;
@@ -693,7 +695,6 @@ export default function FixedAssets({
       });
       if (!stampResult.ok) {
         setError(stampResult.error);
-        setLoading(false);
         return;
       }
       stampedBusinessUnitId = stampResult.businessUnitId;
@@ -718,17 +719,14 @@ export default function FixedAssets({
     );
     if (!vendorName) {
       setError("Supplier is required.");
-      setLoading(false);
       return;
     }
     if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
       setError("Enter the one-time supplier name.");
-      setLoading(false);
       return;
     }
     if (isCreditPaymentMethod(paymentMethod) && !vendorName) {
       setError("Supplier name is required for credit / on-account purchases.");
-      setLoading(false);
       return;
     }
 
@@ -785,7 +783,6 @@ export default function FixedAssets({
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
       setError(tenantError ?? "Unable to resolve workspace.");
-      setLoading(false);
       return;
     }
 
@@ -795,7 +792,6 @@ export default function FixedAssets({
       const allocated = await allocateAssetId(supabase);
       if (allocated.error || !allocated.assetId) {
         setError(allocated.error ?? "Unable to allocate asset ID.");
-        setLoading(false);
         return;
       }
       savedAssetId = allocated.assetId;
@@ -848,7 +844,6 @@ export default function FixedAssets({
 
     if (saveError) {
       setError(saveError.message);
-      setLoading(false);
       return;
     }
 
@@ -862,7 +857,15 @@ export default function FixedAssets({
 
     closeForm();
     await refreshAssets();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the fixed asset.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function updateField<K extends keyof FixedAssetFormState>(

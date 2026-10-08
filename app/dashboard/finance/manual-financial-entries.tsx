@@ -187,6 +187,7 @@ export default function ManualFinancialEntries({
   }, [initialEntries]);
 
   function closeActionForm() {
+    setLoading(false);
     setActiveAction(null);
     setAmount("");
     setNotes("");
@@ -227,6 +228,7 @@ export default function ManualFinancialEntries({
     setError(null);
     setInfoMessage(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
@@ -283,8 +285,16 @@ export default function ManualFinancialEntries({
     closeActionForm();
     await refreshEntries();
     setInfoMessage(successMessage);
-    setLoading(false);
     router.refresh();
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save manual financial entry.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDelete(entry: ManualFinancialEntryRecord) {

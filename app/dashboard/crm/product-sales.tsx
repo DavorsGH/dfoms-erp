@@ -39,7 +39,10 @@ import ScrollableTable, {
 import FilteredListCount, {
   anyRegisterColumnFiltersActive,
 } from "../filtered-list-count";
-import { resolveIncomeOutstandingBalance } from "../finance/income-register-utils";
+import {
+  formatProductSaleStatusForDisplay,
+  resolveIncomeOutstandingBalance,
+} from "../finance/income-register-utils";
 import {
   buildVoidProductSaleConfirmMessage,
   calculateOutstanding,
@@ -73,17 +76,19 @@ import {
 import ProductReturnModal from "./product-return-modal";
 import { ProductSaleReturnBadge } from "./product-return-badge";
 import {
-  fetchIncomeIdsWithReturnCredits,
   formatVoidProductSaleRpcError,
   getCreditNoteNumberFromEntry,
   isProductSaleReturn,
+  isSaleLineFullyReturned,
+  resolveProductSaleCancelBlockReason,
 } from "./product-return-utils";
+import { buildReturnedQtyByIncomeId } from "./sales/sales-register-utils";
 
 function productSaleStatusLabel(entry: ProductSaleEntry): string {
   if (isProductSaleReturn(entry)) {
     return "Return";
   }
-  return isProductSaleVoided(entry) ? "Voided" : "Active";
+  return formatProductSaleStatusForDisplay(entry.sale_status);
 }
 
 type ProductSalesProps = {
@@ -191,9 +196,9 @@ export default function ProductSales({
   const returnInvoiceNo = controlledReturnInvoiceNo ?? internalReturnInvoiceNo;
   const setReturnInvoiceNo =
     onControlledReturnInvoiceNoChange ?? setInternalReturnInvoiceNo;
-  const [incomeIdsWithReturns, setIncomeIdsWithReturns] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [returnedQtyByIncomeId, setReturnedQtyByIncomeId] = useState<
+    Map<string, number>
+  >(() => new Map());
   const [error, setError] = useState<string | null>(fetchError);
   const [receipt, setReceipt] = useState<ProductSaleReceiptData | null>(null);
   const [internalRecordPaymentEntry, setInternalRecordPaymentEntry] =
@@ -466,8 +471,19 @@ export default function ProductSales({
       const ids = entries
         .filter((entry) => !isProductSaleReturn(entry) && !isProductSaleVoided(entry))
         .map((entry) => entry.id);
-      const next = await fetchIncomeIdsWithReturnCredits(supabase, ids);
-      setIncomeIdsWithReturns(next);
+      if (ids.length === 0) {
+        setReturnedQtyByIncomeId(new Map());
+        return;
+      }
+      const { data } = await supabase
+        .from("credit_note_line_items")
+        .select("source_income_register_id, quantity")
+        .in("source_income_register_id", ids);
+      setReturnedQtyByIncomeId(
+        buildReturnedQtyByIncomeId(
+          (data ?? []) as { source_income_register_id: string; quantity: number }[],
+        ),
+      );
     })();
   }, [entries, supabase]);
 
@@ -476,12 +492,14 @@ export default function ProductSales({
   });
 
   function openAddForm() {
+    setLoading(false);
     setShowBulkImport(false);
     setForm(emptyForm);
     setShowForm(true);
   }
 
   function closeForm() {
+    setLoading(false);
     setForm(emptyForm);
     setShowForm(false);
   }
@@ -501,10 +519,10 @@ export default function ProductSales({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -514,7 +532,6 @@ export default function ProductSales({
     });
     if (!stampResult.ok) {
       setError(stampResult.error);
-      setLoading(false);
       return;
     }
 
@@ -524,7 +541,6 @@ export default function ProductSales({
 
     if (!clientId && !otherPayerName) {
       setError("Select a contract client or enter an other payer name.");
-      setLoading(false);
       return;
     }
 
@@ -533,19 +549,16 @@ export default function ProductSales({
 
     if (!form.product_id) {
       setError("Select a finished product.");
-      setLoading(false);
       return;
     }
 
     if (Number.isNaN(quantity) || quantity <= 0) {
       setError("Quantity must be greater than zero.");
-      setLoading(false);
       return;
     }
 
     if (Number.isNaN(unitPrice) || unitPrice < 0) {
       setError("Unit price must be zero or greater.");
-      setLoading(false);
       return;
     }
 
@@ -553,7 +566,6 @@ export default function ProductSales({
 
     if (Number.isNaN(amountReceived) || amountReceived < 0) {
       setError("Amount paid now must be zero or greater.");
-      setLoading(false);
       return;
     }
 
@@ -561,14 +573,12 @@ export default function ProductSales({
       setError(
         `Amount paid now (${formatGHS(amountReceived)}) cannot exceed the sale total (${formatGHS(amount)}).`,
       );
-      setLoading(false);
       return;
     }
 
     const outstanding = calculateOutstanding(amount, amountReceived);
     if (outstanding > 0 && !form.due_date.trim()) {
       setError("Enter a due date for the remaining balance.");
-      setLoading(false);
       return;
     }
 
@@ -579,7 +589,6 @@ export default function ProductSales({
       setError(
         `Only ${formatInventoryQuantity(product.current_stock)} ${product.unit_of_measure} of ${product.product_name} in stock, cannot sell ${formatInventoryQuantity(quantity)}.`,
       );
-      setLoading(false);
       return;
     }
 
@@ -606,7 +615,6 @@ export default function ProductSales({
 
     if (rpcError) {
       setError(rpcError.message);
-      setLoading(false);
       return;
     }
 
@@ -633,8 +641,15 @@ export default function ProductSales({
         `Sale recorded, but the VFRS tax ledger could not be updated: ${taxError}`,
       );
     }
-
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the product sale.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   function updateField(field: keyof typeof emptyForm, value: string) {
@@ -709,7 +724,7 @@ export default function ProductSales({
 
     if (ledgerError) {
       setError(
-        `Sale voided, but its tax ledger entries could not be removed: ${ledgerError}`,
+        `Sale cancelled, but its tax ledger entries could not be removed: ${ledgerError}`,
       );
     }
 
@@ -1119,7 +1134,15 @@ export default function ProductSales({
               visibleEntries.map((entry, index) => {
                 const voided = isProductSaleVoided(entry);
                 const isReturn = isProductSaleReturn(entry);
-                const hasReturns = incomeIdsWithReturns.has(entry.id);
+                const returnedQty = returnedQtyByIncomeId.get(entry.id) ?? 0;
+                const cancelBlockReason = resolveProductSaleCancelBlockReason({
+                  saleQuantity: Number(entry.sale_quantity) || 0,
+                  returnedQuantity: returnedQty,
+                });
+                const fullyReturned = isSaleLineFullyReturned(
+                  Number(entry.sale_quantity) || 0,
+                  returnedQty,
+                );
                 const creditNoteNo = getCreditNoteNumberFromEntry(entry);
                 const outstanding = resolveIncomeOutstandingBalance({
                   amount: Number(entry.amount) || 0,
@@ -1174,7 +1197,7 @@ export default function ProductSales({
                       <ProductSaleReturnBadge />
                     ) : voided ? (
                       <span className="inline-flex rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700">
-                        Voided
+                        Cancelled
                       </span>
                     ) : (
                       "Active"
@@ -1200,13 +1223,13 @@ export default function ProductSales({
                           ? () => setReturnInvoiceNo(entry.invoice_no.trim())
                           : undefined
                       }
-                      onVoid={() => void handleVoidSale(entry)}
-                      disableVoid={voided || hasReturns}
-                      voidDisabledTitle={
-                        hasReturns
-                          ? "This sale has returns. Use Return instead."
+                      onVoid={
+                        !fullyReturned
+                          ? () => void handleVoidSale(entry)
                           : undefined
                       }
+                      disableVoid={voided || cancelBlockReason != null}
+                      voidDisabledTitle={cancelBlockReason ?? undefined}
                       voiding={voidingId === entry.id}
                       recordingPayment={recordingPaymentId === entry.id}
                     />

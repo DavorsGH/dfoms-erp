@@ -894,6 +894,7 @@ export default function EmployeesDirectory({
   }
 
   function openAddForm() {
+    setLoading(false);
     setEditingEmployeeId(null);
     setForm({
       ...emptyForm,
@@ -909,6 +910,7 @@ export default function EmployeesDirectory({
   }
 
   function closeForm() {
+    setLoading(false);
     setEditingEmployeeId(null);
     setForm(emptyForm);
     setChangeReason("");
@@ -917,6 +919,7 @@ export default function EmployeesDirectory({
   }
 
   function openEmployeeForm(employee: EmployeeRecord) {
+    setLoading(false);
     setEditingEmployeeId(employee.employee_id);
     setForm(employeeToForm(employee));
     setChangeReason("");
@@ -1071,10 +1074,10 @@ export default function EmployeesDirectory({
     setLoading(true);
     setError(null);
 
+    try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
       setError(buContext.error);
-      setLoading(false);
       return;
     }
 
@@ -1086,7 +1089,6 @@ export default function EmployeesDirectory({
       });
       if (!stampResult.ok) {
         setError(stampResult.error);
-        setLoading(false);
         return;
       }
       createBusinessUnitId = stampResult.businessUnitId;
@@ -1107,7 +1109,6 @@ export default function EmployeesDirectory({
         );
       } catch (accessError) {
         setError(formatBusinessUnitAccessError(accessError));
-        setLoading(false);
         return;
       }
       const payload = buildPayload(form, resolvedCompensation);
@@ -1123,7 +1124,6 @@ export default function EmployeesDirectory({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
 
@@ -1143,7 +1143,6 @@ export default function EmployeesDirectory({
           setError(
             `Employee saved, but employment history was not recorded: ${historyError.message}`,
           );
-          setLoading(false);
           await refreshEmployees();
           return;
         }
@@ -1152,7 +1151,6 @@ export default function EmployeesDirectory({
       const allocated = await allocateNewEmployeeCodes(supabase);
       if (allocated.error || !allocated.employeeId || !allocated.staffId) {
         setError(allocated.error ?? "Unable to allocate employee IDs.");
-        setLoading(false);
         return;
       }
 
@@ -1173,7 +1171,6 @@ export default function EmployeesDirectory({
 
       if (saveError) {
         setError(saveError.message);
-        setLoading(false);
         return;
       }
 
@@ -1197,7 +1194,6 @@ export default function EmployeesDirectory({
         setError(
           `Employee saved, but leave balances were not created: ${leaveBalanceError.message}`,
         );
-        setLoading(false);
         await refreshEmployees();
         return;
       }
@@ -1217,7 +1213,6 @@ export default function EmployeesDirectory({
         setError(
           `Employee saved, but employment history was not recorded: ${historyError.message}`,
         );
-        setLoading(false);
         await refreshEmployees();
         return;
       }
@@ -1225,7 +1220,15 @@ export default function EmployeesDirectory({
 
     closeForm();
     await refreshEmployees();
-    setLoading(false);
+    } catch (unexpected) {
+      setError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to save the employee.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

@@ -5,7 +5,7 @@ export const CUSTOMER_DELETE_FK_MESSAGES: Record<string, string> = {
   campaign_recipients_customer_fkey:
     "This customer appears on one or more email campaign recipient lists. Remove them from campaigns first.",
   client_invoices_tenant_id_client_id_fkey:
-    "This customer has invoices. Void or reassign those invoices before deleting.",
+    "This customer has invoices. Cancel or reassign those invoices before deleting.",
   client_quotations_tenant_id_client_id_fkey:
     "This customer has quotations. Delete or reassign those quotations first.",
   complaint_register_client_id_fkey:
@@ -15,7 +15,7 @@ export const CUSTOMER_DELETE_FK_MESSAGES: Record<string, string> = {
   credit_notes_client_fkey:
     "This customer has credit notes. Remove or reassign those records first.",
   crm_sales_customer_id_fkey:
-    "This customer has CRM sales log entries. Void or remove those sales first.",
+    "This customer has CRM sales log entries. Cancel or remove those sales first.",
   crm_subscriptions_customer_id_fkey:
     "This customer has an active platform subscription and can't be deleted. Cancel or transfer the subscription first.",
   customer_comm_preferences_customer_fkey:
@@ -25,7 +25,7 @@ export const CUSTOMER_DELETE_FK_MESSAGES: Record<string, string> = {
   incident_register_client_id_fkey:
     "This customer has incident register entries. Remove or reassign those records first.",
   income_register_client_id_fkey:
-    "This customer has income register entries. Void or remove those entries first.",
+    "This customer has income register entries. Cancel or remove those entries first.",
   inspection_summary_client_id_fkey:
     "This customer has inspection summary records. Remove or reassign those records first.",
   loyalty_accounts_client_fkey:

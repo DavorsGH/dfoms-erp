@@ -58,7 +58,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
   if (error || !invoice) {
     return NextResponse.json(
-      { error: error ?? "Unable to void invoice." },
+      { error: error ?? "Unable to cancel invoice." },
       { status: 400 },
     );
   }
