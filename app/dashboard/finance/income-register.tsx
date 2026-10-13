@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { ClientEntry } from "../operations/clients-utils";
 import type { ServiceType } from "../service-types";
@@ -44,7 +44,13 @@ import {
   RegisterFilteredTotal,
   collectDistinctColumnValues,
   columnValuePassesFilter,
+  createRegisterDateSortState,
+  registerColumnSortConfig,
+  registerTieBreakByIdDesc,
+  sortRegisterRows,
   type RegisterColumnFilterValue,
+  type RegisterColumnSortState,
+  type RegisterColumnSortValueType,
 } from "./register-column-filter";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -144,6 +150,9 @@ export default function IncomeRegister({
     useState<RegisterColumnFilterValue>(null);
   const [customerNameFilter, setCustomerNameFilter] =
     useState<RegisterColumnFilterValue>(null);
+  const [columnSort, setColumnSort] = useState<RegisterColumnSortState | null>(
+    () => createRegisterDateSortState("date"),
+  );
   const [serviceTypes, setServiceTypes] = useState(initialServiceTypes);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -189,6 +198,28 @@ export default function IncomeRegister({
     [entries, customerNameFilter, initialClients],
   );
 
+  const columnSortConfig = useCallback(
+    (columnId: string, valueType: RegisterColumnSortValueType) =>
+      registerColumnSortConfig(columnId, valueType, columnSort, setColumnSort),
+    [columnSort],
+  );
+
+  const incomeRegisterSortValue = useCallback(
+    (entry: IncomeRegisterEntry, columnId: string) => {
+      switch (columnId) {
+        case "date":
+          return toDateInputValue(entry.date);
+        case "customer_name":
+          return getIncomeCustomerDisplayName(entry, initialClients);
+        case "service_category":
+          return entry.service_category;
+        default:
+          return "";
+      }
+    },
+    [initialClients],
+  );
+
   const customerNameOptions = useMemo(
     () =>
       collectDistinctColumnValues(
@@ -206,21 +237,33 @@ export default function IncomeRegister({
     [entries, serviceCategoryFilter, initialClients],
   );
 
-  const visibleEntries = useMemo(
-    () =>
-      entries.filter(
-        (entry) =>
-          columnValuePassesFilter(
-            entry.service_category,
-            serviceCategoryFilter,
-          ) &&
-          columnValuePassesFilter(
-            getIncomeCustomerDisplayName(entry, initialClients),
-            customerNameFilter,
-          ),
-      ),
-    [entries, serviceCategoryFilter, customerNameFilter, initialClients],
-  );
+  const visibleEntries = useMemo(() => {
+    const filtered = entries.filter(
+      (entry) =>
+        columnValuePassesFilter(
+          entry.service_category,
+          serviceCategoryFilter,
+        ) &&
+        columnValuePassesFilter(
+          getIncomeCustomerDisplayName(entry, initialClients),
+          customerNameFilter,
+        ),
+    );
+    const activeSort = columnSort ?? createRegisterDateSortState("date");
+    return sortRegisterRows(
+      filtered,
+      activeSort,
+      (entry) => incomeRegisterSortValue(entry, activeSort.columnId),
+      registerTieBreakByIdDesc,
+    );
+  }, [
+    entries,
+    serviceCategoryFilter,
+    customerNameFilter,
+    initialClients,
+    columnSort,
+    incomeRegisterSortValue,
+  ]);
 
   const visibleAmountTotal = useMemo(() => {
     let total = 0;
@@ -882,6 +925,7 @@ export default function IncomeRegister({
                   options={customerNameOptions}
                   applied={customerNameFilter}
                   onApply={setCustomerNameFilter}
+                  sort={columnSortConfig("customer_name", "text")}
                 />
               </th>
               <th className={scrollableTableThClassName}>Invoice No.</th>
@@ -891,6 +935,7 @@ export default function IncomeRegister({
                   options={serviceCategoryOptions}
                   applied={serviceCategoryFilter}
                   onApply={setServiceCategoryFilter}
+                  sort={columnSortConfig("service_category", "text")}
                 />
               </th>
               <th className={scrollableTableThClassName}>Amount</th>

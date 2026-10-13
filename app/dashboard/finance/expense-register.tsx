@@ -78,8 +78,14 @@ import {
   RegisterFilteredTotal,
   collectDistinctColumnValues,
   columnValuePassesFilter,
+  createRegisterDateSortState,
   dateValuePassesRangeFilter,
+  registerColumnSortConfig,
+  registerTieBreakByIdDesc,
+  sortRegisterRows,
   type RegisterColumnFilterValue,
+  type RegisterColumnSortState,
+  type RegisterColumnSortValueType,
   type RegisterDateRangeFilterValue,
 } from "./register-column-filter";
 import ScrollableTable, {
@@ -254,6 +260,9 @@ export default function ExpenseRegister({
     useState<RegisterColumnFilterValue>(null);
   const [dateFilter, setDateFilter] =
     useState<RegisterDateRangeFilterValue>(null);
+  const [columnSort, setColumnSort] = useState<RegisterColumnSortState | null>(
+    () => createRegisterDateSortState("date"),
+  );
   const [showForm, setShowForm] = useState(false);
   const createLookups = useExpenseRegisterCreateLookups({
     enabled: showForm,
@@ -360,6 +369,45 @@ export default function ExpenseRegister({
     (entry: { project_id?: string | null }) =>
       formatExpenseRegisterContractProjectLabel(entry.project_id, initialProjects),
     [initialProjects],
+  );
+
+  const columnSortConfig = useCallback(
+    (columnId: string, valueType: RegisterColumnSortValueType) =>
+      registerColumnSortConfig(columnId, valueType, columnSort, setColumnSort),
+    [columnSort],
+  );
+
+  const expenseRegisterSortValue = useCallback(
+    (
+      entry: ExpenseRegisterEntry & { pendingSync?: boolean },
+      columnId: string,
+    ) => {
+      switch (columnId) {
+        case "date":
+          return toDateInputValue(entry.date);
+        case "description":
+          return entry.description;
+        case "expense_category":
+          return entry.expense_category;
+        case "project_site":
+          return contractSiteLabelForEntry(entry);
+        case "sub_category":
+          return entry.sub_category;
+        case "payment_status":
+          return resolveExpenseRegisterPaymentStatusLabel(
+            entry,
+            linkedApAccrualPayables,
+            linkedApAccrualDisplayOptions,
+          );
+        default:
+          return "";
+      }
+    },
+    [
+      contractSiteLabelForEntry,
+      linkedApAccrualPayables,
+      linkedApAccrualDisplayOptions,
+    ],
   );
 
   const categoryOptions = useMemo(
@@ -642,7 +690,14 @@ export default function ExpenseRegister({
         ),
     );
 
-    return [...queuedFiltered, ...live] as DisplayExpense[];
+    const combined = [...queuedFiltered, ...live] as DisplayExpense[];
+    const activeSort = columnSort ?? createRegisterDateSortState("date");
+    return sortRegisterRows(
+      combined,
+      activeSort,
+      (entry) => expenseRegisterSortValue(entry, activeSort.columnId),
+      registerTieBreakByIdDesc,
+    );
   }, [
     entries,
     writeQueue?.items,
@@ -655,6 +710,8 @@ export default function ExpenseRegister({
     contractSiteLabelForEntry,
     linkedApAccrualPayables,
     linkedApAccrualDisplayOptions,
+    columnSort,
+    expenseRegisterSortValue,
   ]);
 
   const visibleNetPaidTotal = useMemo(() => {
@@ -1953,6 +2010,7 @@ export default function ExpenseRegister({
                     label="Date"
                     applied={dateFilter}
                     onApply={setDateFilter}
+                    sort={columnSortConfig("date", "date")}
                   />
                 </th>
                 <th className={scrollableTableRegisterStickyNameThClassName}>
@@ -1961,6 +2019,7 @@ export default function ExpenseRegister({
                     options={descriptionOptions}
                     applied={descriptionFilter}
                     onApply={setDescriptionFilter}
+                    sort={columnSortConfig("description", "text")}
                   />
                 </th>
                 <th className={scrollableTableRegisterCategoryThClassName}>
@@ -1969,6 +2028,7 @@ export default function ExpenseRegister({
                     options={categoryOptions}
                     applied={categoryFilter}
                     onApply={setCategoryFilter}
+                    sort={columnSortConfig("expense_category", "text")}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>
@@ -1977,6 +2037,7 @@ export default function ExpenseRegister({
                     options={projectSiteOptions}
                     applied={projectSiteFilter}
                     onApply={setProjectSiteFilter}
+                    sort={columnSortConfig("project_site", "text")}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>
@@ -1985,6 +2046,7 @@ export default function ExpenseRegister({
                     options={subCategoryOptions}
                     applied={subCategoryFilter}
                     onApply={setSubCategoryFilter}
+                    sort={columnSortConfig("sub_category", "text")}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>Supplier</th>
@@ -1998,6 +2060,7 @@ export default function ExpenseRegister({
                     options={paymentStatusOptions}
                     applied={paymentStatusFilter}
                     onApply={setPaymentStatusFilter}
+                    sort={columnSortConfig("payment_status", "text")}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>Actions</th>

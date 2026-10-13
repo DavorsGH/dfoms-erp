@@ -1,7 +1,7 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import DashboardButton from "@/components/dashboard-button";
@@ -29,7 +29,13 @@ import {
   RegisterFilteredTotal,
   collectDistinctColumnValues,
   columnValuePassesFilter,
+  createRegisterDateSortState,
+  registerColumnSortConfig,
+  registerTieBreakByIdDesc,
+  sortRegisterRows,
   type RegisterColumnFilterValue,
+  type RegisterColumnSortState,
+  type RegisterColumnSortValueType,
 } from "../finance/register-column-filter";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -176,6 +182,9 @@ export default function ProductSales({
     useState<RegisterColumnFilterValue>(null);
   const [statusFilter, setStatusFilter] =
     useState<RegisterColumnFilterValue>(null);
+  const [columnSort, setColumnSort] = useState<RegisterColumnSortState | null>(
+    () => createRegisterDateSortState("date"),
+  );
   const [finishedProducts, setFinishedProducts] = useState(
     initialFinishedProducts.map(normalizeFinishedProduct),
   );
@@ -349,36 +358,63 @@ export default function ProductSales({
     ],
   );
 
-  const visibleEntries = useMemo(
-    () =>
-      entries.filter(
-        (entry) =>
-          columnValuePassesFilter(
-            getIncomeCustomerDisplayName(entry, initialClients),
-            customerFilter,
-          ) &&
-          columnValuePassesFilter(
-            getProductSaleProductLabel(entry),
-            productFilter,
-          ) &&
-          columnValuePassesFilter(
-            entry.payment_status,
-            paymentStatusFilter,
-          ) &&
-          columnValuePassesFilter(
-            productSaleStatusLabel(entry),
-            statusFilter,
-          ),
-      ),
-    [
-      entries,
-      customerFilter,
-      productFilter,
-      paymentStatusFilter,
-      statusFilter,
-      initialClients,
-    ],
+  const columnSortConfig = useCallback(
+    (columnId: string, valueType: RegisterColumnSortValueType) =>
+      registerColumnSortConfig(columnId, valueType, columnSort, setColumnSort),
+    [columnSort],
   );
+
+  const productSaleSortValue = useCallback(
+    (entry: ProductSaleEntry, columnId: string) => {
+      switch (columnId) {
+        case "date":
+          return entry.date;
+        case "customer":
+          return getIncomeCustomerDisplayName(entry, initialClients);
+        case "product":
+          return getProductSaleProductLabel(entry);
+        case "payment_status":
+          return entry.payment_status;
+        case "status":
+          return productSaleStatusLabel(entry);
+        default:
+          return "";
+      }
+    },
+    [initialClients],
+  );
+
+  const visibleEntries = useMemo(() => {
+    const filtered = entries.filter(
+      (entry) =>
+        columnValuePassesFilter(
+          getIncomeCustomerDisplayName(entry, initialClients),
+          customerFilter,
+        ) &&
+        columnValuePassesFilter(
+          getProductSaleProductLabel(entry),
+          productFilter,
+        ) &&
+        columnValuePassesFilter(entry.payment_status, paymentStatusFilter) &&
+        columnValuePassesFilter(productSaleStatusLabel(entry), statusFilter),
+    );
+    const activeSort = columnSort ?? createRegisterDateSortState("date");
+    return sortRegisterRows(
+      filtered,
+      activeSort,
+      (entry) => productSaleSortValue(entry, activeSort.columnId),
+      registerTieBreakByIdDesc,
+    );
+  }, [
+    entries,
+    customerFilter,
+    productFilter,
+    paymentStatusFilter,
+    statusFilter,
+    initialClients,
+    columnSort,
+    productSaleSortValue,
+  ]);
 
   const visibleAmountTotal = useMemo(() => {
     let total = 0;
@@ -1075,6 +1111,7 @@ export default function ProductSales({
                   options={customerOptions}
                   applied={customerFilter}
                   onApply={setCustomerFilter}
+                  sort={columnSortConfig("customer", "text")}
                 />
               </th>
               <th className={scrollableTableThClassName}>Invoice No.</th>
@@ -1084,6 +1121,7 @@ export default function ProductSales({
                   options={productOptions}
                   applied={productFilter}
                   onApply={setProductFilter}
+                  sort={columnSortConfig("product", "text")}
                 />
               </th>
               <th className={scrollableTableThClassName}>Quantity</th>
@@ -1097,6 +1135,7 @@ export default function ProductSales({
                   options={paymentStatusOptions}
                   applied={paymentStatusFilter}
                   onApply={setPaymentStatusFilter}
+                  sort={columnSortConfig("payment_status", "text")}
                 />
               </th>
               <th className={scrollableTableThClassName}>
@@ -1105,6 +1144,7 @@ export default function ProductSales({
                   options={statusOptions}
                   applied={statusFilter}
                   onApply={setStatusFilter}
+                  sort={columnSortConfig("status", "text")}
                 />
               </th>
               <th className={scrollableTableThClassName}>Due Date</th>

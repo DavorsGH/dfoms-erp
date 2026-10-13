@@ -38,6 +38,192 @@ export function isColumnFilterActive(filter: RegisterColumnFilterValue): boolean
   return filter !== null;
 }
 
+export type RegisterColumnSortValueType = "date" | "number" | "text";
+
+export type RegisterColumnSortDirection = "asc" | "desc";
+
+export type RegisterColumnSortState = {
+  columnId: string;
+  direction: RegisterColumnSortDirection;
+  valueType: RegisterColumnSortValueType;
+};
+
+export type RegisterColumnSortConfig = {
+  columnId: string;
+  valueType: RegisterColumnSortValueType;
+  activeSort: RegisterColumnSortState | null;
+  onSortChange: (next: RegisterColumnSortState) => void;
+};
+
+export function createRegisterDateSortState(
+  columnId: string,
+  direction: RegisterColumnSortDirection = "desc",
+): RegisterColumnSortState {
+  return { columnId, direction, valueType: "date" };
+}
+
+function isRegisterSortValueBlank(value: unknown): boolean {
+  if (value == null) {
+    return true;
+  }
+  if (typeof value === "number") {
+    return Number.isNaN(value);
+  }
+  if (typeof value === "string") {
+    return value.trim() === "";
+  }
+  return false;
+}
+
+function normalizeRegisterSortDate(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+  const text = String(value).trim();
+  if (!text) {
+    return "";
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+    return text.slice(0, 10);
+  }
+  const parsed = Date.parse(text);
+  if (Number.isNaN(parsed)) {
+    return "";
+  }
+  return new Date(parsed).toISOString().slice(0, 10);
+}
+
+function normalizeRegisterSortNumber(value: unknown): number | null {
+  if (value == null || value === "") {
+    return null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  const parsed = Number(String(value).replace(/,/g, "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function compareRegisterSortValues(
+  left: unknown,
+  right: unknown,
+  valueType: RegisterColumnSortValueType,
+  direction: RegisterColumnSortDirection,
+): number {
+  const leftBlank = isRegisterSortValueBlank(left);
+  const rightBlank = isRegisterSortValueBlank(right);
+  if (leftBlank && rightBlank) {
+    return 0;
+  }
+  if (leftBlank) {
+    return 1;
+  }
+  if (rightBlank) {
+    return -1;
+  }
+
+  let cmp = 0;
+  if (valueType === "date") {
+    const leftDate = normalizeRegisterSortDate(left);
+    const rightDate = normalizeRegisterSortDate(right);
+    if (!leftDate && !rightDate) {
+      cmp = 0;
+    } else if (!leftDate) {
+      return 1;
+    } else if (!rightDate) {
+      return -1;
+    } else {
+      cmp = leftDate.localeCompare(rightDate);
+    }
+  } else if (valueType === "number") {
+    const leftNum = normalizeRegisterSortNumber(left);
+    const rightNum = normalizeRegisterSortNumber(right);
+    if (leftNum == null && rightNum == null) {
+      cmp = 0;
+    } else if (leftNum == null) {
+      return 1;
+    } else if (rightNum == null) {
+      return -1;
+    } else {
+      cmp = leftNum === rightNum ? 0 : leftNum < rightNum ? -1 : 1;
+    }
+  } else {
+    cmp = String(left).localeCompare(String(right), undefined, {
+      sensitivity: "base",
+    });
+  }
+
+  return direction === "asc" ? cmp : -cmp;
+}
+
+export function registerTieBreakByIdDesc<T extends { id?: string | null }>(
+  left: T,
+  right: T,
+): number {
+  return String(right.id ?? "").localeCompare(String(left.id ?? ""), undefined, {
+    sensitivity: "base",
+  });
+}
+
+export function registerTieBreakByRowKeyDesc(left: string, right: string): number {
+  return right.localeCompare(left, undefined, { sensitivity: "base" });
+}
+
+export function sortRegisterRows<T>(
+  rows: readonly T[],
+  sort: RegisterColumnSortState | null,
+  getValue: (row: T) => unknown,
+  tieBreak?: (left: T, right: T) => number,
+): T[] {
+  if (!sort) {
+    return [...rows];
+  }
+  return [...rows].sort((left, right) => {
+    const cmp = compareRegisterSortValues(
+      getValue(left),
+      getValue(right),
+      sort.valueType,
+      sort.direction,
+    );
+    if (cmp !== 0) {
+      return cmp;
+    }
+    return tieBreak ? tieBreak(left, right) : 0;
+  });
+}
+
+export function registerColumnSortConfig(
+  columnId: string,
+  valueType: RegisterColumnSortValueType,
+  activeSort: RegisterColumnSortState | null,
+  onSortChange: (next: RegisterColumnSortState) => void,
+): RegisterColumnSortConfig {
+  return { columnId, valueType, activeSort, onSortChange };
+}
+
+export function registerSortOptionLabels(valueType: RegisterColumnSortValueType): {
+  asc: string;
+  desc: string;
+} {
+  switch (valueType) {
+    case "date":
+      return {
+        asc: "Sort Oldest to Newest",
+        desc: "Sort Newest to Oldest",
+      };
+    case "number":
+      return {
+        asc: "Sort Smallest to Largest",
+        desc: "Sort Largest to Smallest",
+      };
+    default:
+      return {
+        asc: "Sort A to Z",
+        desc: "Sort Z to A",
+      };
+  }
+}
+
 /** null = no filter. Empty from/to = open-ended on that side. */
 export type RegisterDateRangeFilterValue = { from: string; to: string } | null;
 
@@ -77,13 +263,77 @@ type RegisterColumnFilterHeaderProps = {
   options: string[];
   applied: RegisterColumnFilterValue;
   onApply: (next: RegisterColumnFilterValue) => void;
+  sort?: RegisterColumnSortConfig;
 };
+
+function RegisterSortDirectionIndicator({
+  direction,
+}: {
+  direction: RegisterColumnSortDirection;
+}) {
+  return (
+    <span className="text-[10px] leading-none" aria-hidden>
+      {direction === "asc" ? "▲" : "▼"}
+    </span>
+  );
+}
+
+function RegisterColumnSortMenu({
+  sort,
+  onClose,
+}: {
+  sort: RegisterColumnSortConfig;
+  onClose: () => void;
+}) {
+  const labels = registerSortOptionLabels(sort.valueType);
+  const isActiveColumn = sort.activeSort?.columnId === sort.columnId;
+
+  function apply(direction: RegisterColumnSortDirection) {
+    sort.onSortChange({
+      columnId: sort.columnId,
+      direction,
+      valueType: sort.valueType,
+    });
+    onClose();
+  }
+
+  return (
+    <div className="border-b border-slate-200 px-2 py-2">
+      <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Sort
+      </p>
+      <button
+        type="button"
+        className={`flex w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50 ${
+          isActiveColumn && sort.activeSort?.direction === "desc"
+            ? "font-medium text-[#0f2744]"
+            : "text-slate-800"
+        }`}
+        onClick={() => apply("desc")}
+      >
+        {labels.desc}
+      </button>
+      <button
+        type="button"
+        className={`flex w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50 ${
+          isActiveColumn && sort.activeSort?.direction === "asc"
+            ? "font-medium text-[#0f2744]"
+            : "text-slate-800"
+        }`}
+        onClick={() => apply("asc")}
+      >
+        {labels.asc}
+      </button>
+    </div>
+  );
+}
 
 export function RegisterColumnFilterHeader({
   label,
   options,
   applied,
   onApply,
+  sort,
 }: RegisterColumnFilterHeaderProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -209,9 +459,17 @@ export function RegisterColumnFilterHeader({
     setOpen(false);
   }
 
+  const sortedThisColumn =
+    sort && sort.activeSort?.columnId === sort.columnId ? sort.activeSort : null;
+
   return (
     <div className="relative inline-flex items-center gap-1.5">
-      <span>{label}</span>
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {sortedThisColumn ? (
+          <RegisterSortDirectionIndicator direction={sortedThisColumn.direction} />
+        ) : null}
+      </span>
       <button
         ref={buttonRef}
         type="button"
@@ -237,6 +495,9 @@ export function RegisterColumnFilterHeader({
               style={panelStyle}
               className="z-[80] rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg"
             >
+              {sort ? (
+                <RegisterColumnSortMenu sort={sort} onClose={() => setOpen(false)} />
+              ) : null}
               <div className="border-b border-slate-200 p-2">
                 <input
                   type="search"
@@ -333,12 +594,14 @@ type RegisterDateRangeFilterHeaderProps = {
   label: string;
   applied: RegisterDateRangeFilterValue;
   onApply: (next: RegisterDateRangeFilterValue) => void;
+  sort?: RegisterColumnSortConfig;
 };
 
 export function RegisterDateRangeFilterHeader({
   label,
   applied,
   onApply,
+  sort,
 }: RegisterDateRangeFilterHeaderProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -411,9 +674,17 @@ export function RegisterDateRangeFilterHeader({
     setOpen(false);
   }
 
+  const sortedThisColumn =
+    sort && sort.activeSort?.columnId === sort.columnId ? sort.activeSort : null;
+
   return (
     <div className="relative inline-flex items-center gap-1.5">
-      <span>{label}</span>
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {sortedThisColumn ? (
+          <RegisterSortDirectionIndicator direction={sortedThisColumn.direction} />
+        ) : null}
+      </span>
       <button
         ref={buttonRef}
         type="button"
@@ -439,6 +710,9 @@ export function RegisterDateRangeFilterHeader({
               style={panelStyle}
               className="z-[80] rounded-md border border-slate-200 bg-white text-slate-900 shadow-lg"
             >
+              {sort ? (
+                <RegisterColumnSortMenu sort={sort} onClose={() => setOpen(false)} />
+              ) : null}
               <div className="space-y-3 p-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-700">

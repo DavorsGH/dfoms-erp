@@ -24,7 +24,13 @@ import {
   RegisterColumnFilterHeader,
   collectDistinctColumnValues,
   columnValuePassesFilter,
+  createRegisterDateSortState,
+  registerColumnSortConfig,
+  registerTieBreakByRowKeyDesc,
+  sortRegisterRows,
   type RegisterColumnFilterValue,
+  type RegisterColumnSortState,
+  type RegisterColumnSortValueType,
 } from "@/app/dashboard/finance/register-column-filter";
 import DashboardButton from "@/components/dashboard-button";
 import Tooltip from "@/components/ui/tooltip";
@@ -156,6 +162,9 @@ export default function SalesRegister(props: SalesRegisterProps) {
     useState<RegisterColumnFilterValue>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [columnSort, setColumnSort] = useState<RegisterColumnSortState | null>(
+    () => createRegisterDateSortState("date"),
+  );
 
   const [drawerRowKey, setDrawerRowKey] = useState<string | null>(null);
   const [activeReceipt, setActiveReceipt] = useState<
@@ -309,8 +318,44 @@ export default function SalesRegister(props: SalesRegisterProps) {
     setRecordPaymentEntry(null);
   }, [registerViewOnly]);
 
+  const columnSortConfig = useCallback(
+    (columnId: string, valueType: RegisterColumnSortValueType) =>
+      registerColumnSortConfig(columnId, valueType, columnSort, setColumnSort),
+    [columnSort],
+  );
+
+  const salesRegisterRowSortValue = useCallback(
+    (row: SalesRegisterRow, columnId: string) => {
+      switch (columnId) {
+        case "date":
+          return row.kind === "digital"
+            ? row.date
+            : row.date?.slice(0, 10) ?? "";
+        case "customer":
+          return row.customerLabel;
+        case "source":
+          return row.kind === "digital"
+            ? "Digital"
+            : formatSalesRegisterSourceLabel(row.source);
+        case "status":
+          return row.kind === "return"
+            ? "Return"
+            : row.kind === "receipt"
+              ? formatSalesRegisterStatusLabel(row)
+              : row.status;
+        case "payment_status":
+          return row.paymentStatus;
+        case "sales_rep":
+          return row.salesRepLabel;
+        default:
+          return "";
+      }
+    },
+    [],
+  );
+
   const visibleRows = useMemo(() => {
-    return allRows.filter((row) => {
+    const filtered = allRows.filter((row) => {
       if (typeFilter === "sales" && row.kind === "return") {
         return false;
       }
@@ -366,6 +411,13 @@ export default function SalesRegister(props: SalesRegisterProps) {
       }
       return true;
     });
+    const activeSort = columnSort ?? createRegisterDateSortState("date");
+    return sortRegisterRows(
+      filtered,
+      activeSort,
+      (row) => salesRegisterRowSortValue(row, activeSort.columnId),
+      (left, right) => registerTieBreakByRowKeyDesc(left.rowKey, right.rowKey),
+    );
   }, [
     allRows,
     typeFilter,
@@ -376,6 +428,8 @@ export default function SalesRegister(props: SalesRegisterProps) {
     statusFilter,
     paymentStatusFilter,
     salesRepFilter,
+    columnSort,
+    salesRegisterRowSortValue,
   ]);
 
   const footerTotals = useMemo(
@@ -670,6 +724,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
                   options={customerOptions}
                   applied={customerFilter}
                   onApply={setCustomerFilter}
+                  sort={columnSortConfig("customer", "text")}
                 />
               </th>
               <th className={scrollableTableWrapThClassName}>Items</th>
@@ -688,6 +743,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
                   )}
                   applied={paymentStatusFilter}
                   onApply={setPaymentStatusFilter}
+                  sort={columnSortConfig("payment_status", "text")}
                 />
               </th>
               <th className={scrollableTableThClassName}>Payment Method</th>
@@ -699,6 +755,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
                       options={sourceOptions}
                       applied={sourceFilter}
                       onApply={setSourceFilter}
+                      sort={columnSortConfig("source", "text")}
                     />
                   </span>
                 </Tooltip>
@@ -709,6 +766,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
                   options={salesRepOptions}
                   applied={salesRepFilter}
                   onApply={setSalesRepFilter}
+                  sort={columnSortConfig("sales_rep", "text")}
                 />
               </th>
               <th className={scrollableTableWrapThClassName}>
@@ -717,6 +775,7 @@ export default function SalesRegister(props: SalesRegisterProps) {
                   options={statusOptions}
                   applied={statusFilter}
                   onApply={setStatusFilter}
+                  sort={columnSortConfig("status", "text")}
                 />
               </th>
               <th className={scrollableTableThClassName}>Actions</th>

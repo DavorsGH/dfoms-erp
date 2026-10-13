@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { mapApproverRows } from "../approver-utils";
@@ -60,8 +60,13 @@ import {
   RegisterDateRangeFilterHeader,
   collectDistinctColumnValues,
   columnValuePassesFilter,
+  createRegisterDateSortState,
   dateValuePassesRangeFilter,
+  registerColumnSortConfig,
+  sortRegisterRows,
   type RegisterColumnFilterValue,
+  type RegisterColumnSortState,
+  type RegisterColumnSortValueType,
   type RegisterDateRangeFilterValue,
 } from "./register-column-filter";
 import { requestTenantAdminDirectorNotification } from "@/utils/request-tenant-admin-director-notification";
@@ -224,6 +229,35 @@ export default function FixedAssets({
     useState<RegisterColumnFilterValue>(null);
   const [locationFilter, setLocationFilter] =
     useState<RegisterColumnFilterValue>(null);
+  const [columnSort, setColumnSort] = useState<RegisterColumnSortState | null>(
+    () => createRegisterDateSortState("purchase_date"),
+  );
+
+  const columnSortConfig = useCallback(
+    (columnId: string, valueType: RegisterColumnSortValueType) =>
+      registerColumnSortConfig(columnId, valueType, columnSort, setColumnSort),
+    [columnSort],
+  );
+
+  const fixedAssetSortValue = useCallback(
+    (asset: FixedAssetEntry, columnId: string) => {
+      switch (columnId) {
+        case "purchase_date":
+          return fixedAssetPurchaseDateInput(asset);
+        case "asset_name":
+          return asset.asset_name;
+        case "asset_category":
+          return asset.asset_category;
+        case "depreciation_method":
+          return asset.depreciation_method;
+        case "location":
+          return asset.location;
+        default:
+          return "";
+      }
+    },
+    [],
+  );
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
   const whtRateOptions = useMemo(() => {
@@ -473,31 +507,42 @@ export default function FixedAssets({
     ],
   );
 
-  const visibleAssets = useMemo(
-    () =>
-      assets.filter(
-        (asset) =>
-          dateValuePassesRangeFilter(
-            fixedAssetPurchaseDateInput(asset),
-            purchaseDateFilter,
-          ) &&
-          columnValuePassesFilter(asset.asset_name, assetNameFilter) &&
-          columnValuePassesFilter(asset.asset_category, categoryFilter) &&
-          columnValuePassesFilter(
-            asset.depreciation_method,
-            depreciationMethodFilter,
-          ) &&
-          columnValuePassesFilter(asset.location, locationFilter),
-      ),
-    [
-      assets,
-      purchaseDateFilter,
-      assetNameFilter,
-      categoryFilter,
-      depreciationMethodFilter,
-      locationFilter,
-    ],
-  );
+  const visibleAssets = useMemo(() => {
+    const filtered = assets.filter(
+      (asset) =>
+        dateValuePassesRangeFilter(
+          fixedAssetPurchaseDateInput(asset),
+          purchaseDateFilter,
+        ) &&
+        columnValuePassesFilter(asset.asset_name, assetNameFilter) &&
+        columnValuePassesFilter(asset.asset_category, categoryFilter) &&
+        columnValuePassesFilter(
+          asset.depreciation_method,
+          depreciationMethodFilter,
+        ) &&
+        columnValuePassesFilter(asset.location, locationFilter),
+    );
+    const activeSort =
+      columnSort ?? createRegisterDateSortState("purchase_date");
+    return sortRegisterRows(
+      filtered,
+      activeSort,
+      (asset) => fixedAssetSortValue(asset, activeSort.columnId),
+      (left, right) =>
+        String(right.asset_id).localeCompare(String(left.asset_id), undefined, {
+          sensitivity: "base",
+        }),
+    );
+  }, [
+    assets,
+    purchaseDateFilter,
+    assetNameFilter,
+    categoryFilter,
+    depreciationMethodFilter,
+    locationFilter,
+    columnSort,
+    fixedAssetSortValue,
+  ]);
 
   async function refreshAssets() {
     const { data, error: refreshError } = await applyBusinessUnitScope(
@@ -1350,6 +1395,7 @@ export default function FixedAssets({
                     options={assetNameOptions}
                     applied={assetNameFilter}
                     onApply={setAssetNameFilter}
+                    sort={columnSortConfig("asset_name", "text")}
                   />
                 </th>
                 <th className={scrollableTableRegisterCategoryThClassName}>
@@ -1358,6 +1404,7 @@ export default function FixedAssets({
                     options={categoryOptions}
                     applied={categoryFilter}
                     onApply={setCategoryFilter}
+                    sort={columnSortConfig("asset_category", "text")}
                   />
                 </th>
                 <th
@@ -1367,6 +1414,7 @@ export default function FixedAssets({
                     label="Purchase Date"
                     applied={purchaseDateFilter}
                     onApply={setPurchaseDateFilter}
+                    sort={columnSortConfig("purchase_date", "date")}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>Original Cost</th>
@@ -1381,6 +1429,7 @@ export default function FixedAssets({
                     options={depreciationMethodOptions}
                     applied={depreciationMethodFilter}
                     onApply={setDepreciationMethodFilter}
+                    sort={columnSortConfig("depreciation_method", "text")}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>Annual Depreciation</th>
@@ -1394,6 +1443,7 @@ export default function FixedAssets({
                     options={locationOptions}
                     applied={locationFilter}
                     onApply={setLocationFilter}
+                    sort={columnSortConfig("location", "text")}
                   />
                 </th>
                 <th className={scrollableTableThClassName}>Actions</th>
