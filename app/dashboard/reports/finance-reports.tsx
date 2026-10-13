@@ -30,7 +30,20 @@ import {
   type ProfitLossIncomeEntry,
 } from "../finance/profit-loss-utils";
 import type { IncomeRegisterEntry } from "../finance/income-register-utils";
-import type { ContractProjectOption } from "../administration/projects-utils";
+import type {
+  ContractProjectOption,
+  ProjectEntry,
+} from "../administration/projects-utils";
+import {
+  buildContractProfitabilityReport,
+  buildLastSixMonthsNetMarginMatrix,
+  type ContractProfitabilityExpenseRow,
+  type ContractProfitabilityIncomeRow,
+  type ContractProfitabilityPayrollRow,
+  type ContractProfitabilityServiceContract,
+  type OverheadAllocationMode,
+} from "./contract-profitability-utils";
+import { FULL_YEAR_INDEX } from "../finance/profit-loss-utils";
 import type { BudgetRecord } from "../finance/budget-utils";
 import { inputClassName } from "../employees/employee-record-utils";
 import {
@@ -82,6 +95,7 @@ import {
   formatReportPeriodLabel,
   getDefaultReportMonthYear,
   monthIndexFromMonthNumber,
+  REPORT_MONTH_OPTIONS,
   type AgingBucketKey,
   type ExpenseReportSourceEntry,
   type FixedAssetScheduleAsset,
@@ -1647,6 +1661,537 @@ export function BudgetVsActualReport({
             ) : null}
           </table>
         </ScrollableTable>
+      </div>
+    </div>
+  );
+}
+
+const CONTRACT_PROFITABILITY_ALLOCATION_OPTIONS: Array<{
+  value: OverheadAllocationMode;
+  label: string;
+}> = [
+  { value: "none", label: "None (overhead separate)" },
+  { value: "revenue", label: "By revenue share" },
+  { value: "headcount", label: "By headcount" },
+];
+
+function formatMarginPercent(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  return formatPercent(value);
+}
+
+function currencyCellClassName(value: number): string {
+  return value < 0 ? "text-red-700 font-medium" : "";
+}
+
+function contractProfitabilityEstimateBadge() {
+  return (
+    <span className="ml-1.5 inline-flex rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
+      Estimate
+    </span>
+  );
+}
+
+export function ContractProfitabilityReport({
+  initialIncomeEntries,
+  initialExpenseEntries,
+  initialFixedAssets,
+  initialServiceContracts,
+  initialProjects,
+  initialPayrollRows,
+  initialPayrollProcessingRows,
+  invoiceContractById,
+  tenantHasServiceContracts,
+  availableYears,
+  fetchError,
+}: {
+  initialIncomeEntries: ContractProfitabilityIncomeRow[];
+  initialExpenseEntries: ContractProfitabilityExpenseRow[];
+  initialFixedAssets: ProfitLossAssetEntry[];
+  initialServiceContracts: ContractProfitabilityServiceContract[];
+  initialProjects: ProjectEntry[];
+  initialPayrollRows: ContractProfitabilityPayrollRow[];
+  initialPayrollProcessingRows: ContractProfitabilityPayrollRow[];
+  invoiceContractById: Record<string, string | null>;
+  tenantHasServiceContracts: boolean;
+  availableYears: number[];
+  fetchError: string | null;
+}) {
+  const defaults = getDefaultReportMonthYear();
+  const [year, setYear] = useState(
+    availableYears.includes(defaults.year)
+      ? defaults.year
+      : (availableYears[0] ?? defaults.year),
+  );
+  const [month, setMonth] = useState(defaults.month);
+  const [allocationMode, setAllocationMode] =
+    useState<OverheadAllocationMode>("none");
+
+  const monthIndex =
+    month === 0 ? FULL_YEAR_INDEX : monthIndexFromMonthNumber(month);
+
+  const periodLabel =
+    month === 0 ? `Full year ${year}` : formatReportPeriodLabel(year, month);
+
+  const invoiceMap = useMemo(
+    () => new Map(Object.entries(invoiceContractById)),
+    [invoiceContractById],
+  );
+
+  const buildInput = useMemo(
+    () => ({
+      incomeEntries: initialIncomeEntries,
+      expenseEntries: initialExpenseEntries,
+      fixedAssets: initialFixedAssets,
+      invoiceContractById: invoiceMap,
+      serviceContracts: initialServiceContracts,
+      projects: initialProjects,
+      payrollRows: initialPayrollRows,
+      payrollProcessingRows: initialPayrollProcessingRows,
+      tenantHasServiceContracts,
+    }),
+    [
+      initialIncomeEntries,
+      initialExpenseEntries,
+      initialFixedAssets,
+      invoiceMap,
+      initialServiceContracts,
+      initialProjects,
+      initialPayrollRows,
+      initialPayrollProcessingRows,
+      tenantHasServiceContracts,
+    ],
+  );
+
+  const report = useMemo(
+    () =>
+      buildContractProfitabilityReport({
+        ...buildInput,
+        financialYear: year,
+        monthIndex,
+        allocationMode,
+      }),
+    [buildInput, year, monthIndex, allocationMode],
+  );
+
+  const lastSixMonths = useMemo(
+    () =>
+      buildLastSixMonthsNetMarginMatrix({
+        ...buildInput,
+        endYear: year,
+        endMonthIndex: month === 0 ? 11 : monthIndexFromMonthNumber(month),
+        allocationMode,
+      }),
+    [buildInput, year, month, allocationMode],
+  );
+
+  const showOverheadShare = allocationMode !== "none";
+
+  function exportCsv() {
+    const monthSlug = month === 0 ? "full-year" : String(month).padStart(2, "0");
+    const headers = [
+      "Contract",
+      "Revenue",
+      "Labour",
+      "Direct costs",
+      "Gross margin",
+      "Gross margin %",
+      ...(showOverheadShare ? ["Overhead share"] : []),
+      "Net margin",
+      "Net margin %",
+    ];
+    downloadCsv(
+      `contract-profitability-${year}-${monthSlug}.csv`,
+      headers,
+      report.rows.map((row) => [
+        row.label,
+        row.revenue,
+        row.labour,
+        row.directCosts,
+        row.grossMargin,
+        row.grossMarginPct ?? "",
+        ...(showOverheadShare ? [row.overheadShare] : []),
+        row.netMargin,
+        row.netMarginPct ?? "",
+      ]),
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <ReportPrintStyles />
+      <ReportActionBar
+        onPrint={handleReportPrint}
+        onExportCsv={exportCsv}
+        exportDisabled={report.isEmpty}
+      >
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="min-w-[140px]">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Year
+            </label>
+            <select
+              value={year}
+              onChange={(event) => setYear(Number(event.target.value))}
+              className={inputClassName}
+            >
+              {availableYears.map((optionYear) => (
+                <option key={optionYear} value={optionYear}>
+                  {optionYear}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[160px]">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Month
+            </label>
+            <select
+              value={month}
+              onChange={(event) => setMonth(Number(event.target.value))}
+              className={inputClassName}
+            >
+              <option value={0}>Full year</option>
+              {REPORT_MONTH_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[220px]">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Overhead allocation
+            </label>
+            <select
+              value={allocationMode}
+              onChange={(event) =>
+                setAllocationMode(event.target.value as OverheadAllocationMode)
+              }
+              className={inputClassName}
+            >
+              {CONTRACT_PROFITABILITY_ALLOCATION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </ReportActionBar>
+
+      <ReportFetchError fetchError={fetchError} />
+
+      {report.payrollNotPostedMessage ? (
+        <p className="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          {report.payrollNotPostedMessage}
+        </p>
+      ) : null}
+
+      {(report.warnings.voidedIncomeCount > 0 ||
+        report.warnings.expensesWithoutProjectCount > 0 ||
+        report.warnings.payrollEmployeesWithoutProjectCount > 0 ||
+        report.warnings.allocationFallbackNote ||
+        report.warnings.payrollDetailExceedsPostedNote) && (
+        <ul className="list-disc space-y-1 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {report.warnings.voidedIncomeCount > 0 ? (
+            <li>
+              Excluded {report.warnings.voidedIncomeCount} voided/cancelled
+              client-invoice or product-sale income row(s) (
+              {formatReportCurrency(report.warnings.voidedIncomeTotal)}).
+            </li>
+          ) : null}
+          {report.warnings.expensesWithoutProjectCount > 0 ? (
+            <li>
+              {report.warnings.expensesWithoutProjectCount} eligible expense(s)
+              with no Contract / Project (
+              {formatReportCurrency(report.warnings.expensesWithoutProjectTotal)}{" "}
+              in overhead).
+            </li>
+          ) : null}
+          {report.warnings.payrollEmployeesWithoutProjectCount > 0 ? (
+            <li>
+              {report.warnings.payrollEmployeesWithoutProjectCount} payroll
+              employee(s) with no project_contract (
+              {formatReportCurrency(
+                report.warnings.payrollEmployeesWithoutProjectLabour,
+              )}
+              {report.payrollNotPostedMessage
+                ? ", included in estimated payroll"
+                : " in unallocated labour"}
+              ).
+            </li>
+          ) : null}
+          {report.warnings.payrollDetailExceedsPostedNote ? (
+            <li>{report.warnings.payrollDetailExceedsPostedNote}</li>
+          ) : null}
+          {report.warnings.allocationFallbackNote ? (
+            <li>{report.warnings.allocationFallbackNote}</li>
+          ) : null}
+        </ul>
+      )}
+
+      <div
+        id={FINANCE_REPORT_PRINT_AREA_ID}
+        className="space-y-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <ReportCompanyHeader
+          title="Contract Profitability"
+          periodLabel={periodLabel}
+        />
+
+        {report.isEmpty ? (
+          <p className="text-sm text-slate-600">
+            No income or expenses recorded for this period in the current
+            business unit scope.
+          </p>
+        ) : (
+          <ScrollableTable>
+            <table className={scrollableTableClassName}>
+              <thead className={scrollableTableHeadClassName}>
+                <tr>
+                  <th className={scrollableTableWrapThClassName}>Contract</th>
+                  <th className={`${scrollableTableThClassName} text-right`}>
+                    Revenue
+                  </th>
+                  <th className={`${scrollableTableThClassName} text-right`}>
+                    Labour
+                  </th>
+                  <th className={`${scrollableTableThClassName} text-right`}>
+                    Direct costs
+                  </th>
+                  <th className={`${scrollableTableThClassName} text-right`}>
+                    Gross margin
+                  </th>
+                  <th className={`${scrollableTableThClassName} text-right`}>
+                    Gross margin %
+                  </th>
+                  {showOverheadShare ? (
+                    <th className={`${scrollableTableThClassName} text-right`}>
+                      Overhead share
+                    </th>
+                  ) : null}
+                  <th className={`${scrollableTableThClassName} text-right`}>
+                    Net margin
+                  </th>
+                  <th className={`${scrollableTableThClassName} text-right`}>
+                    Net margin %
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {report.rows.map((row, index) => (
+                  <tr
+                    key={row.rowKey}
+                    className={
+                      row.kind === "company_total"
+                        ? "bg-slate-100 text-sm font-semibold text-[#0f2744]"
+                        : getStripedRowClassName(index)
+                    }
+                  >
+                    <td className={scrollableTableWrapTdClassName}>
+                      <div className="font-medium text-[#0f2744]">{row.label}</div>
+                      {row.siteLabels.length > 0 ? (
+                        <ul className="mt-1 list-none text-xs text-slate-500">
+                          {row.siteLabels.map((site) => (
+                            <li key={site}>{site}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right ${currencyCellClassName(row.revenue)}`}
+                    >
+                      {formatReportCurrency(row.revenue)}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right ${currencyCellClassName(row.labour)}`}
+                    >
+                      {formatReportCurrency(row.labour)}
+                      {row.labourIsEstimated ? contractProfitabilityEstimateBadge() : null}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right ${currencyCellClassName(row.directCosts)}`}
+                    >
+                      {formatReportCurrency(row.directCosts)}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right ${currencyCellClassName(row.grossMargin)}`}
+                    >
+                      {formatReportCurrency(row.grossMargin)}
+                      {row.marginsAreEstimated ? contractProfitabilityEstimateBadge() : null}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {formatMarginPercent(row.grossMarginPct)}
+                      {row.marginsAreEstimated ? contractProfitabilityEstimateBadge() : null}
+                    </td>
+                    {showOverheadShare ? (
+                      <td className="px-4 py-3 text-right">
+                        {formatReportCurrency(row.overheadShare)}
+                      </td>
+                    ) : null}
+                    <td
+                      className={`px-4 py-3 text-right ${currencyCellClassName(row.netMargin)}`}
+                    >
+                      {row.kind === "company_total" &&
+                      (report.reconciliation.estimatedPayrollNotInPl ?? 0) > 0 &&
+                      row.netMarginIncludingEstimatedPayroll !== undefined ? (
+                        <div className="space-y-1">
+                          <div>
+                            <span className="text-xs font-normal text-slate-600">
+                              Net (per P&L):{" "}
+                            </span>
+                            {formatReportCurrency(row.netMargin)}
+                          </div>
+                          <div>
+                            <span className="text-xs font-normal text-slate-600">
+                              Net incl. estimated payroll:{" "}
+                            </span>
+                            {formatReportCurrency(
+                              row.netMarginIncludingEstimatedPayroll,
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        formatReportCurrency(row.netMargin)
+                      )}
+                      {row.marginsAreEstimated && row.kind !== "company_total"
+                        ? contractProfitabilityEstimateBadge()
+                        : null}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {row.kind === "company_total" &&
+                      (report.reconciliation.estimatedPayrollNotInPl ?? 0) > 0 &&
+                      row.netMarginIncludingEstimatedPayrollPct !== undefined &&
+                      row.netMarginIncludingEstimatedPayrollPct !== null ? (
+                        <div className="space-y-1">
+                          <div>{formatMarginPercent(row.netMarginPct)}</div>
+                          <div className="text-xs font-normal text-slate-600">
+                            {formatMarginPercent(
+                              row.netMarginIncludingEstimatedPayrollPct,
+                            )}{" "}
+                            incl. est.
+                          </div>
+                        </div>
+                      ) : (
+                        formatMarginPercent(row.netMarginPct)
+                      )}
+                      {row.marginsAreEstimated && row.kind !== "company_total"
+                        ? contractProfitabilityEstimateBadge()
+                        : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollableTable>
+        )}
+
+        <section className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
+          <h3 className="mb-2 font-semibold text-[#0f2744]">Reconciliation</h3>
+          <div className="grid gap-2 md:grid-cols-2">
+            <p>
+              Company P&L revenue:{" "}
+              <span className="font-medium">
+                {formatReportCurrency(report.reconciliation.companyRevenue)}
+              </span>
+            </p>
+            <p>
+              Table revenue (contracts + unallocated):{" "}
+              <span className="font-medium">
+                {formatReportCurrency(report.reconciliation.tableRevenue)}
+              </span>
+            </p>
+            <p>
+              Company P&L total expenses (incl. depreciation):{" "}
+              <span className="font-medium">
+                {formatReportCurrency(report.reconciliation.companyTotalExpenses)}
+              </span>
+            </p>
+            <p>
+              Company P&L net profit:{" "}
+              <span className="font-medium">
+                {formatReportCurrency(report.reconciliation.companyNetProfit)}
+              </span>
+            </p>
+            <p>
+              Table net (excludes estimated payroll; matches P&L when posted):{" "}
+              <span className="font-medium">
+                {formatReportCurrency(report.reconciliation.tableNetProfit)}
+              </span>
+            </p>
+            {report.reconciliation.estimatedPayrollNotInPl > 0 ? (
+              <p>
+                Estimated payroll not yet in P&L:{" "}
+                <span className="font-medium">
+                  {formatReportCurrency(
+                    report.reconciliation.estimatedPayrollNotInPl,
+                  )}
+                </span>
+              </p>
+            ) : null}
+          </div>
+          <p
+            className={`mt-3 font-medium ${
+              report.reconciliation.matchesCompanyPl
+                ? "text-emerald-800"
+                : "text-red-700"
+            }`}
+          >
+            {report.reconciliation.matchesCompanyPl
+              ? "Matches company P&L"
+              : `Difference — revenue ${formatReportCurrency(report.reconciliation.revenueDifference)}, net profit ${formatReportCurrency(report.reconciliation.netProfitDifference)}`}
+          </p>
+        </section>
+
+        {!report.isEmpty && lastSixMonths.contractKeys.length > 0 ? (
+          <section>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#0f2744]">
+              Last 6 months — net margin by contract
+            </h3>
+            <ScrollableTable>
+              <table className={scrollableTableClassName}>
+                <thead className={scrollableTableHeadClassName}>
+                  <tr>
+                    <th className={scrollableTableWrapThClassName}>Contract</th>
+                    {lastSixMonths.monthLabels.map((label, labelIndex) => (
+                      <th
+                        key={label}
+                        className={`${scrollableTableThClassName} text-right whitespace-nowrap`}
+                      >
+                        {label}
+                        {lastSixMonths.estimatedMonthFlags[labelIndex] ? (
+                          <span className="ml-1 text-[10px] font-normal lowercase text-sky-700">
+                            est.
+                          </span>
+                        ) : null}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {lastSixMonths.contractKeys.map((key, index) => (
+                    <tr key={key} className={getStripedRowClassName(index)}>
+                      <td className={scrollableTableWrapTdClassName}>
+                        {lastSixMonths.contractLabels.get(key) ?? key}
+                      </td>
+                      {(lastSixMonths.values.get(key) ?? []).map((value, col) => (
+                        <td
+                          key={`${key}-${col}`}
+                          className={`px-4 py-3 text-right ${currencyCellClassName(value)}`}
+                        >
+                          {formatReportCurrency(value)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ScrollableTable>
+          </section>
+        ) : null}
       </div>
     </div>
   );

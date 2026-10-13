@@ -43,6 +43,10 @@ export const REPORT_NAV_CATEGORIES: ReportNavCategory[] = [
         href: "/dashboard/reports/finance/budget-vs-actual",
       },
       {
+        label: "Contract Profitability",
+        href: "/dashboard/reports/finance/contract-profitability",
+      },
+      {
         label: "Fixed Asset & Depreciation Schedule",
         href: "/dashboard/reports/finance/fixed-asset-schedule",
       },

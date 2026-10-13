@@ -45,8 +45,20 @@ import {
 } from "../finance/income-register-utils";
 import {
   CONTRACT_PROJECT_SELECT,
+  PROJECT_SELECT,
+  normalizeProjectEntry,
   type ContractProjectOption,
+  type ProjectEntry,
 } from "../administration/projects-utils";
+import { SERVICE_CONTRACT_LIST_SELECT } from "@/utils/service-contracts-types";
+import { EXPENSE_REGISTER_PROFIT_LOSS_SELECT } from "../finance/customer-refund-expense-utils";
+import type {
+  ContractProfitabilityExpenseRow,
+  ContractProfitabilityIncomeRow,
+  ContractProfitabilityPayrollRow,
+  ContractProfitabilityServiceContract,
+} from "./contract-profitability-utils";
+import { mergeContractProfitabilityPayrollRows } from "./contract-profitability-utils";
 import {
   normalizeBudgetRecord,
   type BudgetRecord,
@@ -702,6 +714,182 @@ export async function fetchBudgetVsActualReportData(
       payrollHistoryError?.message ??
       payrollProcessingError?.message ??
       projectsError?.message ??
+      null,
+  };
+}
+
+export async function fetchContractProfitabilityReportData(
+  supabase: SupabaseClient,
+) {
+  const [tenantId, activeBusinessUnitId, viewAllBusinessUnits] =
+    await Promise.all([
+      getCurrentUserTenantId(),
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+
+  if (!tenantId) {
+    return {
+      initialIncomeEntries: [] as ContractProfitabilityIncomeRow[],
+      initialExpenseEntries: [] as ContractProfitabilityExpenseRow[],
+      initialFixedAssets: [],
+      initialServiceContracts: [] as ContractProfitabilityServiceContract[],
+      initialProjects: [] as ProjectEntry[],
+      initialPayrollRows: [] as ContractProfitabilityPayrollRow[],
+      initialPayrollProcessingRows: [] as ContractProfitabilityPayrollRow[],
+      invoiceContractById: {} as Record<string, string | null>,
+      tenantHasServiceContracts: false,
+      availableYears: buildAvailableYears([], []),
+      fetchError: "Unable to resolve tenant for Contract Profitability report.",
+    };
+  }
+
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+
+  const scopedEmployees = await fetchScopedEmployeeIds(
+    supabase,
+    tenantId,
+    buScope,
+  );
+
+  const incomeSelect =
+    "id, date, service_category, amount, entry_type, sale_status, net_of_tax_amount, output_vat_amount, client_invoice_id, payment_status";
+
+  const expenseSelect = `${EXPENSE_REGISTER_PROFIT_LOSS_SELECT}, project_id`;
+
+  const [
+    { data: incomeEntries, error: incomeError },
+    { data: expenseEntries, error: expenseError },
+    { data: fixedAssets, error: fixedAssetsError },
+    { data: clientInvoices, error: clientInvoicesError },
+    { data: serviceContractsRaw, error: serviceContractsError },
+    { data: projectsRaw, error: projectsError },
+    payrollHistoryResult,
+    payrollProcessingResult,
+  ] = await Promise.all([
+    applyBusinessUnitScope(
+      supabase.from("income_register").select(incomeSelect).eq("tenant_id", tenantId),
+      buScope,
+    ).order("date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase.from("expense_register").select(expenseSelect).eq("tenant_id", tenantId),
+      buScope,
+    ).order("date", { ascending: true }),
+    applyBusinessUnitScope(
+      supabase
+        .from("fixed_assets")
+        .select(
+          "original_cost, quantity, useful_life_years, purchase_date, depreciation_method",
+        )
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("asset_id", { ascending: true }),
+    supabase
+      .from("client_invoices")
+      .select("id, contract_id")
+      .eq("tenant_id", tenantId),
+    supabase
+      .from("service_contracts")
+      .select(SERVICE_CONTRACT_LIST_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("contract_number", { ascending: true }),
+    supabase
+      .from("projects")
+      .select(PROJECT_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("project_name", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase
+        .from("payroll_history")
+        .select(
+          "employee_id, payroll_month, project_contract, gross_pay, employer_ssnit, tier2",
+        )
+        .eq("tenant_id", tenantId),
+      scopedEmployees.employeeIds,
+    ).order("payroll_month", { ascending: true }),
+    applyEmployeeIdScope(
+      supabase
+        .from("payroll_processing")
+        .select(
+          "employee_id, payroll_month, project_contract, gross_pay, employer_ssnit, tier2",
+        )
+        .eq("tenant_id", tenantId),
+      scopedEmployees.employeeIds,
+    ).order("payroll_month", { ascending: true }),
+  ]);
+
+  const payrollHistory = (payrollHistoryResult.data ??
+    []) as ContractProfitabilityPayrollRow[];
+  const payrollProcessing = (payrollProcessingResult.data ??
+    []) as ContractProfitabilityPayrollRow[];
+
+  const initialProjects = ((projectsRaw as ProjectEntry[] | null) ?? []).map(
+    normalizeProjectEntry,
+  );
+
+  type ServiceContractListRow = {
+    id: string;
+    contract_number: string;
+    client?: { client_name: string | null } | { client_name: string | null }[] | null;
+  };
+
+  const initialServiceContracts: ContractProfitabilityServiceContract[] = (
+    (serviceContractsRaw as ServiceContractListRow[] | null) ?? []
+  ).map((row) => {
+    const client = Array.isArray(row.client) ? row.client[0] : row.client;
+    return {
+      id: row.id,
+      contract_number: row.contract_number,
+      client_name: client?.client_name?.trim() || "—",
+    };
+  });
+
+  const invoiceContractById: Record<string, string | null> = {};
+  for (const row of clientInvoices ?? []) {
+    const id = String(row.id ?? "").trim();
+    if (!id) {
+      continue;
+    }
+    invoiceContractById[id] =
+      typeof row.contract_id === "string" ? row.contract_id : null;
+  }
+
+  const initialPayrollRows = mergeContractProfitabilityPayrollRows(
+    payrollHistory,
+    payrollProcessing,
+  );
+
+  return {
+    initialIncomeEntries: (incomeEntries as ContractProfitabilityIncomeRow[] | null) ?? [],
+    initialExpenseEntries:
+      (expenseEntries as ContractProfitabilityExpenseRow[] | null) ?? [],
+    initialFixedAssets: fixedAssets ?? [],
+    initialServiceContracts,
+    initialProjects,
+    initialPayrollRows,
+    initialPayrollProcessingRows: payrollProcessing,
+    invoiceContractById,
+    tenantHasServiceContracts: initialServiceContracts.length > 0,
+    availableYears: buildAvailableYears(
+      (incomeEntries ?? []).map((entry) => entry.date),
+      (expenseEntries ?? []).map((entry) => entry.date),
+      [
+        ...initialPayrollRows.map((entry) => entry.payroll_month),
+      ],
+    ),
+    fetchError:
+      scopedEmployees.error ??
+      incomeError?.message ??
+      expenseError?.message ??
+      fixedAssetsError?.message ??
+      clientInvoicesError?.message ??
+      serviceContractsError?.message ??
+      projectsError?.message ??
+      payrollHistoryResult.error?.message ??
+      payrollProcessingResult.error?.message ??
       null,
   };
 }
