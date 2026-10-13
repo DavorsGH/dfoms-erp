@@ -1,3 +1,14 @@
+import type { ContractProjectOption } from "../administration/projects-utils";
+import {
+  validateNewExpenseRegisterCategory,
+  validateNewExpenseRegisterSubcategory,
+} from "@/utils/expense-register-category-guard";
+import { validateManualExpenseRegisterPaymentStatusForWrite } from "@/utils/manual-expense-payment-status";
+import { VENDOR_OTHER_VALUE } from "./vendor-select-utils";
+
+/** Form select value for explicit company overhead (maps to project_id NULL). */
+export const EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE = "__company_overhead__";
+
 export type ExpenseRegisterEntry = {
   id: string;
   date: string;
@@ -71,6 +82,237 @@ export function formatGHS(value: number): string {
 
 export function calculateAmount(price: number, quantity: number): number {
   return price * quantity;
+}
+
+export function tenantHasActiveExpenseProjects(
+  projects: ContractProjectOption[],
+): boolean {
+  return projects.some((project) => !project.is_archived);
+}
+
+/** Maps form sentinel / empty values to NULL for expense_register.project_id. */
+export function normalizeExpenseRegisterProjectIdForDatabase(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed || trimmed === EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE) {
+    return null;
+  }
+  return trimmed;
+}
+
+export function formatExpenseRegisterContractProjectLabel(
+  projectId: string | null | undefined,
+  projects: ContractProjectOption[],
+): string {
+  if (!projectId?.trim()) {
+    return "Overhead";
+  }
+  const match = projects.find((project) => project.id === projectId);
+  if (!match) {
+    return "Overhead";
+  }
+  return `${match.project_code} — ${match.project_name}`;
+}
+
+export function expenseRegisterProjectOptionsForForm(
+  projects: ContractProjectOption[],
+  selectedFormValue: string,
+): ContractProjectOption[] {
+  const linkedProjectId =
+    selectedFormValue &&
+    selectedFormValue !== EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE
+      ? selectedFormValue
+      : null;
+
+  return [...projects]
+    .filter(
+      (project) =>
+        !project.is_archived || project.id === linkedProjectId,
+    )
+    .sort((left, right) =>
+      left.project_name.localeCompare(right.project_name),
+    );
+}
+
+export const EXPENSE_REGISTER_PROJECT_CHOICE_VALIDITY_MESSAGE =
+  "Choose which contract or project this expense belongs to, or select Company overhead.";
+
+export function resolveExpenseRegisterProjectIdForSave(
+  formValue: string,
+  requireExplicitChoice: boolean,
+):
+  | { ok: true; projectId: string | null }
+  | { ok: false; error: string } {
+  if (!requireExplicitChoice) {
+    return { ok: true, projectId: null };
+  }
+
+  const trimmed = formValue.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      error: EXPENSE_REGISTER_PROJECT_CHOICE_VALIDITY_MESSAGE,
+    };
+  }
+
+  return {
+    ok: true,
+    projectId: normalizeExpenseRegisterProjectIdForDatabase(trimmed),
+  };
+}
+
+export function initialExpenseRegisterProjectFormValue(
+  projectId: string | null | undefined,
+  projects: ContractProjectOption[],
+): string {
+  if (projectId) {
+    return projectId;
+  }
+  if (tenantHasActiveExpenseProjects(projects)) {
+    return EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE;
+  }
+  return "";
+}
+
+export const EXPENSE_REGISTER_VENDOR_OTHER_VALIDITY_MESSAGE =
+  "Enter the one-time supplier name.";
+
+export const EXPENSE_REGISTER_PRICE_NOT_NUMBER_VALIDITY_MESSAGE =
+  "Price must be a number.";
+
+export const EXPENSE_REGISTER_QUANTITY_WHOLE_NUMBER_VALIDITY_MESSAGE =
+  "Quantity must be a whole number.";
+
+export const EXPENSE_REGISTER_INPUT_CLASS_NAME =
+  "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
+
+export function expenseRegisterInputClassName(): string {
+  return EXPENSE_REGISTER_INPUT_CLASS_NAME;
+}
+
+export type ExpenseRegisterFormValidityControls = {
+  date: HTMLInputElement | null;
+  expenseCategory: HTMLSelectElement | null;
+  project: HTMLSelectElement | null;
+  subCategory: HTMLSelectElement | null;
+  vendorSelect: HTMLSelectElement | null;
+  vendorOther: HTMLInputElement | null;
+  price: HTMLInputElement | null;
+  quantity: HTMLInputElement | null;
+  paymentStatus: HTMLSelectElement | null;
+};
+
+export type ExpenseRegisterFormCustomValidityInput = {
+  date: string;
+  expense_category: string;
+  sub_category: string;
+  vendor_select: string;
+  vendor_other: string;
+  price: string;
+  quantity: string;
+  payment_status: string;
+  project_id: string;
+};
+
+function setNativeFieldValidity(
+  control: HTMLInputElement | HTMLSelectElement | null,
+  message: string | null,
+): void {
+  control?.setCustomValidity(message ?? "");
+}
+
+export function syncExpenseRegisterFormCustomValidity(
+  controls: ExpenseRegisterFormValidityControls,
+  options: {
+    form: ExpenseRegisterFormCustomValidityInput;
+    editingId: string | null;
+    hasActiveExpenseProjects: boolean;
+    validatePaymentStatus: boolean;
+    expenseCategories: ExpenseCategoryLookupRow[];
+    expenseSubcategories: ExpenseSubcategoryLookup[];
+  },
+): void {
+  setNativeFieldValidity(controls.date, null);
+  setNativeFieldValidity(controls.expenseCategory, null);
+  setNativeFieldValidity(controls.project, null);
+  setNativeFieldValidity(controls.subCategory, null);
+  setNativeFieldValidity(controls.vendorSelect, null);
+  setNativeFieldValidity(controls.vendorOther, null);
+  setNativeFieldValidity(controls.price, null);
+  setNativeFieldValidity(controls.quantity, null);
+  setNativeFieldValidity(controls.paymentStatus, null);
+
+  if (!options.editingId) {
+    const categoryError = validateNewExpenseRegisterCategory(
+      options.form.expense_category,
+      { categoryRows: options.expenseCategories },
+    );
+    if (categoryError) {
+      setNativeFieldValidity(controls.expenseCategory, categoryError);
+    }
+
+    const subcategoryError = validateNewExpenseRegisterSubcategory(
+      options.form.expense_category,
+      options.form.sub_category,
+      options.expenseSubcategories,
+      options.expenseCategories,
+    );
+    if (subcategoryError) {
+      setNativeFieldValidity(controls.subCategory, subcategoryError);
+    }
+  }
+
+  if (options.validatePaymentStatus) {
+    const paymentStatusError = validateManualExpenseRegisterPaymentStatusForWrite(
+      options.form.payment_status,
+    );
+    if (paymentStatusError) {
+      setNativeFieldValidity(controls.paymentStatus, paymentStatusError);
+    }
+  }
+
+  if (
+    options.form.vendor_select === VENDOR_OTHER_VALUE &&
+    !options.form.vendor_other.trim()
+  ) {
+    setNativeFieldValidity(
+      controls.vendorOther,
+      EXPENSE_REGISTER_VENDOR_OTHER_VALIDITY_MESSAGE,
+    );
+  }
+
+  if (options.hasActiveExpenseProjects) {
+    const projectIdResult = resolveExpenseRegisterProjectIdForSave(
+      options.form.project_id,
+      true,
+    );
+    if (!projectIdResult.ok) {
+      setNativeFieldValidity(controls.project, projectIdResult.error);
+    }
+  }
+
+  const priceTrimmed = options.form.price.trim();
+  if (priceTrimmed) {
+    const price = Number(priceTrimmed);
+    if (!Number.isFinite(price)) {
+      setNativeFieldValidity(
+        controls.price,
+        EXPENSE_REGISTER_PRICE_NOT_NUMBER_VALIDITY_MESSAGE,
+      );
+    }
+  }
+
+  const quantityTrimmed = options.form.quantity.trim();
+  if (quantityTrimmed !== "") {
+    const quantity = Number.parseInt(quantityTrimmed, 10);
+    if (Number.isNaN(quantity)) {
+      setNativeFieldValidity(
+        controls.quantity,
+        EXPENSE_REGISTER_QUANTITY_WHOLE_NUMBER_VALIDITY_MESSAGE,
+      );
+    }
+  }
 }
 
 export function formatDate(value: string): string {

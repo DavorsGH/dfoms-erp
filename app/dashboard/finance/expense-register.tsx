@@ -1,10 +1,11 @@
 "use client";
 
 import { confirmDialog } from "@/components/feedback/app-dialogs";
+import { useAlert, useToast } from "@/components/feedback";
 import Tooltip from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import type { Approver, NamedLookup } from "../lookup-types";
 import {
@@ -12,8 +13,17 @@ import {
   formatDate,
   formatGHS,
   getExpenseGrossBeforeWht,
+  EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE,
+  expenseRegisterInputClassName,
+  expenseRegisterProjectOptionsForForm,
+  formatExpenseRegisterContractProjectLabel,
+  initialExpenseRegisterProjectFormValue,
   normalizeExpenseRegisterEntry,
+  resolveExpenseRegisterProjectIdForSave,
+  syncExpenseRegisterFormCustomValidity,
+  tenantHasActiveExpenseProjects,
   type ExpenseRegisterEntry,
+  type ExpenseRegisterFormValidityControls,
   type ExpenseSubcategoryLookup,
 } from "./expense-register-utils";
 import {
@@ -42,10 +52,6 @@ import {
   lookupLinkedProductSaleCogsForExpense,
   type LinkedProductSaleCogs,
 } from "./product-sale-cogs-expense-utils";
-import {
-  validateNewExpenseRegisterCategory,
-  validateNewExpenseRegisterSubcategory,
-} from "@/utils/expense-register-category-guard";
 import { lookupOptionLabel } from "../administration/lookup-settings-shared";
 import {
   computePurchaseTaxAmounts,
@@ -129,10 +135,7 @@ import { useWriteQueueOptional } from "@/components/write-queue-provider";
 import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
-import {
-  resolveOptionalProjectId,
-  type ContractProjectOption,
-} from "../administration/projects-utils";
+import type { ContractProjectOption } from "../administration/projects-utils";
 import {
   isApAccrualExpenseRegisterRow,
   isSystemManagedExpenseRegisterRow,
@@ -199,9 +202,6 @@ const emptyForm: ExpenseFormState = {
   project_id: "",
 };
 
-const inputClassName =
-  "w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#0f2744] focus:ring-1 focus:ring-[#0f2744]";
-
 function formatRateValue(rate: number): string {
   return String(roundTaxRate(rate));
 }
@@ -229,6 +229,8 @@ export default function ExpenseRegister({
   activeBusinessUnitId = null,
 }: ExpenseRegisterProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const expenseIdFromQueryHandled = useRef<string | null>(null);
@@ -247,6 +249,8 @@ export default function ExpenseRegister({
   const [descriptionFilter, setDescriptionFilter] =
     useState<RegisterColumnFilterValue>(null);
   const [paymentStatusFilter, setPaymentStatusFilter] =
+    useState<RegisterColumnFilterValue>(null);
+  const [projectSiteFilter, setProjectSiteFilter] =
     useState<RegisterColumnFilterValue>(null);
   const [dateFilter, setDateFilter] =
     useState<RegisterDateRangeFilterValue>(null);
@@ -272,7 +276,15 @@ export default function ExpenseRegister({
   // Once the user types a WHT amount we stop overwriting it from Gross × rate.
   const [whtAmountEdited, setWhtAmountEdited] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(fetchError);
+  const expenseFormRef = useRef<HTMLFormElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const expenseCategorySelectRef = useRef<HTMLSelectElement>(null);
+  const projectSelectRef = useRef<HTMLSelectElement>(null);
+  const subCategoryFieldRef = useRef<HTMLDivElement>(null);
+  const supplierFieldsRef = useRef<HTMLDivElement>(null);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+  const paymentStatusSelectRef = useRef<HTMLSelectElement>(null);
   const [linkedProductSaleCogsByExpenseId, setLinkedProductSaleCogsByExpenseId] =
     useState<Map<string, LinkedProductSaleCogs>>(() => new Map());
   const [linkedApAccrualPayables, setLinkedApAccrualPayables] = useState<
@@ -289,7 +301,6 @@ export default function ExpenseRegister({
     null,
   );
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
 
@@ -334,6 +345,23 @@ export default function ExpenseRegister({
     [editingId, entries],
   );
 
+  const hasActiveExpenseProjects = useMemo(
+    () => tenantHasActiveExpenseProjects(initialProjects),
+    [initialProjects],
+  );
+
+  const expenseFormProjectOptions = useMemo(
+    () =>
+      expenseRegisterProjectOptionsForForm(initialProjects, form.project_id),
+    [initialProjects, form.project_id],
+  );
+
+  const contractSiteLabelForEntry = useCallback(
+    (entry: { project_id?: string | null }) =>
+      formatExpenseRegisterContractProjectLabel(entry.project_id, initialProjects),
+    [initialProjects],
+  );
+
   const categoryOptions = useMemo(
     () =>
       collectDistinctColumnValues(
@@ -353,6 +381,10 @@ export default function ExpenseRegister({
                   linkedApAccrualDisplayOptions,
                 ),
                 paymentStatusFilter,
+              ) &&
+              columnValuePassesFilter(
+                contractSiteLabelForEntry(entry),
+                projectSiteFilter,
               ),
           )
           .map((entry) => entry.expense_category),
@@ -363,6 +395,8 @@ export default function ExpenseRegister({
       subCategoryFilter,
       descriptionFilter,
       paymentStatusFilter,
+      projectSiteFilter,
+      contractSiteLabelForEntry,
       linkedApAccrualPayables,
       linkedApAccrualDisplayOptions,
     ],
@@ -387,6 +421,10 @@ export default function ExpenseRegister({
                   linkedApAccrualDisplayOptions,
                 ),
                 paymentStatusFilter,
+              ) &&
+              columnValuePassesFilter(
+                contractSiteLabelForEntry(entry),
+                projectSiteFilter,
               ),
           )
           .map((entry) => entry.sub_category),
@@ -397,6 +435,45 @@ export default function ExpenseRegister({
       categoryFilter,
       descriptionFilter,
       paymentStatusFilter,
+      projectSiteFilter,
+      contractSiteLabelForEntry,
+      linkedApAccrualPayables,
+      linkedApAccrualDisplayOptions,
+    ],
+  );
+
+  const projectSiteOptions = useMemo(
+    () =>
+      collectDistinctColumnValues(
+        entries
+          .filter(
+            (entry) =>
+              dateValuePassesRangeFilter(
+                toDateInputValue(entry.date),
+                dateFilter,
+              ) &&
+              columnValuePassesFilter(entry.expense_category, categoryFilter) &&
+              columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
+              columnValuePassesFilter(entry.description, descriptionFilter) &&
+              columnValuePassesFilter(
+                resolveExpenseRegisterPaymentStatusLabel(
+                  entry,
+                  linkedApAccrualPayables,
+                  linkedApAccrualDisplayOptions,
+                ),
+                paymentStatusFilter,
+              ),
+          )
+          .map((entry) => contractSiteLabelForEntry(entry)),
+      ),
+    [
+      entries,
+      dateFilter,
+      categoryFilter,
+      subCategoryFilter,
+      descriptionFilter,
+      paymentStatusFilter,
+      contractSiteLabelForEntry,
       linkedApAccrualPayables,
       linkedApAccrualDisplayOptions,
     ],
@@ -421,6 +498,10 @@ export default function ExpenseRegister({
                   linkedApAccrualDisplayOptions,
                 ),
                 paymentStatusFilter,
+              ) &&
+              columnValuePassesFilter(
+                contractSiteLabelForEntry(entry),
+                projectSiteFilter,
               ),
           )
           .map((entry) => entry.description),
@@ -431,6 +512,8 @@ export default function ExpenseRegister({
       categoryFilter,
       subCategoryFilter,
       paymentStatusFilter,
+      projectSiteFilter,
+      contractSiteLabelForEntry,
       linkedApAccrualPayables,
       linkedApAccrualDisplayOptions,
     ],
@@ -448,7 +531,11 @@ export default function ExpenseRegister({
               ) &&
               columnValuePassesFilter(entry.expense_category, categoryFilter) &&
               columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
-              columnValuePassesFilter(entry.description, descriptionFilter),
+              columnValuePassesFilter(entry.description, descriptionFilter) &&
+              columnValuePassesFilter(
+                contractSiteLabelForEntry(entry),
+                projectSiteFilter,
+              ),
           )
           .map((entry) =>
             resolveExpenseRegisterPaymentStatusLabel(
@@ -464,6 +551,8 @@ export default function ExpenseRegister({
       categoryFilter,
       subCategoryFilter,
       descriptionFilter,
+      projectSiteFilter,
+      contractSiteLabelForEntry,
       linkedApAccrualPayables,
       linkedApAccrualDisplayOptions,
     ],
@@ -506,6 +595,7 @@ export default function ExpenseRegister({
           wht_amount: payload.wht_amount,
           input_vat_amount: payload.input_vat_amount,
           net_of_tax_amount: payload.net_of_tax_amount,
+          project_id: payload.project_id,
           pendingSync: true,
           queueFailed: item.status === "failed",
           queueError: item.lastError,
@@ -525,6 +615,10 @@ export default function ExpenseRegister({
                   linkedApAccrualDisplayOptions,
                 ),
                 paymentStatusFilter,
+              ) &&
+              columnValuePassesFilter(
+                contractSiteLabelForEntry(entry),
+                projectSiteFilter,
               ),
     );
 
@@ -541,6 +635,10 @@ export default function ExpenseRegister({
             linkedApAccrualDisplayOptions,
           ),
           paymentStatusFilter,
+        ) &&
+        columnValuePassesFilter(
+          contractSiteLabelForEntry(entry),
+          projectSiteFilter,
         ),
     );
 
@@ -553,6 +651,8 @@ export default function ExpenseRegister({
     subCategoryFilter,
     descriptionFilter,
     paymentStatusFilter,
+    projectSiteFilter,
+    contractSiteLabelForEntry,
     linkedApAccrualPayables,
     linkedApAccrualDisplayOptions,
   ]);
@@ -566,10 +666,18 @@ export default function ExpenseRegister({
   }, [visibleEntries]);
 
   useEffect(() => {
-    if (createLookups.error) {
-      setError(createLookups.error);
+    if (fetchError) {
+      void alertError(fetchError, { title: "Could not load expense register" });
     }
-  }, [createLookups.error]);
+  }, [alertError, fetchError]);
+
+  useEffect(() => {
+    if (createLookups.error) {
+      void alertError(createLookups.error, {
+        title: "Could not load expense form options",
+      });
+    }
+  }, [alertError, createLookups.error]);
 
   useEffect(() => {
     setEntries(initialEntries.map(normalizeExpenseRegisterEntry));
@@ -581,10 +689,11 @@ export default function ExpenseRegister({
         const linked = await fetchLinkedProductSaleCogsByExpenseId(supabase);
         setLinkedProductSaleCogsByExpenseId(linked);
       } catch (loadError) {
-        setError(
+        void alertError(
           loadError instanceof Error
             ? loadError.message
             : "Could not load linked product sale COGS entries.",
+          { title: "Could not load linked sales data" },
         );
       }
     })();
@@ -639,10 +748,11 @@ export default function ExpenseRegister({
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(
+          void alertError(
             loadError instanceof Error
               ? loadError.message
               : "Could not load Accounts Payable status for accrual expenses.",
+            { title: "Could not load payment status" },
           );
           setLinkedApAccrualPayablesLoaded(true);
         }
@@ -665,7 +775,9 @@ export default function ExpenseRegister({
     ).order("date", { ascending: false });
 
     if (refreshError) {
-      setError(refreshError.message);
+      void alertError(refreshError.message, {
+        title: "Could not refresh expense register",
+      });
       return;
     }
 
@@ -674,16 +786,16 @@ export default function ExpenseRegister({
         normalizeExpenseRegisterEntry(entry),
       );
     setEntries(normalized);
-    setError(null);
 
     try {
       await refreshLinkedApAccrualPayables(normalized);
       await refreshLinkedProductSaleCogs();
     } catch (loadError) {
-      setError(
+      void alertError(
         loadError instanceof Error
           ? loadError.message
           : "Could not refresh linked product sale COGS entries.",
+        { title: "Could not refresh linked sales data" },
       );
     }
   }
@@ -691,13 +803,11 @@ export default function ExpenseRegister({
   function closeExpenseDetail() {
     setDetailExpenseId(null);
     setDetailExpense(null);
-    setDetailError(null);
     setDetailLoading(false);
   }
 
   async function openExpenseDetail(expenseId: string) {
     setDetailExpenseId(expenseId);
-    setDetailError(null);
     const cached = entries.find((entry) => entry.id === expenseId) ?? null;
     setDetailExpense(cached);
     setDetailLoading(true);
@@ -710,12 +820,17 @@ export default function ExpenseRegister({
     setDetailLoading(false);
 
     if (fetchError) {
-      setDetailError(fetchError.message);
+      void alertError(fetchError.message, {
+        title: "Could not load expense details",
+      });
       return;
     }
 
     if (!data) {
-      setDetailError("Record not found or not accessible in this business view.");
+      void alertError(
+        "Record not found or not accessible in this business view.",
+        { title: "Could not load expense details" },
+      );
       return;
     }
 
@@ -756,26 +871,31 @@ export default function ExpenseRegister({
     entry: ExpenseRegisterEntry & { pendingSync?: boolean },
   ) {
     if (entry.pendingSync) {
-      setError(
+      void alertError(
         "Queued offline expenses sync as recorded. Discard and re-add to change them.",
+        { title: "Cannot edit queued expense" },
       );
       return;
     }
     if (!isOnline) {
-      setError("Editing saved expenses requires a connection.");
+      void alertError("Editing saved expenses requires a connection.", {
+        title: "Connection required",
+      });
       return;
     }
     const linkedProductSaleCogs = linkedProductSaleCogsByExpenseId.get(
       entry.id,
     );
     if (linkedProductSaleCogs) {
-      setError(formatLinkedProductSaleCogsDeleteMessage(linkedProductSaleCogs));
+      void alertError(formatLinkedProductSaleCogsDeleteMessage(linkedProductSaleCogs), {
+        title: "Cannot edit expense",
+      });
       return;
     }
 
     const editLockMessage = resolveExpenseRegisterLockMessage(entry);
     if (editLockMessage) {
-      setError(editLockMessage);
+      void alertError(editLockMessage, { title: "Cannot edit expense" });
       return;
     }
     setEditingId(entry.id);
@@ -806,7 +926,10 @@ export default function ExpenseRegister({
           ? ""
           : String(entry.input_vat_amount),
       notes: entry.notes ?? "",
-      project_id: entry.project_id ?? "",
+      project_id: initialExpenseRegisterProjectFormValue(
+        entry.project_id,
+        initialProjects,
+      ),
     });
     setLoading(false);
     setShowForm(true);
@@ -827,17 +950,17 @@ export default function ExpenseRegister({
     }
 
     setMarkingPaidId(entry.id);
-    setError(null);
 
     const result = await markAutoPostedExpensePaid(supabase, entry);
     if (result.error) {
-      setError(result.error);
+      void alertError(result.error, { title: "Could not mark expense as paid" });
       setMarkingPaidId(null);
       await refreshEntries();
       return;
     }
 
     await refreshEntries();
+    toast("Expense marked as paid.");
     setMarkingPaidId(null);
   }
 
@@ -855,21 +978,25 @@ export default function ExpenseRegister({
     }
 
     if (!isOnline) {
-      setError("Deleting saved expenses requires a connection.");
+      void alertError("Deleting saved expenses requires a connection.", {
+        title: "Connection required",
+      });
       return;
     }
 
     if (target) {
       const deleteLockMessage = resolveExpenseRegisterLockMessage(target);
       if (deleteLockMessage) {
-        setError(deleteLockMessage);
+        void alertError(deleteLockMessage, { title: "Cannot delete expense" });
         return;
       }
     }
 
     const knownLink = linkedProductSaleCogsByExpenseId.get(id);
     if (knownLink) {
-      setError(formatLinkedProductSaleCogsDeleteMessage(knownLink));
+      void alertError(formatLinkedProductSaleCogsDeleteMessage(knownLink), {
+        title: "Cannot delete expense",
+      });
       return;
     }
 
@@ -878,11 +1005,10 @@ export default function ExpenseRegister({
     }
 
     setDeletingId(id);
-    setError(null);
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Cannot delete expense" });
       setDeletingId(null);
       return;
     }
@@ -894,7 +1020,9 @@ export default function ExpenseRegister({
           ?.business_unit_id,
       );
     } catch (accessError) {
-      setError(formatBusinessUnitAccessError(accessError));
+      void alertError(formatBusinessUnitAccessError(accessError), {
+        title: "Cannot delete expense",
+      });
       setDeletingId(null);
       return;
     }
@@ -906,10 +1034,11 @@ export default function ExpenseRegister({
         id,
       );
     } catch (lookupError) {
-      setError(
+      void alertError(
         lookupError instanceof Error
           ? lookupError.message
           : "Could not verify whether this expense is linked to a product sale.",
+        { title: "Could not delete expense" },
       );
       setDeletingId(null);
       return;
@@ -921,8 +1050,9 @@ export default function ExpenseRegister({
         next.set(id, linkedProductSaleCogs!);
         return next;
       });
-      setError(
+      void alertError(
         formatLinkedProductSaleCogsDeleteMessage(linkedProductSaleCogs),
+        { title: "Cannot delete expense" },
       );
       setDeletingId(null);
       return;
@@ -946,19 +1076,24 @@ export default function ExpenseRegister({
               next.set(id, fallbackLink);
               return next;
             });
-            setError(formatLinkedProductSaleCogsDeleteMessage(fallbackLink));
+            void alertError(
+              formatLinkedProductSaleCogsDeleteMessage(fallbackLink),
+              { title: "Cannot delete expense" },
+            );
           } else {
-            setError(
+            void alertError(
               "This expense is linked to a product sale and cannot be deleted directly. Cancel the original sale from Sales & CRM → Sales instead.",
+              { title: "Cannot delete expense" },
             );
           }
         } catch {
-          setError(
+          void alertError(
             "This expense is linked to a product sale and cannot be deleted directly. Cancel the original sale from Sales & CRM → Sales instead.",
+            { title: "Cannot delete expense" },
           );
         }
       } else {
-        setError(deleteError.message);
+        void alertError(deleteError.message, { title: "Could not delete expense" });
       }
       setDeletingId(null);
       return;
@@ -971,9 +1106,12 @@ export default function ExpenseRegister({
     );
 
     if (ledgerError) {
-      setError(
+      void alertError(
         `Entry deleted, but its tax ledger entries could not be removed: ${ledgerError}`,
+        { title: "Expense deleted with warnings" },
       );
+    } else {
+      toast("Expense deleted.");
     }
 
     if (editingId === id) {
@@ -984,15 +1122,80 @@ export default function ExpenseRegister({
     setDeletingId(null);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function buildExpenseRegisterValidityControls(): ExpenseRegisterFormValidityControls {
+    const subCategoryRoot = subCategoryFieldRef.current;
+    const supplierRoot = supplierFieldsRef.current;
+    return {
+      date: dateInputRef.current,
+      expenseCategory: expenseCategorySelectRef.current,
+      project: projectSelectRef.current,
+      subCategory: subCategoryRoot?.querySelector("select") ?? null,
+      vendorSelect: supplierRoot?.querySelector("select") ?? null,
+      vendorOther:
+        supplierRoot?.querySelector<HTMLInputElement>('input[type="text"]') ??
+        null,
+      price: priceInputRef.current,
+      quantity: quantityInputRef.current,
+      paymentStatus: paymentStatusSelectRef.current,
+    };
+  }
+
+  function clearNativeValidity(
+    control: HTMLInputElement | HTMLSelectElement | null | undefined,
+  ) {
+    control?.setCustomValidity("");
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    const formElement = expenseFormRef.current;
+    if (!formElement) {
+      return;
+    }
+
+    const editingEntry = editingId
+      ? entries.find((entry) => entry.id === editingId)
+      : null;
+    const validatePaymentStatus =
+      !editingEntry || !isSystemManagedExpenseRegisterRow(editingEntry);
+
+    syncExpenseRegisterFormCustomValidity(
+      buildExpenseRegisterValidityControls(),
+      {
+        form,
+        editingId,
+        hasActiveExpenseProjects,
+        validatePaymentStatus,
+        expenseCategories,
+        expenseSubcategories,
+      },
+    );
+
+    if (!formElement.reportValidity()) {
+      return;
+    }
+
+    const projectIdResult = resolveExpenseRegisterProjectIdForSave(
+      form.project_id,
+      hasActiveExpenseProjects,
+    );
+    if (!projectIdResult.ok) {
+      return;
+    }
+
+    const vendorName = resolveVendorNameFromSelect(
+      form.vendor_select,
+      form.vendor_other,
+      suppliers,
+    );
+
     setLoading(true);
-    setError(null);
 
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not save expense" });
       return;
     }
 
@@ -1006,7 +1209,9 @@ export default function ExpenseRegister({
             ?.business_unit_id,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        void alertError(formatBusinessUnitAccessError(accessError), {
+          title: "Could not save expense",
+        });
         return;
       }
     } else {
@@ -1015,66 +1220,15 @@ export default function ExpenseRegister({
         stamp: stampBusinessUnit,
       });
       if (!stampResult.ok) {
-        setError(stampResult.error);
+        void alertError(stampResult.error, { title: "Could not save expense" });
         return;
       }
       stampId = stampResult.businessUnitId;
     }
 
-    if (!editingId) {
-      const categoryError = validateNewExpenseRegisterCategory(
-        form.expense_category,
-        { categoryRows: expenseCategories },
-      );
-      if (categoryError) {
-        setError(categoryError);
-        return;
-      }
-      const subcategoryError = validateNewExpenseRegisterSubcategory(
-        form.expense_category,
-        form.sub_category,
-        expenseSubcategories,
-        expenseCategories,
-      );
-      if (subcategoryError) {
-        setError(subcategoryError);
-        return;
-      }
-    }
-
-    const editingEntry = editingId
-      ? entries.find((entry) => entry.id === editingId)
-      : null;
-    if (
-      !editingEntry ||
-      !isSystemManagedExpenseRegisterRow(editingEntry)
-    ) {
-      const paymentStatusError =
-        validateManualExpenseRegisterPaymentStatusForWrite(
-          form.payment_status,
-        );
-      if (paymentStatusError) {
-        setError(paymentStatusError);
-        return;
-      }
-    }
-
     const price = Number(form.price);
     const quantity = form.quantity.trim() === "" ? 1 : Number(form.quantity);
     const grossBeforeWht = calculateAmount(price, quantity);
-    const vendorName = resolveVendorNameFromSelect(
-      form.vendor_select,
-      form.vendor_other,
-      suppliers,
-    );
-    if (!vendorName) {
-      setError("Supplier is required.");
-      return;
-    }
-    if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
-      setError("Enter the one-time supplier name.");
-      return;
-    }
 
     const whtRate = form.has_wht_vat ? Number(form.wht_rate) || 0 : 0;
     const whtAmount = form.has_wht_vat
@@ -1097,7 +1251,10 @@ export default function ExpenseRegister({
       // Create only: blank → generate_next_code('EXP'); filled → keep vendor paper receipt #.
       const resolved = await resolveManualExpenseReceiptNo(supabase, form.receipt_no);
       if (resolved.error || !resolved.receiptNo) {
-        setError(resolved.error ?? "Unable to allocate receipt number.");
+        void alertError(
+          resolved.error ?? "Unable to allocate receipt number.",
+          { title: "Could not save expense" },
+        );
         return;
       }
       receiptNo = resolved.receiptNo;
@@ -1123,18 +1280,22 @@ export default function ExpenseRegister({
       input_vat_amount: purchaseTax.inputVatAmount,
       net_of_tax_amount: purchaseTax.netOfTaxAmount,
       notes: form.notes || null,
-      project_id: resolveOptionalProjectId(form.project_id),
+      project_id: projectIdResult.projectId,
     };
 
     if (offlineNow) {
       if (editingId) {
-        setError("Editing saved expenses requires a connection.");
+        void alertError("Editing saved expenses requires a connection.", {
+          title: "Connection required",
+        });
         return;
       }
       const session =
         writeQueue?.session ?? (await resolveClientCacheSession());
       if (!session) {
-        setError("Unable to queue offline — session not available.");
+        void alertError("Unable to queue offline — session not available.", {
+          title: "Could not queue expense",
+        });
         return;
       }
       const queuePayload: ExpenseQueuePayload = {
@@ -1162,17 +1323,28 @@ export default function ExpenseRegister({
         input_tax_component: purchaseTax.inputTaxComponent,
         notification_detail: formatGHS(purchaseTax.netPaidToSupplier),
       };
-      await enqueueWriteQueueItem({
-        session,
-        type: "expense",
-        payload: queuePayload,
-      });
+      try {
+        await enqueueWriteQueueItem({
+          session,
+          type: "expense",
+          payload: queuePayload,
+        });
+      } catch (queueError) {
+        void alertError(
+          queueError instanceof Error
+            ? queueError.message
+            : "Unable to queue the expense entry.",
+          { title: "Could not queue expense" },
+        );
+        return;
+      }
       try {
         await writeQueue?.refresh();
       } catch {
         // Entry is queued; list refresh on reconnect is enough if queue UI fails to reload.
       }
       closeForm();
+      toast("Expense queued for sync.");
       return;
     }
 
@@ -1185,7 +1357,7 @@ export default function ExpenseRegister({
         .eq("id", editingId);
 
       if (updateError) {
-        setError(updateError.message);
+        void alertError(updateError.message, { title: "Could not save expense" });
         return;
       }
     } else {
@@ -1199,7 +1371,10 @@ export default function ExpenseRegister({
         .single();
 
       if (insertError || !inserted) {
-        setError(insertError?.message ?? "Unable to save the expense entry.");
+        void alertError(
+          insertError?.message ?? "Unable to save the expense entry.",
+          { title: "Could not save expense" },
+        );
         return;
       }
 
@@ -1236,15 +1411,19 @@ export default function ExpenseRegister({
     }
 
     if (ledgerError) {
-      setError(
+      void alertError(
         `Entry saved, but the tax ledger could not be updated: ${ledgerError}`,
+        { title: "Expense saved with warnings" },
       );
+    } else {
+      toast(editingId ? "Expense updated." : "Expense saved.");
     }
     } catch (unexpected) {
-      setError(
+      void alertError(
         unexpected instanceof Error
           ? unexpected.message
           : "Unable to save the expense entry.",
+        { title: "Could not save expense" },
       );
     } finally {
       setLoading(false);
@@ -1279,6 +1458,7 @@ export default function ExpenseRegister({
   }
 
   function updatePrice(value: string) {
+    clearNativeValidity(priceInputRef.current);
     setForm((current) => {
       const next = { ...current, price: value };
       const gross = currentGrossString(next);
@@ -1292,6 +1472,7 @@ export default function ExpenseRegister({
   }
 
   function updateQuantity(value: string) {
+    clearNativeValidity(quantityInputRef.current);
     setForm((current) => {
       const next = { ...current, quantity: value };
       const gross = currentGrossString(next);
@@ -1364,18 +1545,16 @@ export default function ExpenseRegister({
         </p>
       ) : null}
 
-      {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       {showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingId ? "Edit Expense Entry" : "New Expense Entry"}
           </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            ref={expenseFormRef}
+            onSubmit={handleSubmit}
+            className="space-y-4"
+          >
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="md:col-span-2 xl:col-span-3">
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -1385,7 +1564,7 @@ export default function ExpenseRegister({
                   type="text"
                   value={form.description}
                   onChange={(e) => updateField("description", e.target.value)}
-                  className={inputClassName}
+                  className={expenseRegisterInputClassName()}
                 />
               </div>
               <div>
@@ -1393,11 +1572,15 @@ export default function ExpenseRegister({
                   Date
                 </label>
                 <input
+                  ref={dateInputRef}
                   type="date"
                   required
                   value={form.date}
-                  onChange={(e) => updateField("date", e.target.value)}
-                  className={inputClassName}
+                  onChange={(e) => {
+                    updateField("date", e.target.value);
+                    clearNativeValidity(dateInputRef.current);
+                  }}
+                  className={expenseRegisterInputClassName()}
                 />
               </div>
               <div>
@@ -1405,16 +1588,22 @@ export default function ExpenseRegister({
                   Expense Category
                 </label>
                 <select
-                  required
+                  ref={expenseCategorySelectRef}
+                  required={!editingId}
                   value={form.expense_category}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const value = e.target.value;
                     setForm((current) => ({
                       ...current,
-                      expense_category: e.target.value,
+                      expense_category: value,
                       sub_category: "",
-                    }))
-                  }
-                  className={inputClassName}
+                    }));
+                    clearNativeValidity(expenseCategorySelectRef.current);
+                    clearNativeValidity(
+                      subCategoryFieldRef.current?.querySelector("select"),
+                    );
+                  }}
+                  className={expenseRegisterInputClassName()}
                   disabled={createLookups.loading}
                 >
                   <option value="">Select category</option>
@@ -1430,61 +1619,92 @@ export default function ExpenseRegister({
                   </p>
                 ) : null}
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Project / Contract
-                </label>
-                <select
-                  value={form.project_id}
-                  onChange={(e) => updateField("project_id", e.target.value)}
-                  className={inputClassName}
-                >
-                  <option value="">Unassigned</option>
-                  {initialProjects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.project_code} — {project.project_name}
-                      {project.is_archived ? " (Inactive)" : ""}
+              {hasActiveExpenseProjects ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Contract / Project
+                  </label>
+                  <select
+                    ref={projectSelectRef}
+                    required
+                    value={form.project_id}
+                    onChange={(e) => {
+                      updateField("project_id", e.target.value);
+                      clearNativeValidity(projectSelectRef.current);
+                    }}
+                    className={expenseRegisterInputClassName()}
+                  >
+                    <option value="">Select contract or project…</option>
+                    <option value={EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE}>
+                      Company overhead (not tied to a contract)
                     </option>
-                  ))}
-                </select>
-              </div>
-              <div>
+                    {expenseFormProjectOptions.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.project_code} — {project.project_name}
+                        {project.is_archived ? " (Inactive)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              <div ref={subCategoryFieldRef}>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Sub-Category
                 </label>
                 <ExpenseRegisterSubCategorySelect
                   expenseCategory={form.expense_category}
                   value={form.sub_category}
-                  onChange={(value) => updateField("sub_category", value)}
+                  onChange={(value) => {
+                    updateField("sub_category", value);
+                    clearNativeValidity(
+                      subCategoryFieldRef.current?.querySelector("select"),
+                    );
+                  }}
                   allSubcategories={expenseSubcategories}
                   expenseCategories={expenseCategories}
                   disabled={createLookups.loading}
                 />
               </div>
-              <ExpenseRegisterSupplierFields
-                vendorSelect={form.vendor_select}
-                vendorOther={form.vendor_other}
-                onVendorSelectChange={(value) =>
-                  updateField("vendor_select", value)
-                }
-                onVendorOtherChange={(value) =>
-                  updateField("vendor_other", value)
-                }
-                suppliers={toVendorSupplierOptions(suppliers)}
-                disabled={createLookups.loading}
-              />
+              <div ref={supplierFieldsRef} className="contents">
+                <ExpenseRegisterSupplierFields
+                  vendorSelect={form.vendor_select}
+                  vendorOther={form.vendor_other}
+                  onVendorSelectChange={(value) => {
+                    updateField("vendor_select", value);
+                    clearNativeValidity(
+                      supplierFieldsRef.current?.querySelector("select"),
+                    );
+                    clearNativeValidity(
+                      supplierFieldsRef.current?.querySelector<HTMLInputElement>(
+                        'input[type="text"]',
+                      ),
+                    );
+                  }}
+                  onVendorOtherChange={(value) => {
+                    updateField("vendor_other", value);
+                    clearNativeValidity(
+                      supplierFieldsRef.current?.querySelector<HTMLInputElement>(
+                        'input[type="text"]',
+                      ),
+                    );
+                  }}
+                  suppliers={toVendorSupplierOptions(suppliers)}
+                  disabled={createLookups.loading}
+                />
+              </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Price
                 </label>
                 <input
+                  ref={priceInputRef}
                   type="number"
                   min="0"
                   step="0.01"
                   required
                   value={form.price}
                   onChange={(e) => updatePrice(e.target.value)}
-                  className={inputClassName}
+                  className={expenseRegisterInputClassName()}
                 />
                 <p className="mt-1 text-xs text-slate-500">
                   Unit price before WHT (gross line = Price × Quantity).
@@ -1495,13 +1715,14 @@ export default function ExpenseRegister({
                   Quantity
                 </label>
                 <input
+                  ref={quantityInputRef}
                   type="number"
                   min="1"
                   step="1"
                   value={form.quantity}
                   onChange={(e) => updateQuantity(e.target.value)}
                   placeholder="1"
-                  className={inputClassName}
+                  className={expenseRegisterInputClassName()}
                 />
               </div>
               <div className="md:col-span-2 xl:col-span-3">
@@ -1524,7 +1745,7 @@ export default function ExpenseRegister({
                     <select
                       value={form.wht_rate}
                       onChange={(e) => updateWhtRate(e.target.value)}
-                      className={inputClassName}
+                      className={expenseRegisterInputClassName()}
                     >
                       {whtRateOptions.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -1543,7 +1764,7 @@ export default function ExpenseRegister({
                       step="0.01"
                       value={form.wht_amount}
                       onChange={(e) => updateWhtAmount(e.target.value)}
-                      className={inputClassName}
+                      className={expenseRegisterInputClassName()}
                     />
                     <p className="mt-1 text-xs text-slate-500">
                       Auto-calculated from Gross × rate. Edit to match the
@@ -1562,7 +1783,7 @@ export default function ExpenseRegister({
                       onChange={(e) =>
                         updateField("input_vat_amount", e.target.value)
                       }
-                      className={inputClassName}
+                      className={expenseRegisterInputClassName()}
                     />
                     <p className="mt-1 text-xs text-slate-500">
                       Optional — VAT/NHIL/GETFund on this purchase (reclaimable
@@ -1579,7 +1800,7 @@ export default function ExpenseRegister({
                   required
                   value={form.payment_method}
                   onChange={(e) => updateField("payment_method", e.target.value)}
-                  className={inputClassName}
+                  className={expenseRegisterInputClassName()}
                 >
                   <option value="">Select payment method</option>
                   {paymentMethods.map((method) => (
@@ -1597,7 +1818,7 @@ export default function ExpenseRegister({
                   required
                   value={form.approved_by}
                   onChange={(e) => updateField("approved_by", e.target.value)}
-                  className={inputClassName}
+                  className={expenseRegisterInputClassName()}
                 >
                   <option value="">Select approver</option>
                   {approvers.map((approver) => (
@@ -1618,15 +1839,17 @@ export default function ExpenseRegister({
                   Payment Status
                 </label>
                 <select
+                  ref={paymentStatusSelectRef}
                   required
                   value={
                     form.payment_status ||
                     MANUAL_EXPENSE_REGISTER_PAYMENT_STATUS
                   }
-                  onChange={(e) =>
-                    updateField("payment_status", e.target.value)
-                  }
-                  className={inputClassName}
+                  onChange={(e) => {
+                    updateField("payment_status", e.target.value);
+                    clearNativeValidity(paymentStatusSelectRef.current);
+                  }}
+                  className={expenseRegisterInputClassName()}
                 >
                   {manualPaymentStatusOptions.map((status) => (
                     <option key={status} value={status}>
@@ -1655,7 +1878,7 @@ export default function ExpenseRegister({
                   rows={3}
                   value={form.notes}
                   onChange={(e) => updateField("notes", e.target.value)}
-                  className={inputClassName}
+                  className={expenseRegisterInputClassName()}
                 />
               </div>
             </div>
@@ -1714,6 +1937,7 @@ export default function ExpenseRegister({
           subCategoryFilter,
           descriptionFilter,
           paymentStatusFilter,
+          projectSiteFilter,
           dateFilter,
         )}
       />
@@ -1749,6 +1973,14 @@ export default function ExpenseRegister({
                 </th>
                 <th className={scrollableTableThClassName}>
                   <RegisterColumnFilterHeader
+                    label="Contract / Project"
+                    options={projectSiteOptions}
+                    applied={projectSiteFilter}
+                    onApply={setProjectSiteFilter}
+                  />
+                </th>
+                <th className={scrollableTableThClassName}>
+                  <RegisterColumnFilterHeader
                     label="Sub-Category"
                     options={subCategoryOptions}
                     applied={subCategoryFilter}
@@ -1775,7 +2007,7 @@ export default function ExpenseRegister({
               {entries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={12}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No expense register entries yet.
@@ -1784,7 +2016,7 @@ export default function ExpenseRegister({
               ) : visibleEntries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={12}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No entries match the current filters.
@@ -1901,6 +2133,13 @@ export default function ExpenseRegister({
                         className={`${scrollableTableRegisterCategoryCellClassName} ${registerTruncatedCellHostClassName}`}
                       >
                         <TruncatedCell>{entry.expense_category}</TruncatedCell>
+                      </td>
+                      <td
+                        className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
+                      >
+                        <TruncatedCell>
+                          {contractSiteLabelForEntry(entry)}
+                        </TruncatedCell>
                       </td>
                       <td
                         className={`px-4 py-3 ${registerTruncatedCellHostClassName}`}
@@ -2026,7 +2265,6 @@ export default function ExpenseRegister({
             : []
         }
         loading={detailLoading}
-        error={detailError}
         onClose={closeExpenseDetail}
         onEdit={
           detailExpense

@@ -8,6 +8,7 @@ import {
   loadWriteBusinessUnitContext,
 } from "@/utils/business-unit-access";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
+import { normalizeExpenseRegisterProjectIdForDatabase } from "@/app/dashboard/finance/expense-register-utils";
 import { validateNewExpenseRegisterCategory } from "@/utils/expense-register-category-guard";
 import { validateManualExpenseRegisterPaymentStatusForWrite } from "@/utils/manual-expense-payment-status";
 
@@ -118,7 +119,9 @@ export async function syncExpenseQueueItem(
       input_vat_amount: payload.input_vat_amount,
       net_of_tax_amount: payload.net_of_tax_amount,
       notes: payload.notes,
-      project_id: payload.project_id ?? null,
+      project_id: normalizeExpenseRegisterProjectIdForDatabase(
+        payload.project_id,
+      ),
       business_unit_id: payload.business_unit_id ?? null,
     };
 
