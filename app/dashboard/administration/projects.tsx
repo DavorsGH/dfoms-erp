@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAlert, useToast } from "@/components/feedback";
 import { createClient } from "@/utils/supabase/client";
+import type { ServiceContractListRow } from "@/utils/service-contracts-types";
 import {
   formatProjectDeleteBlockedByEmployeesMessage,
   getProjectDeleteErrorMessage,
@@ -20,10 +22,13 @@ import ScrollableTable, {
   scrollableTableThClassName,
 } from "../scrollable-table";
 import {
+  formatProjectClientContractLabel,
+  formatServiceContractOptionLabel,
   getProjectClientName,
   getProjectSiteCount,
   normalizeProjectEntry,
   PROJECT_SELECT,
+  shouldShowServiceContractInProjectForm,
   type ProjectEntry,
 } from "./projects-utils";
 import {
@@ -55,6 +60,7 @@ type ProjectsProps = {
   initialProjects: ProjectEntry[];
   initialSites: SiteEntry[];
   initialClients: ClientEntry[];
+  initialServiceContracts: ServiceContractListRow[];
   /** employee count keyed by project_code */
   initialEmployeeCountByProjectCode?: Record<string, number>;
   fetchError: string | null;
@@ -63,6 +69,7 @@ type ProjectsProps = {
 const emptyContractForm = {
   project_code: "",
   project_name: "",
+  service_contract_id: "",
 };
 
 export default function Projects({
@@ -70,10 +77,13 @@ export default function Projects({
   initialProjects,
   initialSites,
   initialClients,
+  initialServiceContracts,
   initialEmployeeCountByProjectCode = {},
   fetchError,
 }: ProjectsProps) {
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const scopedTenantId = assertTenantIdForMutation(tenantId);
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
@@ -95,10 +105,36 @@ export default function Projects({
   const [siteStaffValue, setSiteStaffValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
+  const [serviceContracts] = useState(initialServiceContracts);
 
   useEffect(() => {
     setProjects(initialProjects.map(normalizeProjectEntry));
   }, [initialProjects]);
+
+  const serviceContractsById = useMemo(
+    () => new Map(serviceContracts.map((contract) => [contract.id, contract])),
+    [serviceContracts],
+  );
+
+  const formLinkedServiceContractId = useMemo(() => {
+    const trimmed = contractForm.service_contract_id.trim();
+    return trimmed ? trimmed : null;
+  }, [contractForm.service_contract_id]);
+
+  const serviceContractFormOptions = useMemo(
+    () =>
+      [...serviceContracts]
+        .filter((contract) =>
+          shouldShowServiceContractInProjectForm(
+            contract,
+            formLinkedServiceContractId,
+          ),
+        )
+        .sort((left, right) =>
+          left.contract_number.localeCompare(right.contract_number),
+        ),
+    [formLinkedServiceContractId, serviceContracts],
+  );
 
   useEffect(() => {
     setSites(initialSites.map(normalizeSiteEntry));
@@ -205,6 +241,7 @@ export default function Projects({
     setContractForm({
       project_code: project.project_code,
       project_name: project.project_name,
+      service_contract_id: project.service_contract_id ?? "",
     });
     setShowContractForm(true);
   }
@@ -350,7 +387,7 @@ export default function Projects({
 
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      await alertError(buContext.error);
       setLoading(false);
       return;
     }
@@ -360,14 +397,18 @@ export default function Projects({
       stamp: stampBusinessUnit,
     });
     if (!stampResult.ok) {
-      setError(stampResult.error);
+      await alertError(stampResult.error);
       setLoading(false);
       return;
     }
 
+    const serviceContractId =
+      contractForm.service_contract_id.trim() || null;
+
     const payload = {
       project_code: contractForm.project_code.trim(),
       project_name: contractForm.project_name.trim(),
+      service_contract_id: serviceContractId,
     };
 
     if (editingCode) {
@@ -380,7 +421,7 @@ export default function Projects({
           existing?.business_unit_id,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        await alertError(formatBusinessUnitAccessError(accessError));
         setLoading(false);
         return;
       }
@@ -391,23 +432,29 @@ export default function Projects({
           supabase,
           "projects",
           scopedTenantId,
-          { project_name: payload.project_name },
+          {
+            project_name: payload.project_name,
+            service_contract_id: payload.service_contract_id,
+          },
           { project_code: editingCode },
         )
       : await supabase.from("projects").insert({
-          ...payload,
+          project_code: payload.project_code,
+          project_name: payload.project_name,
+          service_contract_id: payload.service_contract_id,
           tenant_id: scopedTenantId,
           business_unit_id: stampResult.businessUnitId,
         });
 
     if (saveError) {
-      setError(saveError.message);
+      await alertError(saveError.message);
       setLoading(false);
       return;
     }
 
     closeContractForm();
     await refreshData();
+    toast(editingCode ? "Contract updated." : "Contract added.");
     setLoading(false);
   }
 
@@ -522,6 +569,32 @@ export default function Projects({
                     className={inputClassName}
                   />
                 </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Client Contract
+                  </label>
+                  <select
+                    value={contractForm.service_contract_id}
+                    onChange={(event) =>
+                      setContractForm((current) => ({
+                        ...current,
+                        service_contract_id: event.target.value,
+                      }))
+                    }
+                    className={inputClassName}
+                  >
+                    <option value="">None (internal / overhead)</option>
+                    {serviceContractFormOptions.map((contract) => (
+                      <option key={contract.id} value={contract.id}>
+                        {formatServiceContractOptionLabel(contract)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Link this site to the client contract it serves. Sites with
+                    no contract are treated as company overhead.
+                  </p>
+                </div>
               </div>
               <div className="flex gap-3">
                 <button
@@ -550,6 +623,7 @@ export default function Projects({
               <tr>
                 <th className={scrollableTableThClassName}>Project Code</th>
                 <th className={scrollableTableThClassName}>Contract Name</th>
+                <th className={scrollableTableThClassName}>Client Contract</th>
                 <th className={scrollableTableThClassName}>Customer</th>
                 <th className={scrollableTableThClassName}>Sites</th>
                 <th className={scrollableTableThClassName}>Actions</th>
@@ -559,7 +633,7 @@ export default function Projects({
               {contractProjects.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No contract projects configured yet.
@@ -588,6 +662,12 @@ export default function Projects({
                             </span>
                           ) : null}
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatProjectClientContractLabel(
+                          project.service_contract_id,
+                          serviceContractsById,
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {getProjectClientName(project, sites)}

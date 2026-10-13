@@ -1,4 +1,5 @@
 import type { SiteEntry } from "../operations/sites-utils";
+import type { ServiceContractListRow } from "@/utils/service-contracts-types";
 
 export type ProjectSite = {
   site_code: string;
@@ -16,6 +17,7 @@ export type ProjectEntry = {
   id: string;
   project_code: string;
   project_name: string;
+  service_contract_id: string | null;
   required_staff?: number | null;
   business_unit_id?: string | null;
   is_archived: boolean;
@@ -23,7 +25,7 @@ export type ProjectEntry = {
 };
 
 export const PROJECT_SELECT =
-  "id, project_code, project_name, required_staff, business_unit_id, is_archived, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
+  "id, project_code, project_name, service_contract_id, required_staff, business_unit_id, is_archived, sites:sites!sites_project_id_fkey(site_code, site_name, client_id, required_staff, project_id)";
 
 export const CONTRACT_PROJECT_SELECT =
   "id, project_code, project_name, is_archived";
@@ -52,9 +54,53 @@ export function normalizeProjectEntry(raw: ProjectEntry): ProjectEntry {
 
   return {
     ...raw,
+    service_contract_id: raw.service_contract_id ?? null,
     is_archived: raw.is_archived ?? false,
     sites,
   };
+}
+
+export function getServiceContractClientName(
+  contract: Pick<ServiceContractListRow, "client" | "client_id">,
+): string {
+  const client = contract.client;
+  if (client && typeof client === "object" && "client_name" in client) {
+    return client.client_name ?? "";
+  }
+  return "";
+}
+
+export function formatServiceContractOptionLabel(
+  contract: Pick<ServiceContractListRow, "contract_number" | "client" | "client_id">,
+): string {
+  const clientName = getServiceContractClientName(contract);
+  return clientName
+    ? `${contract.contract_number} — ${clientName}`
+    : contract.contract_number;
+}
+
+export function shouldShowServiceContractInProjectForm(
+  contract: Pick<ServiceContractListRow, "id" | "status">,
+  linkedContractId: string | null,
+): boolean {
+  if (contract.status === "terminated") {
+    return contract.id === linkedContractId;
+  }
+  return true;
+}
+
+export function formatProjectClientContractLabel(
+  serviceContractId: string | null,
+  contractsById: ReadonlyMap<string, ServiceContractListRow>,
+): string {
+  if (!serviceContractId) {
+    return "Overhead";
+  }
+  const contract = contractsById.get(serviceContractId);
+  if (!contract) {
+    return "Overhead";
+  }
+  return formatServiceContractOptionLabel(contract);
 }
 
 export function getProjectSiteCount(project: ProjectEntry): number {

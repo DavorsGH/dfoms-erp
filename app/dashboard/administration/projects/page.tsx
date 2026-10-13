@@ -20,6 +20,11 @@ import {
   PROJECT_SELECT,
   type ProjectEntry,
 } from "../projects-utils";
+import {
+  normalizeServiceContractListRow,
+  SERVICE_CONTRACT_LIST_SELECT,
+  type ServiceContractListRow,
+} from "@/utils/service-contracts-types";
 
 export default async function ProjectsPage() {
   const cookieStore = await cookies();
@@ -51,12 +56,17 @@ export default async function ProjectsPage() {
     .from("employees")
     .select("contract_project")
     .not("contract_project", "is", null);
+  const serviceContractsQuery = supabase
+    .from("service_contracts")
+    .select(SERVICE_CONTRACT_LIST_SELECT)
+    .order("contract_number", { ascending: true });
 
   if (tenantId) {
     projectsQuery.eq("tenant_id", tenantId);
     sitesQuery.eq("tenant_id", tenantId);
     clientsQuery.eq("tenant_id", tenantId);
     employeesQuery.eq("tenant_id", tenantId);
+    serviceContractsQuery.eq("tenant_id", tenantId);
   }
 
   const [
@@ -64,11 +74,13 @@ export default async function ProjectsPage() {
     { data: sites, error: sitesError },
     { data: clients, error: clientsError },
     { data: employees, error: employeesError },
+    { data: serviceContracts, error: serviceContractsError },
   ] = await Promise.all([
     projectsQuery,
     sitesQuery,
     clientsQuery,
     employeesQuery,
+    serviceContractsQuery,
   ]);
 
   const employeeCountByProjectCode: Record<string, number> = {};
@@ -106,12 +118,18 @@ export default async function ProjectsPage() {
         }
         initialSites={(sites as SiteEntry[] | null) ?? []}
         initialClients={(clients as ClientEntry[] | null) ?? []}
+        initialServiceContracts={
+          ((serviceContracts as ServiceContractListRow[] | null) ?? []).map(
+            (row) => normalizeServiceContractListRow(row),
+          )
+        }
         initialEmployeeCountByProjectCode={employeeCountByProjectCode}
         fetchError={
           error?.message ??
           sitesError?.message ??
           clientsError?.message ??
           employeesError?.message ??
+          serviceContractsError?.message ??
           null
         }
       />
