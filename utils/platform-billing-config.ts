@@ -1,6 +1,9 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logSystemEvent } from "@/lib/system-event-log";
+import { resolveTenantPrimaryBusinessUnitId } from "@/utils/business-units-server";
+import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
 
 /** Config key for platform_only per-unit activation / monthly metered price (GHS). */
 export const PLATFORM_ONLY_UNIT_ACTIVATION_CONFIG_KEY =
@@ -17,6 +20,10 @@ export const PLATFORM_ONLY_UNIT_CAP_CONFIG_KEY =
 /** Config key for ERP referral reward amount (GHS). */
 export const REFERRAL_REWARD_GHS_CONFIG_KEY = "referral_reward_ghs" as const;
 
+/** Config key for Davors business unit receiving platform billing finance postings. */
+export const PLATFORM_BILLING_BUSINESS_UNIT_CONFIG_KEY =
+  "platform_billing_business_unit" as const;
+
 /** Fallback when DB row is missing (pre-migration or read failure). */
 export const DEFAULT_PLATFORM_ONLY_UNIT_ACTIVATION_PRICE_GHS = 110;
 
@@ -30,6 +37,13 @@ type PlatformBillingConfigRow = {
   config_key: string;
   price_ghs: number | string;
   updated_at: string;
+  business_unit_id?: string | null;
+};
+
+export type PlatformBillingBusinessUnitConfig = {
+  configKey: typeof PLATFORM_BILLING_BUSINESS_UNIT_CONFIG_KEY;
+  businessUnitId: string | null;
+  updatedAt: string | null;
 };
 
 export type PlatformOnlyUnitActivationPricing = {
@@ -335,6 +349,148 @@ export async function updateReferralRewardGhs(
     {
       config_key: REFERRAL_REWARD_GHS_CONFIG_KEY,
       price_ghs: rewardGhs,
+      updated_at: now,
+    },
+    { onConflict: "config_key" },
+  );
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  return { ok: true };
+}
+
+function parseBusinessUnitId(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function isActiveDavorsBusinessUnit(
+  admin: SupabaseClient,
+  businessUnitId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("business_units")
+    .select("id")
+    .eq("id", businessUnitId)
+    .eq("tenant_id", DAVORS_TENANT_ID)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `[platform-billing-config] business unit validation failed: ${error.message}`,
+    );
+  }
+
+  return Boolean(data?.id);
+}
+
+export async function getPlatformBillingBusinessUnitConfig(
+  admin: SupabaseClient,
+): Promise<PlatformBillingBusinessUnitConfig> {
+  const { data, error } = await admin
+    .from("platform_billing_config")
+    .select("config_key, business_unit_id, updated_at")
+    .eq("config_key", PLATFORM_BILLING_BUSINESS_UNIT_CONFIG_KEY)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(
+      "[platform-billing-config] platform billing BU read failed:",
+      error.message,
+    );
+    return {
+      configKey: PLATFORM_BILLING_BUSINESS_UNIT_CONFIG_KEY,
+      businessUnitId: null,
+      updatedAt: null,
+    };
+  }
+
+  const row = data as PlatformBillingConfigRow | null;
+  return {
+    configKey: PLATFORM_BILLING_BUSINESS_UNIT_CONFIG_KEY,
+    businessUnitId: parseBusinessUnitId(row?.business_unit_id),
+    updatedAt: row?.updated_at ?? null,
+  };
+}
+
+/**
+ * Business unit for platform billing income and related Paystack fee expenses.
+ * Falls back to Davors primary BU and logs a warning when config is missing/invalid.
+ */
+export async function resolvePlatformBillingBusinessUnitId(
+  admin: SupabaseClient,
+): Promise<string | null> {
+  const config = await getPlatformBillingBusinessUnitConfig(admin);
+  const configuredId = config.businessUnitId;
+
+  if (configuredId && (await isActiveDavorsBusinessUnit(admin, configuredId))) {
+    return configuredId;
+  }
+
+  const primaryId = await resolveTenantPrimaryBusinessUnitId(
+    admin,
+    DAVORS_TENANT_ID,
+  );
+
+  if (primaryId) {
+    void logSystemEvent({
+      eventType: "payment",
+      eventName: "platform_billing_business_unit_fallback",
+      status: "warning",
+      message:
+        configuredId == null
+          ? "Platform billing business unit setting is missing; using Davors primary business unit."
+          : "Platform billing business unit setting is invalid or inactive; using Davors primary business unit.",
+      metadata: {
+        configured_business_unit_id: configuredId,
+        fallback_business_unit_id: primaryId,
+      },
+    });
+    return primaryId;
+  }
+
+  void logSystemEvent({
+    eventType: "payment",
+    eventName: "platform_billing_business_unit_fallback",
+    status: "warning",
+    message:
+      "Platform billing business unit could not be resolved (no valid setting or primary business unit).",
+    metadata: {
+      configured_business_unit_id: configuredId,
+    },
+  });
+
+  return null;
+}
+
+export async function updatePlatformBillingBusinessUnitId(
+  admin: SupabaseClient,
+  businessUnitId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = businessUnitId.trim();
+  if (!id) {
+    return { ok: false, error: "business_unit_id is required." };
+  }
+
+  if (!(await isActiveDavorsBusinessUnit(admin, id))) {
+    return {
+      ok: false,
+      error: "Choose an active business unit in the Davors workspace.",
+    };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await admin.from("platform_billing_config").upsert(
+    {
+      config_key: PLATFORM_BILLING_BUSINESS_UNIT_CONFIG_KEY,
+      price_ghs: 0,
+      business_unit_id: id,
       updated_at: now,
     },
     { onConflict: "config_key" },

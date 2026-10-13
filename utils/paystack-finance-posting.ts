@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { roundGhs } from "@/utils/product-sale-paystack";
 import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
-import { resolveTenantPrimaryBusinessUnitId } from "@/utils/business-units-server";
+import { resolvePlatformBillingBusinessUnitId } from "@/utils/platform-billing-config";
 
 /** Paystack Ghana transaction fee rate applied platform-wide. */
 export const PAYSTACK_TRANSACTION_FEE_RATE = 0.0195;
@@ -329,11 +329,11 @@ export async function postPaystackIncomeRegisterEntry(
   }
 
   const paymentDate = resolvePaystackPaymentDate(options.paidAt);
-  const businessUnitId = isPlatformPaystackIncomeServiceCategory(
-    options.serviceCategory,
-  )
-    ? await resolveTenantPrimaryBusinessUnitId(admin, options.tenantId)
-    : null;
+  const businessUnitId =
+    options.tenantId === DAVORS_TENANT_ID &&
+    isPlatformPaystackIncomeServiceCategory(options.serviceCategory)
+      ? await resolvePlatformBillingBusinessUnitId(admin)
+      : null;
 
   const { error: insertError } = await admin.from("income_register").insert({
     tenant_id: options.tenantId,
@@ -391,15 +391,19 @@ export async function postPaystackFeeToExpenseRegister(
     return "already_posted";
   }
 
-  const businessUnitId = await resolvePaystackExpenseBusinessUnitId(
-    admin,
-    options.tenantId,
-    {
-      businessUnitId: options.businessUnitId,
-      invoiceNo: options.invoiceNo,
-      incomeIds: options.incomeIds,
-    },
-  );
+  const invoiceNo = options.invoiceNo?.trim() ?? "";
+  const isDavorsPlatformBillingPaystackFee =
+    options.tenantId === DAVORS_TENANT_ID &&
+    !options.businessUnitId?.trim() &&
+    invoiceNo.startsWith(PAYSTACK_INCOME_INVOICE_PREFIX);
+
+  const businessUnitId = isDavorsPlatformBillingPaystackFee
+    ? await resolvePlatformBillingBusinessUnitId(admin)
+    : await resolvePaystackExpenseBusinessUnitId(admin, options.tenantId, {
+        businessUnitId: options.businessUnitId,
+        invoiceNo: options.invoiceNo,
+        incomeIds: options.incomeIds,
+      });
 
   const paymentDate = resolvePaystackPaymentDate(options.paidAt);
   const { error: insertError } = await admin.from("expense_register").insert({

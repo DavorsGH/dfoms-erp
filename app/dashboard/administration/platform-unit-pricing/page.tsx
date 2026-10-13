@@ -2,11 +2,15 @@ import { redirect } from "next/navigation";
 import { isDavorsPlatformSuperAdmin } from "@/utils/dashboard-auth";
 import { createAdminClient } from "@/utils/supabase/admin";
 import {
+  getPlatformBillingBusinessUnitConfig,
   getPlatformOnlyUnitActivationPricing,
   getPlatformOnlyUnitAnnualPricing,
   getPlatformOnlyUnitCapConfig,
   getReferralRewardGhsConfig,
 } from "@/utils/platform-billing-config";
+import { BUSINESS_UNIT_SELECT, type BusinessUnitRow } from "@/utils/business-units-types";
+import { DAVORS_TENANT_ID } from "@/utils/tenant-signup";
+import PlatformBillingBusinessUnit from "../platform-billing-business-unit";
 import PlatformUnitPricing, {
   type PlatformUnitPricingRow,
 } from "../platform-unit-pricing";
@@ -17,13 +21,28 @@ export default async function PlatformUnitPricingPage() {
   }
 
   const admin = createAdminClient();
-  const [monthlyPricing, annualPricing, capConfig, referralReward] =
-    await Promise.all([
-      getPlatformOnlyUnitActivationPricing(admin),
-      getPlatformOnlyUnitAnnualPricing(admin),
-      getPlatformOnlyUnitCapConfig(admin),
-      getReferralRewardGhsConfig(admin),
-    ]);
+  const [
+    monthlyPricing,
+    annualPricing,
+    capConfig,
+    referralReward,
+    platformBillingBu,
+    businessUnitsResult,
+  ] = await Promise.all([
+    getPlatformOnlyUnitActivationPricing(admin),
+    getPlatformOnlyUnitAnnualPricing(admin),
+    getPlatformOnlyUnitCapConfig(admin),
+    getReferralRewardGhsConfig(admin),
+    getPlatformBillingBusinessUnitConfig(admin),
+    admin
+      .from("business_units")
+      .select(BUSINESS_UNIT_SELECT)
+      .eq("tenant_id", DAVORS_TENANT_ID)
+      .order("name", { ascending: true }),
+  ]);
+
+  const businessUnits = (businessUnitsResult.data as BusinessUnitRow[] | null) ?? [];
+  const businessUnitFetchError = businessUnitsResult.error?.message ?? null;
 
   const initialRows: PlatformUnitPricingRow[] = [
     {
@@ -61,6 +80,14 @@ export default async function PlatformUnitPricingPage() {
       <h2 className="mb-6 text-xl font-semibold text-[#0f2744]">
         Platform Unit Pricing
       </h2>
+      <div className="mb-8">
+        <PlatformBillingBusinessUnit
+          businessUnits={businessUnits}
+          initialBusinessUnitId={platformBillingBu.businessUnitId}
+          initialUpdatedAt={platformBillingBu.updatedAt}
+          fetchError={businessUnitFetchError}
+        />
+      </div>
       <PlatformUnitPricing initialRows={initialRows} fetchError={null} />
     </>
   );
