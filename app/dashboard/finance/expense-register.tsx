@@ -142,6 +142,14 @@ import { enqueueWriteQueueItem } from "@/lib/offline-write-queue/store";
 import type { ExpenseQueuePayload } from "@/lib/offline-write-queue/types";
 import { resolveClientCacheSession } from "@/lib/client-cache/session-context";
 import type { ContractProjectOption } from "../administration/projects-utils";
+import ExpenseRegisterBulkProjectDialog from "./expense-register-bulk-project-dialog";
+import {
+  bulkAssignExpenseRegisterProjectIds,
+  expenseBulkProjectSelectionBlockTooltip,
+  explainExpenseBulkProjectSelectionBlock,
+  normalizeBulkAssignProjectFormValue,
+} from "./expense-register-bulk-project-utils";
+import { resolveSessionTenantId } from "@/utils/session-tenant-client";
 import {
   isApAccrualExpenseRegisterRow,
   isSystemManagedExpenseRegisterRow,
@@ -310,6 +318,12 @@ export default function ExpenseRegister({
     null,
   );
   const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [bulkProjectDialogOpen, setBulkProjectDialogOpen] = useState(false);
+  const [bulkProjectDialogKey, setBulkProjectDialogKey] = useState(0);
+  const [bulkProjectAssigning, setBulkProjectAssigning] = useState(false);
 
   const defaultWhtRate = formatRateValue(resolveDefaultWhtRate(taxSettings));
 
@@ -721,6 +735,233 @@ export default function ExpenseRegister({
     }
     return Math.round(total * 100) / 100;
   }, [visibleEntries]);
+
+  const isEntrySelectableForBulkProject = useCallback(
+    (entry: ExpenseRegisterEntry & { pendingSync?: boolean }) =>
+      explainExpenseBulkProjectSelectionBlock(entry) === null,
+    [],
+  );
+
+  const visibleSelectableEntries = useMemo(
+    () =>
+      visibleEntries.filter((entry) =>
+        isEntrySelectableForBulkProject(
+          entry as ExpenseRegisterEntry & { pendingSync?: boolean },
+        ),
+      ),
+    [visibleEntries, isEntrySelectableForBulkProject],
+  );
+
+  const visibleEntryIdSet = useMemo(
+    () => new Set(visibleEntries.map((entry) => entry.id)),
+    [visibleEntries],
+  );
+
+  const visibleEntryIdsKey = useMemo(
+    () => [...visibleEntryIdSet].sort().join("\0"),
+    [visibleEntryIdSet],
+  );
+
+  useEffect(() => {
+    setSelectedExpenseIds((current) => {
+      if (current.size === 0) {
+        return current;
+      }
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of current) {
+        if (visibleEntryIdSet.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [visibleEntryIdsKey, visibleEntryIdSet]);
+
+  const selectedVisibleSelectableEntries = useMemo(
+    () =>
+      visibleSelectableEntries.filter((entry) =>
+        selectedExpenseIds.has(entry.id),
+      ),
+    [visibleSelectableEntries, selectedExpenseIds],
+  );
+
+  const selectedBulkCount = selectedVisibleSelectableEntries.length;
+
+  const selectedBulkTotal = useMemo(() => {
+    let total = 0;
+    for (const entry of selectedVisibleSelectableEntries) {
+      total += Number(entry.amount) || 0;
+    }
+    return Math.round(total * 100) / 100;
+  }, [selectedVisibleSelectableEntries]);
+
+  const entriesByIdForBulk = useMemo(() => {
+    const map = new Map<
+      string,
+      ExpenseRegisterEntry & { business_unit_id?: string | null }
+    >();
+    for (const entry of entries) {
+      map.set(entry.id, entry as ExpenseRegisterEntry & { business_unit_id?: string | null });
+    }
+    return map;
+  }, [entries]);
+
+  const allVisibleSelectableSelected =
+    visibleSelectableEntries.length > 0 &&
+    visibleSelectableEntries.every((entry) => selectedExpenseIds.has(entry.id));
+
+  const someVisibleSelectableSelected = visibleSelectableEntries.some((entry) =>
+    selectedExpenseIds.has(entry.id),
+  );
+
+  const hasActiveListFilters = anyRegisterColumnFiltersActive(
+    categoryFilter,
+    subCategoryFilter,
+    descriptionFilter,
+    paymentStatusFilter,
+    projectSiteFilter,
+    dateFilter,
+  );
+
+  function toggleExpenseSelected(expenseId: string, checked: boolean) {
+    setSelectedExpenseIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(expenseId);
+      } else {
+        next.delete(expenseId);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisibleSelectable(checked: boolean) {
+    if (!checked) {
+      setSelectedExpenseIds((current) => {
+        const next = new Set(current);
+        for (const entry of visibleSelectableEntries) {
+          next.delete(entry.id);
+        }
+        return next;
+      });
+      return;
+    }
+    setSelectedExpenseIds((current) => {
+      const next = new Set(current);
+      for (const entry of visibleSelectableEntries) {
+        next.add(entry.id);
+      }
+      return next;
+    });
+  }
+
+  function selectAllFilteredSelectable() {
+    setSelectedExpenseIds(
+      new Set(visibleSelectableEntries.map((entry) => entry.id)),
+    );
+  }
+
+  function resolveSelectedVisibleSelectableIds(): string[] {
+    return visibleSelectableEntries
+      .filter((entry) => selectedExpenseIds.has(entry.id))
+      .map((entry) => entry.id);
+  }
+
+  function closeBulkProjectDialog() {
+    setBulkProjectDialogOpen(false);
+    setBulkProjectAssigning(false);
+  }
+
+  function openBulkProjectDialog() {
+    setBulkProjectDialogKey((current) => current + 1);
+    setBulkProjectDialogOpen(true);
+  }
+
+  async function handleBulkAssignProject(projectFormValue: string) {
+    if (!isOnline || !navigator.onLine) {
+      return;
+    }
+    const projectId = normalizeBulkAssignProjectFormValue(projectFormValue);
+    const ids = resolveSelectedVisibleSelectableIds();
+    if (ids.length === 0) {
+      closeBulkProjectDialog();
+      return;
+    }
+
+    setBulkProjectAssigning(true);
+    try {
+      const writeContext = await loadWriteBusinessUnitContext(supabase);
+      if (!writeContext.ok) {
+        void alertError(writeContext.error, { title: "Could not assign project" });
+        closeBulkProjectDialog();
+        return;
+      }
+      const { tenantId, error: tenantError } =
+        await resolveSessionTenantId(supabase);
+      if (tenantError || !tenantId) {
+        void alertError(tenantError ?? "Unable to resolve workspace.", {
+          title: "Could not assign project",
+        });
+        closeBulkProjectDialog();
+        return;
+      }
+
+      const result = await bulkAssignExpenseRegisterProjectIds({
+        supabase,
+        tenantId,
+        buReadScope,
+        allowedUnits: writeContext.allowedUnits,
+        entriesById: entriesByIdForBulk,
+        expenseIds: ids,
+        projectId,
+      });
+
+      if (result.failed.length === 0) {
+        closeBulkProjectDialog();
+        setSelectedExpenseIds(new Set());
+        await refreshEntries();
+        toast(`${result.succeededIds.length} expenses updated`);
+        return;
+      }
+
+      if (result.succeededIds.length > 0) {
+        await refreshEntries();
+      }
+
+      const failedVisible = result.failed
+        .map((row) => row.id)
+        .filter((id) =>
+          visibleSelectableEntries.some((entry) => entry.id === id),
+        );
+      setSelectedExpenseIds(new Set(failedVisible));
+      closeBulkProjectDialog();
+
+      const failureLines = result.failed
+        .slice(0, 8)
+        .map((row) => `${row.id.slice(0, 8)}… — ${row.reason}`);
+      const more =
+        result.failed.length > 8
+          ? `\n…and ${result.failed.length - 8} more.`
+          : "";
+      void alertError(
+        `${result.succeededIds.length} updated, ${result.failed.length} failed.\n${failureLines.join("\n")}${more}`,
+        { title: "Bulk assign partly failed" },
+      );
+    } catch (unexpected) {
+      void alertError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to assign project.",
+        { title: "Could not assign project" },
+      );
+      closeBulkProjectDialog();
+    } finally {
+      setBulkProjectAssigning(false);
+    }
+  }
 
   useEffect(() => {
     if (fetchError) {
@@ -1985,24 +2226,100 @@ export default function ExpenseRegister({
         </section>
       )}
 
-      <FilteredListCount
-        filteredCount={visibleEntries.length}
-        totalCount={entries.length}
-        itemSingular="entry"
-        hasActiveFilters={anyRegisterColumnFiltersActive(
-          categoryFilter,
-          subCategoryFilter,
-          descriptionFilter,
-          paymentStatusFilter,
-          projectSiteFilter,
-          dateFilter,
-        )}
-      />
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <FilteredListCount
+            filteredCount={visibleEntries.length}
+            totalCount={entries.length}
+            itemSingular="entry"
+            hasActiveFilters={hasActiveListFilters}
+          />
+          {hasActiveListFilters && visibleSelectableEntries.length > 0 ? (
+            <button
+              type="button"
+              onClick={selectAllFilteredSelectable}
+              className="text-sm font-medium text-[#0f2744] underline hover:text-[#1a3a5c]"
+            >
+              Select all {visibleSelectableEntries.length} filtered
+            </button>
+          ) : null}
+        </div>
+        {selectedBulkCount === 0 ? (
+          <p className="text-sm text-slate-500">
+            Tick the boxes in the &quot;Select&quot; column to assign a Contract /
+            Project to many expenses at once.
+          </p>
+        ) : null}
+      </div>
+
+      {selectedBulkCount > 0 ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-[#0f2744]/20 bg-[#0f2744]/5 px-4 py-3 text-sm">
+          <span className="font-medium text-[#0f2744]">
+            {selectedBulkCount} selected · {formatGHS(selectedBulkTotal)}
+          </span>
+          {!isOnline || !navigator.onLine ? (
+            <Tooltip content="Bulk assign requires an internet connection.">
+              <span className="inline-block">
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded-md bg-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600"
+                >
+                  Assign Contract / Project
+                </button>
+              </span>
+            </Tooltip>
+          ) : (
+            <button
+              type="button"
+              onClick={openBulkProjectDialog}
+              className="rounded-md bg-[#0f2744] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#1a3a5c]"
+            >
+              Assign Contract / Project
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setSelectedExpenseIds(new Set())}
+            className="text-sm font-medium text-slate-600 underline hover:text-slate-900"
+          >
+            Clear selection
+          </button>
+        </div>
+      ) : null}
 
       <ScrollableTable stickyEdgeLayout="nameCategory">
         <table className={scrollableTableClassName}>
           <thead className={scrollableTableHeadClassName}>
               <tr>
+                <th className={`${scrollableTableThClassName} px-2`}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>Select</span>
+                    <Tooltip content="Select expenses to assign a Contract / Project in bulk">
+                      <span className="inline-flex">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all visible expenses"
+                          checked={allVisibleSelectableSelected}
+                          ref={(element) => {
+                            if (element) {
+                              element.indeterminate =
+                                someVisibleSelectableSelected &&
+                                !allVisibleSelectableSelected;
+                            }
+                          }}
+                          disabled={visibleSelectableEntries.length === 0}
+                          onChange={(event) =>
+                            toggleSelectAllVisibleSelectable(
+                              event.target.checked,
+                            )
+                          }
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                      </span>
+                    </Tooltip>
+                  </span>
+                </th>
                 <th
                   className={`${scrollableTableThClassName} ${scrollableTableNoTruncateCellClassName} scrollable-table-register-col-date`}
                 >
@@ -2070,7 +2387,7 @@ export default function ExpenseRegister({
               {entries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={13}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No expense register entries yet.
@@ -2079,7 +2396,7 @@ export default function ExpenseRegister({
               ) : visibleEntries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={13}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No entries match the current filters.
@@ -2114,12 +2431,53 @@ export default function ExpenseRegister({
                       )
                     : null;
 
+                  const selectionBlock = explainExpenseBulkProjectSelectionBlock(
+                    entry as ExpenseRegisterEntry & { pendingSync?: boolean },
+                  );
+                  const isSelected = selectedExpenseIds.has(entry.id);
+
                   return (
                     <tr
                       key={entry.id}
                       id={`expense-${entry.id}`}
                       className={getRegisterRowClassName(index, systemLinked)}
                     >
+                      <td className="px-2 py-3">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="invisible" aria-hidden>
+                            Select
+                          </span>
+                          {selectionBlock ? (
+                            <Tooltip
+                              content={expenseBulkProjectSelectionBlockTooltip(
+                                selectionBlock,
+                              )}
+                            >
+                              <span className="inline-flex">
+                                <input
+                                  type="checkbox"
+                                  disabled
+                                  aria-label="Cannot select this expense"
+                                  className="h-4 w-4 cursor-not-allowed rounded border-slate-200 opacity-50"
+                                />
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            <input
+                              type="checkbox"
+                              aria-label={`Select expense ${entry.description ?? entry.id}`}
+                              checked={isSelected}
+                              onChange={(event) =>
+                                toggleExpenseSelected(
+                                  entry.id,
+                                  event.target.checked,
+                                )
+                              }
+                              className="h-4 w-4 rounded border-slate-300"
+                            />
+                          )}
+                        </span>
+                      </td>
                       <td className={scrollableTableRegisterDateCellClassName}>
                         {formatDate(entry.date)}
                       </td>
@@ -2350,6 +2708,24 @@ export default function ExpenseRegister({
               ? resolveExpenseRegisterLockMessage(detailExpense) ?? undefined
               : undefined
         }
+      />
+
+      <ExpenseRegisterBulkProjectDialog
+        key={bulkProjectDialogKey}
+        open={bulkProjectDialogOpen}
+        selectedCount={selectedBulkCount}
+        selectedTotal={selectedBulkTotal}
+        projects={initialProjects}
+        hasActiveProjects={hasActiveExpenseProjects}
+        assigning={bulkProjectAssigning}
+        onCancel={() => {
+          if (!bulkProjectAssigning) {
+            closeBulkProjectDialog();
+          }
+        }}
+        onAssign={(projectFormValue) => {
+          void handleBulkAssignProject(projectFormValue);
+        }}
       />
     </div>
   );
