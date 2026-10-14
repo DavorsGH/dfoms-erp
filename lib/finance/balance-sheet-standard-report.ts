@@ -2,6 +2,10 @@ import type { BalanceSheetPageData } from "@/app/dashboard/finance/balance-sheet
 import { buildCustomerCreditsBalanceSheetOptions } from "@/app/dashboard/finance/balance-sheet-page-data";
 import type { CashMovementManualEntry } from "@/app/dashboard/finance/cash-movement-utils";
 import type { StaffAdvanceBalanceSheetEntry } from "@/app/dashboard/finance/staff-advances-balance-sheet-utils";
+import type {
+  BusinessUnitTransferRecord,
+  InterUnitTransferCashScope,
+} from "@/app/dashboard/finance/business-unit-transfers-utils";
 
 export type StandardBalanceSheetDataSlice = Pick<
   BalanceSheetPageData,
@@ -30,6 +34,7 @@ export type StandardBalanceSheetReportData = StandardBalanceSheetDataSlice &
   > & {
   initialStaffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
   initialManualEntries: CashMovementManualEntry[];
+  initialBusinessUnitTransfers?: BusinessUnitTransferRecord[];
 };
 import {
   buildBalanceSheetReport,
@@ -41,12 +46,14 @@ import {
 export type StandardBalanceSheetReportExtras = {
   allBusinessUnitsDirectorsLoan?: boolean;
   rawManualFinancialEntries?: CashMovementManualEntry[];
+  interUnitTransferScope?: InterUnitTransferCashScope;
 };
 
 export function buildStandardBalanceSheetReportOptions(
   tenantId: string,
   data: StandardBalanceSheetDataSlice & {
     initialStaffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
+    initialBusinessUnitTransfers?: BusinessUnitTransferRecord[];
   },
   extras: StandardBalanceSheetReportExtras = {},
 ): BalanceSheetReportOptions {
@@ -61,6 +68,8 @@ export function buildStandardBalanceSheetReportOptions(
       ...data,
       initialStaffSalaryAdvanceEntries: data.initialStaffSalaryAdvanceEntries ?? [],
     }),
+    businessUnitTransfers: data.initialBusinessUnitTransfers,
+    interUnitTransferScope: extras.interUnitTransferScope,
   };
 }
 

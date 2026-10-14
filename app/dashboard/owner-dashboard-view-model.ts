@@ -82,6 +82,10 @@ export async function buildOwnerDashboardViewModel(
         options.buScope.mode === "all"
           ? dashboardPageData.initialRawManualEntries
           : undefined,
+      interUnitTransferScope:
+        options.buScope.mode === "unit"
+          ? { mode: "unit", businessUnitId: options.buScope.id }
+          : { mode: "exclude" },
     },
   );
 

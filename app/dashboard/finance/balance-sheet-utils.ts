@@ -89,6 +89,11 @@ import {
   calculateStaffAdvancesReceivableByMonth,
   type StaffAdvanceBalanceSheetEntry,
 } from "./staff-advances-balance-sheet-utils";
+import {
+  calculateInterUnitDueLinesByMonth,
+  type BusinessUnitTransferRecord,
+  type InterUnitTransferCashScope,
+} from "./business-unit-transfers-utils";
 
 export type { BalanceSheetWelfareFundEntry } from "./staff-welfare-fund-utils";
 export { calculateStaffWelfarePayableByMonth } from "./staff-welfare-fund-utils";
@@ -105,6 +110,8 @@ export type BalanceSheetReportOptions = {
   refundsForCustomerCredits?: CustomerCreditsRefundRow[];
   creditNoteApplicationsForCash?: CustomerCreditsApplicationRow[];
   staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
+  businessUnitTransfers?: BusinessUnitTransferRecord[];
+  interUnitTransferScope?: InterUnitTransferCashScope;
 };
 
 export type {
@@ -551,6 +558,8 @@ function calculateCashAndCashEquivalentsByMonth(
       staffSalaryNetByPayrollMonth,
       creditNoteApplications: options.creditNoteApplicationsForCash,
       staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
+      businessUnitTransfers: options.businessUnitTransfers,
+      interUnitTransferScope: options.interUnitTransferScope,
     },
     financialYear,
   );
@@ -773,6 +782,22 @@ export function buildBalanceSheetReport(
     ),
   );
 
+  const interUnitScope = options.interUnitTransferScope ?? { mode: "exclude" };
+  const interUnitDueLines =
+    interUnitScope.mode === "unit"
+      ? calculateInterUnitDueLinesByMonth(
+          options.businessUnitTransfers ?? [],
+          interUnitScope.businessUnitId,
+          financialYear,
+        )
+      : {
+          dueFromOtherBusinessUnits: createEmptyMonthlyTotals(),
+          dueToOtherBusinessUnits: createEmptyMonthlyTotals(),
+        };
+  const dueFromOtherBusinessUnits = interUnitDueLines.dueFromOtherBusinessUnits;
+  const dueToOtherBusinessUnits = interUnitDueLines.dueToOtherBusinessUnits;
+  const showInterUnitDueLines = interUnitScope.mode === "unit";
+
   const totalAssets = roundMonthlyTotals(
     sumMonthlyTotals([
       cash,
@@ -783,6 +808,7 @@ export function buildBalanceSheetReport(
       inventory,
       dueFromDirector,
       staffAdvancesReceivable,
+      dueFromOtherBusinessUnits,
     ]),
   );
 
@@ -836,6 +862,7 @@ export function buildBalanceSheetReport(
       bankLoans,
       otherLongTermLiabilities,
       directorsLoan,
+      dueToOtherBusinessUnits,
     ]),
   );
 
@@ -875,6 +902,7 @@ export function buildBalanceSheetReport(
       bankLoans,
       otherLongTermLiabilities,
       directorsLoan,
+      dueToOtherBusinessUnits,
       shareCapital,
       retainedEarnings,
       inventoryOpeningEquity,
@@ -946,6 +974,17 @@ export function buildBalanceSheetReport(
       kind: "data",
       side: "assets",
     },
+    ...(showInterUnitDueLines
+      ? [
+          {
+            key: "due-from-other-business-units",
+            label: "Due from other business units",
+            amounts: dueFromOtherBusinessUnits,
+            kind: "data" as const,
+            side: "assets" as const,
+          },
+        ]
+      : []),
     {
       key: "total-assets",
       label: "TOTAL ASSETS",
@@ -1037,6 +1076,17 @@ export function buildBalanceSheetReport(
       kind: "data",
       side: "liabilities",
     },
+    ...(showInterUnitDueLines
+      ? [
+          {
+            key: "due-to-other-business-units",
+            label: "Due to other business units",
+            amounts: dueToOtherBusinessUnits,
+            kind: "data" as const,
+            side: "liabilities" as const,
+          },
+        ]
+      : []),
     {
       key: "total-liabilities",
       label: "TOTAL LIABILITIES",

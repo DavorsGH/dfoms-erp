@@ -26,6 +26,10 @@ import {
 } from "./accrued-wages-utils";
 import type { CustomerCreditsApplicationRow } from "./customer-credits-liability-utils";
 import {
+  resolveInterUnitTransferCashScope,
+  type BusinessUnitTransferRecord,
+} from "./business-unit-transfers-utils";
+import {
   FULL_YEAR_INDEX,
   MONTH_LABELS,
   buildCashFlowReport,
@@ -59,6 +63,9 @@ type CashFlowProps = {
   initialPayrollHistory?: PayrollHistoryWagesEntry[];
   initialMonthEndCloseNetPay?: MonthEndCloseNetPayEntry[];
   initialCreditNoteApplications?: CustomerCreditsApplicationRow[];
+  initialBusinessUnitTransfers?: BusinessUnitTransferRecord[];
+  viewAllBusinessUnits?: boolean;
+  activeBusinessUnitId?: string | null;
   availableYears: number[];
   fetchError: string | null;
 };
@@ -116,6 +123,9 @@ export default function CashFlow({
   initialPayrollHistory = [],
   initialMonthEndCloseNetPay = [],
   initialCreditNoteApplications = [],
+  initialBusinessUnitTransfers = [],
+  viewAllBusinessUnits = false,
+  activeBusinessUnitId = null,
   availableYears,
   fetchError,
 }: CashFlowProps) {
@@ -138,6 +148,15 @@ export default function CashFlow({
     [initialPayrollHistory, initialMonthEndCloseNetPay],
   );
 
+  const interUnitTransferScope = useMemo(
+    () =>
+      resolveInterUnitTransferCashScope({
+        viewAllBusinessUnits,
+        activeBusinessUnitId,
+      }),
+    [viewAllBusinessUnits, activeBusinessUnitId],
+  );
+
   const report = useMemo(
     () =>
       buildCashFlowReport(
@@ -156,6 +175,8 @@ export default function CashFlow({
           directorsLoanRepayments: initialDirectorsLoanRepayments,
           directorsLoanLedgerEntries: initialDirectorsLoanLedgerEntries,
           creditNoteApplications: initialCreditNoteApplications,
+          businessUnitTransfers: initialBusinessUnitTransfers,
+          interUnitTransferScope,
         },
       ),
     [
@@ -171,6 +192,8 @@ export default function CashFlow({
       initialDirectorsLoanLedgerEntries,
       initialCreditNoteApplications,
       staffSalaryNetByPayrollMonth,
+      initialBusinessUnitTransfers,
+      interUnitTransferScope,
       manualEntriesForYear,
       selectedYear,
     ],

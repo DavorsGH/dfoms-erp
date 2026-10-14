@@ -38,6 +38,10 @@ import type { ManualFinancialEntry } from "../cash-flow-utils";
 import { filterCreditNoteChildRowsForScopedNotes } from "../customer-credits-liability-utils";
 import FinanceNav from "../finance-nav";
 import CashFlow from "../cash-flow";
+import {
+  BUSINESS_UNIT_TRANSFER_SELECT,
+  type BusinessUnitTransferRecord,
+} from "../business-unit-transfers-utils";
 
 export default async function CashFlowPage() {
   const cookieStore = await cookies();
@@ -104,6 +108,7 @@ export default async function CashFlowPage() {
     livePayrollBundle,
     { data: scopedCreditNotesRows, error: scopedCreditNotesError },
     { data: creditApplicationsRows, error: creditApplicationsError },
+    { data: businessUnitTransfers, error: businessUnitTransfersError },
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase
@@ -196,6 +201,11 @@ export default async function CashFlowPage() {
       .select("credit_note_id, applied_date, amount")
       .eq("tenant_id", tenantId)
       .order("applied_date", { ascending: true }),
+    supabase
+      .from("business_unit_transfers")
+      .select(BUSINESS_UNIT_TRANSFER_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("transfer_date", { ascending: true }),
   ]);
 
   const initialCreditNoteApplications = filterCreditNoteChildRowsForScopedNotes(
@@ -233,6 +243,7 @@ export default async function CashFlowPage() {
     livePayrollBundle.error ??
     scopedCreditNotesError?.message ??
     creditApplicationsError?.message ??
+    businessUnitTransfersError?.message ??
     null;
 
   const availableYears = buildAvailableYears(
@@ -281,6 +292,11 @@ export default async function CashFlowPage() {
           (monthEndCloseRecords as MonthEndCloseNetPayEntry[] | null) ?? []
         }
         initialCreditNoteApplications={initialCreditNoteApplications}
+        initialBusinessUnitTransfers={
+          (businessUnitTransfers as BusinessUnitTransferRecord[] | null) ?? []
+        }
+        viewAllBusinessUnits={viewAllBusinessUnits}
+        activeBusinessUnitId={activeBusinessUnitId}
         availableYears={availableYears}
         fetchError={fetchError}
       />

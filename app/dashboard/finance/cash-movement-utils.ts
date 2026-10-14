@@ -54,6 +54,12 @@ import {
   calculateStaffAdvanceCashOutflowsByMonth,
   type StaffAdvanceBalanceSheetEntry,
 } from "./staff-advances-balance-sheet-utils";
+import {
+  calculateInterUnitTransferCashInflowsByMonth,
+  calculateInterUnitTransferCashOutflowsByMonth,
+  type BusinessUnitTransferRecord,
+  type InterUnitTransferCashScope,
+} from "./business-unit-transfers-utils";
 
 export {
   parseCashPaidFromExpenseNotes,
@@ -120,6 +126,8 @@ export type CashMovementInputs = {
   /** Store credit applied to sales — not cash received (by applied_date). */
   creditNoteApplications?: CustomerCreditsApplicationRow[];
   staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
+  businessUnitTransfers?: BusinessUnitTransferRecord[];
+  interUnitTransferScope?: InterUnitTransferCashScope;
 };
 
 export type MonthlyCashComponents = {
@@ -135,6 +143,8 @@ export type MonthlyCashComponents = {
   directorsLoanRepayments: MonthlyTotals;
   directorsLoanInflows: MonthlyTotals;
   fixedAssetPurchases: MonthlyTotals;
+  interUnitTransferInflows: MonthlyTotals;
+  interUnitTransferOutflows: MonthlyTotals;
   /** Signed net movement per month (inflows − outflows). */
   netMovement: MonthlyTotals;
 };
@@ -444,6 +454,25 @@ export function buildMonthlyCashComponents(
     ),
   );
 
+  const interUnitScope = inputs.interUnitTransferScope ?? { mode: "exclude" };
+  const transferRows = inputs.businessUnitTransfers ?? [];
+  const interUnitTransferInflows =
+    interUnitScope.mode === "unit"
+      ? calculateInterUnitTransferCashInflowsByMonth(
+          transferRows,
+          interUnitScope.businessUnitId,
+          financialYear,
+        )
+      : createEmptyMonthlyTotals();
+  const interUnitTransferOutflows =
+    interUnitScope.mode === "unit"
+      ? calculateInterUnitTransferCashOutflowsByMonth(
+          transferRows,
+          interUnitScope.businessUnitId,
+          financialYear,
+        )
+      : createEmptyMonthlyTotals();
+
   const totalInflows = addMonthlyTotals(
     addMonthlyTotals(
       addMonthlyTotals(
@@ -453,6 +482,10 @@ export function buildMonthlyCashComponents(
       directorsLoanInflows,
     ),
     otherCashInflows,
+  );
+  const totalInflowsWithInterUnit = addMonthlyTotals(
+    totalInflows,
+    interUnitTransferInflows,
   );
   const totalOutflows = addMonthlyTotals(
     addMonthlyTotals(
@@ -473,7 +506,14 @@ export function buildMonthlyCashComponents(
     ),
     fixedAssetPurchases,
   );
-  const netMovement = subtractMonthlyTotals(totalInflows, totalOutflows);
+  const totalOutflowsWithInterUnit = addMonthlyTotals(
+    totalOutflows,
+    interUnitTransferOutflows,
+  );
+  const netMovement = subtractMonthlyTotals(
+    totalInflowsWithInterUnit,
+    totalOutflowsWithInterUnit,
+  );
 
   return {
     incomeReceived,
@@ -488,6 +528,8 @@ export function buildMonthlyCashComponents(
     directorsLoanRepayments,
     directorsLoanInflows,
     fixedAssetPurchases,
+    interUnitTransferInflows,
+    interUnitTransferOutflows,
     netMovement,
   };
 }

@@ -92,6 +92,10 @@ import {
   sliceSharedPayrollProcessingForBalanceSheet,
 } from "../dashboard-shared-register-fetch";
 import type { ScopedEmployeeIdsResult } from "../hr-payroll/payroll-bu-scope-utils";
+import {
+  BUSINESS_UNIT_TRANSFER_SELECT,
+  type BusinessUnitTransferRecord,
+} from "./business-unit-transfers-utils";
 
 /** Columns required for live open-month payroll recalc (display-only; never written back). */
 export const PAYROLL_PROCESSING_SELECT =
@@ -222,6 +226,7 @@ export type BalanceSheetPageData = {
   initialCreditNotesForCustomerCredits: CustomerCreditsCreditNoteRow[];
   initialRefundsForCustomerCredits: CustomerCreditsRefundRow[];
   initialCreditNoteApplications: CustomerCreditsApplicationRow[];
+  initialBusinessUnitTransfers: BusinessUnitTransferRecord[];
   /** Full month-end rows (Dashboard lock status / payroll widgets). */
   initialMonthEndCloseRecords: MonthEndCloseRecord[];
   /** Open-period payroll processing rows (Dashboard gross-pay trend). */
@@ -935,6 +940,7 @@ export async function fetchBalanceSheetPageData(
     { data: creditNotesRows, error: creditNotesError },
     { data: refundsRows, error: refundsError },
     { data: creditApplicationsRows, error: creditApplicationsError },
+    { data: businessUnitTransfers, error: businessUnitTransfersError },
     inventoryBalanceSheet,
   ] = await Promise.all([
     incomeQuery,
@@ -961,11 +967,16 @@ export async function fetchBalanceSheetPageData(
     creditNotesQuery,
     refundsQuery,
     creditApplicationsQuery,
+    supabase
+      .from("business_unit_transfers")
+      .select(BUSINESS_UNIT_TRANSFER_SELECT)
+      .eq("tenant_id", tenantId)
+      .order("transfer_date", { ascending: true }),
     inventoryFetch,
   ]);
 
   if (requestCounter) {
-    let parallelBatchCount = 17;
+    let parallelBatchCount = 18;
     if (useSharedRegisters) {
       parallelBatchCount -= 3;
     }
@@ -1135,6 +1146,8 @@ export async function fetchBalanceSheetPageData(
     initialCreditNotesForCustomerCredits,
     initialRefundsForCustomerCredits,
     initialCreditNoteApplications,
+    initialBusinessUnitTransfers:
+      (businessUnitTransfers as BusinessUnitTransferRecord[] | null) ?? [],
     availableYears: buildAvailableYears(
       (incomeEntries ?? []).map((entry) => entry.date),
       (expenseEntries ?? []).map((entry) => entry.date),
@@ -1146,6 +1159,7 @@ export async function fetchBalanceSheetPageData(
         ...(taxLedgerEntries ?? []).map((entry) => entry.entry_date),
         ...(welfareFundEntries ?? []).map((entry) => entry.entry_date),
         ...(salaryAdvanceEntries ?? []).map((entry) => entry.date_issued),
+        ...(businessUnitTransfers ?? []).map((entry) => entry.transfer_date),
       ],
     ),
     fetchError:
@@ -1171,6 +1185,7 @@ export async function fetchBalanceSheetPageData(
       creditNotesError?.message ??
       refundsError?.message ??
       creditApplicationsError?.message ??
+      businessUnitTransfersError?.message ??
       livePayrollBundle.error ??
       null,
   };

@@ -39,6 +39,10 @@ import {
   buildStandardBalanceSheetReport,
   getBalanceSheetMonthCheck,
 } from "@/lib/finance/balance-sheet-standard-report";
+import {
+  resolveInterUnitTransferCashScope,
+  type BusinessUnitTransferRecord,
+} from "./business-unit-transfers-utils";
 import { getBalanceCheckRoundingNote } from "./balance-sheet-utils";
 import {
   FinancialStatementScrollableTable,
@@ -68,6 +72,8 @@ type BalanceSheetProps = {
   initialManualEntries?: CashMovementManualEntry[];
   initialRawManualEntries?: CashMovementManualEntry[];
   viewAllBusinessUnits?: boolean;
+  activeBusinessUnitId?: string | null;
+  initialBusinessUnitTransfers?: BusinessUnitTransferRecord[];
   initialTaxLedgerEntries?: BalanceSheetTaxLedgerEntry[];
   initialWelfareFundEntries?: BalanceSheetWelfareFundEntry[];
   initialStaffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
@@ -192,6 +198,8 @@ export default function BalanceSheet({
   initialFocusYear = null,
   initialRawManualEntries = [],
   viewAllBusinessUnits = false,
+  activeBusinessUnitId = null,
+  initialBusinessUnitTransfers = [],
   initialCreditNotesForCustomerCredits = [],
   initialRefundsForCustomerCredits = [],
   initialCreditNoteApplications = [],
@@ -227,6 +235,15 @@ export default function BalanceSheet({
     setBalanceCheckPeriodIndex(defaultCheckMonthIndex);
   }, [defaultCheckMonthIndex, selectedYear]);
 
+  const interUnitTransferScope = useMemo(
+    () =>
+      resolveInterUnitTransferCashScope({
+        viewAllBusinessUnits,
+        activeBusinessUnitId,
+      }),
+    [viewAllBusinessUnits, activeBusinessUnitId],
+  );
+
   const report = useMemo(
     () =>
       buildStandardBalanceSheetReport(
@@ -250,6 +267,7 @@ export default function BalanceSheet({
           initialCreditNotesForCustomerCredits,
           initialRefundsForCustomerCredits,
           initialCreditNoteApplications,
+          initialBusinessUnitTransfers,
         },
         tenantId,
         selectedYear,
@@ -258,6 +276,7 @@ export default function BalanceSheet({
           rawManualFinancialEntries: viewAllBusinessUnits
             ? initialRawManualEntries
             : undefined,
+          interUnitTransferScope,
         },
       ),
     [
@@ -278,6 +297,8 @@ export default function BalanceSheet({
       initialTaxLedgerEntries,
       initialWelfareFundEntries,
       initialStaffSalaryAdvanceEntries,
+      initialBusinessUnitTransfers,
+      interUnitTransferScope,
       selectedYear,
     ],
   );

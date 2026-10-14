@@ -68,6 +68,7 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
     initialCreditNotesForCustomerCredits,
     initialRefundsForCustomerCredits,
     initialCreditNoteApplications,
+    initialBusinessUnitTransfers,
     availableYears,
     fetchError,
   } = data;
@@ -91,6 +92,8 @@ export default async function BalanceSheetPage({ searchParams }: BalanceSheetPag
         initialManualEntries={initialManualEntries}
         initialRawManualEntries={initialRawManualEntries}
         viewAllBusinessUnits={viewAllBusinessUnits}
+        activeBusinessUnitId={activeBusinessUnitId}
+        initialBusinessUnitTransfers={initialBusinessUnitTransfers}
         initialTaxLedgerEntries={initialTaxLedgerEntries}
         initialWelfareFundEntries={initialWelfareFundEntries}
         initialStaffSalaryAdvanceEntries={initialStaffSalaryAdvanceEntries}

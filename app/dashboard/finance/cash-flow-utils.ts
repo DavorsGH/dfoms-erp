@@ -36,6 +36,10 @@ import type {
   ProductSaleStatus,
 } from "./income-register-utils";
 import type { CustomerCreditsApplicationRow } from "./customer-credits-liability-utils";
+import type {
+  BusinessUnitTransferRecord,
+  InterUnitTransferCashScope,
+} from "./business-unit-transfers-utils";
 
 export type CashFlowReportOptions = {
   tenantId: string;
@@ -44,6 +48,8 @@ export type CashFlowReportOptions = {
   directorsLoanLedgerEntries?: DirectorsLoanLedgerEntry[];
   creditNoteApplications?: CustomerCreditsApplicationRow[];
   staffSalaryAdvanceEntries?: StaffAdvanceBalanceSheetEntry[];
+  businessUnitTransfers?: BusinessUnitTransferRecord[];
+  interUnitTransferScope?: InterUnitTransferCashScope;
 };
 
 export { MONTH_LABELS, FULL_YEAR_INDEX } from "./profit-loss-utils";
@@ -251,6 +257,8 @@ export function buildCashFlowReport(
       staffSalaryNetByPayrollMonth,
       creditNoteApplications: options.creditNoteApplications,
       staffSalaryAdvanceEntries: options.staffSalaryAdvanceEntries,
+      businessUnitTransfers: options.businessUnitTransfers,
+      interUnitTransferScope: options.interUnitTransferScope,
     },
     financialYear,
   );
@@ -389,11 +397,15 @@ export function buildCashFlowReport(
   const loanRepayments = components.loanRepayments;
   const directorsLoanRepayments = components.directorsLoanRepayments;
   const directorsLoanInflows = components.directorsLoanInflows;
+  const interUnitTransferInflows = components.interUnitTransferInflows;
+  const interUnitTransferOutflows = components.interUnitTransferOutflows;
   const netFinancing = loanProceeds.map((value, index) =>
     (value ?? 0) +
-    (directorsLoanInflows[index] ?? 0) -
+    (directorsLoanInflows[index] ?? 0) +
+    (interUnitTransferInflows[index] ?? 0) -
     (loanRepayments[index] ?? 0) -
-    (directorsLoanRepayments[index] ?? 0),
+    (directorsLoanRepayments[index] ?? 0) -
+    (interUnitTransferOutflows[index] ?? 0),
   );
 
   rows.push({
@@ -421,6 +433,26 @@ export function buildCashFlowReport(
             key: "directors-loan-inflows",
             label: "Director's Loan Cash In",
             amounts: directorsLoanInflows,
+            kind: "data" as const,
+          },
+        ]
+      : []),
+    ...(interUnitTransferInflows.some((amount) => amount !== 0)
+      ? [
+          {
+            key: "inter-unit-transfers-in",
+            label: "Inter-unit transfers in",
+            amounts: interUnitTransferInflows,
+            kind: "data" as const,
+          },
+        ]
+      : []),
+    ...(interUnitTransferOutflows.some((amount) => amount !== 0)
+      ? [
+          {
+            key: "inter-unit-transfers-out",
+            label: "Inter-unit transfers out",
+            amounts: interUnitTransferOutflows,
             kind: "data" as const,
           },
         ]
