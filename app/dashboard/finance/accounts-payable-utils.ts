@@ -1,3 +1,221 @@
+import {
+  computePurchaseTaxAmounts,
+  roundTaxAmount,
+} from "./tax-utils";
+
+/** Parameters passed to save_accounts_payable that reflect bill financials (excl. tenant, id, source_type, tax_rows, source_id). */
+export const ACCOUNTS_PAYABLE_SAVE_RPC_FINANCIAL_PARAMS = [
+  "p_business_unit_id",
+  "p_vendor_name",
+  "p_invoice_number",
+  "p_expense_category",
+  "p_sub_category",
+  "p_description",
+  "p_invoice_date",
+  "p_due_date",
+  "p_amount",
+  "p_amount_paid",
+  "p_balance_due",
+  "p_status",
+  "p_gross_before_wht",
+  "p_wht_rate",
+  "p_wht_amount",
+  "p_input_vat_amount",
+  "p_net_of_tax_amount",
+  "p_notes",
+] as const;
+
+export type AccountsPayableEditFormFinancialInput = {
+  vendorName: string;
+  invoice_number: string;
+  expense_category: string;
+  sub_category: string;
+  description: string;
+  invoice_date: string;
+  due_date: string;
+  amountGrossBeforeWht: string;
+  wht_rate: string;
+  wht_amount: string;
+  input_vat_amount: string;
+  notes: string;
+};
+
+type AccountsPayableRpcFinancialComparable = {
+  business_unit_id: string | null;
+  vendor_name: string;
+  invoice_number: string;
+  expense_category: string;
+  sub_category: string;
+  description: string | null;
+  invoice_date: string;
+  due_date: string;
+  amount: number;
+  amount_paid: number;
+  balance_due: number;
+  status: string;
+  gross_before_wht: number;
+  wht_rate: number | null;
+  wht_amount: number;
+  input_vat_amount: number;
+  net_of_tax_amount: number;
+  notes: string | null;
+};
+
+function normalizeApTextField(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+function normalizeApNullableText(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeApDateField(value: string | null | undefined): string {
+  if (!value?.trim()) {
+    return "";
+  }
+  return value.trim().slice(0, 10);
+}
+
+function buildAccountsPayableRpcFinancialComparable(
+  input: AccountsPayableEditFormFinancialInput,
+  options: {
+    amountPaid: number;
+    businessUnitId: string | null;
+  },
+): AccountsPayableRpcFinancialComparable {
+  const grossBeforeWht = Number(input.amountGrossBeforeWht) || 0;
+  const whtRate = Number(input.wht_rate) || 0;
+  const whtAmount = Math.max(
+    0,
+    roundTaxAmount(Number(input.wht_amount) || 0),
+  );
+  const inputVatAmount = Math.max(
+    0,
+    roundTaxAmount(Number(input.input_vat_amount) || 0),
+  );
+  const purchaseTax = computePurchaseTaxAmounts({
+    grossBeforeWht,
+    whtRatePct: whtRate,
+    whtAmount,
+    inputVatAmount,
+  });
+  const amountPaid = options.amountPaid;
+  const balanceDue = calculateBalanceDue(
+    purchaseTax.netPaidToSupplier,
+    amountPaid,
+  );
+  const daysOutstanding = calculateDaysOutstanding(input.due_date);
+
+  return {
+    business_unit_id: options.businessUnitId,
+    vendor_name: normalizeApTextField(input.vendorName),
+    invoice_number: normalizeApTextField(input.invoice_number),
+    expense_category: normalizeApTextField(input.expense_category),
+    sub_category: normalizeApTextField(input.sub_category),
+    description: normalizeApNullableText(input.description),
+    invoice_date: normalizeApDateField(input.invoice_date),
+    due_date: normalizeApDateField(input.due_date),
+    amount: purchaseTax.netPaidToSupplier,
+    amount_paid: amountPaid,
+    balance_due: balanceDue,
+    status: calculateStatus(balanceDue, daysOutstanding),
+    gross_before_wht: purchaseTax.grossBeforeWht,
+    wht_rate: whtRate > 0 ? whtRate : null,
+    wht_amount: purchaseTax.whtAmount,
+    input_vat_amount: purchaseTax.inputVatAmount,
+    net_of_tax_amount: purchaseTax.netOfTaxAmount,
+    notes: normalizeApNullableText(input.notes),
+  };
+}
+
+function buildAccountsPayableRpcFinancialComparableFromEntry(
+  entry: AccountsPayableEntry,
+): AccountsPayableRpcFinancialComparable {
+  const grossBeforeWht = getPayableGrossBeforeWht(entry);
+  const whtRate = Number(entry.wht_rate) || 0;
+  const whtAmount = Math.max(0, roundTaxAmount(Number(entry.wht_amount) || 0));
+  const inputVatAmount = Math.max(
+    0,
+    roundTaxAmount(Number(entry.input_vat_amount) || 0),
+  );
+  const purchaseTax = computePurchaseTaxAmounts({
+    grossBeforeWht,
+    whtRatePct: whtRate,
+    whtAmount,
+    inputVatAmount,
+  });
+  const amountPaid = entry.amount_paid ?? 0;
+  const balanceDue = calculateBalanceDue(
+    purchaseTax.netPaidToSupplier,
+    amountPaid,
+  );
+  const dueDate = normalizeApDateField(entry.due_date);
+  const daysOutstanding = dueDate
+    ? calculateDaysOutstanding(dueDate)
+    : 0;
+
+  return {
+    business_unit_id: entry.business_unit_id ?? null,
+    vendor_name: normalizeApTextField(entry.vendor_name),
+    invoice_number: normalizeApTextField(entry.invoice_number),
+    expense_category: normalizeApTextField(entry.expense_category),
+    sub_category: normalizeApTextField(entry.sub_category),
+    description: normalizeApNullableText(entry.description),
+    invoice_date: normalizeApDateField(entry.invoice_date),
+    due_date: dueDate,
+    amount: purchaseTax.netPaidToSupplier,
+    amount_paid: amountPaid,
+    balance_due: balanceDue,
+    status: calculateStatus(balanceDue, daysOutstanding),
+    gross_before_wht: purchaseTax.grossBeforeWht,
+    wht_rate: whtRate > 0 ? whtRate : null,
+    wht_amount: purchaseTax.whtAmount,
+    input_vat_amount: purchaseTax.inputVatAmount,
+    net_of_tax_amount: purchaseTax.netOfTaxAmount,
+    notes: normalizeApNullableText(entry.notes),
+  };
+}
+
+function rpcFinancialComparablesEqual(
+  left: AccountsPayableRpcFinancialComparable,
+  right: AccountsPayableRpcFinancialComparable,
+): boolean {
+  return (
+    left.business_unit_id === right.business_unit_id &&
+    left.vendor_name === right.vendor_name &&
+    left.invoice_number === right.invoice_number &&
+    left.expense_category === right.expense_category &&
+    left.sub_category === right.sub_category &&
+    left.description === right.description &&
+    left.invoice_date === right.invoice_date &&
+    left.due_date === right.due_date &&
+    left.amount === right.amount &&
+    left.amount_paid === right.amount_paid &&
+    left.balance_due === right.balance_due &&
+    left.status === right.status &&
+    left.gross_before_wht === right.gross_before_wht &&
+    left.wht_rate === right.wht_rate &&
+    left.wht_amount === right.wht_amount &&
+    left.input_vat_amount === right.input_vat_amount &&
+    left.net_of_tax_amount === right.net_of_tax_amount &&
+    left.notes === right.notes
+  );
+}
+
+/** True when edit form financials match what save_accounts_payable would send (project_id excluded). */
+export function accountsPayableEditFinancialFieldsUnchanged(
+  form: AccountsPayableEditFormFinancialInput,
+  entry: AccountsPayableEntry,
+): boolean {
+  const fromForm = buildAccountsPayableRpcFinancialComparable(form, {
+    amountPaid: entry.amount_paid ?? 0,
+    businessUnitId: entry.business_unit_id ?? null,
+  });
+  const fromEntry = buildAccountsPayableRpcFinancialComparableFromEntry(entry);
+  return rpcFinancialComparablesEqual(fromForm, fromEntry);
+}
+
 export type AccountsPayableEntry = {
   id: string;
   vendor_name: string | null;

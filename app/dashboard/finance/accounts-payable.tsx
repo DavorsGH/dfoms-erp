@@ -38,6 +38,8 @@ import {
   normalizeAccountsPayableEntry,
   normalizeAccountsPayablePaymentRecord,
   resolveAccountsPayableIdFromSaveRpc,
+  accountsPayableEditFinancialFieldsUnchanged,
+  type AccountsPayableEditFormFinancialInput,
   type AccountsPayableEntry,
   type AccountsPayablePaymentRecord,
   type AccountsPayablePaymentSource,
@@ -613,6 +615,81 @@ export default function AccountsPayable({
       stampedBusinessUnitId = stampResult.businessUnitId;
     }
 
+    const { tenantId, error: tenantError } =
+      await resolveSessionTenantId(supabase);
+    if (tenantError || !tenantId) {
+      void alertError(tenantError ?? "Unable to resolve workspace.", {
+        title: "Could not save bill",
+      });
+      setLoading(false);
+      return;
+    }
+
+    if (editingId && existingEntry) {
+      const vendorNameForCompare = resolveVendorNameFromSelect(
+        form.vendor_select,
+        form.vendor_other,
+        vendorOptions,
+      );
+      const financialInput: AccountsPayableEditFormFinancialInput = {
+        vendorName: vendorNameForCompare ?? "",
+        invoice_number: form.invoice_number,
+        expense_category: form.expense_category,
+        sub_category: form.sub_category,
+        description: form.description,
+        invoice_date: form.invoice_date,
+        due_date: form.due_date,
+        amountGrossBeforeWht: form.amount,
+        wht_rate: form.wht_rate,
+        wht_amount: form.wht_amount,
+        input_vat_amount: form.input_vat_amount,
+        notes: form.notes,
+      };
+
+      if (
+        accountsPayableEditFinancialFieldsUnchanged(
+          financialInput,
+          existingEntry,
+        )
+      ) {
+        const previousProjectId = hasActiveExpenseProjects
+          ? (existingEntry.project_id ?? null)
+          : null;
+        const nextProjectId = hasActiveExpenseProjects
+          ? projectIdForSave
+          : null;
+
+        if (nextProjectId === previousProjectId) {
+          closeForm();
+          setLoading(false);
+          return;
+        }
+
+        const { error: projectOnlyError } = await applyBusinessUnitScope(
+          supabase
+            .from("accounts_payable")
+            .update({ project_id: projectIdForSave })
+            .eq("id", editingId)
+            .eq("tenant_id", tenantId),
+          buReadScope,
+        );
+
+        if (projectOnlyError) {
+          void alertError(projectOnlyError.message, {
+            title: "Could not save bill",
+          });
+          setLoading(false);
+          return;
+        }
+
+        toast("Bill updated.");
+        closeForm();
+        await refreshEntries();
+        setLoading(false);
+        return;
+      }
+    }
+
     const grossBeforeWht = Number(form.amount) || 0;
     const amountPaid = existingEntry?.amount_paid ?? 0;
     const whtRate = Number(form.wht_rate) || 0;
@@ -632,16 +709,6 @@ export default function AccountsPayable({
     const balanceDue = calculateBalanceDue(amount, amountPaid);
     const daysOutstanding = calculateDaysOutstanding(form.due_date);
     const status = calculateStatus(balanceDue, daysOutstanding);
-
-    const { tenantId, error: tenantError } =
-      await resolveSessionTenantId(supabase);
-    if (tenantError || !tenantId) {
-      void alertError(tenantError ?? "Unable to resolve workspace.", {
-        title: "Could not save bill",
-      });
-      setLoading(false);
-      return;
-    }
 
     const vendorName = resolveVendorNameFromSelect(
       form.vendor_select,
