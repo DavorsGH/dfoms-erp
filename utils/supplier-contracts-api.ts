@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeExpenseRegisterProjectIdForDatabase } from "@/app/dashboard/finance/expense-register-utils";
 import {
   SUPPLIER_CONTRACT_ENTITY_TYPE,
   SUPPLIER_CONTRACT_HEADER_SELECT,
@@ -99,6 +100,9 @@ export async function createSupplierContract(
       mid_month_reminder_enabled: body.mid_month_reminder_enabled ?? false,
       mid_month_reminder_day: body.mid_month_reminder_day ?? 15,
       credit_balance: 0,
+      project_id: normalizeExpenseRegisterProjectIdForDatabase(
+        body.project_id ?? null,
+      ),
       notes: nullableText(body.notes ?? null),
     })
     .select(SUPPLIER_CONTRACT_HEADER_SELECT)

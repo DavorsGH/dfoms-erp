@@ -6,14 +6,20 @@ import Link from "next/link";
 
 import { useRouter } from "next/navigation";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ContractProjectOption } from "@/app/dashboard/administration/projects-utils";
 
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 
 import type { NamedLookup } from "@/app/dashboard/lookup-types";
 import { filterActiveNamedLookups } from "@/app/dashboard/administration/lookup-settings-shared";
 import { ExpenseRegisterSubCategorySelect } from "../expense-register-form-fields";
-import type { ExpenseSubcategoryLookup } from "../expense-register-utils";
+import {
+  EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE,
+  expenseRegisterProjectOptionsForForm,
+  resolveExpenseRegisterProjectIdForSave,
+  type ExpenseSubcategoryLookup,
+} from "../expense-register-utils";
 
 import {
 
@@ -53,6 +59,8 @@ type Props = {
 
   expenseSubcategories: ExpenseSubcategoryLookup[];
 
+  initialProjects: ContractProjectOption[];
+
 };
 
 
@@ -62,6 +70,8 @@ export default function SupplierContractCreateForm({
   expenseCategories,
 
   expenseSubcategories,
+
+  initialProjects,
 
 }: Props) {
 
@@ -81,7 +91,9 @@ export default function SupplierContractCreateForm({
 
   const [pendingDoc, setPendingDoc] = useState<File[]>([]);
 
+  const createFormRef = useRef<HTMLFormElement>(null);
 
+  const projectSelectRef = useRef<HTMLSelectElement>(null);
 
   const [form, setForm] = useState({
 
@@ -103,6 +115,8 @@ export default function SupplierContractCreateForm({
 
     sub_category: "",
 
+    project_id: "",
+
     wht_rate: "0",
 
     initial_monthly_amount: "",
@@ -114,6 +128,27 @@ export default function SupplierContractCreateForm({
     notes: "",
 
   });
+
+  const hasActiveExpenseProjects = useMemo(
+    () => initialProjects.some((project) => !project.is_archived),
+    [initialProjects],
+  );
+
+  const formProjectOptions = useMemo(
+    () =>
+      expenseRegisterProjectOptionsForForm(initialProjects, form.project_id),
+    [initialProjects, form.project_id],
+  );
+
+  useEffect(() => {
+    if (!hasActiveExpenseProjects || form.project_id) {
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      project_id: EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE,
+    }));
+  }, [hasActiveExpenseProjects, form.project_id]);
 
 
 
@@ -217,9 +252,23 @@ export default function SupplierContractCreateForm({
 
 
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
 
     e.preventDefault();
+
+    projectSelectRef.current?.setCustomValidity("");
+    if (hasActiveExpenseProjects) {
+      const projectResult = resolveExpenseRegisterProjectIdForSave(
+        form.project_id,
+        true,
+      );
+      if (!projectResult.ok) {
+        projectSelectRef.current?.setCustomValidity(projectResult.error);
+      }
+    }
+    if (!createFormRef.current?.reportValidity()) {
+      return;
+    }
 
     setSaving(true);
 
@@ -325,7 +374,11 @@ export default function SupplierContractCreateForm({
 
       ) : null}
 
-      <form onSubmit={handleCreate} className="space-y-4 rounded-lg border border-slate-200 p-4">
+      <form
+        ref={createFormRef}
+        onSubmit={handleCreate}
+        className="space-y-4 rounded-lg border border-slate-200 p-4"
+      >
 
         <div className="grid gap-4 md:grid-cols-2">
 
@@ -590,6 +643,33 @@ export default function SupplierContractCreateForm({
             </select>
 
           </label>
+
+          {hasActiveExpenseProjects ? (
+            <label className="block text-sm">
+              Contract / Project
+              <select
+                ref={projectSelectRef}
+                className={`${inputClassName} mt-1 w-full`}
+                value={form.project_id}
+                onChange={(e) => {
+                  setForm({ ...form, project_id: e.target.value });
+                  projectSelectRef.current?.setCustomValidity("");
+                }}
+                required
+              >
+                <option value="">Select contract or project…</option>
+                <option value={EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE}>
+                  Company overhead (not tied to a contract)
+                </option>
+                {formProjectOptions.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.project_code} — {project.project_name}
+                    {project.is_archived ? " (Inactive)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <label className="block text-sm">
 

@@ -22,7 +22,7 @@ import {
 import { toDateInputValue } from "./register-row-actions";
 
 /** Set true after accounts_payable.project_id exists and AP sync is wired. */
-export const EXPENSE_BULK_SYNC_LINKED_AP_PROJECT = false;
+export const EXPENSE_BULK_SYNC_LINKED_AP_PROJECT = true;
 
 export const EXPENSE_BULK_ASSIGN_BATCH_SIZE = 50;
 
@@ -154,48 +154,86 @@ export async function bulkAssignExpenseRegisterProjectIds(input: {
         continue;
       }
 
-      const { data: updatedRow, error: updateError } = await applyBusinessUnitScope(
-        supabase
-          .from("expense_register")
-          .update({ project_id: projectId })
-          .eq("id", expenseId)
-          .eq("tenant_id", tenantId),
-        buReadScope,
-      )
-        .select("id")
-        .maybeSingle();
+      const linkedApId = EXPENSE_BULK_SYNC_LINKED_AP_PROJECT
+        ? parseAccountsPayableIdFromAccrualReceiptNo(entry.receipt_no)
+        : null;
 
-      if (updateError) {
-        failed.push({ id: expenseId, reason: updateError.message });
-        continue;
-      }
+      if (linkedApId) {
+        const { data: updatedAp, error: apError } = await applyBusinessUnitScope(
+          supabase
+            .from("accounts_payable")
+            .update({ project_id: projectId })
+            .eq("id", linkedApId)
+            .eq("tenant_id", tenantId),
+          buReadScope,
+        )
+          .select("id")
+          .maybeSingle();
 
-      if (!updatedRow) {
-        failed.push({
-          id: expenseId,
-          reason: "No row updated (access scope or record missing).",
-        });
-        continue;
-      }
+        if (apError) {
+          failed.push({ id: expenseId, reason: apError.message });
+          continue;
+        }
 
-      if (EXPENSE_BULK_SYNC_LINKED_AP_PROJECT) {
-        const apId = parseAccountsPayableIdFromAccrualReceiptNo(entry.receipt_no);
-        if (apId) {
-          const { error: apError } = await applyBusinessUnitScope(
+        if (!updatedAp) {
+          failed.push({
+            id: expenseId,
+            reason: "Linked AP bill not updated (access scope or record missing).",
+          });
+          continue;
+        }
+
+        const { data: updatedExpense, error: expenseError } =
+          await applyBusinessUnitScope(
             supabase
-              .from("accounts_payable")
+              .from("expense_register")
               .update({ project_id: projectId })
-              .eq("id", apId)
+              .eq("id", expenseId)
               .eq("tenant_id", tenantId),
             buReadScope,
-          );
-          if (apError) {
-            failed.push({
-              id: expenseId,
-              reason: `Expense updated but linked AP bill failed: ${apError.message}`,
-            });
-            continue;
-          }
+          )
+            .select("id")
+            .maybeSingle();
+
+        if (expenseError) {
+          failed.push({
+            id: expenseId,
+            reason: `Linked bill updated but expense failed: ${expenseError.message}`,
+          });
+          continue;
+        }
+
+        if (!updatedExpense) {
+          failed.push({
+            id: expenseId,
+            reason:
+              "Linked bill updated but expense row missing (access scope or record missing).",
+          });
+          continue;
+        }
+      } else {
+        const { data: updatedRow, error: updateError } = await applyBusinessUnitScope(
+          supabase
+            .from("expense_register")
+            .update({ project_id: projectId })
+            .eq("id", expenseId)
+            .eq("tenant_id", tenantId),
+          buReadScope,
+        )
+          .select("id")
+          .maybeSingle();
+
+        if (updateError) {
+          failed.push({ id: expenseId, reason: updateError.message });
+          continue;
+        }
+
+        if (!updatedRow) {
+          failed.push({
+            id: expenseId,
+            reason: "No row updated (access scope or record missing).",
+          });
+          continue;
         }
       }
 

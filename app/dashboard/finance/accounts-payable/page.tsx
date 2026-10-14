@@ -2,8 +2,13 @@ import { cookies } from "next/headers";
 import { createClient } from "@/utils/supabase/server";
 import {
   getActiveBusinessUnitId,
+  getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import {
+  CONTRACT_PROJECT_SELECT,
+  type ContractProjectOption,
+} from "../../administration/projects-utils";
 import {
   applyBusinessUnitScope,
   resolveBusinessUnitReadScope,
@@ -32,6 +37,7 @@ import {
 export default async function AccountsPayablePage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+  const tenantId = await getCurrentUserTenantId();
   const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
     getActiveBusinessUnitId(),
     getViewAllBusinessUnits(),
@@ -47,6 +53,7 @@ export default async function AccountsPayablePage() {
     { data: expenseSubcategories, error: expenseSubcategoriesError },
     { data: taxSettings, error: taxSettingsError },
     { data: taxRateCatalog, error: taxRateCatalogError },
+    { data: projects, error: projectsError },
   ] = await Promise.all([
     applyBusinessUnitScope(
       supabase.from("accounts_payable").select("*"),
@@ -66,6 +73,15 @@ export default async function AccountsPayablePage() {
       .select(TAX_RATE_CATALOG_SELECT)
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
+    tenantId
+      ? applyBusinessUnitScope(
+          supabase
+            .from("projects")
+            .select(CONTRACT_PROJECT_SELECT)
+            .eq("tenant_id", tenantId),
+          buScope,
+        ).order("project_name", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const fetchError =
@@ -74,6 +90,7 @@ export default async function AccountsPayablePage() {
     expenseSubcategoriesError?.message ??
     taxSettingsError?.message ??
     taxRateCatalogError?.message ??
+    projectsError?.message ??
     null;
 
   return (
@@ -100,6 +117,7 @@ export default async function AccountsPayablePage() {
           ) ?? []
         }
         fetchError={fetchError}
+        initialProjects={(projects as ContractProjectOption[] | null) ?? []}
         activeBusinessUnitId={activeBusinessUnitId}
       />
     </div>

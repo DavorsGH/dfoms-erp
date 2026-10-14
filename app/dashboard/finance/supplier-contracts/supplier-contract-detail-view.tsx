@@ -1,9 +1,18 @@
 "use client";
 
+import { useAlert, useToast } from "@/components/feedback";
 import { confirmDialog } from "@/components/feedback/app-dialogs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ContractProjectOption } from "@/app/dashboard/administration/projects-utils";
+import {
+  EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE,
+  expenseRegisterProjectOptionsForForm,
+  formatExpenseRegisterContractProjectLabel,
+  initialExpenseRegisterProjectFormValue,
+  resolveExpenseRegisterProjectIdForSave,
+} from "../expense-register-utils";
 import ImageFileUploadButton from "@/components/image-file-upload-button";
 import {
   useBusinessUnitView,
@@ -50,18 +59,36 @@ function agreementTypeLabel(value: unknown): string {
   return v === "written" ? "Written" : "Verbal";
 }
 
-export default function SupplierContractDetailView({ contractId }: { contractId: string }) {
+export default function SupplierContractDetailView({
+  contractId,
+  initialProjects,
+}: {
+  contractId: string;
+  initialProjects: ContractProjectOption[];
+}) {
   const router = useRouter();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const { units } = useBusinessUnitView();
   const stampBusinessUnit = useStampBusinessUnitId();
   const [detail, setDetail] = useState<DetailPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [pendingAmendDoc, setPendingAmendDoc] = useState<File[]>([]);
   const [pendingContractDoc, setPendingContractDoc] = useState<File[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<Array<{ name: string }>>([]);
   const [editOpen, setEditOpen] = useState(false);
+  const editFormRef = useRef<HTMLFormElement>(null);
+  const editProjectSelectRef = useRef<HTMLSelectElement>(null);
+  const amendFormRef = useRef<HTMLFormElement>(null);
+  const amendReasonInputRef = useRef<HTMLInputElement>(null);
+  const replacementFormRef = useRef<HTMLFormElement>(null);
+
+  const hasActiveExpenseProjects = useMemo(
+    () => initialProjects.some((project) => !project.is_archived),
+    [initialProjects],
+  );
 
   const [amendForm, setAmendForm] = useState({
     effective_date: "",
@@ -84,14 +111,24 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
     mid_month_reminder_day: "15",
     notes: "",
     business_unit_id: "",
+    project_id: "",
   });
 
+  const editFormProjectOptions = useMemo(
+    () =>
+      expenseRegisterProjectOptionsForForm(
+        initialProjects,
+        editForm.project_id,
+      ),
+    [initialProjects, editForm.project_id],
+  );
+
   const loadDetail = useCallback(async () => {
-    setError(null);
+    setLoadError(null);
     const response = await fetch(`/api/supplier-contracts/${contractId}`);
     const payload = (await response.json()) as DetailPayload & { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Unable to load contract.");
+      setLoadError(payload.error ?? "Unable to load contract.");
       setDetail(null);
       return;
     }
@@ -104,8 +141,12 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
       mid_month_reminder_day: String(c.mid_month_reminder_day ?? 15),
       notes: String(c.notes ?? ""),
       business_unit_id: String(c.business_unit_id ?? ""),
+      project_id: initialExpenseRegisterProjectFormValue(
+        (c as { project_id?: string | null }).project_id,
+        initialProjects,
+      ),
     });
-  }, [contractId]);
+  }, [contractId, initialProjects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,7 +240,6 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
       return;
     }
     setSaving(true);
-    setError(null);
     const response = await fetch(`/api/supplier-contracts/${contractId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -207,19 +247,38 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Activation failed.");
+      void alertError(payload.error ?? "Activation failed.", {
+        title: "Could not activate contract",
+      });
       setSaving(false);
       return;
     }
     await loadDetail();
     router.refresh();
     setSaving(false);
+    toast("Contract activated.");
   }
 
-  async function submitEdit() {
+  async function submitEdit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    e.stopPropagation();
     if (!canEdit) return;
+
+    editProjectSelectRef.current?.setCustomValidity("");
+    if (hasActiveExpenseProjects) {
+      const projectResult = resolveExpenseRegisterProjectIdForSave(
+        editForm.project_id,
+        true,
+      );
+      if (!projectResult.ok) {
+        editProjectSelectRef.current?.setCustomValidity(projectResult.error);
+      }
+    }
+    if (!editFormRef.current?.reportValidity()) {
+      return;
+    }
+
     setSaving(true);
-    setError(null);
     const body: Record<string, unknown> = {
       end_date: editForm.end_date,
       auto_renew: editForm.auto_renew,
@@ -227,6 +286,9 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
       mid_month_reminder_day: Number(editForm.mid_month_reminder_day) || 15,
       notes: editForm.notes || null,
     };
+    if (hasActiveExpenseProjects) {
+      body.project_id = editForm.project_id;
+    }
     if (!hasGeneratedAp && units.length > 0) {
       body.business_unit_id = editForm.business_unit_id.trim() || null;
     }
@@ -237,7 +299,9 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Update failed.");
+      void alertError(payload.error ?? "Update failed.", {
+        title: "Could not save contract settings",
+      });
       setSaving(false);
       return;
     }
@@ -246,8 +310,9 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
         await uploadDocument(pendingContractDoc[0]);
         setPendingContractDoc([]);
       } catch (uploadErr) {
-        setError(
+        void alertError(
           uploadErr instanceof Error ? uploadErr.message : "Document upload failed.",
+          { title: "Settings saved, but document upload failed" },
         );
         setSaving(false);
         return;
@@ -257,18 +322,32 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
     setEditOpen(false);
     setSaving(false);
     router.refresh();
+    toast("Contract settings saved.");
   }
 
-  async function submitAmendment() {
+  async function submitAmendment(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    amendReasonInputRef.current?.setCustomValidity("");
+    const reasonTrimmed = amendForm.change_reason.trim();
+    if (!reasonTrimmed) {
+      amendReasonInputRef.current?.setCustomValidity(
+        "Enter the reason for this amount change.",
+      );
+    }
+    if (!amendFormRef.current?.reportValidity()) {
+      return;
+    }
+
     setSaving(true);
-    setError(null);
     const response = await fetch(`/api/supplier-contracts/${contractId}/amendments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         effective_date: amendForm.effective_date,
         new_monthly_amount: Number(amendForm.new_monthly_amount),
-        change_reason: amendForm.change_reason,
+        change_reason: reasonTrimmed,
       }),
     });
     const payload = (await response.json()) as {
@@ -276,7 +355,9 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
       amendment_id?: string;
     };
     if (!response.ok) {
-      setError(payload.error ?? "Amendment failed.");
+      void alertError(payload.error ?? "Amendment failed.", {
+        title: "Could not save amount change",
+      });
       setSaving(false);
       return;
     }
@@ -285,20 +366,34 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
         await uploadDocument(pendingAmendDoc[0], payload.amendment_id);
         setPendingAmendDoc([]);
       } catch (uploadErr) {
-        setError(
-          uploadErr instanceof Error ? uploadErr.message : "Amendment document upload failed.",
+        void alertError(
+          uploadErr instanceof Error
+            ? uploadErr.message
+            : "Amendment document upload failed.",
+          { title: "Amount saved, but document upload failed" },
         );
         setSaving(false);
         return;
       }
     }
+    setAmendForm({
+      effective_date: "",
+      new_monthly_amount: "",
+      change_reason: "",
+    });
     await loadDetail();
     setSaving(false);
+    toast("Contract amount updated.");
   }
 
-  async function submitReplacement() {
+  async function submitReplacement(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!replacementFormRef.current?.reportValidity()) {
+      return;
+    }
+
     setSaving(true);
-    setError(null);
     const response = await fetch(
       `/api/supplier-contracts/${contractId}/replacement-payment`,
       {
@@ -315,7 +410,9 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
     );
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Replacement payment failed.");
+      void alertError(payload.error ?? "Replacement payment failed.", {
+        title: "Could not record replacement payment",
+      });
       setSaving(false);
       return;
     }
@@ -328,6 +425,7 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
     });
     await loadDetail();
     setSaving(false);
+    toast("Replacement payment recorded.");
   }
 
   async function terminateContract() {
@@ -350,11 +448,14 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) {
-      setError(payload.error ?? "Terminate failed.");
+      void alertError(payload.error ?? "Terminate failed.", {
+        title: "Could not terminate contract",
+      });
       return;
     }
     await loadDetail();
     router.refresh();
+    toast("Contract terminated.");
   }
 
   if (loading) {
@@ -363,7 +464,7 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
 
   if (!detail) {
     return (
-      <p className="text-sm text-red-700">{error ?? "Contract not found."}</p>
+      <p className="text-sm text-red-700">{loadError ?? "Contract not found."}</p>
     );
   }
 
@@ -372,12 +473,6 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
 
   return (
     <div className="space-y-6">
-      {error ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-[#0f2744]">Supplier contract</h3>
@@ -456,6 +551,15 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
             </dd>
           </div>
           <div>
+            <dt className="text-slate-500">Contract / Project</dt>
+            <dd>
+              {formatExpenseRegisterContractProjectLabel(
+                (contract as { project_id?: string | null }).project_id,
+                initialProjects,
+              )}
+            </dd>
+          </div>
+          <div>
             <dt className="text-slate-500">WHT rate</dt>
             <dd>{Number(contract.wht_rate) || 0}%</dd>
           </div>
@@ -518,16 +622,48 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
           <p className="mb-3 text-sm text-slate-600">
             Monthly amount changes use Change amount below. Terminated contracts cannot be edited.
           </p>
-          <div className="grid gap-3 md:grid-cols-2">
+          <form
+            id="supplier-contract-settings-form"
+            ref={editFormRef}
+            className="grid gap-3 md:grid-cols-2"
+            onSubmit={(event) => void submitEdit(event)}
+          >
             <label className="block text-sm">
               End date
               <input
                 type="date"
+                required
                 className={`${inputClassName} mt-1 w-full`}
                 value={editForm.end_date}
                 onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
               />
             </label>
+            {hasActiveExpenseProjects ? (
+              <label className="block text-sm">
+                Contract / Project
+                <select
+                  ref={editProjectSelectRef}
+                  className={`${inputClassName} mt-1 w-full`}
+                  value={editForm.project_id}
+                  onChange={(e) => {
+                    setEditForm({ ...editForm, project_id: e.target.value });
+                    editProjectSelectRef.current?.setCustomValidity("");
+                  }}
+                  required
+                >
+                  <option value="">Select contract or project…</option>
+                  <option value={EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE}>
+                    Company overhead (not tied to a contract)
+                  </option>
+                  {editFormProjectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.project_code} — {project.project_name}
+                      {project.is_archived ? " (Inactive)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             {!hasGeneratedAp && units.length > 0 ? (
               <label className="block text-sm">
                 Business unit
@@ -599,15 +735,16 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
                 addLabel="Upload document"
               />
             </div>
-          </div>
-          <button
-            type="button"
-            className={`${primaryBtn} mt-4`}
-            disabled={saving || (units.length > 0 && !stampBusinessUnit.ok && !hasGeneratedAp)}
-            onClick={submitEdit}
-          >
-            Save settings
-          </button>
+            <button
+              type="submit"
+              className={`${primaryBtn} mt-4 md:col-span-2`}
+              disabled={
+                saving || (units.length > 0 && !stampBusinessUnit.ok && !hasGeneratedAp)
+              }
+            >
+              Save settings
+            </button>
+          </form>
         </section>
       ) : null}
 
@@ -683,34 +820,54 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
               </li>
             ))}
           </ul>
-          <div className="grid gap-2 md:grid-cols-3">
-            <input
-              type="date"
-              className={inputClassName}
-              value={amendForm.effective_date}
-              onChange={(e) =>
-                setAmendForm({ ...amendForm, effective_date: e.target.value })
-              }
-            />
-            <input
-              type="number"
-              placeholder="New monthly amount"
-              className={inputClassName}
-              value={amendForm.new_monthly_amount}
-              onChange={(e) =>
-                setAmendForm({ ...amendForm, new_monthly_amount: e.target.value })
-              }
-            />
-            <input
-              placeholder="Reason"
-              className={inputClassName}
-              value={amendForm.change_reason}
-              onChange={(e) =>
-                setAmendForm({ ...amendForm, change_reason: e.target.value })
-              }
-            />
-          </div>
-          <div className="mt-3 space-y-2">
+          <form
+            id="supplier-contract-amendment-form"
+            ref={amendFormRef}
+            className="space-y-3"
+            onSubmit={(event) => void submitAmendment(event)}
+          >
+            <div className="grid gap-2 md:grid-cols-3">
+              <label className="block text-sm">
+                Effective date
+                <input
+                  type="date"
+                  required
+                  className={`${inputClassName} mt-1 w-full`}
+                  value={amendForm.effective_date}
+                  onChange={(e) =>
+                    setAmendForm({ ...amendForm, effective_date: e.target.value })
+                  }
+                />
+              </label>
+              <label className="block text-sm">
+                New monthly amount (GHS)
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  className={`${inputClassName} mt-1 w-full`}
+                  value={amendForm.new_monthly_amount}
+                  onChange={(e) =>
+                    setAmendForm({ ...amendForm, new_monthly_amount: e.target.value })
+                  }
+                />
+              </label>
+              <label className="block text-sm">
+                Reason
+                <input
+                  ref={amendReasonInputRef}
+                  type="text"
+                  required
+                  className={`${inputClassName} mt-1 w-full`}
+                  value={amendForm.change_reason}
+                  onChange={(e) => {
+                    setAmendForm({ ...amendForm, change_reason: e.target.value });
+                    amendReasonInputRef.current?.setCustomValidity("");
+                  }}
+                />
+              </label>
+            </div>
             <ImageFileUploadButton
               files={pendingAmendDoc}
               onChange={setPendingAmendDoc}
@@ -719,21 +876,26 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
               emptyHint={SUPPLIER_CONTRACT_DOCUMENT_HINT}
               addLabel="Optional amendment document"
             />
-            <button type="button" className={primaryBtn} disabled={saving} onClick={submitAmendment}>
+            <button type="submit" className={primaryBtn} disabled={saving}>
               Save change amount
             </button>
-          </div>
+          </form>
         </section>
       ) : null}
 
       {canEdit ? (
         <section className="rounded-lg border border-slate-200 p-4">
           <h4 className="mb-3 font-medium">Record replacement payment</h4>
-          <div className="grid gap-2 md:grid-cols-2">
+          <form
+            ref={replacementFormRef}
+            className="grid gap-2 md:grid-cols-2"
+            onSubmit={(event) => void submitReplacement(event)}
+          >
             <label className="block text-sm">
               Service date
               <input
                 type="date"
+                required
                 className={`${inputClassName} mt-1 w-full`}
                 value={replacementForm.service_date}
                 onChange={(e) =>
@@ -744,6 +906,8 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
             <label className="block text-sm">
               Replacement name
               <input
+                type="text"
+                required
                 className={`${inputClassName} mt-1 w-full`}
                 value={replacementForm.replacement_name}
                 onChange={(e) =>
@@ -758,6 +922,9 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
               Amount (GHS)
               <input
                 type="number"
+                min="0.01"
+                step="0.01"
+                required
                 className={`${inputClassName} mt-1 w-full`}
                 value={replacementForm.amount}
                 onChange={(e) =>
@@ -799,15 +966,14 @@ export default function SupplierContractDetailView({ contractId }: { contractId:
                 }
               />
             </label>
-          </div>
-          <button
-            type="button"
-            className={`${primaryBtn} mt-3`}
-            disabled={saving}
-            onClick={submitReplacement}
-          >
-            Record replacement
-          </button>
+            <button
+              type="submit"
+              className={`${primaryBtn} mt-1 md:col-span-2`}
+              disabled={saving}
+            >
+              Record replacement
+            </button>
+          </form>
           <h4 className="mb-2 mt-6 font-medium">Deductions</h4>
           <ul className="space-y-1 text-sm">
             {detail.deductions.map((d) => (

@@ -18,10 +18,28 @@ export type AccountsPayableEntry = {
   wht_amount?: number | null;
   gross_before_wht?: number | null;
   business_unit_id?: string | null;
+  project_id?: string | null;
   /** Present when linked to fixed_assets credit purchase (exclude from AP accrual). */
   source_type?: string | null;
   source_id?: string | null;
 };
+
+/** save_accounts_payable returns jsonb `{ id, accrualStatus, ... }`. */
+export function resolveAccountsPayableIdFromSaveRpc(
+  data: unknown,
+  editingId: string | null,
+): string | null {
+  if (editingId) {
+    return editingId;
+  }
+  if (typeof data === "object" && data && "id" in data) {
+    const id = (data as { id: unknown }).id;
+    if (typeof id === "string" && id.trim()) {
+      return id.trim();
+    }
+  }
+  return null;
+}
 
 export type PayableStatus = "Paid" | "Overdue" | "Outstanding";
 

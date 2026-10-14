@@ -19,6 +19,7 @@ import {
   formatExpenseRegisterContractProjectLabel,
   initialExpenseRegisterProjectFormValue,
   normalizeExpenseRegisterEntry,
+  normalizeExpenseRegisterProjectIdForDatabase,
   resolveExpenseRegisterProjectIdForSave,
   syncExpenseRegisterFormCustomValidity,
   tenantHasActiveExpenseProjects,
@@ -150,6 +151,7 @@ import {
   normalizeBulkAssignProjectFormValue,
 } from "./expense-register-bulk-project-utils";
 import { resolveSessionTenantId } from "@/utils/session-tenant-client";
+import { parseAccountsPayableIdFromAccrualReceiptNo } from "./accounts-payable-accrual-utils";
 import {
   isApAccrualExpenseRegisterRow,
   isSystemManagedExpenseRegisterRow,
@@ -1647,6 +1649,7 @@ export default function ExpenseRegister({
     }
 
     let savedId = editingId;
+    let linkedApProjectSyncError: string | null = null;
 
     if (editingId) {
       const { error: updateError } = await supabase
@@ -1657,6 +1660,35 @@ export default function ExpenseRegister({
       if (updateError) {
         void alertError(updateError.message, { title: "Could not save expense" });
         return;
+      }
+
+      const linkedApId = parseAccountsPayableIdFromAccrualReceiptNo(receiptNo);
+      const previousProjectId = normalizeExpenseRegisterProjectIdForDatabase(
+        editingEntry?.project_id,
+      );
+      const nextProjectId = projectIdResult.projectId;
+      if (
+        linkedApId &&
+        previousProjectId !== nextProjectId
+      ) {
+        const { tenantId, error: tenantError } =
+          await resolveSessionTenantId(supabase);
+        if (tenantError || !tenantId) {
+          linkedApProjectSyncError =
+            tenantError ?? "Unable to resolve workspace.";
+        } else {
+          const { error: apProjectError } = await applyBusinessUnitScope(
+            supabase
+              .from("accounts_payable")
+              .update({ project_id: nextProjectId })
+              .eq("id", linkedApId)
+              .eq("tenant_id", tenantId),
+            buReadScope,
+          );
+          if (apProjectError) {
+            linkedApProjectSyncError = apProjectError.message;
+          }
+        }
       }
     } else {
       const { data: inserted, error: insertError } = await supabase
@@ -1708,7 +1740,12 @@ export default function ExpenseRegister({
       // Saved online; queue badge refresh is non-blocking.
     }
 
-    if (ledgerError) {
+    if (linkedApProjectSyncError) {
+      void alertError(linkedApProjectSyncError, {
+        title:
+          "Expense saved, but the linked bill's Contract / Project could not be updated",
+      });
+    } else if (ledgerError) {
       void alertError(
         `Entry saved, but the tax ledger could not be updated: ${ledgerError}`,
         { title: "Expense saved with warnings" },

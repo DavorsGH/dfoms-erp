@@ -1,8 +1,20 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
-import { getCurrentUserTenantId } from "@/utils/dashboard-auth";
+import {
+  getActiveBusinessUnitId,
+  getCurrentUserTenantId,
+  getViewAllBusinessUnits,
+} from "@/utils/dashboard-auth";
+import {
+  applyBusinessUnitScope,
+  resolveBusinessUnitReadScope,
+} from "@/utils/business-unit-view";
 import type { NamedLookup } from "@/app/dashboard/lookup-types";
+import {
+  CONTRACT_PROJECT_SELECT,
+  type ContractProjectOption,
+} from "../../../administration/projects-utils";
 import FinanceNav from "../../finance-nav";
 import {
   normalizeExpenseSubcategoryLookup,
@@ -24,14 +36,32 @@ export default async function NewSupplierContractPage() {
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
-  const [{ data: expenseCategories }, { data: expenseSubcategories }] =
-    await Promise.all([
+  const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+    getActiveBusinessUnitId(),
+    getViewAllBusinessUnits(),
+  ]);
+  const buScope = resolveBusinessUnitReadScope({
+    viewAllBusinessUnits,
+    activeBusinessUnitId,
+  });
+  const [
+    { data: expenseCategories },
+    { data: expenseSubcategories },
+    { data: projects },
+  ] = await Promise.all([
       supabase
         .from("expense_categories")
         .select("name, is_active")
         .order("name"),
-      queryExpenseSubcategoryLookups(supabase),
-    ]);
+    queryExpenseSubcategoryLookups(supabase),
+    applyBusinessUnitScope(
+      supabase
+        .from("projects")
+        .select(CONTRACT_PROJECT_SELECT)
+        .eq("tenant_id", tenantId),
+      buScope,
+    ).order("project_name", { ascending: true }),
+  ]);
 
   return (
     <div>
@@ -51,6 +81,7 @@ export default async function NewSupplierContractPage() {
         expenseSubcategories={(expenseSubcategories ?? []).map((row) =>
           normalizeExpenseSubcategoryLookup(row),
         )}
+        initialProjects={(projects as ContractProjectOption[] | null) ?? []}
       />
     </div>
   );

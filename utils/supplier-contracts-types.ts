@@ -41,7 +41,7 @@ export type SupplierContractListDbRow = Omit<
 };
 
 export const SUPPLIER_CONTRACT_HEADER_SELECT =
-  "id, tenant_id, business_unit_id, supplier_id, supplier_name, contract_number, contract_sequence, agreement_type, document_url, start_date, end_date, auto_renew, status, expense_category, sub_category, wht_rate, next_billing_date, mid_month_reminder_enabled, mid_month_reminder_day, credit_balance, notes, created_at, updated_at" as const;
+  "id, tenant_id, business_unit_id, supplier_id, supplier_name, contract_number, contract_sequence, agreement_type, document_url, start_date, end_date, auto_renew, status, expense_category, sub_category, wht_rate, next_billing_date, mid_month_reminder_enabled, mid_month_reminder_day, credit_balance, project_id, notes, created_at, updated_at" as const;
 
 export type SupplierContractAmendmentRow = {
   id: string;
@@ -91,6 +91,7 @@ export type SupplierContractListRow = {
   mid_month_reminder_enabled: boolean;
   mid_month_reminder_day: number;
   credit_balance: number;
+  project_id?: string | null;
   created_at: string;
   /** Current billing month amount from amendments; null when none exist. */
   current_monthly_amount: number | null;
@@ -121,6 +122,7 @@ export type SupplierContractWriteBody = {
   mid_month_reminder_day?: number;
   notes?: string | null;
   business_unit_id?: string | null;
+  project_id?: string | null;
 };
 
 export type SupplierContractAmendmentWriteBody = {
@@ -205,6 +207,7 @@ export type SupplierContractSettingsPatch = {
   mid_month_reminder_day?: number;
   notes?: string | null;
   business_unit_id?: string | null;
+  project_id?: string | null;
 };
 
 export function isSupplierContractRenewalDue(

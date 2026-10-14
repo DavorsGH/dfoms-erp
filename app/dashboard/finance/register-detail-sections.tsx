@@ -18,6 +18,7 @@ import {
 } from "./expense-register-ap-accrual-display";
 import {
   formatDate,
+  formatExpenseRegisterContractProjectLabel,
   formatGHS,
   getExpenseGrossBeforeWht,
   normalizeExpenseRegisterEntry,
@@ -287,7 +288,10 @@ function resolveAccountsPayableLinks(entry: AccountsPayableEntry): ReactNode {
 export function buildAccountsPayableDetailSections(
   entry: AccountsPayableEntry,
   units: BusinessUnitSwitcherOption[],
-  context: { payments: AccountsPayablePaymentRecord[] },
+  context: {
+    payments: AccountsPayablePaymentRecord[];
+    projects?: ContractProjectOption[];
+  },
 ): RegisterDetailSection[] {
   const gross = getPayableGrossBeforeWht(entry);
   const balanceDue = getRemainingPayableBalance(entry);
@@ -341,6 +345,13 @@ export function buildAccountsPayableDetailSections(
           value: formatDetailText(entry.expense_category),
         },
         { label: "Sub-category", value: formatDetailText(entry.sub_category) },
+        {
+          label: "Contract / Project",
+          value: formatExpenseRegisterContractProjectLabel(
+            entry.project_id,
+            context.projects ?? [],
+          ),
+        },
         {
           label: "Due date",
           value: formatOptionalDate(entry.due_date, formatPayableDate),

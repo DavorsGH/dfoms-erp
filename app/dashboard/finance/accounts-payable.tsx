@@ -1,6 +1,8 @@
 "use client";
 
+import { useAlert, useToast } from "@/components/feedback";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ContractProjectOption } from "../administration/projects-utils";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import type { NamedLookup } from "../lookup-types";
@@ -10,9 +12,15 @@ import {
   namedLookupSelectOptionsForCreate,
 } from "../administration/lookup-settings-shared";
 import {
+  EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE,
+  expenseRegisterProjectOptionsForForm,
   expenseSubcategoryOptionsForCategory,
+  formatExpenseRegisterContractProjectLabel,
+  initialExpenseRegisterProjectFormValue,
   normalizeExpenseSubcategoryLookup,
+  normalizeExpenseRegisterProjectIdForDatabase,
   queryExpenseSubcategoryLookups,
+  resolveExpenseRegisterProjectIdForSave,
   type ExpenseSubcategoryLookup,
 } from "./expense-register-utils";
 import {
@@ -29,6 +37,7 @@ import {
   getRemainingPayableBalance,
   normalizeAccountsPayableEntry,
   normalizeAccountsPayablePaymentRecord,
+  resolveAccountsPayableIdFromSaveRpc,
   type AccountsPayableEntry,
   type AccountsPayablePaymentRecord,
   type AccountsPayablePaymentSource,
@@ -94,6 +103,7 @@ type AccountsPayableProps = {
   taxSettings: TaxSettings | null;
   taxRateCatalog: TaxRateCatalogEntry[];
   fetchError: string | null;
+  initialProjects: ContractProjectOption[];
   /** Create-only stamp; null = All Businesses. */
   activeBusinessUnitId?: string | null;
 };
@@ -104,6 +114,7 @@ type PayableFormState = {
   invoice_number: string;
   expense_category: string;
   sub_category: string;
+  project_id: string;
   description: string;
   invoice_date: string;
   due_date: string;
@@ -120,6 +131,7 @@ const emptyForm: PayableFormState = {
   invoice_number: "",
   expense_category: "",
   sub_category: "",
+  project_id: "",
   description: "",
   invoice_date: "",
   due_date: "",
@@ -155,12 +167,17 @@ export default function AccountsPayable({
   taxSettings,
   taxRateCatalog,
   fetchError,
+  initialProjects,
   activeBusinessUnitId = null,
 }: AccountsPayableProps) {
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const apIdFromQueryHandled = useRef<string | null>(null);
+  const payableFormRef = useRef<HTMLFormElement>(null);
+  const projectSelectRef = useRef<HTMLSelectElement>(null);
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const { units: businessUnits } = useBusinessUnitView();
@@ -241,6 +258,24 @@ export default function AccountsPayable({
       ),
     [expenseCategories, expenseSubcategories, form.expense_category, form.sub_category],
   );
+
+  const hasActiveExpenseProjects = useMemo(
+    () => initialProjects.some((project) => !project.is_archived),
+    [initialProjects],
+  );
+
+  const payableFormProjectOptions = useMemo(
+    () =>
+      expenseRegisterProjectOptionsForForm(initialProjects, form.project_id),
+    [initialProjects, form.project_id],
+  );
+
+  function contractProjectLabel(entry: Pick<AccountsPayableEntry, "project_id">) {
+    return formatExpenseRegisterContractProjectLabel(
+      entry.project_id,
+      initialProjects,
+    );
+  }
 
   useEffect(() => {
     setEntries(initialEntries.map(normalizeAccountsPayableEntry));
@@ -401,7 +436,13 @@ export default function AccountsPayable({
     setLoading(false);
     setEditingId(null);
     setWhtAmountEdited(false);
-    setForm({ ...emptyForm, wht_rate: defaultWhtRate });
+    setForm({
+      ...emptyForm,
+      wht_rate: defaultWhtRate,
+      project_id: hasActiveExpenseProjects
+        ? EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE
+        : "",
+    });
     setShowForm(true);
   }
 
@@ -426,6 +467,10 @@ export default function AccountsPayable({
       invoice_number: entry.invoice_number ?? "",
       expense_category: entry.expense_category ?? "",
       sub_category: entry.sub_category ?? "",
+      project_id: initialExpenseRegisterProjectFormValue(
+        entry.project_id,
+        initialProjects,
+      ),
       description: entry.description ?? "",
       invoice_date: entry.invoice_date
         ? toDateInputValue(entry.invoice_date)
@@ -498,15 +543,40 @@ export default function AccountsPayable({
     setDeletingId(null);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    const formElement = payableFormRef.current;
+    if (!formElement) {
+      return;
+    }
+
+    projectSelectRef.current?.setCustomValidity("");
+    if (hasActiveExpenseProjects) {
+      const projectIdResult = resolveExpenseRegisterProjectIdForSave(
+        form.project_id,
+        true,
+      );
+      if (!projectIdResult.ok) {
+        projectSelectRef.current?.setCustomValidity(projectIdResult.error);
+      }
+    }
+
+    if (!formElement.reportValidity()) {
+      return;
+    }
+
+    const projectIdForSave = hasActiveExpenseProjects
+      ? normalizeExpenseRegisterProjectIdForDatabase(form.project_id)
+      : null;
+
     setLoading(true);
     setError(null);
 
     try {
     const buContext = await loadWriteBusinessUnitContext(supabase);
     if (!buContext.ok) {
-      setError(buContext.error);
+      void alertError(buContext.error, { title: "Could not save bill" });
       setLoading(false);
       return;
     }
@@ -523,7 +593,9 @@ export default function AccountsPayable({
           existingEntry?.business_unit_id,
         );
       } catch (accessError) {
-        setError(formatBusinessUnitAccessError(accessError));
+        void alertError(formatBusinessUnitAccessError(accessError), {
+          title: "Could not save bill",
+        });
         setLoading(false);
         return;
       }
@@ -534,7 +606,7 @@ export default function AccountsPayable({
         stamp: stampBusinessUnit,
       });
       if (!stampResult.ok) {
-        setError(stampResult.error);
+        void alertError(stampResult.error, { title: "Could not save bill" });
         setLoading(false);
         return;
       }
@@ -564,7 +636,9 @@ export default function AccountsPayable({
     const { tenantId, error: tenantError } =
       await resolveSessionTenantId(supabase);
     if (tenantError || !tenantId) {
-      setError(tenantError ?? "Unable to resolve workspace.");
+      void alertError(tenantError ?? "Unable to resolve workspace.", {
+        title: "Could not save bill",
+      });
       setLoading(false);
       return;
     }
@@ -575,12 +649,14 @@ export default function AccountsPayable({
       vendorOptions,
     );
     if (!vendorName) {
-      setError("Supplier is required.");
+      void alertError("Supplier is required.", { title: "Could not save bill" });
       setLoading(false);
       return;
     }
     if (form.vendor_select === VENDOR_OTHER_VALUE && !form.vendor_other.trim()) {
-      setError("Enter the one-time supplier name.");
+      void alertError("Enter the one-time supplier name.", {
+        title: "Could not save bill",
+      });
       setLoading(false);
       return;
     }
@@ -600,7 +676,9 @@ export default function AccountsPayable({
       businessUnitId: stampedBusinessUnitId,
     });
 
-    const { error: saveError } = await supabase.rpc("save_accounts_payable", {
+    const { data: saveData, error: saveError } = await supabase.rpc(
+      "save_accounts_payable",
+      {
       p_tenant_id: tenantId,
       p_ap_id: editingId,
       p_business_unit_id: stampedBusinessUnitId,
@@ -623,12 +701,31 @@ export default function AccountsPayable({
       p_notes: form.notes || null,
       p_source_type: existingEntry?.source_type ?? null,
       p_tax_rows: taxRows,
-    });
+      },
+    );
 
     if (saveError) {
-      setError(saveError.message);
+      void alertError(saveError.message, { title: "Could not save bill" });
       setLoading(false);
       return;
+    }
+
+    const savedApId = resolveAccountsPayableIdFromSaveRpc(saveData, editingId);
+    if (hasActiveExpenseProjects && savedApId) {
+      const { error: projectError } = await applyBusinessUnitScope(
+        supabase
+          .from("accounts_payable")
+          .update({ project_id: projectIdForSave })
+          .eq("id", savedApId)
+          .eq("tenant_id", tenantId),
+        buReadScope,
+      );
+
+      if (projectError) {
+        void alertError(projectError.message, {
+          title: "Bill saved, but its Contract / Project could not be set",
+        });
+      }
     }
 
     if (!editingId) {
@@ -639,13 +736,15 @@ export default function AccountsPayable({
       });
     }
 
+    toast(editingId ? "Bill updated." : "Bill saved.");
     closeForm();
     await refreshEntries();
     } catch (unexpected) {
-      setError(
+      void alertError(
         unexpected instanceof Error
           ? unexpected.message
           : "Unable to save accounts payable.",
+        { title: "Could not save bill" },
       );
     } finally {
       setLoading(false);
@@ -840,7 +939,11 @@ export default function AccountsPayable({
               ? "Edit Accounts Payable Entry"
               : "New Accounts Payable Entry"}
           </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            ref={payableFormRef}
+            onSubmit={handleSubmit}
+            className="space-y-4"
+          >
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <div className="md:col-span-2">
                 <TenantSupplierVendorNameFields
@@ -890,6 +993,34 @@ export default function AccountsPayable({
                   ))}
                 </select>
               </div>
+              {hasActiveExpenseProjects ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Contract / Project
+                  </label>
+                  <select
+                    ref={projectSelectRef}
+                    required
+                    value={form.project_id}
+                    onChange={(e) => {
+                      updateField("project_id", e.target.value);
+                      projectSelectRef.current?.setCustomValidity("");
+                    }}
+                    className={inputClassName}
+                  >
+                    <option value="">Select contract or project…</option>
+                    <option value={EXPENSE_REGISTER_PROJECT_OVERHEAD_VALUE}>
+                      Company overhead (not tied to a contract)
+                    </option>
+                    {payableFormProjectOptions.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.project_code} — {project.project_name}
+                        {project.is_archived ? " (Inactive)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Sub-Category
@@ -1224,6 +1355,7 @@ export default function AccountsPayable({
                 <th className={scrollableTableStickyFirstThClassName}>Supplier Name</th>
                 <th className={scrollableTableThClassName}>Invoice Number</th>
                 <th className={scrollableTableThClassName}>Expense Category</th>
+                <th className={scrollableTableThClassName}>Contract / Project</th>
                 <th className={scrollableTableThClassName}>Sub-Category</th>
                 <th className={scrollableTableThClassName}>Due Date</th>
                 <th className={scrollableTableThClassName}>Gross</th>
@@ -1240,7 +1372,7 @@ export default function AccountsPayable({
               {entries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={14}
+                    colSpan={15}
                     className="px-4 py-8 text-center text-slate-500"
                   >
                     No accounts payable entries yet.
@@ -1293,6 +1425,9 @@ export default function AccountsPayable({
                       </td>
                       <td className="px-4 py-3">
                         {entry.expense_category?.trim() || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {contractProjectLabel(entry)}
                       </td>
                       <td className="px-4 py-3">
                         {entry.sub_category?.trim() || "—"}
@@ -1350,6 +1485,7 @@ export default function AccountsPayable({
           detailPayable
             ? buildAccountsPayableDetailSections(detailPayable, businessUnits, {
                 payments: detailPayments,
+                projects: initialProjects,
               })
             : []
         }

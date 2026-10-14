@@ -13,6 +13,7 @@ import {
   normalizeSupplierContractStatus,
   type SupplierContractSettingsPatch,
 } from "@/utils/supplier-contracts-types";
+import { normalizeExpenseRegisterProjectIdForDatabase } from "@/app/dashboard/finance/expense-register-utils";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 import { createTenantLogosSignedUrl } from "@/utils/tenant-logos-storage";
@@ -263,6 +264,12 @@ export async function PATCH(
       );
     }
     patch.business_unit_id = stamp.businessUnitId;
+  }
+
+  if (body.project_id !== undefined) {
+    patch.project_id = normalizeExpenseRegisterProjectIdForDatabase(
+      body.project_id,
+    );
   }
 
   const { error: updateError } = await supabase

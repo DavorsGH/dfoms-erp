@@ -179,6 +179,19 @@ async function createSupplierContractAp(
       ? String((data as { id: string }).id)
       : null;
 
+  if (apId) {
+    const projectId = contract.project_id ?? null;
+    const { error: projectError } = await admin
+      .from("accounts_payable")
+      .update({ project_id: projectId })
+      .eq("id", apId)
+      .eq("tenant_id", contract.tenant_id);
+
+    if (projectError) {
+      return { apId, skipped: false, error: projectError.message };
+    }
+  }
+
   return { apId, skipped: false };
 }
 
