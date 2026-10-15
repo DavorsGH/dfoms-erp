@@ -80,6 +80,11 @@ import {
   resolveOptionalProjectId,
   type ContractProjectOption,
 } from "../administration/projects-utils";
+import { UnitOfMeasureSelect } from "@/components/unit-of-measure-select";
+import {
+  formatUnit,
+  UNITS_OF_MEASURE_PRESETS,
+} from "@/utils/units-of-measure";
 
 type RawMaterialsProps = {
   /** BU-scoped stock list (named unit → only materials with a balance row). */
@@ -101,10 +106,15 @@ type RawMaterialsProps = {
   tenantId?: string | null;
 };
 
-const emptyMaterialForm = {
+const emptyMaterialForm: {
+  material_code: string;
+  material_name: string;
+  unit_of_measure: string;
+  reorder_level: string;
+} = {
   material_code: "",
   material_name: "",
-  unit_of_measure: "",
+  unit_of_measure: UNITS_OF_MEASURE_PRESETS[0]!,
   reorder_level: "",
 };
 
@@ -931,21 +941,18 @@ export default function RawMaterials({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Unit of Measure
-                </label>
-                <input
-                  type="text"
+                <UnitOfMeasureSelect
                   required
-                  placeholder="e.g. litres, kg"
+                  label="Unit of Measure"
                   value={materialForm.unit_of_measure}
-                  onChange={(event) =>
+                  onChange={(unit_of_measure) =>
                     setMaterialForm((current) => ({
                       ...current,
-                      unit_of_measure: event.target.value,
+                      unit_of_measure,
                     }))
                   }
                   className={inputClassName}
+                  otherInputClassName={inputClassName}
                 />
               </div>
               <div>
@@ -1034,7 +1041,9 @@ export default function RawMaterials({
                     <td className="px-4 py-3 font-medium text-[#0f2744]">
                       {material.material_name}
                     </td>
-                    <td className="px-4 py-3">{material.unit_of_measure}</td>
+                    <td className="px-4 py-3">
+                      {formatUnit(material.unit_of_measure)}
+                    </td>
                     <td className={`px-4 py-3 ${lowStock ? "bg-amber-50" : ""}`}>
                       <span className="inline-flex flex-wrap items-center gap-2">
                         <span className={lowStock ? "font-medium text-amber-900" : ""}>
@@ -1577,7 +1586,7 @@ export default function RawMaterials({
                       </td>
                       <td className="px-4 py-3">
                         {formatInventoryQuantity(purchase.quantity)}{" "}
-                        {purchase.material?.unit_of_measure ?? ""}
+                        {formatUnit(purchase.material?.unit_of_measure)}
                       </td>
                       <td className="px-4 py-3">
                         {formatInventoryMoney(purchase.cost_per_unit)}
@@ -1869,7 +1878,7 @@ export default function RawMaterials({
                       </td>
                       <td className="px-4 py-3">
                         {formatInventoryQuantity(adjustment.quantity_delta)}{" "}
-                        {adjustment.material?.unit_of_measure ?? ""}
+                        {formatUnit(adjustment.material?.unit_of_measure)}
                       </td>
                       <td className="px-4 py-3">
                         {adjustment.cost_per_unit == null

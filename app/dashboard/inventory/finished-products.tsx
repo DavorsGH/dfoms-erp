@@ -85,6 +85,11 @@ import {
 import { fetchScopedInternalConsumptionEntries } from "@/lib/inventory/fetch-scoped-internal-consumption";
 import type { ContractProjectOption } from "../administration/projects-utils";
 import type { SiteEntry } from "../operations/sites-utils";
+import { UnitOfMeasureSelect } from "@/components/unit-of-measure-select";
+import {
+  formatUnit,
+  UNITS_OF_MEASURE_PRESETS,
+} from "@/utils/units-of-measure";
 
 type FinishedProductsProps = {
   initialProducts: FinishedProductRecord[];
@@ -101,10 +106,17 @@ type FinishedProductsProps = {
   internalConsumptionRecordedByLabel?: string;
 };
 
-const emptyForm = {
+const emptyForm: {
+  product_code: string;
+  product_name: string;
+  unit_of_measure: string;
+  standard_selling_price: string;
+  sourcing_type: FinishedProductSourcingType;
+  supplier_id: string;
+} = {
   product_code: "",
   product_name: "",
-  unit_of_measure: "",
+  unit_of_measure: UNITS_OF_MEASURE_PRESETS[0]!,
   standard_selling_price: "",
   sourcing_type: DEFAULT_FINISHED_PRODUCT_SOURCING_TYPE,
   supplier_id: "",
@@ -989,21 +1001,18 @@ export default function FinishedProducts({
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Unit of Measure
-              </label>
-              <input
-                type="text"
+              <UnitOfMeasureSelect
                 required
-                placeholder="e.g. litres, bottles"
+                label="Unit of Measure"
                 value={form.unit_of_measure}
-                onChange={(event) =>
+                onChange={(unit_of_measure) =>
                   setForm((current) => ({
                     ...current,
-                    unit_of_measure: event.target.value,
+                    unit_of_measure,
                   }))
                 }
                 className={inputClassName}
+                otherInputClassName={inputClassName}
               />
             </div>
             <div>
@@ -1173,7 +1182,9 @@ export default function FinishedProducts({
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-4 py-3">{product.unit_of_measure}</td>
+                  <td className="px-4 py-3">
+                    {formatUnit(product.unit_of_measure)}
+                  </td>
                   <td className="px-4 py-3">
                     {formatInventoryQuantity(product.current_stock)}
                   </td>
@@ -1540,7 +1551,7 @@ export default function FinishedProducts({
                       </td>
                       <td className="px-4 py-3">
                         {formatInventoryQuantity(adjustment.quantity_delta)}{" "}
-                        {adjustment.product?.unit_of_measure ?? ""}
+                        {formatUnit(adjustment.product?.unit_of_measure)}
                       </td>
                       <td className="px-4 py-3">
                         {adjustment.cost_per_unit == null

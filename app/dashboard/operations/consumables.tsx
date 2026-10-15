@@ -26,6 +26,11 @@ import {
   type ConsumablesEntry,
   type ConsumablesSiteOption,
 } from "./consumables-utils";
+import { UnitOfMeasureSelect } from "@/components/unit-of-measure-select";
+import {
+  formatUnit,
+  UNITS_OF_MEASURE_PRESETS,
+} from "@/utils/units-of-measure";
 
 type ConsumablesRegisterProps = {
   initialEntries: ConsumablesEntry[];
@@ -34,14 +39,28 @@ type ConsumablesRegisterProps = {
   defaultRecordedBy: string;
   fetchError: string | null;
   tenantId?: string | null;
+  /** Legacy sheet: list only, no add/edit/delete. */
+  readOnly?: boolean;
 };
 
-const emptyForm = {
+const emptyForm: {
+  date: string;
+  client_site: string;
+  item: string;
+  category: string;
+  unit: string;
+  opening_stock: string;
+  qty_issued: string;
+  qty_used: string;
+  minimum_level: string;
+  recorded_by: string;
+  notes: string;
+} = {
   date: "",
   client_site: "",
   item: "",
   category: "",
-  unit: "",
+  unit: UNITS_OF_MEASURE_PRESETS[0]!,
   opening_stock: "",
   qty_issued: "",
   qty_used: "",
@@ -91,6 +110,7 @@ export default function ConsumablesRegister({
   defaultRecordedBy,
   fetchError,
   tenantId = null,
+  readOnly = false,
 }: ConsumablesRegisterProps) {
   const supabase = createClient();
   const buReadScope = useBusinessUnitReadScope();
@@ -201,7 +221,7 @@ export default function ConsumablesRegister({
       client_site: entry.client_site ?? "",
       item: entry.item,
       category: entry.category ?? "",
-      unit: entry.unit ?? "",
+      unit: entry.unit?.trim() || UNITS_OF_MEASURE_PRESETS[0]!,
       opening_stock:
         entry.opening_stock === null || entry.opening_stock === undefined
           ? ""
@@ -318,13 +338,15 @@ export default function ConsumablesRegister({
           Track site-level supplies (e.g. cleaning materials). Separate from
           Inventory products and batches.
         </p>
-        <button
-          type="button"
-          onClick={() => (showForm ? closeForm() : openAddForm())}
-          className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
-        >
-          {showForm ? "Cancel" : "Add Entry"}
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={() => (showForm ? closeForm() : openAddForm())}
+            className="rounded-md bg-[#0f2744] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1a3a5c]"
+          >
+            {showForm ? "Cancel" : "Add Entry"}
+          </button>
+        ) : null}
       </div>
 
       {error && (
@@ -333,7 +355,7 @@ export default function ConsumablesRegister({
         </p>
       )}
 
-      {showForm && (
+      {!readOnly && showForm && (
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="mb-4 text-lg font-semibold text-[#0f2744]">
             {editingId ? "Edit Consumable Entry" : "New Consumable Entry"}
@@ -396,15 +418,12 @@ export default function ConsumablesRegister({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Unit
-                </label>
-                <input
-                  type="text"
+                <UnitOfMeasureSelect
+                  label="Unit"
                   value={form.unit}
-                  onChange={(e) => updateField("unit", e.target.value)}
+                  onChange={(unit) => updateField("unit", unit)}
                   className={inputClassName}
-                  placeholder="e.g. litres, packs"
+                  otherInputClassName={inputClassName}
                 />
               </div>
               <div>
@@ -551,14 +570,16 @@ export default function ConsumablesRegister({
               <th className={scrollableTableThClassName}>Min</th>
               <th className={scrollableTableThClassName}>Status</th>
               <th className={scrollableTableThClassName}>Recorded By</th>
-              <th className={scrollableTableThClassName}>Actions</th>
+              {!readOnly ? (
+                <th className={scrollableTableThClassName}>Actions</th>
+              ) : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {entries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={readOnly ? 7 : 8}
                   className="px-4 py-8 text-center text-slate-500"
                 >
                   No consumable entries yet.
@@ -574,7 +595,7 @@ export default function ConsumablesRegister({
                   </td>
                   <td className="px-4 py-3">
                     {formatQty(entry.remaining)}
-                    {entry.unit ? ` ${entry.unit}` : ""}
+                    {entry.unit ? ` ${formatUnit(entry.unit)}` : ""}
                   </td>
                   <td className="px-4 py-3">{formatQty(entry.minimum_level)}</td>
                   <td className="px-4 py-3">{entry.stock_status ?? "—"}</td>
@@ -583,11 +604,13 @@ export default function ConsumablesRegister({
                       ? getEmployeeDisplayName(employees, entry.recorded_by)
                       : "—"}
                   </td>
-                  <RegisterRowActions
-                    onEdit={() => openEditForm(entry)}
-                    onDelete={() => handleDelete(entry.id)}
-                    deleting={deletingId === entry.id}
-                  />
+                  {!readOnly ? (
+                    <RegisterRowActions
+                      onEdit={() => openEditForm(entry)}
+                      onDelete={() => handleDelete(entry.id)}
+                      deleting={deletingId === entry.id}
+                    />
+                  ) : null}
                 </tr>
               ))
             )}

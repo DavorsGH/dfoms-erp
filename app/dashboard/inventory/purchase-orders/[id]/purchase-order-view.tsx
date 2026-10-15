@@ -24,6 +24,7 @@ import {
   normalizePurchaseOrderDetail,
   type PurchaseOrderDetailRow,
 } from "@/utils/purchase-orders-types";
+import { formatUnit } from "@/utils/units-of-measure";
 import ReceivePurchaseModal, {
   type ReceivePurchaseTarget,
 } from "./receive-purchase-modal";
@@ -221,7 +222,7 @@ export default function PurchaseOrderDetailView({
             ) : (
               items.map((item, index) => {
                 const unit = getPurchaseOrderItemUnit(item);
-                const unitSuffix = unit ? ` ${unit}` : "";
+                const unitSuffix = unit ? ` ${formatUnit(unit)}` : "";
                 const remaining =
                   Math.round(
                     (item.quantity_ordered - item.quantity_received) * 10000,

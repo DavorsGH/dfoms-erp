@@ -59,7 +59,9 @@ export default function OperationsNav({
           const active =
             item.href === "/dashboard/crm/customers"
               ? pathname.startsWith("/dashboard/crm/customers")
-              : pathname === item.href;
+              : item.href === "/dashboard/operations/consumables"
+                ? pathname.startsWith("/dashboard/operations/consumables")
+                : pathname === item.href;
 
           return (
             <Link

@@ -99,7 +99,7 @@ export const FINISHED_PRODUCT_TARGET_FIELDS: readonly BulkImportTargetField[] = 
     key: "unit_of_measure",
     label: "Unit of measure",
     required: true,
-    example: "pcs",
+    example: "piece",
   },
   {
     key: "current_stock",
