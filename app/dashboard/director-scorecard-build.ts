@@ -497,9 +497,21 @@ function buildChecklist(input: {
     input.cashPosition - input.grossDividend - input.taxToSetAside;
   const dividendCashPass =
     cashAfterDividend >= input.payrollCost - 0.005;
-  const dividendCashReason = dividendCashPass
-    ? `After the dividend and tax set-aside, cash of ${formatGHS(cashAfterDividend)} still covers next payroll (${formatGHS(input.payrollCost)}).`
-    : `Paying the dividend now would leave ${formatGHS(cashAfterDividend)}. Keep at least ${formatGHS(input.payrollCost)} for next payroll.`;
+  let dividendCashReason: string;
+  if (input.grossDividend <= 0.005) {
+    const cashAfterTaxSetAside = roundCurrency(
+      input.cashPosition - input.taxToSetAside,
+    );
+    if (cashAfterTaxSetAside >= input.payrollCost - 0.005) {
+      dividendCashReason = `No dividend available yet. Cash ${formatGHS(input.cashPosition)} covers next payroll (${formatGHS(input.payrollCost)}).`;
+    } else {
+      dividendCashReason = `No dividend available yet. Cash ${formatGHS(input.cashPosition)} is below next payroll (${formatGHS(input.payrollCost)}).`;
+    }
+  } else if (dividendCashPass) {
+    dividendCashReason = `After the dividend and tax set-aside, cash of ${formatGHS(cashAfterDividend)} still covers next payroll (${formatGHS(input.payrollCost)}).`;
+  } else {
+    dividendCashReason = `Paying the dividend now would leave ${formatGHS(cashAfterDividend)}. Keep at least ${formatGHS(input.payrollCost)} for next payroll.`;
+  }
 
   const balanceSheetHref = balanceSheetHrefForScorecardMonth(input.year, input.month);
   const oldestOverduePeriodMonth =
