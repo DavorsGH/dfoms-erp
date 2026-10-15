@@ -11,6 +11,10 @@ import {
 } from "@/utils/dashboard-auth";
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import {
+  applySiteIdScope,
+  fetchScopedSiteCodes,
+} from "@/app/dashboard/operations/site-bu-scope-utils";
+import {
   LIST_LIMIT,
   STAFF_DATA_UNAVAILABLE_MESSAGE,
   getStaffSupabase,
@@ -69,24 +73,47 @@ export async function getOpenWorkItems(): Promise<unknown> {
 
   try {
     const supabase = await getStaffSupabase();
+    const tenantId = sessionResult.session.tenantId;
+    const [activeBusinessUnitId, viewAllBusinessUnits] = await Promise.all([
+      getActiveBusinessUnitId(),
+      getViewAllBusinessUnits(),
+    ]);
+    const buScope = resolveBusinessUnitReadScope({
+      viewAllBusinessUnits,
+      activeBusinessUnitId,
+    });
+    const scopedSites = await fetchScopedSiteCodes(supabase, tenantId, buScope);
+
     const [{ data: workOrders, error: workOrdersError }, { data: failedInspections, error: failedError }, { data: complaints, error: complaintsError }] =
       await Promise.all([
-        supabase
-          .from("work_orders")
-          .select(WORK_ORDER_SELECT)
-          .is("completion_time", null)
+        applySiteIdScope(
+          supabase
+            .from("work_orders")
+            .select(WORK_ORDER_SELECT)
+            .eq("tenant_id", tenantId)
+            .is("completion_time", null),
+          scopedSites.siteCodes,
+        )
           .order("date", { ascending: false })
           .limit(LIST_LIMIT),
-        supabase
-          .from("failed_inspections")
-          .select(FAILED_INSPECTION_SELECT)
-          .or("completed.is.null,completed.eq.false")
+        applySiteIdScope(
+          supabase
+            .from("failed_inspections")
+            .select(FAILED_INSPECTION_SELECT)
+            .eq("tenant_id", tenantId)
+            .or("completed.is.null,completed.eq.false"),
+          scopedSites.siteCodes,
+        )
           .order("date_identified", { ascending: false })
           .limit(LIST_LIMIT),
-        supabase
-          .from("complaint_register")
-          .select(COMPLAINT_REGISTER_SELECT)
-          .not("status", "ilike", "closed%")
+        applySiteIdScope(
+          supabase
+            .from("complaint_register")
+            .select(COMPLAINT_REGISTER_SELECT)
+            .eq("tenant_id", tenantId)
+            .not("status", "ilike", "closed%"),
+          scopedSites.siteCodes,
+        )
           .order("date_received", { ascending: false })
           .limit(LIST_LIMIT),
       ]);
@@ -140,6 +167,7 @@ export async function getOpenWorkItems(): Promise<unknown> {
     return {
       totalCount: items.length,
       items: items.slice(0, LIST_LIMIT),
+      fetchWarning: scopedSites.error,
     };
   } catch (error) {
     console.error("[assistant] get_open_work_items threw:", error);

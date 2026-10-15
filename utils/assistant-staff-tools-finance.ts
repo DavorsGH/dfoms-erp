@@ -649,6 +649,9 @@ export async function getBalanceSheetStatus(): Promise<unknown> {
   const { formatGHS } = await import(
     "@/app/dashboard/finance/income-register-utils"
   );
+  const { loadInterUnitBalanceLinesForAssistant } = await import(
+    "@/utils/assistant-staff-tools-finance-ext"
+  );
 
   const directorsLoanLine = summary.balanceSheetLiabilityLines.find(
     (line) => line.key === "directors-loan",
@@ -661,6 +664,43 @@ export async function getBalanceSheetStatus(): Promise<unknown> {
     directorsLoanNetLabel = `Company owes director ${formatGHS(owedToDirector)}`;
   } else if (owedByDirector > 0.005) {
     directorsLoanNetLabel = `Director owes company ${formatGHS(owedByDirector)}`;
+  }
+
+  let interUnitAssets: {
+    dueFromOtherBusinessUnitsGhs: number;
+    label: string;
+  } | null = null;
+  let interUnitLiabilities: {
+    dueToOtherBusinessUnitsGhs: number;
+    label: string;
+  } | null = null;
+
+  try {
+    const supabase = await getStaffSupabase();
+    const interUnit = await loadInterUnitBalanceLinesForAssistant(
+      supabase,
+      sessionResult.session.tenantId,
+    );
+    if (
+      interUnit.dueFromOtherBusinessUnitsGhs !== null &&
+      Math.abs(interUnit.dueFromOtherBusinessUnitsGhs) > 0.005
+    ) {
+      interUnitAssets = {
+        dueFromOtherBusinessUnitsGhs: interUnit.dueFromOtherBusinessUnitsGhs,
+        label: "Due from other business units",
+      };
+    }
+    if (
+      interUnit.dueToOtherBusinessUnitsGhs !== null &&
+      Math.abs(interUnit.dueToOtherBusinessUnitsGhs) > 0.005
+    ) {
+      interUnitLiabilities = {
+        dueToOtherBusinessUnitsGhs: interUnit.dueToOtherBusinessUnitsGhs,
+        label: "Due to other business units",
+      };
+    }
+  } catch (error) {
+    console.error("[assistant] balance sheet inter-unit lines failed:", error);
   }
 
   return {
@@ -676,6 +716,10 @@ export async function getBalanceSheetStatus(): Promise<unknown> {
       label: line.label,
       amountGhs: line.amountGhs,
     })),
+    interUnitLines: {
+      dueFromOtherBusinessUnits: interUnitAssets,
+      dueToOtherBusinessUnits: interUnitLiabilities,
+    },
     directorsLoanPosition: {
       owedToDirectorGhs: owedToDirector,
       owedByDirectorGhs: owedByDirector,
@@ -731,11 +775,22 @@ export async function getBudgetStatus(toolInput?: unknown): Promise<unknown> {
 
   const { year, month, projectId } = parseBudgetStatusParams(toolInput);
   const monthIndex = monthIndexFromMonthNumber(month);
-  const projectFilter = projectId ?? ALL_PROJECTS_FILTER;
 
   try {
     const supabase = await getStaffSupabase();
     const data = await fetchBudgetVsActualReportData(supabase);
+
+    if (projectId) {
+      const known = data.initialProjects.some((entry) => entry.id === projectId);
+      if (!known) {
+        return {
+          error:
+            "Unknown project_id for your workspace. Use a project from Administration → Projects, or omit project_id for the company-wide view.",
+        };
+      }
+    }
+
+    const projectFilter = projectId ?? ALL_PROJECTS_FILTER;
     const report = buildBudgetVsActualReport({
       viewMode: "monthly-prorated",
       budgets: data.initialBudgets,

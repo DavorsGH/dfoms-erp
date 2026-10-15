@@ -304,6 +304,7 @@ export default async function DashboardPage() {
       rawMaterialStockPromise,
       fetchTenantBalanceSheetIntegrityStatus(tenantId),
     ]);
+  const visibility = getDashboardVisibility(role);
   const dashboardDataBase = await buildOwnerDashboardViewModel(
     dashboardPageData,
     tenantId,
@@ -313,10 +314,24 @@ export default async function DashboardPage() {
       preloadedRawMaterialStock,
     },
   );
-  const dashboardData = {
+  let dashboardData = {
     ...dashboardDataBase,
     balanceSheetIntegrity,
   };
+
+  if (visibility.showDirectorScorecard) {
+    const { attachDirectorScorecardToViewModel } = await import(
+      "@/app/dashboard/director-scorecard-load"
+    );
+    dashboardData = await attachDirectorScorecardToViewModel(
+      supabase,
+      tenantId,
+      activeBusinessUnitId,
+      buScope,
+      dashboardData,
+      dashboardPageData,
+    );
+  }
 
   return (
     <DashboardCacheShell
@@ -324,7 +339,7 @@ export default async function DashboardPage() {
       initialData={dashboardData}
       initialFetchError={dashboardPageData.fetchError}
       initialCachedAt={new Date().toISOString()}
-      visibility={getDashboardVisibility(role)}
+      visibility={visibility}
     />
   );
 }

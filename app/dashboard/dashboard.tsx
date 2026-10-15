@@ -23,6 +23,7 @@ import DashboardSalesAnalysis from "./dashboard-sales-analysis";
 import { DashboardBudgetStatusCard } from "./dashboard-budget-status-card";
 import { SummaryCard } from "./summary-card";
 import DashboardBalanceSheetIntegrityBanner from "./dashboard-balance-sheet-integrity-banner";
+import DirectorScorecardSection from "./director-scorecard-section";
 
 type DashboardProps = {
   data: DashboardViewModel;
@@ -91,6 +92,10 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
   const budgetStatus =
     data.budgetStatusByMonthKey[budgetMonthKey] ??
     data.budgetStatusByMonthKey[data.defaultMonthKey];
+  const scorecardMonthKey = isYtdMode ? data.defaultMonthKey : selectedMonthKey;
+  const directorScorecard =
+    data.directorScorecardByMonthKey?.[scorecardMonthKey] ??
+    data.directorScorecardByMonthKey?.[data.defaultMonthKey];
 
   return (
     <div className="min-w-0 space-y-6">
@@ -247,6 +252,10 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           tone={summary.balanceCheck.isBalanced ? "success" : "danger"}
         />
       </div>
+      ) : null}
+
+      {visibility.showDirectorScorecard && directorScorecard ? (
+        <DirectorScorecardSection snapshot={directorScorecard} />
       ) : null}
 
       {visibility.showFinancialSummary ? (

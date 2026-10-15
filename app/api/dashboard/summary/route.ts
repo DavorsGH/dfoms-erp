@@ -6,9 +6,12 @@ import { ROUTE_HANDLER_AUTH_OPTS } from "@/lib/middleware-trust-policy";
 import {
   getActiveBusinessUnitId,
   getCurrentAuthUid,
+  getCurrentUserRole,
   getCurrentUserTenantId,
   getViewAllBusinessUnits,
 } from "@/utils/dashboard-auth";
+import { getDashboardVisibility } from "@/utils/rbac-access";
+import type { AppRole } from "@/app/dashboard/user-account-types";
 import { resolveBusinessUnitReadScope } from "@/utils/business-unit-view";
 import { createClient } from "@/utils/supabase/server";
 import { fetchTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status";
@@ -21,13 +24,15 @@ export const dynamic = "force-dynamic";
  * Raw ledger register rows are never returned or cached client-side.
  */
 export async function GET() {
-  const [tenantId, authUid, activeBusinessUnitId, viewAllBusinessUnits] =
+  const [tenantId, authUid, activeBusinessUnitId, viewAllBusinessUnits, role] =
     await Promise.all([
       getCurrentUserTenantId(ROUTE_HANDLER_AUTH_OPTS),
       getCurrentAuthUid(ROUTE_HANDLER_AUTH_OPTS),
       getActiveBusinessUnitId(),
       getViewAllBusinessUnits(),
+      getCurrentUserRole(ROUTE_HANDLER_AUTH_OPTS),
     ]);
+  const visibility = getDashboardVisibility(role as AppRole | null);
 
   if (!tenantId || !authUid) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -50,10 +55,24 @@ export async function GET() {
     }),
     fetchTenantBalanceSheetIntegrityStatus(tenantId),
   ]);
-  const viewModel = {
+  let viewModel = {
     ...viewModelBase,
     balanceSheetIntegrity,
   };
+
+  if (visibility.showDirectorScorecard) {
+    const { attachDirectorScorecardToViewModel } = await import(
+      "@/app/dashboard/director-scorecard-load"
+    );
+    viewModel = await attachDirectorScorecardToViewModel(
+      supabase,
+      tenantId,
+      activeBusinessUnitId,
+      buScope,
+      viewModel,
+      dashboardPageData,
+    );
+  }
 
   return NextResponse.json({
     tenantId,

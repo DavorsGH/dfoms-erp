@@ -4,10 +4,8 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import type { AppRole } from "@/app/dashboard/user-account-types";
 import { fetchDashboardPageData } from "@/app/dashboard/dashboard-page-data";
-import {
-  getCurrentCalendarMonth,
-  type DashboardViewModel,
-} from "@/app/dashboard/dashboard-utils";
+import type { DashboardViewModel } from "@/app/dashboard/dashboard-utils";
+import { todayAccraCalendarMonth } from "@/utils/assistant-period-resolve";
 import { buildOwnerDashboardViewModel } from "@/app/dashboard/owner-dashboard-view-model";
 import {
   getActiveBusinessUnitId,
@@ -128,7 +126,7 @@ export function resolveFinancialPeriodSelection(
   year: number;
   month: number;
 } {
-  const { year, month } = getCurrentCalendarMonth(referenceDate);
+  const { year, month } = todayAccraCalendarMonth(referenceDate);
 
   if (period === "ytd") {
     return {
@@ -167,7 +165,7 @@ export function periodKeyForSelection(
   period: StaffFinancialPeriod,
   referenceDate = new Date(),
 ): { mode: "month" | "year"; key: string } {
-  const { year, month } = getCurrentCalendarMonth(referenceDate);
+  const { year, month } = todayAccraCalendarMonth(referenceDate);
 
   if (period === "ytd") {
     return { mode: "year", key: String(year) };

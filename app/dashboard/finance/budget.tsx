@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAlert, useToast } from "@/components/feedback";
 import { createClient } from "@/utils/supabase/client";
 import {
   useStampBusinessUnitId,
@@ -27,10 +28,16 @@ import {
 } from "./expense-register-utils";
 import FilteredListCount from "../filtered-list-count";
 import ScrollableTable, {
-  scrollableTableClassName,
+  scrollableTableActionsTdClassName,
+  scrollableTableActionsThClassName,
   scrollableTableHeadClassName,
   scrollableTableThClassName,
+  scrollableTableWrapCellClassName,
+  scrollableTableWrapThClassName,
 } from "../scrollable-table";
+
+const budgetTableBodyCellClassName = "px-4 py-3 align-middle text-sm text-slate-700";
+const budgetTableWrapTdClassName = `max-w-md whitespace-normal break-words align-middle ${scrollableTableWrapCellClassName} ${budgetTableBodyCellClassName}`;
 import RegisterRowActions, {
   confirmDeleteEntry,
   getStripedRowClassName,
@@ -39,18 +46,23 @@ import {
   budgetEntriesForList,
   buildPeriodMonth,
   COMPANY_WIDE_PROJECT_VALUE,
+  defaultBudgetCopySourceMonth,
   emptyBudgetForm,
   entryToBudgetForm,
   findDuplicateBudget,
   formatBudgetCategoryLabel,
   formatBudgetPeriodLabel,
+  monthlyBudgetLinesForPeriod,
   formatBudgetProjectLabel,
   formatDuplicateBudgetMessage,
   formatGHS,
   formatPeriodMonthLabel,
   getPeriodMonthParts,
   isBudgetDuplicateError,
+  isSameCalendarMonth,
+  normalizePeriodMonth,
   normalizeBudgetRecord,
+  planMonthlyBudgetCopy,
   resolveBudgetFormPeriodMonth,
   resolveBudgetProjectId,
   resolveBudgetSubcategory,
@@ -112,6 +124,8 @@ export default function Budget({
 }: BudgetProps) {
   const router = useRouter();
   const supabase = createClient();
+  const { alertError } = useAlert();
+  const { toast } = useToast();
   const stampBusinessUnit = useStampBusinessUnitId();
   const buReadScope = useBusinessUnitReadScope();
   const defaultPeriod = getDefaultPeriodSelection();
@@ -128,6 +142,15 @@ export default function Budget({
   const [listPeriodTypeFilter, setListPeriodTypeFilter] =
     useState<BudgetListPeriodTypeFilter>("all");
   const [loading, setLoading] = useState(false);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copySourceYear, setCopySourceYear] = useState(String(defaultPeriod.year));
+  const [copySourceMonth, setCopySourceMonth] = useState(String(defaultPeriod.month));
+  const [copyTargetYear, setCopyTargetYear] = useState(String(defaultPeriod.year));
+  const [copyTargetMonth, setCopyTargetMonth] = useState(String(defaultPeriod.month));
+  const [copySelectedLineIds, setCopySelectedLineIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [copyingBudget, setCopyingBudget] = useState(false);
   const [error, setError] = useState<string | null>(fetchError);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
@@ -200,7 +223,7 @@ export default function Budget({
     setEntries(initialEntries.map(normalizeBudgetRecord));
   }, [initialEntries]);
 
-  async function refreshEntries() {
+  async function fetchBudgetEntriesFromDb(): Promise<BudgetRecord[] | null> {
     const { data, error: refreshError } = await applyBusinessUnitScope(
       supabase.from("budgets").select("*").eq("tenant_id", tenantId),
       buReadScope,
@@ -210,11 +233,18 @@ export default function Budget({
 
     if (refreshError) {
       setError(refreshError.message);
-      return;
+      return null;
     }
 
-    setEntries((data as BudgetRecord[] | null)?.map(normalizeBudgetRecord) ?? []);
-    setError(null);
+    return (data as BudgetRecord[] | null)?.map(normalizeBudgetRecord) ?? [];
+  }
+
+  async function refreshEntries() {
+    const next = await fetchBudgetEntriesFromDb();
+    if (next) {
+      setEntries(next);
+      setError(null);
+    }
   }
 
   function closeForm() {
@@ -283,6 +313,412 @@ export default function Budget({
     }
 
     return true;
+  }
+
+  const viewedMonthYear = useMemo(
+    () => ({
+      year: Number(selectedYear),
+      month: Number(selectedMonth),
+    }),
+    [selectedYear, selectedMonth],
+  );
+
+  const monthlyLinesForViewedMonth = useMemo(
+    () =>
+      Number.isFinite(viewedMonthYear.year) && Number.isFinite(viewedMonthYear.month)
+        ? monthlyBudgetLinesForPeriod(
+            entries,
+            viewedMonthYear.year,
+            viewedMonthYear.month,
+          )
+        : [],
+    [entries, viewedMonthYear.month, viewedMonthYear.year],
+  );
+
+  const previousMonthForViewed = useMemo(() => {
+    if (
+      !Number.isFinite(viewedMonthYear.year) ||
+      !Number.isFinite(viewedMonthYear.month)
+    ) {
+      return null;
+    }
+    return defaultBudgetCopySourceMonth(
+      viewedMonthYear.year,
+      viewedMonthYear.month,
+    );
+  }, [viewedMonthYear.month, viewedMonthYear.year]);
+
+  const showEmptyMonthPrompt =
+    listPeriodTypeFilter !== "annual" &&
+    monthlyLinesForViewedMonth.length === 0 &&
+    (listPeriodTypeFilter === "monthly" || visibleEntries.length === 0);
+
+  const emptyMonthLabel = useMemo(() => {
+    if (
+      !Number.isFinite(viewedMonthYear.year) ||
+      !Number.isFinite(viewedMonthYear.month)
+    ) {
+      return "this month";
+    }
+    return formatPeriodMonthLabel(
+      buildPeriodMonth(viewedMonthYear.year, viewedMonthYear.month),
+    );
+  }, [viewedMonthYear.month, viewedMonthYear.year]);
+
+  const copyTarget = useMemo(
+    () => ({
+      year: Number(copyTargetYear),
+      month: Number(copyTargetMonth),
+    }),
+    [copyTargetYear, copyTargetMonth],
+  );
+
+  const copySource = useMemo(
+    () => ({
+      year: Number(copySourceYear),
+      month: Number(copySourceMonth),
+    }),
+    [copySourceYear, copySourceMonth],
+  );
+
+  const copyPlanPreview = useMemo(() => {
+    if (
+      !Number.isFinite(copyTarget.year) ||
+      !Number.isFinite(copyTarget.month) ||
+      !Number.isFinite(copySource.year) ||
+      !Number.isFinite(copySource.month)
+    ) {
+      return {
+        sourceLines: [] as BudgetRecord[],
+        toCopyCount: 0,
+        skippedCount: 0,
+      };
+    }
+
+    return planMonthlyBudgetCopy(entries, copySource, copyTarget);
+  }, [entries, copySource, copyTarget]);
+
+  const copyTargetPeriodMonth = useMemo(() => {
+    if (
+      !Number.isFinite(copyTarget.year) ||
+      !Number.isFinite(copyTarget.month)
+    ) {
+      return "";
+    }
+    return buildPeriodMonth(copyTarget.year, copyTarget.month);
+  }, [copyTarget.month, copyTarget.year]);
+
+  const copyTargetMonthLabel = useMemo(
+    () =>
+      copyTargetPeriodMonth
+        ? formatPeriodMonthLabel(copyTargetPeriodMonth)
+        : "target month",
+    [copyTargetPeriodMonth],
+  );
+
+  const copyPreviewRows = useMemo(() => {
+    if (!copyTargetPeriodMonth) {
+      return [];
+    }
+    return copyPlanPreview.sourceLines.map((line) => ({
+      line,
+      alreadyInTarget: Boolean(
+        findDuplicateBudget(entries, {
+          project_id: line.project_id,
+          category: line.category,
+          subcategory: line.subcategory,
+          period_month: copyTargetPeriodMonth,
+          period_type: "monthly",
+        }),
+      ),
+    }));
+  }, [copyPlanPreview.sourceLines, copyTargetPeriodMonth, entries]);
+
+  const copySelectionSummary = useMemo(() => {
+    let selectedCount = 0;
+    let totalGhs = 0;
+    for (const row of copyPreviewRows) {
+      if (row.alreadyInTarget || !copySelectedLineIds.has(row.line.id)) {
+        continue;
+      }
+      selectedCount += 1;
+      totalGhs += Number(row.line.budgeted_amount) || 0;
+    }
+    return {
+      selectedCount,
+      totalGhs,
+      skippedCount: copyPlanPreview.skippedCount,
+    };
+  }, [
+    copyPlanPreview.skippedCount,
+    copyPreviewRows,
+    copySelectedLineIds,
+  ]);
+
+  const copySourceSameAsTarget = useMemo(
+    () =>
+      Number.isFinite(copyTarget.year) &&
+      Number.isFinite(copyTarget.month) &&
+      isSameCalendarMonth(copySource, copyTarget),
+    [copySource, copyTarget],
+  );
+
+  const copyDialogPeriodKey = `${copySourceYear}-${copySourceMonth}-${copyTargetYear}-${copyTargetMonth}`;
+
+  useEffect(() => {
+    if (!copyDialogOpen) {
+      return;
+    }
+    const targetYear = Number(copyTargetYear);
+    const targetMonth = Number(copyTargetMonth);
+    const sourceYear = Number(copySourceYear);
+    const sourceMonth = Number(copySourceMonth);
+    if (
+      !Number.isFinite(targetYear) ||
+      !Number.isFinite(targetMonth) ||
+      !Number.isFinite(sourceYear) ||
+      !Number.isFinite(sourceMonth)
+    ) {
+      setCopySelectedLineIds(new Set());
+      return;
+    }
+    const targetPeriodMonth = buildPeriodMonth(targetYear, targetMonth);
+    const sourceLines = monthlyBudgetLinesForPeriod(
+      entries,
+      sourceYear,
+      sourceMonth,
+    );
+    const next = new Set<string>();
+    for (const line of sourceLines) {
+      const alreadyInTarget = findDuplicateBudget(entries, {
+        project_id: line.project_id,
+        category: line.category,
+        subcategory: line.subcategory,
+        period_month: targetPeriodMonth,
+        period_type: "monthly",
+      });
+      if (!alreadyInTarget) {
+        next.add(line.id);
+      }
+    }
+    setCopySelectedLineIds(next);
+  }, [copyDialogOpen, copyDialogPeriodKey, entries]);
+
+  function applyDefaultCopySourceForTarget(targetYear: number, targetMonth: number) {
+    const defaultSource = defaultBudgetCopySourceMonth(targetYear, targetMonth);
+    setCopySourceYear(String(defaultSource.year));
+    setCopySourceMonth(String(defaultSource.month));
+  }
+
+  function openCopyBudgetDialog(options?: {
+    targetYear?: number;
+    targetMonth?: number;
+    sourceYear?: number;
+    sourceMonth?: number;
+  }) {
+    const targetYear = options?.targetYear ?? Number(selectedYear);
+    const targetMonth = options?.targetMonth ?? Number(selectedMonth);
+    if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth)) {
+      return;
+    }
+
+    setCopyTargetYear(String(targetYear));
+    setCopyTargetMonth(String(targetMonth));
+
+    if (
+      options?.sourceYear !== undefined &&
+      options?.sourceMonth !== undefined
+    ) {
+      setCopySourceYear(String(options.sourceYear));
+      setCopySourceMonth(String(options.sourceMonth));
+    } else {
+      applyDefaultCopySourceForTarget(targetYear, targetMonth);
+    }
+
+    setCopyDialogOpen(true);
+  }
+
+  function updateCopyTargetMonth(month: string) {
+    setCopyTargetMonth(month);
+    const year = Number(copyTargetYear);
+    const monthNumber = Number(month);
+    if (Number.isFinite(year) && Number.isFinite(monthNumber)) {
+      applyDefaultCopySourceForTarget(year, monthNumber);
+    }
+  }
+
+  function updateCopyTargetYear(year: string) {
+    setCopyTargetYear(year);
+    const yearNumber = Number(year);
+    const monthNumber = Number(copyTargetMonth);
+    if (Number.isFinite(yearNumber) && Number.isFinite(monthNumber)) {
+      applyDefaultCopySourceForTarget(yearNumber, monthNumber);
+    }
+  }
+
+  function toggleCopyLineSelected(lineId: string, selected: boolean) {
+    setCopySelectedLineIds((current) => {
+      const next = new Set(current);
+      if (selected) {
+        next.add(lineId);
+      } else {
+        next.delete(lineId);
+      }
+      return next;
+    });
+  }
+
+  function closeCopyFromMonthDialog() {
+    if (copyingBudget) {
+      return;
+    }
+    setCopyDialogOpen(false);
+  }
+
+  async function handleCopyFromMonth() {
+    const targetYear = Number(copyTargetYear);
+    const targetMonth = Number(copyTargetMonth);
+    if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth)) {
+      return;
+    }
+
+    const source = {
+      year: Number(copySourceYear),
+      month: Number(copySourceMonth),
+    };
+    if (!Number.isFinite(source.year) || !Number.isFinite(source.month)) {
+      return;
+    }
+
+    if (isSameCalendarMonth(source, { year: targetYear, month: targetMonth })) {
+      await alertError("Choose a different source month — the target month cannot copy from itself.");
+      return;
+    }
+
+    if (copySelectionSummary.selectedCount === 0) {
+      return;
+    }
+
+    setCopyingBudget(true);
+    setError(null);
+
+    try {
+      let dbEntries = await fetchBudgetEntriesFromDb();
+      if (!dbEntries) {
+        return;
+      }
+
+      const plan = planMonthlyBudgetCopy(dbEntries, source, {
+        year: targetYear,
+        month: targetMonth,
+      });
+
+      if (plan.sourceLines.length === 0) {
+        await alertError(
+          `No monthly budget lines found for ${formatPeriodMonthLabel(buildPeriodMonth(source.year, source.month))}.`,
+        );
+        return;
+      }
+
+      const linesToCopy = plan.sourceLines.filter(
+        (line) =>
+          copySelectedLineIds.has(line.id) &&
+          !findDuplicateBudget(dbEntries!, {
+            project_id: line.project_id,
+            category: line.category,
+            subcategory: line.subcategory,
+            period_month: buildPeriodMonth(targetYear, targetMonth),
+            period_type: "monthly",
+          }),
+      );
+
+      if (linesToCopy.length === 0) {
+        return;
+      }
+
+      const buContext = await loadWriteBusinessUnitContext(supabase);
+      if (!buContext.ok) {
+        await alertError(buContext.error);
+        return;
+      }
+
+      const targetPeriodMonth = buildPeriodMonth(targetYear, targetMonth);
+      let copiedCount = 0;
+      let skippedCount = plan.skippedCount;
+
+      for (const line of linesToCopy) {
+        try {
+          assertCanModifyBusinessUnitRow(
+            buContext.allowedUnits,
+            line.business_unit_id,
+          );
+        } catch (accessError) {
+          await alertError(formatBusinessUnitAccessError(accessError));
+          return;
+        }
+
+        const duplicate = findDuplicateBudget(dbEntries, {
+          project_id: line.project_id,
+          category: line.category,
+          subcategory: line.subcategory,
+          period_month: targetPeriodMonth,
+          period_type: "monthly",
+        });
+        if (duplicate) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const { error: insertError } = await supabase.from("budgets").insert({
+          tenant_id: tenantId,
+          business_unit_id: line.business_unit_id ?? null,
+          project_id: line.project_id,
+          category: line.category,
+          subcategory: line.subcategory,
+          period_month: targetPeriodMonth,
+          period_type: "monthly",
+          budgeted_amount: line.budgeted_amount,
+          notes: line.notes,
+          updated_at: new Date().toISOString(),
+        });
+
+        if (insertError) {
+          if (isBudgetDuplicateError(insertError.message)) {
+            skippedCount += 1;
+            continue;
+          }
+          await alertError(insertError.message);
+          return;
+        }
+
+        copiedCount += 1;
+        dbEntries = [
+          ...dbEntries,
+          {
+            ...line,
+            id: `pending-${copiedCount}`,
+            period_month: targetPeriodMonth,
+            period_type: "monthly" as const,
+          },
+        ];
+      }
+
+      await refreshEntries();
+      router.refresh();
+      setCopyDialogOpen(false);
+      setSelectedYear(String(targetYear));
+      setSelectedMonth(String(targetMonth));
+      setListPeriodTypeFilter("monthly");
+      toast(`Copied ${copiedCount} line(s), skipped ${skippedCount}.`);
+    } catch (unexpected) {
+      await alertError(
+        unexpected instanceof Error
+          ? unexpected.message
+          : "Unable to copy budget lines.",
+      );
+    } finally {
+      setCopyingBudget(false);
+    }
   }
 
   async function handleDelete(entry: BudgetRecord) {
@@ -479,6 +915,16 @@ export default function Budget({
           >
             View budget vs actual
           </Link>
+          {listPeriodTypeFilter !== "annual" ? (
+            <button
+              type="button"
+              onClick={() => openCopyBudgetDialog()}
+              disabled={copyingBudget || loading}
+              className={secondaryButtonClassName}
+            >
+              Copy budget…
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={openAddForm}
@@ -556,6 +1002,216 @@ export default function Budget({
         </div>
         <p className="pb-2 text-sm text-slate-600">Showing {listSummaryLabel}</p>
       </div>
+
+      {copyDialogOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
+          role="presentation"
+          onClick={() => {
+            if (!copyingBudget) {
+              closeCopyFromMonthDialog();
+            }
+          }}
+        >
+          <div
+            className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-t-xl bg-white shadow-xl sm:max-h-[min(90vh,720px)] sm:rounded-lg"
+            role="dialog"
+            aria-labelledby="budget-copy-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
+              <h3
+                id="budget-copy-dialog-title"
+                className="text-lg font-semibold text-[#0f2744]"
+              >
+                Copy budget
+              </h3>
+              <button
+                type="button"
+                onClick={closeCopyFromMonthDialog}
+                disabled={copyingBudget}
+                className={secondaryButtonClassName}
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    From
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={copySourceMonth}
+                      onChange={(event) =>
+                        setCopySourceMonth(event.target.value)
+                      }
+                      disabled={copyingBudget}
+                      className={inputClassName}
+                      aria-label="Source month"
+                    >
+                      {MONTH_OPTIONS.map((label, index) => (
+                        <option key={label} value={String(index + 1)}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={copySourceYear}
+                      onChange={(event) =>
+                        setCopySourceYear(event.target.value)
+                      }
+                      disabled={copyingBudget}
+                      className={inputClassName}
+                      aria-label="Source year"
+                    >
+                      {availableYears.map((year) => (
+                        <option key={year} value={String(year)}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    To
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={copyTargetMonth}
+                      onChange={(event) =>
+                        updateCopyTargetMonth(event.target.value)
+                      }
+                      disabled={copyingBudget}
+                      className={inputClassName}
+                      aria-label="Target month"
+                    >
+                      {MONTH_OPTIONS.map((label, index) => (
+                        <option key={label} value={String(index + 1)}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={copyTargetYear}
+                      onChange={(event) =>
+                        updateCopyTargetYear(event.target.value)
+                      }
+                      disabled={copyingBudget}
+                      className={inputClassName}
+                      aria-label="Target year"
+                    >
+                      {availableYears.map((year) => (
+                        <option key={year} value={String(year)}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {copySourceSameAsTarget ? (
+                <p className="text-sm text-amber-800">
+                  From and To are the same month — choose a different source or
+                  target.
+                </p>
+              ) : null}
+
+              {copyPlanPreview.sourceLines.length === 0 &&
+              !copySourceSameAsTarget ? (
+                <p className="text-sm text-slate-600">
+                  No monthly budget lines in the source month for this business
+                  unit.
+                </p>
+              ) : null}
+
+              {copyPreviewRows.length > 0 ? (
+                <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                  {copyPreviewRows.map(({ line, alreadyInTarget }) => {
+                    const categoryLabel = formatBudgetCategoryLabel(
+                      line.category,
+                      line.subcategory,
+                    );
+                    const checked =
+                      !alreadyInTarget && copySelectedLineIds.has(line.id);
+                    return (
+                      <li
+                        key={line.id}
+                        className={`flex gap-3 px-3 py-3 text-sm ${
+                          alreadyInTarget
+                            ? "bg-slate-50 text-slate-400"
+                            : "text-slate-800"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1 shrink-0"
+                          checked={checked}
+                          disabled={alreadyInTarget || copyingBudget}
+                          onChange={(event) =>
+                            toggleCopyLineSelected(
+                              line.id,
+                              event.target.checked,
+                            )
+                          }
+                          aria-label={`Copy ${categoryLabel}`}
+                        />
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <p className="font-medium">{categoryLabel}</p>
+                          <p className="text-slate-600">
+                            {formatBudgetProjectLabel(line.project_id, projects)}
+                          </p>
+                          {alreadyInTarget ? (
+                            <p className="text-xs text-slate-500">
+                              Already in {copyTargetMonthLabel}
+                            </p>
+                          ) : (
+                            <p className="tabular-nums text-slate-700">
+                              {formatGHS(line.budgeted_amount)}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </div>
+
+            <div className="shrink-0 space-y-3 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+              <p className="text-sm text-slate-700">
+                Total to copy:{" "}
+                <span className="font-medium tabular-nums">
+                  {formatGHS(copySelectionSummary.totalGhs)}
+                </span>{" "}
+                ({copySelectionSummary.selectedCount}{" "}
+                {copySelectionSummary.selectedCount === 1 ? "line" : "lines"}) ·{" "}
+                {copySelectionSummary.skippedCount} skipped
+              </p>
+              <div className="flex flex-wrap justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyFromMonth()}
+                  disabled={
+                    copyingBudget ||
+                    copySourceSameAsTarget ||
+                    copySelectionSummary.selectedCount === 0
+                  }
+                  className={primaryButtonClassName}
+                >
+                  {copyingBudget
+                    ? "Copying…"
+                    : `Copy ${copySelectionSummary.selectedCount} line${copySelectionSummary.selectedCount === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showForm ? (
         <form
@@ -755,20 +1411,70 @@ export default function Budget({
         hasActiveFilters={visibleEntries.length !== entries.length}
       />
 
-      <ScrollableTable>
-        <table className={scrollableTableClassName}>
+      <ScrollableTable stickyEdgeColumns={false} boundedHeight={false}>
+        <table className="min-w-full text-left text-sm">
           <thead className={scrollableTableHeadClassName}>
             <tr>
               <th className={scrollableTableThClassName}>Period</th>
               <th className={scrollableTableThClassName}>Project / Contract</th>
-              <th className={scrollableTableThClassName}>Category</th>
+              <th className={scrollableTableWrapThClassName}>Category</th>
               <th className={scrollableTableThClassName}>Budgeted</th>
               <th className={scrollableTableThClassName}>Notes</th>
-              <th className={scrollableTableThClassName}>Actions</th>
+              <th className={scrollableTableActionsThClassName}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {visibleEntries.length === 0 ? (
+            {showEmptyMonthPrompt ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-10">
+                  <div className="mx-auto flex max-w-md flex-col items-center gap-4 text-center">
+                    <p className="text-sm text-slate-600">
+                      No budget lines for {emptyMonthLabel}.
+                    </p>
+                    <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
+                      {previousMonthForViewed ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openCopyBudgetDialog({
+                              targetYear: viewedMonthYear.year,
+                              targetMonth: viewedMonthYear.month,
+                              sourceYear: previousMonthForViewed.year,
+                              sourceMonth: previousMonthForViewed.month,
+                            })
+                          }
+                          disabled={copyingBudget || loading}
+                          className={secondaryButtonClassName}
+                        >
+                          Copy from{" "}
+                          {formatPeriodMonthLabel(
+                            buildPeriodMonth(
+                              previousMonthForViewed.year,
+                              previousMonthForViewed.month,
+                            ),
+                          )}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => openCopyBudgetDialog()}
+                        disabled={copyingBudget || loading}
+                        className={secondaryButtonClassName}
+                      >
+                        Choose another month
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openAddForm}
+                        className={primaryButtonClassName}
+                      >
+                        Add budget line
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            ) : visibleEntries.length === 0 ? (
               <tr>
                 <td
                   colSpan={6}
@@ -783,22 +1489,28 @@ export default function Budget({
                   key={entry.id}
                   className={`border-b border-slate-100 ${getStripedRowClassName(index)}`}
                 >
-                  <td className="px-4 py-3 text-sm text-slate-700">
+                  <td className={budgetTableBodyCellClassName}>
                     {formatBudgetPeriodLabel(entry)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
+                  <td className={budgetTableBodyCellClassName}>
                     {formatBudgetProjectLabel(entry.project_id, projects)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
+                  <td
+                    className={budgetTableWrapTdClassName}
+                    title={formatBudgetCategoryLabel(
+                      entry.category,
+                      entry.subcategory,
+                    )}
+                  >
                     {formatBudgetCategoryLabel(entry.category, entry.subcategory)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
+                  <td className={budgetTableBodyCellClassName}>
                     {formatGHS(entry.budgeted_amount)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-700">
+                  <td className={budgetTableBodyCellClassName}>
                     {entry.notes?.trim() || "—"}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className={scrollableTableActionsTdClassName}>
                     <RegisterRowActions
                       onEdit={() => openEditForm(entry)}
                       onDelete={() => void handleDelete(entry)}

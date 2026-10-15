@@ -185,6 +185,7 @@ export type DashboardVisibility = {
   showFinancialCharts: boolean;
   showPayrollPanel: boolean;
   showInventoryAlerts: boolean;
+  showDirectorScorecard: boolean;
 };
 
 export type SidebarNavItem = {
@@ -385,11 +386,15 @@ export function getDashboardVisibility(role: AppRole | null): DashboardVisibilit
     role === "director" ||
     role === "finance";
 
+  const showDirectorScorecard =
+    role === "super_admin" || role === "director";
+
   return {
     showFinancialSummary,
     showFinancialCharts,
     showPayrollPanel,
     showInventoryAlerts,
+    showDirectorScorecard,
   };
 }
 

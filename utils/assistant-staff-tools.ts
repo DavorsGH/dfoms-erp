@@ -24,6 +24,15 @@ import {
   getTaxLedgerStatus,
 } from "@/utils/assistant-staff-tools-finance";
 import {
+  getContractProfitabilitySummary,
+  getCostTaggingHealth,
+  getInterUnitTransfers,
+} from "@/utils/assistant-staff-tools-finance-ext";
+import {
+  getConsumablesSiteUsage,
+  getConsumablesStoreStock,
+} from "@/utils/assistant-staff-tools-consumables";
+import {
   getContractExpiryList,
   getEmployeeAttendanceSummary,
   getEmployeeHeadcount,
@@ -128,6 +137,13 @@ export const GET_DUTY_ROSTER_SUMMARY_TOOL_NAME = "get_duty_roster_summary";
 export const GET_OPEN_WORK_ITEMS_TOOL_NAME = "get_open_work_items";
 export const GET_USER_ACCOUNT_SUMMARY_TOOL_NAME = "get_user_account_summary";
 export const GET_PENDING_APPROVALS_TOOL_NAME = "get_pending_approvals";
+export const GET_CONTRACT_PROFITABILITY_SUMMARY_TOOL_NAME =
+  "get_contract_profitability_summary";
+export const GET_COST_TAGGING_HEALTH_TOOL_NAME = "get_cost_tagging_health";
+export const GET_INTER_UNIT_TRANSFERS_TOOL_NAME = "get_inter_unit_transfers";
+export const GET_CONSUMABLES_STORE_STOCK_TOOL_NAME =
+  "get_consumables_store_stock";
+export const GET_CONSUMABLES_SITE_USAGE_TOOL_NAME = "get_consumables_site_usage";
 
 export type StaffAssistantToolsOptions = {
   showRealEstate?: boolean;
@@ -183,7 +199,7 @@ export function getStaffAssistantTools(
       ),
       tool(
         GET_BALANCE_SHEET_STATUS_TOOL_NAME,
-        "Balance Sheet Check (balanced vs out-of-balance) for the dashboard month with key liability lines, Director's Loan liability (company owes director), Due from Director asset (director owes company), and net Director's Loan position label from the ledger. AP is month-end outstanding (later-dated payments do not rewrite earlier months).",
+        "Balance Sheet Check (balanced vs out-of-balance) for the dashboard month with key liability lines, Director's Loan liability (company owes director), Due from Director asset (director owes company), net Director's Loan position label, and when viewing a single business unit — Due from/to other business units from the same balance sheet build. AP is month-end outstanding (later-dated payments do not rewrite earlier months).",
       ),
       tool(
         GET_BUDGET_STATUS_TOOL_NAME,
@@ -232,6 +248,42 @@ export function getStaffAssistantTools(
       tool(
         GET_SUPPLIER_CONTRACTS_STATUS_TOOL_NAME,
         "Active supplier contracts: monthly amount, next billing, credit balance, this month's AP — detail UI has summary card, Activate, Edit contract, Monthly bills (AP), replacement payment (method + notes). Finance → Supplier Contracts.",
+      ),
+      tool(
+        GET_CONTRACT_PROFITABILITY_SUMMARY_TOOL_NAME,
+        "Contract Profitability for a calendar month — answers questions like how much did <client> make us, profit on <contract>, margin for <project/contract> in <month>. Returns revenue, labour, direct costs, overhead allocated, margin and margin % per contract/project (matches Reports → Contract Profitability). Optional allocationMode: none (default), revenue (by revenue share), headcount. contractOrProjectName matches client name, contract number, project code/name, or site (case-insensitive); if no match, returns available names for Did you mean …?",
+        {
+          month: { type: "number", description: "Calendar month 1–12." },
+          year: { type: "number", description: "Calendar year." },
+          allocationMode: {
+            type: "string",
+            description:
+              "Overhead allocation: none, revenue, or headcount (same as Reports → Contract Profitability).",
+          },
+          contractOrProjectName: {
+            type: "string",
+            description:
+              "Client, contract, or project filter (e.g. Central University, PRJ01, UGMC) — partial match on customer, contract number, project code/name, or linked site.",
+          },
+        },
+        ["month", "year"],
+      ),
+      tool(
+        GET_COST_TAGGING_HEALTH_TOOL_NAME,
+        "Cost tagging health for a month — counts/totals of untagged expense_register (excluding payroll labour rows), accounts_payable, and supplier_contracts without project_id; top 5 untagged by amount; projects missing service_contract_id. Optional month/year (default current month).",
+        {
+          month: { type: "number", description: "Calendar month 1–12." },
+          year: { type: "number", description: "Calendar year." },
+        },
+      ),
+      tool(
+        GET_INTER_UNIT_TRANSFERS_TOOL_NAME,
+        "Inter-unit transfers between business units — dated movements plus net position per unit pair (same summary card as Finance → Inter-unit Transfers). Optional fromDate, toDate, limit (max 20).",
+        {
+          fromDate: { type: "string", description: "ISO date YYYY-MM-DD." },
+          toDate: { type: "string", description: "ISO date YYYY-MM-DD." },
+          limit: { type: "number", description: "Max transfers returned (default 20)." },
+        },
       ),
     );
   }
@@ -443,6 +495,28 @@ export function getStaffAssistantTools(
         GET_OPEN_WORK_ITEMS_TOOL_NAME,
         "Open work orders, failed inspections, and complaint register items, capped at 20.",
       ),
+      tool(
+        GET_CONSUMABLES_STORE_STOCK_TOOL_NAME,
+        "Operations → Consumables store stock — on hand, weighted average cost, stock value, minimum level, status. Optional itemName filter and status filter (low or out).",
+        {
+          itemName: { type: "string", description: "Partial item name or code." },
+          status: {
+            type: "string",
+            description: "Optional: low or out (stock status).",
+          },
+        },
+      ),
+      tool(
+        GET_CONSUMABLES_SITE_USAGE_TOOL_NAME,
+        "Operations → Consumables site usage — net quantity and value issued minus returned per site/contract/item for a period. Optional month/year (current month) or fromDate/toDate; optional siteName filter.",
+        {
+          month: { type: "number", description: "Calendar month 1–12." },
+          year: { type: "number", description: "Calendar year." },
+          fromDate: { type: "string", description: "ISO date YYYY-MM-DD." },
+          toDate: { type: "string", description: "ISO date YYYY-MM-DD." },
+          siteName: { type: "string", description: "Partial site name filter." },
+        },
+      ),
     );
   }
 
@@ -554,6 +628,16 @@ export async function executeStaffAssistantTool(
       return getUserAccountSummary();
     case GET_PENDING_APPROVALS_TOOL_NAME:
       return getPendingApprovals();
+    case GET_CONTRACT_PROFITABILITY_SUMMARY_TOOL_NAME:
+      return getContractProfitabilitySummary(toolInput);
+    case GET_COST_TAGGING_HEALTH_TOOL_NAME:
+      return getCostTaggingHealth(toolInput);
+    case GET_INTER_UNIT_TRANSFERS_TOOL_NAME:
+      return getInterUnitTransfers(toolInput);
+    case GET_CONSUMABLES_STORE_STOCK_TOOL_NAME:
+      return getConsumablesStoreStock(toolInput);
+    case GET_CONSUMABLES_SITE_USAGE_TOOL_NAME:
+      return getConsumablesSiteUsage(toolInput);
     default:
       return { error: `Unknown tool: ${toolName}` };
   }
@@ -576,6 +660,10 @@ export function staffAccountToolsSystemPromptAddition(
       "- get_tax_ledger_status: open statutory balances plus per-tax per-period due dates and overdue (Statutory Ledger rules)",
       "- get_expense_breakdown: top expense categories (optional period: this_month, last_month, ytd)",
       "- get_fixed_assets_summary / get_service_contracts_status / get_supplier_contracts_status: fixed assets schedule, service contracts due for renewal, and supplier contract billing/AP status",
+      "- get_contract_profitability_summary: Reports → Contract Profitability (NOT Budget vs Actual) — how much did <client> make us, profit/margin/revenue/costs for a named contract or project in a month; pass contractOrProjectName (client name, PRJ code, contract number); optional allocation none/revenue/headcount. Always call this before saying you have no data when the user names a client/contract/project with profit, margin, revenue, or costs.",
+      "- get_cost_tagging_health: untagged costs this month on Expense Register, Accounts Payable, and Supplier Contracts; projects with null projects.service_contract_id (same rule as Contract Profitability) — when listing them, add that internal/overhead projects (e.g. office) are expected to have no contract and can be ignored",
+      "- get_inter_unit_transfers: Finance → Inter-unit Transfers — internal movements between business units; net pair positions (X owes Y). On a single-unit Balance Sheet these appear as Due from/to other business units; they cancel under View All Businesses",
+      "- get_balance_sheet_status now includes Due from/to other business units when present (single-unit view)",
     );
   }
 
@@ -635,6 +723,7 @@ export function staffAccountToolsSystemPromptAddition(
   if (canAccessOperationsSection(role)) {
     lines.push(
       "- get_duty_roster_summary / get_open_work_items: duty roster understaffing and open work orders/inspections/complaints",
+      "- get_consumables_store_stock / get_consumables_site_usage: Operations → Consumables (Store stock, Receive, Issue to site, Movements, Site usage, Items). Standard units: piece, litre, gallon, kg, box, pack, roll, bottle, carton, pair, set — not grams or ml (use kg / litre). Always answer consumables quantities and values from tools, never estimates",
     );
   }
 
@@ -658,7 +747,13 @@ When asked about workspace data you cannot retrieve, explain politely and briefl
   }
 
   lines.push(
-    "Only share values returned by your available tools. If a tool reports an error, explain it honestly.",
+    "Workspace entity names: Customer/client names (e.g. Central University), service contracts, projects (PRJ codes), sites, suppliers, and employees refer to records inside the user's own workspace — not external organisations you cannot access. Never answer that you lack data for a named client/contract/project until you have called the relevant account tool.",
+    "",
+    "Reporting dates (Africa/Accra): When the user names a month without a year (e.g. September), pass month only — omit year so tools resolve the most recent occurrence of that month on or before today (October 2026 → September = month 9 with no year → September 2026; November → November 2025). If the user states a year, pass that year. last month = previous calendar month; this quarter = current calendar quarter through today.",
+    "",
+    "Contract/client profitability: When a question names a client, contract, or project together with profit, margin, revenue, or costs, call get_contract_profitability_summary with month, year, and contractOrProjectName set to that name — do not refuse or guess first. If the tool returns availableContractOrProjectNames, ask Did you mean …?",
+    "",
+    "Only share values returned by your available tools — never estimate financial or stock figures. If a tool reports an error, explain it honestly.",
     "",
     "Business unit scope: All account tool results are scoped to the active business unit in the header switcher (or all units when View All is selected).",
     "",

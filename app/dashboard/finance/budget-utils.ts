@@ -256,6 +256,113 @@ export function entryToBudgetForm(entry: BudgetRecord): BudgetFormState {
   };
 }
 
+export function shiftCalendarMonth(
+  year: number,
+  month: number,
+  deltaMonths: number,
+): { year: number; month: number } {
+  const date = new Date(Date.UTC(year, month - 1 + deltaMonths, 1));
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
+}
+
+export function defaultBudgetCopySourceMonth(
+  targetYear: number,
+  targetMonth: number,
+): { year: number; month: number } {
+  return shiftCalendarMonth(targetYear, targetMonth, -1);
+}
+
+export function isSameCalendarMonth(
+  left: { year: number; month: number },
+  right: { year: number; month: number },
+): boolean {
+  return left.year === right.year && left.month === right.month;
+}
+
+export function monthlyBudgetLinesForPeriod(
+  entries: BudgetRecord[],
+  year: number,
+  month: number,
+): BudgetRecord[] {
+  const periodMonth = normalizePeriodMonth(buildPeriodMonth(year, month));
+  return entries.filter(
+    (entry) =>
+      entry.period_type === "monthly" &&
+      normalizePeriodMonth(entry.period_month) === periodMonth,
+  );
+}
+
+export function planMonthlyBudgetCopy(
+  entries: BudgetRecord[],
+  source: { year: number; month: number },
+  target: { year: number; month: number },
+): {
+  sourceLines: BudgetRecord[];
+  toCopyCount: number;
+  skippedCount: number;
+} {
+  if (isSameCalendarMonth(source, target)) {
+    return { sourceLines: [], toCopyCount: 0, skippedCount: 0 };
+  }
+
+  const sourceLines = monthlyBudgetLinesForPeriod(
+    entries,
+    source.year,
+    source.month,
+  );
+  const targetPeriodMonth = buildPeriodMonth(target.year, target.month);
+  let skippedCount = 0;
+
+  for (const line of sourceLines) {
+    const duplicate = findDuplicateBudget(entries, {
+      project_id: line.project_id,
+      category: line.category,
+      subcategory: line.subcategory,
+      period_month: targetPeriodMonth,
+      period_type: "monthly",
+    });
+    if (duplicate) {
+      skippedCount += 1;
+    }
+  }
+
+  return {
+    sourceLines,
+    toCopyCount: sourceLines.length - skippedCount,
+    skippedCount,
+  };
+}
+
+export function formatBudgetCopyConfirmMessage(input: {
+  source: { year: number; month: number };
+  target: { year: number; month: number };
+  toCopyCount: number;
+  skippedCount: number;
+  sourceLineCount: number;
+}): string {
+  const sourceLabel = formatPeriodMonthLabel(
+    buildPeriodMonth(input.source.year, input.source.month),
+  );
+  const targetLabel = formatPeriodMonthLabel(
+    buildPeriodMonth(input.target.year, input.target.month),
+  );
+
+  if (input.sourceLineCount === 0) {
+    return `No monthly budget lines found for ${sourceLabel}.`;
+  }
+
+  if (input.toCopyCount === 0) {
+    return `All lines from ${sourceLabel} already exist in ${targetLabel} — nothing to copy.`;
+  }
+
+  const copyPart = `Copy ${input.toCopyCount} line${input.toCopyCount === 1 ? "" : "s"} from ${sourceLabel} into ${targetLabel}.`;
+  if (input.skippedCount === 0) {
+    return copyPart;
+  }
+
+  return `${copyPart} ${input.skippedCount} line${input.skippedCount === 1 ? "" : "s"} already exist and will be skipped.`;
+}
+
 export function budgetEntriesForList(
   entries: BudgetRecord[],
   params: {

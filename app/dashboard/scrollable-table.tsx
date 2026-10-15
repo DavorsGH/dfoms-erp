@@ -22,6 +22,8 @@ type ScrollableTableProps = {
   stickyEdgeColumns?: boolean;
   /** Wider sticky name (col 2) and category (col 3) — Expense Register, Fixed Assets. */
   stickyEdgeLayout?: "default" | "nameCategory";
+  /** When false, table grows with the page (no inner vertical scroll box). */
+  boundedHeight?: boolean;
 };
 
 /** Host modifier for {@link ScrollableTableProps.stickyEdgeLayout}. */
@@ -78,7 +80,7 @@ export const scrollableTableFinancialStatementClassName =
 export const scrollableTableHeadClassName = "bg-[#0f2744] text-white";
 
 export const scrollableTableThClassName =
-  "sticky top-0 z-10 bg-[#0f2744] px-4 py-3 font-medium text-white";
+  "sticky top-0 z-[35] bg-[#0f2744] px-4 py-3 font-medium text-white";
 
 export const scrollableTableActionsThClassName = `${scrollableTableThClassName} ${scrollableTableCompactCellClassName} ${scrollableTableActionsCellClassName}`;
 
@@ -547,11 +549,15 @@ function ScrollableTableFrame({
 const scrollableTableHostBaseClassName =
   "min-w-0 w-full max-h-[min(calc(100dvh-8rem),calc(100vh-300px))] overflow-x-auto overflow-y-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] scrollable-table-host";
 
+const scrollableTableHostPageScrollClassName =
+  "min-w-0 w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] scrollable-table-host scrollable-table-host--page-scroll";
+
 /** Viewport-bounded scroll box with sticky column headers and optional edge columns. */
 export default function ScrollableTable({
   children,
   stickyEdgeColumns = true,
   stickyEdgeLayout = "default",
+  boundedHeight = true,
 }: ScrollableTableProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   useScrollableTableOverflowTitles(hostRef, true);
@@ -572,7 +578,9 @@ export default function ScrollableTable({
       showSwipeHint={showSwipeHint}
       swipeHintWideOnly={!singleStickyEdge}
       hostClassName={[
-        scrollableTableHostBaseClassName,
+        boundedHeight
+          ? scrollableTableHostBaseClassName
+          : scrollableTableHostPageScrollClassName,
         stickyEdgeColumns ? "scrollable-table-host--sticky-edges" : "",
         stickyEdgeColumns && singleStickyEdge
           ? "scrollable-table-host--single-sticky-edge"

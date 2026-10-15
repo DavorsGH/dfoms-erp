@@ -48,6 +48,7 @@ import type { SalesAnalysisRow } from "./dashboard-sales-analysis-utils";
 import type {
   DashboardBudgetStatusSnapshot,
 } from "./dashboard-budget-status-utils";
+import type { DirectorScorecardSnapshot } from "@/app/dashboard/director-scorecard-build";
 import { isActiveIncomeForReporting } from "./finance/income-register-utils";
 import type { TenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status-core";
 import { emptyTenantBalanceSheetIntegrityStatus } from "@/utils/tenant-balance-sheet-integrity-status-core";
@@ -192,6 +193,8 @@ export type DashboardViewModel = {
   spendingAnalysisExpenses: SpendingAnalysisExpenseRow[];
   salesAnalysisEntries: SalesAnalysisRow[];
   budgetStatusByMonthKey: Record<string, DashboardBudgetStatusSnapshot>;
+  /** Present only when {@link DashboardVisibility.showDirectorScorecard} is true. */
+  directorScorecardByMonthKey?: Record<string, DirectorScorecardSnapshot>;
 };
 
 export type DashboardProfitTrendPoint = {

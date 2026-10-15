@@ -60,6 +60,13 @@ export function buildAccountsPayableAccrualReceiptNo(
   return `${AP_ACCRUAL_RECEIPT_PREFIX}${accountsPayableId}`;
 }
 
+/** True when the expense row is the P&L mirror of an Accounts Payable bill. */
+export function isAccountsPayableAccrualExpenseReceiptNo(
+  receiptNo: string | null | undefined,
+): boolean {
+  return parseAccountsPayableIdFromAccrualReceiptNo(receiptNo) !== null;
+}
+
 export function parseAccountsPayableIdFromAccrualReceiptNo(
   receiptNo: string | null | undefined,
 ): string | null {
