@@ -210,7 +210,9 @@ async function main() {
 
   console.log("Checklist items:");
   for (const item of scorecard.checklist.items) {
-    console.log(`  [${item.pass ? "PASS" : "FAIL"}] ${item.label}: ${item.reason}`);
+    console.log(
+      `  [${item.chipStatus}] ${item.label}: ${item.reason}`,
+    );
   }
 
   const caantaScorecard = caantaScope.scorecards[monthKey];

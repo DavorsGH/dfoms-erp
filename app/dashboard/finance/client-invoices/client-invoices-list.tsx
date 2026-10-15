@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { getStripedRowClassName } from "@/app/dashboard/finance/register-row-actions";
 import ScrollableTable, {
   scrollableTableClassName,
@@ -94,15 +94,19 @@ function getInvoiceStatusActions(
   return [];
 }
 
+const UNPAID_CLIENT_INVOICE_STATUSES = new Set(["sent", "partial"]);
+
 export default function ClientInvoicesList({
   initialInvoices,
   fetchError,
   paymentMethods,
 }: ClientInvoicesListProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [invoices, setInvoices] = useState(
     initialInvoices.map(normalizeClientInvoiceListRow),
   );
+  const [statusFilter, setStatusFilter] = useState<Set<string> | null>(null);
   const [error, setError] = useState<string | null>(fetchError);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
@@ -121,6 +125,22 @@ export default function ClientInvoicesList({
   useEffect(() => {
     setError(fetchError);
   }, [fetchError]);
+
+  useEffect(() => {
+    const statusParam = searchParams.get("status")?.trim().toLowerCase();
+    if (statusParam === "unpaid") {
+      setStatusFilter(UNPAID_CLIENT_INVOICE_STATUSES);
+      return;
+    }
+    setStatusFilter(null);
+  }, [searchParams]);
+
+  const visibleInvoices = useMemo(() => {
+    if (!statusFilter) {
+      return invoices;
+    }
+    return invoices.filter((invoice) => statusFilter.has(invoice.status));
+  }, [invoices, statusFilter]);
 
   function updateInvoiceInList(next: ClientInvoiceListRow) {
     setInvoices((current) =>
@@ -241,7 +261,7 @@ export default function ClientInvoicesList({
 
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <FilteredListCount
-          filteredCount={invoices.length}
+          filteredCount={visibleInvoices.length}
           totalCount={invoices.length}
           itemSingular="invoice"
           className="mb-4"
@@ -267,14 +287,16 @@ export default function ClientInvoicesList({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {invoices.length === 0 ? (
+              {visibleInvoices.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-sm text-slate-500">
-                    No customer invoices yet.
+                    {invoices.length === 0
+                      ? "No customer invoices yet."
+                      : "No invoices match this filter."}
                   </td>
                 </tr>
               ) : (
-                invoices.map((invoice, index) => {
+                visibleInvoices.map((invoice, index) => {
                   const clientName = Array.isArray(invoice.client)
                     ? invoice.client[0]?.client_name
                     : invoice.client?.client_name;

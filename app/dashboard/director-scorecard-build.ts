@@ -17,10 +17,13 @@ import {
   type BudgetVsActualRow,
 } from "@/app/dashboard/reports/budget-vs-actual-utils";
 import { monthIndexFromMonthNumber } from "@/app/dashboard/reports/finance-reports-utils";
+import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
 import {
   defaultDueRulesPartial,
   listStatutoryPeriodObligations,
   OBLIGATION_KIND_LABELS,
+  type StatutoryDueRuleKind,
+  type StatutoryPeriodObligation,
   type TaxSettingsDueRules,
 } from "@/app/dashboard/finance/statutory-due-rules";
 import type { TaxLedgerBalanceSource } from "@/app/dashboard/finance/tax-ledger-utils";
@@ -32,12 +35,25 @@ import {
   DIRECTOR_SCORECARD_REINVEST_SHARE,
   DIRECTOR_SCORECARD_RESERVE_SHARE,
 } from "@/lib/finance/director-scorecard-constants";
+import {
+  balanceSheetHrefForScorecardMonth,
+  clientInvoicesListHref,
+  periodMonthToTaxLedgerParam,
+  statutoryLedgerHref,
+  type DirectorScorecardChecklistLink,
+  type DirectorScorecardUnpaidInvoiceLink,
+} from "@/app/dashboard/director-scorecard-links";
+
+export type DirectorScorecardChecklistChipStatus = "done" | "todo" | "overdue";
 
 export type DirectorScorecardChecklistItem = {
   id: string;
   label: string;
   pass: boolean;
+  chipStatus: DirectorScorecardChecklistChipStatus;
   reason: string;
+  links?: DirectorScorecardChecklistLink[];
+  unpaidInvoiceLinks?: DirectorScorecardUnpaidInvoiceLink[];
 };
 
 export type DirectorScorecardSnapshot = {
@@ -75,6 +91,7 @@ export type DirectorScorecardSnapshot = {
 };
 
 export type DirectorScorecardClientInvoiceRow = {
+  id: string;
   invoice_number: string;
   invoice_date: string;
   status: string;
@@ -276,6 +293,153 @@ function taxLedgerSources(
   });
 }
 
+const CHECKLIST_MONTH_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+const STATUTORY_KIND_ORDER: StatutoryDueRuleKind[] = [
+  "paye",
+  "ssnit",
+  "tier2",
+  "vat",
+  "wht",
+];
+
+function parsePeriodMonthParts(
+  periodMonth: string,
+): { year: number; month: number } | null {
+  const year = Number(periodMonth.slice(0, 4));
+  const month = Number(periodMonth.slice(5, 7));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return { year, month };
+}
+
+function monthSortKey(parts: { year: number; month: number }): number {
+  return parts.year * 12 + parts.month;
+}
+
+function formatMonthYearShort(parts: { year: number; month: number }): string {
+  return `${CHECKLIST_MONTH_SHORT[parts.month - 1]} ${parts.year}`;
+}
+
+function formatMonthSpanLabel(
+  months: Array<{ year: number; month: number }>,
+): string {
+  if (months.length === 0) {
+    return "";
+  }
+  const sorted = [...months].sort((left, right) => monthSortKey(left) - monthSortKey(right));
+  if (sorted.length === 1) {
+    return formatMonthYearShort(sorted[0]!);
+  }
+
+  const sameYear = sorted.every((row) => row.year === sorted[0]!.year);
+  let consecutive = sameYear;
+  if (consecutive) {
+    for (let index = 1; index < sorted.length; index += 1) {
+      if (monthSortKey(sorted[index]!) - monthSortKey(sorted[index - 1]!) !== 1) {
+        consecutive = false;
+        break;
+      }
+    }
+  }
+
+  if (consecutive && sameYear) {
+    const start = CHECKLIST_MONTH_SHORT[sorted[0]!.month - 1];
+    const end = CHECKLIST_MONTH_SHORT[sorted[sorted.length - 1]!.month - 1];
+    return `${start}–${end} ${sorted[0]!.year}`;
+  }
+
+  return sorted.map((row) => formatMonthYearShort(row)).join(", ");
+}
+
+function formatIsoDueDateShort(iso: string): string {
+  const trimmed = iso.slice(0, 10);
+  const [year, month, day] = trimmed.split("-");
+  const monthNumber = Number(month);
+  if (!day || monthNumber < 1 || monthNumber > 12) {
+    return trimmed;
+  }
+  return `${day} ${CHECKLIST_MONTH_SHORT[monthNumber - 1]} ${year}`;
+}
+
+function formatStatutoryChecklistReason(
+  overdue: StatutoryPeriodObligation[],
+): string {
+  if (overdue.length === 0) {
+    return "All PAYE and SSNIT payments are up to date.";
+  }
+
+  const sourceRows = overdue;
+
+  const monthsByKind = new Map<StatutoryDueRuleKind, Array<{ year: number; month: number }>>();
+  for (const row of sourceRows) {
+    const parts = parsePeriodMonthParts(row.periodMonth);
+    if (!parts) {
+      continue;
+    }
+    const bucket = monthsByKind.get(row.kind) ?? [];
+    bucket.push(parts);
+    monthsByKind.set(row.kind, bucket);
+  }
+
+  const segments: string[] = [];
+  for (const kind of STATUTORY_KIND_ORDER) {
+    const months = monthsByKind.get(kind);
+    if (!months?.length) {
+      continue;
+    }
+    const unique = Array.from(
+      new Map(months.map((row) => [monthSortKey(row), row])).values(),
+    );
+    segments.push(`${OBLIGATION_KIND_LABELS[kind]}: ${formatMonthSpanLabel(unique)}`);
+  }
+
+  const oldestDue = overdue
+    .map((row) => row.dueDate)
+    .sort((left, right) => left.localeCompare(right))[0];
+
+  const summary = segments.join(" · ");
+  if (oldestDue) {
+    return `${summary}. Oldest due ${formatIsoDueDateShort(oldestDue)}.`;
+  }
+  return `${summary}.`;
+}
+
+function checklistChipStatus(
+  pass: boolean,
+  itemId: string,
+  statutoryHasOverdue: boolean,
+  statutoryHasOpen: boolean,
+): DirectorScorecardChecklistChipStatus {
+  if (pass) {
+    return "done";
+  }
+  if (itemId === "statutory") {
+    if (statutoryHasOverdue) {
+      return "overdue";
+    }
+    if (statutoryHasOpen) {
+      return "todo";
+    }
+    return "todo";
+  }
+  return "todo";
+}
+
 function buildChecklist(input: {
   year: number;
   month: number;
@@ -285,6 +449,7 @@ function buildChecklist(input: {
   cashPosition: number;
   payrollCost: number;
   balanceCheckBalanced: boolean;
+  balanceCheckDifference: number;
   grossDividend: number;
   taxToSetAside: number;
   todayIso: string;
@@ -301,8 +466,8 @@ function buildChecklist(input: {
 
   const invoicesPass = unpaidInvoices.length === 0;
   const invoicesReason = invoicesPass
-    ? "All quarter invoices through this month are paid."
-    : `Unpaid: ${unpaidInvoices.map((row) => row.invoice_number).join(", ")}.`;
+    ? "All client invoices for the quarter are paid."
+    : `Waiting for payment: ${unpaidInvoices.map((row) => row.invoice_number).join(", ")}.`;
 
   const obligations = listStatutoryPeriodObligations({
     entries: input.taxLedgerSources,
@@ -312,64 +477,130 @@ function buildChecklist(input: {
   const overdue = obligations.filter(
     (row) => row.isOverdue && (row.openAmount ?? 0) > 0.005,
   );
+  const openObligations = obligations.filter(
+    (row) => (row.openAmount ?? 0) > 0.005,
+  );
   const statutoryPass = overdue.length === 0;
-  const statutoryReason = statutoryPass
-    ? "No overdue open statutory obligations."
-    : overdue
-        .map(
-          (row) =>
-            `${OBLIGATION_KIND_LABELS[row.kind]} ${row.periodMonth.slice(0, 7)} (due ${row.dueDate})`,
-        )
-        .join("; ");
+  const statutoryReason = formatStatutoryChecklistReason(overdue);
 
   const cashReservePass = input.cashPosition >= input.payrollCost - 0.005;
   const cashReserveReason = cashReservePass
-    ? "Cash meets or exceeds one month of payroll."
-    : `Cash ${roundCurrency(input.cashPosition)} is below payroll ${roundCurrency(input.payrollCost)}.`;
+    ? `Cash ${formatGHS(input.cashPosition)} covers one month of payroll (${formatGHS(input.payrollCost)}).`
+    : `Cash ${formatGHS(input.cashPosition)}. Target ${formatGHS(input.payrollCost)} (${formatGHS(Math.max(0, input.payrollCost - input.cashPosition))} to go).`;
 
   const balancePass = input.balanceCheckBalanced;
   const balanceReason = balancePass
-    ? "Balance sheet check is balanced."
-    : "Balance sheet is out of balance for this month.";
+    ? "The Balance Sheet is balanced."
+    : `The Balance Sheet is out by ${formatGHS(Math.abs(input.balanceCheckDifference))} — check Finance → Balance Sheet.`;
 
   const cashAfterDividend =
     input.cashPosition - input.grossDividend - input.taxToSetAside;
   const dividendCashPass =
     cashAfterDividend >= input.payrollCost - 0.005;
   const dividendCashReason = dividendCashPass
-    ? "Cash after gross dividend and tax set-aside still covers payroll."
-    : `After dividend and tax set-aside, cash ${roundCurrency(cashAfterDividend)} is below payroll ${roundCurrency(input.payrollCost)}.`;
+    ? `After the dividend and tax set-aside, cash of ${formatGHS(cashAfterDividend)} still covers next payroll (${formatGHS(input.payrollCost)}).`
+    : `Paying the dividend now would leave ${formatGHS(cashAfterDividend)}. Keep at least ${formatGHS(input.payrollCost)} for next payroll.`;
+
+  const balanceSheetHref = balanceSheetHrefForScorecardMonth(input.year, input.month);
+  const oldestOverduePeriodMonth =
+    overdue.length > 0
+      ? periodMonthToTaxLedgerParam(
+          [...overdue]
+            .sort((left, right) => left.periodMonth.localeCompare(right.periodMonth))[0]!
+            .periodMonth,
+        )
+      : null;
 
   const items: DirectorScorecardChecklistItem[] = [
     {
       id: "client-invoices",
       label: "Client invoices paid",
       pass: invoicesPass,
+      chipStatus: checklistChipStatus(invoicesPass, "client-invoices", false, false),
       reason: invoicesReason,
+      unpaidInvoiceLinks: invoicesPass
+        ? undefined
+        : unpaidInvoices.map((row) => ({
+            id: row.id,
+            invoiceNumber: row.invoice_number,
+          })),
+      links: invoicesPass
+        ? [
+            {
+              label: "View invoices →",
+              href: clientInvoicesListHref(),
+            },
+          ]
+        : [
+            {
+              label: "Record payment →",
+              href: clientInvoicesListHref({ unpaidOnly: true }),
+            },
+          ],
     },
     {
       id: "statutory",
-      label: "Statutory payments up to date",
+      label: "GRA and SSNIT payments",
       pass: statutoryPass,
+      chipStatus: checklistChipStatus(
+        statutoryPass,
+        "statutory",
+        overdue.length > 0,
+        openObligations.length > 0,
+      ),
       reason: statutoryReason,
+      links: statutoryPass
+        ? [
+            {
+              label: "View payments →",
+              href: statutoryLedgerHref(),
+            },
+          ]
+        : [
+            {
+              label: "Pay or record →",
+              href: statutoryLedgerHref(oldestOverduePeriodMonth),
+            },
+          ],
     },
     {
       id: "cash-reserve",
-      label: "Cash reserve covers one month of payroll",
+      label: "Cash cushion of one month's payroll",
       pass: cashReservePass,
+      chipStatus: checklistChipStatus(cashReservePass, "cash-reserve", false, false),
       reason: cashReserveReason,
+      links: [
+        {
+          label: "View cash position →",
+          href: balanceSheetHref,
+        },
+      ],
     },
     {
       id: "balance-sheet",
-      label: "Balance Sheet balanced",
+      label: "Books balance",
       pass: balancePass,
+      chipStatus: checklistChipStatus(balancePass, "balance-sheet", false, false),
       reason: balanceReason,
+      links: [
+        {
+          label: balancePass ? "View Balance Sheet →" : "Check Balance Sheet →",
+          href: balanceSheetHref,
+        },
+      ],
     },
     {
       id: "dividend-cash",
-      label: "Cash after dividend covers next payroll",
+      label: "Enough cash after the dividend",
       pass: dividendCashPass,
+      chipStatus: checklistChipStatus(dividendCashPass, "dividend-cash", false, false),
       reason: dividendCashReason,
+      links: [
+        {
+          label: "View cash position →",
+          href: balanceSheetHref,
+        },
+      ],
     },
   ];
 
@@ -523,6 +754,7 @@ export function buildDirectorScorecardByMonthKey(input: {
       cashPosition: monthSnapshot.summary.cashPosition,
       payrollCost: monthSnapshot.payroll.totalPayrollCost,
       balanceCheckBalanced: monthSnapshot.summary.balanceCheck.isBalanced,
+      balanceCheckDifference: monthSnapshot.summary.balanceCheck.difference,
       grossDividend: dividendQuarter.gross,
       taxToSetAside: taxDetail.taxToSetAside,
       todayIso,
@@ -574,13 +806,14 @@ export async function fetchDirectorScorecardClientInvoices(
   const { data } = await applyBusinessUnitScope(
     supabase
       .from("client_invoices")
-      .select("invoice_number, invoice_date, status")
+      .select("id, invoice_number, invoice_date, status")
       .eq("tenant_id", tenantId),
     buScope,
   );
 
   return (
     (data as DirectorScorecardClientInvoiceRow[] | null)?.map((row) => ({
+      id: row.id,
       invoice_number: row.invoice_number,
       invoice_date: row.invoice_date,
       status: row.status,

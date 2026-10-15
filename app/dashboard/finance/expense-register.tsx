@@ -268,6 +268,7 @@ export default function ExpenseRegister({
     useState<RegisterColumnFilterValue>(null);
   const [projectSiteFilter, setProjectSiteFilter] =
     useState<RegisterColumnFilterValue>(null);
+  const [projectIdFilter, setProjectIdFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] =
     useState<RegisterDateRangeFilterValue>(null);
   const [columnSort, setColumnSort] = useState<RegisterColumnSortState | null>(
@@ -668,6 +669,8 @@ export default function ExpenseRegister({
 
     const live = entries.filter(
       (entry) =>
+        (!projectIdFilter ||
+          (entry.project_id ?? null) === projectIdFilter) &&
         dateValuePassesRangeFilter(toDateInputValue(entry.date), dateFilter) &&
               columnValuePassesFilter(entry.expense_category, categoryFilter) &&
               columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
@@ -688,6 +691,8 @@ export default function ExpenseRegister({
 
     const queuedFiltered = queued.filter(
       (entry) =>
+        (!projectIdFilter ||
+          (entry.project_id ?? null) === projectIdFilter) &&
         dateValuePassesRangeFilter(toDateInputValue(entry.date), dateFilter) &&
         columnValuePassesFilter(entry.expense_category, categoryFilter) &&
         columnValuePassesFilter(entry.sub_category, subCategoryFilter) &&
@@ -723,6 +728,7 @@ export default function ExpenseRegister({
     descriptionFilter,
     paymentStatusFilter,
     projectSiteFilter,
+    projectIdFilter,
     contractSiteLabelForEntry,
     linkedApAccrualPayables,
     linkedApAccrualDisplayOptions,
@@ -1147,6 +1153,38 @@ export default function ExpenseRegister({
     void openExpenseDetail(expenseId);
     router.replace("/dashboard/finance/expenses", { scroll: false });
   }, [searchParams, router]);
+
+  useEffect(() => {
+    const dateFrom = searchParams.get("dateFrom")?.trim();
+    const dateTo = searchParams.get("dateTo")?.trim();
+    if (
+      dateFrom &&
+      dateTo &&
+      /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(dateTo)
+    ) {
+      setDateFilter((current) =>
+        current?.from === dateFrom && current?.to === dateTo
+          ? current
+          : { from: dateFrom, to: dateTo },
+      );
+    }
+
+    const category = searchParams.get("category")?.trim();
+    if (category) {
+      setCategoryFilter(new Set([category]));
+    }
+
+    const subCategory = searchParams.get("subCategory")?.trim();
+    if (subCategory) {
+      setSubCategoryFilter(new Set([subCategory]));
+    }
+
+    const projectId = searchParams.get("projectId")?.trim();
+    if (projectId) {
+      setProjectIdFilter(projectId);
+    }
+  }, [searchParams]);
 
   function openAddForm() {
     setLoading(false);

@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { formatGHS } from "@/app/dashboard/finance/income-register-utils";
-import type { DirectorScorecardSnapshot } from "@/app/dashboard/director-scorecard-build";
+import type {
+  DirectorScorecardChecklistChipStatus,
+  DirectorScorecardChecklistItem,
+  DirectorScorecardSnapshot,
+} from "@/app/dashboard/director-scorecard-build";
 import ScrollableTable, {
   scrollableTableClassName,
   scrollableTableHeadClassName,
@@ -19,6 +23,10 @@ import {
   DIRECTOR_SCORECARD_DIVIDEND_WHT_RATE,
   DIRECTOR_SCORECARD_GSL_RATE,
 } from "@/lib/finance/director-scorecard-constants";
+import {
+  clientInvoiceDetailHref,
+  expenseRegisterHrefForBudgetLine,
+} from "@/app/dashboard/director-scorecard-links";
 
 type DirectorScorecardSectionProps = {
   snapshot: DirectorScorecardSnapshot;
@@ -46,16 +54,36 @@ function Tile({
   );
 }
 
-function ChecklistChip({ pass, label }: { pass: boolean; label: string }) {
+function checklistChipClassName(status: DirectorScorecardChecklistChipStatus): string {
+  switch (status) {
+    case "done":
+      return "border-emerald-200 bg-emerald-50 text-emerald-900";
+    case "overdue":
+      return "border-red-200 bg-red-50 text-red-800";
+    case "todo":
+    default:
+      return "border-amber-200 bg-amber-50 text-amber-950";
+  }
+}
+
+function checklistChipLabel(status: DirectorScorecardChecklistChipStatus): string {
+  switch (status) {
+    case "done":
+      return "Done";
+    case "overdue":
+      return "Overdue";
+    case "todo":
+    default:
+      return "To do";
+  }
+}
+
+function ChecklistChip({ status }: { status: DirectorScorecardChecklistChipStatus }) {
   return (
     <span
-      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${
-        pass
-          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-          : "border-red-200 bg-red-50 text-red-800"
-      }`}
+      className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium ${checklistChipClassName(status)}`}
     >
-      {pass ? "Pass" : "Fail"} — {label}
+      {checklistChipLabel(status)}
     </span>
   );
 }
@@ -65,6 +93,49 @@ function formatVariancePercent(value: number | null): string {
     return "—";
   }
   return `${value.toFixed(1)}%`;
+}
+
+const scorecardActionLinkClassName =
+  "inline-flex rounded-sm text-xs font-medium text-[#0f2744] underline decoration-slate-300 underline-offset-2 hover:decoration-[#0f2744] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f2744]";
+
+function ChecklistItemMessage({ item }: { item: DirectorScorecardChecklistItem }) {
+  if (item.unpaidInvoiceLinks?.length) {
+    return (
+      <p className="break-words text-sm text-slate-600">
+        Waiting for payment:{" "}
+        {item.unpaidInvoiceLinks.map((invoice, index) => (
+          <span key={invoice.id}>
+            {index > 0 ? ", " : null}
+            <Link
+              href={clientInvoiceDetailHref(invoice.id)}
+              className={scorecardActionLinkClassName}
+            >
+              {invoice.invoiceNumber}
+            </Link>
+          </span>
+        ))}
+        .
+      </p>
+    );
+  }
+
+  return <p className="break-words text-sm text-slate-600">{item.reason}</p>;
+}
+
+function ChecklistItemLinks({ item }: { item: DirectorScorecardChecklistItem }) {
+  if (!item.links?.length) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1">
+      {item.links.map((link) => (
+        <Link key={`${item.id}-${link.label}`} href={link.href} className={scorecardActionLinkClassName}>
+          {link.label}
+        </Link>
+      ))}
+    </div>
+  );
 }
 
 export default function DirectorScorecardSection({
@@ -170,7 +241,19 @@ export default function DirectorScorecardSection({
                       key={row.rowKey}
                       className={getStripedRowClassName(index)}
                     >
-                      <td className="px-4 py-3 text-sm">{row.rowLabel}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <Link
+                          href={expenseRegisterHrefForBudgetLine({
+                            year: snapshot.year,
+                            month: snapshot.month,
+                            category: row.category,
+                            subcategory: row.subcategory,
+                          })}
+                          className="font-medium text-[#0f2744] underline decoration-slate-300 underline-offset-2 hover:decoration-[#0f2744] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f2744]"
+                        >
+                          {row.rowLabel}
+                        </Link>
+                      </td>
                       <td className="px-4 py-3 text-right text-sm tabular-nums">
                         {formatGHS(row.budgeted)}
                       </td>
@@ -244,14 +327,21 @@ export default function DirectorScorecardSection({
           }`}
         >
           {snapshot.checklist.ready
-            ? "Ready — all checks passed."
-            : "Not ready — resolve failed checks below."}
+            ? "Ready — all checks complete. You can declare a dividend."
+            : "Not yet — a few things to sort out first."}
         </div>
-        <ul className="space-y-3">
+        <ul className="space-y-4">
           {snapshot.checklist.items.map((item) => (
-            <li key={item.id} className="space-y-1">
-              <ChecklistChip pass={item.pass} label={item.label} />
-              <p className="text-sm text-slate-600">{item.reason}</p>
+            <li
+              key={item.id}
+              className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3"
+            >
+              <ChecklistChip status={item.chipStatus} />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <p className="text-sm font-medium text-[#0f2744]">{item.label}</p>
+                <ChecklistItemMessage item={item} />
+                <ChecklistItemLinks item={item} />
+              </div>
             </li>
           ))}
         </ul>
