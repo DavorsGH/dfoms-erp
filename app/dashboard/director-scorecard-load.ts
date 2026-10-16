@@ -24,6 +24,10 @@ import {
 import { createAdminClient } from "@/utils/supabase/admin";
 import { createClient } from "@/utils/supabase/server";
 import { scopeTaxSettingsRead } from "@/utils/phase5e-key-structure";
+import {
+  loadTenantScorecardSettings,
+  type DirectorScorecardSettingsMeta,
+} from "@/lib/finance/director-scorecard-settings";
 
 export type DirectorScorecardSessionScope = {
   tenantId: string;
@@ -112,6 +116,7 @@ export type DirectorScorecardSessionBundle = {
   snapshot: DirectorScorecardSnapshot;
   monthSnapshot: DashboardViewModel["monthSnapshots"][string];
   monthKey: string;
+  scorecardSettings: DirectorScorecardSettingsMeta;
 };
 
 /**
@@ -173,6 +178,11 @@ export async function loadDirectorScorecardForSession(
     snapshot,
     monthSnapshot,
     monthKey: resolvedMonthKey,
+    scorecardSettings:
+      viewModel.directorScorecardSettings ??
+      (await loadTenantScorecardSettings(supabase, scope.tenantId, {
+        adminClient: createAdminClient(),
+      })).meta,
   };
 }
 
@@ -185,7 +195,8 @@ export async function attachDirectorScorecardToViewModel(
   dashboardPageData: DashboardPageData,
 ): Promise<DashboardViewModel> {
   const viewAllBusinessUnits = buScope.mode === "all";
-  const [clientInvoices, { data: taxSettingsRow }, businessUnitLabel] =
+  const admin = createAdminClient();
+  const [clientInvoices, { data: taxSettingsRow }, businessUnitLabel, scorecardSettingsLoad] =
     await Promise.all([
       fetchDirectorScorecardClientInvoices(supabase, tenantId, buScope),
       scopeTaxSettingsRead(
@@ -200,6 +211,7 @@ export async function attachDirectorScorecardToViewModel(
         activeBusinessUnitId,
         viewAllBusinessUnits,
       ),
+      loadTenantScorecardSettings(supabase, tenantId, { adminClient: admin }),
     ]);
 
   const directorScorecardByMonthKey = buildDirectorScorecardByMonthKey({
@@ -211,10 +223,12 @@ export async function attachDirectorScorecardToViewModel(
       (taxSettingsRow as Record<string, unknown> | null) ?? null,
     ),
     businessUnitLabel,
+    planning: scorecardSettingsLoad.planning,
   });
 
   return {
     ...viewModel,
     directorScorecardByMonthKey,
+    directorScorecardSettings: scorecardSettingsLoad.meta,
   };
 }

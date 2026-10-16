@@ -113,6 +113,22 @@ export default function DashboardCacheShell({
     }
   }, [isOnline, session]);
 
+  useEffect(() => {
+    const onScorecardSettingsSaved = () => {
+      void refreshFromNetwork();
+    };
+    window.addEventListener(
+      "dfoms:scorecard-settings-saved",
+      onScorecardSettingsSaved,
+    );
+    return () => {
+      window.removeEventListener(
+        "dfoms:scorecard-settings-saved",
+        onScorecardSettingsSaved,
+      );
+    };
+  }, [refreshFromNetwork]);
+
   return (
     <div className="space-y-3">
       <div className="flex justify-end">

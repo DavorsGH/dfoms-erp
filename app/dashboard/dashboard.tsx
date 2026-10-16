@@ -69,6 +69,12 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
   const displayedExpenses = isYtdMode
     ? summary.totalExpensesYtd
     : summary.totalExpenses;
+  const displayedDepreciation = isYtdMode
+    ? summary.depreciationYtd
+    : summary.depreciation;
+  const displayedIncomeRegisterGross = isYtdMode
+    ? summary.incomeRegisterGrossTotalYtd
+    : summary.incomeRegisterGrossTotal;
   const displayedPayrollCost = isYtdMode
     ? payroll.totalPayrollCostYtd
     : payroll.totalPayrollCost;
@@ -179,18 +185,17 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
           href="/dashboard/inventory/product-purchases"
         />
         <SummaryCard
-          title={`Income register total (${selectedPeriodLabel})`}
-          subtitle={selectedPeriodSubtitle}
+          title={`Total Revenue (${selectedPeriodLabel})`}
+          subtitle="Excludes VAT and cancelled sales — same as Profit & Loss"
           value={formatGHS(displayedRevenue)}
-          valueNote="Sum of Income Register amounts as recorded (often VAT-inclusive). P&L revenue is tax-exclusive and excludes voided sales."
-          href="/dashboard/finance/income-register"
+          valueNote={`Collected incl. VAT: ${formatGHS(displayedIncomeRegisterGross)}`}
+          href="/dashboard/finance/profit-loss"
         />
         <SummaryCard
-          title={`Expense register total (${selectedPeriodLabel})`}
-          subtitle={selectedPeriodSubtitle}
+          title={`Total Expenses (${selectedPeriodLabel})`}
+          subtitle={`Includes depreciation of ${formatGHS(displayedDepreciation)} — same as Profit & Loss`}
           value={formatGHS(displayedExpenses)}
-          valueNote="Sum of Expense Register operating amounts as recorded (often VAT-inclusive), excluding depreciation. P&L total expenses adds depreciation and uses tax-exclusive amounts."
-          href="/dashboard/finance/expense-register"
+          href="/dashboard/finance/profit-loss"
         />
         <SummaryCard
           title="Depreciation"
@@ -259,7 +264,12 @@ export default function Dashboard({ data, fetchError, visibility }: DashboardPro
       ) : null}
 
       {visibility.showDirectorScorecard && directorScorecard ? (
-        <DirectorScorecardSection snapshot={directorScorecard} />
+        <DirectorScorecardSection
+          snapshot={directorScorecard}
+          monthKey={scorecardMonthKey}
+          canManageSettings={visibility.showDirectorScorecard}
+          initialSettings={data.directorScorecardSettings ?? null}
+        />
       ) : null}
 
       {visibility.showFinancialSummary ? (

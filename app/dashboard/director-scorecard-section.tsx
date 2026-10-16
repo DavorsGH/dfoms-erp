@@ -20,11 +20,12 @@ import {
   type BudgetHealthStatus,
   type BudgetVsActualRow,
 } from "@/app/dashboard/reports/budget-vs-actual-utils";
+import type { DirectorScorecardSettingsMeta } from "@/lib/finance/director-scorecard-settings";
 import {
-  DIRECTOR_SCORECARD_CIT_RATE,
-  DIRECTOR_SCORECARD_DIVIDEND_WHT_RATE,
-  DIRECTOR_SCORECARD_GSL_RATE,
-} from "@/lib/finance/director-scorecard-constants";
+  defaultDirectorScorecardSettingsMeta,
+  formatScorecardRatesFooter,
+} from "@/lib/finance/director-scorecard-settings";
+import DirectorScorecardSettingsDialog from "@/app/dashboard/director-scorecard-settings-dialog";
 import {
   clientInvoiceDetailHref,
   expenseRegisterHrefForBudgetLine,
@@ -35,6 +36,9 @@ const SCORECARD_CHECKLIST_OPEN_KEY = "dfoms.scorecard.checklistOpen";
 
 type DirectorScorecardSectionProps = {
   snapshot: DirectorScorecardSnapshot;
+  monthKey: string;
+  canManageSettings: boolean;
+  initialSettings: DirectorScorecardSettingsMeta | null;
 };
 
 function readScorecardSectionOpen(storageKey: string): boolean {
@@ -317,9 +321,70 @@ function BudgetVsActualTable({
   );
 }
 
+function formatSettingsUpdatedLine(meta: DirectorScorecardSettingsMeta): string | null {
+  if (!meta.isPersisted || !meta.updatedAt) {
+    return null;
+  }
+  const date = new Date(meta.updatedAt);
+  const dateLabel = Number.isNaN(date.getTime())
+    ? meta.updatedAt.slice(0, 10)
+    : date.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+  const by = meta.updatedByDisplayName?.trim();
+  return by ? `Last changed by ${by} on ${dateLabel}.` : `Last changed on ${dateLabel}.`;
+}
+
 export default function DirectorScorecardSection({
-  snapshot,
+  snapshot: initialSnapshot,
+  monthKey,
+  canManageSettings,
+  initialSettings,
 }: DirectorScorecardSectionProps) {
+  const [snapshot, setSnapshot] = useState(initialSnapshot);
+  const [settingsMeta, setSettingsMeta] = useState<DirectorScorecardSettingsMeta>(
+    initialSettings ?? defaultDirectorScorecardSettingsMeta(),
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    setSnapshot(initialSnapshot);
+  }, [initialSnapshot]);
+
+  useEffect(() => {
+    if (initialSettings) {
+      setSettingsMeta(initialSettings);
+    }
+  }, [initialSettings]);
+
+  const refreshScorecard = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const response = await fetch(
+        `/api/director-scorecard?monthKey=${encodeURIComponent(monthKey)}`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json().catch(() => null)) as
+        | {
+            snapshot?: DirectorScorecardSnapshot;
+            settings?: DirectorScorecardSettingsMeta;
+            error?: string;
+          }
+        | null;
+      if (response.ok && body?.snapshot) {
+        setSnapshot(body.snapshot);
+        if (body.settings) {
+          setSettingsMeta(body.settings);
+        }
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [monthKey]);
+
   const budgetTotals = sumBudgetVsActualTotals(snapshot.budget.rows);
   const reportHref = `/dashboard/reports/finance/budget-vs-actual?year=${snapshot.year}&month=${snapshot.month}`;
   const budgetHref = `/dashboard/finance/budget`;
@@ -421,8 +486,18 @@ export default function DirectorScorecardSection({
           <p className="mt-1 text-sm text-slate-600">
             Planning view for {snapshot.periodLabel} (same registers and reports
             as Finance).
+            {refreshing ? " Updating…" : null}
           </p>
         </div>
+        {canManageSettings ? (
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className={scorecardSectionToggleClassName}
+          >
+            Settings
+          </button>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -578,15 +653,30 @@ export default function DirectorScorecardSection({
                 <ChecklistItemRow key={item.id} item={item} />
               ))}
             </ul>
-            <p className="text-xs text-slate-500">
-              Rates used: CIT {(DIRECTOR_SCORECARD_CIT_RATE * 100).toFixed(0)}%, GSL{" "}
-              {(DIRECTOR_SCORECARD_GSL_RATE * 100).toFixed(1)}%, dividend WHT{" "}
-              {(DIRECTOR_SCORECARD_DIVIDEND_WHT_RATE * 100).toFixed(0)}%. Planning
-              figures, not tax advice.
-            </p>
           </div>
         )}
       </div>
+
+      <p className="mt-6 text-xs text-slate-500">
+        {formatScorecardRatesFooter(settingsMeta)} Planning figures, not tax advice.
+        {(() => {
+          const updatedLine = formatSettingsUpdatedLine(settingsMeta);
+          return updatedLine ? ` ${updatedLine}` : null;
+        })()}
+      </p>
+
+      {canManageSettings ? (
+        <DirectorScorecardSettingsDialog
+          open={settingsOpen}
+          initialSettings={settingsMeta}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={(settings) => {
+            setSettingsMeta(settings);
+            window.dispatchEvent(new Event("dfoms:scorecard-settings-saved"));
+            void refreshScorecard();
+          }}
+        />
+      ) : null}
     </section>
   );
 }

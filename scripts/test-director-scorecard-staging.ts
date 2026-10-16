@@ -113,6 +113,9 @@ async function buildScorecardForScope(
     options.activeBusinessUnitId,
   ).maybeSingle();
 
+  const { defaultDirectorScorecardPlanningSettings } = await import(
+    "../lib/finance/director-scorecard-settings"
+  );
   const scorecards = modules.buildDirectorScorecardByMonthKey({
     viewModel,
     dashboardPageData,
@@ -122,6 +125,7 @@ async function buildScorecardForScope(
       (taxSettingsRow as Record<string, unknown> | null) ?? null,
     ),
     businessUnitLabel: options.label,
+    planning: defaultDirectorScorecardPlanningSettings(),
   });
 
   return { viewModel, scorecards, dashboardPageData, label: options.label };

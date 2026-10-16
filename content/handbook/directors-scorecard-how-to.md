@@ -23,9 +23,9 @@ It is read-only — it does not change any records. The figures are planning fig
 | **Revenue** | Income for the month, excluding VAT. Matches Total Revenue on the Profit & Loss report. |
 | **Total costs** | All costs for the month, including depreciation. Matches Total Expenses on the Profit & Loss report. |
 | **Profit before tax** | Revenue minus total costs. Matches Net Profit on the Profit & Loss report. |
-| **Tax to set aside** | Corporate income tax (25% of profit) plus Growth & Sustainability Levy (2.5% of profit), minus withholding tax that clients have already deducted from your invoices in the month (the WHT credit). This is the cash to keep aside for tax. Zero when there is no profit. |
-| **Profit after tax** | Profit before tax minus corporate income tax and the levy. Shown with a suggested split: **30% Reserve**, **20% Reinvest**, **50% Owners**. |
-| **Dividend available this quarter** | 50% of the quarter's profit after tax so far (loss months reduce it), minus 8% dividend withholding tax. Shows gross, WHT and net. Zero when the quarter has no profit. |
+| **Tax to set aside** | Corporate income tax (your **CIT rate %** on profit) plus Growth & Sustainability Levy (**GSL rate %** on profit), minus withholding tax that clients have already deducted from your invoices in the month (the WHT credit). This is the cash to keep aside for tax. Zero when there is no profit. |
+| **Profit after tax** | Profit before tax minus corporate income tax and the levy. Shown with your configured split: **Reserve %**, **Reinvest %**, **Owners %** (must total 100%). |
+| **Dividend available this quarter** | **Owners %** of the quarter's profit after tax so far (loss months reduce it), minus **dividend WHT %**. Shows gross, WHT and net. Zero when the quarter has no profit. |
 
 ### Profit is not the same as cash
 
@@ -60,5 +60,6 @@ When everything is Done the banner says **"Ready — all checks complete. You ca
 
 ## Things to know
 
-- Rates used: CIT 25%, GSL 2.5%, dividend WHT 8%; profit split 30/20/50. These are fixed for now.
+- **Rates used** (footer on the scorecard): shows the CIT, GSL, dividend WHT, and profit split percentages currently applied to every month on the scorecard.
+- **Changing rates:** Directors and Administrators open **Settings** on the Director's Scorecard header. Set CIT, GSL, dividend WHT, and the Reserve / Reinvest / Owners split. The three split percentages must total **100%**. Changes apply to all months on the scorecard (planning figures, not tax advice). Other roles do not see Settings.
 - The scorecard does not record a dividend. Paying and recording a dividend is done outside the scorecard.

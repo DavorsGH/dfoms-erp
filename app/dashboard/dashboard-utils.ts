@@ -92,7 +92,10 @@ export type DashboardSummaryCards = {
   totalRevenueYtd: number;
   totalExpenses: number;
   totalExpensesYtd: number;
-  /** Fixed-asset depreciation for the selected month (separate scorecard; not in totalExpenses). */
+  /** Income register gross total (often VAT-inclusive) — shown under revenue card only. */
+  incomeRegisterGrossTotal: number;
+  incomeRegisterGrossTotalYtd: number;
+  /** Fixed-asset depreciation for the selected month (separate scorecard; included in totalExpenses). */
   depreciation: number;
   /** YTD fixed-asset depreciation through the selected month. */
   depreciationYtd: number;
@@ -195,6 +198,7 @@ export type DashboardViewModel = {
   budgetStatusByMonthKey: Record<string, DashboardBudgetStatusSnapshot>;
   /** Present only when {@link DashboardVisibility.showDirectorScorecard} is true. */
   directorScorecardByMonthKey?: Record<string, DirectorScorecardSnapshot>;
+  directorScorecardSettings?: import("@/lib/finance/director-scorecard-settings").DirectorScorecardSettingsMeta;
 };
 
 export type DashboardProfitTrendPoint = {
@@ -324,17 +328,25 @@ export function getAvailableDashboardMonths(
     });
 }
 
-function sumNetProfitYtd(
+function sumProfitLossRowYtd(
   report: ReturnType<typeof buildProfitLossReport>,
+  rowKey: string,
   throughMonthIndex: number,
 ): number {
   let total = 0;
 
   for (let monthIndex = 0; monthIndex <= throughMonthIndex; monthIndex += 1) {
-    total += getProfitLossRowAmount(report, "net-profit", monthIndex);
+    total += getProfitLossRowAmount(report, rowKey, monthIndex);
   }
 
   return roundCurrency(total);
+}
+
+function sumNetProfitYtd(
+  report: ReturnType<typeof buildProfitLossReport>,
+  throughMonthIndex: number,
+): number {
+  return sumProfitLossRowYtd(report, "net-profit", throughMonthIndex);
 }
 
 function sumDepreciationYtd(
@@ -531,29 +543,42 @@ function buildMonthSnapshot(input: {
     input.month,
   );
 
+  const incomeRegisterGrossTotal = sumRegisterAmountForMonth(
+    input.incomeEntries,
+    input.year,
+    input.month,
+  );
+  const incomeRegisterGrossTotalYtd = sumRegisterAmountYtd(
+    input.incomeEntries,
+    input.year,
+    input.month,
+  );
+
   return {
     summary: {
       periodLabel,
-      totalRevenue: sumRegisterAmountForMonth(
-        input.incomeEntries,
-        input.year,
-        input.month,
+      totalRevenue: getProfitLossRowAmount(
+        profitLossReport,
+        "total-revenue",
+        monthIndex,
       ),
-      totalRevenueYtd: sumRegisterAmountYtd(
-        input.incomeEntries,
-        input.year,
-        input.month,
+      totalRevenueYtd: sumProfitLossRowYtd(
+        profitLossReport,
+        "total-revenue",
+        monthIndex,
       ),
-      totalExpenses: sumRegisterAmountForMonth(
-        input.expenseEntries,
-        input.year,
-        input.month,
+      totalExpenses: getProfitLossRowAmount(
+        profitLossReport,
+        "total-expenses",
+        monthIndex,
       ),
-      totalExpensesYtd: sumRegisterAmountYtd(
-        input.expenseEntries,
-        input.year,
-        input.month,
+      totalExpensesYtd: sumProfitLossRowYtd(
+        profitLossReport,
+        "total-expenses",
+        monthIndex,
       ),
+      incomeRegisterGrossTotal,
+      incomeRegisterGrossTotalYtd,
       depreciation,
       depreciationYtd,
       productSales,

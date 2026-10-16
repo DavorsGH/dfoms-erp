@@ -54,7 +54,8 @@ export function formatDirectorScorecardToolPayload(
     return bundle;
   }
 
-  const { scope, snapshot, monthSnapshot, pageData, monthKey } = bundle;
+  const { scope, snapshot, monthSnapshot, pageData, monthKey, scorecardSettings } =
+    bundle;
   const payrollCostGhs = monthSnapshot.payroll.totalPayrollCost;
 
   if (
@@ -102,13 +103,21 @@ export function formatDirectorScorecardToolPayload(
       whtCreditAppliedGhs: snapshot.taxDetail.whtCreditApplied,
     },
     profitAfterTaxGhs: snapshot.profitAfterTax,
+    scorecardPlanningRates: {
+      citPercent: scorecardSettings.citRatePct,
+      gslPercent: scorecardSettings.gslRatePct,
+      dividendWhtPercent: scorecardSettings.dividendWhtRatePct,
+      reservePercent: scorecardSettings.reservePct,
+      reinvestPercent: scorecardSettings.reinvestPct,
+      ownersPercent: scorecardSettings.ownersPct,
+    },
     profitSplit: {
       reserveGhs: snapshot.reserveAmount,
       reinvestGhs: snapshot.reinvestAmount,
       ownersShareGhs: snapshot.ownersShareAmount,
-      reservePercent: 30,
-      reinvestPercent: 20,
-      ownersPercent: 50,
+      reservePercent: scorecardSettings.reservePct,
+      reinvestPercent: scorecardSettings.reinvestPct,
+      ownersPercent: scorecardSettings.ownersPct,
     },
     cashPositionGhs: monthSnapshot.summary.cashPosition,
     payrollCostGhs,

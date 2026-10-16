@@ -27,14 +27,7 @@ import {
   type TaxSettingsDueRules,
 } from "@/app/dashboard/finance/statutory-due-rules";
 import type { TaxLedgerBalanceSource } from "@/app/dashboard/finance/tax-ledger-utils";
-import {
-  DIRECTOR_SCORECARD_CIT_RATE,
-  DIRECTOR_SCORECARD_DIVIDEND_WHT_RATE,
-  DIRECTOR_SCORECARD_GSL_RATE,
-  DIRECTOR_SCORECARD_OWNERS_SHARE,
-  DIRECTOR_SCORECARD_REINVEST_SHARE,
-  DIRECTOR_SCORECARD_RESERVE_SHARE,
-} from "@/lib/finance/director-scorecard-constants";
+import type { DirectorScorecardPlanningSettings } from "@/lib/finance/director-scorecard-settings";
 import {
   balanceSheetHrefForScorecardMonth,
   clientInvoicesListHref,
@@ -139,6 +132,7 @@ function sumClientWhtReceivableForMonth(
 function computeTaxToSetAside(
   profitBeforeTax: number,
   whtReceivableAccrued: number,
+  planning: DirectorScorecardPlanningSettings,
 ): {
   citAmount: number;
   gslAmount: number;
@@ -154,8 +148,8 @@ function computeTaxToSetAside(
     };
   }
 
-  const citAmount = roundCurrency(profitBeforeTax * DIRECTOR_SCORECARD_CIT_RATE);
-  const gslAmount = roundCurrency(profitBeforeTax * DIRECTOR_SCORECARD_GSL_RATE);
+  const citAmount = roundCurrency(profitBeforeTax * planning.citRate);
+  const gslAmount = roundCurrency(profitBeforeTax * planning.gslRate);
   const whtCreditApplied = roundCurrency(
     Math.min(whtReceivableAccrued, citAmount),
   );
@@ -181,11 +175,16 @@ function computeProfitAfterTax(
 function monthPatForScorecard(
   profitBeforeTax: number,
   whtReceivableAccrued: number,
+  planning: DirectorScorecardPlanningSettings,
 ): {
   taxDetail: ReturnType<typeof computeTaxToSetAside>;
   profitAfterTax: number;
 } {
-  const taxDetail = computeTaxToSetAside(profitBeforeTax, whtReceivableAccrued);
+  const taxDetail = computeTaxToSetAside(
+    profitBeforeTax,
+    whtReceivableAccrued,
+    planning,
+  );
   const profitAfterTax = computeProfitAfterTax(
     profitBeforeTax,
     taxDetail.citAmount,
@@ -649,6 +648,7 @@ function computeQuarterDividend(
   taxSources: TaxLedgerBalanceSource[],
   year: number,
   throughMonth: number,
+  planning: DirectorScorecardPlanningSettings,
 ): { gross: number; wht: number; net: number; quarterLabel: string } {
   const startMonth = quarterStartMonth(throughMonth);
   let quarterPatSum = 0;
@@ -672,14 +672,14 @@ function computeQuarterDividend(
       option.year,
       option.month,
     );
-    const { profitAfterTax } = monthPatForScorecard(pbt, whtAccrued);
+    const { profitAfterTax } = monthPatForScorecard(pbt, whtAccrued, planning);
     quarterPatSum += profitAfterTax;
   }
 
   const gross = roundCurrency(
-    Math.max(0, quarterPatSum) * DIRECTOR_SCORECARD_OWNERS_SHARE,
+    Math.max(0, quarterPatSum) * planning.ownersShare,
   );
-  const wht = roundCurrency(gross * DIRECTOR_SCORECARD_DIVIDEND_WHT_RATE);
+  const wht = roundCurrency(gross * planning.dividendWhtRate);
   const net = roundCurrency(gross - wht);
 
   return {
@@ -697,6 +697,7 @@ export function buildDirectorScorecardByMonthKey(input: {
   clientInvoices: DirectorScorecardClientInvoiceRow[];
   taxSettings: TaxSettingsDueRules | null;
   businessUnitLabel: string;
+  planning: DirectorScorecardPlanningSettings;
   todayIso?: string;
 }): Record<string, DirectorScorecardSnapshot> {
   const todayIso = input.todayIso ?? new Date().toISOString().slice(0, 10);
@@ -739,16 +740,17 @@ export function buildDirectorScorecardByMonthKey(input: {
     const { taxDetail, profitAfterTax } = monthPatForScorecard(
       profitBeforeTax,
       whtAccrued,
+      input.planning,
     );
     const splitBase = Math.max(0, profitAfterTax);
     const reserveAmount = roundCurrency(
-      splitBase * DIRECTOR_SCORECARD_RESERVE_SHARE,
+      splitBase * input.planning.reserveShare,
     );
     const reinvestAmount = roundCurrency(
-      splitBase * DIRECTOR_SCORECARD_REINVEST_SHARE,
+      splitBase * input.planning.reinvestShare,
     );
     const ownersShareAmount = roundCurrency(
-      splitBase * DIRECTOR_SCORECARD_OWNERS_SHARE,
+      splitBase * input.planning.ownersShare,
     );
 
     const dividendQuarter = computeQuarterDividend(
@@ -757,6 +759,7 @@ export function buildDirectorScorecardByMonthKey(input: {
       taxSources,
       option.year,
       option.month,
+      input.planning,
     );
 
     const budgetStatus = buildDashboardBudgetStatusSnapshot(
